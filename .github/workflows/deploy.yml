@@ -86,6 +86,8 @@ jobs:
           command_timeout: 40m
           script: |
             cd /opt/ai-startup
+            git fetch origin
+            git reset --hard origin/main
             chmod +x deploy.sh
             ./deploy.sh
 
