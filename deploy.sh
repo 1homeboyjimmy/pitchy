@@ -14,7 +14,8 @@ ROLLBACK_ON_FAIL="${ROLLBACK_ON_FAIL:-true}"
 cd "$REPO_DIR"
 
 PREVIOUS_COMMIT="$(git rev-parse HEAD)"
-git pull origin main
+git fetch origin
+git reset --hard origin/main
 
 chmod +x scripts/load_lockbox_env.sh
 scripts/load_lockbox_env.sh "$BASE_ENV_FILE" "$RUNTIME_ENV_FILE"
