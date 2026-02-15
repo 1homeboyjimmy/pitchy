@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -21,11 +21,7 @@ export function Header() {
     const pathname = usePathname();
     const router = useRouter();
 
-    // Derive auth state during render (avoids setState inside useEffect)
-    const isAuthed = useMemo(() => {
-        if (typeof window === "undefined") return false;
-        return !!getToken();
-    }, [pathname]);
+    const isAuthed = typeof window !== "undefined" && !!getToken();
 
     useEffect(() => {
         const handleScroll = () => {

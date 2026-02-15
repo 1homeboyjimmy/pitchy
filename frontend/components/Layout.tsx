@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -72,19 +72,12 @@ function Header() {
   const router = useRouter();
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const prevPathname = useRef(pathname);
 
   // Derive auth token during render (avoids setState inside useEffect)
   const token = useMemo(() => {
     if (typeof window === "undefined") return null;
     return getToken();
-  }, [pathname]);
-
-  // Close mobile menu on route change (derived during render)
-  if (prevPathname.current !== pathname) {
-    prevPathname.current = pathname;
-    if (isMobileMenuOpen) setIsMobileMenuOpen(false);
-  }
+  }, []);
 
   useEffect(() => {
     const onScroll = () => setIsScrolled(window.scrollY > 20);
@@ -207,6 +200,7 @@ function Header() {
                 >
                   <Link
                     href={item.path}
+                    onClick={() => setIsMobileMenuOpen(false)}
                     className={`block px-8 py-3 text-lg font-medium rounded-xl transition-colors ${pathname === item.path
                       ? "text-white bg-white/10"
                       : "text-white/60 hover:text-white"
@@ -227,6 +221,7 @@ function Header() {
                   <>
                     <Link
                       href="/account"
+                      onClick={() => setIsMobileMenuOpen(false)}
                       className="w-full text-center px-6 py-3 text-sm font-medium text-white/70 hover:text-white rounded-xl hover:bg-white/5 transition-colors"
                     >
                       Аккаунт
@@ -242,12 +237,14 @@ function Header() {
                   <>
                     <Link
                       href="/login"
+                      onClick={() => setIsMobileMenuOpen(false)}
                       className="w-full text-center px-6 py-3 text-sm font-medium text-white/70 hover:text-white rounded-xl border border-white/10 transition-colors"
                     >
                       Войти
                     </Link>
                     <Link
                       href="/signup"
+                      onClick={() => setIsMobileMenuOpen(false)}
                       className="w-full text-center px-6 py-3 text-sm font-medium text-white bg-pitchy-violet hover:bg-pitchy-violet-dark rounded-xl transition-colors"
                     >
                       Регистрация

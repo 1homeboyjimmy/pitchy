@@ -41,30 +41,24 @@ export function ScoreRing({
     className = "",
 }: ScoreRingProps) {
     const [displayScore, setDisplayScore] = useState(animate ? 0 : score);
-    const [isAnimating, setIsAnimating] = useState(false);
-    const hasAnimated = useRef(false);
-    const prevScore = useRef(score);
-
-    // Sync displayScore when not animating (derived during render)
-    if ((!animate || hasAnimated.current) && prevScore.current !== score) {
-        prevScore.current = score;
-        setDisplayScore(score);
-    }
+    const currentScoreRef = useRef(animate ? 0 : score);
 
     const config = sizeConfig[size];
     const radius = (config.diameter - config.stroke) / 2;
     const circumference = 2 * Math.PI * radius;
+    const activeScore = animate ? displayScore : score;
     const strokeDashoffset =
-        circumference - (displayScore / 100) * circumference;
+        circumference - (activeScore / 100) * circumference;
     const color = getScoreColor(score);
 
     useEffect(() => {
-        if (!animate || hasAnimated.current) {
+        if (!animate) {
+            currentScoreRef.current = score;
             return;
         }
-
-        hasAnimated.current = true;
-        setIsAnimating(true);
+        const from = currentScoreRef.current;
+        const to = score;
+        if (from === to) return;
 
         const duration = 1500;
         const startTime = Date.now();
@@ -73,13 +67,14 @@ export function ScoreRing({
             const elapsed = Date.now() - startTime;
             const progress = Math.min(elapsed / duration, 1);
             const easeOut = 1 - Math.pow(1 - progress, 3);
-            const currentScore = Math.round(score * easeOut);
+            const currentScore = Math.round(from + (to - from) * easeOut);
+            currentScoreRef.current = currentScore;
             setDisplayScore(currentScore);
 
             if (progress < 1) {
                 requestAnimationFrame(updateScore);
             } else {
-                setIsAnimating(false);
+                currentScoreRef.current = to;
             }
         };
 
@@ -96,7 +91,7 @@ export function ScoreRing({
                 <motion.div
                     className="absolute inset-0 rounded-full"
                     initial={{ opacity: 0 }}
-                    animate={{ opacity: isAnimating ? 0.6 : 0.3 }}
+                    animate={{ opacity: activeScore < score ? 0.6 : 0.3 }}
                     transition={{ duration: 0.5 }}
                     style={{
                         background: `radial-gradient(circle, ${color}30 0%, transparent 70%)`,
@@ -138,7 +133,7 @@ export function ScoreRing({
                         className="font-bold text-white font-mono-numbers"
                         style={{ fontSize: config.fontSize, lineHeight: 1 }}
                     >
-                        {displayScore}
+                        {activeScore}
                     </span>
                     <span
                         className="text-white/50 font-medium"
