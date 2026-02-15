@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+
+export PATH="$HOME/yandex-cloud/bin:$PATH"
+set -euo pipefail
+
+REPO_DIR="/opt/ai-startup"
+COMPOSE_FILE="docker-compose.prod.yml"
+BASE_ENV_FILE=".env"
+RUNTIME_ENV_FILE=".env.runtime"
+HEALTHCHECK_URL="${HEALTHCHECK_URL:-http://127.0.0.1/health}"
+HEALTHCHECK_HOST_HEADER="${HEALTHCHECK_HOST_HEADER:-pitchy.pro}"
+ROLLBACK_ON_FAIL="${ROLLBACK_ON_FAIL:-true}"
+
+cd "$REPO_DIR"
+
+PREVIOUS_COMMIT="$(git rev-parse HEAD)"
+git pull origin main
+
+chmod +x scripts/load_lockbox_env.sh
+scripts/load_lockbox_env.sh "$BASE_ENV_FILE" "$RUNTIME_ENV_FILE"
+
+read_runtime_env_value() {
+  local key="$1"
+  local value=""
+  value="$(awk -F= -v k="$key" '$1 == k {print substr($0, index($0, "=") + 1)}' "$RUNTIME_ENV_FILE" | tail -n 1 || true)"
+  echo "$value"
+}
+
+runtime_health_url="$(read_runtime_env_value "HEALTHCHECK_URL")"
+if [[ -n "$runtime_health_url" ]]; then
+  HEALTHCHECK_URL="$runtime_health_url"
+fi
+runtime_health_host="$(read_runtime_env_value "HEALTHCHECK_HOST_HEADER")"
+if [[ -n "$runtime_health_host" ]]; then
+  HEALTHCHECK_HOST_HEADER="$runtime_health_host"
+fi
+
+APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" down
+APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" up -d --build
+
+health_ok="false"
+for _ in $(seq 1 30); do
+  body="$(
+    APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" \
+      exec -T backend python - <<'PY' 2>/dev/null || true
+import json
+import requests
+
+try:
+    resp = requests.get("http://127.0.0.1:8000/health", timeout=5)
+    data = resp.json()
+    print(json.dumps(data, ensure_ascii=False, separators=(",", ":")))
+except Exception:
+    pass
+PY
+  )"
+  if [[ "$body" == *'"status":"ok"'* ]]; then
+    health_ok="true"
+    break
+  fi
+  echo "Healthcheck attempt failed: ${body:-<empty>}"
+  sleep 5
+done
+
+if [[ "$health_ok" != "true" ]]; then
+  echo "Post-deploy backend healthcheck failed."
+  if [[ "$ROLLBACK_ON_FAIL" == "true" ]]; then
+    echo "Rolling back to commit $PREVIOUS_COMMIT"
+    git reset --hard "$PREVIOUS_COMMIT"
+    scripts/load_lockbox_env.sh "$BASE_ENV_FILE" "$RUNTIME_ENV_FILE"
+    APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" down
+    APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" up -d --build
+  fi
+  exit 1
+fi
+
+docker system prune -f

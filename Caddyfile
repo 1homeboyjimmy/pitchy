@@ -1,0 +1,17 @@
+pitchy.pro {
+  @metrics path /metrics
+  handle @metrics {
+    @external not remote_ip private_ranges 127.0.0.1/8 ::1
+    respond @external 403
+    reverse_proxy backend:8000
+  }
+
+  @api path /auth* /analysis* /chat* /admin* /health /dev/emails /analyze-startup
+
+  encode {
+    gzip
+  }
+
+  reverse_proxy @api backend:8000
+  reverse_proxy frontend:3000
+}

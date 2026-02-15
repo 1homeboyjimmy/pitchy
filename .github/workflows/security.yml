@@ -1,0 +1,16 @@
+name: Security Baseline
+
+on:
+  schedule:
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+jobs:
+  zap-baseline:
+    runs-on: ubuntu-latest
+    steps:
+      - name: OWASP ZAP Baseline
+        uses: zaproxy/action-baseline@v0.14.0
+        with:
+          target: "https://pitchy.pro"
+          cmd_options: "-a"

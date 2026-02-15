@@ -1,0 +1,248 @@
+"use client";
+
+import { useState } from "react";
+import { motion } from "framer-motion";
+import { User, Mail, Lock, Eye, EyeOff, ArrowRight, Check } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import Layout from "@/components/Layout";
+import { postJson } from "@/lib/api";
+import { setToken } from "@/lib/auth";
+
+export default function SignUpPage() {
+    const router = useRouter();
+    const [formData, setFormData] = useState({
+        name: "",
+        email: "",
+        password: "",
+        confirmPassword: "",
+    });
+    const [showPassword, setShowPassword] = useState(false);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState("");
+    const [agreedToTerms, setAgreedToTerms] = useState(false);
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (formData.password !== formData.confirmPassword) {
+            setError("Пароли не совпадают");
+            return;
+        }
+        if (!agreedToTerms) {
+            setError("Необходимо принять условия использования");
+            return;
+        }
+
+        setLoading(true);
+        setError("");
+
+        try {
+            const data = await postJson<{ token: string }>("/auth/register", {
+                name: formData.name,
+                email: formData.email,
+                password: formData.password,
+            });
+            setToken(data.token);
+            router.push("/dashboard");
+        } catch (err) {
+            setError(
+                err instanceof Error ? err.message : "Ошибка регистрации. Попробуйте ещё раз."
+            );
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <Layout>
+            <div className="min-h-[calc(100vh-5rem)] flex items-center justify-center px-4 py-12">
+                <motion.div
+                    initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+                    className="w-full max-w-md"
+                >
+                    <div className="text-center mb-8">
+                        <h1 className="text-3xl font-bold text-white mb-2">
+                            Создать аккаунт
+                        </h1>
+                        <p className="text-white/50">
+                            Начните анализировать стартапы с Pitchy.pro
+                        </p>
+                    </div>
+
+                    <div className="glass-panel rounded-3xl p-8">
+                        <form onSubmit={handleSubmit} className="space-y-5">
+                            {error && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: -10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-sm text-red-400"
+                                >
+                                    {error}
+                                </motion.div>
+                            )}
+
+                            <div>
+                                <label className="block text-sm font-medium text-white/70 mb-2">
+                                    Имя
+                                </label>
+                                <div className="relative">
+                                    <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+                                    <input
+                                        type="text"
+                                        value={formData.name}
+                                        onChange={(e) =>
+                                            setFormData({ ...formData, name: e.target.value })
+                                        }
+                                        className="pitchy-input pl-11"
+                                        placeholder="Ваше имя"
+                                        required
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-white/70 mb-2">
+                                    Email
+                                </label>
+                                <div className="relative">
+                                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+                                    <input
+                                        type="email"
+                                        value={formData.email}
+                                        onChange={(e) =>
+                                            setFormData({ ...formData, email: e.target.value })
+                                        }
+                                        className="pitchy-input pl-11"
+                                        placeholder="you@example.com"
+                                        required
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-white/70 mb-2">
+                                    Пароль
+                                </label>
+                                <div className="relative">
+                                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+                                    <input
+                                        type={showPassword ? "text" : "password"}
+                                        value={formData.password}
+                                        onChange={(e) =>
+                                            setFormData({ ...formData, password: e.target.value })
+                                        }
+                                        className="pitchy-input pl-11 pr-11"
+                                        placeholder="Минимум 8 символов"
+                                        required
+                                        minLength={8}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors"
+                                    >
+                                        {showPassword ? (
+                                            <EyeOff className="w-4 h-4" />
+                                        ) : (
+                                            <Eye className="w-4 h-4" />
+                                        )}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-white/70 mb-2">
+                                    Подтвердите пароль
+                                </label>
+                                <div className="relative">
+                                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+                                    <input
+                                        type={showPassword ? "text" : "password"}
+                                        value={formData.confirmPassword}
+                                        onChange={(e) =>
+                                            setFormData({
+                                                ...formData,
+                                                confirmPassword: e.target.value,
+                                            })
+                                        }
+                                        className="pitchy-input pl-11"
+                                        placeholder="Повторите пароль"
+                                        required
+                                    />
+                                </div>
+                            </div>
+
+                            <label className="flex items-start gap-3 cursor-pointer">
+                                <div
+                                    onClick={() => setAgreedToTerms(!agreedToTerms)}
+                                    className={`w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 mt-0.5 transition-all cursor-pointer ${agreedToTerms
+                                            ? "bg-pitchy-violet border-pitchy-violet"
+                                            : "border-white/20 hover:border-white/40"
+                                        }`}
+                                >
+                                    {agreedToTerms && <Check className="w-3 h-3 text-white" />}
+                                </div>
+                                <span className="text-sm text-white/50">
+                                    Я согласен с{" "}
+                                    <Link
+                                        href="/terms"
+                                        className="text-pitchy-violet hover:underline"
+                                    >
+                                        условиями использования
+                                    </Link>{" "}
+                                    и{" "}
+                                    <Link
+                                        href="/privacy"
+                                        className="text-pitchy-violet hover:underline"
+                                    >
+                                        политикой конфиденциальности
+                                    </Link>
+                                </span>
+                            </label>
+
+                            <motion.button
+                                type="submit"
+                                disabled={loading}
+                                whileHover={{ scale: 1.02 }}
+                                whileTap={{ scale: 0.98 }}
+                                className="w-full btn-primary py-3 rounded-xl disabled:opacity-50 cursor-pointer"
+                            >
+                                {loading ? (
+                                    <span className="flex items-center justify-center gap-2">
+                                        <motion.div
+                                            animate={{ rotate: 360 }}
+                                            transition={{
+                                                duration: 1,
+                                                repeat: Infinity,
+                                                ease: "linear",
+                                            }}
+                                            className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full"
+                                        />
+                                        Регистрация...
+                                    </span>
+                                ) : (
+                                    <span className="flex items-center justify-center gap-2">
+                                        Создать аккаунт
+                                        <ArrowRight className="w-4 h-4" />
+                                    </span>
+                                )}
+                            </motion.button>
+                        </form>
+                    </div>
+
+                    <p className="text-center text-sm text-white/40 mt-6">
+                        Уже есть аккаунт?{" "}
+                        <Link
+                            href="/login"
+                            className="text-pitchy-violet hover:text-pitchy-violet-light transition-colors"
+                        >
+                            Войдите
+                        </Link>
+                    </p>
+                </motion.div>
+            </div>
+        </Layout>
+    );
+}

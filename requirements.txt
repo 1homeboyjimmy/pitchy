@@ -1,0 +1,17 @@
+fastapi
+uvicorn
+requests
+python-dotenv
+chromadb
+scikit-learn
+numpy
+pyjwt[crypto]
+sqlalchemy
+passlib
+email-validator
+alembic
+psycopg2-binary
+pytest
+httpx
+redis
+prometheus_client

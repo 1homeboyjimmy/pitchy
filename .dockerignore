@@ -1,0 +1,14 @@
+__pycache__/
+.env
+.venv/
+*.pyc
+*.pyo
+*.pyd
+*.db
+chroma_db/
+frontend/node_modules/
+frontend/.next/
+node_modules/
+.git/
+.github/
+authorized_key*.json

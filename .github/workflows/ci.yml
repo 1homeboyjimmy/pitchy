@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: sqlite:///./ci.db
+      APP_SECRET_KEY: ci_secret_key_for_tests_only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pip-audit
+      - name: Alembic migration check
+        run: |
+          python -m alembic upgrade head --sql > /tmp/alembic_upgrade.sql
+          python -m alembic upgrade head
+      - name: Run tests
+        run: pytest
+      - name: Security scan (pip-audit)
+        run: pip-audit
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install dependencies
+        run: npm ci
+        working-directory: frontend
+      - name: Lint
+        run: npm run lint
+        working-directory: frontend
+      - name: Build
+        run: npm run build
+        working-directory: frontend
+      - name: Security scan (npm audit prod)
+        run: npm audit --omit=dev --audit-level=high
+        working-directory: frontend
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build backend image
+        run: docker build -t ai-startup-backend:ci .
+      - name: Build frontend image
+        run: docker build -t ai-startup-frontend:ci -f frontend/Dockerfile frontend

@@ -1,0 +1,11 @@
+export { Login } from './Login';
+export { SignUp } from './SignUp';
+export { About } from './About';
+export { FAQ } from './FAQ';
+export { Contact } from './Contact';
+export { Pricing } from './Pricing';
+export { Privacy } from './Privacy';
+export { Terms } from './Terms';
+export { Security } from './Security';
+export { Analytics } from './Analytics';
+export { Settings } from './Settings';
