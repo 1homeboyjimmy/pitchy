@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Kimi reference app (design reference, not part of the project):
+    "app kimi/**",
+    "dist/**",
   ]),
 ]);
 

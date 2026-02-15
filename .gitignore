@@ -1,3 +1,4 @@
+# Environment
 .env
 .env.runtime
 .env.production
@@ -5,12 +6,39 @@
 ops/alerts/.env
 ops/alerts/state.json
 authorized_key*.json
+
+# Database
 chroma_db/
+*.db
+
+# Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-*.db
-frontend/.next/
-frontend/node_modules/
+
+# Node / Next.js
 node_modules/
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+dist/
+
+# Kimi reference app (design reference, not part of the project)
+frontend/app kimi/
+
+# AI agent files
+.agent/
+.gemini/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
