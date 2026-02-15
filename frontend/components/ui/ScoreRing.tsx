@@ -43,6 +43,13 @@ export function ScoreRing({
     const [displayScore, setDisplayScore] = useState(animate ? 0 : score);
     const [isAnimating, setIsAnimating] = useState(false);
     const hasAnimated = useRef(false);
+    const prevScore = useRef(score);
+
+    // Sync displayScore when not animating (derived during render)
+    if ((!animate || hasAnimated.current) && prevScore.current !== score) {
+        prevScore.current = score;
+        setDisplayScore(score);
+    }
 
     const config = sizeConfig[size];
     const radius = (config.diameter - config.stroke) / 2;
@@ -53,7 +60,6 @@ export function ScoreRing({
 
     useEffect(() => {
         if (!animate || hasAnimated.current) {
-            setDisplayScore(score);
             return;
         }
 

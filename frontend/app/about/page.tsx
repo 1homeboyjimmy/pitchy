@@ -6,7 +6,6 @@ import {
     Target,
     Zap,
     Shield,
-    TrendingUp,
     BarChart3,
     ChevronRight,
 } from "lucide-react";

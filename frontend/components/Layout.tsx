@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -72,11 +72,19 @@ function Header() {
   const router = useRouter();
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [token, setToken] = useState<string | null>(null);
+  const prevPathname = useRef(pathname);
 
-  useEffect(() => {
-    setToken(getToken());
+  // Derive auth token during render (avoids setState inside useEffect)
+  const token = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    return getToken();
   }, [pathname]);
+
+  // Close mobile menu on route change (derived during render)
+  if (prevPathname.current !== pathname) {
+    prevPathname.current = pathname;
+    if (isMobileMenuOpen) setIsMobileMenuOpen(false);
+  }
 
   useEffect(() => {
     const onScroll = () => setIsScrolled(window.scrollY > 20);
@@ -84,14 +92,8 @@ function Header() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  // Close mobile menu on route change
-  useEffect(() => {
-    setIsMobileMenuOpen(false);
-  }, [pathname]);
-
   const handleLogout = () => {
     clearToken();
-    setToken(null);
     router.push("/");
   };
 

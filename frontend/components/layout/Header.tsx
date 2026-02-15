@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -18,9 +18,14 @@ const navLinks = [
 export function Header() {
     const [isScrolled, setIsScrolled] = useState(false);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-    const [isAuthed, setIsAuthed] = useState(false);
     const pathname = usePathname();
     const router = useRouter();
+
+    // Derive auth state during render (avoids setState inside useEffect)
+    const isAuthed = useMemo(() => {
+        if (typeof window === "undefined") return false;
+        return !!getToken();
+    }, [pathname]);
 
     useEffect(() => {
         const handleScroll = () => {
@@ -30,16 +35,11 @@ export function Header() {
         return () => window.removeEventListener("scroll", handleScroll);
     }, []);
 
-    useEffect(() => {
-        setIsAuthed(!!getToken());
-    }, [pathname]);
-
     const handleLogout = async () => {
         try {
             await postJson("/auth/logout", {});
         } catch { /* ignore */ }
         clearToken();
-        setIsAuthed(false);
         router.push("/login");
     };
 
