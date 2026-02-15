@@ -135,13 +135,27 @@ export function ChatInterface({
             setMessages((prev) => [...prev, aiMessage]);
             onAnalysisComplete?.(analysis);
         } catch (error) {
-            const aiMessage: Message = {
-                id: (Date.now() + 1).toString(),
-                type: "ai",
-                content: `Ошибка анализа: ${error instanceof Error ? error.message : "Запрос не удался"}. Попробуйте ещё раз.`,
-                timestamp: new Date(),
-            };
-            setMessages((prev) => [...prev, aiMessage]);
+            // Fallback to conversational endpoint if strict analysis schema fails.
+            try {
+                const chatData = await postJson<{ reply: string }>("/chat", {
+                    messages: [{ role: "user", content: query }],
+                });
+                const aiMessage: Message = {
+                    id: (Date.now() + 1).toString(),
+                    type: "ai",
+                    content: chatData.reply,
+                    timestamp: new Date(),
+                };
+                setMessages((prev) => [...prev, aiMessage]);
+            } catch {
+                const aiMessage: Message = {
+                    id: (Date.now() + 1).toString(),
+                    type: "ai",
+                    content: `Ошибка анализа: ${error instanceof Error ? error.message : "Запрос не удался"}. Попробуйте ещё раз.`,
+                    timestamp: new Date(),
+                };
+                setMessages((prev) => [...prev, aiMessage]);
+            }
         } finally {
             setIsTyping(false);
         }

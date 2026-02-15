@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.responses import StreamingResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from dotenv import load_dotenv
@@ -274,6 +274,30 @@ def _build_user_prompt(description: str, context_chunks: list[str]) -> str:
     )
 
 
+def _normalize_analyze_data(data: dict) -> dict:
+    def _to_list_of_str(value) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        return [str(item) for item in value if str(item).strip()]
+
+    try:
+        score = int(data.get("investment_score", 0))
+    except (TypeError, ValueError):
+        score = 0
+    score = max(1, min(score, 10))
+
+    normalized = {
+        "investment_score": score,
+        "strengths": _to_list_of_str(data.get("strengths")),
+        "weaknesses": _to_list_of_str(data.get("weaknesses")),
+        "recommendations": _to_list_of_str(data.get("recommendations")),
+        "market_summary": str(data.get("market_summary", "")).strip(),
+    }
+    if not normalized["market_summary"]:
+        normalized["market_summary"] = "Анализ завершен, но модель вернула неполный summary."
+    return normalized
+
+
 def _format_chat_history(messages: list[ChatMessage], limit: int = 10) -> str:
     filtered = [m for m in messages if m.role in {"user", "assistant"}]
     recent = filtered[-limit:]
@@ -531,8 +555,11 @@ def analyze_startup(payload: AnalyzeRequest) -> AnalyzeResponse:
         raise HTTPException(status_code=status, detail=exc.message) from exc
     except ValueError as exc:
         raise HTTPException(status_code=502, detail="Invalid JSON from YandexGPT") from exc
-
-    return AnalyzeResponse(**data)
+    try:
+        normalized = _normalize_analyze_data(data)
+        return AnalyzeResponse(**normalized)
+    except (ValidationError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=502, detail="Invalid analysis schema from YandexGPT") from exc
 
 
 @app.post("/analysis", response_model=AnalysisResponse)
@@ -565,15 +592,19 @@ def create_analysis(
         raise HTTPException(status_code=status, detail=exc.message) from exc
     except ValueError as exc:
         raise HTTPException(status_code=502, detail="Invalid JSON from YandexGPT") from exc
+    try:
+        normalized = _normalize_analyze_data(data)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=502, detail="Invalid analysis schema from YandexGPT") from exc
 
     analysis = Analysis(
         user_id=user.id,
         payload_text=description,
-        investment_score=data["investment_score"],
-        strengths=data["strengths"],
-        weaknesses=data["weaknesses"],
-        recommendations=data["recommendations"],
-        market_summary=data["market_summary"],
+        investment_score=normalized["investment_score"],
+        strengths=normalized["strengths"],
+        weaknesses=normalized["weaknesses"],
+        recommendations=normalized["recommendations"],
+        market_summary=normalized["market_summary"],
     )
     db.add(analysis)
     db.commit()
