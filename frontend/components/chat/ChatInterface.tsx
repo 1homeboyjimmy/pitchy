@@ -63,11 +63,24 @@ export function ChatInterface({
     const [isTyping, setIsTyping] = useState(false);
     const [saveStatus, setSaveStatus] = useState<string | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
-    const inputRef = useRef<HTMLInputElement>(null);
+    const [showScrollbar, setShowScrollbar] = useState(false);
+    const inputRef = useRef<HTMLTextAreaElement>(null);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     };
+
+    useEffect(() => {
+        if (inputRef.current) {
+            inputRef.current.style.height = "auto";
+            const newHeight = inputRef.current.scrollHeight;
+            inputRef.current.style.height = `${newHeight}px`;
+
+            // Check if scrollbar is needed (approximate check based on max-height)
+            // We use 200 as the max-height limit defined in CSS
+            setShowScrollbar(newHeight > 200);
+        }
+    }, [inputValue]);
 
     useEffect(() => {
         scrollToBottom();
@@ -228,7 +241,7 @@ export function ChatInterface({
                                         </div>
                                     )}
 
-                                    <p className="text-sm sm:text-base text-white/90 leading-relaxed">
+                                    <p className="text-sm sm:text-base text-white/90 leading-relaxed break-words whitespace-pre-wrap break-all">
                                         {message.content}
                                     </p>
 
@@ -444,23 +457,40 @@ export function ChatInterface({
 
                 {/* Input */}
                 <div className="p-4 sm:p-6 border-t border-white/8 bg-black/20">
-                    <div className="relative">
-                        <input
+                    <div className="
+                        relative flex items-end w-full cursor-text
+                        rounded-[14px] border border-white/10 bg-white/5
+                        transition-all duration-200
+                    ">
+                        <textarea
                             ref={inputRef}
-                            type="text"
                             value={inputValue}
                             onChange={(e) => setInputValue(e.target.value)}
                             onKeyDown={handleKeyDown}
                             placeholder="Введите название стартапа..."
-                            className="w-full pitchy-input pr-12 text-sm sm:text-base"
+                            rows={1}
+                            className="
+                                w-full bg-transparent border-none !outline-none resize-none overflow-y-auto 
+                                min-h-[52px] max-h-[200px] py-3.5 pl-4 !pr-12
+                                text-white placeholder-white/35 leading-normal 
+                                scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent [&::-webkit-scrollbar-track]:my-2
+                                focus:!outline-none focus:!ring-0 focus:!ring-offset-0 focus:!shadow-none
+                                focus-visible:!outline-none focus-visible:!ring-0 focus-visible:!ring-offset-0 focus-visible:!shadow-none
+                                text-sm sm:text-base !shadow-none
+                            "
                             disabled={isTyping}
+                            style={{
+                                height: "auto",
+                                outline: "none",
+                                boxShadow: "none"
+                            }}
                         />
                         <motion.button
                             onClick={() => handleSend()}
                             disabled={!inputValue.trim() || isTyping}
                             whileHover={{ scale: 1.05 }}
                             whileTap={{ scale: 0.95 }}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 p-2.5 rounded-xl bg-pitchy-violet text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all hover:shadow-glow-primary cursor-pointer"
+                            className="absolute right-2 bottom-2 p-2.5 rounded-xl bg-pitchy-violet text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all hover:shadow-glow-primary cursor-pointer"
                         >
                             {isTyping ? (
                                 <Loader2 className="w-4 h-4 animate-spin" />

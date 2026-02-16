@@ -18,27 +18,37 @@ export const InputField = forwardRef<HTMLInputElement, InputFieldProps>(
             {label}
           </label>
         ) : null}
+
         <motion.div
-          className={`
-            relative flex items-center
-            bg-zinc-900/50 border border-zinc-800 rounded-xl
-            focus-within:border-violet-500/50 focus-within:ring-2 focus-within:ring-violet-500/20
-            transition-all duration-200
-            ${error ? "border-red-500/50 ring-2 ring-red-500/20" : ""}
-          `}
+          className="relative group w-full isolate"
           whileFocus={{ scale: 1.01 }}
         >
-          {icon ? <div className="absolute left-4 text-zinc-500">{icon}</div> : null}
-          <input
-            ref={ref}
-            className={`
-              w-full bg-transparent text-white placeholder-zinc-500
-              py-3 px-4 rounded-xl outline-none leading-normal
-              ${icon ? "pl-12" : ""}
-              ${className}
-            `}
-            {...props}
-          />
+          {/* Background Layer */}
+          <div className={`
+            absolute inset-0 rounded-xl
+            bg-zinc-900/50 backdrop-blur-xl border border-zinc-800
+            group-focus-within:border-violet-500/50 group-focus-within:ring-2 group-focus-within:ring-violet-500/20
+            transition-all duration-200 pointer-events-none
+            ${error ? "border-red-500/50 ring-2 ring-red-500/20" : ""}
+          `} />
+
+          <div className="relative flex items-center z-10">
+            {icon ? (
+              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none drop-shadow-sm z-20">
+                {icon}
+              </div>
+            ) : null}
+            <input
+              ref={ref}
+              className={`
+                w-full bg-transparent text-white placeholder-zinc-500
+                py-3 px-4 rounded-xl outline-none leading-normal
+                ${icon ? "!pl-12" : ""}
+                ${className}
+              `}
+              {...props}
+            />
+          </div>
         </motion.div>
         {error ? (
           <motion.p
