@@ -9,6 +9,12 @@ export const metadata: Metadata = {
   title: "Pitchy.pro — AI Startup Analysis",
   description:
     "AI-powered startup evaluation. Get instant investment scores, risk assessment, and intelligence reports.",
+  viewport: {
+    width: "device-width",
+    initialScale: 1.0,
+    maximumScale: 5.0,
+    minimumScale: 0.25,
+  },
 };
 
 export default function RootLayout({
