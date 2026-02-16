@@ -6,7 +6,7 @@ import { Mail, MapPin, Clock, Send } from "lucide-react";
 import Layout from "@/components/Layout";
 
 const contactInfo = [
-    { icon: Mail, label: "Email", value: "hello@pitchy.pro" },
+    { icon: Mail, label: "Email", value: "auth@pitchy.pro" },
     { icon: MapPin, label: "Адрес", value: "Москва, Россия" },
     { icon: Clock, label: "Время ответа", value: "В течение 24 часов" },
 ];

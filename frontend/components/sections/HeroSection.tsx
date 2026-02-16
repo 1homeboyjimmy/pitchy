@@ -97,7 +97,7 @@ export function HeroSection() {
                     transition={{ duration: 0.5, delay: 0.4 }}
                     className="text-center text-sm sm:text-base text-white/50 mb-10 max-w-xl mx-auto"
                 >
-                    Анализ на базе ИИ для инвесторов, фаундеров и аналитиков. Мгновенная
+                    Анализ на базе ИИ для фаундеров, инвесторов и аналитиков. Мгновенная
                     оценка по 5 ключевым метрикам.
                 </motion.p>
 

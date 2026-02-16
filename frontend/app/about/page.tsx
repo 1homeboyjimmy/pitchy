@@ -40,8 +40,8 @@ const advantages = [
 ];
 
 const stats = [
-    { value: "10K+", label: "Проанализированных стартапов" },
-    { value: "500+", label: "Активных инвесторов" },
+    { value: "100+", label: "Проанализированных стартапов" },
+    { value: "5+", label: "Активных инвесторов" },
     { value: "30s", label: "Среднее время анализа" },
     { value: "92%", label: "Точность прогнозов" },
 ];
@@ -73,7 +73,7 @@ export default function AboutPage() {
                             О <span className="text-gradient">Pitchy.pro</span>
                         </h1>
                         <p className="text-lg text-white/50 max-w-2xl mx-auto">
-                            Мы создаём ИИ-инструменты, которые помогают инвесторам и фаундерам
+                            Мы создаём ИИ-инструменты, которые помогают фаундерам и инвесторам
                             принимать более точные решения в мире стартапов.
                         </p>
                     </motion.div>

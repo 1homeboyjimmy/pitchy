@@ -1,0 +1,20 @@
+[33m497a821[m[33m ([m[1;32mbackup-before-force-sync[m[33m)[m fix deploy workflow yaml syntax in smoke healthcheck step
+[33m9892dec[m chore: trigger deploy pipeline
+[33mb58e24c[m fix auto-deploy
+[33mf931da2[m fix autodeploy healthcheck JSON status matching
+[33m509c588[m Auto-Deploy test
+[33m5f7b5bb[m fix caddy metrics matcher causing restart loop
+[33m8cea877[m stabilize deploy healthchecks via in-container backend probe
+[33me6515a3[m fix deploy healthcheck env precedence from runtime file
+[33m0f8adb0[m harden prod ops: restrict netdata/metrics, add restore-check and security gates 1.5
+[33ma74a54d[m harden prod ops: restrict netdata/metrics, add restore-check and security gates 1.4
+[33m20caea2[m harden prod ops: restrict netdata/metrics, add restore-check and security gates 1.3
+[33mae1b946[m harden prod ops: restrict netdata/metrics, add restore-check and security gates 1.2
+[33mc0f255f[m harden prod ops: restrict netdata/metrics, add restore-check and security gates 1.1
+[33mf7043e1[m harden prod ops: restrict netdata/metrics, add restore-check and security gates 1.0
+[33m46ffd41[m harden prod ops: restrict netdata/metrics, add restore-check and security gates
+[33mef2c88e[m Support multiple Telegram chat IDs for alerts
+[33mfc736ed[m Add alerts monitor with Telegram Lockbox token support
+[33mb18a6b7[m chore: trigger deployment pipeline test
+[33m9cc0f14[m Make deploy scripts executable to avoid VPS git pull conflicts
+[33me75ea19[m Fix deploy scripts for Lockbox in CI
