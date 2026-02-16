@@ -23,7 +23,8 @@ def send_email(to_email: str, subject: str, body: str) -> None:
     message["Subject"] = subject
     message.set_content(body)
 
-    if os.getenv("APP_ENV") == "dev":
+    # In dev mode, we act as a mock unless FORCE_REAL_EMAIL is set
+    if os.getenv("APP_ENV") == "dev" and os.getenv("FORCE_REAL_EMAIL", "false").lower() != "true":
         _DEV_EMAILS.append(
             {
                 "to": to_email,
