@@ -593,7 +593,6 @@ async def auth_callback(
     return redirect
 
 
-
 @app.api_route("/me", methods=["GET", "POST"], response_model=UserResponse)
 def me(user: User = Depends(get_current_user)) -> UserResponse:
     # Check if user has social accounts
