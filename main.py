@@ -489,7 +489,7 @@ async def auth_callback(
 
     # Check if social account exists
     from models import SocialAccount
-    
+
     social_acc = (
         db.query(SocialAccount)
         .filter(
@@ -504,7 +504,7 @@ async def auth_callback(
     else:
         # Check if user with this email exists
         user = db.query(User).filter(User.email == openid_user.email).first()
-        
+
         if not user:
             # Create new user
             user = User(
@@ -516,7 +516,7 @@ async def auth_callback(
             )
             db.add(user)
             db.flush()
-        
+
         # Link social account
         social_acc = SocialAccount(
             user_id=user.id,
@@ -528,7 +528,7 @@ async def auth_callback(
         db.commit()
 
     if not user.is_active:
-         raise HTTPException(status_code=403, detail="User is blocked")
+        raise HTTPException(status_code=403, detail="User is blocked")
 
     # Create session
     token = create_access_token(user.id)
@@ -541,7 +541,7 @@ async def auth_callback(
         max_age=get_access_token_max_age(),
         path="/",
     )
-    
+
     # Redirect to frontend dashboard
     frontend_url = os.getenv("APP_PUBLIC_URL", "http://localhost:3000")
     return Response(status_code=302, headers={"Location": f"{frontend_url}/dashboard"})

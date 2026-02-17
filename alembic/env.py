@@ -6,6 +6,7 @@ from pathlib import Path
 from logging.config import fileConfig
 
 from alembic import context
+from dotenv import load_dotenv
 from sqlalchemy import engine_from_config, pool
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -15,6 +16,8 @@ if str(PROJECT_ROOT) not in sys.path:
 from db import Base  # noqa: E402
 import models  # noqa: F401,E402
 
+load_dotenv()
+
 config = context.config
 
 if config.config_file_name is not None:
@@ -23,16 +26,12 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 
-from dotenv import load_dotenv
-
-load_dotenv()
-
 def get_url() -> str:
-    # Default to a dummy postgres url to ensure postgres dialect is used even if env var is missing
-    # This fixes offline SQL generation crashing with SQLite dialect limits
-    url = os.getenv("DATABASE_URL", "postgresql://user:pass@localhost/dbname")
-    # Alembic uses synchronous drivers, so we need to replace asyncpg with psycopg2
-    # if the URL is set for async usage (common in FastAPI + SQLAlchemy async)
+    # Default to postgres to ensure correct dialect even if env var is missing
+    url = os.getenv(
+        "DATABASE_URL", "postgresql://user:pass@localhost/dbname"
+    )
+    # Alembic uses synchronous drivers
     return url.replace("postgresql+asyncpg://", "postgresql://")
 
 
@@ -59,7 +58,9 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        context.configure(
+            connection=connection, target_metadata=target_metadata
+        )
 
         with context.begin_transaction():
             context.run_migrations()

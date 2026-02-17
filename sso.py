@@ -1,11 +1,13 @@
+import os
+
+from dotenv import load_dotenv
 from fastapi_sso.sso.base import SSOBase, OpenID
 from fastapi_sso.sso.google import GoogleSSO
 from fastapi_sso.sso.github import GithubSSO
 from fastapi_sso.sso.gitlab import GitlabSSO
-import os
-from dotenv import load_dotenv
 
 load_dotenv()
+
 
 class YandexSSO(SSOBase):
     """Class providing login via Yandex OAuth"""
@@ -24,9 +26,16 @@ class YandexSSO(SSOBase):
             email=response.get("default_email"),
             provider=cls.provider,
             id=response.get("id"),
-            display_name=response.get("real_name") or response.get("display_name"),
-            picture=f"https://avatars.yandex.net/get-yapic/{response.get('default_avatar_id')}/islands-200",
+            display_name=(
+                response.get("real_name")
+                or response.get("display_name")
+            ),
+            picture=(
+                "https://avatars.yandex.net/get-yapic/"
+                f"{response.get('default_avatar_id')}/islands-200"
+            ),
         )
+
 
 # Initialize SSO providers
 google_sso = GoogleSSO(

@@ -5,9 +5,8 @@ Revises: 0001
 Create Date: 2026-02-17 06:16:49.231681
 
 """
-from alembic import op
+from alembic import context, op
 import sqlalchemy as sa
-from alembic import context
 
 
 # revision identifiers, used by Alembic.
@@ -22,35 +21,44 @@ def _is_sqlite():
 
 
 def upgrade() -> None:
-    op.create_table('social_accounts',
-    sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('user_id', sa.Integer(), nullable=False),
-    sa.Column('provider', sa.String(length=50), nullable=False),
-    sa.Column('provider_id', sa.String(length=255), nullable=False),
-    sa.Column('email', sa.String(length=255), nullable=True),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
-    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
-    sa.PrimaryKeyConstraint('id')
+    op.create_table(
+        'social_accounts',
+        sa.Column('id', sa.Integer(), nullable=False),
+        sa.Column('user_id', sa.Integer(), nullable=False),
+        sa.Column('provider', sa.String(length=50), nullable=False),
+        sa.Column('provider_id', sa.String(length=255), nullable=False),
+        sa.Column('email', sa.String(length=255), nullable=True),
+        sa.Column('created_at', sa.DateTime(), nullable=False),
+        sa.ForeignKeyConstraint(['user_id'], ['users.id']),
+        sa.PrimaryKeyConstraint('id'),
     )
     if _is_sqlite():
         with op.batch_alter_table('users', schema=None) as batch_op:
-            batch_op.alter_column('password_hash',
-                       existing_type=sa.VARCHAR(length=255),
-                       nullable=True)
+            batch_op.alter_column(
+                'password_hash',
+                existing_type=sa.VARCHAR(length=255),
+                nullable=True,
+            )
     else:
-        op.alter_column('users', 'password_hash',
-                   existing_type=sa.VARCHAR(length=255),
-                   nullable=True)
+        op.alter_column(
+            'users', 'password_hash',
+            existing_type=sa.VARCHAR(length=255),
+            nullable=True,
+        )
 
 
 def downgrade() -> None:
     if _is_sqlite():
         with op.batch_alter_table('users', schema=None) as batch_op:
-            batch_op.alter_column('password_hash',
-                       existing_type=sa.VARCHAR(length=255),
-                       nullable=False)
+            batch_op.alter_column(
+                'password_hash',
+                existing_type=sa.VARCHAR(length=255),
+                nullable=False,
+            )
     else:
-        op.alter_column('users', 'password_hash',
-                   existing_type=sa.VARCHAR(length=255),
-                   nullable=False)
+        op.alter_column(
+            'users', 'password_hash',
+            existing_type=sa.VARCHAR(length=255),
+            nullable=False,
+        )
     op.drop_table('social_accounts')
