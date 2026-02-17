@@ -372,12 +372,12 @@ def register(
     exists = db.query(User).filter(User.email == payload.email).first()
     if exists:
         raise HTTPException(status_code=400, detail="Email already registered")
-    
+
     # Generate 6-digit code
     verify_code = "".join([str(random.randint(0, 9)) for _ in range(6)])
     verify_hash = hash_token(verify_code)
     verify_expires = datetime.utcnow() + timedelta(hours=24)
-    
+
     user = User(
         email=payload.email,
         name=payload.name,
@@ -385,7 +385,7 @@ def register(
         email_verify_token_hash=verify_hash,
         email_verify_expires_at=verify_expires,
         email_verified=False,
-        is_active=True, 
+        is_active=True,
     )
     db.add(user)
     try:
@@ -394,7 +394,7 @@ def register(
         db.rollback()
         raise HTTPException(status_code=500, detail="Registration failed") from exc
     db.refresh(user)
-    
+
     try:
         send_email(
             payload.email,
@@ -417,20 +417,20 @@ def verify_email_code(
     user = db.query(User).filter(User.email == payload.email).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     if user.email_verified:
-         # Already verified, just log in
-         pass
+        # Already verified, just log in
+        pass
     else:
         if not user.email_verify_token_hash or not user.email_verify_expires_at:
             raise HTTPException(status_code=400, detail="No pending verification")
-        
+
         if datetime.utcnow() > user.email_verify_expires_at:
             raise HTTPException(status_code=400, detail="Verification code expired")
-            
+
         if not verify_token(payload.code, user.email_verify_token_hash):
-             raise HTTPException(status_code=400, detail="Invalid verification code")
-        
+            raise HTTPException(status_code=400, detail="Invalid verification code")
+
         user.email_verified = True
         user.email_verify_token_hash = None
         user.email_verify_expires_at = None

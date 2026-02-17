@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 # Mock rag module to avoid chromadb import issues on Python 3.14
 sys.modules["rag"] = mock.MagicMock()
 
+
 def test_register_and_login():
     import main
 
@@ -28,16 +29,17 @@ def test_register_and_login():
             assert res.status_code == 200
             data = res.json()
             assert data["status"] == "verification_required"
-            
+
             # Verify
             verify_res = client.post("/auth/verify-email", json={
                 "email": unique_email,
                 "code": "555555"
             })
             assert verify_res.status_code == 200
+            assert verify_res.status_code == 200
             assert "access_token" in verify_res.json()
-            token = verify_res.json()["access_token"]
-            
+            # token = verify_res.json()["access_token"]
+
             # Login check
             login = client.post(
                  "/auth/login",
