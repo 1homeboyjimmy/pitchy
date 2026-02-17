@@ -7,6 +7,7 @@ Create Date: 2026-02-17 06:16:49.231681
 """
 from alembic import op
 import sqlalchemy as sa
+from alembic import context
 
 
 # revision identifiers, used by Alembic.
@@ -14,6 +15,10 @@ revision = '9c0f2d889e6b'
 down_revision = '0001'
 branch_labels = None
 depends_on = None
+
+
+def _is_sqlite():
+    return context.get_context().dialect.name == "sqlite"
 
 
 def upgrade() -> None:
@@ -27,13 +32,25 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
-    op.alter_column('users', 'password_hash',
-               existing_type=sa.VARCHAR(length=255),
-               nullable=True)
+    if _is_sqlite():
+        with op.batch_alter_table('users', schema=None) as batch_op:
+            batch_op.alter_column('password_hash',
+                       existing_type=sa.VARCHAR(length=255),
+                       nullable=True)
+    else:
+        op.alter_column('users', 'password_hash',
+                   existing_type=sa.VARCHAR(length=255),
+                   nullable=True)
 
 
 def downgrade() -> None:
-    op.alter_column('users', 'password_hash',
-               existing_type=sa.VARCHAR(length=255),
-               nullable=False)
+    if _is_sqlite():
+        with op.batch_alter_table('users', schema=None) as batch_op:
+            batch_op.alter_column('password_hash',
+                       existing_type=sa.VARCHAR(length=255),
+                       nullable=False)
+    else:
+        op.alter_column('users', 'password_hash',
+                   existing_type=sa.VARCHAR(length=255),
+                   nullable=False)
     op.drop_table('social_accounts')
