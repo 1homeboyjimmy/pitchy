@@ -23,8 +23,14 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 def get_url() -> str:
-    url = os.getenv("DATABASE_URL", "sqlite:///./app.db")
+    # Default to a dummy postgres url to ensure postgres dialect is used even if env var is missing
+    # This fixes offline SQL generation crashing with SQLite dialect limits
+    url = os.getenv("DATABASE_URL", "postgresql://user:pass@localhost/dbname")
     # Alembic uses synchronous drivers, so we need to replace asyncpg with psycopg2
     # if the URL is set for async usage (common in FastAPI + SQLAlchemy async)
     return url.replace("postgresql+asyncpg://", "postgresql://")
