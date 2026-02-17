@@ -36,7 +36,9 @@ if [[ -n "$runtime_health_host" ]]; then
   HEALTHCHECK_HOST_HEADER="$runtime_health_host"
 fi
 
-APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" down
+APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" down --remove-orphans
+# Force remove conflicting containers
+docker rm -f ai-startup-chroma-1 2>/dev/null || true
 APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" up -d --build
 
 health_ok="false"
