@@ -37,6 +37,20 @@ class UserResponse(BaseModel):
     is_active: bool
     email_verified: bool
     created_at: datetime
+    is_social: bool = False
+
+    class Config:
+        from_attributes = True
+
+
+class PasswordChangeInitRequest(BaseModel):
+    current_password: str
+
+
+class PasswordChangeConfirmRequest(BaseModel):
+    code: str
+    new_password: str
+
 
 
 class PasswordResetRequest(BaseModel):

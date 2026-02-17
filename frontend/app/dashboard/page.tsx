@@ -46,7 +46,6 @@ const sidebarItems = [
   { icon: LayoutDashboard, label: "Обзор", id: "overview" },
   { icon: MessageSquare, label: "Чат", id: "chat" },
   { icon: BarChart3, label: "Аналитика", id: "analytics" },
-  { icon: BarChart3, label: "Аналитика", id: "analytics" },
 ];
 
 /* ──── Unauthenticated View ──── */

@@ -7,13 +7,14 @@ import Layout from "@/components/Layout";
 import { GlassCard, Button } from "@/components/shared";
 import { clearToken, getToken } from "@/lib/auth";
 import { postAuthJson } from "@/lib/api";
-import { LogOut, User, Shield, ChevronLeft } from "lucide-react";
+import { LogOut, User, Shield, ChevronLeft, CheckIcon } from "lucide-react";
 
 interface UserProfile {
   id: number;
   name: string;
   email: string;
   email_verified: boolean;
+  is_social: boolean;
 }
 
 export function AccountPageClient() {
@@ -25,10 +26,12 @@ export function AccountPageClient() {
   // Modal states
   const [isAddEmailOpen, setIsAddEmailOpen] = useState(false);
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
+  const [showEmailSentModal, setShowEmailSentModal] = useState(false);
 
   // Form states
   const [emailInput, setEmailInput] = useState("");
-  const [passwordForm, setPasswordForm] = useState({ current: "", new: "" });
+  const [passwordStep, setPasswordStep] = useState<"init" | "confirm">("init");
+  const [passwordForm, setPasswordForm] = useState({ current: "", new: "", code: "" });
   const [isResending, setIsResending] = useState(false);
 
   useEffect(() => {
@@ -56,13 +59,15 @@ export function AccountPageClient() {
     router.refresh();
   };
 
+  // ...
+
   const handleResendVerification = async () => {
     setIsResending(true);
     try {
       const token = getToken();
       if (token) {
         await postAuthJson("/auth/resend-verification", {}, token);
-        alert("Письмо отправлено!");
+        setShowEmailSentModal(true);
       }
     } catch (e) {
       console.error(e);
@@ -77,8 +82,8 @@ export function AccountPageClient() {
       const token = getToken();
       if (token) {
         await postAuthJson("/me", { email: emailInput }, token);
-        alert("Email добавлен! Проверьте почту для подтверждения.");
         setIsAddEmailOpen(false);
+        setShowEmailSentModal(true);
         // Refresh user data
         const data = await postAuthJson<UserProfile>("/me", {}, token);
         setUser(data);
@@ -89,21 +94,37 @@ export function AccountPageClient() {
     }
   };
 
-  const handleChangePassword = async () => {
+  const handleInitiateChangePassword = async () => {
     try {
       const token = getToken();
       if (token) {
-        await postAuthJson("/auth/change-password", {
+        await postAuthJson("/auth/change-password/initiate", {
           current_password: passwordForm.current,
-          new_password: passwordForm.new
         }, token);
-        alert("Пароль успешно изменен!");
-        setIsChangePasswordOpen(false);
-        setPasswordForm({ current: "", new: "" });
+        setPasswordStep("confirm");
       }
     } catch (e) {
       console.error(e);
-      alert("Ошибка смены пароля. Проверьте текущий пароль.");
+      alert("Ошибка. Проверьте текущий пароль.");
+    }
+  };
+
+  const handleConfirmChangePassword = async () => {
+    try {
+      const token = getToken();
+      if (token) {
+        await postAuthJson("/auth/change-password/confirm", {
+          code: passwordForm.code,
+          new_password: passwordForm.new,
+        }, token);
+        alert("Пароль успешно изменен!");
+        setIsChangePasswordOpen(false);
+        setPasswordForm({ current: "", new: "", code: "" });
+        setPasswordStep("init");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Ошибка. Проверьте код.");
     }
   };
 
@@ -167,7 +188,8 @@ export function AccountPageClient() {
 
               {/* Email Actions */}
               <div className="mt-6 pt-6 border-t border-white/10 flex flex-wrap gap-3">
-                {!user?.email && (
+                {/* Only show Add Email if social login */}
+                {user?.is_social && !user?.email && (
                   <Button size="sm" variant="secondary" onClick={() => setIsAddEmailOpen(true)}>
                     Добавить Email
                   </Button>
@@ -223,36 +245,90 @@ export function AccountPageClient() {
         </div>
       )}
 
-      {/* Change Password Modal */}
+      {/* Change Password Modal (2 Steps) */}
       {isChangePasswordOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
           <GlassCard className="w-full max-w-md p-6" hover={false}>
             <h3 className="text-xl font-bold text-white mb-4">Сменить пароль</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="text-xs text-white/50 mb-1 block">Текущий пароль</label>
-                <input
-                  type="password"
-                  value={passwordForm.current}
-                  onChange={(e) => setPasswordForm({ ...passwordForm, current: e.target.value })}
-                  className="pitchy-input w-full"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-white/50 mb-1 block">Новый пароль</label>
-                <input
-                  type="password"
-                  value={passwordForm.new}
-                  onChange={(e) => setPasswordForm({ ...passwordForm, new: e.target.value })}
-                  className="pitchy-input w-full"
-                />
-                <p className="text-xs text-white/30 mt-1">Минимум 8 символов, буквы и цифры</p>
+
+            {passwordStep === "init" && (
+              <>
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs text-white/50 mb-1 block">Текущий пароль</label>
+                    <input
+                      type="password"
+                      value={passwordForm.current}
+                      onChange={(e) => setPasswordForm({ ...passwordForm, current: e.target.value })}
+                      className="pitchy-input w-full"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-white/50 mb-1 block">Новый пароль</label>
+                    <input
+                      type="password"
+                      value={passwordForm.new}
+                      onChange={(e) => setPasswordForm({ ...passwordForm, new: e.target.value })}
+                      className="pitchy-input w-full"
+                    />
+                    <p className="text-xs text-white/30 mt-1">Минимум 8 символов</p>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-3 mt-6">
+                  <Button variant="ghost" onClick={() => setIsChangePasswordOpen(false)}>Отмена</Button>
+                  <Button variant="primary" onClick={handleInitiateChangePassword}>Далее</Button>
+                </div>
+              </>
+            )}
+
+            {passwordStep === "confirm" && (
+              <>
+                <p className="text-white/70 text-sm mb-4">
+                  Мы отправили код подтверждения на <b>{user?.email}</b>.
+                  Введите его ниже для подтверждения смены пароля.
+                </p>
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs text-white/50 mb-1 block">Код из письма</label>
+                    <input
+                      type="text"
+                      placeholder="123456"
+                      value={passwordForm.code}
+                      onChange={(e) => setPasswordForm({ ...passwordForm, code: e.target.value })}
+                      className="pitchy-input w-full text-center tracking-widest text-lg"
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-3 mt-6">
+                  <Button variant="ghost" onClick={() => setPasswordStep("init")}>Назад</Button>
+                  <Button variant="primary" onClick={handleConfirmChangePassword}>Подтвердить</Button>
+                </div>
+              </>
+            )}
+          </GlassCard>
+        </div>
+      )}
+
+      {/* Email Sent Confirmation Modal */}
+      {showEmailSentModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <GlassCard className="w-full max-w-sm p-6 text-center" hover={false}>
+            <div className="flex justify-center mb-4">
+              <div className="w-12 h-12 rounded-full bg-emerald-500/20 flex items-center justify-center border border-emerald-500/30">
+                <CheckIcon className="w-6 h-6 text-emerald-400" />
               </div>
             </div>
-            <div className="flex justify-end gap-3 mt-6">
-              <Button variant="ghost" onClick={() => setIsChangePasswordOpen(false)}>Отмена</Button>
-              <Button variant="primary" onClick={handleChangePassword}>Сменить</Button>
-            </div>
+            <h3 className="text-lg font-bold text-white mb-2">Письмо отправлено!</h3>
+            <p className="text-white/60 text-sm mb-6">
+              Мы отправили ссылку для подтверждения на вашу почту.
+              <br /><br />
+              <span className="text-amber-400/80 text-xs">
+                ⚠ Если письма нет во входящих, обязательно проверьте папку <b>Спам</b>.
+              </span>
+            </p>
+            <Button variant="primary" className="w-full" onClick={() => setShowEmailSentModal(false)}>
+              Хорошо
+            </Button>
           </GlassCard>
         </div>
       )}

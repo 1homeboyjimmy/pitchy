@@ -554,6 +554,9 @@ async def auth_callback(
 
 @app.get("/me", response_model=UserResponse)
 def me(user: User = Depends(get_current_user)) -> UserResponse:
+    # Check if user has social accounts
+    is_social = len(user.social_accounts) > 0
+    
     return UserResponse(
         id=user.id,
         email=user.email,
@@ -562,6 +565,7 @@ def me(user: User = Depends(get_current_user)) -> UserResponse:
         is_active=user.is_active,
         email_verified=user.email_verified,
         created_at=user.created_at,
+        is_social=is_social,
     )
 
 
@@ -602,6 +606,9 @@ def update_me(
 
     db.commit()
     db.refresh(user)
+    
+    # Check if user has social accounts
+    is_social = len(user.social_accounts) > 0
 
     return UserResponse(
         id=user.id,
@@ -611,12 +618,13 @@ def update_me(
         is_active=user.is_active,
         email_verified=user.email_verified,
         created_at=user.created_at,
+        is_social=is_social,
     )
 
 
-@app.post("/auth/change-password")
-def change_password(
-    payload: PasswordChangeRequest,
+@app.post("/auth/change-password/initiate")
+def initiate_change_password(
+    payload: PasswordChangeInitRequest,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict:
@@ -626,7 +634,47 @@ def change_password(
     if not verify_password(payload.current_password, user.password_hash):
         raise HTTPException(status_code=400, detail="Invalid current password")
 
+    # Generate 6-digit code
+    code = "".join([str(random.randint(0, 9)) for _ in range(6)])
+    code_hash = hash_token(code)
+    expires = datetime.utcnow() + timedelta(minutes=10)
+
+    # Reuse password_reset fields for this verification
+    user.password_reset_token_hash = code_hash
+    user.password_reset_expires_at = expires
+    db.commit()
+
+    try:
+        send_email(
+            user.email,
+            "Verification Code for Password Change",
+            f"Your verification code is: {code}\n\nIt expires in 10 minutes.",
+        )
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to send verification code")
+
+    return {"status": "ok", "message": "Verification code sent"}
+
+
+@app.post("/auth/change-password/confirm")
+def confirm_change_password(
+    payload: PasswordChangeConfirmRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    if not user.password_reset_token_hash or not user.password_reset_expires_at:
+        raise HTTPException(status_code=400, detail="No pending password change request")
+
+    if datetime.utcnow() > user.password_reset_expires_at:
+        raise HTTPException(status_code=400, detail="Verification code expired")
+
+    if not verify_token(payload.code, user.password_reset_token_hash):
+        raise HTTPException(status_code=400, detail="Invalid verification code")
+
     user.password_hash = hash_password(payload.new_password)
+    # Clear tokens
+    user.password_reset_token_hash = None
+    user.password_reset_expires_at = None
     db.commit()
 
     try:
