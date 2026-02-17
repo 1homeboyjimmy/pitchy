@@ -97,3 +97,20 @@ class ChatMessageResponse(BaseModel):
     role: str
     content: str
     created_at: datetime
+
+
+class UserUpdateRequest(BaseModel):
+    name: str | None = Field(None, min_length=2)
+    email: EmailStr | None = None
+
+
+class PasswordChangeRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(..., min_length=8, max_length=72)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, value: str) -> str:
+        if not any(ch.isalpha() for ch in value) or not any(ch.isdigit() for ch in value):
+            raise ValueError("Password must contain letters and numbers")
+        return value

@@ -34,6 +34,8 @@ from schemas import (
     RegisterRequest,
     TokenResponse,
     UserResponse,
+    UserUpdateRequest,
+    PasswordChangeRequest,
 )
 from email_utils import get_dev_emails, send_email
 from sso import yandex_sso, github_sso
@@ -481,7 +483,10 @@ async def auth_callback(
         # Get user details from provider
         openid_user = await sso.verify_and_process(request)
     except Exception as e:
-        logger.error(f"SSO Error: {e}")
+        logger.error(f"SSO Error ({provider}): {str(e)}", extra={
+            "query_params": str(request.query_params), 
+            "provider": provider
+        })
         raise HTTPException(status_code=400, detail="SSO Authentication Failed")
 
     if not openid_user or not openid_user.email:
@@ -558,6 +563,114 @@ def me(user: User = Depends(get_current_user)) -> UserResponse:
         email_verified=user.email_verified,
         created_at=user.created_at,
     )
+
+
+@app.patch("/me", response_model=UserResponse)
+def update_me(
+    payload: UserUpdateRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UserResponse:
+    if payload.name:
+        user.name = payload.name
+    
+    if payload.email and payload.email != user.email:
+        exists = db.query(User).filter(User.email == payload.email).first()
+        if exists:
+            raise HTTPException(status_code=400, detail="Email already registered")
+        
+        user.email = payload.email
+        user.email_verified = False
+        
+        verify_token = generate_token()
+        verify_hash = hash_token(verify_token)
+        verify_expires = datetime.utcnow() + timedelta(hours=24)
+        
+        user.email_verify_token_hash = verify_hash
+        user.email_verify_expires_at = verify_expires
+        
+        try:
+            base_url = os.getenv("APP_PUBLIC_URL", "http://localhost:3000")
+            verify_link = f"{base_url}/account?verify={verify_token}"
+            send_email(
+                payload.email,
+                "Verify your new email",
+                f"Please verify your new email using this link: {verify_link}",
+            )
+        except Exception:
+            logger.error("Failed to send verification email during update")
+
+    db.commit()
+    db.refresh(user)
+    
+    return UserResponse(
+        id=user.id,
+        email=user.email,
+        name=user.name,
+        is_admin=user.is_admin,
+        is_active=user.is_active,
+        email_verified=user.email_verified,
+        created_at=user.created_at,
+    )
+
+
+@app.post("/auth/change-password")
+def change_password(
+    payload: PasswordChangeRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    if not user.password_hash:
+        raise HTTPException(status_code=400, detail="User has no password set (social login?)")
+    
+    if not verify_password(payload.current_password, user.password_hash):
+        raise HTTPException(status_code=400, detail="Invalid current password")
+    
+    user.password_hash = hash_password(payload.new_password)
+    db.commit()
+    
+    try:
+        send_email(
+            user.email,
+            "Password Changed",
+            "Your password has been successfully changed.",
+        )
+    except Exception:
+        pass
+        
+    return {"status": "ok"}
+
+
+@app.post("/auth/resend-verification")
+def resend_verification(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    if user.email_verified:
+        return {"status": "ok", "message": "Already verified"}
+
+    # Rate limit check could be here
+    
+    verify_token = generate_token()
+    verify_hash = hash_token(verify_token)
+    verify_expires = datetime.utcnow() + timedelta(hours=24)
+    
+    user.email_verify_token_hash = verify_hash
+    user.email_verify_expires_at = verify_expires
+    db.commit()
+    
+    try:
+        base_url = os.getenv("APP_PUBLIC_URL", "http://localhost:3000")
+        verify_link = f"{base_url}/account?verify={verify_token}"
+        send_email(
+            user.email,
+            "Verify your email",
+            f"Verify your email using this link: {verify_link}",
+        )
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to send email")
+        
+    return {"status": "ok"}
 
 
 @app.post("/auth/request-password-reset")

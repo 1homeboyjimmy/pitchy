@@ -46,7 +46,7 @@ const sidebarItems = [
   { icon: LayoutDashboard, label: "Обзор", id: "overview" },
   { icon: MessageSquare, label: "Чат", id: "chat" },
   { icon: BarChart3, label: "Аналитика", id: "analytics" },
-  { icon: Settings, label: "Настройки", id: "settings" },
+  { icon: BarChart3, label: "Аналитика", id: "analytics" },
 ];
 
 /* ──── Unauthenticated View ──── */
@@ -205,13 +205,11 @@ function AuthDashboard() {
               {activeTab === "overview" && `Привет, ${data.userName}`}
               {activeTab === "chat" && "AI Ассистент"}
               {activeTab === "analytics" && "Аналитика"}
-              {activeTab === "settings" && "Настройки"}
             </h1>
             <p className="text-white/50 text-sm mt-1">
               {activeTab === "overview" && "Ваша панель аналитики стартапов"}
               {activeTab === "chat" && "Задайте вопросы по вашим проектам"}
               {activeTab === "analytics" && "Статистика ваших анализов"}
-              {activeTab === "settings" && "Управление профилем и безопасностью"}
             </p>
           </div>
           {activeTab === "overview" && (
@@ -236,7 +234,6 @@ function AuthDashboard() {
         )}
         {activeTab === "chat" && <ChatTab />}
         {activeTab === "analytics" && <AnalyticsTab data={data} />}
-        {activeTab === "settings" && <SettingsTab user={data} />}
       </main>
 
       {/* Bottom Nav (Mobile) */}
@@ -398,32 +395,6 @@ function AnalyticsTab({ data }: { data: DashboardData }) {
         </div>
       </div>
     </GlassCard>
-  );
-}
-
-function SettingsTab({ user }: { user: DashboardData }) {
-  return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      <GlassCard hover={false} className="p-6">
-        <h3 className="text-lg font-bold text-white mb-4">Профиль</h3>
-        <div className="grid gap-4">
-          <div>
-            <label className="text-xs text-white/40 mb-1 block">Имя</label>
-            <input type="text" value={user.userName} disabled className="pitchy-input w-full opacity-60 cursor-not-allowed" />
-          </div>
-          <div>
-            <label className="text-xs text-white/40 mb-1 block">Email</label>
-            <input type="text" value="user@example.com" disabled className="pitchy-input w-full opacity-60 cursor-not-allowed" />
-            <p className="text-xs text-white/30 mt-1">Для смены email обратитесь в поддержку</p>
-          </div>
-        </div>
-      </GlassCard>
-
-      <GlassCard hover={false} className="p-6">
-        <h3 className="text-lg font-bold text-white mb-4">Безопасность</h3>
-        <Button variant="secondary" className="w-full sm:w-auto">Сменить пароль</Button>
-      </GlassCard>
-    </div>
   );
 }
 
