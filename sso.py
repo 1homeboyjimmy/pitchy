@@ -21,11 +21,10 @@ class YandexSSO(SSOBase):
             "userinfo_endpoint": "https://login.yandex.ru/info",
         }
 
-    @classmethod
-    async def openid_from_response(cls, response: dict) -> OpenID:
+    async def openid_from_response(self, response: dict, **kwargs) -> OpenID:
         return OpenID(
             email=response.get("default_email"),
-            provider=cls.provider,
+            provider=self.provider,
             id=response.get("id"),
             display_name=(
                 response.get("real_name")
