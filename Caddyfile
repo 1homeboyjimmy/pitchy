@@ -6,7 +6,7 @@ pitchy.pro {
     reverse_proxy backend:8000
   }
 
-  @api path /auth* /analysis* /chat* /admin* /health /dev/emails /analyze-startup
+  @api path /auth* /analysis* /chat* /admin* /health /dev/emails /analyze-startup /me
 
   encode {
     gzip
