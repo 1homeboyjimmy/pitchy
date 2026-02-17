@@ -2,7 +2,7 @@ fastapi
 uvicorn
 requests
 python-dotenv
-chromadb
+chromadb>=0.5.0
 scikit-learn
 numpy
 pyjwt[crypto]

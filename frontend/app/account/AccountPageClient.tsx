@@ -172,6 +172,12 @@ export function AccountPageClient() {
                       {user?.email && !user?.email_verified && (
                         <span className="text-xs bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full border border-amber-500/20">Не подтвержден</span>
                       )}
+                      {user?.email && user?.email_verified && (
+                        <span className="text-xs bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20 flex items-center gap-1">
+                          <CheckIcon className="w-3 h-3" />
+                          Подтвержден
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>

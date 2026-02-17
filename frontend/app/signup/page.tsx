@@ -22,6 +22,10 @@ export default function SignUpPage() {
     const [error, setError] = useState("");
     const [agreedToTerms, setAgreedToTerms] = useState(false);
 
+    // New state for verification
+    const [verificationStep, setVerificationStep] = useState<"signup" | "verify">("signup");
+    const [verificationCode, setVerificationCode] = useState("");
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (formData.password !== formData.confirmPassword) {
@@ -37,13 +41,21 @@ export default function SignUpPage() {
         setError("");
 
         try {
-            const data = await postJson<{ token: string }>("/auth/register", {
-                name: formData.name,
-                email: formData.email,
-                password: formData.password,
-            });
-            setToken(data.token);
-            router.push("/dashboard");
+            const data = await postJson<{ status?: string; token?: string; email?: string }>(
+                "/auth/register",
+                {
+                    name: formData.name,
+                    email: formData.email,
+                    password: formData.password,
+                }
+            );
+
+            if (data.status === "verification_required") {
+                setVerificationStep("verify");
+            } else if (data.token) {
+                setToken(data.token);
+                router.push("/dashboard");
+            }
         } catch (err) {
             setError(
                 err instanceof Error ? err.message : "Ошибка регистрации. Попробуйте ещё раз."
@@ -52,6 +64,81 @@ export default function SignUpPage() {
             setLoading(false);
         }
     };
+
+    const handleVerify = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setLoading(true);
+        setError("");
+
+        try {
+            const data = await postJson<{ access_token: string }>("/auth/verify-email", {
+                email: formData.email,
+                code: verificationCode,
+            });
+            setToken(data.access_token);
+            router.push("/dashboard");
+        } catch (err) {
+            setError(
+                err instanceof Error ? err.message : "Неверный код подтверждения"
+            );
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (verificationStep === "verify") {
+        return (
+            <Layout>
+                <div className="min-h-[calc(100vh-5rem)] flex items-center justify-center px-4 py-12">
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="w-full max-w-md"
+                    >
+                        <div className="glass-panel rounded-3xl p-8 text-center">
+                            <div className="w-16 h-16 rounded-full bg-pitchy-violet/20 flex items-center justify-center mx-auto mb-6">
+                                <Mail className="w-8 h-8 text-pitchy-violet" />
+                            </div>
+                            <h2 className="text-2xl font-bold text-white mb-2">
+                                Подтвердите Email
+                            </h2>
+                            <p className="text-white/60 mb-8">
+                                Мы отправили код подтверждения на{" "}
+                                <span className="text-white">{formData.email}</span>
+                            </p>
+
+                            <form onSubmit={handleVerify} className="space-y-6">
+                                {error && (
+                                    <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-sm text-red-400">
+                                        {error}
+                                    </div>
+                                )}
+                                <input
+                                    type="text"
+                                    value={verificationCode}
+                                    onChange={(e) => setVerificationCode(e.target.value)}
+                                    className="pitchy-input text-center text-3xl tracking-[0.5em] font-mono"
+                                    placeholder="000000"
+                                    maxLength={6}
+                                    required
+                                    autoFocus
+                                />
+                                <motion.button
+                                    type="submit"
+                                    disabled={loading}
+                                    whileHover={{ scale: 1.02 }}
+                                    whileTap={{ scale: 0.98 }}
+                                    className="w-full btn-primary py-3 rounded-xl disabled:opacity-50"
+                                >
+                                    {loading ? "Проверка..." : "Подтвердить"}
+                                </motion.button>
+                            </form>
+                        </div>
+                    </motion.div>
+                </div>
+            </Layout>
+        );
+    }
 
     return (
         <Layout>

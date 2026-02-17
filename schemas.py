@@ -72,6 +72,11 @@ class EmailVerifyRequest(BaseModel):
     token: str = Field(..., min_length=10)
 
 
+class EmailCodeVerifyRequest(BaseModel):
+    email: EmailStr
+    code: str = Field(..., min_length=6, max_length=6)
+
+
 class AnalysisCreateRequest(BaseModel):
     name: str = Field(..., min_length=2)
     description: str = Field(..., min_length=10)

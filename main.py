@@ -38,6 +38,7 @@ from schemas import (
     UserUpdateRequest,
     PasswordChangeInitRequest,
     PasswordChangeConfirmRequest,
+    EmailCodeVerifyRequest,
 )
 from email_utils import get_dev_emails, send_email
 from sso import yandex_sso, github_sso
@@ -359,47 +360,84 @@ def dev_emails() -> list[dict]:
     return get_dev_emails()
 
 
-@app.post("/auth/register", response_model=TokenResponse)
+@app.post("/auth/register")
 def register(
     payload: RegisterRequest,
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
-) -> TokenResponse:
+) -> dict:
     ip = request.client.host if request.client else "unknown"
     _check_rate_limit(ip)
     exists = db.query(User).filter(User.email == payload.email).first()
     if exists:
         raise HTTPException(status_code=400, detail="Email already registered")
-    verify_token = generate_token()
-    verify_hash = hash_token(verify_token)
+    
+    # Generate 6-digit code
+    verify_code = "".join([str(random.randint(0, 9)) for _ in range(6)])
+    verify_hash = hash_token(verify_code)
     verify_expires = datetime.utcnow() + timedelta(hours=24)
+    
     user = User(
         email=payload.email,
         name=payload.name,
         password_hash=hash_password(payload.password),
         email_verify_token_hash=verify_hash,
         email_verify_expires_at=verify_expires,
+        email_verified=False,
+        is_active=True, 
     )
     db.add(user)
     try:
-        db.flush()
-        token = create_access_token(user.id)
         db.commit()
     except Exception as exc:
         db.rollback()
         raise HTTPException(status_code=500, detail="Registration failed") from exc
     db.refresh(user)
+    
     try:
-        base_url = os.getenv("APP_PUBLIC_URL", "http://localhost:3000")
-        verify_link = f"{base_url}/account?verify={verify_token}"
         send_email(
             payload.email,
             "Verify your email",
-            f"Verify your email using this link: {verify_link}",
+            f"Your verification code is: {verify_code}\n\nEnter this code to complete registration.",
         )
     except Exception:
-        pass
+        # Log error but don't fail registration
+        logger.error(f"Failed to send verification email to {payload.email}")
+
+    return {"status": "verification_required", "email": payload.email}
+
+
+@app.post("/auth/verify-email", response_model=TokenResponse)
+def verify_email_code(
+    payload: EmailCodeVerifyRequest,
+    response: Response,
+    db: Session = Depends(get_db),
+) -> TokenResponse:
+    user = db.query(User).filter(User.email == payload.email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if user.email_verified:
+         # Already verified, just log in
+         pass
+    else:
+        if not user.email_verify_token_hash or not user.email_verify_expires_at:
+            raise HTTPException(status_code=400, detail="No pending verification")
+        
+        if datetime.utcnow() > user.email_verify_expires_at:
+            raise HTTPException(status_code=400, detail="Verification code expired")
+            
+        if not verify_token(payload.code, user.email_verify_token_hash):
+             raise HTTPException(status_code=400, detail="Invalid verification code")
+        
+        user.email_verified = True
+        user.email_verify_token_hash = None
+        user.email_verify_expires_at = None
+        db.commit()
+
+    # Create session/token
+    token = create_access_token(user.id)
     response.set_cookie(
         key=get_access_token_cookie_name(),
         value=token,
