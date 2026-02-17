@@ -334,10 +334,33 @@ function AuthDashboard() {
 
 /* ──── Dashboard Page ──── */
 export default function DashboardPage() {
-  const [isAuthed] = useState<boolean | null>(() => {
+  const [isAuthed, setIsAuthed] = useState<boolean | null>(() => {
     if (typeof window === "undefined") return null;
     return !!getToken();
   });
+
+  useEffect(() => {
+    // If localStorage says not authed, try cookie-based /me to catch SSO logins
+    if (isAuthed === false) {
+      const base = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+      fetch(`${base}/me`, {
+        method: "GET",
+        credentials: "include",
+      })
+        .then((res) => {
+          if (res.ok) {
+            // Cookie auth works — sync localStorage
+            if (typeof window !== "undefined") {
+              window.localStorage.setItem("vi_auth_state", "1");
+            }
+            setIsAuthed(true);
+          }
+        })
+        .catch(() => {
+          /* ignore — user is genuinely not authed */
+        });
+    }
+  }, [isAuthed]);
 
   if (isAuthed === null) {
     return (
