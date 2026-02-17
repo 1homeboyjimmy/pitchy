@@ -49,7 +49,6 @@ export function ChatInterface({
     const [isTyping, setIsTyping] = useState(false);
     const [saveStatus, setSaveStatus] = useState<string | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
-    const [showScrollbar, setShowScrollbar] = useState(false);
     const inputRef = useRef<HTMLTextAreaElement>(null);
 
     const scrollToBottom = () => {
@@ -61,10 +60,6 @@ export function ChatInterface({
             inputRef.current.style.height = "auto";
             const newHeight = inputRef.current.scrollHeight;
             inputRef.current.style.height = `${newHeight}px`;
-
-            // Check if scrollbar is needed (approximate check based on max-height)
-            // We use 200 as the max-height limit defined in CSS
-            setShowScrollbar(newHeight > 200);
         }
     }, [inputValue]);
 

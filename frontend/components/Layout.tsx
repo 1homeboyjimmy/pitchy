@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -73,8 +73,10 @@ function Header() {
   const [token, setTokenState] = useState<string | null>(null);
 
   useEffect(() => {
-    // Initial check
-    setTokenState(getToken());
+    // Initial check - wrap in setTimeout to avoid synchronous setState warning
+    const timer = setTimeout(() => {
+      setTokenState(getToken());
+    }, 0);
 
     // Listen for auth changes
     const handleAuthChange = () => {
@@ -84,6 +86,7 @@ function Header() {
 
     authEvents.addEventListener("auth-change", handleAuthChange);
     return () => {
+      clearTimeout(timer);
       authEvents.removeEventListener("auth-change", handleAuthChange);
     };
   }, [router]);

@@ -7,7 +7,6 @@ import {
   LayoutDashboard,
   MessageSquare,
   BarChart3,
-  Settings,
   Plus,
   Search,
   TrendingUp,
