@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, date
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.responses import StreamingResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel, Field, ValidationError
@@ -532,7 +532,9 @@ async def auth_callback(
 
     # Create session
     token = create_access_token(user.id)
-    response.set_cookie(
+    frontend_url = os.getenv("APP_PUBLIC_URL", "http://localhost:3000")
+    redirect = RedirectResponse(url=f"{frontend_url}/dashboard", status_code=302)
+    redirect.set_cookie(
         key=get_access_token_cookie_name(),
         value=token,
         httponly=True,
@@ -540,11 +542,9 @@ async def auth_callback(
         samesite="lax",
         max_age=get_access_token_max_age(),
         path="/",
+        domain=os.getenv("COOKIE_DOMAIN", None),
     )
-
-    # Redirect to frontend dashboard
-    frontend_url = os.getenv("APP_PUBLIC_URL", "http://localhost:3000")
-    return Response(status_code=302, headers={"Location": f"{frontend_url}/dashboard"})
+    return redirect
 
 
 @app.get("/me", response_model=UserResponse)

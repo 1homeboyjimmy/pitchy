@@ -30,9 +30,10 @@ export function AccountPageClient() {
         .then(() => {
           notifications.show({
             title: "Email подтвержден",
-            message: "Спасибо! Почта подтверждена.",
+            message: "Спасибо! Почта подтверждена. Войдите в аккаунт.",
             color: "green",
           });
+          router.replace("/login");
         })
         .catch((error) => {
           notifications.show({
@@ -42,7 +43,7 @@ export function AccountPageClient() {
           });
         });
     }
-  }, [searchParams]);
+  }, [searchParams, router]);
 
   const closeResetModal = () => {
     setNewPassword("");
