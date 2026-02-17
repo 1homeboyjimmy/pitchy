@@ -7,6 +7,20 @@ on:
 jobs:
   test-and-deploy:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: ci_user
+          POSTGRES_PASSWORD: ci_pass
+          POSTGRES_DB: ci_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     strategy:
       matrix:
         node-version: [20.x]
@@ -47,7 +61,7 @@ jobs:
 
       - name: Alembic migration check
         env:
-          DATABASE_URL: sqlite:///./deploy_ci.db
+          DATABASE_URL: postgresql+psycopg2://ci_user:ci_pass@localhost:5432/ci_db
           APP_SECRET_KEY: deploy_ci_secret_key
         run: |
           python -m alembic upgrade head --sql > /tmp/alembic_upgrade.sql
