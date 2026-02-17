@@ -116,17 +116,13 @@ function AuthDashboard() {
   });
   const [loading, setLoading] = useState(true);
 
+  // Data fetching
   useEffect(() => {
     const fetchData = async () => {
       try {
         const token = getToken()!;
-
         const [meRes, analysisRes] = await Promise.all([
-          postAuthJson<{ id: number; email: string; name: string }>(
-            "/me",
-            {},
-            token
-          ),
+          postAuthJson<{ id: number; email: string; name: string }>("/me", {}, token),
           postAuthJson<AnalysisItem[]>("/analysis", {}, token),
         ]);
 
@@ -141,43 +137,8 @@ function AuthDashboard() {
         setLoading(false);
       }
     };
-
     fetchData();
   }, []);
-
-  const filteredAnalyses = data.analyses.filter((a) =>
-    a.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const stats = [
-    {
-      title: "Всего анализов",
-      value: data.totalAnalyses.toString(),
-      icon: Activity,
-      color: "violet" as const,
-    },
-    {
-      title: "Средний балл",
-      value: "—",
-      subtitle: "Требуется API",
-      icon: Star,
-      color: "cyan" as const,
-    },
-    {
-      title: "Последняя сессия",
-      value: data.analyses.length > 0
-        ? new Date(data.analyses[0]?.created_at).toLocaleDateString("ru-RU")
-        : "—",
-      icon: Clock,
-      color: "emerald" as const,
-    },
-    {
-      title: "Категорий",
-      value: new Set(data.analyses.map((a) => a.category).filter(Boolean)).size.toString(),
-      icon: TrendingUp,
-      color: "amber" as const,
-    },
-  ];
 
   if (loading) {
     return (
@@ -208,8 +169,8 @@ function AuthDashboard() {
               key={item.id}
               onClick={() => setActiveTab(item.id)}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all mb-1 cursor-pointer ${activeTab === item.id
-                ? "bg-pitchy-violet/10 text-white border border-pitchy-violet/20"
-                : "text-white/50 hover:text-white hover:bg-white/5"
+                  ? "bg-pitchy-violet/10 text-white border border-pitchy-violet/20"
+                  : "text-white/50 hover:text-white hover:bg-white/5"
                 }`}
             >
               <item.icon className="w-4 h-4" />
@@ -225,7 +186,7 @@ function AuthDashboard() {
               <span className="text-xs font-medium text-white/70">Совет</span>
             </div>
             <p className="text-xs text-white/50 leading-relaxed">
-              Используйте чат на главной для быстрого анализа стартапа.
+              Используйте чат для уточнения деталей анализа.
             </p>
           </GlassCard>
         </div>
@@ -241,75 +202,41 @@ function AuthDashboard() {
         >
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold text-white">
-              Привет, {data.userName}
+              {activeTab === "overview" && `Привет, ${data.userName}`}
+              {activeTab === "chat" && "AI Ассистент"}
+              {activeTab === "analytics" && "Аналитика"}
+              {activeTab === "settings" && "Настройки"}
             </h1>
             <p className="text-white/50 text-sm mt-1">
-              Ваша панель аналитики стартапов
+              {activeTab === "overview" && "Ваша панель аналитики стартапов"}
+              {activeTab === "chat" && "Задайте вопросы по вашим проектам"}
+              {activeTab === "analytics" && "Статистика ваших анализов"}
+              {activeTab === "settings" && "Управление профилем и безопасностью"}
             </p>
           </div>
-          <Button
-            variant="primary"
-            size="sm"
-            icon={<Plus className="w-4 h-4" />}
-            onClick={() => router.push("/")}
-          >
-            Новый анализ
-          </Button>
+          {activeTab === "overview" && (
+            <Button
+              variant="primary"
+              size="sm"
+              icon={<Plus className="w-4 h-4" />}
+              onClick={() => router.push("/")}
+            >
+              Новый анализ
+            </Button>
+          )}
         </motion.div>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          {stats.map((stat, i) => (
-            <StatsCard key={i} {...stat} index={i} />
-          ))}
-        </div>
-
-        {/* Analyses */}
-        <div className="mb-6">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-            <h2 className="text-lg font-semibold text-white">
-              Ваши анализы
-            </h2>
-            <div className="relative max-w-xs w-full">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Поиск по названию..."
-                className="pitchy-input pl-10 py-2.5 text-sm"
-              />
-            </div>
-          </div>
-
-          {filteredAnalyses.length > 0 ? (
-            <div className="space-y-3">
-              {filteredAnalyses.map((analysis, index) => (
-                <AnalysisCard
-                  key={analysis.id}
-                  analysis={{
-                    id: analysis.id.toString(),
-                    name: analysis.name,
-                    score: 0,
-                    category: analysis.category || "Не указана",
-                    date: new Date(analysis.created_at).toLocaleDateString("ru-RU"),
-                    summary: analysis.description,
-                  }}
-                  index={index}
-                />
-              ))}
-            </div>
-          ) : (
-            <GlassCard hover={false} className="p-8 text-center">
-              <BarChart3 className="w-10 h-10 text-white/20 mx-auto mb-3" />
-              <p className="text-white/50 text-sm">
-                {searchQuery
-                  ? "Ничего не найдено"
-                  : "Анализов пока нет. Начните с главной страницы!"}
-              </p>
-            </GlassCard>
-          )}
-        </div>
+        {/* Tab Content */}
+        {activeTab === "overview" && (
+          <OverviewTab
+            data={data}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+          />
+        )}
+        {activeTab === "chat" && <ChatTab />}
+        {activeTab === "analytics" && <AnalyticsTab data={data} />}
+        {activeTab === "settings" && <SettingsTab user={data} />}
       </main>
 
       {/* Bottom Nav (Mobile) */}
@@ -328,6 +255,174 @@ function AuthDashboard() {
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ──── Sub-Components for Tabs ──── */
+
+function OverviewTab({
+  data,
+  searchQuery,
+  setSearchQuery,
+}: {
+  data: DashboardData;
+  searchQuery: string;
+  setSearchQuery: (q: string) => void;
+}) {
+  const filteredAnalyses = data.analyses.filter((a) =>
+    a.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const stats = [
+    {
+      title: "Всего анализов",
+      value: data.totalAnalyses.toString(),
+      icon: Activity,
+      color: "violet" as const,
+    },
+    {
+      title: "Средний балл",
+      value: "—",
+      subtitle: "Требуется API",
+      icon: Star,
+      color: "cyan" as const,
+    },
+    {
+      title: "Последняя сессия",
+      value:
+        data.analyses.length > 0
+          ? new Date(data.analyses[0]?.created_at).toLocaleDateString("ru-RU")
+          : "—",
+      icon: Clock,
+      color: "emerald" as const,
+    },
+    {
+      title: "Категорий",
+      value: new Set(data.analyses.map((a) => a.category).filter(Boolean)).size
+        .toString(),
+      icon: TrendingUp,
+      color: "amber" as const,
+    },
+  ];
+
+  return (
+    <>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        {stats.map((stat, i) => (
+          <StatsCard key={i} {...stat} index={i} />
+        ))}
+      </div>
+
+      <div className="mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+          <h2 className="text-lg font-semibold text-white">Ваши анализы</h2>
+          <div className="relative max-w-xs w-full">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Поиск по названию..."
+              className="pitchy-input pl-10 py-2.5 text-sm"
+            />
+          </div>
+        </div>
+
+        {filteredAnalyses.length > 0 ? (
+          <div className="space-y-3">
+            {filteredAnalyses.map((analysis, index) => (
+              <AnalysisCard
+                key={analysis.id}
+                analysis={{
+                  id: analysis.id.toString(),
+                  name: analysis.name,
+                  score: 0,
+                  category: analysis.category || "Не указана",
+                  date: new Date(analysis.created_at).toLocaleDateString("ru-RU"),
+                  summary: analysis.description,
+                }}
+                index={index}
+              />
+            ))}
+          </div>
+        ) : (
+          <GlassCard hover={false} className="p-8 text-center">
+            <BarChart3 className="w-10 h-10 text-white/20 mx-auto mb-3" />
+            <p className="text-white/50 text-sm">
+              {searchQuery
+                ? "Ничего не найдено"
+                : "Анализов пока нет. Начните с главной страницы!"}
+            </p>
+          </GlassCard>
+        )}
+      </div>
+    </>
+  );
+}
+
+function ChatTab() {
+  // Placeholder for Chat Tab implementation
+  return (
+    <GlassCard hover={false} className="p-8 text-center min-h-[400px] flex flex-col items-center justify-center">
+      <MessageSquare className="w-12 h-12 text-pitchy-violet mb-4" />
+      <h3 className="text-xl font-bold text-white mb-2">Чат-ассистент</h3>
+      <p className="text-white/50 max-w-md mx-auto">
+        Функционал чата с поддержкой сохранения контекста и истории скоро будет доступен.
+        Мы переносим его на новый движок.
+      </p>
+    </GlassCard>
+  );
+}
+
+function AnalyticsTab({ data }: { data: DashboardData }) {
+  return (
+    <GlassCard hover={false} className="p-8 text-center min-h-[400px] flex flex-col items-center justify-center">
+      <BarChart3 className="w-12 h-12 text-emerald-400 mb-4" />
+      <h3 className="text-xl font-bold text-white mb-2">Расширенная аналитика</h3>
+      <p className="text-white/50 max-w-md mx-auto mb-6">
+        Здесь скоро появятся графики роста ваших проектов и сравнение с конкурентами.
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full max-w-2xl">
+        <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+          <div className="text-2xl font-bold text-white">{data.totalAnalyses}</div>
+          <div className="text-xs text-white/40">Всего анализов</div>
+        </div>
+        <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+          <div className="text-2xl font-bold text-white">0</div>
+          <div className="text-xs text-white/40">Успешных питчей</div>
+        </div>
+        <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+          <div className="text-2xl font-bold text-white">0%</div>
+          <div className="text-xs text-white/40">Growth Rate</div>
+        </div>
+      </div>
+    </GlassCard>
+  );
+}
+
+function SettingsTab({ user }: { user: DashboardData }) {
+  return (
+    <div className="max-w-2xl mx-auto space-y-6">
+      <GlassCard hover={false} className="p-6">
+        <h3 className="text-lg font-bold text-white mb-4">Профиль</h3>
+        <div className="grid gap-4">
+          <div>
+            <label className="text-xs text-white/40 mb-1 block">Имя</label>
+            <input type="text" value={user.userName} disabled className="pitchy-input w-full opacity-60 cursor-not-allowed" />
+          </div>
+          <div>
+            <label className="text-xs text-white/40 mb-1 block">Email</label>
+            <input type="text" value="user@example.com" disabled className="pitchy-input w-full opacity-60 cursor-not-allowed" />
+            <p className="text-xs text-white/30 mt-1">Для смены email обратитесь в поддержку</p>
+          </div>
+        </div>
+      </GlassCard>
+
+      <GlassCard hover={false} className="p-6">
+        <h3 className="text-lg font-bold text-white mb-4">Безопасность</h3>
+        <Button variant="outline" className="w-full sm:w-auto">Сменить пароль</Button>
+      </GlassCard>
     </div>
   );
 }

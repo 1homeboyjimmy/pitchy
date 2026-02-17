@@ -16,13 +16,18 @@ export function setToken(token: string) {
   window.localStorage.setItem(AUTH_STATE_KEY, "1");
 }
 
-export function clearToken() {
+export async function clearToken() {
   if (typeof window === "undefined") return;
-  window.localStorage.removeItem(AUTH_STATE_KEY);
-  // Best-effort logout: backend will clear the HttpOnly auth cookie.
-  const base = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-  void fetch(`${base}/auth/logout`, {
-    method: "POST",
-    credentials: "include",
-  });
+
+  try {
+    const base = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+    await fetch(`${base}/auth/logout`, {
+      method: "POST",
+      credentials: "include",
+    });
+  } catch (err) {
+    console.error("Logout error:", err);
+  } finally {
+    window.localStorage.removeItem(AUTH_STATE_KEY);
+  }
 }
