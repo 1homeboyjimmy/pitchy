@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 import os
 import logging
 import time
+import random
 from datetime import datetime, timedelta, date
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
@@ -51,6 +52,7 @@ from auth import (
     hash_password,
     require_admin,
     verify_password,
+    verify_token,
 )
 
 
@@ -557,7 +559,7 @@ async def auth_callback(
 def me(user: User = Depends(get_current_user)) -> UserResponse:
     # Check if user has social accounts
     is_social = len(user.social_accounts) > 0
-    
+
     return UserResponse(
         id=user.id,
         email=user.email,
@@ -607,7 +609,7 @@ def update_me(
 
     db.commit()
     db.refresh(user)
-    
+
     # Check if user has social accounts
     is_social = len(user.social_accounts) > 0
 

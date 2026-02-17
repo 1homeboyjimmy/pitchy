@@ -52,7 +52,6 @@ class PasswordChangeConfirmRequest(BaseModel):
     new_password: str
 
 
-
 class PasswordResetRequest(BaseModel):
     email: EmailStr
 
