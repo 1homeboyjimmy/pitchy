@@ -47,3 +47,14 @@ def test_register_and_login():
             )
             assert login.status_code == 200
             assert "access_token" in login.json()
+            token = login.json()["access_token"]
+
+            # Verify /me endpoint (POST) for frontend compatibility
+            me_res = client.post(
+                "/me",
+                headers={"Authorization": f"Bearer {token}"}
+            )
+            assert me_res.status_code == 200
+            me_data = me_res.json()
+            assert me_data["email"] == unique_email
+            assert me_data["is_social"] is False

@@ -29,6 +29,7 @@ export type UserProfile = {
   is_admin: boolean;
   is_active: boolean;
   email_verified: boolean;
+  is_social?: boolean;
   created_at: string;
 };
 

@@ -6,16 +6,8 @@ import { useMounted } from "@mantine/hooks";
 import Layout from "@/components/Layout";
 import { GlassCard, Button } from "@/components/shared";
 import { clearToken, getToken } from "@/lib/auth";
-import { postAuthJson } from "@/lib/api";
+import { postAuthJson, UserProfile } from "@/lib/api";
 import { LogOut, User, Shield, ChevronLeft, CheckIcon } from "lucide-react";
-
-interface UserProfile {
-  id: number;
-  name: string;
-  email: string;
-  email_verified: boolean;
-  is_social: boolean;
-}
 
 export function AccountPageClient() {
   const router = useRouter();
