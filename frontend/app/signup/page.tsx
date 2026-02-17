@@ -95,7 +95,7 @@ export default function SignUpPage() {
                                         onChange={(e) =>
                                             setFormData({ ...formData, name: e.target.value })
                                         }
-                                        className="pitchy-input pl-11"
+                                        className="pitchy-input pl-14"
                                         placeholder="Ваше имя"
                                         required
                                     />
@@ -114,7 +114,7 @@ export default function SignUpPage() {
                                         onChange={(e) =>
                                             setFormData({ ...formData, email: e.target.value })
                                         }
-                                        className="pitchy-input pl-11"
+                                        className="pitchy-input pl-14"
                                         placeholder="you@example.com"
                                         required
                                     />
@@ -133,7 +133,7 @@ export default function SignUpPage() {
                                         onChange={(e) =>
                                             setFormData({ ...formData, password: e.target.value })
                                         }
-                                        className="pitchy-input pl-11 pr-11"
+                                        className="pitchy-input pl-14 pr-11"
                                         placeholder="Минимум 8 символов"
                                         required
                                         minLength={8}
@@ -167,7 +167,7 @@ export default function SignUpPage() {
                                                 confirmPassword: e.target.value,
                                             })
                                         }
-                                        className="pitchy-input pl-11"
+                                        className="pitchy-input pl-14"
                                         placeholder="Повторите пароль"
                                         required
                                     />
@@ -178,8 +178,8 @@ export default function SignUpPage() {
                                 <div
                                     onClick={() => setAgreedToTerms(!agreedToTerms)}
                                     className={`w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 mt-0.5 transition-all cursor-pointer ${agreedToTerms
-                                            ? "bg-pitchy-violet border-pitchy-violet"
-                                            : "border-white/20 hover:border-white/40"
+                                        ? "bg-pitchy-violet border-pitchy-violet"
+                                        : "border-white/20 hover:border-white/40"
                                         }`}
                                 >
                                     {agreedToTerms && <Check className="w-3 h-3 text-white" />}

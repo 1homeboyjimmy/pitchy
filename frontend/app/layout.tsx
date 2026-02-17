@@ -6,9 +6,17 @@ import "@mantine/core/styles.css";
 import "@mantine/notifications/styles.css";
 
 export const metadata: Metadata = {
-  title: "Pitchy.pro — AI Startup Analysis",
+  title: "Pitchy.pro — Анализ стартапов с ИИ",
   description:
-    "AI-powered startup evaluation. Get instant investment scores, risk assessment, and intelligence reports.",
+    "Оценка стартапов на базе искусственного интеллекта. Получите мгновеннй скоринг, оценку рисков и подробные отчеты для инвесторов.",
+  openGraph: {
+    title: "Pitchy.pro — Анализ стартапов с ИИ",
+    description: "Оценка стартапов на базе искусственного интеллекта. Получите мгновенную аналитику и инвестиционную оценку.",
+    url: "https://pitchy.pro",
+    siteName: "Pitchy.pro",
+    locale: "ru_RU",
+    type: "website",
+  },
   viewport: {
     width: "device-width",
     initialScale: 1.0,
