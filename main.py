@@ -35,7 +35,8 @@ from schemas import (
     TokenResponse,
     UserResponse,
     UserUpdateRequest,
-    PasswordChangeRequest,
+    PasswordChangeInitRequest,
+    PasswordChangeConfirmRequest,
 )
 from email_utils import get_dev_emails, send_email
 from sso import yandex_sso, github_sso
