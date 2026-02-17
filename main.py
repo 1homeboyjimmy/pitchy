@@ -573,22 +573,22 @@ def update_me(
 ) -> UserResponse:
     if payload.name:
         user.name = payload.name
-    
+
     if payload.email and payload.email != user.email:
         exists = db.query(User).filter(User.email == payload.email).first()
         if exists:
             raise HTTPException(status_code=400, detail="Email already registered")
-        
+
         user.email = payload.email
         user.email_verified = False
-        
+
         verify_token = generate_token()
         verify_hash = hash_token(verify_token)
         verify_expires = datetime.utcnow() + timedelta(hours=24)
-        
+
         user.email_verify_token_hash = verify_hash
         user.email_verify_expires_at = verify_expires
-        
+
         try:
             base_url = os.getenv("APP_PUBLIC_URL", "http://localhost:3000")
             verify_link = f"{base_url}/account?verify={verify_token}"
@@ -602,7 +602,7 @@ def update_me(
 
     db.commit()
     db.refresh(user)
-    
+
     return UserResponse(
         id=user.id,
         email=user.email,
@@ -622,13 +622,13 @@ def change_password(
 ) -> dict:
     if not user.password_hash:
         raise HTTPException(status_code=400, detail="User has no password set (social login?)")
-    
+
     if not verify_password(payload.current_password, user.password_hash):
         raise HTTPException(status_code=400, detail="Invalid current password")
-    
+
     user.password_hash = hash_password(payload.new_password)
     db.commit()
-    
+
     try:
         send_email(
             user.email,
@@ -637,7 +637,7 @@ def change_password(
         )
     except Exception:
         pass
-        
+
     return {"status": "ok"}
 
 
@@ -650,15 +650,15 @@ def resend_verification(
         return {"status": "ok", "message": "Already verified"}
 
     # Rate limit check could be here
-    
+
     verify_token = generate_token()
     verify_hash = hash_token(verify_token)
     verify_expires = datetime.utcnow() + timedelta(hours=24)
-    
+
     user.email_verify_token_hash = verify_hash
     user.email_verify_expires_at = verify_expires
     db.commit()
-    
+
     try:
         base_url = os.getenv("APP_PUBLIC_URL", "http://localhost:3000")
         verify_link = f"{base_url}/account?verify={verify_token}"
@@ -669,7 +669,7 @@ def resend_verification(
         )
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to send email")
-        
+
     return {"status": "ok"}
 
 
