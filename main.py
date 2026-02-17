@@ -484,7 +484,7 @@ async def auth_callback(
         openid_user = await sso.verify_and_process(request)
     except Exception as e:
         logger.error(f"SSO Error ({provider}): {str(e)}", extra={
-            "query_params": str(request.query_params), 
+            "query_params": str(request.query_params),
             "provider": provider
         })
         raise HTTPException(status_code=400, detail="SSO Authentication Failed")
