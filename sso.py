@@ -13,12 +13,13 @@ class YandexSSO(SSOBase):
     """Class providing login via Yandex OAuth"""
     provider = "yandex"
     scope = ["login:email", "login:info", "login:avatar"]
-    authorization_endpoint = "https://oauth.yandex.ru/authorize"
-    token_endpoint = "https://oauth.yandex.ru/token"
-    userinfo_endpoint = "https://login.yandex.ru/info"
 
     async def get_discovery_document(self) -> dict:
-        return {}
+        return {
+            "authorization_endpoint": "https://oauth.yandex.ru/authorize",
+            "token_endpoint": "https://oauth.yandex.ru/token",
+            "userinfo_endpoint": "https://login.yandex.ru/info",
+        }
 
     @classmethod
     async def openid_from_response(cls, response: dict) -> OpenID:
