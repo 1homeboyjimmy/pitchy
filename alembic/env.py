@@ -24,7 +24,10 @@ target_metadata = Base.metadata
 
 
 def get_url() -> str:
-    return os.getenv("DATABASE_URL", "sqlite:///./app.db")
+    url = os.getenv("DATABASE_URL", "sqlite:///./app.db")
+    # Alembic uses synchronous drivers, so we need to replace asyncpg with psycopg2
+    # if the URL is set for async usage (common in FastAPI + SQLAlchemy async)
+    return url.replace("postgresql+asyncpg://", "postgresql://")
 
 
 def run_migrations_offline() -> None:
