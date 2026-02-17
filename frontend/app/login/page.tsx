@@ -8,6 +8,7 @@ import {
   Eye,
   EyeOff,
   ArrowRight,
+  Github,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -142,6 +143,34 @@ export default function LoginPage() {
                   </span>
                 )}
               </motion.button>
+
+              <div className="relative my-6">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-white/10"></div>
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="px-2 bg-[#0A0A0A] text-white/40">
+                    Или войдите через
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <a
+                  href={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/auth/yandex/login`}
+                  className="flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[#FC3F1D]/10 hover:bg-[#FC3F1D]/20 border border-[#FC3F1D]/20 text-[#FC3F1D] transition-all hover:scale-[1.02]"
+                >
+                  <span className="font-bold font-sans">Ya</span>
+                  <span className="text-sm font-medium text-white/80">Yandex</span>
+                </a>
+                <a
+                  href={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/auth/github/login`}
+                  className="flex items-center justify-center gap-2 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-all hover:scale-[1.02]"
+                >
+                  <Github className="w-4 h-4" />
+                  <span className="text-sm font-medium">GitHub</span>
+                </a>
+              </div>
             </form>
           </div>
 

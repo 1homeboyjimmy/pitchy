@@ -15,3 +15,4 @@ pytest
 httpx
 redis
 prometheus_client
+fastapi-sso>=0.7.0

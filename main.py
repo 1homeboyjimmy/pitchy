@@ -36,6 +36,7 @@ from schemas import (
     UserResponse,
 )
 from email_utils import get_dev_emails, send_email
+from sso import yandex_sso, github_sso
 from auth import (
     create_access_token,
     get_access_token_cookie_name,
@@ -451,6 +452,99 @@ def login(
 def logout(response: Response) -> dict:
     response.delete_cookie(key=get_access_token_cookie_name(), path="/")
     return {"status": "ok"}
+
+
+@app.get("/auth/{provider}/login")
+async def auth_login(provider: str):
+    if provider == "yandex":
+        return await yandex_sso.get_login_redirect()
+    elif provider == "github":
+        return await github_sso.get_login_redirect()
+    raise HTTPException(status_code=404, detail="Provider not found")
+
+
+@app.get("/auth/{provider}/callback")
+async def auth_callback(
+    provider: str,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    if provider == "yandex":
+        sso = yandex_sso
+    elif provider == "github":
+        sso = github_sso
+    else:
+        raise HTTPException(status_code=404, detail="Provider not found")
+
+    try:
+        # Get user details from provider
+        openid_user = await sso.verify_and_process(request)
+    except Exception as e:
+        logger.error(f"SSO Error: {e}")
+        raise HTTPException(status_code=400, detail="SSO Authentication Failed")
+
+    if not openid_user or not openid_user.email:
+        raise HTTPException(status_code=400, detail="No email provided by social login")
+
+    # Check if social account exists
+    from models import SocialAccount
+    
+    social_acc = (
+        db.query(SocialAccount)
+        .filter(
+            SocialAccount.provider == provider,
+            SocialAccount.provider_id == str(openid_user.id),
+        )
+        .first()
+    )
+
+    if social_acc:
+        user = db.query(User).filter(User.id == social_acc.user_id).first()
+    else:
+        # Check if user with this email exists
+        user = db.query(User).filter(User.email == openid_user.email).first()
+        
+        if not user:
+            # Create new user
+            user = User(
+                email=openid_user.email,
+                name=openid_user.display_name or openid_user.email.split("@")[0],
+                password_hash=None,
+                is_active=True,
+                email_verified=True,  # Trusted from OAuth
+            )
+            db.add(user)
+            db.flush()
+        
+        # Link social account
+        social_acc = SocialAccount(
+            user_id=user.id,
+            provider=provider,
+            provider_id=str(openid_user.id),
+            email=openid_user.email,
+        )
+        db.add(social_acc)
+        db.commit()
+
+    if not user.is_active:
+         raise HTTPException(status_code=403, detail="User is blocked")
+
+    # Create session
+    token = create_access_token(user.id)
+    response.set_cookie(
+        key=get_access_token_cookie_name(),
+        value=token,
+        httponly=True,
+        secure=os.getenv("APP_ENV", "dev").lower() == "prod",
+        samesite="lax",
+        max_age=get_access_token_max_age(),
+        path="/",
+    )
+    
+    # Redirect to frontend dashboard
+    frontend_url = os.getenv("APP_PUBLIC_URL", "http://localhost:3000")
+    return Response(status_code=302, headers={"Location": f"{frontend_url}/dashboard"})
 
 
 @app.get("/me", response_model=UserResponse)
