@@ -75,7 +75,7 @@ const colorMap: Record<string, { bg: string; icon: string; glow: string }> = {
     amber: {
         bg: "rgba(245, 158, 11, 0.1)",
         icon: "text-amber-400",
-        glow: "",
+        glow: "shadow-glow-amber/30",
     },
 };
 

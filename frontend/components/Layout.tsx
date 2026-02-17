@@ -9,12 +9,10 @@ import {
   X,
   LogOut,
   User,
-  Twitter,
-  Github,
-  Linkedin,
   Mail,
+  Send,
 } from "lucide-react";
-import { getToken, clearToken } from "@/lib/auth";
+import { getToken, clearToken, authEvents } from "@/lib/auth";
 
 /* ─── Navigation Items ─── */
 const navItems = [
@@ -60,11 +58,10 @@ const footerColumns = [
 ];
 
 const socialLinks = [
-  { icon: Twitter, href: "#", label: "Twitter" },
-  { icon: Github, href: "#", label: "GitHub" },
-  { icon: Linkedin, href: "#", label: "LinkedIn" },
+  { icon: Send, href: "https://t.me/homeboyjimmy1", label: "Telegram" },
   { icon: Mail, href: "mailto:hello@pitchy.pro", label: "Email" },
 ];
+
 
 /* ═══════════════════════════ Header ═══════════════════════════ */
 function Header() {
@@ -72,12 +69,24 @@ function Header() {
   const router = useRouter();
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  // Use state for token to trigger re-renders
+  const [token, setTokenState] = useState<string | null>(null);
 
-  // Derive auth token during render (avoids setState inside useEffect)
-  const token = useMemo(() => {
-    if (typeof window === "undefined") return null;
-    return getToken();
-  }, []);
+  useEffect(() => {
+    // Initial check
+    setTokenState(getToken());
+
+    // Listen for auth changes
+    const handleAuthChange = () => {
+      setTokenState(getToken());
+      router.refresh(); // Refresh server components if needed
+    };
+
+    authEvents.addEventListener("auth-change", handleAuthChange);
+    return () => {
+      authEvents.removeEventListener("auth-change", handleAuthChange);
+    };
+  }, [router]);
 
   useEffect(() => {
     const onScroll = () => setIsScrolled(window.scrollY > 20);
@@ -316,7 +325,7 @@ function Footer() {
                 href={social.href}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="p-2 text-white/30 hover:text-white transition-colors rounded-lg hover:bg-white/5"
+                className="p-2 text-white/30 hover:text-white transition-colors rounded-xl hover:bg-white/5"
                 aria-label={social.label}
               >
                 <social.icon className="w-4 h-4" />

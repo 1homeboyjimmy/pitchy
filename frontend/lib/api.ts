@@ -8,7 +8,24 @@ export type AnalyzeResponse = {
 
 export type AnalysisItem = AnalyzeResponse & {
   id: number;
+  name: string;
   created_at: string;
+};
+
+export type AnalysisResult = {
+  name: string;
+  score: number;
+  breakdown: {
+    market: number;
+    team: number;
+    product: number;
+    traction: number;
+    financials: number;
+  };
+  strengths: string[];
+  risks: string[];
+  recommendation: string;
+  summary: string;
 };
 
 export type ChatMessage = {

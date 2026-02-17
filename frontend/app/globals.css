@@ -34,6 +34,7 @@
   --shadow-glow-primary: 0 0 20px rgba(139, 92, 246, 0.3);
   --shadow-glow-cyan: 0 0 20px rgba(6, 182, 212, 0.3);
   --shadow-glow-success: 0 0 20px rgba(16, 185, 129, 0.3);
+  --shadow-glow-amber: 0 0 20px rgba(245, 158, 11, 0.3);
 
   /* Animations */
   --animate-float: float 6s ease-in-out infinite;

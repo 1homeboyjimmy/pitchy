@@ -8,6 +8,7 @@ import { GlassCard, Button } from "@/components/shared";
 import { clearToken, getToken } from "@/lib/auth";
 import { postAuthJson, UserProfile } from "@/lib/api";
 import { LogOut, User, Shield, ChevronLeft, CheckIcon } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 
 export function AccountPageClient() {
   const router = useRouter();
@@ -18,10 +19,13 @@ export function AccountPageClient() {
   // Modal states
   const [isAddEmailOpen, setIsAddEmailOpen] = useState(false);
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
+  const [isChangeEmailOpen, setIsChangeEmailOpen] = useState(false);
   const [showEmailSentModal, setShowEmailSentModal] = useState(false);
 
   // Form states
   const [emailInput, setEmailInput] = useState("");
+  const [emailStep, setEmailStep] = useState<"init" | "confirm">("init");
+  const [emailForm, setEmailForm] = useState({ new: "", confirm: "", code: "" });
   const [passwordStep, setPasswordStep] = useState<"init" | "confirm">("init");
   const [passwordForm, setPasswordForm] = useState({ current: "", new: "", code: "" });
   const [isResending, setIsResending] = useState(false);
@@ -120,6 +124,60 @@ export function AccountPageClient() {
     }
   };
 
+  const handleInitiateChangeEmail = async () => {
+    // Basic validation
+    if (!emailForm.new || !emailForm.confirm) {
+      alert("Заполните все поля");
+      return;
+    }
+    if (emailForm.new !== emailForm.confirm) {
+      alert("Email адреса не совпадают");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailForm.new)) {
+      alert("Некорректный формат Email");
+      return;
+    }
+
+    try {
+      const token = getToken();
+      if (token) {
+        // This triggers the backend to send a code to the new email
+        // Note: The backend updates the email immediately but sets verified=False
+        // We are using the existing behavior but guiding the user through a code flow
+        await postAuthJson("/me", { email: emailForm.new }, token);
+        setEmailStep("confirm");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Ошибка при смене Email. Возможно, этот email уже занят.");
+    }
+  };
+
+  const handleConfirmChangeEmail = async () => {
+    try {
+      const token = getToken();
+      if (token) {
+        await postAuthJson("/auth/verify-email", {
+          email: emailForm.new,
+          code: emailForm.code
+        }, token);
+
+        alert("Email успешно изменен и подтвержден!");
+        setIsChangeEmailOpen(false);
+        setEmailForm({ new: "", confirm: "", code: "" });
+        setEmailStep("init");
+
+        // Refresh user data
+        const data = await postAuthJson<UserProfile>("/me", {}, token);
+        setUser(data);
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Ошибка подтверждения кода.");
+    }
+  };
+
   if (!mounted) return null;
 
   if (loading) {
@@ -197,6 +255,9 @@ export function AccountPageClient() {
                     {isResending ? "Отправка..." : "Подтвердить Email"}
                   </Button>
                 )}
+                <Button size="sm" variant="secondary" onClick={() => setIsChangeEmailOpen(true)}>
+                  Сменить Email
+                </Button>
               </div>
             </GlassCard>
 
@@ -216,9 +277,9 @@ export function AccountPageClient() {
               </div>
             </GlassCard>
 
-            <p className="text-center text-xs text-white/20 mt-12">
-              Pitchy Pro Account ID: {user?.id} ({user?.email ? "Verified" : "Guest"})
-            </p>
+            <div className="mt-2 text-xs text-white/30">
+              ID: {user?.id}
+            </div>
           </div>
         </div>
       </div>
@@ -303,6 +364,87 @@ export function AccountPageClient() {
                 </div>
               </>
             )}
+          </GlassCard>
+        </div>
+      )}
+
+      {/* Change Email Modal */}
+      {isChangeEmailOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <GlassCard className="w-full max-w-md overflow-hidden relative" hover={false}>
+            <motion.div layout className="p-6">
+              <motion.h3 layout="position" className="text-xl font-bold text-white mb-4">Сменить Email</motion.h3>
+
+              <AnimatePresence mode="wait">
+                {emailStep === "init" && (
+                  <motion.div
+                    key="step-init"
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <div className="space-y-4">
+                      <div>
+                        <label className="text-xs text-white/50 mb-1 block">Новая почта</label>
+                        <input
+                          type="email"
+                          placeholder="new@example.com"
+                          value={emailForm.new}
+                          onChange={(e) => setEmailForm({ ...emailForm, new: e.target.value })}
+                          className="pitchy-input w-full"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-white/50 mb-1 block">Подтверждение почты</label>
+                        <input
+                          type="email"
+                          placeholder="new@example.com"
+                          value={emailForm.confirm}
+                          onChange={(e) => setEmailForm({ ...emailForm, confirm: e.target.value })}
+                          className="pitchy-input w-full"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-3 mt-6">
+                      <Button variant="ghost" onClick={() => { setIsChangeEmailOpen(false); setEmailForm({ new: "", confirm: "", code: "" }); }}>Отмена</Button>
+                      <Button variant="primary" onClick={handleInitiateChangeEmail}>Далее</Button>
+                    </div>
+                  </motion.div>
+                )}
+
+                {emailStep === "confirm" && (
+                  <motion.div
+                    key="step-confirm"
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 20 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <p className="text-white/70 text-sm mb-4">
+                      Мы отправили код подтверждения на <b>{emailForm.new}</b>.
+                      Введите его ниже для подтверждения смены почты.
+                    </p>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="text-xs text-white/50 mb-1 block">Код подтверждения</label>
+                        <input
+                          type="text"
+                          placeholder="123456"
+                          value={emailForm.code}
+                          onChange={(e) => setEmailForm({ ...emailForm, code: e.target.value })}
+                          className="pitchy-input w-full text-center tracking-widest text-lg"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-3 mt-6">
+                      <Button variant="ghost" onClick={() => setEmailStep("init")}>Назад</Button>
+                      <Button variant="primary" onClick={handleConfirmChangeEmail}>Подтвердить</Button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
           </GlassCard>
         </div>
       )}

@@ -12,7 +12,7 @@ import {
     Lightbulb,
 } from "lucide-react";
 import { ScoreRing } from "../ui/ScoreRing";
-import { AnalyzeResponse, postJson, postAuthJson } from "@/lib/api";
+import { AnalyzeResponse, postJson, postAuthJson, AnalysisResult } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 
 interface Message {
@@ -23,21 +23,7 @@ interface Message {
     analysis?: AnalysisResult;
 }
 
-interface AnalysisResult {
-    name: string;
-    score: number;
-    breakdown: {
-        market: number;
-        team: number;
-        product: number;
-        traction: number;
-        financials: number;
-    };
-    strengths: string[];
-    risks: string[];
-    recommendation: string;
-    summary: string;
-}
+
 
 interface ChatInterfaceProps {
     initialQuery?: string;
@@ -194,6 +180,7 @@ export function ChatInterface({
                 token
             );
             setSaveStatus("Сохранено!");
+            window.dispatchEvent(new Event("analysis-saved"));
             setTimeout(() => setSaveStatus(null), 2000);
         } catch {
             setSaveStatus("Ошибка сохранения");
