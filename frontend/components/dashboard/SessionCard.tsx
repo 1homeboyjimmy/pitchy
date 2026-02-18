@@ -1,7 +1,7 @@
 
 import { motion } from "framer-motion";
-import { format } from "date-fns";
-import { ru } from "date-fns/locale";
+import dayjs from "dayjs";
+import "dayjs/locale/ru";
 import { MessageSquare, Calendar, ChevronRight } from "lucide-react";
 
 interface SessionCardProps {
@@ -15,8 +15,7 @@ interface SessionCardProps {
 }
 
 export function SessionCard({ session, onClick }: SessionCardProps) {
-    const date = new Date(session.created_at);
-    const formattedDate = format(date, "d MMMM yyyy, HH:mm", { locale: ru });
+    const formattedDate = dayjs(session.created_at).locale("ru").format("D MMMM YYYY, HH:mm");
 
     return (
         <motion.div
