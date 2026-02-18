@@ -6,6 +6,7 @@ import sqlite3
 BASE_URL = "http://localhost:8000"
 DB_PATH = "app.db"
 
+
 def random_string(length=10):
     return ''.join(random.choices(string.ascii_lowercase, k=length))
 

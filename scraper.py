@@ -1,4 +1,3 @@
-
 import requests
 from bs4 import BeautifulSoup
 import os
@@ -40,7 +39,7 @@ def fetch_article(url: str) -> str:
 
 def extract_text(html: str) -> str:
     soup = BeautifulSoup(html, "html.parser")
-    
+
     # Remove script and style elements
     for script in soup(["script", "style", "nav", "footer", "header", "aside"]):
         script.decompose()
@@ -70,9 +69,9 @@ def scrape_and_save(url: str):
 
     filename = clean_filename(url)
     filepath = DOCS_DIR / filename
-    
+
     os.makedirs(DOCS_DIR, exist_ok=True)
-    
+
     with open(filepath, "w", encoding="utf-8") as f:
         f.write(f"Source: {url}\n\n")
         f.write(text)
