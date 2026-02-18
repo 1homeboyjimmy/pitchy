@@ -1546,7 +1546,7 @@ def get_chat_session(
     if session.analysis:
         analysis_data = AnalysisResponse(
             id=session.analysis.id,
-            name="Анализ стартапа", # Fallback as model doesn't store name separately
+            name="Анализ стартапа",  # Fallback as model doesn't store name separately
             category=None,
             investment_score=session.analysis.investment_score,
             strengths=session.analysis.strengths,
