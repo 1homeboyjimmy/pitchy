@@ -156,3 +156,42 @@ export async function patchAuthJson<T>(
 ): Promise<T> {
   return request<T>(path, body, token, "PATCH");
 }
+
+export type ChatSessionCreateRequest = {
+  title: string;
+  initial_message?: string;
+};
+
+export type ChatSessionResponse = {
+  id: number;
+  title: string;
+  created_at: string;
+  analysis_id?: number;
+};
+
+export type ChatSessionDetailResponse = ChatSessionResponse & {
+  messages: ChatMessageResponse[];
+};
+
+export type ChatMessageResponse = {
+  id: number;
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
+};
+
+export async function getChatSessions(token: string): Promise<ChatSessionResponse[]> {
+  return getAuthJson<ChatSessionResponse[]>("/chat/sessions", token);
+}
+
+export async function getChatSession(id: number, token: string): Promise<ChatSessionDetailResponse> {
+  return getAuthJson<ChatSessionDetailResponse>(`/chat/sessions/${id}`, token);
+}
+
+export async function createChatSession(data: ChatSessionCreateRequest, token: string): Promise<ChatSessionDetailResponse> {
+  return postAuthJson<ChatSessionDetailResponse>("/chat/sessions", data, token);
+}
+
+export async function sendChatMessage(sessionId: number, content: string, token: string): Promise<ChatMessageResponse> {
+  return postAuthJson<ChatMessageResponse>(`/chat/sessions/${sessionId}/messages`, { content }, token);
+}

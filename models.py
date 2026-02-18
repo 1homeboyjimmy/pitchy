@@ -67,9 +67,11 @@ class ChatSession(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     title: Mapped[str] = mapped_column(String(200))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    analysis_id: Mapped[int | None] = mapped_column(ForeignKey("analyses.id"), nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="chat_sessions")
-    messages: Mapped[list["ChatMessage"]] = relationship(back_populates="session")
+    messages: Mapped[list["ChatMessage"]] = relationship(back_populates="session", cascade="all, delete-orphan")
+    analysis: Mapped["Analysis"] = relationship()
 
 
 class ChatMessage(Base):

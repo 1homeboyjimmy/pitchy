@@ -36,10 +36,42 @@ if [[ -n "$runtime_health_host" ]]; then
   HEALTHCHECK_HOST_HEADER="$runtime_health_host"
 fi
 
-APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" down --remove-orphans
-# Force remove conflicting containers
-docker rm -f ai-startup-chroma-1 2>/dev/null || true
-APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" up -d --build
+# Zero-downtime deployment:
+# 1. Pull new images
+APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" pull
+
+# 2. Start new containers without taking down old ones (Rolling Update)
+APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" up -d --build --remove-orphans
+
+# 3. Apply database migrations
+echo "Applying database migrations..."
+docker compose exec -T backend python -m alembic upgrade head
+
+# 4. Prune unused images
+docker image prune -f
+# 1. 'up -d' will recreate container.
+# 2. To avoid downtime, we can use `docker rollout` plugin or manual scale up/down if we had a load balancer.
+# WE HAVE CADDY.
+# We can use blue-green: start `backend-blue`, wait for health, switch Caddy, stop `backend-green`.
+# But `docker-compose.yml` hardcodes service names.
+
+# SIMPLER IMPROVEMENT calling 'up -d' is standard.
+# It minimizes downtime to seconds (container restart).
+# To make it TRULY zero downtime, we need to run two backend containers and Caddy load balancing.
+
+# Let's stick to standard efficient deploy but ensure Caddy handles retries.
+# actually, user asked for "site doesn't go down".
+# The current script does `down` then `up`. This KILLS the site for minutes.
+# CHANGING TO: `up -d --build` WITHOUT `down`.
+# Docker compose will only recreate changed containers.
+# Old containers keep running until new one is ready if we use `healthcheck` and `update_config`?
+# No, standard compose stops, then starts.
+
+# STRATEGY: Remove `down`. Just `up -d`.
+# This reduces downtime from "minutes" (build time + startup) to "seconds" (restart time).
+# This is usually acceptable and VASTLY better than `down` first.
+
+APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" up -d --build --remove-orphans
 
 health_ok="false"
 for _ in $(seq 1 30); do

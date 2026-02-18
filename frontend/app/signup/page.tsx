@@ -54,7 +54,7 @@ export default function SignUpPage() {
                 setVerificationStep("verify");
             } else if (data.token) {
                 setToken(data.token);
-                router.push("/dashboard");
+                window.location.href = "/dashboard";
             }
         } catch (err) {
             setError(
@@ -76,7 +76,7 @@ export default function SignUpPage() {
                 code: verificationCode,
             });
             setToken(data.access_token);
-            router.push("/dashboard");
+            window.location.href = "/dashboard";
         } catch (err) {
             setError(
                 err instanceof Error ? err.message : "Неверный код подтверждения"

@@ -35,7 +35,8 @@ export default function LoginPage() {
         password,
       });
       setToken(data.token);
-      router.push("/dashboard");
+      // Force reload to ensure header updates
+      window.location.href = "/dashboard";
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Ошибка входа. Попробуйте ещё раз."

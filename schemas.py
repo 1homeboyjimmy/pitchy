@@ -101,14 +101,23 @@ class ChatSessionCreateRequest(BaseModel):
     title: str = Field(..., min_length=2)
 
 
-class ChatSessionResponse(BaseModel):
-    id: int
-    title: str
-    created_at: datetime
+    analysis_id: int | None = None
+
+    class Config:
+        from_attributes = True
+
+
+class ChatSessionDetailResponse(ChatSessionResponse):
+    messages: List[ChatMessageResponse] = []
+
+
+class ChatSessionCreateRequest(BaseModel):
+    title: str = Field(..., min_length=2)
+    initial_message: str | None = None
 
 
 class ChatMessageCreateRequest(BaseModel):
-    session_id: int
+    # session_id passed in path usually, but can be here too
     content: str = Field(..., min_length=1)
 
 
@@ -117,6 +126,9 @@ class ChatMessageResponse(BaseModel):
     role: str
     content: str
     created_at: datetime
+
+    class Config:
+        from_attributes = True
 
 
 class UserUpdateRequest(BaseModel):

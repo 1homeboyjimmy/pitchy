@@ -6,7 +6,7 @@ import { useMounted } from "@mantine/hooks";
 import Layout from "@/components/Layout";
 import { GlassCard, Button } from "@/components/shared";
 import { clearToken, getToken } from "@/lib/auth";
-import { postAuthJson, UserProfile } from "@/lib/api";
+import { postAuthJson, patchAuthJson, UserProfile } from "@/lib/api";
 import { LogOut, User, Shield, ChevronLeft, CheckIcon } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -77,7 +77,7 @@ export function AccountPageClient() {
     try {
       const token = getToken();
       if (token) {
-        await postAuthJson("/me", { email: emailInput }, token);
+        await patchAuthJson("/me", { email: emailInput }, token);
         setIsAddEmailOpen(false);
         setShowEmailSentModal(true);
         // Refresh user data
@@ -145,7 +145,7 @@ export function AccountPageClient() {
         // This triggers the backend to send a code to the new email
         // Note: The backend updates the email immediately but sets verified=False
         // We are using the existing behavior but guiding the user through a code flow
-        await postAuthJson("/me", { email: emailForm.new }, token);
+        await patchAuthJson("/me", { email: emailForm.new }, token);
         setEmailStep("confirm");
       }
     } catch (e) {
