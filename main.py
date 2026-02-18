@@ -1000,7 +1000,6 @@ def chat(payload: ChatRequest) -> ChatResponse:
     return ChatResponse(reply=raw_text.strip())
 
 
-
 @app.patch("/chat/sessions/{session_id}", response_model=ChatSessionResponse)
 def rename_chat_session(
     session_id: int,
@@ -1042,7 +1041,6 @@ def delete_chat_session(
     db.delete(session)
     db.commit()
     return {"status": "ok"}
-
 
 
 @app.get("/chat/sessions/{session_id}/messages", response_model=list[ChatMessageResponse])
@@ -1616,8 +1614,6 @@ def _generate_interviewer_response(session: ChatSession, db: Session) -> str:
         # But user wants "possibility to continue dialog".
         # Let's simple context prompt for now.
         pass
-
-
 
     # We use a custom build payload here to inject SYSTEM_INTERVIEW_PROMPT and handle JSON
 
