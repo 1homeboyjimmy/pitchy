@@ -1000,21 +1000,6 @@ def chat(payload: ChatRequest) -> ChatResponse:
     return ChatResponse(reply=raw_text.strip())
 
 
-@app.post("/chat/sessions", response_model=ChatSessionResponse)
-def create_chat_session(
-    payload: ChatSessionCreateRequest,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> ChatSessionResponse:
-    session = ChatSession(user_id=user.id, title=payload.title)
-    db.add(session)
-    db.commit()
-    db.refresh(session)
-    return ChatSessionResponse(
-        id=session.id,
-        title=session.title,
-        created_at=session.created_at,
-    )
 
 
 @app.patch("/chat/sessions/{session_id}", response_model=ChatSessionResponse)
@@ -1060,21 +1045,6 @@ def delete_chat_session(
     return {"status": "ok"}
 
 
-@app.get("/chat/sessions", response_model=list[ChatSessionResponse])
-def list_chat_sessions(
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> list[ChatSessionResponse]:
-    sessions = (
-        db.query(ChatSession)
-        .filter(ChatSession.user_id == user.id)
-        .order_by(ChatSession.created_at.desc())
-        .all()
-    )
-    return [
-        ChatSessionResponse(id=s.id, title=s.title, created_at=s.created_at)
-        for s in sessions
-    ]
 
 
 @app.get("/chat/sessions/{session_id}/messages", response_model=list[ChatMessageResponse])
@@ -1457,13 +1427,16 @@ def admin_errors_export(
     return StreamingResponse(_iter(), media_type="text/csv")
 
 SYSTEM_INTERVIEW_PROMPT = """
-Ты — профессиональный венчурный аналитик. Твоя цель — провести интервью с основателем стартапа, чтобы собрать полную информацию для глубокого анализа.
+Ты — профессиональный венчурный аналитик. Твоя цель — провести интервью с основателем стартапа,
+чтобы собрать полную информацию для глубокого анализа.
 Действуй пошагово:
 1.  Проанализируй текущую(ию) историю диалога.
-2.  Если информации недостаточно для оценки (нет данных о команде, трекшене, монетизации, рынке и конкурентах), задай ОДИН самый важный уточняющий вопрос. Не задавай списки вопросов.
+2.  Если информации недостаточно для оценки (нет данных о команде, трекшене, монетизации, рынке и конкурентах),
+    задай ОДИН самый важный уточняющий вопрос. Не задавай списки вопросов.
 3.  Если информации достаточно, сформируй финальный JSON-анализ.
 
-ВАЖНО: Если ты решил, что информации достаточно, твой ответ ДОЛЖЕН быть валидным JSON объектом и ничем больше. Не добавляй markdown разметку вокруг JSON.
+ВАЖНО: Если ты решил, что информации достаточно, твой ответ ДОЛЖЕН быть валидным JSON объектом и ничем больше.
+Не добавляй markdown разметку вокруг JSON.
 
 Формат JSON анализа:
 {
@@ -1501,7 +1474,7 @@ def create_chat_session(
         )
         db.add(user_msg)
         db.commit()
-        db.refresh(user_msg) # Get ID
+        db.refresh(user_msg)  # Get ID
         messages_response.append(
             ChatMessageResponse(
                 id=user_msg.id,
@@ -1513,7 +1486,7 @@ def create_chat_session(
 
         # Generate Assistant Response (Interviewer Logic)
         assistant_text = _generate_interviewer_response(session, db)
-        
+
         # Save assistant message
         ai_msg = DbChatMessage(
             session_id=session.id,
@@ -1571,7 +1544,7 @@ def get_chat_session(
 
     # Manually map messages to avoid N+1 if not careful, though ORM handles it
     msgs = sorted(session.messages, key=lambda m: m.created_at)
-    
+
     return ChatSessionDetailResponse(
         id=session.id,
         title=session.title,
@@ -1636,25 +1609,21 @@ def send_chat_message(
 def _generate_interviewer_response(session: ChatSession, db: Session) -> str:
     # Fetch history
     history_msgs = sorted(session.messages, key=lambda m: m.created_at)
-    
+
     # Check if analysis already exists (sanity check, though we might allow re-analysis)
     if session.analysis_id:
-        # If analysis done, maybe just chat normally? 
+        # If analysis done, maybe just chat normally?
         # For now, let's assume we continue strictly or we shouldn't act as interviewer anymore.
         # But user wants "possibility to continue dialog".
         # Let's simple context prompt for now.
         pass
 
-    # Build Prompt
-    # Convert DB messages to schema for helper (or just usage)
-    # _build_chat_prompt expects schemas.ChatMessage, but we can adapt.
-    
     prompt_messages = [
         {"role": m.role, "text": m.content} for m in history_msgs
     ]
-    
+
     # We use a custom build payload here to inject SYSTEM_INTERVIEW_PROMPT and handle JSON
-    
+
     # Prepare RAG context?
     # Get last user message
     last_user_text = ""
@@ -1662,13 +1631,13 @@ def _generate_interviewer_response(session: ChatSession, db: Session) -> str:
         if m.role == "user":
             last_user_text = m.content
             break
-    
+
     context_text = ""
     if last_user_text and len(last_user_text) > 10:
-         try:
+        try:
             chunks = rag.get_relevant_chunks(last_user_text, top_k=2)
             context_text = "\n".join(chunks)
-         except Exception:
+        except Exception:
             pass
 
     system_prompt_final = SYSTEM_INTERVIEW_PROMPT
@@ -1681,38 +1650,39 @@ def _generate_interviewer_response(session: ChatSession, db: Session) -> str:
         # We need to bypass `call_yandex_gpt` which is simple and uses `_build_payload`.
         # We can implement `_call_yandex_gpt_messages` or similar.
         # But `call_yandex_gpt` takes system_prompt and user_prompt.
-        # If we want history, we need to format it into user_prompt or use the `messages` list properly if the helper supported it.
+        # If we want history, format it into user_prompt or use the `messages` list
+        # properly if the helper supported it.
         # Current `yandex_gpt_client` seems to support `messages` list in `_build_payload`.
         # But `call_yandex_gpt` hardcodes it to [system, user].
-        
+
         # Let's serialize history into text for now (simple approach) or fix client.
         # Serializing history is safer for "turn-based" API usage if we don't valid tokens.
-        
+
         history_text = ""
         for m in history_msgs:
             role_label = "Основатель" if m.role == "user" else "Аналитик"
             history_text += f"{role_label}: {m.content}\n"
-            
+
         final_user_prompt = f"История диалога:\n{history_text}\n\nТвоя реакция (вопрос или JSON):"
-        
+
         raw_response = call_yandex_gpt(system_prompt_final, final_user_prompt)
-        
+
         # Check if JSON
         clean_text = raw_response.strip()
         if "{" in clean_text and "}" in clean_text:
-             # Try parse
+            # Try parse
             try:
                 data = extract_json(clean_text)
                 # It is analysis!
                 # Validate fields
                 if "investment_score" in data:
-                     # Create Analysis
+                    # Create Analysis
                     normalized = _normalize_analyze_data(data)
-                    
+
                     # Create Analysis entity
                     analysis = Analysis(
                         user_id=session.user_id,
-                        payload_text=history_text, # Save chat history as source
+                        payload_text=history_text,  # Save chat history as source
                         investment_score=normalized["investment_score"],
                         strengths=normalized["strengths"],
                         weaknesses=normalized["weaknesses"],
@@ -1722,17 +1692,21 @@ def _generate_interviewer_response(session: ChatSession, db: Session) -> str:
                     db.add(analysis)
                     db.commit()
                     db.refresh(analysis)
-                    
+
                     # Link to Session
                     session.analysis_id = analysis.id
                     db.commit()
                     db.refresh(session)
-                    
-                    return f"Анализ готов! \n\n**Резюме:** {analysis.market_summary}\n\n**Оценка:** {analysis.investment_score}/100. \n\nВы можете увидеть полную версию в дашборде."
+
+                    return (
+                        f"Анализ готов! \n\n**Резюме:** {analysis.market_summary}\n\n"
+                        f"**Оценка:** {analysis.investment_score}/100. \n\n"
+                        "Вы можете увидеть полную версию в дашборде."
+                    )
             except Exception:
                 # Failed to parse, return raw text (maybe it was just a question with quotes)
                 pass
-        
+
         return clean_text
 
     except Exception as e:

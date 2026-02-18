@@ -129,7 +129,6 @@ class ChatSessionDetailResponse(ChatSessionResponse):
 class ChatMessageCreateRequest(BaseModel):
     # session_id passed in path usually, but can be here too
     content: str = Field(..., min_length=1)
-    
 
 
 class UserUpdateRequest(BaseModel):
