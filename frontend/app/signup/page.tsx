@@ -10,7 +10,6 @@ import { postJson } from "@/lib/api";
 import { setToken } from "@/lib/auth";
 
 function SignUpContent() {
-    const router = useRouter();
     const searchParams = useSearchParams();
     const [formData, setFormData] = useState({
         name: "",

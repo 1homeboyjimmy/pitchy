@@ -70,7 +70,7 @@ export function StartupAnalysisForm() {
         console.error("Failed to parse analysis state", e);
       }
     }
-  }, []);
+  }, [form]);
 
   // Save state to localStorage on changes
   useEffect(() => {

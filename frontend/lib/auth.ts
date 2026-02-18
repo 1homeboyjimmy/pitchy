@@ -1,7 +1,6 @@
 "use client";
 
 const AUTH_STATE_KEY = "vi_auth_state";
-const COOKIE_SESSION_MARKER = "cookie-session";
 
 // Custom event target for auth changes
 export const authEvents = new EventTarget();

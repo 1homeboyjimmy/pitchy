@@ -17,7 +17,6 @@ import { postJson } from "@/lib/api";
 import { setToken } from "@/lib/auth";
 
 function LoginContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

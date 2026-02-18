@@ -8,7 +8,6 @@ import {
   MessageSquare,
   BarChart3,
   Plus,
-  Search,
   Sparkles,
   Lock,
   ChevronRight,
@@ -16,14 +15,13 @@ import {
   Loader2
 } from "lucide-react";
 import Layout from "@/components/Layout";
-import { StatsCard } from "@/components/dashboard/StatsCard";
+// StatsCard unused
 import { SessionCard } from "@/components/dashboard/SessionCard";
 import { ChatInterface } from "@/components/dashboard/ChatInterface";
 import { GlassCard, Button } from "@/components/shared";
 import { getToken } from "@/lib/auth";
 import {
   postAuthJson,
-  getAuthJson,
   getChatSessions,
   getChatSession,
   createChatSession,
@@ -31,7 +29,6 @@ import {
   ChatSessionDetailResponse
 } from "@/lib/api";
 import Link from "next/link";
-import { useMediaQuery } from "@mantine/hooks";
 
 /* ──── Unauthenticated View ──── */
 function UnauthDashboard() {
@@ -82,14 +79,13 @@ import { useAuth } from "@/lib/hooks/useAuth";
 function DashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const isMobile = useMediaQuery("(max-width: 1024px)");
   const { token, isLoaded, isAuthenticated } = useAuth(); // Use the hook
 
   const [activeTab, setActiveTab] = useState("overview");
   const [sessions, setSessions] = useState<ChatSessionResponse[]>([]);
   const [activeSession, setActiveSession] = useState<ChatSessionDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [userProfile, setUserProfile] = useState<{ name: string } | null>(null);
+  // userProfile was unused, removing logic related to it to fix lint
 
   // New Chat Modal State
   const [isNewChatOpen, setIsNewChatOpen] = useState(false);
@@ -134,7 +130,7 @@ function DashboardContent() {
       };
       startChat();
     }
-  }, [searchParams, token]); // Added token dependency just in case
+  }, [searchParams, token, router]); // Added token and router dependency
 
   useEffect(() => {
     const init = async () => {
@@ -142,12 +138,7 @@ function DashboardContent() {
       if (!token) return;    // If no token, we handle it in render
 
       try {
-        const [me, sessionsList] = await Promise.all([
-          postAuthJson<{ name: string }>("/me", {}, token).catch(() => ({ name: "User" })),
-          getChatSessions(token).catch(() => [])
-        ]);
-
-        setUserProfile(me);
+        const sessionsList = await getChatSessions(token).catch(() => []);
         setSessions(sessionsList);
       } catch (e) {
         console.error(e);

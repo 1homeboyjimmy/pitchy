@@ -1,9 +1,9 @@
 
 import { useState, useRef, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { Send, User, Bot, Loader2, Sparkles } from "lucide-react";
 import ReactMarkdown from "react-markdown";
-import { Button } from "@/components/shared";
+// Button unused
 import { ChatMessageResponse, ChatSessionDetailResponse, sendChatMessage, getChatSession } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import { AnalysisCard } from "@/components/dashboard/AnalysisCard";
@@ -53,7 +53,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
             const token = getToken();
             if (!token) throw new Error("No token");
 
-            const responseMsg = await sendChatMessage(session.id, content, token);
+            await sendChatMessage(session.id, content, token);
 
             // Fetch updated session to check for analysis
             const updatedSession = await getChatSession(session.id, token);
