@@ -75,10 +75,15 @@ import { useSearchParams } from "next/navigation";
 
 // ... imports ...
 
+import { useAuth } from "@/lib/hooks/useAuth";
+
+// ...
+
 function DashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const isMobile = useMediaQuery("(max-width: 1024px)");
+  const { token, isLoaded, isAuthenticated } = useAuth(); // Use the hook
 
   const [activeTab, setActiveTab] = useState("overview");
   const [sessions, setSessions] = useState<ChatSessionResponse[]>([]);
@@ -106,13 +111,15 @@ function DashboardContent() {
       // Automatically start new chat
       const startChat = async () => {
         try {
-          const token = getToken();
-          if (!token) return;
+          // We need token here. If not loaded via hook yet, we might miss it.
+          // But getToken() is synchronous localStorage read, so it should still work relative to redirect logic.
+          // Ideally we use `token` from hook, but this effect runs on searchParams change.
+          const currentToken = getToken();
+          if (!currentToken) return;
 
           // Create session
-          // We use a default title or extract from message
           const title = "Новый анализ";
-          const session = await createChatSession({ title, initial_message: initialMessage }, token);
+          const session = await createChatSession({ title, initial_message: initialMessage }, currentToken);
 
           // Update state
           setSessions(prev => [session, ...prev]);
@@ -127,15 +134,14 @@ function DashboardContent() {
       };
       startChat();
     }
-  }, [searchParams]);
+  }, [searchParams, token]); // Added token dependency just in case
 
-  // Initial Data Fetch
   useEffect(() => {
     const init = async () => {
-      try {
-        const token = getToken();
-        if (!token) return;
+      if (!isLoaded) return; // Wait for auth to load
+      if (!token) return;    // If no token, we handle it in render
 
+      try {
         const [me, sessionsList] = await Promise.all([
           postAuthJson<{ name: string }>("/me", {}, token).catch(() => ({ name: "User" })),
           getChatSessions(token).catch(() => [])
@@ -150,8 +156,11 @@ function DashboardContent() {
       }
     };
     init();
-  }, []);
+  }, [isLoaded, token]); // Re-run when auth is loaded/changed
 
+  // ... createSession handlers using token from hook ...
+
+  // Conditional Rendering
   const handleCreateSession = async () => {
     if (!newChatTitle.trim() || !newChatDesc.trim()) return;
 
@@ -190,10 +199,6 @@ function DashboardContent() {
       const token = getToken();
       if (!token) return;
 
-      // Optimistic switch or loading state? 
-      // Let's just switch tab and show loading in Chat interface if we want, 
-      // but ChatInterface expects a session object. 
-      // So we fetch first.
       const session = await getChatSession(sessionId, token);
       setActiveSession(session);
       setActiveTab("chat");
@@ -213,10 +218,7 @@ function DashboardContent() {
     );
   }
 
-  // If token is missing (double check), render Unauth
-  // But Layout handles this usually or redirects. 
-  // We'll trust getToken() returns null if not logged in.
-  if (!getToken()) return <Layout><UnauthDashboard /></Layout>;
+  if (!isAuthenticated) return <Layout><UnauthDashboard /></Layout>;
 
   return (
     <Layout>
