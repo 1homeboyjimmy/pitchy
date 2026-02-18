@@ -1001,7 +1001,6 @@ def chat(payload: ChatRequest) -> ChatResponse:
 
 
 
-
 @app.patch("/chat/sessions/{session_id}", response_model=ChatSessionResponse)
 def rename_chat_session(
     session_id: int,
@@ -1043,7 +1042,6 @@ def delete_chat_session(
     db.delete(session)
     db.commit()
     return {"status": "ok"}
-
 
 
 
@@ -1426,6 +1424,7 @@ def admin_errors_export(
 
     return StreamingResponse(_iter(), media_type="text/csv")
 
+
 SYSTEM_INTERVIEW_PROMPT = """
 Ты — профессиональный венчурный аналитик. Твоя цель — провести интервью с основателем стартапа,
 чтобы собрать полную информацию для глубокого анализа.
@@ -1618,9 +1617,7 @@ def _generate_interviewer_response(session: ChatSession, db: Session) -> str:
         # Let's simple context prompt for now.
         pass
 
-    prompt_messages = [
-        {"role": m.role, "text": m.content} for m in history_msgs
-    ]
+
 
     # We use a custom build payload here to inject SYSTEM_INTERVIEW_PROMPT and handle JSON
 
