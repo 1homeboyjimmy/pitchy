@@ -16,8 +16,10 @@ def test_rag():
     print(f"Querying: '{query}'")
     results = rag.query(query)
     print("Results:")
+
     for i, res in enumerate(results):
         print(f"{i+1}. {res[:100]}...")
+
 
 if __name__ == "__main__":
     test_rag()

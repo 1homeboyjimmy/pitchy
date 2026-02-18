@@ -5,6 +5,9 @@ from pathlib import Path
 from typing import List
 import os
 
+# Workaround for pydantic v1 config error in chromadb
+os.environ["CHROMA_SERVER_NOFILE"] = "65535"
+
 import chromadb
 from chromadb.api.models.Collection import Collection
 from chromadb.api.types import Documents, EmbeddingFunction, Embeddings
@@ -88,8 +91,8 @@ class StartupRAG:
     def build(cls) -> "StartupRAG":
         documents = _load_documents()
         if not documents:
-             # Create empty if no docs, instead of erroring, to allow app startup
-             pass 
+            # Create empty if no docs, instead of erroring, to allow app startup
+            pass 
 
         embedding_fn = SentenceTransformerEmbeddingFunction()
 

@@ -6,9 +6,13 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Global patch for requests to disable SSL verification
 old_request = requests.Session.request
+
+
 def new_request(self, method, url, *args, **kwargs):
     kwargs['verify'] = False
     return old_request(self, method, url, *args, **kwargs)
+
+
 requests.Session.request = new_request
 
 from sentence_transformers import SentenceTransformer

@@ -5,10 +5,7 @@ import time
 import random
 from datetime import datetime, timedelta, date
 
-# Workaround for pydantic v1 config error in chromadb
-os.environ["CHROMA_SERVER_NOFILE"] = "65535"
-
-from fastapi import Depends, FastAPI, HTTPException, Request, Response  # noqa: E402
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.responses import StreamingResponse
@@ -17,6 +14,7 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from dotenv import load_dotenv
+
 import rag
 from metrics import ERROR_COUNT, REQUEST_COUNT, REQUEST_LATENCY
 from observability import configure_logging

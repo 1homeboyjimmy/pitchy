@@ -1,5 +1,7 @@
 import requests
-import json
+import random
+import string
+import sqlite3
 import os
 
 BASE_URL = "http://localhost:8000"
@@ -120,7 +122,10 @@ def main():
         print("SUCCESS: Name and Category correctly retrieved from payload parsing!")
     else:
         print(f"FAILURE: Expected name='{analysis_name}', category='{category}'.")
-        print(f"Got name='{item.get('name')}', category='{item.get('category')}'")
+        print(
+            f"Got name='{item.get('name')}', "
+            f"category='{item.get('category')}'"
+        )
 
 if __name__ == "__main__":
     main()

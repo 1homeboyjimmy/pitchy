@@ -5,7 +5,9 @@ import os
 from pathlib import Path
 from urllib.parse import urlparse
 
+
 DOCS_DIR = Path("sample_docs")
+
 
 def clean_filename(url: str) -> str:
     parsed = urlparse(url)
@@ -17,7 +19,11 @@ def clean_filename(url: str) -> str:
 
 def fetch_article(url: str) -> str:
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/91.0.4472.124 Safari/537.36"
+        )
     }
     import urllib3
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
