@@ -28,6 +28,7 @@ FILES_TO_DOWNLOAD = [
     # We will try to download, if fail, ignore for optional subfolders.
 ]
 
+
 def download_file(filename):
     url = f"{BASE_URL}/{filename}"
     local_path = LOCAL_DIR / filename
@@ -50,6 +51,7 @@ def download_file(filename):
     except Exception as e:
         print(f"Error downloading {filename}: {e}")
 
+
 def main():
     os.makedirs(LOCAL_DIR, exist_ok=True)
     print(f"Downloading model {MODEL_NAME} to {LOCAL_DIR}...")
@@ -59,7 +61,7 @@ def main():
         if local_path.exists() and local_path.stat().st_size > 0:
             print(f"Skipping {filename} (already exists).")
             continue
-        
+
         # Retry up to 3 times
         for i in range(3):
             try:

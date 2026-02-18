@@ -8,11 +8,11 @@ import os
 # Workaround for pydantic v1 config error in chromadb
 os.environ["CHROMA_SERVER_NOFILE"] = "65535"
 
-import chromadb
-from chromadb.api.models.Collection import Collection
-from chromadb.api.types import Documents, EmbeddingFunction, Embeddings
-from sentence_transformers import SentenceTransformer
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+import chromadb  # noqa: E402
+from chromadb.api.models.Collection import Collection  # noqa: E402
+from chromadb.api.types import Documents, EmbeddingFunction, Embeddings  # noqa: E402
+from sentence_transformers import SentenceTransformer  # noqa: E402
+from langchain_text_splitters import RecursiveCharacterTextSplitter  # noqa: E402
 
 
 DOCS_DIR = Path(os.getenv("CHROMA_DOCS_DIR", "sample_docs"))
@@ -92,7 +92,7 @@ class StartupRAG:
         documents = _load_documents()
         if not documents:
             # Create empty if no docs, instead of erroring, to allow app startup
-            pass 
+            pass
 
         embedding_fn = SentenceTransformerEmbeddingFunction()
 
@@ -119,7 +119,6 @@ class StartupRAG:
             metadata={"hnsw:space": "cosine"},
         )
         return cls(client=client, collection=collection)
-
 
     def query(self, text: str, top_k: int = 3) -> List[str]:
         result = self.collection.query(query_texts=[text], n_results=top_k)
@@ -149,6 +148,3 @@ def healthcheck() -> bool:
         return True
     except Exception:
         return False
-
-
-

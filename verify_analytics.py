@@ -2,13 +2,13 @@ import requests
 import random
 import string
 import sqlite3
-import os
 
 BASE_URL = "http://localhost:8000"
 DB_PATH = "app.db"
 
 def random_string(length=10):
     return ''.join(random.choices(string.ascii_lowercase, k=length))
+
 
 def main():
     # 0. Check health
@@ -30,7 +30,7 @@ def main():
     res = requests.post(f"{BASE_URL}/auth/register", json={
         "email": email, "password": password, "name": name
     })
-    
+
     if res.status_code != 200:
         print(f"Registration failed: {res.text}")
         return
@@ -60,11 +60,10 @@ def main():
     res = session.post(f"{BASE_URL}/auth/login", json={
         "email": email, "password": password
     })
-    
     if res.status_code != 200:
         print(f"Login failed: {res.text}")
         return
-    
+
     token = res.json().get("access_token")
     print(f"Logged in. Token: {token[:10]}...")
 
@@ -86,7 +85,7 @@ def main():
 
     if res.status_code != 200:
         print(f"Analysis creation failed: {res.text}")
-        # If it fails due to GPT error, we can't test list extraction fully, 
+        # If it fails due to GPT error, we can't test list extraction fully,
         # but we can check if it saves anything.
         return
 
@@ -105,7 +104,7 @@ def main():
 
     items = res.json()
     print(f"Found {len(items)} items.")
-    
+
     if len(items) == 0:
         print("Error: No items found.")
         return
@@ -126,6 +125,7 @@ def main():
             f"Got name='{item.get('name')}', "
             f"category='{item.get('category')}'"
         )
+
 
 if __name__ == "__main__":
     main()

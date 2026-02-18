@@ -953,10 +953,10 @@ def list_analyses(
             
             # Fallback if name wasn't found in format
             if name == "Без названия" and lines:
-                 potential_name = lines[0].strip()
-                 # If first line looks like a title (short enough)
-                 if len(potential_name) < 100 and not potential_name.startswith("Описание:"):
-                     name = potential_name
+                potential_name = lines[0].strip()
+                # If first line looks like a title (short enough)
+                if len(potential_name) < 100 and not potential_name.startswith("Описание:"):
+                    name = potential_name
 
         results.append(
             AnalysisResponse(

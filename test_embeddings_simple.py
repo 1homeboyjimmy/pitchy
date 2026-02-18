@@ -15,15 +15,15 @@ def new_request(self, method, url, *args, **kwargs):
 
 requests.Session.request = new_request
 
-from sentence_transformers import SentenceTransformer
-import time
+from sentence_transformers import SentenceTransformer  # noqa: E402
+import time  # noqa: E402
 
 print("Start loading model...")
 start = time.time()
 try:
     model = SentenceTransformer("cointegrated/rubert-tiny2")
     print(f"Model loaded in {time.time() - start:.2f} seconds.")
-    
+
     val = model.encode("тестовый запрос")
     print("Encoding successful. Vector shape:", val.shape)
 except Exception as e:

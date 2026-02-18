@@ -7,11 +7,12 @@ sys.path.append(os.getcwd())
 
 from rag import StartupRAG  # noqa: E402
 
+
 def test_rag():
     print("Initializing RAG (may download model)...")
     rag = StartupRAG.build()
     print("RAG initialized.")
-    
+
     query = "стартап"
     print(f"Querying: '{query}'")
     results = rag.query(query)

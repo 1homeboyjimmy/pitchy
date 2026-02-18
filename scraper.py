@@ -17,6 +17,7 @@ def clean_filename(url: str) -> str:
         path = "index"
     return f"{domain}_{path}.txt"
 
+
 def fetch_article(url: str) -> str:
     headers = {
         "User-Agent": (
@@ -73,8 +74,9 @@ def scrape_and_save(url: str):
     with open(filepath, "w", encoding="utf-8") as f:
         f.write(f"Source: {url}\n\n")
         f.write(text)
-    
+
     print(f"Saved to {filepath}")
+
 
 if __name__ == "__main__":
     # Example URLs (replace with real legal/news sources later)
