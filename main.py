@@ -950,7 +950,7 @@ def list_analyses(
                     cat_val = line.replace("Категория:", "").strip()
                     if cat_val and cat_val != "—":
                         category = cat_val
-            
+
             # Fallback if name wasn't found in format
             if name == "Без названия" and lines:
                 potential_name = lines[0].strip()

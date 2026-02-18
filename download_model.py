@@ -35,7 +35,7 @@ def download_file(filename):
     
     # Ensure directory exists
     local_path.parent.mkdir(parents=True, exist_ok=True)
-    
+
     print(f"Downloading {filename}...")
     try:
         response = requests.get(url, verify=False, stream=True, timeout=30)
@@ -43,7 +43,7 @@ def download_file(filename):
             print(f"File {filename} not found (404), skipping.")
             return
         response.raise_for_status()
-        
+
         with open(local_path, "wb") as f:
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)

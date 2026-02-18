@@ -97,7 +97,7 @@ class StartupRAG:
         embedding_fn = SentenceTransformerEmbeddingFunction()
 
         client = _build_client()
-        
+
         # Always recreate collection to apply new embeddings
         if _should_reindex():
             try:

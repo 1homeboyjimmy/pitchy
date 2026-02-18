@@ -34,7 +34,7 @@ def main():
     if res.status_code != 200:
         print(f"Registration failed: {res.text}")
         return
-    
+
     print("Registration successful (verification pending).")
 
     # 2. Manually verify in DB
@@ -55,7 +55,7 @@ def main():
     # We strictly need the token. The backend sets a cookie.
     # The frontend uses this cookie.
     # For API calls, if we use requests.Session, it handles cookies.
-    
+
     session = requests.Session()
     res = session.post(f"{BASE_URL}/auth/login", json={
         "email": email, "password": password
@@ -74,7 +74,6 @@ def main():
     description = "A revolutionary fintech app that uses AI to manage personal finances."
     
     # Note: This calls YandexGPT. If it fails, we might need to mock or handle it.
-    # Assuming the environment has credentials or valid mock.
     res = session.post(f"{BASE_URL}/analysis", json={
         "name": analysis_name,
         "category": category,
@@ -97,7 +96,7 @@ def main():
     # 5. List Analyses
     print("Fetching analysis list...")
     res = session.get(f"{BASE_URL}/analysis", headers={"Authorization": f"Bearer {token}"})
-    
+
     if res.status_code != 200:
         print(f"List fetch failed: {res.text}")
         return

@@ -37,6 +37,7 @@ def fetch_article(url: str) -> str:
         print(f"Error fetching {url}: {e}")
         return ""
 
+
 def extract_text(html: str) -> str:
     soup = BeautifulSoup(html, "html.parser")
     
@@ -84,6 +85,6 @@ if __name__ == "__main__":
         "https://example.com",
         # Add more URLs here
     ]
-    
+
     for url in urls:
         scrape_and_save(url)
