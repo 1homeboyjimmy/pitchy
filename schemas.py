@@ -124,6 +124,7 @@ class ChatMessageResponse(BaseModel):
 
 class ChatSessionDetailResponse(ChatSessionResponse):
     messages: List[ChatMessageResponse] = []
+    analysis: AnalysisResponse | None = None
 
 
 class ChatMessageCreateRequest(BaseModel):

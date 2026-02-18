@@ -1,12 +1,8 @@
 "use client";
 
 import {
-  Badge,
   Button,
   Group,
-  List,
-  Paper,
-  Progress,
   Select,
   Stack,
   Text,
@@ -15,9 +11,8 @@ import {
   Title,
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
-import { notifications } from "@mantine/notifications";
 import { useState, useEffect } from "react";
-import { AnalyzeResponse, postAuthJson, postJson } from "@/lib/api";
+import { useRouter } from "next/navigation";
 import { getToken } from "@/lib/auth";
 
 type FormValues = {
@@ -46,7 +41,7 @@ const categories = [
 ];
 
 export function StartupAnalysisForm() {
-  const [result, setResult] = useState<AnalyzeResponse | null>(null);
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
 
   const form = useForm<FormValues>({
@@ -71,7 +66,6 @@ export function StartupAnalysisForm() {
       try {
         const parsed = JSON.parse(saved);
         if (parsed.values) form.setValues(parsed.values);
-        if (parsed.result) setResult(parsed.result);
       } catch (e) {
         console.error("Failed to parse analysis state", e);
       }
@@ -80,42 +74,34 @@ export function StartupAnalysisForm() {
 
   // Save state to localStorage on changes
   useEffect(() => {
-    const state = { values: form.values, result };
-    localStorage.setItem("startup_analysis_state", JSON.stringify(state));
-  }, [form.values, result]);
+    localStorage.setItem("startup_analysis_state", JSON.stringify({ values: form.values }));
+  }, [form.values]);
 
   const handleSubmit = form.onSubmit(async (values) => {
     setLoading(true);
-    setResult(null);
     try {
       const token = getToken();
-      const data = token
-        ? await postAuthJson<AnalyzeResponse>("/analysis", values, token)
-        : await postJson<AnalyzeResponse>("/analyze-startup", {
-          description: [
-            `Название: ${values.name}`,
-            `Категория: ${values.category || "—"}`,
-            `Стадия: ${values.stage || "—"}`,
-            values.url ? `Сайт: ${values.url}` : null,
-            `Описание: ${values.description}`,
-          ]
-            .filter(Boolean)
-            .join("\n"),
-        });
-      setResult(data);
-      notifications.show({
-        title: "Анализ готов",
-        message: token
-          ? "Результаты сохранены в личном кабинете."
-          : "Результаты получены. Войдите, чтобы сохранять историю.",
-        color: "green",
-      });
+
+      const descriptionArr = [
+        `Название: ${values.name}`,
+        `Категория: ${values.category || "—"}`,
+        `Стадия: ${values.stage || "—"}`,
+        values.url ? `Сайт: ${values.url}` : null,
+        `Описание: ${values.description}`
+      ].filter(Boolean);
+
+      const initialMessage = "Проанализируй мой стартап:\n\n" + descriptionArr.join("\n");
+      const encodedMsg = encodeURIComponent(initialMessage);
+
+      const dashboardUrl = `/dashboard?tab=chat&new_chat=true&initial_message=${encodedMsg}`;
+
+      if (token) {
+        router.push(dashboardUrl);
+      } else {
+        router.push(`/signup?next=${encodeURIComponent(dashboardUrl)}`);
+      }
     } catch (error) {
-      notifications.show({
-        title: "Ошибка анализа",
-        message: error instanceof Error ? error.message : "Request failed",
-        color: "red",
-      });
+      console.error(error);
     } finally {
       setLoading(false);
     }
@@ -126,7 +112,7 @@ export function StartupAnalysisForm() {
       <div>
         <Title order={3}>Startup Analysis</Title>
         <Text size="sm" c="dimmed" mt={6}>
-          Заполните форму и получите структурированную инвестиционную оценку.
+          Заполните форму, чтобы начать интерактивный анализ с AI-инвестором.
         </Text>
       </div>
 
@@ -166,74 +152,14 @@ export function StartupAnalysisForm() {
           />
           <Group justify="space-between">
             <Button type="submit" loading={loading}>
-              Анализировать
+              Начать анализ
             </Button>
             <Text size="xs" c="dimmed">
-              Используем контекст из отраслевых документов.
+              Вас перенаправит в чат с AI.
             </Text>
           </Group>
         </Stack>
       </form>
-
-      {result ? (
-        <Stack gap="md">
-          <Paper withBorder radius="md" p="md">
-            <Group justify="space-between" align="center">
-              <div>
-                <Text size="sm" c="dimmed">
-                  Инвестиционная оценка
-                </Text>
-                <Text size="xl" fw={700}>
-                  {result.investment_score}/10
-                </Text>
-              </div>
-              <Badge color={result.investment_score >= 7 ? "green" : "yellow"}>
-                {result.investment_score >= 7 ? "High potential" : "Needs work"}
-              </Badge>
-            </Group>
-            <Progress
-              mt="sm"
-              value={Math.min(100, result.investment_score * 10)}
-              color={result.investment_score >= 7 ? "green" : "yellow"}
-            />
-          </Paper>
-
-          <Group grow align="stretch">
-            <Paper withBorder radius="md" p="md">
-              <Text fw={600}>Strengths</Text>
-              <List mt="xs" spacing="xs">
-                {result.strengths.map((item, index) => (
-                  <List.Item key={`strength-${index}`}>{item}</List.Item>
-                ))}
-              </List>
-            </Paper>
-            <Paper withBorder radius="md" p="md">
-              <Text fw={600}>Weaknesses</Text>
-              <List mt="xs" spacing="xs">
-                {result.weaknesses.map((item, index) => (
-                  <List.Item key={`weakness-${index}`}>{item}</List.Item>
-                ))}
-              </List>
-            </Paper>
-          </Group>
-
-          <Paper withBorder radius="md" p="md">
-            <Text fw={600}>Recommendations</Text>
-            <List mt="xs" spacing="xs">
-              {result.recommendations.map((item, index) => (
-                <List.Item key={`recommendation-${index}`}>{item}</List.Item>
-              ))}
-            </List>
-          </Paper>
-
-          <Paper withBorder radius="md" p="md">
-            <Text fw={600}>Market summary</Text>
-            <Text mt="xs" c="dimmed">
-              {result.market_summary}
-            </Text>
-          </Paper>
-        </Stack>
-      ) : null}
     </Stack>
   );
 }

@@ -169,8 +169,21 @@ export type ChatSessionResponse = {
   analysis_id?: number;
 };
 
+export type AnalysisResponse = {
+  id: number;
+  name: string;
+  category: string | null;
+  investment_score: number;
+  strengths: string[];
+  weaknesses: string[];
+  recommendations: string[];
+  market_summary: string;
+  created_at: string;
+};
+
 export type ChatSessionDetailResponse = ChatSessionResponse & {
   messages: ChatMessageResponse[];
+  analysis?: AnalysisResponse | null;
 };
 
 export type ChatMessageResponse = {

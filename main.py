@@ -1542,11 +1542,26 @@ def get_chat_session(
     # Manually map messages to avoid N+1 if not careful, though ORM handles it
     msgs = sorted(session.messages, key=lambda m: m.created_at)
 
+    analysis_data = None
+    if session.analysis:
+        analysis_data = AnalysisResponse(
+            id=session.analysis.id,
+            name="Анализ стартапа", # Fallback as model doesn't store name separately
+            category=None,
+            investment_score=session.analysis.investment_score,
+            strengths=session.analysis.strengths,
+            weaknesses=session.analysis.weaknesses,
+            recommendations=session.analysis.recommendations,
+            market_summary=session.analysis.market_summary,
+            created_at=session.analysis.created_at,
+        )
+
     return ChatSessionDetailResponse(
         id=session.id,
         title=session.title,
         created_at=session.created_at,
         analysis_id=session.analysis_id,
+        analysis=analysis_data,
         messages=[
             ChatMessageResponse(
                 id=m.id,

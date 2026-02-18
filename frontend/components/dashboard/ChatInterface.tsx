@@ -4,8 +4,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Send, User, Bot, Loader2, Sparkles } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { Button } from "@/components/shared";
-import { ChatMessageResponse, ChatSessionDetailResponse, sendChatMessage } from "@/lib/api";
+import { ChatMessageResponse, ChatSessionDetailResponse, sendChatMessage, getChatSession } from "@/lib/api";
 import { getToken } from "@/lib/auth";
+import { AnalysisCard } from "@/components/dashboard/AnalysisCard";
+import dayjs from "dayjs";
+import "dayjs/locale/ru";
 
 interface ChatInterfaceProps {
     session: ChatSessionDetailResponse;
@@ -29,7 +32,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
 
     useEffect(() => {
         scrollToBottom();
-    }, [messages, isLoading]);
+    }, [messages, isLoading, session.analysis]);
 
     const handleSendMessage = async () => {
         if (!inputValue.trim() || isLoading) return;
@@ -38,9 +41,8 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
         setInputValue("");
         setIsLoading(true);
 
-        // Optimistic update for user message
         const tempUserMsg: ChatMessageResponse = {
-            id: -1, // fluid id
+            id: -1,
             role: "user",
             content,
             created_at: new Date().toISOString(),
@@ -53,30 +55,17 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
 
             const responseMsg = await sendChatMessage(session.id, content, token);
 
-            // Update messages: remove temp user msg (or keep it and rely on response? 
-            // Actually sendChatMessage returns the ASSISTANT message. 
-            // The user message is saved on backend but not returned in response usually, 
-            // or we should re-fetch session. 
-            // My API implementation returns the ASSISTANT message only.
-            // So I should keep my temp user message but update its ID if possible, or just leave it.
-            // Better: Refresh the whole session or just append assistant message.
-
-            setMessages((prev) => [
-                ...prev.map(m => m.id === -1 ? { ...m, id: Date.now() } : m), // finalize user msg
-                responseMsg
-            ]);
-
-            // Notify parent to maybe refresh session list or state
-            // onUpdate not strictly needed if we manage state here, but good for sync.
+            // Fetch updated session to check for analysis
+            const updatedSession = await getChatSession(session.id, token);
+            onUpdate(updatedSession);
+            setMessages(updatedSession.messages);
 
         } catch (error) {
             console.error(error);
-            // Remove temp message or show error
             alert("Ошибка отправки сообщения");
             setMessages((prev) => prev.filter(m => m.id !== -1));
         } finally {
             setIsLoading(false);
-            // Focus back on input
             setTimeout(() => textareaRef.current?.focus(), 100);
         }
     };
@@ -114,8 +103,8 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                         </div>
 
                         <div className={`max-w-[80%] rounded-2xl p-4 ${msg.role === "user"
-                                ? "bg-white/10 text-white rounded-tr-sm"
-                                : "bg-pitchy-violet/10 border border-pitchy-violet/20 text-white rounded-tl-sm"
+                            ? "bg-white/10 text-white rounded-tr-sm"
+                            : "bg-pitchy-violet/10 border border-pitchy-violet/20 text-white rounded-tl-sm"
                             }`}>
                             <div className="prose prose-invert prose-sm max-w-none">
                                 <ReactMarkdown>
@@ -123,7 +112,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                                 </ReactMarkdown>
                             </div>
                             <span className="text-[10px] text-white/30 mt-2 block w-full text-right">
-                                {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                {dayjs(msg.created_at).format("HH:mm")}
                             </span>
                         </div>
                     </motion.div>
@@ -139,6 +128,36 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                         </div>
                     </motion.div>
                 )}
+
+                {session.analysis && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="mt-8 border-t border-white/10 pt-8 pb-4"
+                    >
+                        <div className="text-center mb-6">
+                            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-sm font-medium mb-2">
+                                <Sparkles className="w-4 h-4" />
+                                <span>Анализ готов</span>
+                            </div>
+                            <h3 className="text-xl font-bold text-white">Результаты оценки</h3>
+                        </div>
+
+                        <div className="max-w-md mx-auto">
+                            <AnalysisCard
+                                analysis={{
+                                    id: session.analysis.id,
+                                    name: session.analysis.name,
+                                    score: session.analysis.investment_score,
+                                    category: session.analysis.category || "Стартап",
+                                    date: dayjs(session.analysis.created_at).format("D MMMM YYYY"),
+                                    summary: session.analysis.market_summary,
+                                }}
+                            />
+                        </div>
+                    </motion.div>
+                )}
+
                 <div ref={messagesEndRef} />
             </div>
 
@@ -150,13 +169,14 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                         value={inputValue}
                         onChange={(e) => setInputValue(e.target.value)}
                         onKeyDown={handleKeyDown}
-                        placeholder="Отправьте сообщение..."
-                        className="w-full bg-black/20 text-white placeholder-white/30 rounded-xl pl-4 pr-14 py-3 min-h-[50px] max-h-[150px] border border-white/10 focus:border-pitchy-violet/50 focus:outline-none focus:ring-1 focus:ring-pitchy-violet/50 resize-none scrollbar-thin"
+                        placeholder={session.analysis ? "Диалог завершен" : "Отправьте сообщение..."}
+                        disabled={!!session.analysis}
+                        className="w-full bg-black/20 text-white placeholder-white/30 rounded-xl pl-4 pr-14 py-3 min-h-[50px] max-h-[150px] border border-white/10 focus:border-pitchy-violet/50 focus:outline-none focus:ring-1 focus:ring-pitchy-violet/50 resize-none scrollbar-thin disabled:opacity-50 disabled:cursor-not-allowed"
                         rows={1}
                     />
                     <button
                         onClick={handleSendMessage}
-                        disabled={!inputValue.trim() || isLoading}
+                        disabled={!inputValue.trim() || isLoading || !!session.analysis}
                         className="absolute right-2 bottom-2 p-2 rounded-lg bg-pitchy-violet text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-pitchy-violet/80 transition-colors"
                     >
                         <Send className="w-4 h-4" />

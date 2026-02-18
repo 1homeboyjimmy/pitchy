@@ -1,16 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { motion } from "framer-motion";
 import { User, Mail, Lock, Eye, EyeOff, ArrowRight, Check, Github } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Layout from "@/components/Layout";
 import { postJson } from "@/lib/api";
 import { setToken } from "@/lib/auth";
 
-export default function SignUpPage() {
+function SignUpContent() {
     const router = useRouter();
+    const searchParams = useSearchParams();
     const [formData, setFormData] = useState({
         name: "",
         email: "",
@@ -54,7 +55,8 @@ export default function SignUpPage() {
                 setVerificationStep("verify");
             } else if (data.token) {
                 setToken(data.token);
-                window.location.href = "/dashboard";
+                const next = searchParams.get("next") || "/dashboard";
+                window.location.href = next;
             }
         } catch (err) {
             setError(
@@ -76,7 +78,8 @@ export default function SignUpPage() {
                 code: verificationCode,
             });
             setToken(data.access_token);
-            window.location.href = "/dashboard";
+            const next = searchParams.get("next") || "/dashboard";
+            window.location.href = next;
         } catch (err) {
             setError(
                 err instanceof Error ? err.message : "Неверный код подтверждения"
@@ -351,7 +354,7 @@ export default function SignUpPage() {
                     <p className="text-center text-sm text-white/40 mt-6">
                         Уже есть аккаунт?{" "}
                         <Link
-                            href="/login"
+                            href={searchParams.get("next") ? `/login?next=${encodeURIComponent(searchParams.get("next")!)}` : "/login"}
                             className="text-pitchy-violet hover:text-pitchy-violet-light transition-colors"
                         >
                             Войдите
@@ -360,5 +363,13 @@ export default function SignUpPage() {
                 </motion.div>
             </div >
         </Layout >
+    );
+}
+
+export default function SignUpPage() {
+    return (
+        <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-pitchy-bg"></div>}>
+            <SignUpContent />
+        </Suspense>
     );
 }

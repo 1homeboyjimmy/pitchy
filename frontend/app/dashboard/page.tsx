@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import {
@@ -70,8 +70,14 @@ function UnauthDashboard() {
 }
 
 /* ──── Authenticated Dashboard ──── */
-export default function AuthDashboard() {
+
+import { useSearchParams } from "next/navigation";
+
+// ... imports ...
+
+function DashboardContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const isMobile = useMediaQuery("(max-width: 1024px)");
 
   const [activeTab, setActiveTab] = useState("overview");
@@ -85,6 +91,43 @@ export default function AuthDashboard() {
   const [newChatTitle, setNewChatTitle] = useState("");
   const [newChatDesc, setNewChatDesc] = useState("");
   const [isCreating, setIsCreating] = useState(false);
+
+  // Handle URL Params for Redirects
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab === "chat") {
+      setActiveTab("chat");
+    }
+
+    const newChat = searchParams.get("new_chat");
+    const initialMessage = searchParams.get("initial_message");
+
+    if (newChat === "true" && initialMessage) {
+      // Automatically start new chat
+      const startChat = async () => {
+        try {
+          const token = getToken();
+          if (!token) return;
+
+          // Create session
+          // We use a default title or extract from message
+          const title = "Новый анализ";
+          const session = await createChatSession({ title, initial_message: initialMessage }, token);
+
+          // Update state
+          setSessions(prev => [session, ...prev]);
+          setActiveSession(session);
+          setActiveTab("chat");
+
+          // Clean URL
+          router.replace("/dashboard?tab=chat");
+        } catch (e) {
+          console.error("Failed to auto-start chat", e);
+        }
+      };
+      startChat();
+    }
+  }, [searchParams]);
 
   // Initial Data Fetch
   useEffect(() => {
@@ -205,8 +248,8 @@ export default function AuthDashboard() {
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all mb-1 text-left ${activeTab === item.id
-                    ? "bg-white/10 text-white border border-white/10"
-                    : "text-white/50 hover:text-white hover:bg-white/5"
+                  ? "bg-white/10 text-white border border-white/10"
+                  : "text-white/50 hover:text-white hover:bg-white/5"
                   }`}
               >
                 <item.icon className="w-4 h-4" />
@@ -375,5 +418,13 @@ export default function AuthDashboard() {
         </div>
       )}
     </Layout>
+  );
+}
+
+export default function AuthDashboard() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-pitchy-bg"><Loader2 className="w-8 h-8 animate-spin text-pitchy-violet" /></div>}>
+      <DashboardContent />
+    </Suspense>
   );
 }

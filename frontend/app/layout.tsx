@@ -25,6 +25,8 @@ export const metadata: Metadata = {
   },
 };
 
+import { ScrollToTop } from "@/components/shared/ScrollToTop";
+
 export default function RootLayout({
   children,
 }: {
@@ -33,6 +35,7 @@ export default function RootLayout({
   return (
     <html lang="ru" suppressHydrationWarning>
       <body className="antialiased">
+        <ScrollToTop />
         <Providers>
           <DarkVeilWrapper />
           {children}
