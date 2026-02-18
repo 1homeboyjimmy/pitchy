@@ -5,6 +5,9 @@ import time
 import random
 from datetime import datetime, timedelta, date
 
+# Workaround for pydantic v1 config error in chromadb
+os.environ["CHROMA_SERVER_NOFILE"] = "65535"
+
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -908,6 +911,8 @@ def create_analysis(
 
     return AnalysisResponse(
         id=analysis.id,
+        name=payload.name,
+        category=payload.category,
         investment_score=analysis.investment_score,
         strengths=analysis.strengths,
         weaknesses=analysis.weaknesses,
@@ -917,6 +922,7 @@ def create_analysis(
     )
 
 
+@app.get("/analysis", response_model=list[AnalysisResponse])
 @app.get("/analysis", response_model=list[AnalysisResponse])
 def list_analyses(
     user: User = Depends(get_current_user),
@@ -928,18 +934,46 @@ def list_analyses(
         .order_by(Analysis.created_at.desc())
         .all()
     )
-    return [
-        AnalysisResponse(
-            id=item.id,
-            investment_score=item.investment_score,
-            strengths=item.strengths,
-            weaknesses=item.weaknesses,
-            recommendations=item.recommendations,
-            market_summary=item.market_summary,
-            created_at=item.created_at,
+
+    results = []
+    for item in analyses:
+        # Extract name and category from payload_text
+        name = "Без названия"
+        category = None
+        
+        if item.payload_text:
+            lines = item.payload_text.split("\n")
+            # Try to find specific lines
+            for line in lines:
+                line = line.strip()
+                if line.startswith("Название:"):
+                    name = line.replace("Название:", "").strip()
+                elif line.startswith("Категория:"):
+                    cat_val = line.replace("Категория:", "").strip()
+                    if cat_val and cat_val != "—":
+                        category = cat_val
+            
+            # Fallback if name wasn't found in format
+            if name == "Без названия" and lines:
+                 potential_name = lines[0].strip()
+                 # If first line looks like a title (short enough)
+                 if len(potential_name) < 100 and not potential_name.startswith("Описание:"):
+                     name = potential_name
+
+        results.append(
+            AnalysisResponse(
+                id=item.id,
+                name=name,
+                category=category,
+                investment_score=item.investment_score,
+                strengths=item.strengths,
+                weaknesses=item.weaknesses,
+                recommendations=item.recommendations,
+                market_summary=item.market_summary,
+                created_at=item.created_at,
+            )
         )
-        for item in analyses
-    ]
+    return results
 
 
 @app.post("/chat", response_model=ChatResponse)

@@ -87,6 +87,8 @@ class AnalysisCreateRequest(BaseModel):
 
 class AnalysisResponse(BaseModel):
     id: int
+    name: str = "Без названия"
+    category: str | None = None
     investment_score: int
     strengths: List[str]
     weaknesses: List[str]

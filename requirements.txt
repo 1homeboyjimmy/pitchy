@@ -17,3 +17,6 @@ redis
 prometheus_client
 fastapi-sso>=0.7.0
 pydantic-settings
+beautifulsoup4
+sentence-transformers
+langchain-text-splitters

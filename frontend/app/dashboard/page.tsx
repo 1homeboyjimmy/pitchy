@@ -22,17 +22,19 @@ import { StatsCard } from "@/components/dashboard/StatsCard";
 import { AnalysisCard } from "@/components/dashboard/AnalysisCard";
 import { GlassCard, Button } from "@/components/shared";
 import { getToken } from "@/lib/auth";
-import { postAuthJson } from "@/lib/api";
+import { postAuthJson, getAuthJson } from "@/lib/api";
 import Link from "next/link";
 
 interface AnalysisItem {
   id: number;
   name: string;
-  description: string;
+  description?: string; // Backend might not return description in list if not added to schema, but we use payload_text parsing for name/cat. 
+  // Wait, backend AnalysisResponse does NOT have description. It has market_summary etc.
+  // We should align with backend.
   category: string | null;
-  stage: string | null;
+  investment_score: number;
   created_at: string;
-  user_id: number;
+  market_summary: string;
 }
 
 interface DashboardData {
@@ -121,7 +123,7 @@ function AuthDashboard() {
         const token = getToken()!;
         const [meRes, analysisRes] = await Promise.all([
           postAuthJson<{ id: number; email: string; name: string }>("/me", {}, token),
-          postAuthJson<AnalysisItem[]>("/analysis", {}, token),
+          getAuthJson<AnalysisItem[]>("/analysis", token),
         ]);
 
         setData({
@@ -269,6 +271,14 @@ function OverviewTab({
     a.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const averageScore =
+    data.analyses.length > 0
+      ? Math.round(
+        data.analyses.reduce((acc, curr) => acc + (curr.investment_score || 0), 0) /
+        data.analyses.length
+      )
+      : 0;
+
   const stats = [
     {
       title: "Всего анализов",
@@ -278,8 +288,7 @@ function OverviewTab({
     },
     {
       title: "Средний балл",
-      value: "—",
-      subtitle: "Требуется API",
+      value: averageScore.toString(),
       icon: Star,
       color: "cyan" as const,
     },
@@ -332,10 +341,10 @@ function OverviewTab({
                 analysis={{
                   id: analysis.id.toString(),
                   name: analysis.name,
-                  score: 0,
+                  score: analysis.investment_score,
                   category: analysis.category || "Не указана",
                   date: new Date(analysis.created_at).toLocaleDateString("ru-RU"),
-                  summary: analysis.description,
+                  summary: analysis.market_summary || "Нет описания",
                 }}
                 index={index}
               />
