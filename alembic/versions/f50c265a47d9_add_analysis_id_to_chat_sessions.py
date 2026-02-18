@@ -17,10 +17,12 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column('chat_sessions', sa.Column('analysis_id', sa.Integer(), nullable=True))
-    op.create_foreign_key(None, 'chat_sessions', 'analyses', ['analysis_id'], ['id'])
+    with op.batch_alter_table('chat_sessions', schema=None) as batch_op:
+        batch_op.add_column(sa.Column('analysis_id', sa.Integer(), nullable=True))
+        batch_op.create_foreign_key('fk_chat_sessions_analyses', 'analyses', ['analysis_id'], ['id'])
 
 
 def downgrade() -> None:
-    op.drop_constraint(None, 'chat_sessions', type_='foreignkey')
-    op.drop_column('chat_sessions', 'analysis_id')
+    with op.batch_alter_table('chat_sessions', schema=None) as batch_op:
+        batch_op.drop_constraint('fk_chat_sessions_analyses', type_='foreignkey')
+        batch_op.drop_column('analysis_id')
