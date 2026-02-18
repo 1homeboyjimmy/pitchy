@@ -255,9 +255,6 @@ export function AccountPageClient() {
                     {isResending ? "Отправка..." : "Подтвердить Email"}
                   </Button>
                 )}
-                <Button size="sm" variant="secondary" onClick={() => setIsChangeEmailOpen(true)}>
-                  Сменить Email
-                </Button>
               </div>
             </GlassCard>
 
@@ -266,6 +263,14 @@ export function AccountPageClient() {
               <div className="flex items-center gap-3 mb-6">
                 <Shield className="w-5 h-5 text-emerald-400" />
                 <h3 className="text-lg font-semibold text-white">Безопасность</h3>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-xl bg-white/5 border border-white/10 mb-3">
+                <div>
+                  <p className="text-white font-medium">Email</p>
+                  <p className="text-xs text-white/40">{user?.email || "Не указан"}</p>
+                </div>
+                <Button variant="secondary" size="sm" onClick={() => setIsChangeEmailOpen(true)}>Изменить</Button>
               </div>
 
               <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-xl bg-white/5 border border-white/10">

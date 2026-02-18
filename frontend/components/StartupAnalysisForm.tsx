@@ -16,7 +16,7 @@ import {
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AnalyzeResponse, postAuthJson, postJson } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 
@@ -64,6 +64,26 @@ export function StartupAnalysisForm() {
     },
   });
 
+  // Load state from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem("startup_analysis_state");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.values) form.setValues(parsed.values);
+        if (parsed.result) setResult(parsed.result);
+      } catch (e) {
+        console.error("Failed to parse analysis state", e);
+      }
+    }
+  }, []);
+
+  // Save state to localStorage on changes
+  useEffect(() => {
+    const state = { values: form.values, result };
+    localStorage.setItem("startup_analysis_state", JSON.stringify(state));
+  }, [form.values, result]);
+
   const handleSubmit = form.onSubmit(async (values) => {
     setLoading(true);
     setResult(null);
@@ -72,16 +92,16 @@ export function StartupAnalysisForm() {
       const data = token
         ? await postAuthJson<AnalyzeResponse>("/analysis", values, token)
         : await postJson<AnalyzeResponse>("/analyze-startup", {
-            description: [
-              `Название: ${values.name}`,
-              `Категория: ${values.category || "—"}`,
-              `Стадия: ${values.stage || "—"}`,
-              values.url ? `Сайт: ${values.url}` : null,
-              `Описание: ${values.description}`,
-            ]
-              .filter(Boolean)
-              .join("\n"),
-          });
+          description: [
+            `Название: ${values.name}`,
+            `Категория: ${values.category || "—"}`,
+            `Стадия: ${values.stage || "—"}`,
+            values.url ? `Сайт: ${values.url}` : null,
+            `Описание: ${values.description}`,
+          ]
+            .filter(Boolean)
+            .join("\n"),
+        });
       setResult(data);
       notifications.show({
         title: "Анализ готов",
