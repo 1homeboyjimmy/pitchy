@@ -1,8 +1,6 @@
 import requests
-import sqlite3
-import random
-import string
-import time
+import json
+import os
 
 BASE_URL = "http://localhost:8000"
 DB_PATH = "app.db"
@@ -48,7 +46,7 @@ def main():
 
     # 3. Login
     print("Logging in...")
-    check_cookie = requests.post(f"{BASE_URL}/auth/login", json={
+    requests.post(f"{BASE_URL}/auth/login", json={
         "email": email, "password": password
     })
     
@@ -121,7 +119,8 @@ def main():
     if item.get('name') == analysis_name and item.get('category') == category:
         print("SUCCESS: Name and Category correctly retrieved from payload parsing!")
     else:
-        print(f"FAILURE: Expected name='{analysis_name}', category='{category}'. Got name='{item.get('name')}', category='{item.get('category')}'")
+        print(f"FAILURE: Expected name='{analysis_name}', category='{category}'.")
+        print(f"Got name='{item.get('name')}', category='{item.get('category')}'")
 
 if __name__ == "__main__":
     main()

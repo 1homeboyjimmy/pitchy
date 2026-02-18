@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Any
+from typing import List
 import os
 
 import chromadb
@@ -22,11 +22,14 @@ CHROMA_HTTP_PORT = int(os.getenv("CHROMA_HTTP_PORT", "8000"))
 class SentenceTransformerEmbeddingFunction(EmbeddingFunction):
     def __init__(self, model_name: str = "cointegrated/rubert-tiny2"):
         local_model_path = Path("model_data/rubert-tiny2")
-        if local_model_path.exists() and any(local_model_path.iterdir()):
+        # Check for the actual weights file, not just directory existence
+        weight_file = local_model_path / "pytorch_model.bin"
+        
+        if local_model_path.exists() and weight_file.exists():
             print(f"Loading local embedding model from {local_model_path}...")
             self.model = SentenceTransformer(str(local_model_path))
         else:
-            print(f"Loading embedding model {model_name} from HuggingFace...")
+            print(f"Loading embedding model {model_name} from HuggingFace (local weights missing)...")
             self.model = SentenceTransformer(model_name)
 
     def __call__(self, input: Documents) -> Embeddings:
@@ -145,19 +148,4 @@ def healthcheck() -> bool:
         return False
 
 
-def _build_client():
-    if CHROMA_HTTP_HOST:
-        return chromadb.HttpClient(host=CHROMA_HTTP_HOST, port=CHROMA_HTTP_PORT)
-    return chromadb.PersistentClient(path=DB_DIR)
 
-
-def _seed_collection(collection: Collection, documents: List[str]) -> None:
-    ids = [f"doc_{idx}" for idx in range(len(documents))]
-    collection.add(documents=documents, ids=ids)
-
-
-def _should_reindex() -> bool:
-    flag = os.getenv("CHROMA_REINDEX")
-    if flag is not None:
-        return flag.strip().lower() == "true"
-    return os.getenv("APP_ENV", "dev").lower() != "prod"

@@ -39,8 +39,8 @@ def download_file(filename):
     try:
         response = requests.get(url, verify=False, stream=True, timeout=30)
         if response.status_code == 404:
-             print(f"File {filename} not found (404), skipping.")
-             return
+            print(f"File {filename} not found (404), skipping.")
+            return
         response.raise_for_status()
         
         with open(local_path, "wb") as f:

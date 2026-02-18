@@ -2,7 +2,6 @@
 import requests
 from bs4 import BeautifulSoup
 import os
-import time
 from pathlib import Path
 from urllib.parse import urlparse
 

@@ -5,7 +5,7 @@ import sys
 # Add project root to path
 sys.path.append(os.getcwd())
 
-from rag import StartupRAG
+from rag import StartupRAG  # noqa: E402
 
 def test_rag():
     print("Initializing RAG (may download model)...")

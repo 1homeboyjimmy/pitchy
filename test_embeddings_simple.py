@@ -1,8 +1,5 @@
-
-import os
 import requests
 import urllib3
-from functools import partial
 
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
