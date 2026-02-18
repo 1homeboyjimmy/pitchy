@@ -56,6 +56,7 @@ def extract_text(html: str) -> str:
     text = '\n'.join(chunk for chunk in chunks if chunk)
     return text
 
+
 def scrape_and_save(url: str):
     print(f"Scraping {url}...")
     html = fetch_article(url)

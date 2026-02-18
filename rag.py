@@ -27,7 +27,7 @@ class SentenceTransformerEmbeddingFunction(EmbeddingFunction):
         local_model_path = Path("model_data/rubert-tiny2")
         # Check for the actual weights file, not just directory existence
         weight_file = local_model_path / "pytorch_model.bin"
-        
+
         if local_model_path.exists() and weight_file.exists():
             print(f"Loading local embedding model from {local_model_path}...")
             self.model = SentenceTransformer(str(local_model_path))

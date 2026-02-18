@@ -25,7 +25,7 @@ def main():
     email = f"test_{random_string()}@example.com"
     password = "Password123"
     name = "Test User"
-    
+
     print(f"Registering {email}...")
     res = requests.post(f"{BASE_URL}/auth/register", json={
         "email": email, "password": password, "name": name
@@ -51,7 +51,7 @@ def main():
     requests.post(f"{BASE_URL}/auth/login", json={
         "email": email, "password": password
     })
-    
+
     # We strictly need the token. The backend sets a cookie.
     # The frontend uses this cookie.
     # For API calls, if we use requests.Session, it handles cookies.
@@ -72,7 +72,7 @@ def main():
     analysis_name = f"Startup {random_string(5)}"
     category = "FinTech"
     description = "A revolutionary fintech app that uses AI to manage personal finances."
-    
+
     # Note: This calls YandexGPT. If it fails, we might need to mock or handle it.
     res = session.post(f"{BASE_URL}/analysis", json={
         "name": analysis_name,

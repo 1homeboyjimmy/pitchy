@@ -938,7 +938,7 @@ def list_analyses(
         # Extract name and category from payload_text
         name = "Без названия"
         category = None
-        
+
         if item.payload_text:
             lines = item.payload_text.split("\n")
             # Try to find specific lines
