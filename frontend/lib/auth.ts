@@ -8,15 +8,13 @@ export const authEvents = new EventTarget();
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(AUTH_STATE_KEY) === "1"
-    ? COOKIE_SESSION_MARKER
-    : null;
+  return window.localStorage.getItem(AUTH_STATE_KEY);
 }
 
 export function setToken(token: string) {
   if (typeof window === "undefined") return;
   if (!token) return;
-  window.localStorage.setItem(AUTH_STATE_KEY, "1");
+  window.localStorage.setItem(AUTH_STATE_KEY, token);
   authEvents.dispatchEvent(new Event("auth-change"));
 }
 
