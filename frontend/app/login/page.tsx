@@ -31,11 +31,11 @@ function LoginContent() {
     setError("");
 
     try {
-      const data = await postJson<{ token: string }>("/auth/login", {
+      const data = await postJson<{ access_token: string }>("/auth/login", {
         email,
         password,
       });
-      setToken(data.token);
+      setToken(data.access_token);
       // Force reload to ensure header updates
       const next = searchParams.get("next") || "/dashboard";
       router.push(next);
