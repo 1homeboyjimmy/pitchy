@@ -21,13 +21,16 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
     const [isLoading, setIsLoading] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const scrollViewportRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         setMessages(session.messages || []);
     }, [session]);
 
     const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        if (scrollViewportRef.current) {
+            scrollViewportRef.current.scrollTop = scrollViewportRef.current.scrollHeight;
+        }
     };
 
     useEffect(() => {
@@ -82,7 +85,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
             <div className="absolute inset-0 bg-noise opacity-30 pointer-events-none" />
 
             {/* Messages Area */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-6 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+            <div ref={scrollViewportRef} className="flex-1 overflow-y-auto p-4 space-y-6 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
                 {messages.length === 0 && (
                     <div className="flex flex-col items-center justify-center h-full text-white/30 text-center p-8">
                         <Sparkles className="w-12 h-12 mb-4 opacity-50" />
