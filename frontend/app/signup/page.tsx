@@ -11,6 +11,7 @@ import { setToken } from "@/lib/auth";
 
 function SignUpContent() {
     const searchParams = useSearchParams();
+    const router = useRouter();
     const [formData, setFormData] = useState({
         name: "",
         email: "",
@@ -55,7 +56,7 @@ function SignUpContent() {
             } else if (data.token) {
                 setToken(data.token);
                 const next = searchParams.get("next") || "/dashboard";
-                window.location.href = next;
+                router.push(next);
             }
         } catch (err) {
             setError(
@@ -78,7 +79,7 @@ function SignUpContent() {
             });
             setToken(data.access_token);
             const next = searchParams.get("next") || "/dashboard";
-            window.location.href = next;
+            router.push(next);
         } catch (err) {
             setError(
                 err instanceof Error ? err.message : "Неверный код подтверждения"

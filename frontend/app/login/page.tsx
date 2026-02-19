@@ -18,6 +18,7 @@ import { setToken } from "@/lib/auth";
 
 function LoginContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);

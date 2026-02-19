@@ -21,7 +21,6 @@ import { ChatInterface } from "@/components/dashboard/ChatInterface";
 import { GlassCard, Button } from "@/components/shared";
 import { getToken } from "@/lib/auth";
 import {
-  postAuthJson,
   getChatSessions,
   getChatSession,
   createChatSession,
