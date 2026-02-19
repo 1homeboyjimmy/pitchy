@@ -21,7 +21,7 @@ class YandexSSO(SSOBase):
             "userinfo_endpoint": "https://login.yandex.ru/info",
         }
 
-    async def openid_from_response(self, response: dict, **kwargs) -> OpenID:
+    async def openid_from_response(self, response: dict, session: dict | None = None) -> OpenID:
         return OpenID(
             email=response.get("default_email"),
             provider=self.provider,
