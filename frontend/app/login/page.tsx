@@ -37,7 +37,7 @@ function LoginContent() {
       setToken(data.token);
       // Force reload to ensure header updates
       const next = searchParams.get("next") || "/dashboard";
-      window.location.href = next;
+      router.push(next);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Ошибка входа. Попробуйте ещё раз."

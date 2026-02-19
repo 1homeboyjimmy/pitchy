@@ -6,7 +6,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Menu, X, Zap } from "lucide-react";
 import { AnimatedButton } from "../marketing/ui-custom/AnimatedButton";
-import { getToken, clearToken } from "@/lib/auth";
+import { clearToken } from "@/lib/auth";
+import { useAuth } from "@/lib/hooks/useAuth";
 import { postJson } from "@/lib/api";
 
 const navLinks = [
@@ -21,7 +22,7 @@ export function Header() {
     const pathname = usePathname();
     const router = useRouter();
 
-    const isAuthed = typeof window !== "undefined" && !!getToken();
+    const { isAuthenticated: isAuthed } = useAuth();
 
     useEffect(() => {
         const handleScroll = () => {

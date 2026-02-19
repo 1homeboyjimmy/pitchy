@@ -135,7 +135,11 @@ function DashboardContent() {
   useEffect(() => {
     const init = async () => {
       if (!isLoaded) return; // Wait for auth to load
-      if (!token) return;    // If no token, we handle it in render
+
+      if (!token) {
+        setLoading(false);
+        return;
+      }
 
       try {
         const sessionsList = await getChatSessions(token).catch(() => []);
