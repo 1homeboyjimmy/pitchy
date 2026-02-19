@@ -50,9 +50,12 @@ export function ChatInterface({
     const [saveStatus, setSaveStatus] = useState<string | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
+    const scrollViewportRef = useRef<HTMLDivElement>(null);
 
     const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        if (scrollViewportRef.current) {
+            scrollViewportRef.current.scrollTop = scrollViewportRef.current.scrollHeight;
+        }
     };
 
     useEffect(() => {
@@ -194,7 +197,7 @@ export function ChatInterface({
         <div className="w-full max-w-3xl mx-auto">
             <div className="glass-panel rounded-3xl overflow-hidden shadow-glow-primary/30">
                 {/* Messages Area */}
-                <div className="h-[400px] sm:h-[500px] overflow-y-auto p-4 sm:p-6 space-y-4">
+                <div ref={scrollViewportRef} className="h-[400px] sm:h-[500px] overflow-y-auto p-4 sm:p-6 space-y-4">
                     <AnimatePresence mode="popLayout">
                         {messages.map((message) => (
                             <motion.div
