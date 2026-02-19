@@ -37,6 +37,9 @@ if [[ -n "$runtime_health_host" ]]; then
 fi
 
 # Zero-downtime deployment:
+# 0. Login to Registry
+echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
 # 1. Pull new images
 APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" pull
 
