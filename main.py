@@ -526,7 +526,9 @@ async def auth_callback(
         # Get user details from provider
         openid_user = await sso.verify_and_process(request)
     except Exception as e:
-        logger.error(f"SSO Error ({provider}): {str(e)}", extra={
+        import traceback
+        error_details = traceback.format_exc()
+        logger.error(f"SSO Error ({provider}): {str(e)}\n{error_details}", extra={
             "query_params": str(request.query_params),
             "provider": provider
         })
@@ -581,7 +583,8 @@ async def auth_callback(
     # Create session
     token = create_access_token(user.id)
     frontend_url = os.getenv("APP_PUBLIC_URL", "http://localhost:3000")
-    redirect = RedirectResponse(url=f"{frontend_url}/dashboard", status_code=302)
+    # Pass token in URL so frontend can pick it up and save to localStorage
+    redirect = RedirectResponse(url=f"{frontend_url}/dashboard?token={token}", status_code=302)
     redirect.set_cookie(
         key=get_access_token_cookie_name(),
         value=token,

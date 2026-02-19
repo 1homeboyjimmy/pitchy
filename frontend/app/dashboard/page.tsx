@@ -72,6 +72,7 @@ import { useSearchParams } from "next/navigation";
 // ... imports ...
 
 import { useAuth } from "@/lib/hooks/useAuth";
+import { setToken } from "@/lib/auth";
 
 // ...
 
@@ -97,6 +98,16 @@ function DashboardContent() {
     const tab = searchParams.get("tab");
     if (tab === "chat") {
       setActiveTab("chat");
+    }
+
+    // Handle SSO Token
+    const urlToken = searchParams.get("token");
+    if (urlToken) {
+      setToken(urlToken);
+      // Remove token from URL
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("token");
+      router.replace(params.toString() ? `/dashboard?${params.toString()}` : "/dashboard");
     }
 
     const newChat = searchParams.get("new_chat");
