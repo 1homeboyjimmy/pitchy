@@ -217,7 +217,7 @@ export function AccountPageClient() {
                   </div>
                   <div>
                     <h2 className="text-xl font-bold text-white">{user?.name || "Пользователь"}</h2>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 mb-2">
                       <p className="text-white/50">{user?.email || "Email не указан"}</p>
                       {user?.email && !user?.email_verified && (
                         <span className="text-xs bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full border border-amber-500/20">Не подтвержден</span>
@@ -228,6 +228,17 @@ export function AccountPageClient() {
                           Подтвержден
                         </span>
                       )}
+                    </div>
+                    {/* Subscription Badge */}
+                    <div className="inline-flex items-center mt-1">
+                      <span className={`text-xs px-2.5 py-1 rounded-full border font-medium ${user?.subscription_tier === 'premium'
+                          ? 'bg-pitchy-cyan/10 text-pitchy-cyan border-pitchy-cyan/20'
+                          : user?.subscription_tier === 'pro'
+                            ? 'bg-pitchy-violet/10 text-pitchy-violet border-pitchy-violet/20'
+                            : 'bg-white/5 text-white/70 border-white/10'
+                        }`}>
+                        Тариф: {user?.subscription_tier === 'premium' ? 'Премиум' : user?.subscription_tier === 'pro' ? 'Профессиональный' : 'Бесплатный'}
+                      </span>
                     </div>
                   </div>
                 </div>

@@ -47,6 +47,7 @@ export type UserProfile = {
   is_active: boolean;
   email_verified: boolean;
   is_social?: boolean;
+  subscription_tier?: string;
   created_at: string;
 };
 
