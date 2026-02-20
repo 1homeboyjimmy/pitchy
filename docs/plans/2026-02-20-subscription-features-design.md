@@ -1,45 +1,56 @@
-# Subscription Tiers & Features Design
-Date: 2026-02-20
+# Дизайн Подписок и Функционала
+Дата: 2026-02-20
 
-## Overview
-This document outlines the business and technical design for the subscription models in the AI Startup Analyzer application, based on brainstormed features tailored for the Russian VC/Startup market.
+## Обзор
+В этом документе описана бизнес-логика и технический дизайн моделей подписки в приложении AI Startup Analyzer, с фокусом на российский венчурный рынок. 
 
-We employ a 2-tier Qualitative Feature-Gating Strategy to drive upgrades. 
+Мы используем 3-уровневую модель. Базовый тариф служит исключительно для ознакомления ("taster"), основная ценность и профессиональные инструменты раскрываются в тарифах Pro и Premium.
 
-## Tier 1: Профессиональный (Pro)
-**Target Audience**: Solo-founders, private business angels.
-**Price**: 599 ₽ / month (Recommended)
+## 1. Базовый (Free / Starter)
+**Целевая аудитория**: новые пользователи, желающие протестировать качество AI-разбора перед покупкой.
+**Цена**: Бесплатно
 
-### Limits
-- **Projects**: 5 active projects (startups/analyses).
-- **Messages**: Unlimited AI chat messages.
+### Лимиты
+- **Проекты**: 1 проект (анализ) в месяц.
+- **Сообщения**: Максимум 10 сообщений в чате на проект.
 
-### Features
-- **Base Scoring**: Core textual scoring (Investment Score, Strengths, Weaknesses, Market Summary).
-- **Standard Prompts**: System predefined instructions.
-- **Pitch Deck Builder**: Automatically generate structure and slide text from a short text description of the idea.
-- **Chat Roleplay (Pitch Simulation)**: AI acts as a hostile/skeptical investor to grill founders on their deck.
-- **Exporting Options**: 
-  - Standard PDF export (with service watermark).
-  - TXT / Clipboard export.
-- **History**: Permanent retention of all chats and analyses.
+### Функционал
+- **Базовый текстовый скоринг**: Оценка Investment Score, плюсы/минусы проекта.
+- **Ограничения**: Дополнительные функции (PDF Экспорт, Roleplay, Deck Builder и т.д.) недоступны.
 
-## Tier 2: Премиум (Premium / B2B)
-**Target Audience**: Venture Funds, Syndicates, Serial Angels.
-**Price**: 999 ₽ / month (or higher based on market feedback).
+## 2. Профессиональный (Pro)
+**Целевая аудитория**: соло-кофаундеры и частные бизнес-ангелы.
+**Цена**: 499 ₽ / месяц (Рекомендованная цена)
 
-### Limits
-- **Projects**: Unlimited.
-- **Messages**: Unlimited (subject to fair use).
+### Лимиты
+- **Проекты**: 5 активных проектов (стартапов/анализов).
+- **Сообщения**: Безлимитные сообщения в чате.
 
-### Features (All Pro features +)
-- **Custom Prompts**: Ability to inject custom analysis frameworks (e.g., Y-Combinator style, Unit Economics focus).
-- **Batch Processing**: Upload up to 20 PDFs at once and receive a consolidated cross-ranked Excel/CSV table sorting the startups by Investment Score.
-- **White-label PDF Reports**: Unbranded/custom branded PDF generation for client sharing without AI watermarks.
-- **Web-search Research Agents**: AI autonomously searches the web for Russian competitors, verifies legal entity status, finds founder news, and injects external context into the report.
-- **Dynamic Financial Analysis**: Extract financial tables from pitch decks and dynamically extrapolate metrics/generate forecasts (Runway, CAC/LTV).
+### Функционал (В порядке убывания важности)
+1. **Автоматический Pitch Deck Builder**: Генерация структуры презентации и текстов слайдов из текстового описания идеи (с учётом РФ рынка).
+2. **Имитация питча (Chat Roleplay)**: Текстовая симуляция диалога со "злым" инвестором по вашему деку.
+3. **Базовый текстовый скоринг**: Оценка Investment Score, плюсы/минусы проекта.
+4. **Бессрочная история**: Сохранение всех чатов и анализов навсегда.
+5. **Экспорт в стандартный PDF**: Выгрузка отчёта в формате PDF (с ватермаркой нашего сервиса).
+6. **Экспорт в TXT**: Копирование или загрузка результатов в текстовом формате.
+7. **Стандартные промпты**: Использование системных промптов без возможности тонкой настройки.
 
-## Open Technical Considerations
-- **LLM Routing**: Batch Processing and Web-Search Agents will require significantly more compute and orchestrating multiple YandexGPT calls or Background Workers (Celery/Redis Queue).
-- **PDF Generation**: Will require a robust frontend or backend PDF library (e.g., Playwright, reportlab) capable of handling custom logos and styling.
-- **Rate Limiting**: Needs strict Db-level constraints to track "Projects" vs "Reports".
+## 3. Премиум (Premium / B2B)
+**Целевая аудитория**: мощный B2B-инструмент для венчурных фондов, синдикатов и серийных ангелов. Экономит десятки часов на Due Diligence.
+**Цена**: 999 ₽ / месяц (или выше в зависимости от рынка).
+
+### Лимиты
+- **Проекты**: Без ограничений.
+- **Сообщения**: Безлимитные (в рамках добросовестного использования Fair Use).
+
+### Функционал (Всё из Pro, плюс:)
+1. **Web-search Research (Агенты)**: ИИ не просто читает PDF, но и гуглит конкурентов в РФ, проверяет юрлица, ищет новости о фаундерах и обогащает отчёт.
+2. **Массовый анализ (Batch Processing)**: Загрузка до 20 PDF за раз -> получение сводной Excel-таблицы с ранжированием инвест. привлекательности.
+3. **Динамический финансовый анализ**: Извлечение таблиц из PDF, экстраполяция данных, генерация прогнозов (runway, CAC/LTV).
+4. **White-label PDF Отчёты**: Брендированные отчёты с логотипом клиента, без упоминания нашего AI.
+5. **Кастомные промты**: Настройка собственных форматов разбора.
+
+## Технические задачи для реализации
+- **LLM-Оркестрация**: Batch Processing и Агенты (Web-Search) потребуют сложных вызовов YandexGPT (через background-workers или цепочки асинхронных вызовов).
+- **Генерация PDF**: Нужна библиотека (Playwright, reportlab или WeasyPrint), поддерживающая кастомные логотипы, шрифты и структуру White-label отчётов.
+- **Рейт-лимиты и биллинг**: Строгий учёт на уровне БД для разделения "Проектов" и лимитов сообщений для бесплатного тарифа; логика подписок через ЮKassa.
