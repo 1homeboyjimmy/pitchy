@@ -178,8 +178,14 @@ export default function PricingPage() {
                     <div className="mt-16 text-center max-w-2xl mx-auto space-y-4">
                         <div className="p-6 rounded-2xl bg-white/5 border border-white/10">
                             <h4 className="text-lg font-semibold text-white mb-2">Получение заказа и доставка</h4>
-                            <p className="text-sm text-white/70">
+                            <p className="text-sm text-white/70 mb-4">
                                 Все услуги предоставляются в цифровом виде. После успешной оплаты доступ к выбранному тарифу активируется в личном кабинете автоматически. Физическая доставка не предусмотрена.
+                            </p>
+                            <p className="text-xs text-white/40">
+                                Оплачивая подписку, вы соглашаетесь с{" "}
+                                <Link href="/terms" className="text-pitchy-cyan hover:underline">
+                                    Пользовательским соглашением и Офертой
+                                </Link>.
                             </p>
                         </div>
                     </div>
