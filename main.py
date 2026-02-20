@@ -58,6 +58,7 @@ from auth import (
     verify_token,
 )
 
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = (
     "Ты — эксперт по венчурным инвестициям в России. Проанализируй стартап с учётом "
@@ -849,7 +850,8 @@ def analyze_startup(payload: AnalyzeRequest) -> AnalyzeResponse:
     user_prompt = _build_user_prompt(payload.description, context_chunks)
 
     try:
-        raw_text = call_yandex_gpt(SYSTEM_PROMPT, user_prompt)
+        raw_text, usage = call_yandex_gpt(SYSTEM_PROMPT, user_prompt)
+        logger.info(f"YandexGPT token usage (anonymous /analyze): {usage}")
         data = extract_json(raw_text)
     except YandexGPTError as exc:
         status = exc.status_code or 502
@@ -886,7 +888,8 @@ def create_analysis(
     user_prompt = _build_user_prompt(description, context_chunks)
 
     try:
-        raw_text = call_yandex_gpt(SYSTEM_PROMPT, user_prompt)
+        raw_text, usage = call_yandex_gpt(SYSTEM_PROMPT, user_prompt)
+        logger.info(f"YandexGPT token usage (user {user.id} /analyze): {usage}")
         data = extract_json(raw_text)
     except YandexGPTError as exc:
         status = exc.status_code or 502
@@ -995,7 +998,8 @@ def chat(payload: ChatRequest) -> ChatResponse:
     user_prompt = _build_chat_prompt(payload.messages, context_chunks)
 
     try:
-        raw_text = call_yandex_gpt(SYSTEM_CHAT_PROMPT, user_prompt)
+        raw_text, usage = call_yandex_gpt(SYSTEM_CHAT_PROMPT, user_prompt)
+        logger.info(f"YandexGPT token usage (anonymous /chat): {usage}")
     except YandexGPTError as exc:
         status = exc.status_code or 502
         raise HTTPException(status_code=status, detail=exc.message) from exc
@@ -1110,7 +1114,8 @@ def create_chat_message(
     user_prompt = _build_chat_prompt(chat_messages, context_chunks)
 
     try:
-        raw_text = call_yandex_gpt(SYSTEM_CHAT_PROMPT, user_prompt)
+        raw_text, usage = call_yandex_gpt(SYSTEM_CHAT_PROMPT, user_prompt)
+        logger.info(f"YandexGPT token usage (session {session.id} /chat/messages): {usage}")
     except YandexGPTError as exc:
         status = exc.status_code or 502
         raise HTTPException(status_code=status, detail=exc.message) from exc
@@ -1676,7 +1681,8 @@ def _generate_interviewer_response(session: ChatSession, db: Session) -> str:
 
         final_user_prompt = f"История диалога:\n{history_text}\n\nТвоя реакция (вопрос или JSON):"
 
-        raw_response = call_yandex_gpt(system_prompt_final, final_user_prompt)
+        raw_response, usage = call_yandex_gpt(system_prompt_final, final_user_prompt)
+        logger.info(f"YandexGPT token usage (background summary): {usage}")
 
         # Check if JSON
         clean_text = raw_response.strip()
