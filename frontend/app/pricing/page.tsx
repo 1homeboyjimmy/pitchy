@@ -35,7 +35,7 @@ const plans = [
             "Бессрочная история чатов",
             "Экспорт в PDF и TXT",
         ],
-        cta: "Начать 7-дневный триал",
+        cta: "Оформить подписку",
         popular: true,
         color: "violet",
     },
@@ -164,10 +164,7 @@ export default function PricingPage() {
 
                                 <Link
                                     href={plan.popular ? "/signup" : "/contact"}
-                                    className={`block w-full text-center py-3 rounded-xl font-medium transition-all ${plan.popular
-                                        ? "btn-primary"
-                                        : "bg-white/5 text-white border border-white/10 hover:bg-white/10"
-                                        }`}
+                                    className={`block w-full text-center py-3 rounded-xl font-medium transition-all bg-white/5 text-white border border-white/10 hover:bg-white/10`}
                                 >
                                     {plan.cta}
                                 </Link>

@@ -25,10 +25,10 @@ export function AnalysisCard({ analysis, index = 0, onClick }: AnalysisCardProps
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: index * 0.1, duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-            whileHover={{ scale: 1.01, backgroundColor: "rgba(255, 255, 255, 0.06)" }}
+            whileHover={{ scale: 1.01, backgroundColor: "rgba(255, 255, 255, 0.05)" }}
             whileTap={{ scale: 0.99 }}
             onClick={onClick}
-            className="glass-card-hover p-4 sm:p-5 cursor-pointer group"
+            className="p-4 sm:p-5 cursor-pointer group rounded-2xl border border-dashed border-white/20 bg-white/5 hover:border-white/30 transition-all"
         >
             <div className="flex items-center gap-4">
                 <div className="flex-shrink-0">
@@ -69,14 +69,14 @@ export function AnalysisCard({ analysis, index = 0, onClick }: AnalysisCardProps
 
                         <span
                             className={`px-2 py-0.5 rounded-full text-xs font-medium ${analysis.score >= 90
-                                    ? "bg-emerald-500/20 text-emerald-400"
-                                    : analysis.score >= 75
-                                        ? "bg-teal-500/20 text-teal-400"
-                                        : analysis.score >= 60
-                                            ? "bg-amber-500/20 text-amber-400"
-                                            : analysis.score >= 40
-                                                ? "bg-orange-500/20 text-orange-400"
-                                                : "bg-red-500/20 text-red-400"
+                                ? "bg-emerald-500/20 text-emerald-400"
+                                : analysis.score >= 75
+                                    ? "bg-teal-500/20 text-teal-400"
+                                    : analysis.score >= 60
+                                        ? "bg-amber-500/20 text-amber-400"
+                                        : analysis.score >= 40
+                                            ? "bg-orange-500/20 text-orange-400"
+                                            : "bg-red-500/20 text-red-400"
                                 }`}
                         >
                             {analysis.score >= 90

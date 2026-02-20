@@ -215,6 +215,7 @@ function DashboardContent() {
 
   if (loading) {
     return (
+
       <Layout>
         <div className="min-h-[calc(100vh-5rem)] flex items-center justify-center">
           <Loader2 className="w-8 h-8 text-pitchy-violet animate-spin" />

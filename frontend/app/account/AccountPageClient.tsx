@@ -216,13 +216,16 @@ export function AccountPageClient() {
                     <User className="w-8 h-8 text-pitchy-violet" />
                   </div>
                   <div>
-                    <h2 className="text-xl font-bold text-white">{user?.name || "Пользователь"}</h2>
-                    <div className="flex items-center gap-2 mb-2">
+                    <div className="flex items-baseline gap-3 mb-1">
+                      <h2 className="text-xl font-bold text-white leading-none">{user?.name || "Пользователь"}</h2>
+                      <span className="text-xs text-white/40 font-medium tracking-wide">ID: {user?.id}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
                       <p className="text-white/50">{user?.email || "Email не указан"}</p>
-                      {user?.email && !user?.email_verified && (
+                      {user?.email && !(user?.email_verified || user?.is_social) && (
                         <span className="text-xs bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full border border-amber-500/20">Не подтвержден</span>
                       )}
-                      {user?.email && user?.email_verified && (
+                      {user?.email && (user?.email_verified || user?.is_social) && (
                         <span className="text-xs bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20 flex items-center gap-1">
                           <CheckIcon className="w-3 h-3" />
                           Подтвержден
@@ -232,10 +235,10 @@ export function AccountPageClient() {
                     {/* Subscription Badge */}
                     <div className="inline-flex items-center mt-1">
                       <span className={`text-xs px-2.5 py-1 rounded-full border font-medium ${user?.subscription_tier === 'premium'
-                          ? 'bg-pitchy-cyan/10 text-pitchy-cyan border-pitchy-cyan/20'
-                          : user?.subscription_tier === 'pro'
-                            ? 'bg-pitchy-violet/10 text-pitchy-violet border-pitchy-violet/20'
-                            : 'bg-white/5 text-white/70 border-white/10'
+                        ? 'bg-pitchy-cyan/10 text-pitchy-cyan border-pitchy-cyan/20'
+                        : user?.subscription_tier === 'pro'
+                          ? 'bg-pitchy-violet/10 text-pitchy-violet border-pitchy-violet/20'
+                          : 'bg-white/5 text-white/70 border-white/10'
                         }`}>
                         Тариф: {user?.subscription_tier === 'premium' ? 'Премиум' : user?.subscription_tier === 'pro' ? 'Профессиональный' : 'Бесплатный'}
                       </span>
@@ -293,9 +296,7 @@ export function AccountPageClient() {
               </div>
             </GlassCard>
 
-            <div className="mt-2 text-xs text-white/30">
-              ID: {user?.id}
-            </div>
+
           </div>
         </div>
       </div>
