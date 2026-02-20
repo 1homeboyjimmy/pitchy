@@ -633,20 +633,19 @@ def update_me(
         user.email = payload.email
         user.email_verified = False
 
-        verify_token = generate_token()
-        verify_hash = hash_token(verify_token)
+        # Generate 6-digit code
+        verify_code = "".join([str(random.randint(0, 9)) for _ in range(6)])
+        verify_hash = hash_token(verify_code)
         verify_expires = datetime.utcnow() + timedelta(hours=24)
 
         user.email_verify_token_hash = verify_hash
         user.email_verify_expires_at = verify_expires
 
         try:
-            base_url = os.getenv("APP_PUBLIC_URL", "http://localhost:3000")
-            verify_link = f"{base_url}/account?verify={verify_token}"
             send_email(
                 payload.email,
                 "Verify your new email",
-                f"Please verify your new email using this link: {verify_link}",
+                f"Your verification code is: {verify_code}\n\nEnter this code to convert your email.",
             )
         except Exception:
             logger.error("Failed to send verification email during update")
@@ -746,8 +745,9 @@ def resend_verification(
 
     # Rate limit check could be here
 
-    verify_token = generate_token()
-    verify_hash = hash_token(verify_token)
+    # Generate 6-digit code
+    verify_code = "".join([str(random.randint(0, 9)) for _ in range(6)])
+    verify_hash = hash_token(verify_code)
     verify_expires = datetime.utcnow() + timedelta(hours=24)
 
     user.email_verify_token_hash = verify_hash
@@ -755,12 +755,10 @@ def resend_verification(
     db.commit()
 
     try:
-        base_url = os.getenv("APP_PUBLIC_URL", "http://localhost:3000")
-        verify_link = f"{base_url}/account?verify={verify_token}"
         send_email(
             user.email,
             "Verify your email",
-            f"Verify your email using this link: {verify_link}",
+            f"Your verification code is: {verify_code}\n\nEnter this code to complete verification.",
         )
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to send email")
