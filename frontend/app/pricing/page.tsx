@@ -13,47 +13,46 @@ const plans = [
         description: "Для знакомства с платформой",
         icon: Sparkles,
         features: [
-            "Неограниченные базовые анализы",
-            "Оценка 0-100",
-            "5 ключевых метрик",
-            "Сохранение до 5 анализов",
+            "1 проект (анализ) в месяц",
+            "До 10 сообщений в чате",
+            "Базовый текстовый скоринг",
+            "Оценка Investment Score",
         ],
         cta: "Начать бесплатно",
         popular: false,
         color: "white",
     },
     {
-        name: "Про",
-        price: { monthly: "1 990", yearly: "19 990" },
-        description: "Для активных инвесторов",
+        name: "Профессиональный",
+        price: { monthly: "499", yearly: "4 990" },
+        description: "Для соло-фаундеров и ангелов",
         icon: Zap,
         features: [
-            "Все функции бесплатного плана",
-            "Неограниченное сохранение",
-            "Сравнение стартапов",
-            "Экспорт отчётов",
-            "Отслеживание динамики",
-            "Приоритетная поддержка",
+            "5 проектов в месяц",
+            "Безлимитные сообщения в чате",
+            "Автоматический Pitch Deck Builder",
+            "Имитация питча со злым инвестором",
+            "Бессрочная история чатов",
+            "Экспорт в PDF и TXT",
         ],
         cta: "Начать 7-дневный триал",
         popular: true,
         color: "violet",
     },
     {
-        name: "Бизнес",
-        price: { monthly: "4 990", yearly: "49 990" },
-        description: "Для команд и фондов",
+        name: "Премиум",
+        price: { monthly: "999", yearly: "9 990" },
+        description: "Для венчурных фондов и B2B",
         icon: Crown,
         features: [
-            "Все функции Про плана",
-            "До 10 пользователей",
-            "Командная аналитика",
-            "API доступ",
-            "Кастомные модели оценки",
-            "Выделенный менеджер",
-            "SLA 99.9%",
+            "Неограниченное число проектов",
+            "Web-search (Агенты) и проверка юрлиц",
+            "Массовый анализ (Batch Processing) до 20 PDF",
+            "Динамический финансовый анализ",
+            "White-label PDF Отчёты (без лого ИИ)",
+            "Кастомные промпты",
         ],
-        cta: "Связаться с нами",
+        cta: "Оформить подписку",
         popular: false,
         color: "cyan",
     },
@@ -114,8 +113,8 @@ export default function PricingPage() {
                                 transition={{ delay: i * 0.1 }}
                                 whileHover={{ scale: 1.02, y: -4 }}
                                 className={`relative glass-card-hover p-6 sm:p-8 ${plan.popular
-                                        ? "border-pitchy-violet/30 shadow-glow-primary/20"
-                                        : ""
+                                    ? "border-pitchy-violet/30 shadow-glow-primary/20"
+                                    : ""
                                     }`}
                             >
                                 {plan.popular && (
@@ -128,10 +127,10 @@ export default function PricingPage() {
                                     <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center mb-4">
                                         <plan.icon
                                             className={`w-6 h-6 ${plan.color === "violet"
-                                                    ? "text-pitchy-violet"
-                                                    : plan.color === "cyan"
-                                                        ? "text-pitchy-cyan"
-                                                        : "text-white/60"
+                                                ? "text-pitchy-violet"
+                                                : plan.color === "cyan"
+                                                    ? "text-pitchy-cyan"
+                                                    : "text-white/60"
                                                 }`}
                                         />
                                     </div>
@@ -165,8 +164,8 @@ export default function PricingPage() {
                                 <Link
                                     href={plan.popular ? "/signup" : "/contact"}
                                     className={`block w-full text-center py-3 rounded-xl font-medium transition-all ${plan.popular
-                                            ? "btn-primary"
-                                            : "bg-white/5 text-white border border-white/10 hover:bg-white/10"
+                                        ? "btn-primary"
+                                        : "bg-white/5 text-white border border-white/10 hover:bg-white/10"
                                         }`}
                                 >
                                     {plan.cta}
@@ -174,8 +173,18 @@ export default function PricingPage() {
                             </motion.div>
                         ))}
                     </div>
+
+                    <div className="mt-16 text-center max-w-2xl mx-auto space-y-4">
+                        <div className="p-6 rounded-2xl bg-white/5 border border-white/10">
+                            <h4 className="text-lg font-semibold text-white mb-2">Получение заказа и доставка</h4>
+                            <p className="text-sm text-white/70">
+                                Все услуги предоставляются в цифровом виде. После успешной оплаты доступ к выбранному тарифу активируется в личном кабинете автоматически. Физическая доставка не предусмотрена.
+                            </p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </Layout>
     );
 }
+

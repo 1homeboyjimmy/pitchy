@@ -312,12 +312,17 @@ function Footer() {
         {/* Bottom row */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-8 border-t border-white/8">
           {/* Logo + copyright */}
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-bold text-white">Pitchy</span>
-            <span className="text-sm font-bold text-pitchy-violet">.pro</span>
-            <span className="text-xs text-white/30 ml-2">
-              © {new Date().getFullYear()} Все права защищены
-            </span>
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-bold text-white">Pitchy</span>
+              <span className="text-sm font-bold text-pitchy-violet">.pro</span>
+              <span className="text-xs text-white/30 ml-2">
+                © {new Date().getFullYear()} Все права защищены
+              </span>
+            </div>
+            <div className="text-xs text-white/40">
+              НПД Фигурняк Егор Сергеевич, ИНН 400700088347
+            </div>
           </div>
 
           {/* Social Links */}
