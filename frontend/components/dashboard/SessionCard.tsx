@@ -22,7 +22,7 @@ export function SessionCard({ session, onClick }: SessionCardProps) {
             whileHover={{ scale: 1.01 }}
             whileTap={{ scale: 0.99 }}
             onClick={onClick}
-            className="glass-panel p-6 cursor-pointer hover:bg-white/5 transition-colors group relative overflow-hidden"
+            className="glass-panel rounded-2xl p-6 cursor-pointer hover:bg-white/5 transition-colors group relative overflow-hidden"
         >
             <div className="absolute inset-0 bg-gradient-to-r from-pitchy-violet/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
 

@@ -220,13 +220,13 @@ export function AccountPageClient() {
                       <h2 className="text-xl font-bold text-white leading-none">{user?.name || "Пользователь"}</h2>
                       <span className="text-xs text-white/40 font-medium tracking-wide">ID: {user?.id}</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <p className="text-white/50">{user?.email || "Email не указан"}</p>
+                    <div className="flex flex-col md:flex-row items-start md:items-center gap-2">
+                      <p className="text-white/50 truncate max-w-full">{user?.email || "Email не указан"}</p>
                       {user?.email && !(user?.email_verified || user?.is_social) && (
-                        <span className="text-xs bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full border border-amber-500/20">Не подтвержден</span>
+                        <span className="text-xs bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full border border-amber-500/20 whitespace-nowrap">Не подтвержден</span>
                       )}
                       {user?.email && (user?.email_verified || user?.is_social) && (
-                        <span className="text-xs bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20 flex items-center gap-1">
+                        <span className="text-xs bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20 flex items-center gap-1 whitespace-nowrap">
                           <CheckIcon className="w-3 h-3" />
                           Подтвержден
                         </span>
@@ -257,19 +257,20 @@ export function AccountPageClient() {
               </div>
 
               {/* Email Actions */}
-              <div className="mt-6 pt-6 border-t border-white/10 flex flex-wrap gap-3">
-                {/* Only show Add Email if social login */}
-                {user?.is_social && !user?.email && (
-                  <Button size="sm" variant="secondary" onClick={() => setIsAddEmailOpen(true)}>
-                    Добавить Email
-                  </Button>
-                )}
-                {user?.email && !user?.email_verified && (
-                  <Button size="sm" variant="secondary" onClick={handleResendVerification} disabled={isResending}>
-                    {isResending ? "Отправка..." : "Подтвердить Email"}
-                  </Button>
-                )}
-              </div>
+              {((user?.is_social && !user?.email) || (user?.email && !user?.email_verified && !user?.is_social)) && (
+                <div className="mt-6 pt-6 border-t border-white/10 flex flex-wrap gap-3">
+                  {user?.is_social && !user?.email && (
+                    <Button size="sm" variant="secondary" onClick={() => setIsAddEmailOpen(true)}>
+                      Добавить Email
+                    </Button>
+                  )}
+                  {user?.email && !user?.email_verified && !user?.is_social && (
+                    <Button size="sm" variant="secondary" onClick={handleResendVerification} disabled={isResending}>
+                      {isResending ? "Отправка..." : "Подтвердить Email"}
+                    </Button>
+                  )}
+                </div>
+              )}
             </GlassCard>
 
             {/* Security Section */}

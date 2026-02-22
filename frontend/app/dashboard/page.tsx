@@ -238,9 +238,9 @@ function DashboardContent() {
           <div className="mb-8">
             <Button
               onClick={() => setIsNewChatOpen(true)}
-              className="w-full mb-6 bg-gradient-to-r from-pitchy-violet to-purple-600 border-none hover:opacity-90 transition-opacity"
+              className="w-full mb-6 bg-gradient-to-r from-pitchy-violet to-purple-600 border-none hover:opacity-90 transition-opacity whitespace-nowrap"
             >
-              <Plus className="w-4 h-4 mr-2" />
+              <Plus className="w-4 h-4" />
               Новый анализ
             </Button>
 
