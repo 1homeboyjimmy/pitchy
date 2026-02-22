@@ -88,7 +88,7 @@ function LoginContent() {
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="pitchy-input pl-14"
+                    className="pitchy-input !pl-12"
                     placeholder="you@example.com"
                     required
                   />
@@ -105,7 +105,7 @@ function LoginContent() {
                     type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="pitchy-input pl-14 pr-11"
+                    className="pitchy-input !pl-12 pr-11"
                     placeholder="••••••••"
                     required
                   />

@@ -475,7 +475,7 @@ export function ChatInterface({
                             disabled={!inputValue.trim() || isTyping}
                             whileHover={{ scale: 1.05 }}
                             whileTap={{ scale: 0.95 }}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 p-2.5 rounded-xl bg-pitchy-violet text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all hover:shadow-glow-primary cursor-pointer"
+                            className="absolute right-2 bottom-1.5 p-2.5 rounded-xl bg-pitchy-violet text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all hover:shadow-glow-primary cursor-pointer"
                         >
                             {isTyping ? (
                                 <Loader2 className="w-4 h-4 animate-spin" />
