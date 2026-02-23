@@ -53,6 +53,8 @@ services:
     build:
       context: ./frontend
       target: dev
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
     depends_on:
       - backend
     environment:

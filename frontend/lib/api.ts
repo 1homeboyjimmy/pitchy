@@ -241,5 +241,5 @@ export type UserResponse = {
 };
 
 export async function getMe(token: string): Promise<UserResponse> {
-  return getAuthJson<UserResponse>("/auth/me", token);
+  return getAuthJson<UserResponse>("/me", token);
 }
