@@ -44,7 +44,8 @@ export function AdminView() {
     // New Promo Form
     const [newPromo, setNewPromo] = useState({ code: "", discount_percent: 10, max_uses: "" });
 
-    const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+    // Use relative paths so Next.js rewrites proxy to backend
+    const API_BASE = "";
 
     useEffect(() => {
         const fetchData = async () => {

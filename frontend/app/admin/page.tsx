@@ -101,7 +101,7 @@ export default function AdminPage() {
     if (!token) return;
     const query = rangeQuery;
     const res = await fetch(
-      `${process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"}/admin/errors/export?${query}`,
+      `/admin/errors/export?${query}`,
       {
         credentials: "include",
       }

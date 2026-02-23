@@ -15,7 +15,7 @@ export default function DevTokensPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"}/dev/emails`)
+    fetch(`/dev/emails`)
       .then((res) => res.json())
       .then((data) => setEmails(data))
       .finally(() => setLoading(false));

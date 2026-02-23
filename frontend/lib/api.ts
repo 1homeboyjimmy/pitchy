@@ -105,8 +105,8 @@ export type ChatSearchItem = {
   created_at: string;
 };
 
-const API_BASE_RAW = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-const API_BASE = API_BASE_RAW.endsWith('/') ? API_BASE_RAW.slice(0, -1) : API_BASE_RAW;
+// Use relative paths so Next.js rewrites can proxy to the backend
+const API_BASE = "";
 const COOKIE_SESSION_MARKER = "cookie-session";
 
 async function request<T>(

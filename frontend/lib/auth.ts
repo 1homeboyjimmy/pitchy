@@ -21,8 +21,7 @@ export async function clearToken() {
   if (typeof window === "undefined") return;
 
   try {
-    const base = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-    await fetch(`${base}/auth/logout`, {
+    await fetch(`/auth/logout`, {
       method: "POST",
       credentials: "include",
     });
