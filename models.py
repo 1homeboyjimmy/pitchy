@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, JSON
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, JSON, Numeric
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db import Base
-
 
 class User(Base):
     __tablename__ = "users"
@@ -24,11 +23,46 @@ class User(Base):
     email_verify_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     password_reset_token_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     password_reset_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    subscription_tier: Mapped[str] = mapped_column(String(50), default="free", server_default="free")
+    subscription_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     analyses: Mapped[list["Analysis"]] = relationship(back_populates="user")
     chat_sessions: Mapped[list["ChatSession"]] = relationship(back_populates="user")
     social_accounts: Mapped[list["SocialAccount"]] = relationship(back_populates="user")
+    payments: Mapped[list["Payment"]] = relationship(back_populates="user")
+
+
+class Payment(Base):
+    __tablename__ = "payments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    yookassa_payment_id: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    amount: Mapped[float] = mapped_column(Numeric(10, 2))
+    currency: Mapped[str] = mapped_column(String(3), default="RUB")
+    status: Mapped[str] = mapped_column(String(50), default="pending")  # pending, waiting_for_capture, succeeded, canceled
+    tier: Mapped[str] = mapped_column(String(50))  # pro, premium
+    is_annual: Mapped[bool] = mapped_column(Boolean, default=False)
+    promo_code_id: Mapped[int | None] = mapped_column(ForeignKey("promocodes.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="payments")
+    promo_code: Mapped["PromoCode | None"] = relationship(back_populates="payments")
+
+class PromoCode(Base):
+    __tablename__ = "promocodes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(50), unique=True, index=True)
+    discount_percent: Mapped[int] = mapped_column(Integer)
+    max_uses: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    current_uses: Mapped[int] = mapped_column(Integer, default=0)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    payments: Mapped[list["Payment"]] = relationship(back_populates="promo_code")
 
 
 class SocialAccount(Base):

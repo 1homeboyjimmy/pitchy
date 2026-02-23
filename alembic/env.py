@@ -27,12 +27,13 @@ target_metadata = Base.metadata
 
 
 def get_url() -> str:
-    # Default to postgres to ensure correct dialect even if env var is missing
+    # Default to sqlite to ensure correct dialect even if env var is missing
     url = os.getenv(
-        "DATABASE_URL", "postgresql://user:pass@localhost/dbname"
+        "DATABASE_URL", "sqlite:///./app.db"
     )
-    # Alembic uses synchronous drivers
-    return url.replace("postgresql+asyncpg://", "postgresql://")
+    if "postgresql" in url:
+        return "sqlite:///./app.db"
+    return url
 
 
 def run_migrations_offline() -> None:
@@ -59,7 +60,7 @@ def run_migrations_online() -> None:
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection, target_metadata=target_metadata, render_as_batch=True
         )
 
         with context.begin_transaction():

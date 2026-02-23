@@ -12,6 +12,8 @@ export type AnalysisItem = AnalyzeResponse & {
   created_at: string;
 };
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+
 export type AnalysisResult = {
   name: string;
   score: number;
@@ -208,4 +210,36 @@ export async function createChatSession(data: ChatSessionCreateRequest, token: s
 
 export async function sendChatMessage(sessionId: number, content: string, token: string): Promise<ChatMessageResponse> {
   return postAuthJson<ChatMessageResponse>(`/chat/sessions/${sessionId}/messages`, { content }, token);
+}
+
+export async function createPayment(tier: string, is_annual: boolean, promo_code: string | null, token: string): Promise<{ confirmation_url: string }> {
+  return postAuthJson<{ confirmation_url: string }>("/billing/create-payment", { tier, is_annual, promo_code }, token);
+}
+
+export async function validatePromoCode(code: string): Promise<{ valid: boolean, discount_percent: number, detail?: string }> {
+  const response = await fetch(`${API_URL}/billing/promo/validate`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ code }),
+  });
+  return response.json();
+}
+
+export type UserResponse = {
+  id: number;
+  email: string;
+  name: string;
+  is_admin: boolean;
+  is_active: boolean;
+  email_verified: boolean;
+  created_at: string;
+  is_social: boolean;
+  subscription_tier: string;
+  subscription_expires_at: string | null;
+};
+
+export async function getMe(token: string): Promise<UserResponse> {
+  return getAuthJson<UserResponse>("/auth/me", token);
 }

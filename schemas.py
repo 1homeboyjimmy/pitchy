@@ -38,6 +38,8 @@ class UserResponse(BaseModel):
     email_verified: bool
     created_at: datetime
     is_social: bool = False
+    subscription_tier: str = "free"
+    subscription_expires_at: datetime | None = None
 
     class Config:
         from_attributes = True
@@ -147,3 +149,21 @@ class PasswordChangeRequest(BaseModel):
         if not any(ch.isalpha() for ch in value) or not any(ch.isdigit() for ch in value):
             raise ValueError("Password must contain letters and numbers")
         return value
+
+class PromoCodeCreate(BaseModel):
+    code: str = Field(..., min_length=2, max_length=50)
+    discount_percent: int = Field(..., ge=1, le=100)
+    max_uses: int | None = None
+    expires_at: datetime | None = None
+
+class PromoCodeResponse(BaseModel):
+    id: int
+    code: str
+    discount_percent: int
+    max_uses: int | None
+    current_uses: int
+    expires_at: datetime | None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

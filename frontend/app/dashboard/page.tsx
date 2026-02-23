@@ -12,12 +12,14 @@ import {
   Lock,
   ChevronRight,
   X,
-  Loader2
+  Loader2,
+  Shield
 } from "lucide-react";
 import Layout from "@/components/Layout";
 // StatsCard unused
 import { SessionCard } from "@/components/dashboard/SessionCard";
 import { ChatInterface } from "@/components/dashboard/ChatInterface";
+import { AdminView } from "@/components/dashboard/AdminView";
 import { GlassCard, Button } from "@/components/shared";
 import { getToken } from "@/lib/auth";
 import {
@@ -25,7 +27,9 @@ import {
   getChatSession,
   createChatSession,
   ChatSessionResponse,
-  ChatSessionDetailResponse
+  ChatSessionDetailResponse,
+  getMe,
+  UserResponse
 } from "@/lib/api";
 import Link from "next/link";
 
@@ -85,7 +89,7 @@ function DashboardContent() {
   const [sessions, setSessions] = useState<ChatSessionResponse[]>([]);
   const [activeSession, setActiveSession] = useState<ChatSessionDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  // userProfile was unused, removing logic related to it to fix lint
+  const [userProfile, setUserProfile] = useState<UserResponse | null>(null);
 
   // New Chat Modal State
   const [isNewChatOpen, setIsNewChatOpen] = useState(false);
@@ -152,8 +156,12 @@ function DashboardContent() {
       }
 
       try {
-        const sessionsList = await getChatSessions(token).catch(() => []);
+        const [sessionsList, user] = await Promise.all([
+          getChatSessions(token).catch(() => []),
+          getMe(token).catch(() => null)
+        ]);
         setSessions(sessionsList);
+        setUserProfile(user);
       } catch (e) {
         console.error(e);
       } finally {
@@ -265,6 +273,25 @@ function DashboardContent() {
                 {item.label}
               </button>
             ))}
+
+            {userProfile?.is_admin && (
+              <>
+                <div className="my-4 border-t border-white/10" />
+                <p className="text-xs text-pitchy-cyan uppercase tracking-wider mb-2 px-3 flex items-center gap-2">
+                  <Shield className="w-3 h-3" /> Управление
+                </p>
+                <button
+                  onClick={() => setActiveTab("admin")}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-left ${activeTab === "admin"
+                    ? "bg-pitchy-cyan/20 text-pitchy-cyan border border-pitchy-cyan/30"
+                    : "text-white/50 hover:text-pitchy-cyan hover:bg-white/5"
+                    }`}
+                >
+                  <Shield className="w-4 h-4" />
+                  Админ-панель
+                </button>
+              </>
+            )}
           </div>
 
           <div className="mt-auto">
@@ -289,10 +316,12 @@ function DashboardContent() {
                 {activeTab === "overview" && "Обзор проектов"}
                 {activeTab === "chat" && (activeSession ? activeSession.title : "Чат с аналитиком")}
                 {activeTab === "analytics" && "Статистика"}
+                {activeTab === "admin" && "Админ-панель"}
               </h1>
               <p className="text-white/40 text-sm">
                 {activeTab === "overview" && "Управляйте вашими анализами и запускайте новые."}
                 {activeTab === "chat" && "Интерактивный анализ вашего стартапа."}
+                {activeTab === "admin" && "Управление пользователями, промокодами и аналитикой платформы."}
               </p>
             </div>
             {/* Mobile Menu Toggle could go here if needed */}
@@ -369,8 +398,20 @@ function DashboardContent() {
             {activeTab === "analytics" && (
               <div key="analytics" className="text-center py-20 text-white/30">
                 <BarChart3 className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                <p>Раздел аналитики в разработке.</p>
+                <p>Раздел персональной аналитики в разработке.</p>
               </div>
+            )}
+
+            {activeTab === "admin" && userProfile?.is_admin && (
+              <motion.div
+                key="admin"
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                className="h-full"
+              >
+                <AdminView />
+              </motion.div>
             )}
           </AnimatePresence>
         </main>

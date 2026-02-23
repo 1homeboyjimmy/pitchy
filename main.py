@@ -44,6 +44,7 @@ from schemas import (
 )
 from email_utils import get_dev_emails, send_email
 from sso import yandex_sso, github_sso
+import billing
 from auth import (
     create_access_token,
     get_access_token_cookie_name,
@@ -111,6 +112,7 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="Startup Analyzer", lifespan=lifespan)
+app.include_router(billing.router)
 
 allowed_origins = [
     origin.strip()
@@ -613,6 +615,8 @@ def me(user: User = Depends(get_current_user)) -> UserResponse:
         email_verified=user.email_verified,
         created_at=user.created_at,
         is_social=is_social,
+        subscription_tier=user.subscription_tier,
+        subscription_expires_at=user.subscription_expires_at,
     )
 
 
@@ -665,6 +669,8 @@ def update_me(
         email_verified=user.email_verified,
         created_at=user.created_at,
         is_social=is_social,
+        subscription_tier=user.subscription_tier,
+        subscription_expires_at=user.subscription_expires_at,
     )
 
 
@@ -863,12 +869,43 @@ def analyze_startup(payload: AnalyzeRequest) -> AnalyzeResponse:
         raise HTTPException(status_code=502, detail="Invalid analysis schema from YandexGPT") from exc
 
 
+def _check_subscription_limits(user: User, db: Session, resource_type: str, session_id: int = None):
+    tier = "free"
+    if user.subscription_tier in ("pro", "premium"):
+        if not user.subscription_expires_at or user.subscription_expires_at > datetime.utcnow():
+            tier = user.subscription_tier
+
+    if tier == "premium":
+        return
+        
+    if resource_type == "project":
+        analyses_count = db.query(Analysis).filter(Analysis.user_id == user.id).count()
+        chat_sessions_count = db.query(ChatSession).filter(ChatSession.user_id == user.id, ChatSession.analysis_id == None).count()
+        total_projects = analyses_count + chat_sessions_count
+        
+        if tier == "free" and total_projects >= 1:
+            raise HTTPException(status_code=403, detail="Free tier limit: maximum 1 project. Please upgrade your subscription.")
+        elif tier == "pro" and total_projects >= 5:
+            raise HTTPException(status_code=403, detail="Pro tier limit: maximum 5 projects. Please upgrade your subscription.")
+            
+    elif resource_type == "message":
+        if tier == "free" and session_id:
+            msg_count = db.query(DbChatMessage).filter(
+                DbChatMessage.session_id == session_id,
+                DbChatMessage.role == "user"
+            ).count()
+            if msg_count >= 10:
+                raise HTTPException(status_code=403, detail="Free tier limit: maximum 10 messages per chat session. Please upgrade your subscription.")
+
+
 @app.post("/analysis", response_model=AnalysisResponse)
 def create_analysis(
     payload: AnalysisCreateRequest,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> AnalysisResponse:
+    _check_subscription_limits(user, db, "project")
+
     description_parts = [
         f"Название: {payload.name}",
         f"Категория: {payload.category or '—'}",
@@ -1178,6 +1215,8 @@ def admin_users(
             is_active=u.is_active,
             email_verified=u.email_verified,
             created_at=u.created_at,
+            subscription_tier=u.subscription_tier,
+            subscription_expires_at=u.subscription_expires_at,
         )
         for u in users
     ]
@@ -1262,7 +1301,9 @@ def admin_analytics(
 
     total_users = _count(User, User.created_at)
     total_analyses = _count(Analysis, Analysis.created_at)
+    total_analyses_anonymous = db.query(Analysis).filter(Analysis.created_at.between(start_dt, end_dt), Analysis.user_id == None).count()
     total_sessions = _count(ChatSession, ChatSession.created_at)
+    total_sessions_anonymous = db.query(ChatSession).filter(ChatSession.created_at.between(start_dt, end_dt), ChatSession.user_id == None).count()
     total_messages = _count(DbChatMessage, DbChatMessage.created_at)
     total_errors = _count(ErrorLog, ErrorLog.created_at)
 
@@ -1298,7 +1339,9 @@ def admin_analytics(
         "totals": {
             "users": total_users,
             "analyses": total_analyses,
+            "analyses_anon": total_analyses_anonymous,
             "chat_sessions": total_sessions,
+            "chat_sessions_anon": total_sessions_anonymous,
             "chat_messages": total_messages,
             "errors": total_errors,
         },
@@ -1429,6 +1472,52 @@ def admin_errors_export(
     return StreamingResponse(_iter(), media_type="text/csv")
 
 
+@app.get("/admin/promocodes", response_model=list[PromoCodeResponse])
+def get_promocodes(
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> list[PromoCodeResponse]:
+    promos = db.query(PromoCode).order_by(PromoCode.created_at.desc()).all()
+    return promos
+
+
+@app.post("/admin/promocodes", response_model=PromoCodeResponse)
+def create_promocode(
+    payload: PromoCodeCreate,
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> PromoCodeResponse:
+    exists = db.query(PromoCode).filter(PromoCode.code == payload.code.upper()).first()
+    if exists:
+        raise HTTPException(status_code=400, detail="Promo code already exists")
+        
+    promo = PromoCode(
+        code=payload.code.upper(),
+        discount_percent=payload.discount_percent,
+        max_uses=payload.max_uses,
+        expires_at=payload.expires_at,
+    )
+    db.add(promo)
+    db.commit()
+    db.refresh(promo)
+    return promo
+
+
+@app.delete("/admin/promocodes/{promo_id}")
+def delete_promocode(
+    promo_id: int,
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> dict:
+    promo = db.query(PromoCode).filter(PromoCode.id == promo_id).first()
+    if not promo:
+        raise HTTPException(status_code=404, detail="Promo code not found")
+        
+    db.delete(promo)
+    db.commit()
+    return {"status": "ok"}
+
+
 SYSTEM_INTERVIEW_PROMPT = """
 Ты — профессиональный венчурный аналитик. Твоя цель — провести интервью с основателем стартапа,
 чтобы собрать полную информацию для глубокого анализа.
@@ -1458,6 +1547,8 @@ def create_chat_session(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ChatSessionDetailResponse:
+    _check_subscription_limits(user, db, "project")
+
     session = ChatSession(
         user_id=user.id,
         title=payload.title,
@@ -1593,6 +1684,8 @@ def send_chat_message(
     )
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
+
+    _check_subscription_limits(user, db, "message", session.id)
 
     # 1. Save User Message
     user_msg = DbChatMessage(

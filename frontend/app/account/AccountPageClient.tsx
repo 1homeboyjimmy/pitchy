@@ -242,6 +242,11 @@ export function AccountPageClient() {
                         }`}>
                         Тариф: {user?.subscription_tier === 'premium' ? 'Премиум' : user?.subscription_tier === 'pro' ? 'Профессиональный' : 'Бесплатный'}
                       </span>
+                      {user?.is_admin && (
+                        <span className="text-xs px-2.5 py-1 rounded-full border font-medium bg-amber-500/10 text-amber-500 border-amber-500/20 ml-2">
+                          Администратор
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>

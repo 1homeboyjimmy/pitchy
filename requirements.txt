@@ -20,3 +20,5 @@ pydantic-settings
 beautifulsoup4
 sentence-transformers
 langchain-text-splitters
+python-dateutil
+yookassa

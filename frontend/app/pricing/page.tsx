@@ -59,8 +59,81 @@ const plans = [
     },
 ];
 
+import { createPayment } from "@/lib/api";
+import { useAuth } from "@/lib/hooks/useAuth";
+import { useRouter } from "next/navigation";
+
 export default function PricingPage() {
     const [isYearly, setIsYearly] = useState(false);
+    const [isLoading, setIsLoading] = useState<string | null>(null);
+    const [promoCode, setPromoCode] = useState("");
+    const [appliedPromo, setAppliedPromo] = useState<{ code: string, discount: number } | null>(null);
+    const [promoError, setPromoError] = useState("");
+    const [isCheckingPromo, setIsCheckingPromo] = useState(false);
+    const { isAuthenticated, token } = useAuth();
+    const router = useRouter();
+
+    const handleSubscribe = async (planName: string) => {
+        const tierMap: Record<string, string> = {
+            "Бесплатный": "free",
+            "Профессиональный": "pro",
+            "Премиум": "premium"
+        };
+        const tier = tierMap[planName];
+
+        if (tier === "free") {
+            router.push(isAuthenticated ? "/dashboard" : "/signup");
+            return;
+        }
+
+        if (!isAuthenticated || !token) {
+            router.push('/login?redirect=/pricing');
+            return;
+        }
+
+        try {
+            setIsLoading(planName);
+            const res = await createPayment(tier, isYearly, appliedPromo?.code || null, token);
+            if (res.confirmation_url) {
+                window.location.href = res.confirmation_url;
+            }
+        } catch (e) {
+            console.error("Payment error", e);
+            alert("Ошибка при создании платежа. Попробуйте еще раз.");
+        } finally {
+            setIsLoading(null);
+        }
+    };
+
+    const handleApplyPromo = async () => {
+        if (!promoCode.trim()) return;
+
+        setIsCheckingPromo(true);
+        setPromoError("");
+        setAppliedPromo(null);
+
+        try {
+            // Use explicit fetch since it might not require auth yet (we'll authorize on subscribe)
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'}/billing/promo/validate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code: promoCode.trim() })
+            });
+            const data = await res.json();
+
+            if (data.valid) {
+                setAppliedPromo({ code: promoCode.trim(), discount: data.discount_percent });
+                setPromoCode("");
+            } else {
+                setPromoError(data.detail || "Неверный промокод");
+            }
+        } catch (err) {
+            console.error(err);
+            setPromoError("Ошибка проверки кода");
+        } finally {
+            setIsCheckingPromo(false);
+        }
+    };
 
     return (
         <Layout>
@@ -103,6 +176,35 @@ export default function PricingPage() {
                                 <span className="text-xs text-emerald-400 ml-1">-17%</span>
                             </span>
                         </div>
+
+                        {/* Promo Code Input */}
+                        <div className="max-w-md mx-auto mt-8 mb-12">
+                            <div className="flex items-center gap-2">
+                                <input
+                                    type="text"
+                                    placeholder="У меня есть промокод"
+                                    value={promoCode}
+                                    onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+                                    className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-pitchy-violet"
+                                    disabled={isCheckingPromo}
+                                />
+                                <button
+                                    onClick={handleApplyPromo}
+                                    disabled={!promoCode.trim() || isCheckingPromo}
+                                    className="px-6 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl font-medium transition-colors disabled:opacity-50"
+                                >
+                                    {isCheckingPromo ? "..." : "Применить"}
+                                </button>
+                            </div>
+                            {promoError && (
+                                <p className="text-red-400 text-sm mt-2 text-left">{promoError}</p>
+                            )}
+                            {appliedPromo && (
+                                <p className="text-emerald-400 text-sm mt-2 text-left">
+                                    Промокод {appliedPromo.code} применен! Скидка {appliedPromo.discount}%
+                                </p>
+                            )}
+                        </div>
                     </motion.div>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -142,12 +244,30 @@ export default function PricingPage() {
                                 </div>
 
                                 <div className="mb-6">
-                                    <span className="text-4xl font-bold text-white font-mono-numbers">
-                                        ₽{isYearly ? plan.price.yearly : plan.price.monthly}
-                                    </span>
-                                    <span className="text-white/40 ml-1">
-                                        /{isYearly ? "год" : "мес"}
-                                    </span>
+                                    {appliedPromo && plan.name !== "Бесплатный" ? (
+                                        <div className="flex flex-col">
+                                            <span className="text-xl font-bold text-white/40 line-through font-mono-numbers">
+                                                ₽{isYearly ? plan.price.yearly : plan.price.monthly}
+                                            </span>
+                                            <div className="flex items-baseline">
+                                                <span className="text-4xl font-bold text-emerald-400 font-mono-numbers">
+                                                    ₽{Math.round(parseInt((isYearly ? plan.price.yearly : plan.price.monthly).replace(/\s/g, '')) * (100 - appliedPromo.discount) / 100)}
+                                                </span>
+                                                <span className="text-white/40 ml-1">
+                                                    /{isYearly ? "год" : "мес"}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <span className="text-4xl font-bold text-white font-mono-numbers">
+                                                ₽{isYearly ? plan.price.yearly : plan.price.monthly}
+                                            </span>
+                                            <span className="text-white/40 ml-1">
+                                                /{isYearly ? "год" : "мес"}
+                                            </span>
+                                        </>
+                                    )}
                                 </div>
 
                                 <ul className="space-y-3 mb-8">
@@ -162,12 +282,13 @@ export default function PricingPage() {
                                     ))}
                                 </ul>
 
-                                <Link
-                                    href={plan.popular ? "/signup" : "/contact"}
-                                    className={`block w-full text-center py-3 rounded-xl font-medium transition-all bg-white/5 text-white border border-white/10 hover:bg-white/10`}
+                                <button
+                                    onClick={() => handleSubscribe(plan.name)}
+                                    disabled={isLoading === plan.name}
+                                    className={`block w-full text-center py-3 rounded-xl font-medium transition-all bg-white/5 text-white border border-white/10 hover:bg-white/10 disabled:opacity-50`}
                                 >
-                                    {plan.cta}
-                                </Link>
+                                    {isLoading === plan.name ? "Загрузка..." : plan.cta}
+                                </button>
                             </motion.div>
                         ))}
                     </div>
