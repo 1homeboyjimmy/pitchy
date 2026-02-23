@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 class YandexLockbox:
     def __init__(self):
         self.api_key = os.getenv("YC_API_KEY") # We can use the same API key used for YandexGPT 
-        self.secret_id = os.getenv("YOOKASSA_LOCKBOX_SECRET_ID")
+        self.secret_id = os.getenv("YC_LOCKBOX_SECRET_ID")
         self.base_url = "https://payload.lockbox.api.cloud.yandex.net/lockbox/v1/secrets"
         
         # Cache secrets in memory to avoid requesting them on every payment
@@ -19,7 +19,7 @@ class YandexLockbox:
             return self._cached_secrets
 
         if not self.api_key or not self.secret_id:
-            logger.warning("YC_API_KEY or YOOKASSA_LOCKBOX_SECRET_ID is missing. Skipping Lockbox.")
+            logger.warning("YC_API_KEY or YC_LOCKBOX_SECRET_ID is missing. Skipping Lockbox.")
             return {}
 
         headers = {

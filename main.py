@@ -16,6 +16,7 @@ from sqlalchemy import text
 from dotenv import load_dotenv
 
 import rag
+from lockbox import lockbox
 from metrics import ERROR_COUNT, REQUEST_COUNT, REQUEST_LATENCY
 from observability import configure_logging
 from redis_client import get_redis
@@ -103,6 +104,16 @@ class ChatResponse(BaseModel):
 
 
 load_dotenv()
+
+# Inject Lockbox secrets into environment if they exist
+try:
+    _lb_secrets = lockbox.get_secrets()
+    for k, v in _lb_secrets.items():
+        if k not in os.environ:
+            os.environ[k] = v
+except Exception as e:
+    logging.getLogger("app").warning(f"Failed to load Lockbox secrets on startup: {e}")
+
 configure_logging()
 logger = logging.getLogger("app")
 
