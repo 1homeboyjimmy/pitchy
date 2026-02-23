@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Users, Tag, BarChart2, Plus, Trash2, Shield, Loader2 } from "lucide-react";
+import { Users, Tag, BarChart2, Plus, Trash2, Shield, Loader2, CreditCard } from "lucide-react";
 import { Button, GlassCard } from "@/components/shared";
 import { getToken } from "@/lib/auth";
 
@@ -34,12 +34,28 @@ type AnalyticsData = {
     };
 };
 
+type Subscription = {
+    user_id: number;
+    email: string;
+    name: string;
+    subscription_tier: string;
+    subscription_expires_at: string | null;
+    is_active: boolean;
+    last_payment_date: string | null;
+    last_payment_amount: number | null;
+    last_payment_status: string | null;
+    promo_code_used: string | null;
+    total_payments: number;
+    total_spent: number;
+};
+
 export function AdminView() {
-    const [activeTab, setActiveTab] = useState<"analytics" | "promocodes" | "users">("users");
+    const [activeTab, setActiveTab] = useState<"analytics" | "promocodes" | "users" | "subscriptions">("users");
     const [loading, setLoading] = useState(true);
     const [promocodes, setPromocodes] = useState<PromoCode[]>([]);
     const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
     const [users, setUsers] = useState<User[]>([]);
+    const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
 
     // New Promo Form
     const [newPromo, setNewPromo] = useState({ code: "", discount_percent: 10, max_uses: "" });
@@ -69,6 +85,11 @@ export function AdminView() {
                         headers: { "Authorization": `Bearer ${token}` }
                     });
                     if (res.ok) setUsers(await res.json());
+                } else if (activeTab === "subscriptions") {
+                    const res = await fetch(`${API_BASE}/admin/subscriptions`, {
+                        headers: { "Authorization": `Bearer ${token}` }
+                    });
+                    if (res.ok) setSubscriptions(await res.json());
                 }
             } catch (e) {
                 console.error("Admin fetch error", e);
@@ -184,6 +205,13 @@ export function AdminView() {
                         }`}
                 >
                     <BarChart2 className="w-4 h-4" /> Аналитика платформы
+                </button>
+                <button
+                    onClick={() => setActiveTab("subscriptions")}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${activeTab === "subscriptions" ? "bg-pitchy-violet text-white" : "text-white/50 hover:text-white"
+                        }`}
+                >
+                    <CreditCard className="w-4 h-4" /> Подписки
                 </button>
             </div>
 
@@ -351,6 +379,76 @@ export function AdminView() {
                                     </tbody>
                                 </table>
                             </div>
+                        </div>
+                    )}
+
+                    {activeTab === "subscriptions" && (
+                        <div className="space-y-4">
+                            <GlassCard hover={false} className="p-6">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className="text-lg font-bold text-white">Платные пользователи</h3>
+                                    <span className="text-sm text-white/40">{subscriptions.length} подписок</span>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm">
+                                        <thead>
+                                            <tr className="text-white/40 border-b border-white/10">
+                                                <th className="text-left px-4 py-3">Email</th>
+                                                <th className="text-left px-4 py-3">Имя</th>
+                                                <th className="text-left px-4 py-3">Тариф</th>
+                                                <th className="text-left px-4 py-3">Статус</th>
+                                                <th className="text-left px-4 py-3">Окончание</th>
+                                                <th className="text-left px-4 py-3">Платежи</th>
+                                                <th className="text-left px-4 py-3">Сумма</th>
+                                                <th className="text-left px-4 py-3">Промокод</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {subscriptions.map((sub) => (
+                                                <tr key={sub.user_id} className="border-b border-white/5 hover:bg-white/5">
+                                                    <td className="px-4 py-3 text-white/80">{sub.email}</td>
+                                                    <td className="px-4 py-3 text-white/60">{sub.name}</td>
+                                                    <td className="px-4 py-3">
+                                                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${sub.subscription_tier === "premium"
+                                                                ? "bg-amber-500/20 text-amber-400"
+                                                                : "bg-pitchy-violet/20 text-pitchy-violet"
+                                                            }`}>
+                                                            {sub.subscription_tier.toUpperCase()}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${sub.is_active
+                                                                ? "bg-green-500/20 text-green-400"
+                                                                : "bg-red-500/20 text-red-400"
+                                                            }`}>
+                                                            {sub.is_active ? "Активна" : "Истекла"}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-4 py-3 text-white/60">
+                                                        {sub.subscription_expires_at
+                                                            ? new Date(sub.subscription_expires_at).toLocaleDateString("ru-RU")
+                                                            : "—"}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-white/60">{sub.total_payments}</td>
+                                                    <td className="px-4 py-3 text-white/80">{sub.total_spent.toFixed(0)} ₽</td>
+                                                    <td className="px-4 py-3">
+                                                        {sub.promo_code_used ? (
+                                                            <span className="px-2 py-0.5 rounded-full text-xs bg-blue-500/20 text-blue-400">{sub.promo_code_used}</span>
+                                                        ) : (
+                                                            <span className="text-white/20">—</span>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                            {subscriptions.length === 0 && (
+                                                <tr>
+                                                    <td colSpan={8} className="px-6 py-8 text-center text-white/30">Нет платных пользователей</td>
+                                                </tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </GlassCard>
                         </div>
                     )}
                 </motion.div>

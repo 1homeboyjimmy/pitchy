@@ -22,7 +22,8 @@ from observability import configure_logging
 from redis_client import get_redis
 from yandex_gpt_client import YandexGPTError, call_yandex_gpt, extract_json
 from db import SessionLocal, get_db
-from models import Analysis, ChatMessage as DbChatMessage, ChatSession, ErrorLog, User, PromoCode
+from models import Analysis, ChatMessage as DbChatMessage, ChatSession, ErrorLog, User, PromoCode, Payment
+from sqlalchemy import func as sa_func
 from schemas import (
     AnalysisCreateRequest,
     AnalysisResponse,
@@ -44,6 +45,8 @@ from schemas import (
     EmailCodeVerifyRequest,
     PromoCodeCreate,
     PromoCodeResponse,
+    PaymentResponse,
+    SubscriptionResponse,
 )
 from email_utils import get_dev_emails, send_email
 from sso import yandex_sso, github_sso
@@ -1529,6 +1532,95 @@ def delete_promocode(
     db.delete(promo)
     db.commit()
     return {"status": "ok"}
+
+
+@app.get("/admin/subscriptions", response_model=list[SubscriptionResponse])
+def admin_subscriptions(
+    tier: str | None = None,
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """List all users with active or expired subscriptions."""
+    query = db.query(User).filter(User.subscription_tier != "free")
+    if tier and tier != "all":
+        query = query.filter(User.subscription_tier == tier)
+
+    users = query.order_by(User.subscription_expires_at.desc().nullslast()).all()
+    result = []
+    for u in users:
+        # Get the latest succeeded payment
+        last_payment = (
+            db.query(Payment)
+            .filter(Payment.user_id == u.id, Payment.status == "succeeded")
+            .order_by(Payment.created_at.desc())
+            .first()
+        )
+        # Count total payments and total amount spent
+        totals = (
+            db.query(
+                sa_func.count(Payment.id).label("count"),
+                sa_func.coalesce(sa_func.sum(Payment.amount), 0).label("total"),
+            )
+            .filter(Payment.user_id == u.id, Payment.status == "succeeded")
+            .first()
+        )
+
+        promo_code_used = None
+        if last_payment and last_payment.promo_code:
+            promo_code_used = last_payment.promo_code.code
+
+        now = datetime.utcnow()
+        is_active = (
+            u.subscription_expires_at is not None
+            and u.subscription_expires_at > now
+        )
+
+        result.append(SubscriptionResponse(
+            user_id=u.id,
+            email=u.email,
+            name=u.name,
+            subscription_tier=u.subscription_tier,
+            subscription_expires_at=u.subscription_expires_at,
+            is_active=is_active,
+            last_payment_date=last_payment.created_at if last_payment else None,
+            last_payment_amount=float(last_payment.amount) if last_payment else None,
+            last_payment_status=last_payment.status if last_payment else None,
+            promo_code_used=promo_code_used,
+            total_payments=totals.count if totals else 0,
+            total_spent=float(totals.total) if totals else 0,
+        ))
+    return result
+
+
+@app.get("/admin/payments", response_model=list[PaymentResponse])
+def admin_payments(
+    status: str | None = None,
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Full list of all payments."""
+    query = db.query(Payment).order_by(Payment.created_at.desc())
+    if status:
+        query = query.filter(Payment.status == status)
+    payments = query.limit(200).all()
+    result = []
+    for p in payments:
+        result.append(PaymentResponse(
+            id=p.id,
+            user_id=p.user_id,
+            user_email=p.user.email if p.user else "unknown",
+            user_name=p.user.name if p.user else "unknown",
+            yookassa_payment_id=p.yookassa_payment_id,
+            amount=float(p.amount),
+            currency=p.currency,
+            status=p.status,
+            tier=p.tier,
+            is_annual=p.is_annual,
+            promo_code=p.promo_code.code if p.promo_code else None,
+            created_at=p.created_at,
+            updated_at=p.updated_at,
+        ))
+    return result
 
 
 SYSTEM_INTERVIEW_PROMPT = """

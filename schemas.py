@@ -167,3 +167,35 @@ class PromoCodeResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class PaymentResponse(BaseModel):
+    id: int
+    user_id: int
+    user_email: str
+    user_name: str
+    yookassa_payment_id: str
+    amount: float
+    currency: str
+    status: str
+    tier: str
+    is_annual: bool
+    promo_code: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class SubscriptionResponse(BaseModel):
+    user_id: int
+    email: str
+    name: str
+    subscription_tier: str
+    subscription_expires_at: datetime | None
+    is_active: bool
+    last_payment_date: datetime | None = None
+    last_payment_amount: float | None = None
+    last_payment_status: str | None = None
+    promo_code_used: str | None = None
+    total_payments: int = 0
+    total_spent: float = 0
+
