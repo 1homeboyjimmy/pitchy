@@ -886,6 +886,9 @@ def analyze_startup(payload: AnalyzeRequest) -> AnalyzeResponse:
 
 
 def _check_subscription_limits(user: User, db: Session, resource_type: str, session_id: int = None):
+    if user.is_admin:
+        return
+
     tier = "free"
     if user.subscription_tier in ("pro", "premium"):
         if not user.subscription_expires_at or user.subscription_expires_at > datetime.utcnow():

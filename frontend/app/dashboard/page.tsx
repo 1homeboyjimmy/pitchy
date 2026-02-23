@@ -193,9 +193,9 @@ function DashboardContent() {
       setIsNewChatOpen(false);
       setNewChatTitle("");
       setNewChatDesc("");
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      alert("Ошибка создания чата");
+      alert(e.message || "Ошибка создания чата");
     } finally {
       setIsCreating(false);
     }
