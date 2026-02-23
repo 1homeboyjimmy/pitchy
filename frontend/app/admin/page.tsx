@@ -13,9 +13,10 @@ import {
   Text,
   Title,
   SegmentedControl,
+  RingProgress,
 } from "@mantine/core";
 import { DatePickerInput, DatesRangeValue } from "@mantine/dates";
-import { BarChart, LineChart } from "@mantine/charts";
+import { BarChart, LineChart, AreaChart } from "@mantine/charts";
 import dayjs from "dayjs";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Layout } from "@/components/Layout";
@@ -161,7 +162,8 @@ export default function AdminPage() {
               <SegmentedControl
                 value={rangeQuery ? "custom" : "30"}
                 onChange={(val) => {
-                  if (val === "7") setRange([dayjs().subtract(7, "day").format("YYYY-MM-DD"), dayjs().format("YYYY-MM-DD")]);
+                  if (val === "3") setRange([dayjs().subtract(3, "day").format("YYYY-MM-DD"), dayjs().format("YYYY-MM-DD")]);
+                  else if (val === "7") setRange([dayjs().subtract(7, "day").format("YYYY-MM-DD"), dayjs().format("YYYY-MM-DD")]);
                   else if (val === "14") setRange([dayjs().subtract(14, "day").format("YYYY-MM-DD"), dayjs().format("YYYY-MM-DD")]);
                   else if (val === "30") setRange([dayjs().subtract(30, "day").format("YYYY-MM-DD"), dayjs().format("YYYY-MM-DD")]);
                   else if (val === "90") setRange([dayjs().subtract(90, "day").format("YYYY-MM-DD"), dayjs().format("YYYY-MM-DD")]);
@@ -170,11 +172,12 @@ export default function AdminPage() {
                   else setRange([null, null]); // trigger custom input
                 }}
                 data={[
+                  { label: "3 дня", value: "3" },
                   { label: "7 дней", value: "7" },
                   { label: "14 дней", value: "14" },
                   { label: "30 дней", value: "30" },
                   { label: "90 дней", value: "90" },
-                  { label: "6 мес", value: "180" },
+                  { label: "Полгода", value: "180" },
                   { label: "Год", value: "365" },
                   { label: "Произв.", value: "custom" },
                 ]}
@@ -195,17 +198,33 @@ export default function AdminPage() {
                 />
               </Group>
             )}
-            <SimpleGrid cols={{ base: 1, md: 3 }} spacing="md">
+            <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} spacing="md">
               <Card withBorder radius="md">
                 <Text fw={600}>Пользователи</Text>
-                <Group mt="sm">
-                  <Badge color="blue">
-                    Всего: {analytics?.totals.users ?? 0}
-                  </Badge>
-                  <Badge color="yellow">
-                    Платные: {analytics?.totals.paid_subscriptions ?? 0}
-                  </Badge>
-                </Group>
+                <Text fw={700} fz={32} mt="sm">
+                  {analytics?.totals.users ?? 0}
+                </Text>
+              </Card>
+              <Card withBorder radius="md">
+                <Text fw={600}>Платные подписки</Text>
+                <Text fw={700} fz={32} mt="sm" c="yellow">
+                  {analytics?.totals.paid_subscriptions ?? 0}
+                </Text>
+              </Card>
+              <Card withBorder radius="md" bg="#5c75f3" c="white" className="flex flex-row items-center justify-between">
+                <div>
+                  <Text fw={700} fz={32} lh={1}>
+                    {analytics?.totals.users ? Math.round(((analytics.totals.paid_subscriptions ?? 0) / analytics.totals.users) * 100) : 0}%
+                  </Text>
+                  <Text size="sm" c="white" opacity={0.9} mt={4}>Конверсия в платные</Text>
+                </div>
+                <RingProgress
+                  size={64}
+                  thickness={6}
+                  roundCaps
+                  sections={[{ value: analytics?.totals.users ? Math.round(((analytics.totals.paid_subscriptions ?? 0) / analytics.totals.users) * 100) : 0, color: 'white' }]}
+                  rootColor="rgba(255,255,255,0.3)"
+                />
               </Card>
               <Card withBorder radius="md">
                 <Text fw={600}>Активность</Text>
@@ -239,64 +258,65 @@ export default function AdminPage() {
 
             {analytics ? (
               <Stack gap="lg" mt="md">
-                <Title order={4}>Аналитика платформы</Title>
-                <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
-                  <Card withBorder radius="md">
-                    <Text fw={600} mb="md">Всего пользователей</Text>
-                    <LineChart
-                      h={240}
-                      data={analytics.series}
-                      dataKey="date"
-                      series={[
-                        { name: "users", color: "blue", label: "Пользователи" },
-                      ]}
-                      withLegend
-                    />
-                  </Card>
-                  <Card withBorder radius="md">
-                    <Text fw={600} mb="md">Количество платных подписок</Text>
-                    <LineChart
-                      h={240}
-                      data={analytics.series}
-                      dataKey="date"
-                      series={[
-                        { name: "paid_subscriptions", color: "yellow", label: "Платные подп." },
-                      ]}
-                      withLegend
-                    />
-                  </Card>
-                  <Card withBorder radius="md">
-                    <Text fw={600} mb="md">Запущено анализов</Text>
-                    <LineChart
-                      h={240}
-                      data={analytics.series}
-                      dataKey="date"
-                      series={[
-                        { name: "analyses", color: "green", label: "Анализы" },
-                      ]}
-                      withLegend
-                    />
-                  </Card>
-                  <Card withBorder radius="md">
-                    <Text fw={600} mb="md">Чат-сессий</Text>
-                    <LineChart
-                      h={240}
-                      data={analytics.series}
-                      dataKey="date"
-                      series={[
-                        { name: "chat_sessions", color: "violet", label: "Сессии" },
-                      ]}
-                      withLegend
-                    />
-                  </Card>
-                </SimpleGrid>
+                <Title order={4}>Аналитика проектов</Title>
                 <Card withBorder radius="md">
-                  <Text fw={600} mb="md">Ошибки по дням</Text>
-                  <BarChart
-                    h={240}
+                  <Text fw={600} mb="md">Всего пользователей</Text>
+                  <AreaChart
+                    h={300}
                     data={analytics.series}
                     dataKey="date"
-                    series={[{ name: "errors", color: "red", label: "Ошибки" }]}
+                    curveType="monotone"
+                    series={[{ name: "users", color: "blue.5", label: "Пользователи" }]}
+                    withGradient
+                    gridAxis="y"
+                  />
+                </Card>
+                <Card withBorder radius="md">
+                  <Text fw={600} mb="md">Количество платных подписок</Text>
+                  <AreaChart
+                    h={300}
+                    data={analytics.series}
+                    dataKey="date"
+                    curveType="monotone"
+                    series={[{ name: "paid_subscriptions", color: "yellow.5", label: "Платные подп." }]}
+                    withGradient
+                    gridAxis="y"
+                  />
+                </Card>
+                <Card withBorder radius="md">
+                  <Text fw={600} mb="md">Запущено анализов</Text>
+                  <AreaChart
+                    h={300}
+                    data={analytics.series}
+                    dataKey="date"
+                    curveType="monotone"
+                    series={[{ name: "analyses", color: "teal.5", label: "Анализы" }]}
+                    withGradient
+                    gridAxis="y"
+                  />
+                </Card>
+                <Card withBorder radius="md">
+                  <Text fw={600} mb="md">Чат-сессий</Text>
+                  <AreaChart
+                    h={300}
+                    data={analytics.series}
+                    dataKey="date"
+                    curveType="monotone"
+                    series={[{ name: "chat_sessions", color: "violet.5", label: "Сессии" }]}
+                    withGradient
+                    gridAxis="y"
+                  />
+                </Card>
+                <Card withBorder radius="md">
+                  <Text fw={600} mb="md">Сообщения пользователей</Text>
+                  <AreaChart
+                    h={300}
+                    data={analytics.series}
+                    dataKey="date"
+                    curveType="monotone"
+                    series={[{ name: "chat_messages", color: "orange.5", label: "Сообщения" }]}
+                    withGradient
+                    gridAxis="y"
                   />
                 </Card>
               </Stack>
