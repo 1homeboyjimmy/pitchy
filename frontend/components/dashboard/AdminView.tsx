@@ -44,7 +44,7 @@ export function AdminView() {
     // New Promo Form
     const [newPromo, setNewPromo] = useState({ code: "", discount_percent: 10, max_uses: "" });
 
-    const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+    const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
     useEffect(() => {
         const fetchData = async () => {
@@ -54,17 +54,17 @@ export function AdminView() {
                 if (!token) return;
 
                 if (activeTab === "promocodes") {
-                    const res = await fetch(`${API_URL}/admin/promocodes`, {
+                    const res = await fetch(`${API_BASE}/admin/promocodes`, {
                         headers: { "Authorization": `Bearer ${token}` }
                     });
                     if (res.ok) setPromocodes(await res.json());
                 } else if (activeTab === "analytics") {
-                    const res = await fetch(`${API_URL}/admin/analytics`, {
+                    const res = await fetch(`${API_BASE}/admin/analytics`, {
                         headers: { "Authorization": `Bearer ${token}` }
                     });
                     if (res.ok) setAnalytics(await res.json());
                 } else if (activeTab === "users") {
-                    const res = await fetch(`${API_URL}/admin/users`, {
+                    const res = await fetch(`${API_BASE}/admin/users`, {
                         headers: { "Authorization": `Bearer ${token}` }
                     });
                     if (res.ok) setUsers(await res.json());
@@ -76,12 +76,12 @@ export function AdminView() {
             }
         };
         fetchData();
-    }, [activeTab, API_URL]);
+    }, [activeTab, API_BASE]);
 
     const handleCreatePromo = async () => {
         try {
             const token = getToken();
-            const res = await fetch(`${API_URL}/admin/promocodes`, {
+            const res = await fetch(`${API_BASE}/admin/promocodes`, {
                 method: "POST",
                 headers: {
                     "Authorization": `Bearer ${token}`,
@@ -110,7 +110,7 @@ export function AdminView() {
         if (!confirm("Удалить промокод?")) return;
         try {
             const token = getToken();
-            const res = await fetch(`${API_URL}/admin/promocodes/${id}`, {
+            const res = await fetch(`${API_BASE}/admin/promocodes/${id}`, {
                 method: "DELETE",
                 headers: { "Authorization": `Bearer ${token}` }
             });
@@ -133,7 +133,7 @@ export function AdminView() {
 
         try {
             const token = getToken();
-            const res = await fetch(`${API_URL}/admin/users/${userId}${action === "delete" ? "" : `/${action}`}`, {
+            const res = await fetch(`${API_BASE}/admin/users/${userId}${action === "delete" ? "" : `/${action}`}`, {
                 method: action === "delete" ? "DELETE" : "POST",
                 headers: { "Authorization": `Bearer ${token}` }
             });
