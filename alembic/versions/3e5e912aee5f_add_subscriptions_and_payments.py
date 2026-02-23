@@ -25,6 +25,23 @@ def upgrade() -> None:
         batch_op.add_column(sa.Column('subscription_tier', sa.String(length=50), server_default='free', nullable=False))
         batch_op.add_column(sa.Column('subscription_expires_at', sa.DateTime(), nullable=True))
 
+    op.create_table('payments',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('user_id', sa.Integer(), nullable=False),
+    sa.Column('yookassa_payment_id', sa.String(length=255), nullable=False),
+    sa.Column('amount', sa.Numeric(precision=10, scale=2), nullable=False),
+    sa.Column('currency', sa.String(length=3), nullable=False),
+    sa.Column('status', sa.String(length=50), nullable=False),
+    sa.Column('tier', sa.String(length=50), nullable=False),
+    sa.Column('is_annual', sa.Boolean(), nullable=False),
+    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('updated_at', sa.DateTime(), nullable=False),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], name=op.f('fk_payments_user_id_users')),
+    sa.PrimaryKeyConstraint('id', name=op.f('pk_payments'))
+    )
+    with op.batch_alter_table('payments', schema=None) as batch_op:
+        batch_op.create_index(batch_op.f('ix_payments_yookassa_payment_id'), ['yookassa_payment_id'], unique=True)
+
     # ### end Alembic commands ###
 
 
@@ -37,4 +54,8 @@ def downgrade() -> None:
     with op.batch_alter_table('chat_sessions', schema=None) as batch_op:
         batch_op.drop_constraint(batch_op.f('fk_chat_sessions_analysis_id_analyses'), type_='foreignkey')
 
+    with op.batch_alter_table('payments', schema=None) as batch_op:
+        batch_op.drop_index(batch_op.f('ix_payments_yookassa_payment_id'))
+
+    op.drop_table('payments')
     # ### end Alembic commands ###
