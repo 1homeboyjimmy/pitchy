@@ -443,9 +443,9 @@ export function ChatInterface({
                 {/* Input */}
                 <div className="p-4 sm:p-6 border-t border-white/8 bg-black/20">
                     <div className="
-                        relative flex items-end w-full cursor-text
+                        relative w-full cursor-text
                         rounded-[14px] border border-white/10 bg-white/5
-                        transition-all duration-200
+                        transition-all duration-200 flex items-end gap-2 p-1.5
                     ">
                         <textarea
                             ref={inputRef}
@@ -455,8 +455,8 @@ export function ChatInterface({
                             placeholder="Введите название стартапа..."
                             rows={1}
                             className="
-                                w-full bg-transparent border-none !outline-none resize-none overflow-y-auto 
-                                min-h-[52px] max-h-[200px] py-3.5 pl-4 !pr-12
+                                flex-1 bg-transparent border-none !outline-none resize-none overflow-y-auto 
+                                min-h-[40px] max-h-[200px] py-2.5 pl-3
                                 text-white placeholder-white/35 leading-normal 
                                 scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent [&::-webkit-scrollbar-track]:my-2
                                 focus:!outline-none focus:!ring-0 focus:!ring-offset-0 focus:!shadow-none
@@ -475,7 +475,7 @@ export function ChatInterface({
                             disabled={!inputValue.trim() || isTyping}
                             whileHover={{ scale: 1.05 }}
                             whileTap={{ scale: 0.95 }}
-                            className="absolute right-2 bottom-2 w-9 h-9 flex items-center justify-center rounded-xl bg-pitchy-violet text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all hover:shadow-glow-primary cursor-pointer"
+                            className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-xl bg-pitchy-violet text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all hover:shadow-glow-primary cursor-pointer mb-[1px] mr-[1px]"
                         >
                             {isTyping ? (
                                 <Loader2 className="w-4 h-4 animate-spin" />

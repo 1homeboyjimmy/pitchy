@@ -12,6 +12,7 @@ import {
   Table,
   Text,
   Title,
+  SegmentedControl,
 } from "@mantine/core";
 import { DatePickerInput, DatesRangeValue } from "@mantine/dates";
 import { BarChart, LineChart } from "@mantine/charts";
@@ -155,23 +156,60 @@ export default function AdminPage() {
           <Text>Нет доступа. Требуются права администратора.</Text>
         ) : (
           <Stack>
-            <Title order={3}>Админ‑панель</Title>
-            <DatePickerInput
-              type="range"
-              label="Период"
-              placeholder="Выберите диапазон"
-              valueFormat="YYYY-MM-DD"
-              value={range}
-              onChange={setRange}
-              maxDate={new Date()}
-            />
-            <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
+            <Group justify="space-between" align="flex-end">
+              <Title order={3}>Админ‑панель</Title>
+              <SegmentedControl
+                value={rangeQuery ? "custom" : "30"}
+                onChange={(val) => {
+                  if (val === "7") setRange([dayjs().subtract(7, "day").format("YYYY-MM-DD"), dayjs().format("YYYY-MM-DD")]);
+                  else if (val === "14") setRange([dayjs().subtract(14, "day").format("YYYY-MM-DD"), dayjs().format("YYYY-MM-DD")]);
+                  else if (val === "30") setRange([dayjs().subtract(30, "day").format("YYYY-MM-DD"), dayjs().format("YYYY-MM-DD")]);
+                  else if (val === "90") setRange([dayjs().subtract(90, "day").format("YYYY-MM-DD"), dayjs().format("YYYY-MM-DD")]);
+                  else if (val === "180") setRange([dayjs().subtract(6, "month").format("YYYY-MM-DD"), dayjs().format("YYYY-MM-DD")]);
+                  else if (val === "365") setRange([dayjs().subtract(1, "year").format("YYYY-MM-DD"), dayjs().format("YYYY-MM-DD")]);
+                  else setRange([null, null]); // trigger custom input
+                }}
+                data={[
+                  { label: "7 дней", value: "7" },
+                  { label: "14 дней", value: "14" },
+                  { label: "30 дней", value: "30" },
+                  { label: "90 дней", value: "90" },
+                  { label: "6 мес", value: "180" },
+                  { label: "Год", value: "365" },
+                  { label: "Произв.", value: "custom" },
+                ]}
+              />
+            </Group>
+
+            {(!range[0] || !range[1]) && (
+              <Group justify="flex-end">
+                <DatePickerInput
+                  type="range"
+                  label="Произвольный период"
+                  placeholder="Выберите диапазон"
+                  valueFormat="YYYY-MM-DD"
+                  value={range}
+                  onChange={setRange}
+                  maxDate={new Date()}
+                  clearable
+                />
+              </Group>
+            )}
+            <SimpleGrid cols={{ base: 1, md: 3 }} spacing="md">
               <Card withBorder radius="md">
-                <Text fw={600}>Итоги за период</Text>
+                <Text fw={600}>Пользователи</Text>
                 <Group mt="sm">
                   <Badge color="blue">
-                    Польз.: {analytics?.totals.users ?? 0}
+                    Всего: {analytics?.totals.users ?? 0}
                   </Badge>
+                  <Badge color="yellow">
+                    Платные: {analytics?.totals.paid_subscriptions ?? 0}
+                  </Badge>
+                </Group>
+              </Card>
+              <Card withBorder radius="md">
+                <Text fw={600}>Активность</Text>
+                <Group mt="sm">
                   <Badge color="green">
                     Анализы: {analytics?.totals.analyses ?? 0}
                   </Badge>
@@ -181,7 +219,6 @@ export default function AdminPage() {
                   <Badge color="orange">
                     Сообщения: {analytics?.totals.chat_messages ?? 0}
                   </Badge>
-                  <Badge color="red">Ошибки: {analytics?.totals.errors ?? 0}</Badge>
                 </Group>
               </Card>
               <Card withBorder radius="md">
@@ -201,30 +238,68 @@ export default function AdminPage() {
             </SimpleGrid>
 
             {analytics ? (
-              <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
+              <Stack gap="lg" mt="md">
+                <Title order={4}>Аналитика платформы</Title>
+                <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
+                  <Card withBorder radius="md">
+                    <Text fw={600} mb="md">Всего пользователей</Text>
+                    <LineChart
+                      h={240}
+                      data={analytics.series}
+                      dataKey="date"
+                      series={[
+                        { name: "users", color: "blue", label: "Пользователи" },
+                      ]}
+                      withLegend
+                    />
+                  </Card>
+                  <Card withBorder radius="md">
+                    <Text fw={600} mb="md">Количество платных подписок</Text>
+                    <LineChart
+                      h={240}
+                      data={analytics.series}
+                      dataKey="date"
+                      series={[
+                        { name: "paid_subscriptions", color: "yellow", label: "Платные подп." },
+                      ]}
+                      withLegend
+                    />
+                  </Card>
+                  <Card withBorder radius="md">
+                    <Text fw={600} mb="md">Запущено анализов</Text>
+                    <LineChart
+                      h={240}
+                      data={analytics.series}
+                      dataKey="date"
+                      series={[
+                        { name: "analyses", color: "green", label: "Анализы" },
+                      ]}
+                      withLegend
+                    />
+                  </Card>
+                  <Card withBorder radius="md">
+                    <Text fw={600} mb="md">Чат-сессий</Text>
+                    <LineChart
+                      h={240}
+                      data={analytics.series}
+                      dataKey="date"
+                      series={[
+                        { name: "chat_sessions", color: "violet", label: "Сессии" },
+                      ]}
+                      withLegend
+                    />
+                  </Card>
+                </SimpleGrid>
                 <Card withBorder radius="md">
-                  <Text fw={600}>Активность</Text>
-                  <LineChart
-                    h={240}
-                    data={analytics.series}
-                    dataKey="date"
-                    series={[
-                      { name: "users", color: "blue" },
-                      { name: "analyses", color: "green" },
-                      { name: "chat_messages", color: "orange" },
-                    ]}
-                  />
-                </Card>
-                <Card withBorder radius="md">
-                  <Text fw={600}>Ошибки по дням</Text>
+                  <Text fw={600} mb="md">Ошибки по дням</Text>
                   <BarChart
                     h={240}
                     data={analytics.series}
                     dataKey="date"
-                    series={[{ name: "errors", color: "red" }]}
+                    series={[{ name: "errors", color: "red", label: "Ошибки" }]}
                   />
                 </Card>
-              </SimpleGrid>
+              </Stack>
             ) : null}
 
             <Card withBorder radius="md">

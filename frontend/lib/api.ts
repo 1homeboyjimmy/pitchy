@@ -61,6 +61,7 @@ export type Analytics = {
     chat_sessions: number;
     chat_messages: number;
     errors: number;
+    paid_subscriptions?: number;
   };
   series: Array<{
     date: string;
@@ -69,6 +70,7 @@ export type Analytics = {
     chat_sessions: number;
     chat_messages: number;
     errors: number;
+    paid_subscriptions?: number;
   }>;
 };
 
