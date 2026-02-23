@@ -27,12 +27,10 @@ target_metadata = Base.metadata
 
 
 def get_url() -> str:
-    # Default to sqlite to ensure correct dialect even if env var is missing
     url = os.getenv(
-        "DATABASE_URL", "sqlite:///./app.db"
+        "DATABASE_URL", "postgresql+psycopg2://postgres:postgres@localhost:5432/app"
     )
-    if "postgresql" in url:
-        return "sqlite:///./app.db"
+    # Automatically switch to async URL if asyncpg is used in code, though here we use psycopg2
     return url
 
 
