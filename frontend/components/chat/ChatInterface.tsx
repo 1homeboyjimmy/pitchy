@@ -475,12 +475,12 @@ export function ChatInterface({
                             disabled={!inputValue.trim() || isTyping}
                             whileHover={{ scale: 1.05 }}
                             whileTap={{ scale: 0.95 }}
-                            className="absolute right-2 bottom-1.5 p-2.5 rounded-xl bg-pitchy-violet text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all hover:shadow-glow-primary cursor-pointer"
+                            className="absolute right-2 bottom-2 w-9 h-9 flex items-center justify-center rounded-xl bg-pitchy-violet text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all hover:shadow-glow-primary cursor-pointer"
                         >
                             {isTyping ? (
                                 <Loader2 className="w-4 h-4 animate-spin" />
                             ) : (
-                                <Send className="w-4 h-4" />
+                                <Send className="w-4 h-4 -ml-0.5 mt-0.5" />
                             )}
                         </motion.button>
                     </div>

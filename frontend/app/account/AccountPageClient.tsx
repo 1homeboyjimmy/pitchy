@@ -210,9 +210,9 @@ export function AccountPageClient() {
           <div className="space-y-6">
             {/* Profile Card */}
             <GlassCard hover={false} className="p-8">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 rounded-full bg-pitchy-violet/20 flex items-center justify-center border border-pitchy-violet/30">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-start justify-between gap-6 sm:gap-0">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                  <div className="w-16 h-16 rounded-full bg-pitchy-violet/20 flex items-center justify-center border border-pitchy-violet/30 shrink-0">
                     <User className="w-8 h-8 text-pitchy-violet" />
                   </div>
                   <div>
@@ -252,7 +252,7 @@ export function AccountPageClient() {
                 </div>
                 <Button
                   variant="glass"
-                  className="text-red-400 hover:text-red-300 hover:bg-red-500/10 border-red-500/20"
+                  className="w-full sm:w-auto text-red-400 hover:text-red-300 hover:bg-red-500/10 border-red-500/20 flex justify-center mt-2 sm:mt-0"
                   onClick={handleLogout}
                   icon={<LogOut className="w-4 h-4" />}
                   iconPosition="left"

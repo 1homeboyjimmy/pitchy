@@ -185,7 +185,7 @@ function SignUpContent() {
                                         onChange={(e) =>
                                             setFormData({ ...formData, name: e.target.value })
                                         }
-                                        className="pitchy-input pl-14"
+                                        className="pitchy-input !pl-12"
                                         placeholder="Ваше имя"
                                         required
                                     />
@@ -204,7 +204,7 @@ function SignUpContent() {
                                         onChange={(e) =>
                                             setFormData({ ...formData, email: e.target.value })
                                         }
-                                        className="pitchy-input pl-14"
+                                        className="pitchy-input !pl-12"
                                         placeholder="you@example.com"
                                         required
                                     />
@@ -223,7 +223,7 @@ function SignUpContent() {
                                         onChange={(e) =>
                                             setFormData({ ...formData, password: e.target.value })
                                         }
-                                        className="pitchy-input pl-14 pr-11"
+                                        className="pitchy-input !pl-12 pr-11"
                                         placeholder="Минимум 8 символов"
                                         required
                                         minLength={8}
@@ -257,7 +257,7 @@ function SignUpContent() {
                                                 confirmPassword: e.target.value,
                                             })
                                         }
-                                        className="pitchy-input pl-14"
+                                        className="pitchy-input !pl-12"
                                         placeholder="Повторите пароль"
                                         required
                                     />

@@ -309,6 +309,39 @@ function DashboardContent() {
 
         {/* content */}
         <main className="flex-1 py-6 px-4 sm:px-6 lg:px-8 overflow-hidden w-full">
+          {/* Mobile Navigation (Tabs) */}
+          <div className="flex lg:hidden overflow-x-auto gap-2 mb-6 pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 [&::-webkit-scrollbar]:hidden">
+            {[
+              { id: "overview", label: "Обзор", icon: LayoutDashboard },
+              { id: "chat", label: "Чат", icon: MessageSquare },
+              { id: "analytics", label: "Аналитика", icon: BarChart3 }
+            ].map((item) => (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id)}
+                className={`flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === item.id
+                  ? "bg-white/10 text-white border border-white/10 shadow-sm"
+                  : "text-white/50 border border-transparent hover:text-white hover:bg-white/5"
+                  }`}
+              >
+                <item.icon className="w-4 h-4" />
+                {item.label}
+              </button>
+            ))}
+            {userProfile?.is_admin && (
+              <button
+                onClick={() => setActiveTab("admin")}
+                className={`flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === "admin"
+                  ? "bg-pitchy-cyan/20 text-pitchy-cyan border border-pitchy-cyan/30 shadow-sm"
+                  : "text-white/50 border border-transparent hover:text-pitchy-cyan hover:bg-white/5"
+                  }`}
+              >
+                <Shield className="w-4 h-4" />
+                Админ-панель
+              </button>
+            )}
+          </div>
+
           {/* Header / Title */}
           <div className="flex justify-between items-center mb-8">
             <div>
