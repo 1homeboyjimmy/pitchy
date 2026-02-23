@@ -15,8 +15,7 @@ from auth import get_current_user
 from lockbox import lockbox
 
 logger = logging.getLogger(__name__)
-
-router = APIRouter(prefix="/api/billing", tags=["billing"])
+router = APIRouter(prefix="/billing", tags=["billing"])
 
 def setup_yookassa():
     secrets = lockbox.get_secrets()

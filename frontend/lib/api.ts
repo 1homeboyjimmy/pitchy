@@ -213,11 +213,11 @@ export async function sendChatMessage(sessionId: number, content: string, token:
 }
 
 export async function createPayment(tier: string, is_annual: boolean, promo_code: string | null, token: string): Promise<{ confirmation_url: string }> {
-  return postAuthJson<{ confirmation_url: string }>("/api/billing/create-payment", { tier, is_annual, promo_code }, token);
+  return postAuthJson<{ confirmation_url: string }>("/billing/create-payment", { tier, is_annual, promo_code }, token);
 }
 
 export async function validatePromoCode(code: string): Promise<{ valid: boolean, discount_percent: number, detail?: string }> {
-  const response = await fetch(`${API_BASE}/api/billing/promo/validate`, {
+  const response = await fetch(`${API_BASE}/billing/promo/validate`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
