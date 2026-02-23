@@ -21,7 +21,7 @@ from observability import configure_logging
 from redis_client import get_redis
 from yandex_gpt_client import YandexGPTError, call_yandex_gpt, extract_json
 from db import SessionLocal, get_db
-from models import Analysis, ChatMessage as DbChatMessage, ChatSession, ErrorLog, User
+from models import Analysis, ChatMessage as DbChatMessage, ChatSession, ErrorLog, User, PromoCode
 from schemas import (
     AnalysisCreateRequest,
     AnalysisResponse,
@@ -41,6 +41,8 @@ from schemas import (
     PasswordChangeInitRequest,
     PasswordChangeConfirmRequest,
     EmailCodeVerifyRequest,
+    PromoCodeCreate,
+    PromoCodeResponse,
 )
 from email_utils import get_dev_emails, send_email
 from sso import yandex_sso, github_sso
