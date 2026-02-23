@@ -68,11 +68,7 @@ def _build_client() -> chromadb.ClientAPI:
 
 
 def _should_reindex() -> bool:
-    # Logic to determine if reindexing is needed.
-    # For now, we force reindex if the collection doesn't exist or is empty,
-    # or simply always reindex on startup if logic demands.
-    # Let's check environment variable or file modification time in a real scenario.
-    return True  # Simplifying for this upgrade to ensure new embeddings are used.
+    return os.getenv("CHROMA_REINDEX", "false").lower() == "true"
 
 
 def _seed_collection(collection: Collection, documents: List[str]):
@@ -112,12 +108,27 @@ class StartupRAG:
             if documents:
                 _seed_collection(collection, documents)
             return cls(client=client, collection=collection)
-
-        collection = client.get_or_create_collection(
-            name=COLLECTION_NAME,
-            embedding_function=embedding_fn,
-            metadata={"hnsw:space": "cosine"},
-        )
+        
+        # Try to get existing collection first
+        try:
+            collection = client.get_collection(
+                name=COLLECTION_NAME,
+                embedding_function=embedding_fn,
+            )
+            # If it's empty and we have docs, seed it anyway
+            if documents and collection.count() == 0:
+                print(f"Collection {COLLECTION_NAME} is empty, seeding...")
+                _seed_collection(collection, documents)
+        except Exception:
+            # Create if doesn't exist
+            collection = client.create_collection(
+                name=COLLECTION_NAME,
+                embedding_function=embedding_fn,
+                metadata={"hnsw:space": "cosine"},
+            )
+            if documents:
+                _seed_collection(collection, documents)
+        
         return cls(client=client, collection=collection)
 
     def query(self, text: str, top_k: int = 3) -> List[str]:
