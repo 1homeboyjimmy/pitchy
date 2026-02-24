@@ -4,6 +4,7 @@ import type { NextConfig } from "next";
 const BACKEND_URL = process.env.BACKEND_INTERNAL_URL || "http://backend:8000";
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   turbopack: {
     root: __dirname,
   },
