@@ -56,16 +56,16 @@ def extract_text(html: str) -> str:
     return text
 
 
-def scrape_and_save(url: str):
+def scrape_and_save(url: str) -> tuple[str | None, str | None]:
     print(f"Scraping {url}...")
     html = fetch_article(url)
     if not html:
-        return
+        return None, None
 
     text = extract_text(html)
     if not text:
         print("No text extracted.")
-        return
+        return None, None
 
     filename = clean_filename(url)
     filepath = DOCS_DIR / filename
@@ -77,6 +77,7 @@ def scrape_and_save(url: str):
         f.write(text)
 
     print(f"Saved to {filepath}")
+    return str(filepath), text
 
 
 if __name__ == "__main__":

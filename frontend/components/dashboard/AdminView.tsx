@@ -50,12 +50,17 @@ type Subscription = {
 };
 
 export function AdminView() {
-    const [activeTab, setActiveTab] = useState<"analytics" | "promocodes" | "users" | "subscriptions">("users");
+    const [activeTab, setActiveTab] = useState<"analytics" | "promocodes" | "users" | "subscriptions" | "rag">("users");
     const [loading, setLoading] = useState(true);
     const [promocodes, setPromocodes] = useState<PromoCode[]>([]);
     const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
     const [users, setUsers] = useState<User[]>([]);
     const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+
+    // RAG State
+    const [ragUrl, setRagUrl] = useState("");
+    const [isScraping, setIsScraping] = useState(false);
+    const [ragResult, setRagResult] = useState<{ success: boolean, message: string } | null>(null);
 
     // New Promo Form
     const [newPromo, setNewPromo] = useState({ code: "", discount_percent: 10, max_uses: "" });
@@ -144,6 +149,35 @@ export function AdminView() {
         }
     };
 
+    const handleScrapeRAG = async () => {
+        if (!ragUrl) return;
+        setIsScraping(true);
+        setRagResult(null);
+        try {
+            const token = getToken();
+            const res = await fetch(`${API_BASE}/admin/rag/add-url`, {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${token}`,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ url: ragUrl })
+            });
+            const data = await res.json();
+
+            if (res.ok) {
+                setRagResult({ success: true, message: data.message });
+                setRagUrl("");
+            } else {
+                setRagResult({ success: false, message: data.detail || "Произошла ошибка при обработке URL." });
+            }
+        } catch (e) {
+            setRagResult({ success: false, message: "Не удалось подключиться к серверу." });
+        } finally {
+            setIsScraping(false);
+        }
+    };
+
     const handleUserAction = async (userId: number, action: "block" | "unblock" | "make-admin" | "delete") => {
         let confirmMsg = "";
         if (action === "block") confirmMsg = "Заблокировать пользователя?";
@@ -212,6 +246,13 @@ export function AdminView() {
                         }`}
                 >
                     <CreditCard className="w-4 h-4" /> Подписки
+                </button>
+                <button
+                    onClick={() => setActiveTab("rag")}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${activeTab === "rag" ? "bg-pitchy-violet text-white" : "text-white/50 hover:text-white"
+                        }`}
+                >
+                    <Shield className="w-4 h-4" /> База Знаний (RAG)
                 </button>
             </div>
 
@@ -410,16 +451,16 @@ export function AdminView() {
                                                     <td className="px-4 py-3 text-white/60">{sub.name}</td>
                                                     <td className="px-4 py-3">
                                                         <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${sub.subscription_tier === "premium"
-                                                                ? "bg-amber-500/20 text-amber-400"
-                                                                : "bg-pitchy-violet/20 text-pitchy-violet"
+                                                            ? "bg-amber-500/20 text-amber-400"
+                                                            : "bg-pitchy-violet/20 text-pitchy-violet"
                                                             }`}>
                                                             {sub.subscription_tier.toUpperCase()}
                                                         </span>
                                                     </td>
                                                     <td className="px-4 py-3">
                                                         <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${sub.is_active
-                                                                ? "bg-green-500/20 text-green-400"
-                                                                : "bg-red-500/20 text-red-400"
+                                                            ? "bg-green-500/20 text-green-400"
+                                                            : "bg-red-500/20 text-red-400"
                                                             }`}>
                                                             {sub.is_active ? "Активна" : "Истекла"}
                                                         </span>
@@ -448,6 +489,54 @@ export function AdminView() {
                                         </tbody>
                                     </table>
                                 </div>
+                            </GlassCard>
+                        </div>
+                    )}
+
+                    {activeTab === "rag" && (
+                        <div className="space-y-6 max-w-2xl">
+                            <GlassCard hover={false} className="p-6 border border-pitchy-violet/30">
+                                <h3 className="text-xl font-bold text-white mb-2">Обновление базы знаний (RAG)</h3>
+                                <p className="text-white/60 mb-6 text-sm">
+                                    Вставьте ссылку на любую статью, регламент или документацию. Система скачает страницу, удалит лишний мусор (HTML/рекламу), нарежет текст на куски и добавит в векторную базу данных. ИИ мгновенно научится отвечать с учётом этой новой информации.
+                                </p>
+
+                                <div className="flex gap-4">
+                                    <input
+                                        type="url"
+                                        placeholder="https://example.com/company-policy"
+                                        value={ragUrl}
+                                        onChange={(e) => setRagUrl(e.target.value)}
+                                        className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white outline-none focus:border-pitchy-violet transition-colors"
+                                        disabled={isScraping}
+                                    />
+                                    <Button
+                                        variant="primary"
+                                        onClick={handleScrapeRAG}
+                                        disabled={!ragUrl.trim() || isScraping}
+                                        className="px-6"
+                                    >
+                                        {isScraping ? (
+                                            <>
+                                                <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Парсинг...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Plus className="w-4 h-4 mr-2" /> Обучить ИИ
+                                            </>
+                                        )}
+                                    </Button>
+                                </div>
+
+                                {ragResult && (
+                                    <motion.div
+                                        initial={{ opacity: 0, y: -5 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        className={`mt-4 p-4 rounded-xl border ${ragResult.success ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-red-500/10 border-red-500/20 text-red-400'}`}
+                                    >
+                                        <p className="font-medium text-sm">{ragResult.message}</p>
+                                    </motion.div>
+                                )}
                             </GlassCard>
                         </div>
                     )}

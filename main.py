@@ -127,6 +127,15 @@ async def lifespan(_: FastAPI):
     yield
 
 
+class AdminRAGRequest(BaseModel):
+    url: str
+
+class AdminRAGResponse(BaseModel):
+    success: bool
+    message: str
+    chunks_added: int = 0
+    file_path: str | None = None
+
 app = FastAPI(title="Startup Analyzer", lifespan=lifespan)
 app.include_router(billing.router)
 
@@ -1594,6 +1603,38 @@ def admin_subscriptions(
         ))
     return result
 
+
+@app.post("/admin/rag/add-url", response_model=AdminRAGResponse)
+def admin_add_rag_url(
+    req: AdminRAGRequest,
+    _: User = Depends(require_admin),
+):
+    """
+    Scrapes a URL, saves the text, and injects it into the active RAG collection.
+    """
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(req.url)
+        if not parsed.scheme or not parsed.netloc:
+            raise HTTPException(status_code=400, detail="Invalid URL format")
+            
+        filepath, text = scrape_and_save(req.url)
+        if not text or not filepath:
+            raise HTTPException(status_code=400, detail="Could not extract text from the URL")
+            
+        chunks_added = add_text_to_rag(text)
+        
+        return AdminRAGResponse(
+            success=True,
+            message=f"Successfully scraped {req.url} and added {chunks_added} chunks to RAG.",
+            chunks_added=chunks_added,
+            file_path=filepath
+        )
+    except Exception as e:
+        logger.error(f"Failed to add url to rag {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to process URL: {e}")
 
 @app.get("/admin/payments", response_model=list[PaymentResponse])
 def admin_payments(

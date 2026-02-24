@@ -136,6 +136,22 @@ class StartupRAG:
         docs = result.get("documents", [[]])[0]
         return [doc for doc in docs if doc]
 
+    def add_documents(self, documents: List[str]):
+        if not documents:
+            return
+        
+        # We need unique IDs. Simplest way is a hash or timestamp + index.
+        import time
+        import hashlib
+        
+        ids = []
+        for doc in documents:
+            doc_hash = hashlib.md5(doc.encode('utf-8')).hexdigest()[:10]
+            ids.append(f"doc_{int(time.time())}_{doc_hash}")
+            
+        self.collection.add(documents=documents, ids=ids)
+        print(f"Added {len(documents)} new chunks to RAG collection.")
+
 
 _RAG_INSTANCE: StartupRAG | None = None
 
@@ -150,6 +166,13 @@ def get_relevant_chunks(text: str, top_k: int = 3) -> List[str]:
         raise RuntimeError("RAG is not initialized")
     return _RAG_INSTANCE.query(text, top_k=top_k)
 
+def add_text_to_rag(text: str) -> int:
+    if _RAG_INSTANCE is None:
+        raise RuntimeError("RAG is not initialized")
+    chunks = _chunk_text(text)
+    if chunks:
+        _RAG_INSTANCE.add_documents(chunks)
+    return len(chunks)
 
 def healthcheck() -> bool:
     if _RAG_INSTANCE is None:
