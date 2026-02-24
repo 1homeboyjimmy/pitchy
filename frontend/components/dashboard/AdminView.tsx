@@ -59,6 +59,7 @@ export function AdminView() {
 
     // RAG State
     const [ragUrl, setRagUrl] = useState("");
+    const [ragFile, setRagFile] = useState<File | null>(null);
     const [isScraping, setIsScraping] = useState(false);
     const [ragResult, setRagResult] = useState<{ success: boolean, message: string } | null>(null);
 
@@ -170,6 +171,38 @@ export function AdminView() {
                 setRagUrl("");
             } else {
                 setRagResult({ success: false, message: data.detail || "Произошла ошибка при обработке URL." });
+            }
+        } catch (e) {
+            setRagResult({ success: false, message: "Не удалось подключиться к серверу." });
+        } finally {
+            setIsScraping(false);
+        }
+    };
+
+    const handleUploadPDF = async () => {
+        if (!ragFile) return;
+        setIsScraping(true);
+        setRagResult(null);
+        try {
+            const token = getToken();
+            const formData = new FormData();
+            formData.append("file", ragFile);
+
+            const res = await fetch(`${API_BASE}/admin/rag/add-pdf`, {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${token}`
+                    // Do NOT set Content-Type header manually when using FormData
+                },
+                body: formData
+            });
+            const data = await res.json();
+
+            if (res.ok) {
+                setRagResult({ success: true, message: data.message });
+                setRagFile(null);
+            } else {
+                setRagResult({ success: false, message: data.detail || "Произошла ошибка при обработке PDF." });
             }
         } catch (e) {
             setRagResult({ success: false, message: "Не удалось подключиться к серверу." });
@@ -517,13 +550,40 @@ export function AdminView() {
                                         className="px-6"
                                     >
                                         {isScraping ? (
-                                            <>
-                                                <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Парсинг...
-                                            </>
+                                            <Loader2 className="w-4 h-4 animate-spin" />
                                         ) : (
-                                            <>
-                                                <Plus className="w-4 h-4 mr-2" /> Обучить ИИ
-                                            </>
+                                            "Отправить URL"
+                                        )}
+                                    </Button>
+                                </div>
+
+                                <div className="my-6 border-b border-white/10"></div>
+
+                                <h4 className="text-white font-medium mb-3">Или загрузите PDF-файл:</h4>
+                                <div className="flex gap-4 items-center">
+                                    <input
+                                        type="file"
+                                        accept="application/pdf"
+                                        onChange={(e) => {
+                                            if (e.target.files && e.target.files.length > 0) {
+                                                setRagFile(e.target.files[0]);
+                                            } else {
+                                                setRagFile(null);
+                                            }
+                                        }}
+                                        className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white/70 file:border-0 file:bg-pitchy-violet/20 file:text-pitchy-violet file:px-4 file:py-1 file:rounded-lg file:mr-4 hover:file:bg-pitchy-violet/30 transition-colors cursor-pointer"
+                                        disabled={isScraping}
+                                    />
+                                    <Button
+                                        variant="primary"
+                                        onClick={handleUploadPDF}
+                                        disabled={!ragFile || isScraping}
+                                        className="px-6"
+                                    >
+                                        {isScraping ? (
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                        ) : (
+                                            "Загрузить PDF"
                                         )}
                                     </Button>
                                 </div>

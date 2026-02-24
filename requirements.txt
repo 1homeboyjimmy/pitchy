@@ -22,3 +22,5 @@ sentence-transformers
 langchain-text-splitters
 python-dateutil
 yookassa
+pypdf
+python-multipart

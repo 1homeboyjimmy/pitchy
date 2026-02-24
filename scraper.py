@@ -79,6 +79,22 @@ def scrape_and_save(url: str) -> tuple[str | None, str | None]:
     print(f"Saved to {filepath}")
     return str(filepath), text
 
+def extract_text_from_pdf(filepath: str | Path) -> str:
+    from pypdf import PdfReader
+    
+    text = ""
+    try:
+        reader = PdfReader(str(filepath))
+        for page in reader.pages:
+            page_text = page.extract_text()
+            if page_text:
+                text += page_text + "\n\n"
+        return text.strip()
+    except Exception as e:
+        print(f"Error extracting PDF: {e}")
+        return ""
+
+
 
 if __name__ == "__main__":
     # Example URLs (replace with real legal/news sources later)

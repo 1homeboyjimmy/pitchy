@@ -5,7 +5,7 @@ import time
 import random
 from datetime import datetime, timedelta, date
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.responses import StreamingResponse
@@ -16,6 +16,7 @@ from sqlalchemy import text
 from dotenv import load_dotenv
 
 import rag
+from scraper import scrape_and_save, extract_text_from_pdf
 from lockbox import lockbox
 from metrics import ERROR_COUNT, REQUEST_COUNT, REQUEST_LATENCY
 from observability import configure_logging
@@ -1635,6 +1636,58 @@ def admin_add_rag_url(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to process URL: {e}")
+
+@app.post("/admin/rag/add-pdf", response_model=AdminRAGResponse)
+async def admin_add_rag_pdf(
+    file: UploadFile = File(...),
+    _: User = Depends(require_admin),
+):
+    """
+    Saves an uploaded PDF, extracts text, and injects it into the active RAG collection.
+    """
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported")
+        
+    try:
+        from pathlib import Path
+        import shutil
+        import time
+        
+        DOCS_DIR = Path("sample_docs")
+        DOCS_DIR.mkdir(exist_ok=True)
+        
+        # Save uploaded file
+        safe_name = file.filename.replace(" ", "_").replace("/", "")
+        ts = int(time.time())
+        filepath = DOCS_DIR / f"{ts}_{safe_name}"
+        
+        with open(filepath, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            
+        # Parse text
+        text = extract_text_from_pdf(filepath)
+        if not text:
+            raise HTTPException(status_code=400, detail="Could not extract text from the PDF. It might be scanned or empty.")
+            
+        # Create corresponding .txt file for persistence next time server boots
+        txt_filepath = DOCS_DIR / f"{ts}_{safe_name}.txt"
+        with open(txt_filepath, "w", encoding="utf-8") as f:
+            f.write(f"Source: Uploaded PDF {file.filename}\n\n")
+            f.write(text)
+            
+        chunks_added = add_text_to_rag(text)
+        
+        return AdminRAGResponse(
+            success=True,
+            message=f"Successfully parsed {file.filename} and added {chunks_added} chunks to RAG.",
+            chunks_added=chunks_added,
+            file_path=str(txt_filepath)
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to process PDF {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to process PDF: {e}")
 
 @app.get("/admin/payments", response_model=list[PaymentResponse])
 def admin_payments(
