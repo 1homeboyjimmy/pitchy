@@ -1,7 +1,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Send, User, Bot, Loader2, Sparkles } from "lucide-react";
+import { Send, User, Bot, Loader2, Sparkles, Lightbulb, Users, Calculator, HelpCircle } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 // Button unused
 import { ChatMessageResponse, ChatSessionDetailResponse, sendChatMessage, getChatSession } from "@/lib/api";
@@ -37,11 +37,11 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
         scrollToBottom();
     }, [messages, isLoading, session.analysis]);
 
-    const handleSendMessage = async () => {
-        if (!inputValue.trim() || isLoading) return;
+    const handleSendMessage = async (text?: string) => {
+        const content = typeof text === 'string' ? text : inputValue.trim();
+        if (!content || isLoading) return;
 
-        const content = inputValue.trim();
-        setInputValue("");
+        if (typeof text !== 'string') setInputValue("");
         setIsLoading(true);
 
         const tempUserMsg: ChatMessageResponse = {
@@ -121,6 +121,57 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                     </motion.div>
                 ))}
 
+                {messages.length === 2 && !session.analysis && !isLoading && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="flex flex-col gap-3 mt-4"
+                    >
+                        <p className="text-white/50 text-sm text-center mb-2">Выберите тему для продолжения:</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl mx-auto w-full">
+                            <button onClick={() => handleSendMessage("Анализ идеи")} className="flex items-center gap-3 p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-colors text-left group">
+                                <div className="w-10 h-10 rounded-lg bg-pitchy-violet/20 flex items-center justify-center text-pitchy-violet group-hover:scale-110 transition-transform">
+                                    <Lightbulb className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <div className="text-white font-medium">Анализ идеи</div>
+                                    <div className="text-white/40 text-xs mt-0.5">Получить оценку 0-100</div>
+                                </div>
+                            </button>
+
+                            <button onClick={() => handleSendMessage("Анализ ЦА")} className="flex items-center gap-3 p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-colors text-left group">
+                                <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center text-blue-400 group-hover:scale-110 transition-transform">
+                                    <Users className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <div className="text-white font-medium">Анализ ЦА</div>
+                                    <div className="text-white/40 text-xs mt-0.5">Сегментация аудитории</div>
+                                </div>
+                            </button>
+
+                            <button onClick={() => handleSendMessage("Посчитать экономику проекта")} className="flex items-center gap-3 p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-colors text-left group">
+                                <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:scale-110 transition-transform">
+                                    <Calculator className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <div className="text-white font-medium">Юнит-экономика</div>
+                                    <div className="text-white/40 text-xs mt-0.5">САР, LTV, метрики</div>
+                                </div>
+                            </button>
+
+                            <button onClick={() => handleSendMessage("Другой вопрос")} className="flex items-center gap-3 p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-colors text-left group">
+                                <div className="w-10 h-10 rounded-lg bg-orange-500/20 flex items-center justify-center text-orange-400 group-hover:scale-110 transition-transform">
+                                    <HelpCircle className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <div className="text-white font-medium">Другой вопрос</div>
+                                    <div className="text-white/40 text-xs mt-0.5">Свободный диалог</div>
+                                </div>
+                            </button>
+                        </div>
+                    </motion.div>
+                )}
+
                 {isLoading && (
                     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-4">
                         <div className="w-8 h-8 rounded-full bg-pitchy-violet flex items-center justify-center flex-shrink-0">
@@ -178,7 +229,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                         rows={1}
                     />
                     <button
-                        onClick={handleSendMessage}
+                        onClick={() => handleSendMessage()}
                         disabled={!inputValue.trim() || isLoading || !!session.analysis}
                         className="absolute right-2 bottom-2 p-2 rounded-lg bg-pitchy-violet text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-pitchy-violet/80 transition-colors"
                     >

@@ -1841,6 +1841,21 @@ SYSTEM_INTERVIEW_PROMPT = """
 }
 """
 
+SYSTEM_TA_PROMPT = """
+Ты — эксперт по маркетингу и целевой аудитории (ЦА) для стартапов на рынке СНГ и Global.
+ Твоя задача — помочь основателю лучше понять и сегментировать свою ЦА. Задавай наводящие вопросы по одному. Веди диалог в приятном, профессиональном тоне. Отвечай только обычным текстом, без JSON.
+"""
+
+SYSTEM_ECONOMICS_PROMPT = """
+Ты — финансовый директор и эксперт по юнит-экономике для стартапов.
+ Твоя задача — помочь основателю рассчитать или оптимизировать метрики: CAC, LTV, ARPU, Retention, CPA. Задавай наводящие вопросы по одному, помогай строить финмодель. Отвечай только обычным текстом, без JSON.
+"""
+
+SYSTEM_GENERAL_PROMPT = """
+Ты — многопрофильный бизнес-ассистент для стартапов. 
+ Помогай основателю с любыми вопросами по бизнесу, стратегии, HR, разработке или фандрайзингу. Веди диалог в приятном и профессиональном тоне. Отвечай только обычным текстом, без JSON.
+"""
+
 
 @app.post("/chat/sessions", response_model=ChatSessionDetailResponse)
 def create_chat_session(
@@ -1879,8 +1894,12 @@ def create_chat_session(
             )
         )
 
-        # Generate Assistant Response (Interviewer Logic)
-        assistant_text = _generate_interviewer_response(session, db)
+        # Generate Assistant Greeting
+        assistant_text = (
+            "Привет! Я — ваш ИИ-аналитик стартапов.\n\n"
+            "Я увидел базовое описание вашего проекта. "
+            "Чтобы наше общение было максимально полезным, **выберите одну из тем** ниже или задайте свой вопрос."
+        )
 
         # Save assistant message
         ai_msg = DbChatMessage(
@@ -2048,7 +2067,19 @@ def _generate_interviewer_response(session: ChatSession, db: Session) -> str:
         except Exception:
             pass
 
+    # Determine Topic Mode
+    topic = "Анализ идеи"
+    if len(history_msgs) >= 3:
+        topic = history_msgs[2].content.strip()
+
     system_prompt_final = SYSTEM_INTERVIEW_PROMPT
+    if topic == "Анализ ЦА":
+        system_prompt_final = SYSTEM_TA_PROMPT
+    elif topic == "Посчитать экономику проекта":
+        system_prompt_final = SYSTEM_ECONOMICS_PROMPT
+    elif topic not in ("Анализ идеи", ""):  # "Другой вопрос" and general fallback
+        system_prompt_final = SYSTEM_GENERAL_PROMPT
+
     if context_text:
         system_prompt_final += f"\n\nСправочная информация (RAG):\n{context_text}"
 
@@ -2078,7 +2109,7 @@ def _generate_interviewer_response(session: ChatSession, db: Session) -> str:
 
         # Check if JSON
         clean_text = raw_response.strip()
-        if "{" in clean_text and "}" in clean_text:
+        if topic == "Анализ идеи" and "{" in clean_text and "}" in clean_text:
             # Try parse
             try:
                 data = extract_json(clean_text)
