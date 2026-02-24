@@ -1623,7 +1623,7 @@ def admin_add_rag_url(
         if not text or not filepath:
             raise HTTPException(status_code=400, detail="Could not extract text from the URL")
             
-        chunks_added = add_text_to_rag(text)
+        chunks_added = rag.add_text_to_rag(text)
         
         return AdminRAGResponse(
             success=True,
@@ -1675,7 +1675,7 @@ async def admin_add_rag_pdf(
             f.write(f"Source: Uploaded PDF {file.filename}\n\n")
             f.write(text)
             
-        chunks_added = add_text_to_rag(text)
+        chunks_added = rag.add_text_to_rag(text)
         
         return AdminRAGResponse(
             success=True,
