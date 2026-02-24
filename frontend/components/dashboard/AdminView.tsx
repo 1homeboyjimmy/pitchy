@@ -63,6 +63,11 @@ export function AdminView() {
     const [isScraping, setIsScraping] = useState(false);
     const [ragResult, setRagResult] = useState<{ success: boolean, message: string } | null>(null);
 
+    // RAG Crawl State
+    const [crawlUrl, setCrawlUrl] = useState("");
+    const [crawlIsSitemap, setCrawlIsSitemap] = useState(false);
+    const [crawlMaxPages, setCrawlMaxPages] = useState(50);
+
     // New Promo Form
     const [newPromo, setNewPromo] = useState({ code: "", discount_percent: 10, max_uses: "" });
 
@@ -171,6 +176,39 @@ export function AdminView() {
                 setRagUrl("");
             } else {
                 setRagResult({ success: false, message: data.detail || "Произошла ошибка при обработке URL." });
+            }
+        } catch (e) {
+            setRagResult({ success: false, message: "Не удалось подключиться к серверу." });
+        } finally {
+            setIsScraping(false);
+        }
+    };
+
+    const handleCrawlRAG = async () => {
+        if (!crawlUrl) return;
+        setIsScraping(true);
+        setRagResult(null);
+        try {
+            const token = getToken();
+            const res = await fetch(`${API_BASE}/admin/rag/crawl`, {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${token}`,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    url: crawlUrl,
+                    is_sitemap: crawlIsSitemap,
+                    max_pages: crawlMaxPages
+                })
+            });
+            const data = await res.json();
+
+            if (res.ok) {
+                setRagResult({ success: true, message: data.message });
+                setCrawlUrl("");
+            } else {
+                setRagResult({ success: false, message: data.detail || "Произошла ошибка при запуске сканирования." });
             }
         } catch (e) {
             setRagResult({ success: false, message: "Не удалось подключиться к серверу." });
@@ -586,6 +624,60 @@ export function AdminView() {
                                             "Загрузить PDF"
                                         )}
                                     </Button>
+                                </div>
+
+                                <div className="my-6 border-b border-white/10"></div>
+
+                                <h4 className="text-white font-medium mb-1">Глубокое сканирование (Crawler)</h4>
+                                <p className="text-white/50 mb-4 text-xs">
+                                    Автоматически найдёт и скачает все страницы сайта (или карту сайта sitemap.xml), добавив их в RAG. Работает в фоновом режиме.
+                                </p>
+
+                                <div className="space-y-4">
+                                    <input
+                                        type="url"
+                                        placeholder="https://productradar.ru"
+                                        value={crawlUrl}
+                                        onChange={(e) => setCrawlUrl(e.target.value)}
+                                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white outline-none focus:border-pitchy-violet transition-colors"
+                                        disabled={isScraping}
+                                    />
+                                    <div className="flex gap-4 items-center">
+                                        <label className="flex items-center gap-2 text-white/70 text-sm cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={crawlIsSitemap}
+                                                onChange={(e) => setCrawlIsSitemap(e.target.checked)}
+                                                className="rounded bg-white/10 border-white/20 text-pitchy-violet focus:ring-pitchy-violet"
+                                            />
+                                            Это Sitemap.xml
+                                        </label>
+
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-white/70 text-sm">Макс. страниц:</span>
+                                            <input
+                                                type="number"
+                                                min="1" max="500"
+                                                value={crawlMaxPages}
+                                                onChange={(e) => setCrawlMaxPages(parseInt(e.target.value) || 50)}
+                                                className="bg-white/5 border border-white/10 rounded-lg px-3 py-1 text-white w-20 outline-none"
+                                            />
+                                        </div>
+
+                                        <div className="flex-1"></div>
+                                        <Button
+                                            variant="secondary"
+                                            onClick={handleCrawlRAG}
+                                            disabled={!crawlUrl.trim() || isScraping}
+                                            className="px-6"
+                                        >
+                                            {isScraping ? (
+                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                            ) : (
+                                                "Запустить паука"
+                                            )}
+                                        </Button>
+                                    </div>
                                 </div>
 
                                 {ragResult && (

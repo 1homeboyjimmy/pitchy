@@ -5,7 +5,7 @@ import time
 import random
 from datetime import datetime, timedelta, date
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Response, UploadFile, File
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, UploadFile, File, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.responses import StreamingResponse
@@ -131,11 +131,37 @@ async def lifespan(_: FastAPI):
 class AdminRAGRequest(BaseModel):
     url: str
 
+class AdminRAGCrawlRequest(BaseModel):
+    url: str
+    is_sitemap: bool = False
+    max_pages: int = 50
+
 class AdminRAGResponse(BaseModel):
     success: bool
     message: str
     chunks_added: int = 0
     file_path: str | None = None
+
+def background_crawl(url: str, is_sitemap: bool, max_pages: int, delay: float):
+    from crawler import parse_sitemap, crawl_website, append_to_rag
+    import logging
+    log = logging.getLogger("app")
+    
+    try:
+        if is_sitemap:
+            urls_to_scrape = parse_sitemap(url)
+            if len(urls_to_scrape) > max_pages:
+                urls_to_scrape = urls_to_scrape[:max_pages]
+        else:
+            urls_to_scrape = crawl_website(url, max_pages)
+            
+        log.info(f"Background task starting crawl of {len(urls_to_scrape)} URLs from {url}")
+        for idx, u in enumerate(urls_to_scrape):
+            log.info(f"Crawling {idx+1}/{len(urls_to_scrape)}: {u}")
+            append_to_rag(u, delay)
+        log.info(f"Background crawl from {url} finished.")
+    except Exception as e:
+        log.error(f"Background crawl failed: {e}")
 
 app = FastAPI(title="Startup Analyzer", lifespan=lifespan)
 app.include_router(billing.router)
@@ -1688,6 +1714,34 @@ async def admin_add_rag_pdf(
     except Exception as e:
         logger.error(f"Failed to process PDF {e}")
         raise HTTPException(status_code=500, detail=f"Failed to process PDF: {e}")
+
+@app.post("/admin/rag/crawl", response_model=AdminRAGResponse)
+def admin_rag_crawl(
+    req: AdminRAGCrawlRequest,
+    background_tasks: BackgroundTasks,
+    _: User = Depends(require_admin),
+):
+    """
+    Spawns a background task to crawl a website or sitemap and inject it entirely into RAG.
+    """
+    from urllib.parse import urlparse
+    parsed = urlparse(req.url)
+    if not parsed.scheme or not parsed.netloc:
+        raise HTTPException(status_code=400, detail="Invalid URL format")
+        
+    background_tasks.add_task(
+        background_crawl, 
+        url=req.url, 
+        is_sitemap=req.is_sitemap, 
+        max_pages=req.max_pages, 
+        delay=1.5
+    )
+    
+    return AdminRAGResponse(
+        success=True,
+        message=f"Глубокий скан запущен в фоне. Ожидается обход до {req.max_pages} страниц.",
+        chunks_added=0
+    )
 
 @app.get("/admin/payments", response_model=list[PaymentResponse])
 def admin_payments(
