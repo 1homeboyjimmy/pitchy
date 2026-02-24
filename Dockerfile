@@ -5,10 +5,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY requirements.txt .
-
-# Install CPU-only torch to save space (avoiding CUDA bloat)
+# Install CPU-only torch FIRST to save space and prevent cache busts from requirements.txt
 RUN pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+
+COPY requirements.txt .
 
 RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements.txt
 
