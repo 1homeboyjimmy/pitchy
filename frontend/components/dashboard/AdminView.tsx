@@ -49,6 +49,16 @@ type Subscription = {
     total_spent: number;
 };
 
+type RagLog = {
+    id: number;
+    source_url: string;
+    source_type: string;
+    status: string;
+    chunks_added: number;
+    error_message: string | null;
+    created_at: string;
+};
+
 export function AdminView() {
     const [activeTab, setActiveTab] = useState<"analytics" | "promocodes" | "users" | "subscriptions" | "rag">("users");
     const [loading, setLoading] = useState(true);
@@ -67,6 +77,7 @@ export function AdminView() {
     const [crawlUrl, setCrawlUrl] = useState("");
     const [crawlIsSitemap, setCrawlIsSitemap] = useState(false);
     const [crawlMaxPages, setCrawlMaxPages] = useState(50);
+    const [ragLogs, setRagLogs] = useState<RagLog[]>([]);
 
     // New Promo Form
     const [newPromo, setNewPromo] = useState({ code: "", discount_percent: 10, max_uses: "" });
@@ -101,6 +112,11 @@ export function AdminView() {
                         headers: { "Authorization": `Bearer ${token}` }
                     });
                     if (res.ok) setSubscriptions(await res.json());
+                } else if (activeTab === "rag") {
+                    const res = await fetch(`${API_BASE}/admin/rag/logs`, {
+                        headers: { "Authorization": `Bearer ${token}` }
+                    });
+                    if (res.ok) setRagLogs(await res.json());
                 }
             } catch (e) {
                 console.error("Admin fetch error", e);
@@ -689,6 +705,62 @@ export function AdminView() {
                                         <p className="font-medium text-sm">{ragResult.message}</p>
                                     </motion.div>
                                 )}
+
+                                <div className="mt-8 border-t border-white/10 pt-6">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <h4 className="text-white font-medium">История загрузок</h4>
+                                        <span className="text-sm text-white/40">{ragLogs.length} записей</span>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-sm">
+                                            <thead>
+                                                <tr className="text-white/40 border-b border-white/10">
+                                                    <th className="text-left py-3 pr-4 w-32">Дата</th>
+                                                    <th className="text-left py-3 px-4">Источник</th>
+                                                    <th className="text-left py-3 px-4 w-20">Тип</th>
+                                                    <th className="text-left py-3 px-4 w-28">Статус</th>
+                                                    <th className="text-right py-3 pl-4 w-24">Чанки</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {ragLogs.map((log) => (
+                                                    <tr key={log.id} className="border-b border-white/5 hover:bg-white/5 group">
+                                                        <td className="py-3 pr-4 text-white/50 text-xs whitespace-nowrap">
+                                                            {new Date(log.created_at).toLocaleString("ru-RU", {
+                                                                day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+                                                            })}
+                                                        </td>
+                                                        <td className="py-3 px-4 text-white/80 max-w-[200px] truncate" title={log.source_url}>
+                                                            {log.source_url}
+                                                        </td>
+                                                        <td className="py-3 px-4 text-white/60 text-xs">
+                                                            <span className="bg-white/10 px-2 py-1 rounded">{log.source_type}</span>
+                                                        </td>
+                                                        <td className="py-3 px-4">
+                                                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${log.status === "SUCCESS"
+                                                                ? "bg-emerald-500/20 text-emerald-400"
+                                                                : "bg-red-500/20 text-red-400"
+                                                                }`}>
+                                                                {log.status}
+                                                            </span>
+                                                            {log.error_message && (
+                                                                <p className="text-xs text-red-400 mt-1 truncate max-w-[120px]" title={log.error_message}>{log.error_message}</p>
+                                                            )}
+                                                        </td>
+                                                        <td className="py-3 pl-4 text-right text-white/80 font-mono">
+                                                            +{log.chunks_added}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                                {ragLogs.length === 0 && (
+                                                    <tr>
+                                                        <td colSpan={5} className="py-8 text-center text-white/30">История загрузок пуста</td>
+                                                    </tr>
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
                             </GlassCard>
                         </div>
                     )}

@@ -23,6 +23,7 @@ from observability import configure_logging
 from redis_client import get_redis
 from yandex_gpt_client import YandexGPTError, call_yandex_gpt, extract_json
 from db import SessionLocal, get_db
+from models import User, PromoCode, Analysis, Payment, RagLog
 from models import Analysis, ChatMessage as DbChatMessage, ChatSession, ErrorLog, User, PromoCode, Payment
 from sqlalchemy import func as sa_func
 from schemas import (
@@ -141,6 +142,15 @@ class AdminRAGResponse(BaseModel):
     message: str
     chunks_added: int = 0
     file_path: str | None = None
+
+class RagLogResponse(BaseModel):
+    id: int
+    source_url: str
+    source_type: str
+    status: str
+    chunks_added: int
+    error_message: str | None
+    created_at: datetime
 
 def background_crawl(url: str, is_sitemap: bool, max_pages: int, delay: float):
     from crawler import parse_sitemap, crawl_website, append_to_rag
@@ -1634,6 +1644,7 @@ def admin_subscriptions(
 @app.post("/admin/rag/add-url", response_model=AdminRAGResponse)
 def admin_add_rag_url(
     req: AdminRAGRequest,
+    db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ):
     """
@@ -1651,21 +1662,34 @@ def admin_add_rag_url(
             
         chunks_added = rag.add_text_to_rag(text)
         
+        log_entry = RagLog(source_url=req.url, source_type="URL", status="SUCCESS", chunks_added=chunks_added)
+        db.add(log_entry)
+        db.commit()
+        
         return AdminRAGResponse(
             success=True,
             message=f"Successfully scraped {req.url} and added {chunks_added} chunks to RAG.",
             chunks_added=chunks_added,
             file_path=filepath
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to add url to rag {e}")
         import traceback
         traceback.print_exc()
+        try:
+            log_entry = RagLog(source_url=req.url, source_type="URL", status="FAILED", chunks_added=0, error_message=str(e))
+            db.add(log_entry)
+            db.commit()
+        except:
+            pass
         raise HTTPException(status_code=500, detail=f"Failed to process URL: {e}")
 
 @app.post("/admin/rag/add-pdf", response_model=AdminRAGResponse)
 async def admin_add_rag_pdf(
     file: UploadFile = File(...),
+    db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ):
     """
@@ -1703,6 +1727,10 @@ async def admin_add_rag_pdf(
             
         chunks_added = rag.add_text_to_rag(text)
         
+        log_entry = RagLog(source_url=file.filename, source_type="PDF", status="SUCCESS", chunks_added=chunks_added)
+        db.add(log_entry)
+        db.commit()
+        
         return AdminRAGResponse(
             success=True,
             message=f"Successfully parsed {file.filename} and added {chunks_added} chunks to RAG.",
@@ -1713,7 +1741,24 @@ async def admin_add_rag_pdf(
         raise
     except Exception as e:
         logger.error(f"Failed to process PDF {e}")
+        try:
+            log_entry = RagLog(source_url=file.filename or "unknown.pdf", source_type="PDF", status="FAILED", chunks_added=0, error_message=str(e))
+            db.add(log_entry)
+            db.commit()
+        except:
+            pass
         raise HTTPException(status_code=500, detail=f"Failed to process PDF: {e}")
+
+@app.get("/admin/rag/logs", response_model=list[RagLogResponse])
+def admin_rag_logs(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    """
+    Returns the latest 100 RAG ingestion logs.
+    """
+    logs = db.query(RagLog).order_by(RagLog.created_at.desc()).limit(100).all()
+    return logs
 
 @app.post("/admin/rag/crawl", response_model=AdminRAGResponse)
 def admin_rag_crawl(

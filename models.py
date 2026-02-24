@@ -107,6 +107,17 @@ class ChatSession(Base):
     messages: Mapped[list["ChatMessage"]] = relationship(back_populates="session", cascade="all, delete-orphan")
     analysis: Mapped["Analysis"] = relationship()
 
+class RagLog(Base):
+    __tablename__ = "rag_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source_url: Mapped[str] = mapped_column(String(500))
+    source_type: Mapped[str] = mapped_column(String(50))  # e.g. URL, CRAWL, PDF
+    status: Mapped[str] = mapped_column(String(50))       # e.g. SUCCESS, FAILED
+    chunks_added: Mapped[int] = mapped_column(Integer, default=0)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
 
 class ChatMessage(Base):
     __tablename__ = "chat_messages"

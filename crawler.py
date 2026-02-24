@@ -100,18 +100,37 @@ def crawl_website(start_url: str, max_pages: int) -> list[str]:
 
 def append_to_rag(url: str, delay: float = 1.0):
     """Scrapes a URL and injects it into ChromaDB RAG."""
+    from db import SessionLocal
+    from models import RagLog
+    db = SessionLocal()
+    chunks_added = 0
+    status = "SUCCESS"
+    err_msg = None
+    
     try:
         # Use existing scraper logic
         filepath, text = scrape_and_save(url)
         if text and filepath:
-            chunks = rag.add_text_to_rag(text)
-            logger.info(f"SUCCESS: Added {chunks} chunks from {url}")
+            chunks_added = rag.add_text_to_rag(text)
+            logger.info(f"SUCCESS: Added {chunks_added} chunks from {url}")
         else:
+            status = "FAILED"
+            err_msg = "Could not extract text from the URL"
             logger.warning(f"SKIPPED: Could not extract text from {url}")
             
     except Exception as e:
+        status = "FAILED"
+        err_msg = str(e)
         logger.error(f"FAILED on {url}: {e}")
     finally:
+        try:
+            log_entry = RagLog(source_url=url, source_type="CRAWL", status=status, chunks_added=chunks_added, error_message=err_msg)
+            db.add(log_entry)
+            db.commit()
+        except Exception as dbe:
+            logger.error(f"Failed to write to RagLog: {dbe}")
+        finally:
+            db.close()
         time.sleep(delay) # Prevent rate limiting
 
 if __name__ == "__main__":
