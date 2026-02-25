@@ -125,7 +125,17 @@ logger = logging.getLogger("app")
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    rag.init_rag()
+    # Start RAG initialization in background thread so server starts immediately
+    # (model loading + migration can take minutes on first run after model switch)
+    import threading
+    def _init_rag_bg():
+        try:
+            rag.init_rag()
+            logger.info("RAG initialized successfully in background.")
+        except Exception as e:
+            logger.exception(f"RAG background init failed: {e}")
+    t = threading.Thread(target=_init_rag_bg, daemon=True)
+    t.start()
     yield
 
 

@@ -14,6 +14,7 @@ ROLLBACK_ON_FAIL="${ROLLBACK_ON_FAIL:-true}"
 cd "$REPO_DIR"
 
 # PREVIOUS_COMMIT="$(git rev-parse HEAD)"
+PREVIOUS_COMMIT="${PREVIOUS_COMMIT:-$(git rev-parse HEAD)}"
 # git fetch origin
 # git reset --hard origin/main
 
