@@ -24,7 +24,6 @@ CHROMA_HTTP_PORT = int(os.getenv("CHROMA_HTTP_PORT", "8000"))
 
 # --- Model Configuration ---
 EMBEDDING_MODEL_NAME = "intfloat/multilingual-e5-small"
-EMBEDDING_MODEL_LOCAL_DIR = Path("model_data/multilingual-e5-small")
 # Metadata key to track which model was used for embeddings
 MODEL_META_KEY = "embedding_model"
 
@@ -34,15 +33,8 @@ class E5EmbeddingFunction(EmbeddingFunction):
     E5 models require 'query: ' prefix for queries and 'passage: ' for documents.
     """
     def __init__(self):
-        weight_file = EMBEDDING_MODEL_LOCAL_DIR / "model.safetensors"
-        alt_weight = EMBEDDING_MODEL_LOCAL_DIR / "pytorch_model.bin"
-
-        if EMBEDDING_MODEL_LOCAL_DIR.exists() and (weight_file.exists() or alt_weight.exists()):
-            print(f"Loading local embedding model from {EMBEDDING_MODEL_LOCAL_DIR}...")
-            self.model = SentenceTransformer(str(EMBEDDING_MODEL_LOCAL_DIR))
-        else:
-            print(f"Loading embedding model {EMBEDDING_MODEL_NAME} from HuggingFace...")
-            self.model = SentenceTransformer(EMBEDDING_MODEL_NAME)
+        print(f"Loading embedding model {EMBEDDING_MODEL_NAME}...")
+        self.model = SentenceTransformer(EMBEDDING_MODEL_NAME)
 
     def __call__(self, input: Documents) -> Embeddings:
         # E5 models expect prefixed input; for ChromaDB add/upsert we use passage prefix

@@ -1,7 +1,8 @@
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    HF_HOME=/app/.hf_cache
 
 WORKDIR /app
 
@@ -14,8 +15,9 @@ RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements.txt
 
 COPY . .
 
-# Pre-download embedding model weights into the image
-RUN python download_model.py
+# Pre-download embedding model into HuggingFace cache inside image
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('intfloat/multilingual-e5-small')" \
+    && echo 'Model cached at:' && du -sh /app/.hf_cache/
 
 EXPOSE 8000
 
