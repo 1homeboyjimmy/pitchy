@@ -8,24 +8,22 @@ import time
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-MODEL_NAME = "cointegrated/rubert-tiny2"
-LOCAL_DIR = Path("model_data/rubert-tiny2")
+MODEL_NAME = "intfloat/multilingual-e5-small"
+LOCAL_DIR = Path("model_data/multilingual-e5-small")
 BASE_URL = f"https://hf-mirror.com/{MODEL_NAME}/resolve/main"
 
 FILES_TO_DOWNLOAD = [
     "config.json",
-    "pytorch_model.bin",
+    "model.safetensors",
     "tokenizer.json",
     "tokenizer_config.json",
     "vocab.txt",
     "special_tokens_map.json",
     "modules.json",
     "sentence_bert_config.json",
-    "README.md",
     "1_Pooling/config.json",
-    # 2_Normalize usually has no config, but checking if it exists won't hurt,
-    # except it might fail 404. rubert-tiny2 repo structure shows 1_Pooling.
-    # We will try to download, if fail, ignore for optional subfolders.
+    "2_Dense/config.json",
+    "2_Dense/pytorch_model.bin",
 ]
 
 
@@ -38,7 +36,7 @@ def download_file(filename):
 
     print(f"Downloading {filename}...")
     try:
-        response = requests.get(url, verify=False, stream=True, timeout=30)
+        response = requests.get(url, verify=False, stream=True, timeout=60)
         if response.status_code == 404:
             print(f"File {filename} not found (404), skipping.")
             return
@@ -47,7 +45,7 @@ def download_file(filename):
         with open(local_path, "wb") as f:
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)
-        print(f"Saved to {local_path}")
+        print(f"Saved to {local_path} ({local_path.stat().st_size / 1024 / 1024:.1f} MB)")
     except Exception as e:
         print(f"Error downloading {filename}: {e}")
 
@@ -59,7 +57,7 @@ def main():
     for filename in FILES_TO_DOWNLOAD:
         local_path = LOCAL_DIR / filename
         if local_path.exists() and local_path.stat().st_size > 0:
-            print(f"Skipping {filename} (already exists).")
+            print(f"Skipping {filename} (already exists, {local_path.stat().st_size / 1024 / 1024:.1f} MB).")
             continue
 
         # Retry up to 3 times
