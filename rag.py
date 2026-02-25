@@ -119,56 +119,84 @@ def _rerank_chunks(query: str, documents: List[str], distances: List[float]) -> 
 
 
 def _migrate_collection_if_needed(client: chromadb.ClientAPI, embedding_fn: E5EmbeddingFunction) -> Collection:
-    """Auto-migrate: if the collection was built with a different model, re-embed all documents."""
+    """Auto-migrate: if the collection was built with a different model, re-embed all documents.
+    Uses a marker file to ensure migration only runs ONCE.
+    """
+    # Check marker file — if it exists with current model name, skip migration entirely
+    marker_path = Path("/tmp/.rag_migration_done")
+    if marker_path.exists():
+        stored = marker_path.read_text().strip()
+        if stored == EMBEDDING_MODEL_NAME:
+            return None
+
     try:
         old_collection = client.get_collection(name=COLLECTION_NAME)
     except Exception:
-        # Collection doesn't exist at all, nothing to migrate
+        # Collection doesn't exist, nothing to migrate
+        marker_path.write_text(EMBEDDING_MODEL_NAME)
         return None
 
     # Check stored model metadata
     meta = old_collection.metadata or {}
-    stored_model = meta.get(MODEL_META_KEY, "unknown")
+    stored_model = meta.get(MODEL_META_KEY)
 
+    # If metadata already matches OR metadata key is present with correct value, skip
     if stored_model == EMBEDDING_MODEL_NAME:
-        # Same model, no migration needed
+        marker_path.write_text(EMBEDDING_MODEL_NAME)
         return None
 
-    print(f"[RAG Migration] Model changed: '{stored_model}' → '{EMBEDDING_MODEL_NAME}'")
-    print(f"[RAG Migration] Exporting {old_collection.count()} documents...")
+    # If metadata key is missing but collection has many documents, 
+    # it was likely already migrated — just update metadata, don't delete!
+    if stored_model is None and old_collection.count() > 10:
+        print(f"[RAG Migration] Collection has {old_collection.count()} docs but no model tag. Tagging as current model (skipping re-embed).")
+        # We can't update metadata on existing collection easily in ChromaDB,
+        # so just write the marker file to prevent future migration attempts
+        marker_path.write_text(EMBEDDING_MODEL_NAME)
+        return None
 
-    # Export all documents
-    all_data = old_collection.get(include=["documents"])
-    all_docs = all_data.get("documents", [])
-    all_ids = all_data.get("ids", [])
+    # Only migrate if explicitly a DIFFERENT model (not just missing metadata)
+    if stored_model is not None and stored_model != EMBEDDING_MODEL_NAME:
+        print(f"[RAG Migration] Model changed: '{stored_model}' → '{EMBEDDING_MODEL_NAME}'")
+        print(f"[RAG Migration] Exporting {old_collection.count()} documents...")
 
-    if not all_docs:
-        print("[RAG Migration] No documents to migrate.")
+        # Export all documents
+        all_data = old_collection.get(include=["documents"])
+        all_docs = all_data.get("documents", [])
+        all_ids = all_data.get("ids", [])
+
+        if not all_docs:
+            print("[RAG Migration] No documents to migrate.")
+            client.delete_collection(COLLECTION_NAME)
+            marker_path.write_text(EMBEDDING_MODEL_NAME)
+            return None
+
+        print(f"[RAG Migration] Exported {len(all_docs)} chunks. Recreating collection...")
+
+        # Delete old collection
         client.delete_collection(COLLECTION_NAME)
-        return None
 
-    print(f"[RAG Migration] Exported {len(all_docs)} chunks. Recreating collection...")
+        # Create new collection with new embedding function
+        new_collection = client.create_collection(
+            name=COLLECTION_NAME,
+            embedding_function=embedding_fn,
+            metadata={"hnsw:space": "cosine", MODEL_META_KEY: EMBEDDING_MODEL_NAME},
+        )
 
-    # Delete old collection
-    client.delete_collection(COLLECTION_NAME)
+        # Re-add documents in batches
+        batch_size = 100
+        for i in range(0, len(all_docs), batch_size):
+            batch_docs = all_docs[i:i + batch_size]
+            batch_ids = all_ids[i:i + batch_size]
+            new_collection.add(documents=batch_docs, ids=batch_ids)
+            print(f"[RAG Migration] Re-embedded {min(i + batch_size, len(all_docs))}/{len(all_docs)} chunks...")
 
-    # Create new collection with new embedding function
-    new_collection = client.create_collection(
-        name=COLLECTION_NAME,
-        embedding_function=embedding_fn,
-        metadata={"hnsw:space": "cosine", MODEL_META_KEY: EMBEDDING_MODEL_NAME},
-    )
+        print(f"[RAG Migration] ✅ Migration complete! {len(all_docs)} chunks re-embedded.")
+        marker_path.write_text(EMBEDDING_MODEL_NAME)
+        return new_collection
 
-    # Re-add documents in batches (ChromaDB has limits per request)
-    batch_size = 100
-    for i in range(0, len(all_docs), batch_size):
-        batch_docs = all_docs[i:i + batch_size]
-        batch_ids = all_ids[i:i + batch_size]
-        new_collection.add(documents=batch_docs, ids=batch_ids)
-        print(f"[RAG Migration] Re-embedded {min(i + batch_size, len(all_docs))}/{len(all_docs)} chunks...")
-
-    print(f"[RAG Migration] ✅ Migration complete! {len(all_docs)} chunks re-embedded.")
-    return new_collection
+    # Default: no migration needed
+    marker_path.write_text(EMBEDDING_MODEL_NAME)
+    return None
 
 
 @dataclass
