@@ -41,7 +41,11 @@ fi
 # 1. Pull new base images
 APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" pull --ignore-buildable -q
 
-# 2. Start new containers without taking down old ones (Rolling Update)
+# 2. Clean up zombie containers from previous failed deploys
+docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" down --remove-orphans 2>/dev/null || true
+docker container prune -f 2>/dev/null || true
+
+# 3. Start new containers
 APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" up -d --build --remove-orphans
 
 # 3. Apply database migrations
