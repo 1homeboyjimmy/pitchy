@@ -2127,6 +2127,18 @@ def _generate_interviewer_response(session: ChatSession, db: Session) -> str:
 
         final_user_prompt = f"История диалога:\n{history_text}\n\nТвоя реакция (вопрос или JSON):"
 
+        # Forcefully stop questions if history is too long
+        # History messages count: 
+        # 0: initial idea, 1: AI greeting, 2: user topic, 3: AI Q1, 4: user A1...
+        # 5 QAs = 13 messages. 7 QAs = 17 messages.
+        qa_limit = 17 if topic == "Анализ идеи" else 13
+        if len(history_msgs) >= qa_limit:
+            if topic == "Анализ идеи":
+                final_user_prompt += "\n\n[СИСТЕМНОЕ СООБЩЕНИЕ]: ЛИМИТ ВОПРОСОВ КЛИЕНТУ ИСЧЕРПАН. СЕЙЧАС ЖЕ ВЫДАЙ ФИНАЛЬНЫЙ JSON АНАЛИЗ ОТ 0 ДО 100 БЕЗ КАКИХ-ЛИБО ВОПРОСОВ. НИЧЕГО КРОМЕ JSON СТРОКИ НЕ ВЫВОДИ."
+            else:
+                final_user_prompt += "\n\n[СИСТЕМНОЕ СООБЩЕНИЕ]: ЛИМИТ ВОПРОСОВ КЛИЕНТУ ИСЧЕРПАН. СЕЙЧАС ЖЕ ВЫДАЙ ФИНАЛЬНОЕ ПОДРОБНОЕ РЕЗЮМЕ/СОВЕТЫ ПО ТЕМЕ БЕЗ КАКИХ-ЛИБО ВОПРОСОВ."
+
+
         raw_response, usage = call_yandex_gpt(system_prompt_final, final_user_prompt)
         logger.info(f"YandexGPT token usage (background summary): {usage}")
 
