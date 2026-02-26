@@ -7,8 +7,8 @@ import { ChatInterface } from "@/components/chat/ChatInterface";
 
 const features = [
     { icon: Zap, label: "30 секунд", sublabel: "На анализ" },
-    { icon: Target, label: "0-100", sublabel: "Шкала оценки" },
-    { icon: BarChart3, label: "Глубокий анализ", sublabel: "5 ключевых метрик" },
+    { icon: Target, label: "Индекс готовности", sublabel: "Оценка 0-100" },
+    { icon: BarChart3, label: "Пошаговый план", sublabel: "Что делать завтра" },
 ];
 
 export function HeroSection() {
@@ -63,7 +63,7 @@ export function HeroSection() {
                     <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass-card">
                         <Sparkles className="w-4 h-4 text-pitchy-violet" />
                         <span className="text-sm text-white/70">
-                            ИИ-аналитика стартапов
+                            ИИ-Copilot для бизнеса
                         </span>
                     </div>
                 </motion.div>
@@ -88,7 +88,7 @@ export function HeroSection() {
                     transition={{ duration: 0.5, delay: 0.3 }}
                     className="text-center text-lg sm:text-xl md:text-2xl text-white/70 mb-4 max-w-2xl mx-auto"
                 >
-                    Оцените любой стартап за секунды
+                    ИИ-Copilot для любого начинающего бизнеса
                 </motion.p>
 
                 <motion.p
@@ -97,8 +97,7 @@ export function HeroSection() {
                     transition={{ duration: 0.5, delay: 0.4 }}
                     className="text-center text-sm sm:text-base text-white/50 mb-10 max-w-xl mx-auto"
                 >
-                    Анализ на базе ИИ для фаундеров, инвесторов и аналитиков. Мгновенная
-                    оценка по 5 ключевым метрикам.
+                    От магазина на Wildberries до IT-стартапа. Помощь на любом этапе: анализ ЦА, расчет экономики, исследование рынка и генерация пошагового плана действий.
                 </motion.p>
 
                 {/* Chat Interface */}

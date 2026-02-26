@@ -59,7 +59,7 @@ const footerColumns = [
 
 const socialLinks = [
   { icon: Send, href: "https://t.me/homeboyjimmy1", label: "Telegram" },
-  { icon: Mail, href: "mailto:hello@pitchy.pro", label: "Email" },
+  { icon: Mail, href: "mailto:auth@pitchy.pro", label: "Email" },
 ];
 
 
