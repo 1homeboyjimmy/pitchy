@@ -72,6 +72,7 @@ services:
       context: ./frontend
       args:
         NEXT_PUBLIC_API_BASE_URL: https://pitchy.pro
+        BACKEND_INTERNAL_URL: http://backend:8000
     image: pitchy-frontend:latest
     restart: unless-stopped
     logging:
