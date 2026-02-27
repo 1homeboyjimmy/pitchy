@@ -16,7 +16,7 @@ import {
   RingProgress,
 } from "@mantine/core";
 import { DatePickerInput, DatesRangeValue } from "@mantine/dates";
-import { BarChart, LineChart, AreaChart } from "@mantine/charts";
+import { AreaChart } from "@mantine/charts";
 import dayjs from "dayjs";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Layout } from "@/components/Layout";

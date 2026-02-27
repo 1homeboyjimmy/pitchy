@@ -193,7 +193,7 @@ export function AdminView() {
             } else {
                 setRagResult({ success: false, message: data.detail || "Произошла ошибка при обработке URL." });
             }
-        } catch (e) {
+        } catch {
             setRagResult({ success: false, message: "Не удалось подключиться к серверу." });
         } finally {
             setIsScraping(false);
@@ -226,7 +226,7 @@ export function AdminView() {
             } else {
                 setRagResult({ success: false, message: data.detail || "Произошла ошибка при запуске сканирования." });
             }
-        } catch (e) {
+        } catch {
             setRagResult({ success: false, message: "Не удалось подключиться к серверу." });
         } finally {
             setIsScraping(false);
@@ -258,7 +258,7 @@ export function AdminView() {
             } else {
                 setRagResult({ success: false, message: data.detail || "Произошла ошибка при обработке PDF." });
             }
-        } catch (e) {
+        } catch {
             setRagResult({ success: false, message: "Не удалось подключиться к серверу." });
         } finally {
             setIsScraping(false);

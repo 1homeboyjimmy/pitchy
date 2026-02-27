@@ -53,8 +53,9 @@ export function IntentChat() {
         if (!text.trim() || isRedirecting) return;
 
         // 1. Add user message
+        const messageId = crypto.randomUUID();
         const userMsg: Message = {
-            id: Date.now().toString(),
+            id: messageId,
             type: "user",
             content: text,
         };
@@ -75,7 +76,7 @@ export function IntentChat() {
                 setIsRedirecting(true);
 
                 const aiMsg: Message = {
-                    id: (Date.now() + 1).toString(),
+                    id: crypto.randomUUID(),
                     type: "ai",
                     content: "Отлично! Я сохранил ваш профиль отрасли и начал подбирать инструменты. Чтобы увидеть результат и продолжить работу, пожалуйста, авторизуйтесь.",
                 };
@@ -94,7 +95,7 @@ export function IntentChat() {
             setMessages((prev) => [
                 ...prev,
                 {
-                    id: Date.now().toString(),
+                    id: crypto.randomUUID(),
                     type: "ai",
                     content: "Произошла ошибка при сохранении запроса. Пожалуйста, попробуйте позже.",
                 }
@@ -124,8 +125,8 @@ export function IntentChat() {
                             >
                                 <div
                                     className={`max-w-[85%] sm:max-w-[75%] ${message.type === "user"
-                                            ? "bg-pitchy-violet/20 border border-pitchy-violet/30 rounded-2xl rounded-tr-sm"
-                                            : "glass-card rounded-2xl rounded-tl-sm"
+                                        ? "bg-pitchy-violet/20 border border-pitchy-violet/30 rounded-2xl rounded-tr-sm"
+                                        : "glass-card rounded-2xl rounded-tl-sm"
                                         } px-4 py-3`}
                                 >
                                     {message.type === "ai" && (
