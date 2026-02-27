@@ -11,7 +11,6 @@ import {
   Sparkles,
   Lock,
   ChevronRight,
-  X,
   Loader2,
   Shield
 } from "lucide-react";
@@ -25,7 +24,8 @@ import { getToken } from "@/lib/auth";
 import {
   getChatSessions,
   getChatSession,
-  createChatSession,
+  createChatSessionAuto,
+  createChatSessionFromIntent,
   ChatSessionResponse,
   ChatSessionDetailResponse,
   getMe,
@@ -90,10 +90,6 @@ function DashboardContent() {
   const [activeSession, setActiveSession] = useState<ChatSessionDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [userProfile, setUserProfile] = useState<UserResponse | null>(null);
-
-  // New Chat Modal State
-  const [isNewChatOpen, setIsNewChatOpen] = useState(false);
-  const [newChatTitle, setNewChatTitle] = useState("");
   const [newChatDesc, setNewChatDesc] = useState("");
   const [isCreating, setIsCreating] = useState(false);
 
@@ -114,37 +110,25 @@ function DashboardContent() {
       router.replace(params.toString() ? `/dashboard?${params.toString()}` : "/dashboard");
     }
 
-    const newChat = searchParams.get("new_chat");
-    const initialMessage = searchParams.get("initial_message");
+    const handleIntentLoad = async () => {
+      if (!isLoaded || !token) return;
 
-    if (newChat === "true" && initialMessage) {
-      // Automatically start new chat
-      const startChat = async () => {
+      const intentId = localStorage.getItem("pitchy_intent_id");
+      if (intentId) {
+        localStorage.removeItem("pitchy_intent_id");
         try {
-          // We need token here. If not loaded via hook yet, we might miss it.
-          // But getToken() is synchronous localStorage read, so it should still work relative to redirect logic.
-          // Ideally we use `token` from hook, but this effect runs on searchParams change.
-          const currentToken = getToken();
-          if (!currentToken) return;
-
-          // Create session
-          const title = "Новый анализ";
-          const session = await createChatSession({ title, initial_message: initialMessage }, currentToken);
-
-          // Update state
+          const session = await createChatSessionFromIntent(intentId, token);
           setSessions(prev => [session, ...prev]);
           setActiveSession(session);
           setActiveTab("chat");
-
-          // Clean URL
           router.replace("/dashboard?tab=chat");
         } catch (e) {
-          console.error("Failed to auto-start chat", e);
+          console.error("Failed to load intent", e);
         }
-      };
-      startChat();
-    }
-  }, [searchParams, token, router]); // Added token and router dependency
+      }
+    };
+    handleIntentLoad();
+  }, [searchParams, isLoaded, token, router]); // Added token and router dependency
 
   useEffect(() => {
     const init = async () => {
@@ -173,35 +157,25 @@ function DashboardContent() {
 
   // ... createSession handlers using token from hook ...
 
-  // Conditional Rendering
-  const handleCreateSession = async () => {
-    if (!newChatTitle.trim() || !newChatDesc.trim()) return;
-
+  const handleCreateAutoSession = async (message: string) => {
+    if (!message.trim()) return;
     setIsCreating(true);
     try {
       const token = getToken();
       if (!token) throw new Error("No token");
 
-      const session = await createChatSession({
-        title: newChatTitle,
-        initial_message: newChatDesc
-      }, token);
+      const session = await createChatSessionAuto(message, token);
 
       setSessions(prev => [session, ...prev]);
       setActiveSession(session);
       setActiveTab("chat");
-      setIsNewChatOpen(false);
-      setNewChatTitle("");
-      setNewChatDesc("");
     } catch (e) {
       console.error(e);
-      const errorMessage = e instanceof Error ? e.message : "Ошибка создания чата";
-      alert(errorMessage);
+      alert("Ошибка создания чата");
     } finally {
       setIsCreating(false);
     }
   };
-
   const handleSelectSession = async (sessionId: number) => {
     // If already active, just switch tab
     if (activeSession?.id === sessionId) {
@@ -246,10 +220,13 @@ function DashboardContent() {
         >
           <div className="mb-8">
             <Button
-              onClick={() => setIsNewChatOpen(true)}
+              onClick={() => {
+                setActiveSession(null);
+                setActiveTab("chat");
+              }}
               icon={<Plus className="w-5 h-5" />}
               iconPosition="left"
-              className="w-full mb-6 bg-gradient-to-r from-pitchy-violet to-purple-600 border-none hover:opacity-90 transition-opacity"
+              className="w-full mb-6 bg-gradient-to-r from-pitchy-violet to-purple-600 border-none hover:opacity-90 transition-opacity cursor-pointer"
             >
               Новый анализ
             </Button>
@@ -375,8 +352,11 @@ function DashboardContent() {
               >
                 {/* New Analysis Card Button */}
                 <button
-                  onClick={() => setIsNewChatOpen(true)}
-                  className="flex flex-col items-center justify-center p-8 rounded-2xl border border-dashed border-white/20 hover:border-pitchy-violet/50 hover:bg-pitchy-violet/5 transition-all group h-[120px] md:h-auto"
+                  onClick={() => {
+                    setActiveSession(null);
+                    setActiveTab("chat");
+                  }}
+                  className="flex flex-col items-center justify-center p-8 rounded-2xl border border-dashed border-white/20 hover:border-pitchy-violet/50 hover:bg-pitchy-violet/5 transition-all group h-[120px] md:h-auto cursor-pointer"
                 >
                   <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
                     <Plus className="w-6 h-6 text-white/50 group-hover:text-pitchy-violet" />
@@ -414,16 +394,41 @@ function DashboardContent() {
                     onUpdate={(updated) => setActiveSession(updated)}
                   />
                 ) : (
-                  <div className="flex flex-col items-center justify-center h-[60vh] text-center max-w-md mx-auto">
-                    <MessageSquare className="w-16 h-16 text-white/20 mb-6" />
-                    <h3 className="text-xl font-bold text-white mb-2">Чат не выбран</h3>
-                    <p className="text-white/50 mb-8">Выберите существующий анализ из обзора или начните новый.</p>
-                    <Button
-                      onClick={() => setIsNewChatOpen(true)}
-                      variant="primary"
-                    >
-                      Создать новый
-                    </Button>
+                  <div className="flex flex-col h-[calc(100vh-12rem)] bg-white/5 rounded-2xl border border-white/10 overflow-hidden relative items-center justify-center px-4">
+                    <div className="absolute inset-0 bg-noise opacity-30 pointer-events-none" />
+                    <Sparkles className="w-16 h-16 text-pitchy-violet/30 mb-6" />
+                    <h3 className="text-xl sm:text-2xl font-bold text-white mb-2 text-center">О чем ваш проект?</h3>
+                    <p className="text-sm text-white/50 mb-8 max-w-sm text-center">
+                      Напишите нам, и мы мгновенно создадим аналитический чат.
+                    </p>
+
+                    <div className="w-full max-w-2xl bg-white/5 border border-white/10 rounded-2xl p-4 flex gap-2">
+                      <textarea
+                        value={newChatDesc}
+                        onChange={(e) => setNewChatDesc(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            handleCreateAutoSession(newChatDesc);
+                            setNewChatDesc("");
+                          }
+                        }}
+                        placeholder="Опишите стартап..."
+                        className="w-full bg-transparent text-white placeholder-white/30 min-h-[50px] max-h-[150px] outline-none resize-none px-2 py-2 text-sm sm:text-base scrollbar-none"
+                        disabled={isCreating}
+                        rows={1}
+                      />
+                      <button
+                        onClick={() => {
+                          handleCreateAutoSession(newChatDesc);
+                          setNewChatDesc("");
+                        }}
+                        disabled={!newChatDesc.trim() || isCreating}
+                        className="self-end p-3 rounded-xl bg-pitchy-violet text-white disabled:opacity-50 hover:bg-pitchy-violet/80 transition-colors"
+                      >
+                        {isCreating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
+                      </button>
+                    </div>
                   </div>
                 )}
               </motion.div>
@@ -451,56 +456,6 @@ function DashboardContent() {
         </main>
       </div>
 
-      {/* New Chat Modal */}
-      {isNewChatOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-lg bg-[#0F0F13] border border-white/10 rounded-2xl shadow-2xl overflow-hidden"
-          >
-            <div className="p-6 border-b border-white/10 flex justify-between items-center">
-              <h3 className="text-xl font-bold text-white">Новый анализ</h3>
-              <button onClick={() => setIsNewChatOpen(false)} className="text-white/50 hover:text-white">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm text-white/70 mb-2">Название проекта</label>
-                <input
-                  type="text"
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-pitchy-violet focus:outline-none"
-                  placeholder="Например: Uber для выгула собак"
-                  value={newChatTitle}
-                  onChange={(e) => setNewChatTitle(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-white/70 mb-2">Краткое описание</label>
-                <textarea
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-pitchy-violet focus:outline-none min-h-[100px] resize-none"
-                  placeholder="Опишите вашу идею в 2-3 предложениях..."
-                  value={newChatDesc}
-                  onChange={(e) => setNewChatDesc(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="p-6 border-t border-white/10 flex justify-end gap-3 bg-white/5">
-              <Button variant="ghost" onClick={() => setIsNewChatOpen(false)}>Отмена</Button>
-              <Button
-                variant="primary"
-                onClick={handleCreateSession}
-                disabled={!newChatTitle.trim() || !newChatDesc.trim() || isCreating}
-              >
-                {isCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : "Начать анализ"}
-              </Button>
-            </div>
-          </motion.div>
-        </div>
-      )}
     </Layout>
   );
 }

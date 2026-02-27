@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
-// Internal URL for server-side rewrites (Docker network)
-const BACKEND_URL = process.env.BACKEND_INTERNAL_URL || "http://backend:8000";
+// Internal URL for server-side rewrites (Docker network or local)
+const BACKEND_URL = process.env.BACKEND_INTERNAL_URL || "http://127.0.0.1:8000";
 
 const nextConfig: NextConfig = {
   output: "standalone",
@@ -11,6 +11,7 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [
       // Proxy all backend API paths through Next.js server
+      { source: "/guest/:path*", destination: `${BACKEND_URL}/guest/:path*` },
       { source: "/billing/:path*", destination: `${BACKEND_URL}/billing/:path*` },
       { source: "/auth/:path*", destination: `${BACKEND_URL}/auth/:path*` },
       { source: "/admin/:path*", destination: `${BACKEND_URL}/admin/:path*` },

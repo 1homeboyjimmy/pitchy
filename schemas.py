@@ -199,3 +199,16 @@ class SubscriptionResponse(BaseModel):
     total_payments: int = 0
     total_spent: float = 0
 
+
+class IntentCreateRequest(BaseModel):
+    initial_message: str = Field(..., min_length=1)
+
+class IntentResponse(BaseModel):
+    intent_id: str
+
+class ChatSessionFromIntentRequest(BaseModel):
+    intent_id: str
+
+class ChatSessionAutoRequest(BaseModel):
+    initial_message: str = Field(..., min_length=1)
+

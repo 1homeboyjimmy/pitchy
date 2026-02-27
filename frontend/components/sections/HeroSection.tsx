@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { Sparkles, Zap, Target, BarChart3 } from "lucide-react";
-import { ChatInterface } from "@/components/chat/ChatInterface";
+import { IntentChat } from "@/components/chat/IntentChat";
 
 const features = [
     { icon: Zap, label: "30 секунд", sublabel: "На анализ" },
@@ -106,11 +106,7 @@ export function HeroSection() {
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     transition={{ duration: 0.7, delay: 0.5, ease: [0.16, 1, 0.3, 1] }}
                 >
-                    <ChatInterface
-                        onAnalysisComplete={(analysis) => {
-                            console.log("Analysis complete:", analysis);
-                        }}
-                    />
+                    <IntentChat />
                 </motion.div>
 
                 {/* Feature Pills */}

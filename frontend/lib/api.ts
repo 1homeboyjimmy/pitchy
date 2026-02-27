@@ -211,6 +211,18 @@ export async function createChatSession(data: ChatSessionCreateRequest, token: s
   return postAuthJson<ChatSessionDetailResponse>("/chat/sessions", data, token);
 }
 
+export async function createChatSessionAuto(initial_message: string, token: string): Promise<ChatSessionDetailResponse> {
+  return postAuthJson<ChatSessionDetailResponse>("/chat/sessions/auto", { initial_message }, token);
+}
+
+export async function createGuestIntent(initial_message: string): Promise<{ intent_id: string }> {
+  return postJson<{ intent_id: string }>("/guest/intents", { initial_message });
+}
+
+export async function createChatSessionFromIntent(intent_id: string, token: string): Promise<ChatSessionDetailResponse> {
+  return postAuthJson<ChatSessionDetailResponse>("/chat/sessions/from-intent", { intent_id }, token);
+}
+
 export async function sendChatMessage(sessionId: number, content: string, token: string): Promise<ChatMessageResponse> {
   return postAuthJson<ChatMessageResponse>(`/chat/sessions/${sessionId}/messages`, { content }, token);
 }

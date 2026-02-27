@@ -217,3 +217,28 @@ def extract_json(text: str) -> Dict[str, Any]:
         raise ValueError("No JSON object found in response")
     snippet = text[start : end + 1]
     return json.loads(snippet)
+
+
+def generate_chat_title(text: str, timeout: int = 15) -> str:
+    """Generate a short 2-4 word title for a chat session based on user's first message."""
+    system_prompt = (
+        "Ты — умный ассистент. Прочитай первое сообщение пользователя и придумай "
+        "краткое, емкое название для этого диалога из 2-4 слов. Не используй кавычки, "
+        "только сам текст названия."
+    )
+    user_prompt = text[:500]  # Limit context to avoid errors and save tokens
+    
+    try:
+        title, _ = call_yandex_gpt(system_prompt, user_prompt, timeout=timeout)
+        title = title.strip(' "\'\n\r\t.-').capitalize()
+        if not title:
+            return "Новый диалог"
+        # Truncate if too long (just in case model disobeys)
+        words = title.split()
+        if len(words) > 6:
+            title = " ".join(words[:5]) + "..."
+        return title[:100]
+    except Exception as e:
+        import logging
+        logging.getLogger("app").error(f"Failed to generate chat title: {e}")
+        return "Новый диалог"

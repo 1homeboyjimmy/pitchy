@@ -20,8 +20,9 @@ from scraper import scrape_and_save, extract_text_from_pdf
 from lockbox import lockbox
 from metrics import ERROR_COUNT, REQUEST_COUNT, REQUEST_LATENCY
 from observability import configure_logging
+import uuid
 from redis_client import get_redis
-from yandex_gpt_client import YandexGPTError, call_yandex_gpt, extract_json
+from yandex_gpt_client import YandexGPTError, call_yandex_gpt, extract_json, generate_chat_title
 from db import SessionLocal, get_db
 from models import User, PromoCode, Analysis, Payment, RagLog
 from models import Analysis, ChatMessage as DbChatMessage, ChatSession, ErrorLog, User, PromoCode, Payment
@@ -48,7 +49,12 @@ from schemas import (
     PromoCodeCreate,
     PromoCodeResponse,
     PaymentResponse,
+    PaymentResponse,
     SubscriptionResponse,
+    IntentCreateRequest,
+    IntentResponse,
+    ChatSessionFromIntentRequest,
+    ChatSessionAutoRequest,
 )
 from email_utils import get_dev_emails, send_email
 from sso import yandex_sso, github_sso
@@ -422,6 +428,7 @@ def health() -> dict:
         "db": db_ok,
         "redis": redis_ok,
         "rag": rag_ok,
+        "chromadb": rag_ok,
     }
 
 
@@ -2002,6 +2009,139 @@ def create_chat_session(
             )
         )
 
+    return ChatSessionDetailResponse(
+        id=session.id,
+        title=session.title,
+        created_at=session.created_at,
+        analysis_id=session.analysis_id,
+        messages=messages_response,
+    )
+
+def rename_chat_session_background(session_id: int, initial_message: str):
+    try:
+        title = generate_chat_title(initial_message)
+        logger.info(f"Generated title '{title}' for session {session_id}")
+        
+        with SessionLocal() as db:
+            session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+            if session:
+                session.title = title
+                db.commit()
+    except Exception as e:
+        logger.error(f"Error in background renaming: {e}")
+
+@app.post("/guest/intents", response_model=IntentResponse)
+def create_guest_intent(payload: IntentCreateRequest):
+    intent_id = str(uuid.uuid4())
+    redis = get_redis()
+    
+    # Store the text for 1 hour (3600 seconds)
+    redis.setex(f"guest_intent:{intent_id}", 3600, payload.initial_message)
+    
+    return IntentResponse(intent_id=intent_id)
+
+@app.post("/chat/sessions/from-intent", response_model=ChatSessionDetailResponse)
+def create_chat_session_from_intent(
+    payload: ChatSessionFromIntentRequest,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ChatSessionDetailResponse:
+    _check_subscription_limits(user, db, "project")
+    
+    redis = get_redis()
+    key = f"guest_intent:{payload.intent_id}"
+    initial_message = redis.get(key)
+    
+    if not initial_message:
+        raise HTTPException(status_code=404, detail="Intent not found or expired")
+    
+    # Use decoded string if redis returns bytes
+    if isinstance(initial_message, bytes):
+        initial_message = initial_message.decode("utf-8")
+
+    session = ChatSession(
+        user_id=user.id,
+        title="Новый диалог",
+    )
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+
+    messages_response = []
+    
+    # Save user message
+    user_msg = DbChatMessage(
+        session_id=session.id,
+        role="user",
+        content=initial_message,
+    )
+    db.add(user_msg)
+    db.commit()
+    db.refresh(user_msg)
+    messages_response.append(
+        ChatMessageResponse(
+            id=user_msg.id,
+            role=user_msg.role,
+            content=user_msg.content,
+            created_at=user_msg.created_at,
+        )
+    )
+
+    # Clean up intent
+    redis.delete(key)
+    
+    # Fire and forget background rename
+    background_tasks.add_task(rename_chat_session_background, session.id, initial_message)
+    
+    return ChatSessionDetailResponse(
+        id=session.id,
+        title=session.title,
+        created_at=session.created_at,
+        analysis_id=session.analysis_id,
+        messages=messages_response,
+    )
+
+@app.post("/chat/sessions/auto", response_model=ChatSessionDetailResponse)
+def create_chat_session_auto(
+    payload: ChatSessionAutoRequest,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ChatSessionDetailResponse:
+    _check_subscription_limits(user, db, "project")
+    
+    session = ChatSession(
+        user_id=user.id,
+        title="Новый диалог",
+    )
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+
+    messages_response = []
+    
+    # Save user message
+    user_msg = DbChatMessage(
+        session_id=session.id,
+        role="user",
+        content=payload.initial_message,
+    )
+    db.add(user_msg)
+    db.commit()
+    db.refresh(user_msg)
+    messages_response.append(
+        ChatMessageResponse(
+            id=user_msg.id,
+            role=user_msg.role,
+            content=user_msg.content,
+            created_at=user_msg.created_at,
+        )
+    )
+
+    # Fire and forget background rename
+    background_tasks.add_task(rename_chat_session_background, session.id, payload.initial_message)
+    
     return ChatSessionDetailResponse(
         id=session.id,
         title=session.title,
