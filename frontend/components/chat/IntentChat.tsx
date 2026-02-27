@@ -78,15 +78,11 @@ export function IntentChat() {
                 const aiMsg: Message = {
                     id: crypto.randomUUID(),
                     type: "ai",
-                    content: "Отлично! Я сохранил ваш профиль отрасли и начал подбирать инструменты. Чтобы увидеть результат и продолжить работу, пожалуйста, авторизуйтесь.",
+                    content: "Отлично! Я сохранил ваш профиль отрасли и начал подбирать инструменты. Чтобы увидеть результат и продолжить работу, пожалуйста, войдите или зарегистрируйтесь.",
                 };
                 setMessages((prev) => [...prev, aiMsg]);
 
-                // Redirect after brief delay
-                setTimeout(() => {
-                    router.push("/auth");
-                }, 2500);
-
+                // No automatic redirect, wait for user to click
             }, 1000);
 
         } catch (e) {
@@ -144,16 +140,21 @@ export function IntentChat() {
                                     </p>
 
                                     {isRedirecting && message.id !== "welcome" && message.type === "ai" && (
-                                        <motion.button
-                                            initial={{ opacity: 0 }}
-                                            animate={{ opacity: 1 }}
-                                            transition={{ delay: 1 }}
-                                            onClick={() => router.push("/auth")}
-                                            className="mt-4 flex items-center gap-2 px-4 py-2 bg-pitchy-violet text-white rounded-xl text-sm font-medium hover:bg-pitchy-violet/80 transition-colors"
-                                        >
-                                            <Key className="w-4 h-4" />
-                                            Войти / Зарегистрироваться
-                                        </motion.button>
+                                        <div className="mt-4 flex flex-col sm:flex-row items-center gap-3">
+                                            <button
+                                                onClick={() => router.push("/signup")}
+                                                className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-pitchy-violet text-white rounded-xl text-sm font-medium hover:bg-pitchy-violet/80 transition-colors"
+                                            >
+                                                Зарегистрироваться
+                                            </button>
+                                            <button
+                                                onClick={() => router.push("/login")}
+                                                className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-white/5 border border-white/10 text-white rounded-xl text-sm font-medium hover:bg-white/10 transition-colors"
+                                            >
+                                                <Key className="w-4 h-4" />
+                                                Войти
+                                            </button>
+                                        </div>
                                     )}
                                 </div>
                             </motion.div>

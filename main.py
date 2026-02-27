@@ -2217,6 +2217,7 @@ def get_chat_session(
 def send_chat_message(
     session_id: int,
     payload: ChatMessageCreateRequest,
+    background_tasks: BackgroundTasks,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ChatMessageResponse:
@@ -2238,6 +2239,10 @@ def send_chat_message(
     )
     db.add(user_msg)
     db.commit()
+    db.refresh(session) # Fetch updated messages list
+
+    if len(session.messages) == 1:
+        background_tasks.add_task(rename_chat_session_background, session.id, payload.content)
 
     # 2. Generate Assistant Response
     assistant_text = _generate_interviewer_response(session, db)

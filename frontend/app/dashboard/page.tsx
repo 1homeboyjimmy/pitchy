@@ -23,12 +23,12 @@ import { GlassCard, Button } from "@/components/shared";
 import { getToken } from "@/lib/auth";
 import {
   getChatSessions,
+  createChatSession,
   getChatSession,
-  createChatSessionAuto,
+  getMe,
   createChatSessionFromIntent,
   ChatSessionResponse,
   ChatSessionDetailResponse,
-  getMe,
   UserResponse
 } from "@/lib/api";
 import Link from "next/link";
@@ -90,7 +90,6 @@ function DashboardContent() {
   const [activeSession, setActiveSession] = useState<ChatSessionDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [userProfile, setUserProfile] = useState<UserResponse | null>(null);
-  const [newChatDesc, setNewChatDesc] = useState("");
   const [isCreating, setIsCreating] = useState(false);
 
   // Handle URL Params for Redirects
@@ -157,14 +156,13 @@ function DashboardContent() {
 
   // ... createSession handlers using token from hook ...
 
-  const handleCreateAutoSession = async (message: string) => {
-    if (!message.trim()) return;
+  const handleCreateEmptySession = async () => {
     setIsCreating(true);
     try {
       const token = getToken();
       if (!token) throw new Error("No token");
 
-      const session = await createChatSessionAuto(message, token);
+      const session = await createChatSession({ title: "Чат с аналитиком" }, token);
 
       setSessions(prev => [session, ...prev]);
       setActiveSession(session);
@@ -397,38 +395,19 @@ function DashboardContent() {
                   <div className="flex flex-col h-[calc(100vh-12rem)] bg-white/5 rounded-2xl border border-white/10 overflow-hidden relative items-center justify-center px-4">
                     <div className="absolute inset-0 bg-noise opacity-30 pointer-events-none" />
                     <Sparkles className="w-16 h-16 text-pitchy-violet/30 mb-6" />
-                    <h3 className="text-xl sm:text-2xl font-bold text-white mb-2 text-center">О чем ваш проект?</h3>
+                    <h3 className="text-xl sm:text-2xl font-bold text-white mb-2 text-center">Анализ проекта</h3>
                     <p className="text-sm text-white/50 mb-8 max-w-sm text-center">
-                      Напишите нам, и мы мгновенно создадим аналитический чат.
+                      Нажмите кнопку ниже, чтобы начать новый интерактивный анализ.
                     </p>
 
-                    <div className="w-full max-w-2xl bg-white/5 border border-white/10 rounded-2xl p-4 flex gap-2">
-                      <textarea
-                        value={newChatDesc}
-                        onChange={(e) => setNewChatDesc(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && !e.shiftKey) {
-                            e.preventDefault();
-                            handleCreateAutoSession(newChatDesc);
-                            setNewChatDesc("");
-                          }
-                        }}
-                        placeholder="Опишите стартап..."
-                        className="w-full bg-transparent text-white placeholder-white/30 min-h-[50px] max-h-[150px] outline-none resize-none px-2 py-2 text-sm sm:text-base scrollbar-none"
-                        disabled={isCreating}
-                        rows={1}
-                      />
-                      <button
-                        onClick={() => {
-                          handleCreateAutoSession(newChatDesc);
-                          setNewChatDesc("");
-                        }}
-                        disabled={!newChatDesc.trim() || isCreating}
-                        className="self-end p-3 rounded-xl bg-pitchy-violet text-white disabled:opacity-50 hover:bg-pitchy-violet/80 transition-colors"
-                      >
-                        {isCreating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
-                      </button>
-                    </div>
+                    <button
+                      onClick={handleCreateEmptySession}
+                      disabled={isCreating}
+                      className="px-6 py-3 bg-gradient-to-r from-pitchy-violet to-purple-600 font-medium text-white rounded-xl shadow-[0_0_20px_rgba(168,85,247,0.4)] hover:shadow-[0_0_30px_rgba(168,85,247,0.6)] disabled:opacity-50 transition-all cursor-pointer flex items-center justify-center gap-2"
+                    >
+                      {isCreating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
+                      Начать новый анализ
+                    </button>
                   </div>
                 )}
               </motion.div>
