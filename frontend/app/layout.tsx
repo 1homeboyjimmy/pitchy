@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Providers } from "./providers";
 import { DarkVeilWrapper } from "@/components/effects/DarkVeilWrapper";
 import "./globals.css";
@@ -17,12 +17,13 @@ export const metadata: Metadata = {
     locale: "ru_RU",
     type: "website",
   },
-  viewport: {
-    width: "device-width",
-    initialScale: 1.0,
-    maximumScale: 5.0,
-    minimumScale: 0.25,
-  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1.0,
+  maximumScale: 5.0,
+  minimumScale: 0.25,
 };
 
 import { ScrollToTop } from "@/components/shared/ScrollToTop";
