@@ -121,7 +121,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                     </motion.div>
                 ))}
 
-                {messages.length === 2 && !session.analysis && !isLoading && (
+                {messages.length <= 2 && !session.analysis && !isLoading && (
                     <motion.div
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}

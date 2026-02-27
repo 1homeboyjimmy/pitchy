@@ -1984,30 +1984,29 @@ def create_chat_session(
             )
         )
 
-        # Generate Assistant Greeting
-        assistant_text = (
-            "Привет! Я — ваш ИИ-аналитик стартапов.\n\n"
-            "Я увидел базовое описание вашего проекта. "
-            "Чтобы наше общение было максимально полезным, **выберите одну из тем** ниже или задайте свой вопрос."
-        )
+    # Generate Assistant Greeting
+    assistant_text = (
+        "Привет! Я — ваш ИИ-аналитик стартапов.\n\n"
+        "Опишите ваш проект или выберите одну из тем ниже, чтобы начать работу."
+    )
 
-        # Save assistant message
-        ai_msg = DbChatMessage(
-            session_id=session.id,
-            role="assistant",
-            content=assistant_text,
+    # Save assistant message
+    ai_msg = DbChatMessage(
+        session_id=session.id,
+        role="assistant",
+        content=assistant_text,
+    )
+    db.add(ai_msg)
+    db.commit()
+    db.refresh(ai_msg)
+    messages_response.append(
+        ChatMessageResponse(
+            id=ai_msg.id,
+            role=ai_msg.role,
+            content=ai_msg.content,
+            created_at=ai_msg.created_at,
         )
-        db.add(ai_msg)
-        db.commit()
-        db.refresh(ai_msg)
-        messages_response.append(
-            ChatMessageResponse(
-                id=ai_msg.id,
-                role=ai_msg.role,
-                content=ai_msg.content,
-                created_at=ai_msg.created_at,
-            )
-        )
+    )
 
     return ChatSessionDetailResponse(
         id=session.id,
@@ -2085,6 +2084,31 @@ def create_chat_session_from_intent(
             role=user_msg.role,
             content=user_msg.content,
             created_at=user_msg.created_at,
+        )
+    )
+
+    # Generate Assistant Greeting
+    assistant_text = (
+        "Привет! Я — ваш ИИ-аналитик стартапов.\n\n"
+        "Я увидел базовое описание вашего проекта. "
+        "Чтобы наше общение было максимально полезным, **выберите одну из тем** ниже или задайте свой вопрос."
+    )
+
+    # Save assistant message
+    ai_msg = DbChatMessage(
+        session_id=session.id,
+        role="assistant",
+        content=assistant_text,
+    )
+    db.add(ai_msg)
+    db.commit()
+    db.refresh(ai_msg)
+    messages_response.append(
+        ChatMessageResponse(
+            id=ai_msg.id,
+            role=ai_msg.role,
+            content=ai_msg.content,
+            created_at=ai_msg.created_at,
         )
     )
 
