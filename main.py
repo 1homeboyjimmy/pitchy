@@ -2069,23 +2069,30 @@ def create_chat_session_from_intent(
 
     messages_response = []
     
-    # Save user message
-    user_msg = DbChatMessage(
-        session_id=session.id,
-        role="user",
-        content=initial_message,
-    )
-    db.add(user_msg)
-    db.commit()
-    db.refresh(user_msg)
-    messages_response.append(
-        ChatMessageResponse(
-            id=user_msg.id,
-            role=user_msg.role,
-            content=user_msg.content,
-            created_at=user_msg.created_at,
+    QUICK_ACTIONS = [
+        "Оценить идею стартапа",
+        "Составить план запуска",
+        "Как найти первых клиентов?",
+    ]
+
+    if initial_message not in QUICK_ACTIONS:
+        # Save user message
+        user_msg = DbChatMessage(
+            session_id=session.id,
+            role="user",
+            content=initial_message,
         )
-    )
+        db.add(user_msg)
+        db.commit()
+        db.refresh(user_msg)
+        messages_response.append(
+            ChatMessageResponse(
+                id=user_msg.id,
+                role=user_msg.role,
+                content=user_msg.content,
+                created_at=user_msg.created_at,
+            )
+        )
 
     # Generate Assistant Greeting
     assistant_text = (

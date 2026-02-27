@@ -5,6 +5,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Send, Sparkles, Loader2, Key } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { createGuestIntent } from "@/lib/api";
+import { useAuth } from "@/lib/hooks/useAuth";
+import { ArrowRight } from "lucide-react";
 
 const QUICK_ACTIONS = [
     "Оценить идею стартапа",
@@ -20,6 +22,7 @@ interface Message {
 
 export function IntentChat() {
     const router = useRouter();
+    const { isAuthenticated, isLoaded } = useAuth();
     const [messages, setMessages] = useState<Message[]>([
         {
             id: "welcome",
@@ -105,6 +108,23 @@ export function IntentChat() {
             handleSend();
         }
     };
+
+    if (isLoaded && isAuthenticated) {
+        return (
+            <div className="w-full max-w-3xl mx-auto text-center p-8 glass-panel rounded-3xl shadow-glow-primary/30 py-12">
+                <Sparkles className="w-12 h-12 mb-4 mx-auto text-pitchy-violet opacity-50" />
+                <h3 className="text-xl sm:text-2xl font-bold text-white mb-2">Основной чат находится в дашборде</h3>
+                <p className="text-white/60 mb-6 text-sm sm:text-base max-w-md mx-auto">Вы уже авторизованы. Перейдите в панель управления, чтобы продолжить работу над вашим проектом.</p>
+                <button
+                    onClick={() => router.push("/dashboard?tab=chat")}
+                    className="inline-flex items-center gap-2 px-6 py-3 bg-pitchy-violet text-white rounded-xl font-medium hover:bg-pitchy-violet/80 transition-colors shadow-[0_0_20px_rgba(168,85,247,0.4)] hover:shadow-[0_0_30px_rgba(168,85,247,0.6)]"
+                >
+                    Перейти в чат
+                    <ArrowRight className="w-4 h-4" />
+                </button>
+            </div>
+        );
+    }
 
     return (
         <div className="w-full max-w-3xl mx-auto">
