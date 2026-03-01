@@ -24,3 +24,4 @@ python-dateutil
 yookassa
 pypdf
 python-multipart
+duckduckgo-search

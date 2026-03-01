@@ -332,20 +332,27 @@ function SignUpContent() {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-3 gap-4">
                                 <a
                                     href="/auth/yandex/login"
                                     className="flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[#FC3F1D]/10 hover:bg-[#FC3F1D]/20 border border-[#FC3F1D]/20 text-[#FC3F1D] transition-all hover:scale-[1.02]"
                                 >
                                     <span className="font-bold font-sans">Ya</span>
-                                    <span className="text-sm font-medium text-white/80">Yandex</span>
+                                    <span className="hidden sm:inline text-sm font-medium text-white/80">Yandex</span>
+                                </a>
+                                <a
+                                    href="/auth/google/login"
+                                    className="flex items-center justify-center gap-2 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-all hover:scale-[1.02]"
+                                >
+                                    <span className="font-bold font-serif">G</span>
+                                    <span className="hidden sm:inline text-sm font-medium text-white/80">Google</span>
                                 </a>
                                 <a
                                     href="/auth/github/login"
                                     className="flex items-center justify-center gap-2 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-all hover:scale-[1.02]"
                                 >
                                     <Github className="w-4 h-4" />
-                                    <span className="text-sm font-medium">GitHub</span>
+                                    <span className="hidden sm:inline text-sm font-medium pb-0.5">GitHub</span>
                                 </a>
                             </div>
                         </form>

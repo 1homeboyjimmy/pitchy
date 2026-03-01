@@ -146,11 +146,12 @@ def _build_headers() -> Dict[str, str]:
     }
 
 
-def _build_payload(system_prompt: str, user_prompt: str, folder_id: str) -> Dict[str, Any]:
-    model_uri = os.getenv(
-        "YC_GPT_MODEL_URI",
-        DEFAULT_MODEL_URI_TEMPLATE.format(folder_id=folder_id),
-    )
+def _build_payload(system_prompt: str, user_prompt: str, folder_id: str, model_uri: str = None) -> Dict[str, Any]:
+    if not model_uri:
+        model_uri = os.getenv(
+            "YC_GPT_MODEL_URI",
+            DEFAULT_MODEL_URI_TEMPLATE.format(folder_id=folder_id),
+        )
     return {
         "modelUri": model_uri,
         "completionOptions": {
@@ -165,7 +166,7 @@ def _build_payload(system_prompt: str, user_prompt: str, folder_id: str) -> Dict
     }
 
 
-def call_yandex_gpt(system_prompt: str, user_prompt: str, timeout: int = 20) -> Tuple[str, Dict[str, str]]:
+def call_yandex_gpt(system_prompt: str, user_prompt: str, timeout: int = 20, model_uri: str = None) -> Tuple[str, Dict[str, str]]:
     endpoint = os.getenv("YC_GPT_ENDPOINT", DEFAULT_ENDPOINT)
     headers = _build_headers()
     folder_id = os.getenv("YC_FOLDER_ID")
@@ -174,7 +175,7 @@ def call_yandex_gpt(system_prompt: str, user_prompt: str, timeout: int = 20) -> 
             "config_error",
             "YC_IAM_TOKEN or YC_FOLDER_ID is missing in environment",
         )
-    payload = _build_payload(system_prompt, user_prompt, folder_id)
+    payload = _build_payload(system_prompt, user_prompt, folder_id, model_uri)
 
     try:
         response = requests.post(
@@ -242,3 +243,38 @@ def generate_chat_title(text: str, timeout: int = 15) -> str:
         import logging
         logging.getLogger("app").error(f"Failed to generate chat title: {e}")
         return "Новый диалог"
+
+
+def analyze_search_intent(text: str, timeout: int = 15) -> Dict[str, Any]:
+    """
+    Анализирует запрос пользователя, чтобы понять, нужен ли поиск свежей информации в интернете.
+    Возвращает словарь: {"needs_search": bool, "search_query": str}
+    """
+    system_prompt = (
+        "Ты — умный классификатор запросов для бизнес-ассистента. Твоя задача — "
+        "решить, нужен ли поиск свежих данных в интернете для ответа на запрос пользователя, "
+        "или достаточно обычных знаний базы (RAG). Поиск нужен для: статистики текущего/будущего года, "
+        "актуальных цен, налогов, трендов конкретного узкого рынка или упоминаний реальных компаний/конкурентов. "
+        "Верни СТРОГО валидный JSON в формате:\n\n"
+        '{"needs_search": true/false, "search_query": "строка для поиска в яндексе (null если false)"}\n\n'
+        "Никакого другого текста, только JSON."
+    )
+    user_prompt = text[:1000]
+    
+    try:
+        # For the router we always want to use the cheapest model, YandexGPT Lite
+        # To bypass ANY expensive model URIs set in the environment, we construct the Lite URI explicitly
+        folder_id = os.getenv("YC_FOLDER_ID")
+        lite_model_uri = f"gpt://{folder_id}/yandexgpt-lite/latest" if folder_id else None
+
+        response_text, _ = call_yandex_gpt(system_prompt, user_prompt, timeout=timeout, model_uri=lite_model_uri)
+        parsed = extract_json(response_text)
+        return {
+            "needs_search": bool(parsed.get("needs_search", False)),
+            "search_query": str(parsed.get("search_query", "")) if parsed.get("needs_search") else ""
+        }
+    except Exception as e:
+        import logging
+        logging.getLogger("app").error(f"Search intent routing failed: {e}")
+        return {"needs_search": False, "search_query": ""}
+

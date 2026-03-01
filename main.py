@@ -22,7 +22,8 @@ from metrics import ERROR_COUNT, REQUEST_COUNT, REQUEST_LATENCY
 from observability import configure_logging
 import uuid
 from redis_client import get_redis
-from yandex_gpt_client import YandexGPTError, call_yandex_gpt, extract_json, generate_chat_title
+from yandex_gpt_client import YandexGPTError, call_yandex_gpt, extract_json, generate_chat_title, analyze_search_intent
+from search_agent import execute_search_agent
 from db import SessionLocal, get_db
 from models import User, PromoCode, Analysis, Payment, RagLog
 from models import Analysis, ChatMessage as DbChatMessage, ChatSession, ErrorLog, User, PromoCode, Payment
@@ -57,7 +58,7 @@ from schemas import (
     ChatSessionAutoRequest,
 )
 from email_utils import get_dev_emails, send_email
-from sso import yandex_sso, github_sso
+from sso import yandex_sso, github_sso, google_sso
 import billing
 from auth import (
     create_access_token,
@@ -587,6 +588,8 @@ async def auth_login(provider: str):
         return await yandex_sso.get_login_redirect()
     elif provider == "github":
         return await github_sso.get_login_redirect()
+    elif provider == "google":
+        return await google_sso.get_login_redirect()
     raise HTTPException(status_code=404, detail="Provider not found")
 
 
@@ -601,6 +604,8 @@ async def auth_callback(
         sso = yandex_sso
     elif provider == "github":
         sso = github_sso
+    elif provider == "google":
+        sso = google_sso
     else:
         raise HTTPException(status_code=404, detail="Provider not found")
 
@@ -1227,6 +1232,19 @@ def create_chat_message(
         context_chunks = rag.get_relevant_chunks(payload.content, top_k=3)
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    # -- Web Search Agent (Hybrid RAG) --
+    search_decision = analyze_search_intent(payload.content)
+    if search_decision.get("needs_search") and search_decision.get("search_query"):
+        query = search_decision.get("search_query")
+        logger.info(f"Agent triggered web search for query: {query}")
+        try:
+            web_context = execute_search_agent(query)
+            if web_context:
+                context_chunks.insert(0, f"--- АКТУАЛЬНЫЕ ДАННЫЕ ИЗ ИНТЕРНЕТА (ПОИСК: {query}) ---\n{web_context}\n--- КОНЕЦ ДАННЫХ ИЗ ИНТЕРНЕТА ---")
+        except Exception as e:
+            logger.error(f"Failed to execute search agent: {e}")
+    # -----------------------------------
 
     user_prompt = _build_chat_prompt(chat_messages, context_chunks)
 
