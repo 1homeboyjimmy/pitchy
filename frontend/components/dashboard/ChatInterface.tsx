@@ -109,7 +109,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                             ? "bg-white/10 text-white rounded-tr-sm"
                             : "bg-pitchy-violet/10 border border-pitchy-violet/20 text-white rounded-tl-sm"
                             }`}>
-                            <div className="prose prose-invert prose-sm max-w-none">
+                            <div className="text-sm sm:text-base leading-[1.7] md:leading-[1.8] text-white/90 [&>p]:mb-4 [&>p:last-child]:mb-0 [&>ul]:list-disc [&>ul]:pl-6 [&>ul]:mb-4 [&>ul>li]:mb-2 [&>ul>li]:pl-1 [&>ol]:list-decimal [&>ol]:pl-6 [&>ol]:mb-4 [&>ol>li]:mb-2 [&>ol>li]:pl-1 [&>h2]:text-xl [&>h2]:font-bold [&>h2]:text-pitchy-cyan-light [&>h2]:mt-8 [&>h2]:mb-4 [&>h3]:text-lg [&>h3]:font-bold [&>h3]:text-white [&>h3]:mt-6 [&>h3]:mb-3 [&>strong]:text-white [&>strong]:font-semibold break-words">
                                 <ReactMarkdown>
                                     {msg.content}
                                 </ReactMarkdown>
