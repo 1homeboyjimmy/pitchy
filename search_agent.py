@@ -5,7 +5,7 @@ from scraper import fetch_article, extract_text
 
 logger = logging.getLogger(__name__)
 
-def perform_web_search(query: str, max_results: int = 3) -> list[tuple[str, str]]:
+def perform_web_search(query: str, max_results: int = 5) -> list[tuple[str, str]]:
     """
     Выполняет поиск в DuckDuckGo и возвращает список кортежей (url, snippet) топ-результатов.
     """
@@ -29,7 +29,7 @@ def fetch_and_scrape_links(search_results: list[tuple[str, str]]) -> str:
     Склеивает результаты в единый markdown-текст с ограничением по длине для каждой статьи.
     """
     compiled_text = ""
-    MAX_CHARS_PER_ARTICLE = 10000  # Increased to capture actual article body
+    MAX_CHARS_PER_ARTICLE = 6000  # Increased to capture actual article body but limited to fit 5 pages
 
     for idx, (url, snippet) in enumerate(search_results, 1):
         html = fetch_article(url)
@@ -59,7 +59,7 @@ def execute_search_agent(query: str) -> str:
     3. Формирует текстовый контекст для RAG.
     """
     logger.info(f"Executing web search agent for query: {query}")
-    search_results = perform_web_search(query, max_results=3)
+    search_results = perform_web_search(query, max_results=5)
     
     if not search_results:
         return "Интернет-поиск не дал результатов по этому запросу."
