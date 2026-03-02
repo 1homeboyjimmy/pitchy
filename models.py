@@ -127,6 +127,7 @@ class ChatMessage(Base):
     role: Mapped[str] = mapped_column(String(30))
     content: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    feedback: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
     session: Mapped["ChatSession"] = relationship(back_populates="messages")
 

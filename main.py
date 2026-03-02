@@ -2289,6 +2289,50 @@ def delete_chat_session(
     db.delete(session)
     db.commit()
     return {"status": "ok", "deleted_id": session_id}
+class FeedbackRequest(BaseModel):
+    feedback: int
+
+@app.post("/chat/sessions/{session_id}/messages/{message_id}/feedback")
+def set_chat_message_feedback(
+    session_id: int,
+    message_id: int,
+    payload: FeedbackRequest,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    msg = (
+        db.query(DbChatMessage)
+        .join(ChatSession)
+        .filter(
+            DbChatMessage.id == message_id,
+            DbChatMessage.session_id == session_id,
+            ChatSession.user_id == user.id
+        )
+        .first()
+    )
+    if not msg:
+        raise HTTPException(status_code=404, detail="Message not found")
+    
+    msg.feedback = payload.feedback
+    db.commit()
+
+    if payload.feedback == 1 and msg.role == "assistant":
+        user_msg = (
+            db.query(DbChatMessage)
+            .filter(
+                DbChatMessage.session_id == session_id,
+                DbChatMessage.role == "user",
+                DbChatMessage.created_at < msg.created_at
+            )
+            .order_by(DbChatMessage.created_at.desc())
+            .first()
+        )
+        if user_msg:
+            from rag import index_successful_chat_interaction
+            background_tasks.add_task(index_successful_chat_interaction, user_msg.content, msg.content, message_id)
+
+    return {"status": "ok", "feedback": msg.feedback}
 
 @app.post("/chat/sessions/{session_id}/messages", response_model=ChatMessageResponse)
 def send_chat_message(
@@ -2341,6 +2385,23 @@ def send_chat_message(
         created_at=ai_msg.created_at,
     )
 
+def classify_intent(user_message: str) -> list[str]:
+    """Router LLM: Determines which RAG collections to search based on the user's intent."""
+    system_prompt = (
+        "Ты — умный роутер. Определи от 1 до 2 самых подходящих категорий для вопроса пользователя.\n"
+        "Выбирай СТРОГО из списка: pitching, grants_and_funds, unit_economics, target_audience, legal_and_taxes, product_management, platform_rules, general.\n"
+        "Ответь ТОЛЬКО названиями категорий через запятую, без лишних слов."
+    )
+    try:
+        raw_response, usage = call_yandex_gpt(system_prompt, user_message)
+        logger.info(f"YandexGPT token usage (Router LLM): {usage}")
+        valid_cats = {"pitching", "grants_and_funds", "unit_economics", "target_audience", "legal_and_taxes", "product_management", "platform_rules", "general"}
+        found = [c.strip() for c in raw_response.split(",")]
+        result = [c for c in found if c in valid_cats]
+        return result if result else ["general"]
+    except Exception as e:
+        logger.error(f"Router LLM failed: {e}")
+        return ["general"]
 
 def _generate_interviewer_response(session: ChatSession, db: Session) -> str:
     # Fetch history
@@ -2367,7 +2428,15 @@ def _generate_interviewer_response(session: ChatSession, db: Session) -> str:
     context_text = ""
     if last_user_text and len(last_user_text) > 10:
         try:
-            chunks = rag.get_relevant_chunks(last_user_text, top_k=5)
+            categories = classify_intent(last_user_text)
+            logger.info(f"Router LLM selected RAG categories: {categories}")
+            chunks = rag.get_relevant_chunks(last_user_text, categories=categories, top_k=5)
+            
+            # -- Self-Learning (Feedback) RAG --
+            from rag import search_successful_chats
+            successful_chats = search_successful_chats(last_user_text, top_k=1)
+            if successful_chats:
+                chunks.insert(0, f"--- ИСТОРИЧЕСКИ УСПЕШНЫЕ ДИАЛОГИ (ИСПОЛЬЗУЙ КАК ПРИМЕР) ---\n" + "\n".join(successful_chats) + "\n---------------------------------------------------------------\n")
             
             # -- Web Search Agent (Hybrid RAG) --
             search_decision = analyze_search_intent(last_user_text)

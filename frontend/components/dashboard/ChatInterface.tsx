@@ -1,10 +1,10 @@
 
 import { useState, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Send, User, Bot, Loader2, Sparkles, Lightbulb, Users, Calculator, HelpCircle } from "lucide-react";
+import { Send, User, Bot, Loader2, Sparkles, Lightbulb, Users, Calculator, HelpCircle, ThumbsUp, ThumbsDown } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 // Button unused
-import { ChatMessageResponse, ChatSessionDetailResponse, sendChatMessage, getChatSession } from "@/lib/api";
+import { ChatMessageResponse, ChatSessionDetailResponse, sendChatMessage, getChatSession, sendChatMessageFeedback } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import { AnalysisCard } from "@/components/dashboard/AnalysisCard";
 import dayjs from "dayjs";
@@ -22,6 +22,21 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const scrollViewportRef = useRef<HTMLDivElement>(null);
+
+    const handleFeedback = async (messageId: number, feedbackValue: number) => {
+        // Optimistic UI update
+        setMessages((prev) => prev.map((m) =>
+            m.id === messageId ? { ...m, feedback: feedbackValue } : m
+        ));
+
+        try {
+            const token = getToken();
+            if (!token) throw new Error("No token");
+            await sendChatMessageFeedback(session.id, messageId, feedbackValue, token);
+        } catch (error) {
+            console.error("Failed to send feedback:", error);
+        }
+    };
 
     useEffect(() => {
         setMessages(session.messages || []);
@@ -114,109 +129,135 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                                     {msg.content}
                                 </ReactMarkdown>
                             </div>
-                            <span className="text-[10px] text-white/30 mt-2 block w-full text-right">
-                                {dayjs(msg.created_at).format("HH:mm")}
-                            </span>
+                            <div className="flex items-center gap-2 mt-2 w-full">
+                                {msg.role === "assistant" && (
+                                    <div className="flex items-center gap-1 pl-1">
+                                        <button
+                                            onClick={() => handleFeedback(msg.id, msg.feedback === 1 ? 0 : 1)}
+                                            className={`p-1.5 rounded-md transition-colors ${msg.feedback === 1 ? 'text-pitchy-cyan bg-pitchy-cyan/10' : 'text-white/30 hover:text-white/60 hover:bg-white/5'}`}
+                                            title="Хороший ответ (будет добавлен в базу обучения)"
+                                        >
+                                            <ThumbsUp className="w-4 h-4" />
+                                        </button>
+                                        <button
+                                            onClick={() => handleFeedback(msg.id, msg.feedback === -1 ? 0 : -1)}
+                                            className={`p-1.5 rounded-md transition-colors ${msg.feedback === -1 ? 'text-red-400 bg-red-400/10' : 'text-white/30 hover:text-white/60 hover:bg-white/5'}`}
+                                            title="Плохой ответ"
+                                        >
+                                            <ThumbsDown className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                )}
+                                <span className="text-[10px] text-white/30 ml-auto mr-1">
+                                    {dayjs(msg.created_at).format("HH:mm")}
+                                </span>
+                            </div>
                         </div>
                     </motion.div>
                 ))}
 
-                {messages.length <= 2 && !session.analysis && !isLoading && (
-                    <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="flex flex-col gap-3 mt-4"
-                    >
-                        <p className="text-white/50 text-sm text-center mb-2">Выберите тему для продолжения:</p>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl mx-auto w-full">
-                            <button onClick={() => handleSendMessage("Анализ идеи")} className="flex items-center gap-3 p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-colors text-left group">
-                                <div className="w-10 h-10 rounded-lg bg-pitchy-violet/20 flex items-center justify-center text-pitchy-violet group-hover:scale-110 transition-transform">
-                                    <Lightbulb className="w-5 h-5" />
-                                </div>
-                                <div>
-                                    <div className="text-white font-medium">Анализ идеи</div>
-                                    <div className="text-white/40 text-xs mt-0.5">Получить оценку 0-100</div>
-                                </div>
-                            </button>
+                {
+                    messages.length <= 2 && !session.analysis && !isLoading && (
+                        <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="flex flex-col gap-3 mt-4"
+                        >
+                            <p className="text-white/50 text-sm text-center mb-2">Выберите тему для продолжения:</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl mx-auto w-full">
+                                <button onClick={() => handleSendMessage("Анализ идеи")} className="flex items-center gap-3 p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-colors text-left group">
+                                    <div className="w-10 h-10 rounded-lg bg-pitchy-violet/20 flex items-center justify-center text-pitchy-violet group-hover:scale-110 transition-transform">
+                                        <Lightbulb className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <div className="text-white font-medium">Анализ идеи</div>
+                                        <div className="text-white/40 text-xs mt-0.5">Получить оценку 0-100</div>
+                                    </div>
+                                </button>
 
-                            <button onClick={() => handleSendMessage("Анализ ЦА")} className="flex items-center gap-3 p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-colors text-left group">
-                                <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center text-blue-400 group-hover:scale-110 transition-transform">
-                                    <Users className="w-5 h-5" />
-                                </div>
-                                <div>
-                                    <div className="text-white font-medium">Анализ ЦА</div>
-                                    <div className="text-white/40 text-xs mt-0.5">Сегментация аудитории</div>
-                                </div>
-                            </button>
+                                <button onClick={() => handleSendMessage("Анализ ЦА")} className="flex items-center gap-3 p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-colors text-left group">
+                                    <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center text-blue-400 group-hover:scale-110 transition-transform">
+                                        <Users className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <div className="text-white font-medium">Анализ ЦА</div>
+                                        <div className="text-white/40 text-xs mt-0.5">Сегментация аудитории</div>
+                                    </div>
+                                </button>
 
-                            <button onClick={() => handleSendMessage("Посчитать экономику проекта")} className="flex items-center gap-3 p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-colors text-left group">
-                                <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:scale-110 transition-transform">
-                                    <Calculator className="w-5 h-5" />
-                                </div>
-                                <div>
-                                    <div className="text-white font-medium">Юнит-экономика</div>
-                                    <div className="text-white/40 text-xs mt-0.5">САР, LTV, метрики</div>
-                                </div>
-                            </button>
+                                <button onClick={() => handleSendMessage("Посчитать экономику проекта")} className="flex items-center gap-3 p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-colors text-left group">
+                                    <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:scale-110 transition-transform">
+                                        <Calculator className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <div className="text-white font-medium">Юнит-экономика</div>
+                                        <div className="text-white/40 text-xs mt-0.5">САР, LTV, метрики</div>
+                                    </div>
+                                </button>
 
-                            <button onClick={() => handleSendMessage("Другой вопрос")} className="flex items-center gap-3 p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-colors text-left group">
-                                <div className="w-10 h-10 rounded-lg bg-orange-500/20 flex items-center justify-center text-orange-400 group-hover:scale-110 transition-transform">
-                                    <HelpCircle className="w-5 h-5" />
-                                </div>
-                                <div>
-                                    <div className="text-white font-medium">Другой вопрос</div>
-                                    <div className="text-white/40 text-xs mt-0.5">Свободный диалог</div>
-                                </div>
-                            </button>
-                        </div>
-                    </motion.div>
-                )}
-
-                {isLoading && (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-4">
-                        <div className="w-8 h-8 rounded-full bg-pitchy-violet flex items-center justify-center flex-shrink-0">
-                            <Loader2 className="w-5 h-5 text-white animate-spin" />
-                        </div>
-                        <div className="bg-pitchy-violet/10 border border-pitchy-violet/20 text-white rounded-2xl rounded-tl-sm p-4 flex items-center">
-                            <span className="animate-pulse">Анализирую...</span>
-                        </div>
-                    </motion.div>
-                )}
-
-                {session.analysis && (
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="mt-8 border-t border-white/10 pt-8 pb-4"
-                    >
-                        <div className="text-center mb-6">
-                            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-sm font-medium mb-2">
-                                <Sparkles className="w-4 h-4" />
-                                <span>Анализ готов</span>
+                                <button onClick={() => handleSendMessage("Другой вопрос")} className="flex items-center gap-3 p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-colors text-left group">
+                                    <div className="w-10 h-10 rounded-lg bg-orange-500/20 flex items-center justify-center text-orange-400 group-hover:scale-110 transition-transform">
+                                        <HelpCircle className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <div className="text-white font-medium">Другой вопрос</div>
+                                        <div className="text-white/40 text-xs mt-0.5">Свободный диалог</div>
+                                    </div>
+                                </button>
                             </div>
-                            <h3 className="text-xl font-bold text-white">Результаты оценки</h3>
-                        </div>
+                        </motion.div>
+                    )
+                }
 
-                        <div className="max-w-md mx-auto">
-                            <AnalysisCard
-                                analysis={{
-                                    id: session.analysis.id,
-                                    name: session.analysis.name,
-                                    score: session.analysis.investment_score,
-                                    category: session.analysis.category || "Стартап",
-                                    date: dayjs(session.analysis.created_at).format("D MMMM YYYY"),
-                                    summary: session.analysis.market_summary,
-                                }}
-                            />
-                        </div>
-                    </motion.div>
-                )}
+                {
+                    isLoading && (
+                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-4">
+                            <div className="w-8 h-8 rounded-full bg-pitchy-violet flex items-center justify-center flex-shrink-0">
+                                <Loader2 className="w-5 h-5 text-white animate-spin" />
+                            </div>
+                            <div className="bg-pitchy-violet/10 border border-pitchy-violet/20 text-white rounded-2xl rounded-tl-sm p-4 flex items-center">
+                                <span className="animate-pulse">Анализирую...</span>
+                            </div>
+                        </motion.div>
+                    )
+                }
+
+                {
+                    session.analysis && (
+                        <motion.div
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="mt-8 border-t border-white/10 pt-8 pb-4"
+                        >
+                            <div className="text-center mb-6">
+                                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-sm font-medium mb-2">
+                                    <Sparkles className="w-4 h-4" />
+                                    <span>Анализ готов</span>
+                                </div>
+                                <h3 className="text-xl font-bold text-white">Результаты оценки</h3>
+                            </div>
+
+                            <div className="max-w-md mx-auto">
+                                <AnalysisCard
+                                    analysis={{
+                                        id: session.analysis.id,
+                                        name: session.analysis.name,
+                                        score: session.analysis.investment_score,
+                                        category: session.analysis.category || "Стартап",
+                                        date: dayjs(session.analysis.created_at).format("D MMMM YYYY"),
+                                        summary: session.analysis.market_summary,
+                                    }}
+                                />
+                            </div>
+                        </motion.div>
+                    )
+                }
 
                 <div ref={messagesEndRef} />
-            </div>
+            </div >
 
             {/* Input Area */}
-            <div className="p-4 bg-white/5 border-t border-white/10 backdrop-blur-md">
+            < div className="p-4 bg-white/5 border-t border-white/10 backdrop-blur-md" >
                 <div className="relative">
                     <textarea
                         ref={textareaRef}
@@ -236,7 +277,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                         <Send className="w-4 h-4" />
                     </button>
                 </div>
-            </div>
-        </div>
+            </div >
+        </div >
     );
 }

@@ -197,6 +197,7 @@ export type ChatMessageResponse = {
   role: "user" | "assistant";
   content: string;
   created_at: string;
+  feedback?: number;
 };
 
 export async function getChatSessions(token: string): Promise<ChatSessionResponse[]> {
@@ -239,6 +240,10 @@ export async function deleteChatSession(id: number, token: string): Promise<{ st
 
 export async function sendChatMessage(sessionId: number, content: string, token: string): Promise<ChatMessageResponse> {
   return postAuthJson<ChatMessageResponse>(`/chat/sessions/${sessionId}/messages`, { content }, token);
+}
+
+export async function sendChatMessageFeedback(sessionId: number, messageId: number, feedback: number, token: string): Promise<{ status: string; feedback: number }> {
+  return postAuthJson<{ status: string; feedback: number }>(`/chat/sessions/${sessionId}/messages/${messageId}/feedback`, { feedback }, token);
 }
 
 export async function createPayment(tier: string, is_annual: boolean, promo_code: string | null, token: string): Promise<{ confirmation_url: string }> {
