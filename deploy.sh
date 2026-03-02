@@ -41,12 +41,7 @@ fi
 # 1. Pull new base images
 APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" pull --ignore-buildable -q
 
-# 2. Reset ChromaDB for Multi-RAG Update
-echo "Resetting ChromaDB directory..."
-rm -rf chroma_db/ || true
-export CHROMA_REINDEX=true
-
-# 3. Clean up zombie containers from previous failed deploys
+# 2. Clean up zombie containers from previous failed deploys
 docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" down --remove-orphans 2>/dev/null || true
 docker container prune -f 2>/dev/null || true
 
