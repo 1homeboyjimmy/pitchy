@@ -253,10 +253,12 @@ def analyze_search_intent(text: str, timeout: int = 15) -> Dict[str, Any]:
     system_prompt = (
         "Ты — умный классификатор запросов для бизнес-ассистента. Твоя задача — "
         "решить, нужен ли поиск свежих данных в интернете для ответа на запрос пользователя, "
-        "или достаточно обычных знаний базы (RAG). Поиск нужен для: статистики текущего/будущего года, "
-        "актуальных цен, налогов, трендов конкретного узкого рынка или упоминаний реальных компаний/конкурентов. "
+        "или достаточно обычных знаний базы (RAG). \n"
+        "ОБЯЗАТЕЛЬНО возвращай needs_search: true если запрос касается:\n"
+        "1) Текущего или будущих годов (2024, 2025, 2026 и т.д.)\n"
+        "2) Актуальных цен, налогов, трендов конкретного узкого рынка или упоминаний реальных компаний/конкурентов/мероприятий/акселераторов.\n"
         "Верни СТРОГО валидный JSON в формате:\n\n"
-        '{"needs_search": true/false, "search_query": "строка для поиска в яндексе (null если false)"}\n\n'
+        '{"needs_search": true/false, "search_query": "строка для поиска (null если false)"}\n\n'
         "Никакого другого текста, только JSON."
     )
     user_prompt = text[:1000]
@@ -269,6 +271,10 @@ def analyze_search_intent(text: str, timeout: int = 15) -> Dict[str, Any]:
 
         response_text, _ = call_yandex_gpt(system_prompt, user_prompt, timeout=timeout, model_uri=lite_model_uri)
         parsed = extract_json(response_text)
+        
+        import logging
+        logging.getLogger("app").info(f"analyze_search_intent parsed result: {parsed} for text: {user_prompt[:50]}")
+        
         return {
             "needs_search": bool(parsed.get("needs_search", False)),
             "search_query": str(parsed.get("search_query", "")) if parsed.get("needs_search") else ""
