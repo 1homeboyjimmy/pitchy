@@ -233,7 +233,11 @@ def healthcheck() -> bool:
     if _RAG_INSTANCE is None:
         return False
     try:
-        _RAG_INSTANCE.collection.count()
+        # Verify at least one collection is accessible
+        if not _RAG_INSTANCE.collections:
+            return False
+        for coll in _RAG_INSTANCE.collections.values():
+            coll.count()
         return True
     except Exception:
         return False
