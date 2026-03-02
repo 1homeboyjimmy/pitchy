@@ -2,7 +2,7 @@
 import { motion } from "framer-motion";
 import dayjs from "dayjs";
 import "dayjs/locale/ru";
-import { Calendar, ChevronRight } from "lucide-react";
+import { Calendar, ChevronRight, Trash2 } from "lucide-react";
 
 interface SessionCardProps {
     session: {
@@ -12,9 +12,10 @@ interface SessionCardProps {
         analysis_id?: number;
     };
     onClick: () => void;
+    onDelete?: (e: React.MouseEvent) => void;
 }
 
-export function SessionCard({ session, onClick }: SessionCardProps) {
+export function SessionCard({ session, onClick, onDelete }: SessionCardProps) {
     const formattedDate = dayjs(session.created_at).locale("ru").format("D MMMM YYYY, HH:mm");
 
     return (
@@ -48,8 +49,20 @@ export function SessionCard({ session, onClick }: SessionCardProps) {
                     </div>
                 </div>
 
-                <div className="flex items-center justify-end">
-                    <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-pitchy-violet group-hover:text-white transition-all">
+                <div className="flex items-center justify-end gap-2">
+                    {onDelete && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onDelete(e);
+                            }}
+                            className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-white/50 hover:bg-red-500/20 hover:text-red-400 transition-all z-10 relative"
+                            title="Удалить анализ"
+                        >
+                            <Trash2 className="w-5 h-5" />
+                        </button>
+                    )}
+                    <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-pitchy-violet group-hover:text-white transition-all z-10 relative pointer-events-none">
                         <ChevronRight className="w-5 h-5" />
                     </div>
                 </div>

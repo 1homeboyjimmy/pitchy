@@ -223,6 +223,20 @@ export async function createChatSessionFromIntent(intent_id: string, token: stri
   return postAuthJson<ChatSessionDetailResponse>("/chat/sessions/from-intent", { intent_id }, token);
 }
 
+export async function deleteChatSession(id: number, token: string): Promise<{ status: string }> {
+  const response = await fetch(`${API_BASE}/chat/sessions/${id}`, {
+    method: "DELETE",
+    headers: {
+      "Authorization": `Bearer ${token}`
+    }
+  });
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.detail || "Error deleting session");
+  }
+  return response.json();
+}
+
 export async function sendChatMessage(sessionId: number, content: string, token: string): Promise<ChatMessageResponse> {
   return postAuthJson<ChatMessageResponse>(`/chat/sessions/${sessionId}/messages`, { content }, token);
 }

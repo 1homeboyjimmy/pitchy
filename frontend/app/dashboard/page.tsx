@@ -26,6 +26,7 @@ import {
   createChatSession,
   getChatSession,
   getMe,
+  deleteChatSession,
   createChatSessionFromIntent,
   ChatSessionResponse,
   ChatSessionDetailResponse,
@@ -191,6 +192,27 @@ function DashboardContent() {
     } catch (e) {
       console.error(e);
       alert("Не удалось загрузить чат");
+    }
+  };
+
+  const handleDeleteSession = async (sessionId: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm("Вы уверены, что хотите удалить этот анализ? Это действие нельзя отменить.")) return;
+
+    try {
+      const token = getToken();
+      if (!token) return;
+
+      await deleteChatSession(sessionId, token);
+
+      setSessions(prev => prev.filter(s => s.id !== sessionId));
+      if (activeSession?.id === sessionId) {
+        setActiveSession(null);
+        setActiveTab("overview");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Не удалось удалить анализ");
     }
   };
 
@@ -367,6 +389,7 @@ function DashboardContent() {
                     key={session.id}
                     session={session}
                     onClick={() => handleSelectSession(session.id)}
+                    onDelete={(e) => handleDeleteSession(session.id, e)}
                   />
                 ))}
 

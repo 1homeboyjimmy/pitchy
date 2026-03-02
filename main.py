@@ -2272,6 +2272,24 @@ def get_chat_session(
     )
 
 
+@app.delete("/chat/sessions/{session_id}")
+def delete_chat_session(
+    session_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    session = (
+        db.query(ChatSession)
+        .filter(ChatSession.id == session_id, ChatSession.user_id == user.id)
+        .first()
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    db.delete(session)
+    db.commit()
+    return {"status": "ok", "deleted_id": session_id}
+
 @app.post("/chat/sessions/{session_id}/messages", response_model=ChatMessageResponse)
 def send_chat_message(
     session_id: int,
