@@ -39,19 +39,19 @@ def fetch_article(url: str) -> str:
 
 def extract_text(html: str) -> str:
     soup = BeautifulSoup(html, "html.parser")
+    
+    # Remove junk
+    for el in soup(["script", "style", "nav", "footer", "header", "aside", "noscript", "iframe"]):
+        el.decompose()
+        
+    # Try to find the primary content container
+    main_content = soup.body if soup.body else soup
+    
+    text = main_content.get_text(separator="\n\n")
 
-    # Remove script and style elements
-    for script in soup(["script", "style", "nav", "footer", "header", "aside"]):
-        script.decompose()
-
-    # Get text
-    text = soup.get_text(separator="\n\n")
-
-    # Break into lines and remove leading and trailing space on each
+    # Clean up whitespace
     lines = (line.strip() for line in text.splitlines())
-    # Break multi-headlines into a line each
     chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
-    # Drop blank lines
     text = '\n'.join(chunk for chunk in chunks if chunk)
     return text
 
