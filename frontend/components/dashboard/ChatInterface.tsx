@@ -258,7 +258,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
 
             {/* Input Area */}
             < div className="p-4 bg-white/5 border-t border-white/10 backdrop-blur-md" >
-                <div className="relative">
+                <div className="relative flex items-center">
                     <textarea
                         ref={textareaRef}
                         value={inputValue}
@@ -266,13 +266,13 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                         onKeyDown={handleKeyDown}
                         placeholder={session.analysis ? "Диалог завершен" : "Отправьте сообщение..."}
                         disabled={!!session.analysis}
-                        className="w-full bg-black/20 text-white placeholder-white/30 rounded-xl pl-4 pr-14 py-3 min-h-[50px] max-h-[150px] border border-white/10 focus:border-pitchy-violet/50 focus:outline-none focus:ring-1 focus:ring-pitchy-violet/50 resize-none scrollbar-thin disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-full bg-black/20 text-white placeholder-white/30 rounded-xl leading-[24px] pl-4 pr-14 py-3 min-h-[50px] max-h-[150px] border border-white/10 focus:border-pitchy-violet/50 focus:outline-none focus:ring-1 focus:ring-pitchy-violet/50 resize-none scrollbar-thin disabled:opacity-50 disabled:cursor-not-allowed"
                         rows={1}
                     />
                     <button
                         onClick={() => handleSendMessage()}
                         disabled={!inputValue.trim() || isLoading || !!session.analysis}
-                        className="absolute right-2 bottom-2 p-2 rounded-lg bg-pitchy-violet text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-pitchy-violet/80 transition-colors"
+                        className="absolute right-3 p-2 rounded-lg bg-pitchy-violet text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-pitchy-violet/80 transition-colors"
                     >
                         <Send className="w-4 h-4" />
                     </button>
