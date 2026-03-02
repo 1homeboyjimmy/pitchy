@@ -35,10 +35,16 @@ export function IntentChat() {
     const [isRedirecting, setIsRedirecting] = useState(false);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
 
     const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        if (containerRef.current) {
+            containerRef.current.scrollTo({
+                top: containerRef.current.scrollHeight,
+                behavior: "smooth",
+            });
+        }
     };
 
     useEffect(() => {
@@ -130,7 +136,7 @@ export function IntentChat() {
         <div className="w-full max-w-3xl mx-auto">
             <div className="glass-panel rounded-3xl overflow-hidden shadow-glow-primary/30">
                 {/* Messages Area */}
-                <div className="h-[350px] sm:h-[400px] overflow-y-auto p-4 sm:p-6 space-y-4">
+                <div ref={containerRef} className="h-[350px] sm:h-[400px] overflow-y-auto p-4 sm:p-6 space-y-4">
                     <AnimatePresence mode="popLayout">
                         {messages.map((message) => (
                             <motion.div

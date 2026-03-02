@@ -123,7 +123,8 @@ def _migrate_collection_if_needed(client: chromadb.ClientAPI, embedding_fn: E5Em
     Uses a marker file to ensure migration only runs ONCE.
     """
     # Check marker file — if it exists with current model name, skip migration entirely
-    marker_path = Path("/tmp/.rag_migration_done")
+    import tempfile
+    marker_path = Path(tempfile.gettempdir()) / ".rag_migration_done"
     if marker_path.exists():
         stored = marker_path.read_text().strip()
         if stored == EMBEDDING_MODEL_NAME:
