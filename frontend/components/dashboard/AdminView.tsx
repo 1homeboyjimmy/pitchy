@@ -428,17 +428,10 @@ export function AdminView() {
                     )}
 
                     {activeTab === "analytics" && analytics && (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
                             <GlassCard hover={false} className="p-6">
                                 <p className="text-white/50 text-sm mb-1">Всего пользователей</p>
                                 <p className="text-3xl font-bold text-white">{analytics.totals.users}</p>
-                            </GlassCard>
-                            <GlassCard hover={false} className="p-6">
-                                <p className="text-white/50 text-sm mb-1">Запущено анализов</p>
-                                <p className="text-3xl font-bold text-white flex items-end gap-2">
-                                    {analytics.totals.analyses}
-                                    <span className="text-xs text-pitchy-violet mb-1">(анон: {analytics.totals.analyses_anon})</span>
-                                </p>
                             </GlassCard>
                             <GlassCard hover={false} className="p-6">
                                 <p className="text-white/50 text-sm mb-1">Чат-сессий</p>

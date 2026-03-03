@@ -229,9 +229,6 @@ export default function AdminPage() {
               <Card withBorder radius="md">
                 <Text fw={600}>Активность</Text>
                 <Group mt="sm">
-                  <Badge color="green">
-                    Анализы: {analytics?.totals.analyses ?? 0}
-                  </Badge>
                   <Badge color="violet">
                     Сессии: {analytics?.totals.chat_sessions ?? 0}
                   </Badge>

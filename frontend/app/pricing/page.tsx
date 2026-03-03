@@ -191,7 +191,10 @@ export default function PricingPage() {
                                 <button
                                     onClick={handleApplyPromo}
                                     disabled={!promoCode.trim() || isCheckingPromo}
-                                    className="px-6 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl font-medium transition-colors disabled:opacity-50"
+                                    className={`px-6 py-2.5 rounded-xl font-medium transition-colors disabled:opacity-50 ${!promoCode.trim() || isCheckingPromo
+                                            ? "bg-white/10 text-white"
+                                            : "bg-pitchy-violet hover:bg-pitchy-violet-light text-white"
+                                        }`}
                                 >
                                     {isCheckingPromo ? "..." : "Применить"}
                                 </button>

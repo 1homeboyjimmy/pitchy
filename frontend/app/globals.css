@@ -217,6 +217,13 @@ body {
   background: rgba(255, 255, 255, 0.07);
 }
 
+/* ─── Hide default password eye icon ─── */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear,
+input[type="password"]::-webkit-credentials-auto-fill-button {
+  display: none !important;
+}
+
 /* ─── Buttons ─── */
 .btn-primary {
   display: inline-flex;

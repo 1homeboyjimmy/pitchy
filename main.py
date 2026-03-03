@@ -1404,16 +1404,16 @@ def admin_analytics(
     start_dt = datetime.combine(start_date, datetime.min.time())
     end_dt = datetime.combine(end_date, datetime.max.time())
 
-    def _count(model, created_field):
-        return db.query(model).filter(created_field.between(start_dt, end_dt)).count()
+    def _count_absolute(model):
+        return db.query(model).count()
 
-    total_users = _count(User, User.created_at)
-    total_analyses = _count(Analysis, Analysis.created_at)
-    total_analyses_anonymous = db.query(Analysis).filter(Analysis.created_at.between(start_dt, end_dt), Analysis.user_id == None).count()
-    total_sessions = _count(ChatSession, ChatSession.created_at)
-    total_sessions_anonymous = db.query(ChatSession).filter(ChatSession.created_at.between(start_dt, end_dt), ChatSession.user_id == None).count()
-    total_messages = _count(DbChatMessage, DbChatMessage.created_at)
-    total_errors = _count(ErrorLog, ErrorLog.created_at)
+    total_users = _count_absolute(User)
+    total_analyses = _count_absolute(Analysis)
+    total_analyses_anonymous = db.query(Analysis).filter(Analysis.user_id == None).count()
+    total_sessions = _count_absolute(ChatSession)
+    total_sessions_anonymous = db.query(ChatSession).filter(ChatSession.user_id == None).count()
+    total_messages = _count_absolute(DbChatMessage)
+    total_errors = _count_absolute(ErrorLog)
 
     series = []
     current = start_date
