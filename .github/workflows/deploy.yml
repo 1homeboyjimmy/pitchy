@@ -35,7 +35,7 @@ jobs:
           script: |
             set -e
             for i in {1..80}; do
-              body="$(docker compose --env-file /opt/ai-startup/.env.runtime -f /opt/ai-startup/docker-compose.prod.yml exec -T backend python -c 'import json,requests; r=requests.get("http://127.0.0.1:8000/health", timeout=5); print(json.dumps(r.json(), ensure_ascii=False, separators=(",",":")))' 2>/dev/null || true)"
+              body="$(docker compose --env-file /opt/ai-startup/.env.runtime -f /opt/ai-startup/docker-compose.prod.yml exec -T backend curl -s http://127.0.0.1:8000/health || true)"
               echo "$body"
               if [[ "$body" == *'"status":"ok"'* ]]; then
                 exit 0

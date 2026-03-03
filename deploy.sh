@@ -21,6 +21,17 @@ PREVIOUS_COMMIT="${PREVIOUS_COMMIT:-$(git rev-parse HEAD)}"
 chmod +x scripts/load_lockbox_env.sh
 scripts/load_lockbox_env.sh "$BASE_ENV_FILE" "$RUNTIME_ENV_FILE"
 
+# Make sure server has at least 2GB of Swap space (Prevents Torch OutOfMemoryError during ML model loads!)
+if ! grep -q "swapfile" /etc/fstab; then
+  echo "Setting up 2GB swapspace to prevent Out-Of-Memory errors during RAG initialization..."
+  sudo fallocate -l 2G /swapfile || fallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=2048
+  sudo chmod 600 /swapfile || chmod 600 /swapfile
+  sudo mkswap /swapfile || mkswap /swapfile
+  sudo swapon /swapfile || swapon /swapfile
+  echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+  echo "Swapspace configured successfully!"
+fi
+
 read_runtime_env_value() {
   local key="$1"
   local value=""
@@ -82,17 +93,7 @@ health_ok="false"
 for _ in $(seq 1 60); do
   body="$(
     APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" \
-      exec -T backend python - <<'PY' 2>/dev/null || true
-import json
-import requests
-
-try:
-    resp = requests.get("http://127.0.0.1:8000/health", timeout=5)
-    data = resp.json()
-    print(json.dumps(data, ensure_ascii=False, separators=(",", ":")))
-except Exception:
-    pass
-PY
+      exec -T backend curl -s http://127.0.0.1:8000/health || true
   )"
   if [[ "$body" == *'"status":"ok"'* ]]; then
     health_ok="true"
