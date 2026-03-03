@@ -137,22 +137,19 @@ logger = logging.getLogger("app")
 async def lifespan(_: FastAPI):
     # Start RAG initialization in background thread so server starts immediately
     # (model loading + migration can take minutes on first run after model switch)
-    import threading
     import time
-    def _init_rag_bg():
-        max_retries = 10
-        for attempt in range(max_retries):
-            try:
-                rag.init_rag()
-                logger.info("RAG initialized successfully in background.")
-                return
-            except Exception as e:
-                logger.warning(f"RAG background init failed (attempt {attempt+1}/{max_retries}): {e}")
-                time.sleep(10)
-        logger.error("RAG background init failed permanently after multiple retries.")
-    
-    t = threading.Thread(target=_init_rag_bg, daemon=True)
-    t.start()
+    max_retries = 10
+    logger.info("Initializing RAG in main thread to avoid PyTorch deadlocks...")
+    for attempt in range(max_retries):
+        try:
+            rag.init_rag()
+            logger.info("RAG initialized successfully.")
+            break
+        except Exception as e:
+            logger.warning(f"RAG init failed (attempt {attempt+1}/{max_retries}): {e}")
+            time.sleep(10)
+    else:
+        logger.error("RAG init failed permanently after retries.")
     yield
 
 
