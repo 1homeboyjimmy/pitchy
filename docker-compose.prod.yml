@@ -35,9 +35,9 @@ services:
         max-file: "3"
     environment:
       IS_PERSISTENT: "true"
-      PERSIST_DIRECTORY: /chroma/chroma
+      PERSIST_DIRECTORY: /data
     volumes:
-      - chroma_data:/chroma/chroma
+      - chroma_data:/data
 
   backend:
     build:
