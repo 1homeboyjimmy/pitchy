@@ -103,7 +103,10 @@ PY
 done
 
 if [[ "$health_ok" != "true" ]]; then
-  echo "Post-deploy backend healthcheck failed."
+  echo "Post-deploy backend healthcheck failed. ChromaDB Logs:"
+  APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" logs chroma
+  echo "Backend Logs:"
+  APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" logs backend
   if [[ "$ROLLBACK_ON_FAIL" == "true" ]]; then
     echo "Rolling back to commit $PREVIOUS_COMMIT"
     git reset --hard "$PREVIOUS_COMMIT"
