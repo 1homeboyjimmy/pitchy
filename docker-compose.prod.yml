@@ -63,6 +63,7 @@ services:
     volumes:
       - ai_models:/app/model_data
       - lockbox_secrets:/run/secrets
+      - admin_docs:/app/admin_docs
     env_file:
       - ${APP_ENV_FILE:-.env}
     command: uvicorn main:app --host 0.0.0.0 --port 8000
@@ -110,3 +111,4 @@ volumes:
   caddy_config:
   ai_models:
   lockbox_secrets:
+  admin_docs:

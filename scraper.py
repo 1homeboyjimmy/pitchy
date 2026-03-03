@@ -5,7 +5,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 
-DOCS_DIR = Path("sample_docs")
+DOCS_DIR = Path(os.getenv("ADMIN_DOCS_DIR", "admin_docs"))
 
 
 def clean_filename(url: str) -> str:

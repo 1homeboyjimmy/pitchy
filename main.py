@@ -1746,7 +1746,7 @@ async def admin_add_rag_pdf(
         import shutil
         import time
         
-        DOCS_DIR = Path("sample_docs")
+        DOCS_DIR = Path(os.getenv("ADMIN_DOCS_DIR", "admin_docs"))
         DOCS_DIR.mkdir(exist_ok=True)
         
         # Save uploaded file

@@ -17,6 +17,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter  # noqa: E40
 
 
 DOCS_DIR = Path(os.getenv("CHROMA_DOCS_DIR", "sample_docs"))
+ADMIN_DOCS_DIR = Path(os.getenv("ADMIN_DOCS_DIR", "admin_docs"))
 DB_DIR = os.getenv("CHROMA_PERSIST_DIR", "chroma_db")
 COLLECTION_NAME = os.getenv("CHROMA_COLLECTION", "startup_docs")
 CHROMA_HTTP_HOST = os.getenv("CHROMA_HTTP_HOST")
@@ -65,22 +66,25 @@ CATEGORIES = [
 
 def _load_documents_by_category() -> dict[str, List[str]]:
     docs_by_cat = {cat: [] for cat in CATEGORIES}
-    if not DOCS_DIR.exists():
-        return docs_by_cat
+    
+    # Load from both sample_docs (bundled) and admin_docs (persistent volume)
+    for docs_dir in [DOCS_DIR, ADMIN_DOCS_DIR]:
+        if not docs_dir.exists():
+            continue
         
-    for cat in CATEGORIES:
-        cat_dir = DOCS_DIR / cat
-        if cat_dir.exists() and cat_dir.is_dir():
-            for path in cat_dir.glob("*.txt"):
-                content = path.read_text(encoding="utf-8").strip()
-                if content:
-                    docs_by_cat[cat].extend(_chunk_text(content))
+        for cat in CATEGORIES:
+            cat_dir = docs_dir / cat
+            if cat_dir.exists() and cat_dir.is_dir():
+                for path in cat_dir.glob("*.txt"):
+                    content = path.read_text(encoding="utf-8").strip()
+                    if content:
+                        docs_by_cat[cat].extend(_chunk_text(content))
                     
-    # Also load root .txt into "general"
-    for path in DOCS_DIR.glob("*.txt"):
-        content = path.read_text(encoding="utf-8").strip()
-        if content:
-            docs_by_cat["general"].extend(_chunk_text(content))
+        # Also load root .txt into "general"
+        for path in docs_dir.glob("*.txt"):
+            content = path.read_text(encoding="utf-8").strip()
+            if content:
+                docs_by_cat["general"].extend(_chunk_text(content))
             
     return docs_by_cat
 
