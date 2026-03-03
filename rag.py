@@ -29,13 +29,18 @@ EMBEDDING_MODEL_NAME = "intfloat/multilingual-e5-small"
 MODEL_META_KEY = "embedding_model"
 
 
+_CACHED_EMBEDDING_MODEL = None
+
 class E5EmbeddingFunction(EmbeddingFunction):
     """Embedding function using multilingual-e5-small.
     E5 models require 'query: ' prefix for queries and 'passage: ' for documents.
     """
     def __init__(self):
-        print(f"Loading embedding model {EMBEDDING_MODEL_NAME}...")
-        self.model = SentenceTransformer(EMBEDDING_MODEL_NAME)
+        global _CACHED_EMBEDDING_MODEL
+        if _CACHED_EMBEDDING_MODEL is None:
+            print(f"Loading embedding model {EMBEDDING_MODEL_NAME}...")
+            _CACHED_EMBEDDING_MODEL = SentenceTransformer(EMBEDDING_MODEL_NAME)
+        self.model = _CACHED_EMBEDDING_MODEL
 
     def __call__(self, input: Documents) -> Embeddings:
         # E5 models expect prefixed input; for ChromaDB add/upsert we use passage prefix
