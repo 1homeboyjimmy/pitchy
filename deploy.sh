@@ -79,7 +79,7 @@ docker image prune -f
 APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" up -d --build --remove-orphans
 
 health_ok="false"
-for _ in $(seq 1 30); do
+for _ in $(seq 1 60); do
   body="$(
     APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" \
       exec -T backend python - <<'PY' 2>/dev/null || true
@@ -107,6 +107,7 @@ if [[ "$health_ok" != "true" ]]; then
   if [[ "$ROLLBACK_ON_FAIL" == "true" ]]; then
     echo "Rolling back to commit $PREVIOUS_COMMIT"
     git reset --hard "$PREVIOUS_COMMIT"
+    chmod +x scripts/load_lockbox_env.sh
     scripts/load_lockbox_env.sh "$BASE_ENV_FILE" "$RUNTIME_ENV_FILE"
     APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" down
     APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" up -d --build
