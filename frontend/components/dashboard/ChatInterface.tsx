@@ -1,5 +1,5 @@
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { Send, User, Bot, Loader2, Sparkles, Lightbulb, Users, Calculator, HelpCircle, ThumbsUp, ThumbsDown } from "lucide-react";
 import ReactMarkdown from "react-markdown";
@@ -22,6 +22,11 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const scrollViewportRef = useRef<HTMLDivElement>(null);
+
+    // Typewriter animation state
+    const [typingMessageId, setTypingMessageId] = useState<number | null>(null);
+    const [displayedLength, setDisplayedLength] = useState(0);
+    const typingSpeed = 12; // ms per character
 
     const handleFeedback = async (messageId: number, feedbackValue: number) => {
         // Optimistic UI update
@@ -50,7 +55,35 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
 
     useEffect(() => {
         scrollToBottom();
-    }, [messages, isLoading, session.analysis]);
+    }, [messages, isLoading, session.analysis, displayedLength]);
+
+    // Typewriter effect: reveal characters progressively
+    useEffect(() => {
+        if (typingMessageId === null) return;
+        const msg = messages.find((m) => m.id === typingMessageId);
+        if (!msg) { setTypingMessageId(null); return; }
+        const fullLen = msg.content.length;
+        if (displayedLength >= fullLen) {
+            setTypingMessageId(null);
+            return;
+        }
+        // Reveal faster for markdown formatting chars
+        const nextChar = msg.content[displayedLength];
+        const speed = /[|\-#*\n\r]/.test(nextChar) ? 2 : typingSpeed;
+        const timer = setTimeout(() => {
+            // Reveal in small chunks (3-5 chars) for smoother feel
+            const chunk = Math.min(3, fullLen - displayedLength);
+            setDisplayedLength((prev) => prev + chunk);
+        }, speed);
+        return () => clearTimeout(timer);
+    }, [typingMessageId, displayedLength, messages]);
+
+    const getDisplayContent = useCallback((msg: ChatMessageResponse) => {
+        if (msg.id === typingMessageId) {
+            return msg.content.slice(0, displayedLength);
+        }
+        return msg.content;
+    }, [typingMessageId, displayedLength]);
 
     const handleSendMessage = async (text?: string) => {
         const content = typeof text === 'string' ? text : inputValue.trim();
@@ -76,7 +109,15 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
             // Fetch updated session to check for analysis
             const updatedSession = await getChatSession(session.id, token);
             onUpdate(updatedSession);
-            setMessages(updatedSession.messages);
+
+            // Find the new assistant message to animate
+            const newMsgs = updatedSession.messages;
+            const lastMsg = newMsgs[newMsgs.length - 1];
+            if (lastMsg && lastMsg.role === "assistant") {
+                setDisplayedLength(0);
+                setTypingMessageId(lastMsg.id);
+            }
+            setMessages(newMsgs);
 
         } catch (error) {
             console.error(error);
@@ -126,8 +167,11 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                             }`}>
                             <div className="text-sm sm:text-base leading-[1.7] md:leading-[1.8] text-white/90 [&>p]:mb-4 [&>p:last-child]:mb-0 [&>ul]:list-disc [&>ul]:pl-6 [&>ul]:mb-4 [&>ul>li]:mb-2 [&>ul>li]:pl-1 [&>ol]:list-decimal [&>ol]:pl-6 [&>ol]:mb-4 [&>ol>li]:mb-2 [&>ol>li]:pl-1 [&>h2]:text-xl [&>h2]:font-bold [&>h2]:text-pitchy-cyan-light [&>h2]:mt-8 [&>h2]:mb-4 [&>h3]:text-lg [&>h3]:font-bold [&>h3]:text-white [&>h3]:mt-6 [&>h3]:mb-3 [&>strong]:text-white [&>strong]:font-semibold break-words">
                                 <ReactMarkdown>
-                                    {msg.content}
+                                    {getDisplayContent(msg)}
                                 </ReactMarkdown>
+                                {msg.id === typingMessageId && (
+                                    <span className="inline-block w-0.5 h-4 bg-pitchy-cyan animate-pulse ml-0.5 align-text-bottom" />
+                                )}
                             </div>
                             <div className="flex items-center gap-2 mt-2 w-full">
                                 {msg.role === "assistant" && (
