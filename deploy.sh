@@ -13,10 +13,7 @@ ROLLBACK_ON_FAIL="${ROLLBACK_ON_FAIL:-true}"
 
 cd "$REPO_DIR"
 
-# PREVIOUS_COMMIT="$(git rev-parse HEAD)"
 PREVIOUS_COMMIT="${PREVIOUS_COMMIT:-$(git rev-parse HEAD)}"
-# git fetch origin
-# git reset --hard origin/main
 
 chmod +x scripts/load_lockbox_env.sh
 scripts/load_lockbox_env.sh "$BASE_ENV_FILE" "$RUNTIME_ENV_FILE"
@@ -53,54 +50,71 @@ if [[ -n "$runtime_health_host" ]]; then
   HEALTHCHECK_HOST_HEADER="$runtime_health_host"
 fi
 
-# Zero-downtime deployment:
-# 1. Pull new base images
-APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" pull --ignore-buildable -q
+# ---- LOGIN TO GHCR ----
+echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
 
-# 2. Stop and remove ALL old containers (force-clean to prevent name conflicts)
+# ---- PULL PRE-BUILT IMAGES FROM GHCR ----
+echo "Pulling pre-built images from GHCR..."
+APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" pull
+
+# ---- STOP OLD CONTAINERS ----
 docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" down --timeout 10 --remove-orphans 2>/dev/null || true
-# Force-remove any stuck containers that 'down' couldn't clean
 docker rm -f $(docker ps -aq --filter "label=com.docker.compose.project=ai-startup") 2>/dev/null || true
 docker container prune -f 2>/dev/null || true
 
-# 3. Build and start containers
-APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" up -d --build --force-recreate --remove-orphans
+# ---- START CONTAINERS (no --build, images are pre-built) ----
+echo "Starting containers..."
+APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" up -d --force-recreate --remove-orphans
 
-# 4. Apply database migrations
+# ---- DATABASE MIGRATIONS ----
 echo "Applying database migrations..."
-docker compose exec -T backend python -m alembic upgrade head
+sleep 5  # Give postgres a moment to accept connections
+docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" exec -T backend python -m alembic upgrade head
 
-# 5. Prune unused images
+# ---- PRUNE OLD IMAGES (but NOT build cache) ----
 docker image prune -f
 
+# ---- HEALTHCHECK ----
 health_ok="false"
-for _ in $(seq 1 60); do
+for i in $(seq 1 60); do
   body="$(
-    APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" \
+    docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" \
       exec -T backend curl -s http://127.0.0.1:8000/health || true
   )"
   if [[ "$body" == *'"status":"ok"'* ]]; then
     health_ok="true"
+    echo "Healthcheck passed on attempt $i!"
     break
   fi
-  echo "Healthcheck attempt failed: ${body:-<empty>}"
+  # Every 5 attempts, print backend logs for debugging
+  if (( i % 5 == 0 )); then
+    echo "--- Backend logs (attempt $i) ---"
+    docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" logs backend --tail=20 2>&1 || true
+    echo "--- End backend logs ---"
+  fi
+  echo "Healthcheck attempt $i failed: ${body:-<empty>}"
   sleep 5
 done
 
 if [[ "$health_ok" != "true" ]]; then
-  echo "Post-deploy backend healthcheck failed. ChromaDB Logs:"
-  APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" logs chroma
-  echo "Backend Logs:"
-  APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" logs backend
+  echo "====== DEPLOY FAILED: healthcheck timeout ======"
+  echo "====== BACKEND LOGS ======"
+  docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" logs backend --tail=100 2>&1 || true
+  echo "====== CHROMA LOGS ======"
+  docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" logs chroma --tail=30 2>&1 || true
+  echo "====== POSTGRES LOGS ======"
+  docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" logs postgres --tail=30 2>&1 || true
   if [[ "$ROLLBACK_ON_FAIL" == "true" ]]; then
     echo "Rolling back to commit $PREVIOUS_COMMIT"
     git reset --hard "$PREVIOUS_COMMIT"
     chmod +x scripts/load_lockbox_env.sh
     scripts/load_lockbox_env.sh "$BASE_ENV_FILE" "$RUNTIME_ENV_FILE"
-    APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" down
-    APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" up -d --build
+    docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" down
+    docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" up -d
   fi
   exit 1
 fi
 
-docker system prune -f
+echo "Deploy successful!"
+# Clean up dangling images only (not build cache)
+docker image prune -f 2>/dev/null || true
