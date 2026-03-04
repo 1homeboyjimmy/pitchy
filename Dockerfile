@@ -9,18 +9,22 @@ WORKDIR /app
 # Install curl for deploy healthchecks
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
-# Install CPU-only torch FIRST to save space and prevent cache busts from requirements.txt
-RUN pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+# --- LAYER 1: Torch (cached unless base image changes) ---
+# Use pip cache mount so torch (188MB) is only downloaded once
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
 
+# --- LAYER 2: Requirements (cached unless requirements.txt changes) ---
 COPY requirements.txt .
-
 RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements.txt
 
-COPY . .
-
-# Pre-download embedding model into HuggingFace cache inside image
+# --- LAYER 3: Pre-download embedding model (cached unless requirements change) ---
+# Model download BEFORE code copy so code-only changes don't re-download the 466MB model
 RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('intfloat/multilingual-e5-small')" \
     && echo 'Model cached at:' && du -sh /app/.hf_cache/
+
+# --- LAYER 4: Code (only this layer rebuilds on code changes) ---
+COPY . .
 
 EXPOSE 8000
 

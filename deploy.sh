@@ -57,11 +57,14 @@ fi
 # 1. Pull new base images
 APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" pull --ignore-buildable -q
 
-# 2. Clean up zombie containers from previous failed deploys
-docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" down --remove-orphans 2>/dev/null || true
+# 2. Stop and remove ALL old containers (force-clean to prevent name conflicts)
+docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" down --timeout 10 --remove-orphans 2>/dev/null || true
+# Force-remove any stuck containers that 'down' couldn't clean
+docker rm -f $(docker ps -aq --filter "label=com.docker.compose.project=ai-startup") 2>/dev/null || true
 docker container prune -f 2>/dev/null || true
+
 # 3. Build and start containers
-APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" up -d --build --remove-orphans
+APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" up -d --build --force-recreate --remove-orphans
 
 # 4. Apply database migrations
 echo "Applying database migrations..."
