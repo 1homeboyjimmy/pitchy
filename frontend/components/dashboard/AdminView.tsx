@@ -472,7 +472,7 @@ export function AdminView() {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                                 <GlassCard hover={false} className="p-6">
                                     <p className="text-white/50 text-sm mb-1">Всего пользователей</p>
                                     <p className="text-3xl font-bold text-white">{analytics.totals.users}</p>
@@ -490,20 +490,31 @@ export function AdminView() {
                                         {analytics.totals.subscriptions}
                                     </p>
                                 </GlassCard>
+                                <GlassCard hover={false} className="p-6">
+                                    <p className="text-white/50 text-sm mb-1">Конверсия (%)</p>
+                                    <p className="text-3xl font-bold text-white flex items-end gap-2">
+                                        {analytics.totals.users > 0 ? ((analytics.totals.subscriptions / analytics.totals.users) * 100).toFixed(2) : "0.00"}%
+                                    </p>
+                                </GlassCard>
                             </div>
 
                             <GlassCard hover={false} className="p-6">
                                 <h4 className="text-white font-medium mb-4">Динамика регистраций (Всего пользователей)</h4>
                                 <AreaChart
                                     h={280}
-                                    data={analytics.series}
+                                    data={analytics.series.map(s => ({
+                                        ...s,
+                                        conversion: s.users && Number(s.users) > 0 ? Number(((Number(s.subscriptions) / Number(s.users)) * 100).toFixed(2)) : 0
+                                    }))}
                                     dataKey="date"
-                                    curveType="monotone"
+                                    curveType="linear"
                                     series={[{ name: "users", color: "blue.5", label: "Пользователи" }]}
                                     withGradient
-                                    gridAxis="y"
+                                    gridAxis="xy"
                                     textColor="rgba(255, 255, 255, 0.5)"
                                     withDots={false}
+                                    yAxisProps={{ ticks: [0, 20, 40, 60, 80], domain: [0, 80] }}
+                                    xAxisProps={{ interval: "preserveStartEnd" }}
                                 />
                             </GlassCard>
 
@@ -511,14 +522,19 @@ export function AdminView() {
                                 <h4 className="text-white font-medium mb-4">Активность (Чат-сессии)</h4>
                                 <AreaChart
                                     h={280}
-                                    data={analytics.series}
+                                    data={analytics.series.map(s => ({
+                                        ...s,
+                                        conversion: s.users && Number(s.users) > 0 ? Number(((Number(s.subscriptions) / Number(s.users)) * 100).toFixed(2)) : 0
+                                    }))}
                                     dataKey="date"
-                                    curveType="monotone"
+                                    curveType="linear"
                                     series={[{ name: "chat_sessions", color: "violet.5", label: "Сессии" }]}
                                     withGradient
-                                    gridAxis="y"
+                                    gridAxis="xy"
                                     textColor="rgba(255, 255, 255, 0.5)"
                                     withDots={false}
+                                    yAxisProps={{ ticks: [0, 50, 100, 150, 200], domain: [0, 200] }}
+                                    xAxisProps={{ interval: "preserveStartEnd" }}
                                 />
                             </GlassCard>
 
@@ -526,14 +542,38 @@ export function AdminView() {
                                 <h4 className="text-white font-medium mb-4">Рост платных подписок</h4>
                                 <AreaChart
                                     h={280}
-                                    data={analytics.series}
+                                    data={analytics.series.map(s => ({
+                                        ...s,
+                                        conversion: s.users && Number(s.users) > 0 ? Number(((Number(s.subscriptions) / Number(s.users)) * 100).toFixed(2)) : 0
+                                    }))}
                                     dataKey="date"
-                                    curveType="monotone"
+                                    curveType="linear"
                                     series={[{ name: "subscriptions", color: "cyan.5", label: "Подписки" }]}
                                     withGradient
-                                    gridAxis="y"
+                                    gridAxis="xy"
                                     textColor="rgba(255, 255, 255, 0.5)"
                                     withDots={false}
+                                    yAxisProps={{ ticks: [0, 10, 20, 30, 40], domain: [0, 40] }}
+                                    xAxisProps={{ interval: "preserveStartEnd" }}
+                                />
+                            </GlassCard>
+
+                            <GlassCard hover={false} className="p-6">
+                                <h4 className="text-white font-medium mb-4">Изменение конверсии (%)</h4>
+                                <AreaChart
+                                    h={280}
+                                    data={analytics.series.map(s => ({
+                                        ...s,
+                                        conversion: s.users && Number(s.users) > 0 ? Number(((Number(s.subscriptions) / Number(s.users)) * 100).toFixed(2)) : 0
+                                    }))}
+                                    dataKey="date"
+                                    curveType="linear"
+                                    series={[{ name: "conversion", color: "pink.5", label: "Конверсия (%)" }]}
+                                    withGradient
+                                    gridAxis="xy"
+                                    textColor="rgba(255, 255, 255, 0.5)"
+                                    withDots={false}
+                                    xAxisProps={{ interval: "preserveStartEnd" }}
                                 />
                             </GlassCard>
                         </div>
