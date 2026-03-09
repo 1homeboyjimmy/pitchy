@@ -52,6 +52,21 @@ docker container prune -f 2>/dev/null || true
 echo "Starting containers..."
 APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" up -d --force-recreate --remove-orphans
 
+# ---- CROWDSEC BOUNCER SETUP ----
+echo "Setting up CrowdSec Bouncer..."
+sleep 5 # Wait for crowdsec to initialize
+if ! grep -q "CROWDSEC_BOUNCER_KEY" "$RUNTIME_ENV_FILE"; then
+  echo "Generating new CrowdSec Bouncer API key..."
+  # Generate a random API key
+  BOUNCER_KEY=$(head -c 16 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 32)
+  # Register the bouncer with crowdsec using the generated key
+  docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" exec -T crowdsec cscli bouncers add firewall-bouncer -k "$BOUNCER_KEY" || true
+  # Add the key to the runtime env file so the bouncer container can pick it up
+  echo "CROWDSEC_BOUNCER_KEY=$BOUNCER_KEY" >> "$RUNTIME_ENV_FILE"
+  # Restart the bouncer so it picks up the new env var
+  APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" up -d crowdsec-bouncer-firewall
+fi
+
 # ---- DATABASE MIGRATIONS ----
 echo "Applying database migrations..."
 sleep 5  # Give postgres a moment to accept connections

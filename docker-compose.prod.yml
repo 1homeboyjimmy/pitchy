@@ -96,6 +96,81 @@ services:
       - caddy_data:/data
       - caddy_config:/config
 
+  loki:
+    image: grafana/loki:latest
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./ops/monitoring/loki-config.yaml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  promtail:
+    image: grafana/promtail:latest
+    restart: unless-stopped
+    volumes:
+      - /var/log:/var/log:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./ops/monitoring/promtail-config.yaml:/etc/promtail/config.yml:ro
+    command: -config.file=/etc/promtail/config.yml
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  crowdsec:
+    image: crowdsecurity/crowdsec:latest
+    restart: unless-stopped
+    environment:
+      COLLECTIONS: "crowdsecurity/caddy crowdsecurity/linux"
+    volumes:
+      - crowdsec_db:/var/lib/crowdsec/data
+      - crowdsec_config:/etc/crowdsec
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/var/log/caddy:ro
+    ports:
+      - "8080:8080"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  crowdsec-bouncer-firewall:
+    image: crowdsecurity/crowdsec-bouncer-firewall:latest
+    restart: unless-stopped
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      API_URL: http://127.0.0.1:8080
+      CROWDSEC_BOUNCER_API_KEY: ${CROWDSEC_BOUNCER_KEY:-}
+    depends_on:
+      - crowdsec
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+
 volumes:
   postgres_data:
   redis_data:
@@ -105,3 +180,7 @@ volumes:
   ai_models:
   lockbox_secrets:
   admin_docs:
+  loki_data:
+  grafana_data:
+  crowdsec_db:
+  crowdsec_config:
