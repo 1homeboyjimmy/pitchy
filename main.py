@@ -1423,33 +1423,68 @@ def admin_analytics(
     total_sessions_anonymous = db.query(ChatSession).filter(ChatSession.user_id == None).count()
     total_messages = _count_absolute(DbChatMessage)
     total_errors = _count_absolute(ErrorLog)
+    total_subscriptions = db.query(User).filter(User.subscription_tier != "free").count()
 
-    series = []
-    current = start_date
-    while current <= end_date:
-        day_start = datetime.combine(current, datetime.min.time())
-        day_end = datetime.combine(current, datetime.max.time())
-        series.append(
-            {
-                "date": current.isoformat(),
-                "users": db.query(User)
-                .filter(User.created_at.between(day_start, day_end))
-                .count(),
-                "analyses": db.query(Analysis)
-                .filter(Analysis.created_at.between(day_start, day_end))
-                .count(),
-                "chat_sessions": db.query(ChatSession)
-                .filter(ChatSession.created_at.between(day_start, day_end))
-                .count(),
-                "chat_messages": db.query(DbChatMessage)
-                .filter(DbChatMessage.created_at.between(day_start, day_end))
-                .count(),
-                "errors": db.query(ErrorLog)
-                .filter(ErrorLog.created_at.between(day_start, day_end))
-                .count(),
+    delta = end_date - start_date
+    is_hourly = delta.days <= 3
+
+    series_dict = {}
+    if is_hourly:
+        curr = start_dt
+        while curr <= end_dt:
+            key = curr.strftime("%Y-%m-%d %H:00")
+            series_dict[key] = {
+                "date": key,
+                "users": 0, "analyses": 0, "chat_sessions": 0, "chat_messages": 0, "errors": 0, "subscriptions": 0
             }
-        )
-        current += timedelta(days=1)
+            curr += timedelta(hours=1)
+    else:
+        curr = start_date
+        while curr <= end_date:
+            key = curr.strftime("%Y-%m-%d")
+            series_dict[key] = {
+                "date": key,
+                "users": 0, "analyses": 0, "chat_sessions": 0, "chat_messages": 0, "errors": 0, "subscriptions": 0
+            }
+            curr += timedelta(days=1)
+
+    def _format_key(dt):
+        if not dt: return None
+        return dt.strftime("%Y-%m-%d %H:00") if is_hourly else dt.strftime("%Y-%m-%d")
+
+    users_q = db.query(User.created_at, User.subscription_tier).filter(User.created_at.between(start_dt, end_dt)).all()
+    for (dt, tier) in users_q:
+        k = _format_key(dt)
+        if k in series_dict:
+            series_dict[k]["users"] += 1
+            if tier != "free":
+                series_dict[k]["subscriptions"] += 1
+
+    analyses_q = db.query(Analysis.created_at).filter(Analysis.created_at.between(start_dt, end_dt)).all()
+    for (dt,) in analyses_q:
+        k = _format_key(dt)
+        if k in series_dict:
+            series_dict[k]["analyses"] += 1
+
+    sessions_q = db.query(ChatSession.created_at).filter(ChatSession.created_at.between(start_dt, end_dt)).all()
+    for (dt,) in sessions_q:
+        k = _format_key(dt)
+        if k in series_dict:
+            series_dict[k]["chat_sessions"] += 1
+
+    messages_q = db.query(DbChatMessage.created_at).filter(DbChatMessage.created_at.between(start_dt, end_dt)).all()
+    for (dt,) in messages_q:
+        k = _format_key(dt)
+        if k in series_dict:
+            series_dict[k]["chat_messages"] += 1
+
+    errors_q = db.query(ErrorLog.created_at).filter(ErrorLog.created_at.between(start_dt, end_dt)).all()
+    for (dt,) in errors_q:
+        k = _format_key(dt)
+        if k in series_dict:
+            series_dict[k]["errors"] += 1
+
+    series = list(series_dict.values())
 
     return {
         "range": {"start": start_date.isoformat(), "end": end_date.isoformat()},
@@ -1461,6 +1496,7 @@ def admin_analytics(
             "chat_sessions_anon": total_sessions_anonymous,
             "chat_messages": total_messages,
             "errors": total_errors,
+            "subscriptions": total_subscriptions,
         },
         "series": series,
     }

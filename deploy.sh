@@ -18,21 +18,7 @@ PREVIOUS_COMMIT="${PREVIOUS_COMMIT:-$(git rev-parse HEAD)}"
 chmod +x scripts/load_lockbox_env.sh
 scripts/load_lockbox_env.sh "$BASE_ENV_FILE" "$RUNTIME_ENV_FILE"
 
-# Make sure server has at least 2GB of Swap space (Prevents Torch OutOfMemoryError during ML model loads!)
-# NOTE: This requires root/sudo access. Skipped gracefully if not available.
-if ! swapon --show 2>/dev/null | grep -q "/swapfile"; then
-  echo "No swap detected. Attempting to set up 2GB swapspace..."
-  (
-    set +e
-    sudo fallocate -l 2G /swapfile 2>/dev/null && \
-    sudo chmod 600 /swapfile 2>/dev/null && \
-    sudo mkswap /swapfile 2>/dev/null && \
-    sudo swapon /swapfile 2>/dev/null && \
-    echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab >/dev/null 2>&1 && \
-    echo "Swapspace configured successfully!" || \
-    echo "WARNING: Could not set up swap (no sudo access). Continuing without swap."
-  )
-fi
+
 
 read_runtime_env_value() {
   local key="$1"

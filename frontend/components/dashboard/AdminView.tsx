@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { Users, Tag, BarChart2, Plus, Trash2, Shield, Loader2, CreditCard } from "lucide-react";
 import { Button, GlassCard } from "@/components/shared";
 import { getToken } from "@/lib/auth";
+import { AreaChart } from "@mantine/charts";
 
 // Temporary Types mapping what API returns
 type PromoCode = {
@@ -31,7 +32,9 @@ type AnalyticsData = {
         analyses_anon: number;
         chat_sessions: number;
         chat_sessions_anon: number;
+        subscriptions: number;
     };
+    series: Record<string, string | number>[];
 };
 
 type Subscription = {
@@ -66,6 +69,7 @@ export function AdminView() {
     const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
     const [users, setUsers] = useState<User[]>([]);
     const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+    const [analyticsTimeFilter, setAnalyticsTimeFilter] = useState<"24h" | "3d" | "1w" | "1m" | "6m" | "1y">("1w");
 
     // RAG State
     const [ragUrl, setRagUrl] = useState("");
@@ -98,7 +102,21 @@ export function AdminView() {
                     });
                     if (res.ok) setPromocodes(await res.json());
                 } else if (activeTab === "analytics") {
-                    const res = await fetch(`${API_BASE}/admin/analytics`, {
+
+                    // compute start/end based on analyticsTimeFilter
+                    const end = new Date();
+                    const start = new Date();
+                    if (analyticsTimeFilter === "24h") start.setHours(start.getHours() - 24);
+                    if (analyticsTimeFilter === "3d") start.setDate(start.getDate() - 3);
+                    if (analyticsTimeFilter === "1w") start.setDate(start.getDate() - 7);
+                    if (analyticsTimeFilter === "1m") start.setMonth(start.getMonth() - 1);
+                    if (analyticsTimeFilter === "6m") start.setMonth(start.getMonth() - 6);
+                    if (analyticsTimeFilter === "1y") start.setFullYear(start.getFullYear() - 1);
+
+                    const startStr = start.toISOString().split("T")[0];
+                    const endStr = end.toISOString().split("T")[0];
+
+                    const res = await fetch(`${API_BASE}/admin/analytics?start=${startStr}&end=${endStr}`, {
                         headers: { "Authorization": `Bearer ${token}` }
                     });
                     if (res.ok) setAnalytics(await res.json());
@@ -125,7 +143,7 @@ export function AdminView() {
             }
         };
         fetchData();
-    }, [activeTab, API_BASE]);
+    }, [activeTab, API_BASE, analyticsTimeFilter]);
 
     const handleCreatePromo = async () => {
         try {
@@ -428,17 +446,95 @@ export function AdminView() {
                     )}
 
                     {activeTab === "analytics" && analytics && (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
+                        <div className="space-y-6 mt-6">
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-xl font-bold text-white">Аналитика платформы</h3>
+                                <div className="flex bg-[#0F0F13] border border-white/10 rounded-xl p-1">
+                                    {[
+                                        { label: "24 часа", value: "24h" },
+                                        { label: "3 дня", value: "3d" },
+                                        { label: "Неделя", value: "1w" },
+                                        { label: "Месяц", value: "1m" },
+                                        { label: "Полгода", value: "6m" },
+                                        { label: "Год", value: "1y" },
+                                    ].map((opt) => (
+                                        <button
+                                            key={opt.value}
+                                            onClick={() => setAnalyticsTimeFilter(opt.value as "24h" | "3d" | "1w" | "1m" | "6m" | "1y")}
+                                            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${analyticsTimeFilter === opt.value
+                                                ? "bg-pitchy-violet text-white"
+                                                : "text-white/50 hover:text-white"
+                                                }`}
+                                        >
+                                            {opt.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <GlassCard hover={false} className="p-6">
+                                    <p className="text-white/50 text-sm mb-1">Всего пользователей</p>
+                                    <p className="text-3xl font-bold text-white">{analytics.totals.users}</p>
+                                </GlassCard>
+                                <GlassCard hover={false} className="p-6">
+                                    <p className="text-white/50 text-sm mb-1">Чат-сессий</p>
+                                    <p className="text-3xl font-bold text-white flex items-end gap-2">
+                                        {analytics.totals.chat_sessions}
+                                        <span className="text-xs text-pitchy-violet mb-1">(анон: {analytics.totals.chat_sessions_anon})</span>
+                                    </p>
+                                </GlassCard>
+                                <GlassCard hover={false} className="p-6">
+                                    <p className="text-white/50 text-sm mb-1">Количество подписок</p>
+                                    <p className="text-3xl font-bold text-white flex items-end gap-2">
+                                        {analytics.totals.subscriptions}
+                                    </p>
+                                </GlassCard>
+                            </div>
+
                             <GlassCard hover={false} className="p-6">
-                                <p className="text-white/50 text-sm mb-1">Всего пользователей</p>
-                                <p className="text-3xl font-bold text-white">{analytics.totals.users}</p>
+                                <h4 className="text-white font-medium mb-4">Динамика регистраций (Всего пользователей)</h4>
+                                <AreaChart
+                                    h={280}
+                                    data={analytics.series}
+                                    dataKey="date"
+                                    curveType="monotone"
+                                    series={[{ name: "users", color: "blue.5", label: "Пользователи" }]}
+                                    withGradient
+                                    gridAxis="y"
+                                    textColor="rgba(255, 255, 255, 0.5)"
+                                    withDots={false}
+                                />
                             </GlassCard>
+
                             <GlassCard hover={false} className="p-6">
-                                <p className="text-white/50 text-sm mb-1">Чат-сессий</p>
-                                <p className="text-3xl font-bold text-white flex items-end gap-2">
-                                    {analytics.totals.chat_sessions}
-                                    <span className="text-xs text-pitchy-violet mb-1">(анон: {analytics.totals.chat_sessions_anon})</span>
-                                </p>
+                                <h4 className="text-white font-medium mb-4">Активность (Чат-сессии)</h4>
+                                <AreaChart
+                                    h={280}
+                                    data={analytics.series}
+                                    dataKey="date"
+                                    curveType="monotone"
+                                    series={[{ name: "chat_sessions", color: "violet.5", label: "Сессии" }]}
+                                    withGradient
+                                    gridAxis="y"
+                                    textColor="rgba(255, 255, 255, 0.5)"
+                                    withDots={false}
+                                />
+                            </GlassCard>
+
+                            <GlassCard hover={false} className="p-6">
+                                <h4 className="text-white font-medium mb-4">Рост платных подписок</h4>
+                                <AreaChart
+                                    h={280}
+                                    data={analytics.series}
+                                    dataKey="date"
+                                    curveType="monotone"
+                                    series={[{ name: "subscriptions", color: "cyan.5", label: "Подписки" }]}
+                                    withGradient
+                                    gridAxis="y"
+                                    textColor="rgba(255, 255, 255, 0.5)"
+                                    withDots={false}
+                                />
                             </GlassCard>
                         </div>
                     )}

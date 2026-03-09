@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "chroma": {
+      "source": "chroma-core/agent-skills",
+      "sourceType": "github",
+      "computedHash": "c45095cf4bb66500ba714d24030d499338cf89d00e9657b93c030503863dc46a"
+    }
+  }
+}
