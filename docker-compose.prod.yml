@@ -155,7 +155,7 @@ services:
           memory: 128M
 
   crowdsec-bouncer-firewall:
-    image: crowdsecurity/crowdsec-bouncer-firewall:latest
+    image: crowdsecurity/cs-firewall-bouncer:latest
     restart: unless-stopped
     network_mode: host
     cap_add:

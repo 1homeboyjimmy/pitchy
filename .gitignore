@@ -47,3 +47,13 @@ npm-debug.log*
 readmebackend.txt
 readmefrontend.txt
 model_data/rubert-tiny2/pytorch_model.bin
+
+# Presentation files
+*.pptx
+*.pptx#
+.~lock.*
+generate_pptx.py
+generate_pptx_v2.py
+presentation_fsi.txt
+rkn.txt
+rkn.pdf
