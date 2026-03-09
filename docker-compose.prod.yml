@@ -155,7 +155,7 @@ services:
           memory: 128M
 
   crowdsec-bouncer-firewall:
-    image: crowdsecurity/cs-firewall-bouncer:latest
+    image: ghcr.io/shgew/cs-firewall-bouncer-docker:latest
     restart: unless-stopped
     network_mode: host
     cap_add:
