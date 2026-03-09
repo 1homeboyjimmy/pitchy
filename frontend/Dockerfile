@@ -36,6 +36,9 @@ ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 ARG BACKEND_INTERNAL_URL
 ENV BACKEND_INTERNAL_URL=$BACKEND_INTERNAL_URL
 
+# Remove global npm and related tools to reduce attack surface and fix vulnerabilities
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx /opt/yarn* /usr/local/bin/yarn* /usr/local/bin/corepack /usr/local/lib/node_modules/corepack
+
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
