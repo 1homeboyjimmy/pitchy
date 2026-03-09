@@ -87,21 +87,25 @@ jobs:
           exit-code: '1'
           ignore-unfixed: true
 
-      - name: Upload backend SARIF to GitHub Security
+      - name: Generate backend SARIF
         uses: aquasecurity/trivy-action@master
         if: always()
         with:
           image-ref: ${{ env.BACKEND_IMAGE }}:${{ github.sha }}
           format: 'sarif'
           output: 'backend-trivy.sarif'
+          severity: 'UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL'
+          ignore-unfixed: true
 
-      - name: Upload frontend SARIF to GitHub Security
+      - name: Generate frontend SARIF
         uses: aquasecurity/trivy-action@master
         if: always()
         with:
           image-ref: ${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
           format: 'sarif'
           output: 'frontend-trivy.sarif'
+          severity: 'UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL'
+          ignore-unfixed: true
 
       - name: Upload backend SARIF results
         uses: github/codeql-action/upload-sarif@v4
