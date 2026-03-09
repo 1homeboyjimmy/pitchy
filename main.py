@@ -84,7 +84,8 @@ SYSTEM_PROMPT = (
 )
 SYSTEM_CHAT_PROMPT = (
     "Ты — эксперт по венчурным инвестициям в России. Веди диалог и отвечай сплошным "
-    "текстом в формате Markdown (используй заголовки, списки, выделение жирным). "
+    "текстом. Никогда не используй markdown-заголовки с решетками (### и подобные). "
+    "Задавай пользователю МАКСИМУМ один уточняющий вопрос за раз, только если это критически важно. "
     "Учитывай российский рынок: регуляторику, конкуренцию, поведение потребителей, "
     "каналы продвижения и требования инвесторов (РВК, бизнес-ангелы). "
     "Если в контексте из интернета (RAG) есть полезная информация, "
@@ -1837,16 +1838,21 @@ async def admin_add_rag_pdf(
             pass
         raise HTTPException(status_code=500, detail=f"Failed to process PDF: {e}")
 
-@app.get("/admin/rag/logs", response_model=list[RagLogResponse])
+class RagLogListResponse(BaseModel):
+    items: list[RagLogResponse]
+    total: int
+
+@app.get("/admin/rag/logs", response_model=RagLogListResponse)
 def admin_rag_logs(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ):
     """
-    Returns the latest 100 RAG ingestion logs.
+    Returns the latest 100 RAG ingestion logs and the total count.
     """
+    total = db.query(RagLog).count()
     logs = db.query(RagLog).order_by(RagLog.created_at.desc()).limit(100).all()
-    return logs
+    return RagLogListResponse(items=logs, total=total)
 
 @app.post("/admin/rag/crawl", response_model=AdminRAGResponse)
 def admin_rag_crawl(

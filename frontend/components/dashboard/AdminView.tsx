@@ -72,6 +72,8 @@ export function AdminView() {
     const [analyticsTimeFilter, setAnalyticsTimeFilter] = useState<"24h" | "3d" | "1w" | "1m" | "6m" | "1y">("1w");
 
     // RAG State
+    const [ragLogs, setRagLogs] = useState<RagLog[]>([]);
+    const [ragLogsTotal, setRagLogsTotal] = useState<number>(0);
     const [ragUrl, setRagUrl] = useState("");
     const [ragFile, setRagFile] = useState<File | null>(null);
     const [isScraping, setIsScraping] = useState(false);
@@ -81,7 +83,6 @@ export function AdminView() {
     const [crawlUrl, setCrawlUrl] = useState("");
     const [crawlIsSitemap, setCrawlIsSitemap] = useState(false);
     const [crawlMaxPages, setCrawlMaxPages] = useState(50);
-    const [ragLogs, setRagLogs] = useState<RagLog[]>([]);
 
     // New Promo Form
     const [newPromo, setNewPromo] = useState({ code: "", discount_percent: 10, max_uses: "" });
@@ -134,7 +135,11 @@ export function AdminView() {
                     const res = await fetch(`${API_BASE}/admin/rag/logs`, {
                         headers: { "Authorization": `Bearer ${token}` }
                     });
-                    if (res.ok) setRagLogs(await res.json());
+                    if (res.ok) {
+                        const data = await res.json();
+                        setRagLogs(data.items || []);
+                        setRagLogsTotal(data.total || 0);
+                    }
                 }
             } catch (e) {
                 console.error("Admin fetch error", e);
@@ -838,7 +843,7 @@ export function AdminView() {
                                 <div className="mt-8 border-t border-white/10 pt-6">
                                     <div className="flex items-center justify-between mb-4">
                                         <h4 className="text-white font-medium">История загрузок</h4>
-                                        <span className="text-sm text-white/40">{ragLogs.length} записей</span>
+                                        <span className="text-sm text-white/40">{ragLogsTotal} записей</span>
                                     </div>
                                     <div className="overflow-x-auto">
                                         <table className="w-full text-sm">

@@ -2,10 +2,10 @@
 
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import TextareaAutosize from "react-textarea-autosize";
 import {
     Send,
     Sparkles,
-
     Loader2,
     CheckCircle2,
     AlertTriangle,
@@ -57,14 +57,6 @@ export function ChatInterface({
             scrollViewportRef.current.scrollTop = scrollViewportRef.current.scrollHeight;
         }
     };
-
-    useEffect(() => {
-        if (inputRef.current) {
-            inputRef.current.style.height = "auto";
-            const newHeight = inputRef.current.scrollHeight;
-            inputRef.current.style.height = `${newHeight}px`;
-        }
-    }, [inputValue]);
 
     useEffect(() => {
         scrollToBottom();
@@ -207,13 +199,13 @@ export function ChatInterface({
                                 exit={{ opacity: 0, scale: 0.95 }}
                                 transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
                                 className={`flex ${message.type === "user" ? "justify-end" : "justify-start"
-                                    }`}
+                                    } `}
                             >
                                 <div
-                                    className={`max-w-[85%] sm:max-w-[75%] ${message.type === "user"
-                                        ? "bg-pitchy-violet/20 border border-pitchy-violet/30 rounded-2xl rounded-tr-sm"
-                                        : "glass-card rounded-2xl rounded-tl-sm"
-                                        } px-4 py-3`}
+                                    className={`max - w - [85 %] sm: max - w - [75 %] ${message.type === "user"
+                                            ? "bg-pitchy-violet/20 border border-pitchy-violet/30 rounded-2xl rounded-tr-sm"
+                                            : "glass-card rounded-2xl rounded-tl-sm"
+                                        } px - 4 py - 3`}
                                 >
                                     {message.type === "ai" && (
                                         <div className="flex items-center gap-2 mb-2">
@@ -282,7 +274,7 @@ export function ChatInterface({
                                                                 <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
                                                                     <motion.div
                                                                         initial={{ width: 0 }}
-                                                                        animate={{ width: `${value}%` }}
+                                                                        animate={{ width: `${value}% ` }}
                                                                         transition={{
                                                                             delay: 0.6 + i * 0.1,
                                                                             duration: 0.8,
@@ -447,27 +439,25 @@ export function ChatInterface({
                         rounded-[14px] border border-white/10 bg-white/5
                         transition-all duration-200 flex items-end gap-2 p-1.5
                     ">
-                        <textarea
+                        <TextareaAutosize
                             ref={inputRef}
                             value={inputValue}
                             onChange={(e) => setInputValue(e.target.value)}
                             onKeyDown={handleKeyDown}
                             placeholder="Введите название стартапа..."
-                            rows={1}
+                            minRows={1}
+                            maxRows={8}
                             className="
-                                flex-1 bg-transparent border-none !outline-none resize-none overflow-y-auto 
-                                min-h-[40px] max-h-[200px] py-2.5 pl-3
-                                text-white placeholder-white/35 leading-normal 
-                                scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent [&::-webkit-scrollbar-track]:my-2
-                                focus:!outline-none focus:!ring-0 focus:!ring-offset-0 focus:!shadow-none
-                                focus-visible:!outline-none focus-visible:!ring-0 focus-visible:!ring-offset-0 focus-visible:!shadow-none
-                                text-sm sm:text-base !shadow-none
+                                flex-1 bg-transparent border-none outline-none resize-none overflow-y-auto 
+                                py-2.5 pl-3
+                                text-white placeholder-white/35 leading-relaxed
+                                scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent
+                                focus:outline-none focus:ring-0
+                                text-sm sm:text-base shadow-none
                             "
                             disabled={isTyping}
                             style={{
-                                height: "auto",
-                                outline: "none",
-                                boxShadow: "none"
+                                overflow: "auto"
                             }}
                         />
                         <motion.button
