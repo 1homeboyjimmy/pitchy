@@ -100,7 +100,7 @@ services:
     image: grafana/loki:latest
     restart: unless-stopped
     ports:
-      - "3100:3100"
+      - "127.0.0.1:3100:3100"
     volumes:
       - ./ops/monitoring/loki-config.yaml:/etc/loki/local-config.yaml:ro
       - loki_data:/loki
@@ -127,7 +127,7 @@ services:
     image: grafana/grafana:latest
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
     volumes:
@@ -150,7 +150,7 @@ services:
       - /var/log:/var/log/host:ro
       - ./ops/monitoring/crowdsec-acquis.yaml:/etc/crowdsec/acquis.d/ssh.yaml:ro
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     deploy:
       resources:
         limits:
