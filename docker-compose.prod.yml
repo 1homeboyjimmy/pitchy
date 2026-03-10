@@ -147,6 +147,8 @@ services:
       - crowdsec_config:/etc/crowdsec
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/var/log/caddy:ro
+      - /var/log:/var/log:ro
+      - ./ops/monitoring/crowdsec-acquis.yaml:/etc/crowdsec/acquis.d/ssh.yaml:ro
     ports:
       - "8080:8080"
     deploy:

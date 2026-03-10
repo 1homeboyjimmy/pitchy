@@ -1,0 +1,12 @@
+filenames:
+  - /var/log/auth.log
+  - /var/log/secure
+labels:
+  type: syslog
+---
+source: journald
+journalctl_filter:
+  - _SYSTEMD_UNIT=ssh.service
+  - _SYSTEMD_UNIT=sshd.service
+labels:
+  type: syslog
