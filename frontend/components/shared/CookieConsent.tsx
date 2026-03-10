@@ -3,34 +3,40 @@ import { AnimatePresence, motion } from "framer-motion";
 import { X, Info } from "lucide-react";
 import { Button } from "./Button";
 import { useAuth } from "@/lib/hooks/useAuth";
-import { patchAuthJson } from "@/lib/api";
+import { patchAuthJson, getMe } from "@/lib/api";
 
 const COOKIE_CONSENT_KEY = "pitchy_cookie_consent";
 
 export function CookieConsent() {
   const [show, setShow] = useState(false);
-  const { isAuthenticated, user, token } = useAuth();
+  const { isAuthenticated, token } = useAuth();
 
   useEffect(() => {
     // 1. Check local storage first (for anonymous users or fast initial render)
     const localConsent = localStorage.getItem(COOKIE_CONSENT_KEY);
 
     // 2. If user is authenticated, check their DB preference
-    if (isAuthenticated && user) {
-      if (user.cookie_consent === null) {
-        setShow(true);
-      } else {
-        // Sync DB to local storage and hide
-        localStorage.setItem(COOKIE_CONSENT_KEY, user.cookie_consent ? "accepted" : "declined");
-        setShow(false);
-      }
+    if (isAuthenticated && token) {
+      getMe(token).then((user) => {
+        if (user.cookie_consent === null || user.cookie_consent === undefined) {
+          setShow(true);
+        } else {
+          // Sync DB to local storage and hide
+          localStorage.setItem(COOKIE_CONSENT_KEY, user.cookie_consent ? "accepted" : "declined");
+          setShow(false);
+        }
+      }).catch((err) => {
+        console.error("Failed to fetch user profile for cookie consent:", err);
+        // Fallback to local storage if API fails
+        if (!localConsent) setShow(true);
+      });
     } else {
       // 3. Not authenticated: rely on local storage
       if (!localConsent) {
         setShow(true);
       }
     }
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, token]);
 
   const handleConsent = async (accepted: boolean) => {
     // Save locally
@@ -85,7 +91,7 @@ export function CookieConsent() {
                     Принять
                   </Button>
                   <Button
-                    variant="outline"
+                    variant="secondary"
                     className="flex-1 text-sm py-2 px-3"
                     onClick={() => handleConsent(false)}
                   >

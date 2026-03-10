@@ -50,6 +50,7 @@ export type UserProfile = {
   email_verified: boolean;
   is_social?: boolean;
   subscription_tier?: string;
+  cookie_consent?: boolean | null;
   created_at: string;
 };
 
@@ -272,6 +273,7 @@ export type UserResponse = {
   is_social: boolean;
   subscription_tier: string;
   subscription_expires_at: string | null;
+  cookie_consent?: boolean | null;
 };
 
 export async function getMe(token: string): Promise<UserResponse> {
