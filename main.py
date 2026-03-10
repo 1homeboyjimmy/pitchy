@@ -719,6 +719,7 @@ def me(user: User = Depends(get_current_user)) -> UserResponse:
         is_social=is_social,
         subscription_tier=user.subscription_tier,
         subscription_expires_at=user.subscription_expires_at,
+        cookie_consent=user.cookie_consent,
     )
 
 
@@ -730,6 +731,9 @@ def update_me(
 ) -> UserResponse:
     if payload.name:
         user.name = payload.name
+        
+    if payload.cookie_consent is not None:
+        user.cookie_consent = payload.cookie_consent
 
     if payload.email and payload.email != user.email:
         exists = db.query(User).filter(User.email == payload.email).first()
@@ -773,6 +777,7 @@ def update_me(
         is_social=is_social,
         subscription_tier=user.subscription_tier,
         subscription_expires_at=user.subscription_expires_at,
+        cookie_consent=user.cookie_consent,
     )
 
 

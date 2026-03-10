@@ -23,6 +23,7 @@ type User = {
     is_admin: boolean;
     is_active: boolean;
     subscription_tier: string;
+    created_at: string;
 };
 
 type AnalyticsData = {
@@ -592,6 +593,7 @@ export function AdminView() {
                                         <tr>
                                             <th className="px-6 py-4 font-medium">ПОЛЬЗОВАТЕЛЬ</th>
                                             <th className="px-6 py-4 font-medium">СТАТУС & РОЛЬ</th>
+                                            <th className="px-6 py-4 font-medium">ДАТА РЕГИСТРАЦИИ</th>
                                             <th className="px-6 py-4 font-medium text-center">ТАРИФ</th>
                                             <th className="px-6 py-4 font-medium text-right">ДЕЙСТВИЕ</th>
                                         </tr>
@@ -614,6 +616,9 @@ export function AdminView() {
                                                             <span className="text-xs bg-red-500/10 text-red-400 px-2 py-0.5 rounded-full border border-red-500/20">Заблокирован</span>
                                                         )}
                                                     </div>
+                                                </td>
+                                                <td className="px-6 py-4 text-white/70">
+                                                    {u.created_at ? new Date(u.created_at).toLocaleDateString("ru-RU", { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : "—"}
                                                 </td>
                                                 <td className="px-6 py-4 text-center text-white/70 capitalize">
                                                     {u.subscription_tier}

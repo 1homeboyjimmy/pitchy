@@ -40,6 +40,7 @@ class UserResponse(BaseModel):
     is_social: bool = False
     subscription_tier: str = "free"
     subscription_expires_at: datetime | None = None
+    cookie_consent: bool | None = None
 
     class Config:
         from_attributes = True
@@ -137,6 +138,7 @@ class ChatMessageCreateRequest(BaseModel):
 class UserUpdateRequest(BaseModel):
     name: str | None = Field(None, min_length=2)
     email: EmailStr | None = None
+    cookie_consent: bool | None = None
 
 
 class PasswordChangeRequest(BaseModel):
