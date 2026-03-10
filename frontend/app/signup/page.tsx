@@ -375,7 +375,11 @@ function SignUpContent() {
 
 export default function SignUpPage() {
     return (
-        <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-pitchy-bg"></div>}>
+        <Suspense fallback={
+            <div className="min-h-screen flex flex-col items-center justify-center bg-pitchy-bg">
+                <h1 className="sr-only">Регистрация в Pitchy.pro</h1>
+            </div>
+        }>
             <SignUpContent />
         </Suspense>
     );

@@ -1,0 +1,28 @@
+# Pitchy.pro - AI Startup Analysis Platform
+
+## Overview
+Pitchy.pro is an AI-powered copilot for business and startup development. It provides instant automated screening, risk assessment, and detailed reporting for both startup founders and investors.
+
+## Key Features
+- **Startup Scoring (0-100)**: Objective evaluation of startup potential based on market trends, team composition, product data, and growth metrics.
+- **Unit Economics Calculation**: Automated analysis of financial models and profitability.
+- **Competitor Analysis & Target Audience**: AI-driven insights into market positioning and customer segments.
+- **Pitch Deck Structuring**: Generation of structure and content recommendations for investor presentations.
+- **Interactive AI Analyst**: A conversational interface for requesting specific business advice and strategic planning.
+
+## Target Audience
+- **Founders & Entrepreneurs**: To validate ideas, find weak spots, and prepare for fundraising.
+- **Venture Capitalists (VCs) & Angel Investors**: To perform rapid initial screening and due diligence of inbound deal flow.
+
+## Technology
+- Uses advanced Large Language Models (LLMs) to analyze publicly available market data.
+- Does not require or expose confidential internal company data (NDAs are respected).
+
+## Pricing
+- **Free Tier**: 1 free project analysis.
+- **Premium Tier**: Unlimited projects, detailed PDF/TXT exports, competitor comparison, and advanced pitch deck generation.
+
+## Contact Information
+- **Email**: auth@pitchy.pro
+- **Website**: https://pitchy.pro
+- **Company**: ИП Фигурняк Егор Сергеевич (TIN: 400700088347)

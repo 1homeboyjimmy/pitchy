@@ -464,7 +464,12 @@ function DashboardContent() {
 
 export default function AuthDashboard() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-pitchy-bg"><Loader2 className="w-8 h-8 animate-spin text-pitchy-violet" /></div>}>
+    <Suspense fallback={
+      <div className="min-h-screen flex flex-col items-center justify-center bg-pitchy-bg">
+        <h1 className="sr-only">Дашборд Pitchy.pro</h1>
+        <Loader2 className="w-8 h-8 animate-spin text-pitchy-violet" />
+      </div>
+    }>
       <DashboardContent />
     </Suspense>
   );

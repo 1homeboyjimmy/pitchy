@@ -6,9 +6,13 @@ import "@mantine/core/styles.css";
 import "@mantine/notifications/styles.css";
 
 export const metadata: Metadata = {
-  title: "Pitchy.pro — Анализ стартапов с ИИ",
+  metadataBase: new URL("https://pitchy.pro"),
+  title: {
+    default: "Pitchy.pro — Анализ стартапов с ИИ",
+    template: "%s | Pitchy",
+  },
   description:
-    "Оценка стартапов на базе искусственного интеллекта. Получите мгновеннй скоринг, оценку рисков и подробные отчеты для инвесторов.",
+    "Оценка стартапов на базе искусственного интеллекта. Получите мгновенную аналитику, оценку рисков и подробные отчеты для инвесторов.",
   openGraph: {
     title: "Pitchy.pro — Анализ стартапов с ИИ",
     description: "Оценка стартапов на базе искусственного интеллекта. Получите мгновенную аналитику и инвестиционную оценку.",
@@ -16,6 +20,20 @@ export const metadata: Metadata = {
     siteName: "Pitchy.pro",
     locale: "ru_RU",
     type: "website",
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "Pitchy.pro Preview",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Pitchy.pro — Анализ стартапов с ИИ",
+    description: "Оценка стартапов на базе искусственного интеллекта.",
+    images: ["/og-image.png"],
   },
 };
 
