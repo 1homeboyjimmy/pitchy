@@ -1,6 +1,6 @@
 filenames:
-  - /var/log/auth.log
-  - /var/log/secure
+  - /var/log/host/auth.log
+  - /var/log/host/secure
 labels:
   type: syslog
 ---
