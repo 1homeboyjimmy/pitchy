@@ -22,7 +22,7 @@ export const metadata: Metadata = {
     type: "website",
     images: [
       {
-        url: "/og-image.png",
+        url: "https://pitchy.pro/og-image.png",
         width: 1200,
         height: 630,
         alt: "Pitchy.pro Preview",
@@ -33,7 +33,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Pitchy.pro — Анализ стартапов с ИИ",
     description: "Оценка стартапов на базе искусственного интеллекта.",
-    images: ["/og-image.png"],
+    images: ["https://pitchy.pro/og-image.png"],
   },
 };
 
@@ -45,6 +45,7 @@ export const viewport: Viewport = {
 };
 
 import { ScrollToTop } from "@/components/shared/ScrollToTop";
+import { BreadcrumbsSchema } from "@/components/shared/BreadcrumbsSchema";
 
 export default function RootLayout({
   children,
@@ -55,6 +56,7 @@ export default function RootLayout({
     <html lang="ru" suppressHydrationWarning>
       <body className="antialiased">
         <ScrollToTop />
+        <BreadcrumbsSchema />
         <Providers>
           <DarkVeilWrapper />
           {children}
