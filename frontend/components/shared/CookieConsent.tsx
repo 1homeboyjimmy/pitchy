@@ -33,6 +33,7 @@ export function CookieConsent() {
     } else {
       // 3. Not authenticated: rely on local storage
       if (!localConsent) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setShow(true);
       }
     }
