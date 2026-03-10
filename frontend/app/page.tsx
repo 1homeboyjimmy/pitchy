@@ -3,6 +3,14 @@ import { HeroSection } from "@/components/sections/HeroSection";
 import { FeaturesSection } from "@/components/sections/FeaturesSection";
 
 
+import { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  alternates: {
+    canonical: '/',
+  },
+};
+
 const organizationSchema = {
   "@context": "https://schema.org",
   "@type": "Organization",

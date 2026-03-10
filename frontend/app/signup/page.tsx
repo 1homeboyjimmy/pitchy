@@ -361,12 +361,17 @@ function SignUpContent() {
                     <p className="text-center text-sm text-white/40 mt-6">
                         Уже есть аккаунт?{" "}
                         <Link
-                            href={searchParams.get("next") ? `/login?next=${encodeURIComponent(searchParams.get("next")!)}` : "/login"}
+                            href={searchParams?.get("next") ? `/login?next=${encodeURIComponent(searchParams.get("next")!)}` : "/login"}
                             className="text-pitchy-violet hover:text-pitchy-violet-light transition-colors"
                         >
                             Войдите
                         </Link>
                     </p>
+                    <div className="mt-8 text-center text-sm">
+                        <Link href="/" className="text-white/30 hover:text-white/60 transition-colors">
+                            Вернуться на главную
+                        </Link>
+                    </div>
                 </motion.div>
             </div >
         </Layout >

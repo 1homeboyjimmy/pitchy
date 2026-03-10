@@ -37,7 +37,7 @@ function LoginContent() {
       });
       setToken(data.access_token);
       // Force reload to ensure header updates
-      const next = searchParams.get("next") || "/dashboard";
+      const next = searchParams?.get("next") || "/dashboard";
       router.push(next);
     } catch (err) {
       setError(
@@ -187,12 +187,17 @@ function LoginContent() {
           <p className="text-center text-sm text-white/40 mt-6">
             Нет аккаунта?{" "}
             <Link
-              href={searchParams.get("next") ? `/signup?next=${encodeURIComponent(searchParams.get("next")!)}` : "/signup"}
+              href={searchParams?.get("next") ? `/signup?next=${encodeURIComponent(searchParams.get("next")!)}` : "/signup"}
               className="text-pitchy-violet hover:text-pitchy-violet-light transition-colors"
             >
               Зарегистрируйтесь
             </Link>
           </p>
+          <div className="mt-8 text-center text-sm">
+            <Link href="/" className="text-white/30 hover:text-white/60 transition-colors">
+              Вернуться на главную
+            </Link>
+          </div>
         </motion.div>
       </div>
     </Layout>

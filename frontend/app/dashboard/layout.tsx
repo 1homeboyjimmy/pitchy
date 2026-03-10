@@ -1,8 +1,11 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-    title: 'Дашборд',
-    description: 'Панель управления Pitchy.pro. Просматривайте ваши истории чатов, аналитику и отчёты по инвестиционным скорингам.',
+    title: 'Дашборд инвестора | Управление проектами Pitchy.pro',
+    description: 'Панель управления Pitchy.pro. Создавайте новые ИИ-анализы, пересматривайте истории чатов, изучайте аналитику и выгружайте готовые инвестиционные скоринги.',
+    alternates: {
+        canonical: '/dashboard',
+    },
 };
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
