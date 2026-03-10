@@ -6,6 +6,9 @@ export const metadata: Metadata = {
     alternates: {
         canonical: "/faq",
     },
+    openGraph: {
+        url: "https://pitchy.pro/faq",
+    }
 };
 
 export default function FAQLayout({ children }: { children: React.ReactNode }) {

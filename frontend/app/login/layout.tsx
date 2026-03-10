@@ -6,6 +6,9 @@ export const metadata: Metadata = {
     alternates: {
         canonical: '/login',
     },
+    openGraph: {
+        url: 'https://pitchy.pro/login',
+    }
 };
 
 export default function LoginLayout({ children }: { children: React.ReactNode }) {

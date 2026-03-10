@@ -6,6 +6,9 @@ export const metadata: Metadata = {
     alternates: {
         canonical: '/signup',
     },
+    openGraph: {
+        url: 'https://pitchy.pro/signup',
+    }
 };
 
 export default function SignUpLayout({ children }: { children: React.ReactNode }) {

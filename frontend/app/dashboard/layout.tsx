@@ -6,6 +6,9 @@ export const metadata: Metadata = {
     alternates: {
         canonical: '/dashboard',
     },
+    openGraph: {
+        url: 'https://pitchy.pro/dashboard',
+    }
 };
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {

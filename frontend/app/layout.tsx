@@ -14,8 +14,6 @@ export const metadata: Metadata = {
   description:
     "Оценка стартапов на базе искусственного интеллекта. Получите мгновенную аналитику, оценку рисков и подробные отчеты для инвесторов.",
   openGraph: {
-    title: "Pitchy.pro — Анализ стартапов с ИИ",
-    description: "Оценка стартапов на базе искусственного интеллекта. Получите мгновенную аналитику и инвестиционную оценку.",
     url: "https://pitchy.pro",
     siteName: "Pitchy.pro",
     locale: "ru_RU",
@@ -31,8 +29,6 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Pitchy.pro — Анализ стартапов с ИИ",
-    description: "Оценка стартапов на базе искусственного интеллекта.",
     images: ["https://pitchy.pro/og-image.png"],
   },
 };

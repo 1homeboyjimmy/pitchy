@@ -218,259 +218,254 @@ function DashboardContent() {
 
   if (loading) {
     return (
-
-      <Layout>
-        <div className="min-h-[calc(100vh-5rem)] flex items-center justify-center">
-          <Loader2 className="w-8 h-8 text-pitchy-violet animate-spin" />
-        </div>
-      </Layout>
+      <div className="min-h-[calc(100vh-5rem)] flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-pitchy-violet animate-spin" />
+      </div>
     );
   }
 
-  if (!isAuthenticated) return <Layout><UnauthDashboard /></Layout>;
+  if (!isAuthenticated) return <UnauthDashboard />;
 
   return (
-    <Layout>
-      <div className="flex min-h-[calc(100vh-5rem)]">
-        {/* Sidebar (Desktop) */}
-        <motion.aside
-          initial={{ x: -20, opacity: 0 }}
-          animate={{ x: 0, opacity: 1 }}
-          className="hidden lg:flex flex-col w-64 border-r border-white/10 py-6 px-4 shrink-0"
-        >
-          <div className="mb-8">
-            <Button
-              onClick={() => {
-                setActiveSession(null);
-                setActiveTab("chat");
-              }}
-              icon={<Plus className="w-5 h-5" />}
-              iconPosition="left"
-              className="w-full mb-6 bg-gradient-to-r from-pitchy-violet to-purple-600 border-none hover:opacity-90 transition-opacity cursor-pointer"
+    <div className="flex min-h-[calc(100vh-5rem)]">
+      {/* Sidebar (Desktop) */}
+      <motion.aside
+        initial={{ x: -20, opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        className="hidden lg:flex flex-col w-64 border-r border-white/10 py-6 px-4 shrink-0"
+      >
+        <div className="mb-8">
+          <Button
+            onClick={() => {
+              setActiveSession(null);
+              setActiveTab("chat");
+            }}
+            icon={<Plus className="w-5 h-5" />}
+            iconPosition="left"
+            className="w-full mb-6 bg-gradient-to-r from-pitchy-violet to-purple-600 border-none hover:opacity-90 transition-opacity cursor-pointer"
+          >
+            Новый анализ
+          </Button>
+
+          <p className="text-xs text-white/30 uppercase tracking-wider mb-2 px-3">
+            Меню
+          </p>
+          {[
+            { id: "overview", label: "Обзор", icon: LayoutDashboard },
+            { id: "chat", label: "Чат", icon: MessageSquare },
+            { id: "analytics", label: "Аналитика", icon: BarChart3 }
+          ].map((item) => (
+            <button
+              key={item.id}
+              onClick={() => setActiveTab(item.id)}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all mb-1 text-left ${activeTab === item.id
+                ? "bg-white/10 text-white border border-white/10"
+                : "text-white/50 hover:text-white hover:bg-white/5"
+                }`}
             >
-              Новый анализ
-            </Button>
+              <item.icon className="w-4 h-4" />
+              {item.label}
+            </button>
+          ))}
 
-            <p className="text-xs text-white/30 uppercase tracking-wider mb-2 px-3">
-              Меню
-            </p>
-            {[
-              { id: "overview", label: "Обзор", icon: LayoutDashboard },
-              { id: "chat", label: "Чат", icon: MessageSquare },
-              { id: "analytics", label: "Аналитика", icon: BarChart3 }
-            ].map((item) => (
-              <button
-                key={item.id}
-                onClick={() => setActiveTab(item.id)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all mb-1 text-left ${activeTab === item.id
-                  ? "bg-white/10 text-white border border-white/10"
-                  : "text-white/50 hover:text-white hover:bg-white/5"
-                  }`}
-              >
-                <item.icon className="w-4 h-4" />
-                {item.label}
-              </button>
-            ))}
-
-            {userProfile?.is_admin && (
-              <>
-                <div className="my-4 border-t border-white/10" />
-                <p className="text-xs text-pitchy-cyan uppercase tracking-wider mb-2 px-3 flex items-center gap-2">
-                  <Shield className="w-3 h-3" /> Управление
-                </p>
-                <button
-                  onClick={() => setActiveTab("admin")}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-left ${activeTab === "admin"
-                    ? "bg-pitchy-cyan/20 text-pitchy-cyan border border-pitchy-cyan/30"
-                    : "text-white/50 hover:text-pitchy-cyan hover:bg-white/5"
-                    }`}
-                >
-                  <Shield className="w-4 h-4" />
-                  Админ-панель
-                </button>
-              </>
-            )}
-          </div>
-
-          <div className="mt-auto">
-            <GlassCard hover={false} className="p-4 bg-gradient-to-br from-pitchy-violet/20 to-transparent border-pitchy-violet/20">
-              <div className="flex items-center gap-2 mb-2">
-                <Sparkles className="w-4 h-4 text-pitchy-violet" />
-                <span className="text-xs font-bold text-white">PRO Совет</span>
-              </div>
-              <p className="text-xs text-white/60 leading-relaxed">
-                Чем подробнее вы опишете проект в начале, тем точнее будет анализ.
+          {userProfile?.is_admin && (
+            <>
+              <div className="my-4 border-t border-white/10" />
+              <p className="text-xs text-pitchy-cyan uppercase tracking-wider mb-2 px-3 flex items-center gap-2">
+                <Shield className="w-3 h-3" /> Управление
               </p>
-            </GlassCard>
-          </div>
-        </motion.aside>
-
-        {/* content */}
-        <main className="flex-1 py-6 px-4 sm:px-6 lg:px-8 overflow-hidden w-full">
-          {/* Mobile Navigation (Tabs) */}
-          <div className="flex lg:hidden overflow-x-auto gap-2 mb-6 pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 [&::-webkit-scrollbar]:hidden">
-            {[
-              { id: "overview", label: "Обзор", icon: LayoutDashboard },
-              { id: "chat", label: "Чат", icon: MessageSquare },
-              { id: "analytics", label: "Аналитика", icon: BarChart3 }
-            ].map((item) => (
-              <button
-                key={item.id}
-                onClick={() => setActiveTab(item.id)}
-                className={`flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === item.id
-                  ? "bg-white/10 text-white border border-white/10 shadow-sm"
-                  : "text-white/50 border border-transparent hover:text-white hover:bg-white/5"
-                  }`}
-              >
-                <item.icon className="w-4 h-4" />
-                {item.label}
-              </button>
-            ))}
-            {userProfile?.is_admin && (
               <button
                 onClick={() => setActiveTab("admin")}
-                className={`flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === "admin"
-                  ? "bg-pitchy-cyan/20 text-pitchy-cyan border border-pitchy-cyan/30 shadow-sm"
-                  : "text-white/50 border border-transparent hover:text-pitchy-cyan hover:bg-white/5"
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-left ${activeTab === "admin"
+                  ? "bg-pitchy-cyan/20 text-pitchy-cyan border border-pitchy-cyan/30"
+                  : "text-white/50 hover:text-pitchy-cyan hover:bg-white/5"
                   }`}
               >
                 <Shield className="w-4 h-4" />
                 Админ-панель
               </button>
-            )}
-          </div>
+            </>
+          )}
+        </div>
 
-          {/* Header / Title */}
-          <div className="flex justify-between items-center mb-8">
-            <div>
-              <h1 className="text-2xl font-bold text-white mb-1">
-                {activeTab === "overview" && "Обзор проектов"}
-                {activeTab === "chat" && (activeSession ? activeSession.title : "Чат с аналитиком")}
-                {activeTab === "analytics" && "Статистика"}
-                {activeTab === "admin" && "Админ-панель"}
-              </h1>
-              <p className="text-white/40 text-sm">
-                {activeTab === "overview" && "Управляйте вашими анализами и запускайте новые."}
-                {activeTab === "chat" && "Интерактивный анализ вашего стартапа."}
-                {activeTab === "admin" && "Управление пользователями, промокодами и аналитикой платформы."}
-              </p>
+        <div className="mt-auto">
+          <GlassCard hover={false} className="p-4 bg-gradient-to-br from-pitchy-violet/20 to-transparent border-pitchy-violet/20">
+            <div className="flex items-center gap-2 mb-2">
+              <Sparkles className="w-4 h-4 text-pitchy-violet" />
+              <span className="text-xs font-bold text-white">PRO Совет</span>
             </div>
-            {/* Mobile Menu Toggle could go here if needed */}
-            <div className="lg:hidden">
-              {/* Simplified mobile nav just for context, mostly Layout handles it */}
-            </div>
+            <p className="text-xs text-white/60 leading-relaxed">
+              Чем подробнее вы опишете проект в начале, тем точнее будет анализ.
+            </p>
+          </GlassCard>
+        </div>
+      </motion.aside>
+
+      {/* content */}
+      <main className="flex-1 py-6 px-4 sm:px-6 lg:px-8 overflow-hidden w-full">
+        {/* Mobile Navigation (Tabs) */}
+        <div className="flex lg:hidden overflow-x-auto gap-2 mb-6 pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 [&::-webkit-scrollbar]:hidden">
+          {[
+            { id: "overview", label: "Обзор", icon: LayoutDashboard },
+            { id: "chat", label: "Чат", icon: MessageSquare },
+            { id: "analytics", label: "Аналитика", icon: BarChart3 }
+          ].map((item) => (
+            <button
+              key={item.id}
+              onClick={() => setActiveTab(item.id)}
+              className={`flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === item.id
+                ? "bg-white/10 text-white border border-white/10 shadow-sm"
+                : "text-white/50 border border-transparent hover:text-white hover:bg-white/5"
+                }`}
+            >
+              <item.icon className="w-4 h-4" />
+              {item.label}
+            </button>
+          ))}
+          {userProfile?.is_admin && (
+            <button
+              onClick={() => setActiveTab("admin")}
+              className={`flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === "admin"
+                ? "bg-pitchy-cyan/20 text-pitchy-cyan border border-pitchy-cyan/30 shadow-sm"
+                : "text-white/50 border border-transparent hover:text-pitchy-cyan hover:bg-white/5"
+                }`}
+            >
+              <Shield className="w-4 h-4" />
+              Админ-панель
+            </button>
+          )}
+        </div>
+
+        {/* Header / Title */}
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            <h1 className="text-2xl font-bold text-white mb-1">
+              {activeTab === "overview" && "Обзор проектов"}
+              {activeTab === "chat" && (activeSession ? activeSession.title : "Чат с аналитиком")}
+              {activeTab === "analytics" && "Статистика"}
+              {activeTab === "admin" && "Админ-панель"}
+            </h1>
+            <p className="text-white/40 text-sm">
+              {activeTab === "overview" && "Управляйте вашими анализами и запускайте новые."}
+              {activeTab === "chat" && "Интерактивный анализ вашего стартапа."}
+              {activeTab === "admin" && "Управление пользователями, промокодами и аналитикой платформы."}
+            </p>
           </div>
+          {/* Mobile Menu Toggle could go here if needed */}
+          <div className="lg:hidden">
+            {/* Simplified mobile nav just for context, mostly Layout handles it */}
+          </div>
+        </div>
 
-          <AnimatePresence mode="wait">
-            {activeTab === "overview" && (
-              <motion.div
-                key="overview"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"
+        <AnimatePresence mode="wait">
+          {activeTab === "overview" && (
+            <motion.div
+              key="overview"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"
+            >
+              {/* New Analysis Card Button */}
+              <button
+                onClick={() => {
+                  setActiveSession(null);
+                  setActiveTab("chat");
+                }}
+                className="flex flex-col items-center justify-center p-8 rounded-2xl border border-dashed border-white/20 hover:border-pitchy-violet/50 hover:bg-pitchy-violet/5 transition-all group h-[120px] md:h-auto cursor-pointer"
               >
-                {/* New Analysis Card Button */}
-                <button
-                  onClick={() => {
-                    setActiveSession(null);
-                    setActiveTab("chat");
-                  }}
-                  className="flex flex-col items-center justify-center p-8 rounded-2xl border border-dashed border-white/20 hover:border-pitchy-violet/50 hover:bg-pitchy-violet/5 transition-all group h-[120px] md:h-auto cursor-pointer"
-                >
-                  <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                    <Plus className="w-6 h-6 text-white/50 group-hover:text-pitchy-violet" />
-                  </div>
-                  <span className="text-white/50 font-medium group-hover:text-white transition-colors">Новый анализ</span>
-                </button>
+                <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                  <Plus className="w-6 h-6 text-white/50 group-hover:text-pitchy-violet" />
+                </div>
+                <span className="text-white/50 font-medium group-hover:text-white transition-colors">Новый анализ</span>
+              </button>
 
-                {sessions.map(session => (
-                  <SessionCard
-                    key={session.id}
-                    session={session}
-                    onClick={() => handleSelectSession(session.id)}
-                    onDelete={(e) => handleDeleteSession(session.id, e)}
-                  />
-                ))}
+              {sessions.map(session => (
+                <SessionCard
+                  key={session.id}
+                  session={session}
+                  onClick={() => handleSelectSession(session.id)}
+                  onDelete={(e) => handleDeleteSession(session.id, e)}
+                />
+              ))}
 
-                {sessions.length === 0 && (
-                  <div className="col-span-full text-center py-12 text-white/30">
-                    У вас пока нет анализов. Создайте первый!
-                  </div>
-                )}
-              </motion.div>
-            )}
+              {sessions.length === 0 && (
+                <div className="col-span-full text-center py-12 text-white/30">
+                  У вас пока нет анализов. Создайте первый!
+                </div>
+              )}
+            </motion.div>
+          )}
 
-            {activeTab === "chat" && (
-              <motion.div
-                key="chat"
-                initial={{ opacity: 0, scale: 0.98 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.98 }}
-                className="h-full"
-              >
-                {activeSession ? (
-                  <ChatInterface
-                    session={activeSession}
-                    onUpdate={(updated) => setActiveSession(updated)}
-                  />
-                ) : (
-                  <div className="flex flex-col h-[calc(100vh-12rem)] bg-white/5 rounded-2xl border border-white/10 overflow-hidden relative items-center justify-center px-4">
-                    <div className="absolute inset-0 bg-noise opacity-30 pointer-events-none" />
-                    <Sparkles className="w-16 h-16 text-pitchy-violet/30 mb-6" />
-                    <h3 className="text-xl sm:text-2xl font-bold text-white mb-2 text-center">Анализ проекта</h3>
-                    <p className="text-sm text-white/50 mb-8 max-w-sm text-center">
-                      Нажмите кнопку ниже, чтобы начать новый интерактивный анализ.
-                    </p>
+          {activeTab === "chat" && (
+            <motion.div
+              key="chat"
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              className="h-full"
+            >
+              {activeSession ? (
+                <ChatInterface
+                  session={activeSession}
+                  onUpdate={(updated) => setActiveSession(updated)}
+                />
+              ) : (
+                <div className="flex flex-col h-[calc(100vh-12rem)] bg-white/5 rounded-2xl border border-white/10 overflow-hidden relative items-center justify-center px-4">
+                  <div className="absolute inset-0 bg-noise opacity-30 pointer-events-none" />
+                  <Sparkles className="w-16 h-16 text-pitchy-violet/30 mb-6" />
+                  <h3 className="text-xl sm:text-2xl font-bold text-white mb-2 text-center">Анализ проекта</h3>
+                  <p className="text-sm text-white/50 mb-8 max-w-sm text-center">
+                    Нажмите кнопку ниже, чтобы начать новый интерактивный анализ.
+                  </p>
 
-                    <button
-                      onClick={handleCreateEmptySession}
-                      disabled={isCreating}
-                      className="px-6 py-3 bg-gradient-to-r from-pitchy-violet to-purple-600 font-medium text-white rounded-xl shadow-[0_0_20px_rgba(168,85,247,0.4)] hover:shadow-[0_0_30px_rgba(168,85,247,0.6)] disabled:opacity-50 transition-all cursor-pointer flex items-center justify-center gap-2"
-                    >
-                      {isCreating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
-                      Начать новый анализ
-                    </button>
-                  </div>
-                )}
-              </motion.div>
-            )}
+                  <button
+                    onClick={handleCreateEmptySession}
+                    disabled={isCreating}
+                    className="px-6 py-3 bg-gradient-to-r from-pitchy-violet to-purple-600 font-medium text-white rounded-xl shadow-[0_0_20px_rgba(168,85,247,0.4)] hover:shadow-[0_0_30px_rgba(168,85,247,0.6)] disabled:opacity-50 transition-all cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    {isCreating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
+                    Начать новый анализ
+                  </button>
+                </div>
+              )}
+            </motion.div>
+          )}
 
-            {activeTab === "analytics" && (
-              <div key="analytics" className="text-center py-20 text-white/30">
-                <BarChart3 className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                <p>Раздел персональной аналитики в разработке.</p>
-              </div>
-            )}
+          {activeTab === "analytics" && (
+            <div key="analytics" className="text-center py-20 text-white/30">
+              <BarChart3 className="w-16 h-16 mx-auto mb-4 opacity-50" />
+              <p>Раздел персональной аналитики в разработке.</p>
+            </div>
+          )}
 
-            {activeTab === "admin" && userProfile?.is_admin && (
-              <motion.div
-                key="admin"
-                initial={{ opacity: 0, scale: 0.98 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.98 }}
-                className="h-full"
-              >
-                <AdminView />
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </main>
-      </div>
-
-    </Layout>
+          {activeTab === "admin" && userProfile?.is_admin && (
+            <motion.div
+              key="admin"
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              className="h-full"
+            >
+              <AdminView />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </main>
+    </div>
   );
 }
 
 export default function AuthDashboard() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen flex flex-col items-center justify-center bg-pitchy-bg">
-        <h1 className="sr-only">Дашборд Pitchy.pro</h1>
-        <Loader2 className="w-8 h-8 animate-spin text-pitchy-violet" />
-      </div>
-    }>
-      <DashboardContent />
-    </Suspense>
+    <Layout>
+      <Suspense fallback={
+        <div className="min-h-[calc(100vh-5rem)] flex flex-col items-center justify-center">
+          <Loader2 className="w-8 h-8 animate-spin text-pitchy-violet" />
+        </div>
+      }>
+        <DashboardContent />
+      </Suspense>
+    </Layout>
   );
 }
