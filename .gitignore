@@ -46,6 +46,8 @@ npm-debug.log*
 # Local documentation drafts
 readmebackend.txt
 readmefrontend.txt
+readmeproject.txt
+readmerag.txt
 model_data/rubert-tiny2/pytorch_model.bin
 
 # Presentation files

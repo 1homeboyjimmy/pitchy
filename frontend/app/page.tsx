@@ -90,8 +90,8 @@ export default function Home() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
       />
       <HeroSection />
-      <DefinitionSection />
       <FeaturesSection />
+      <DefinitionSection />
       <HomeFAQSection />
     </Layout>
   );
