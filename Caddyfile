@@ -3,14 +3,18 @@ grafana.pitchy.pro {
 }
 
 pitchy.pro {
-  @metrics path /metrics
-  handle @metrics {
+  # Metrics access control
+  handle /metrics {
     @external not remote_ip private_ranges 127.0.0.1/8 ::1
     respond @external 403
     reverse_proxy backend:8000
   }
 
+  # API - API routes to backend
   @api path /auth* /analysis* /chat* /admin* /health /dev/emails /analyze-startup /me
+  handle @api {
+    reverse_proxy backend:8000
+  }
 
   header {
     Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
@@ -20,10 +24,13 @@ pitchy.pro {
     Permissions-Policy "camera=(), microphone=(), geolocation=()"
     Content-Security-Policy "default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval'; connect-src 'self' https: wss:;"
   }
+
   encode {
     gzip
   }
 
-  reverse_proxy @api backend:8000
-  reverse_proxy frontend:3000
+  # All other routes serve the Frontend
+  handle {
+    reverse_proxy frontend:3000
+  }
 }
