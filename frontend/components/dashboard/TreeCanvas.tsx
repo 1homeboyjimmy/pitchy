@@ -66,12 +66,12 @@ function buildFlowElements(
   // Root is always visible
   visibleIds.add("root");
 
-  // Level 1 always visible
+  // Level 1 OR children of root always visible
   for (const n of apiNodes) {
-    if (n.level <= 1) visibleIds.add(n.id);
+    if (n.level <= 1 || n.parent_id === "root") visibleIds.add(n.id);
   }
 
-  // Expanded nodes → their children become visible
+  // Auto-expand any node that is visible
   function revealChildren(parentId: string) {
     const parent = nodeMap.get(parentId);
     if (!parent) return;
@@ -85,6 +85,14 @@ function buildFlowElements(
   for (const id of expandedIds) {
     if (visibleIds.has(id)) {
       revealChildren(id);
+    }
+  }
+
+  // Safety net: if AI returned nodes but our strict level/parent logic hid ALL of them,
+  // just show everything so the user doesn't get an empty canvas.
+  if (visibleIds.size === 1 && apiNodes.length > 0) { // Only "root" is visible
+    for (const n of apiNodes) {
+      visibleIds.add(n.id);
     }
   }
 
