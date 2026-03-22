@@ -83,13 +83,24 @@ export function TreeView({ onSwitchToChat }: Props) {
           const data = await res.json();
           if (data.length > 0) {
             const latest = data[0];
-            setTree({
-              id: latest.id,
-              nodes: latest.tree_data?.nodes || [],
-              edges: latest.tree_data?.edges || [],
-              readinessIndex: latest.readiness_index || 0,
-              status: latest.status === "ready" ? "ready" : "generating",
-            });
+            if (latest.status === "error") {
+              // Don't show loading for failed trees — show idle with error
+              setTree({
+                nodes: [],
+                edges: [],
+                readinessIndex: 0,
+                status: "idle",
+                error: "Предыдущая генерация завершилась ошибкой. Попробуйте снова.",
+              });
+            } else if (latest.tree_data?.nodes?.length > 0) {
+              setTree({
+                id: latest.id,
+                nodes: latest.tree_data.nodes,
+                edges: latest.tree_data?.edges || [],
+                readinessIndex: latest.readiness_index || 0,
+                status: "ready",
+              });
+            }
           }
         }
       } catch {

@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import uuid
 from typing import Any
 
 import httpx
@@ -113,7 +114,11 @@ async def _call_gigachat(prompt: str) -> str | None:
             # Get access token
             auth_resp = await client.post(
                 "https://ngw.devices.sberbank.ru:9443/api/v2/oauth",
-                headers={"Authorization": f"Basic {api_key}", "Content-Type": "application/x-www-form-urlencoded"},
+                headers={
+                    "Authorization": f"Basic {api_key}",
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "RqUID": str(uuid.uuid4()),
+                },
                 data={"scope": "GIGACHAT_API_PERS"},
             )
             auth_resp.raise_for_status()
@@ -152,7 +157,7 @@ async def generate_tree_from_text(description: str) -> dict[str, Any]:
         logger.info("Using YandexGPT for tree structure generation")
         system_prompt = "Ты — архитектор бизнес-аналитики. Генерируй ответ строго в формате JSON."
         try:
-            raw = call_yandex_gpt(system_prompt, prompt)
+            raw, _usage = call_yandex_gpt(system_prompt, prompt, timeout=60)
         except Exception as e:
             logger.error(f"YandexGPT tree generation failed: {e}")
             return _generate_fallback_tree(description)
