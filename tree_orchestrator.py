@@ -79,9 +79,10 @@ async def _call_claude(prompt: str) -> str | None:
         return None
 
     try:
+        base_url = os.getenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com").rstrip("/")
         async with httpx.AsyncClient(timeout=60) as client:
             resp = await client.post(
-                "https://api.anthropic.com/v1/messages",
+                f"{base_url}/v1/messages",
                 headers={
                     "x-api-key": api_key,
                     "anthropic-version": "2023-06-01",
