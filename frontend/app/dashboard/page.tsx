@@ -12,13 +12,15 @@ import {
   Lock,
   ChevronRight,
   Loader2,
-  Shield
+  Shield,
+  GitBranch
 } from "lucide-react";
 import Layout from "@/components/Layout";
 // StatsCard unused
 import { SessionCard } from "@/components/dashboard/SessionCard";
 import { ChatInterface } from "@/components/dashboard/ChatInterface";
 import { AdminView } from "@/components/dashboard/AdminView";
+import { TreeView } from "@/components/dashboard/TreeView";
 import { GlassCard, Button } from "@/components/shared";
 import { getToken } from "@/lib/auth";
 import {
@@ -253,6 +255,7 @@ function DashboardContent() {
           {[
             { id: "overview", label: "Обзор", icon: LayoutDashboard },
             { id: "chat", label: "Чат", icon: MessageSquare },
+            { id: "tree", label: "Древо", icon: GitBranch },
             { id: "analytics", label: "Аналитика", icon: BarChart3 }
           ].map((item) => (
             <button
@@ -308,6 +311,7 @@ function DashboardContent() {
           {[
             { id: "overview", label: "Обзор", icon: LayoutDashboard },
             { id: "chat", label: "Чат", icon: MessageSquare },
+            { id: "tree", label: "Древо", icon: GitBranch },
             { id: "analytics", label: "Аналитика", icon: BarChart3 }
           ].map((item) => (
             <button
@@ -342,12 +346,14 @@ function DashboardContent() {
             <h1 className="text-2xl font-bold text-white mb-1">
               {activeTab === "overview" && "Обзор проектов"}
               {activeTab === "chat" && (activeSession ? activeSession.title : "Чат с аналитиком")}
+              {activeTab === "tree" && "Древо принятия решений"}
               {activeTab === "analytics" && "Статистика"}
               {activeTab === "admin" && "Админ-панель"}
             </h1>
             <p className="text-white/40 text-sm">
               {activeTab === "overview" && "Управляйте вашими анализами и запускайте новые."}
               {activeTab === "chat" && "Интерактивный анализ вашего стартапа."}
+              {activeTab === "tree" && "ИИ-визуализация готовности вашего стартапа."}
               {activeTab === "admin" && "Управление пользователями, промокодами и аналитикой платформы."}
             </p>
           </div>
@@ -429,6 +435,25 @@ function DashboardContent() {
                   </button>
                 </div>
               )}
+            </motion.div>
+          )}
+
+          {activeTab === "tree" && (
+            <motion.div
+              key="tree"
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              className="h-full"
+            >
+              <TreeView
+                onSwitchToChat={(context) => {
+                  if (context) {
+                    handleCreateEmptySession();
+                  }
+                  setActiveTab("chat");
+                }}
+              />
             </motion.div>
           )}
 

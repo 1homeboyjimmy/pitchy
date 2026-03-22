@@ -214,3 +214,58 @@ class ChatSessionFromIntentRequest(BaseModel):
 class ChatSessionAutoRequest(BaseModel):
     initial_message: str = Field(..., min_length=1)
 
+
+# ——— Decision Tree Schemas ———
+
+class TreeNodeDataSchema(BaseModel):
+    description: str | None = None
+    metrics: dict[str, str | int | float] | None = None
+    aiRecommendation: str | None = None
+    sourceRef: str | None = None
+
+
+class TreeNodeSchema(BaseModel):
+    id: str
+    type: str = "Task"  # Question, Risk, Fact, Task, Artifact
+    status: str = "empty"  # empty, partial, completed, risk
+    label: str
+    category: str | None = None
+    level: int = 0
+    data: TreeNodeDataSchema = TreeNodeDataSchema()
+    parent_id: str | None = None
+    children_ids: List[str] = []
+
+
+class TreeEdgeSchema(BaseModel):
+    id: str
+    source: str
+    target: str
+
+
+class TreeDataSchema(BaseModel):
+    nodes: List[TreeNodeSchema] = []
+    edges: List[TreeEdgeSchema] = []
+
+
+class TreeCreateRequest(BaseModel):
+    description: str = Field(..., min_length=10)
+
+
+class TreeResponse(BaseModel):
+    id: int
+    title: str
+    tree_data: dict = {}
+    readiness_index: int = 0
+    status: str = "generating"
+    source_type: str = "text"
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class TreeNodeUpdateRequest(BaseModel):
+    node_id: str
+    data: TreeNodeDataSchema | None = None
+    status: str | None = None
+

@@ -59,3 +59,5 @@ generate_pptx_v2.py
 presentation_fsi.txt
 rkn.txt
 rkn.pdf
+slides/
+slides_fsi/

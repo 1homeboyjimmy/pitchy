@@ -32,6 +32,7 @@ class User(Base):
     chat_sessions: Mapped[list["ChatSession"]] = relationship(back_populates="user")
     social_accounts: Mapped[list["SocialAccount"]] = relationship(back_populates="user")
     payments: Mapped[list["Payment"]] = relationship(back_populates="user")
+    project_trees: Mapped[list["ProjectTree"]] = relationship(back_populates="user")
 
 
 class Payment(Base):
@@ -143,3 +144,20 @@ class ErrorLog(Base):
     status_code: Mapped[int] = mapped_column(Integer)
     detail: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class ProjectTree(Base):
+    __tablename__ = "project_trees"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    title: Mapped[str] = mapped_column(String(200), default="Новое древо")
+    source_type: Mapped[str] = mapped_column(String(50), default="text")  # text, pdf, chat
+    source_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tree_data: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(50), default="generating")  # generating, ready, error
+    readiness_index: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="project_trees")

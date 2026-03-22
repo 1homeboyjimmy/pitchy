@@ -21,6 +21,7 @@ const nextConfig: NextConfig = {
       { source: "/analyze/:path*", destination: `${BACKEND_URL}/analyze/:path*` },
       { source: "/health", destination: `${BACKEND_URL}/health` },
       { source: "/dev/:path*", destination: `${BACKEND_URL}/dev/:path*` },
+      { source: "/tree/:path*", destination: `${BACKEND_URL}/tree/:path*` },
     ];
   },
 };

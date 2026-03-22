@@ -205,6 +205,9 @@ def background_crawl(url: str, is_sitemap: bool, max_pages: int, delay: float):
 app = FastAPI(title="Startup Analyzer", lifespan=lifespan)
 app.include_router(billing.router)
 
+import tree_router
+app.include_router(tree_router.router)
+
 allowed_origins = [
     origin.strip()
     for origin in os.getenv("FRONTEND_ORIGINS", "http://localhost:3000").split(",")

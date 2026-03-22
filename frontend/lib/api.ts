@@ -279,3 +279,57 @@ export type UserResponse = {
 export async function getMe(token: string): Promise<UserResponse> {
   return getAuthJson<UserResponse>("/me", token);
 }
+
+/* ——— Tree (Decision Tree) ——— */
+
+export type TreeNodeResponse = {
+  id: string;
+  type: "Question" | "Risk" | "Fact" | "Task" | "Artifact";
+  status: "empty" | "partial" | "completed" | "risk";
+  label: string;
+  category?: string;
+  level: number;
+  data: {
+    description?: string;
+    metrics?: Record<string, string | number>;
+    aiRecommendation?: string;
+    sourceRef?: string;
+  };
+  parent_id: string | null;
+  children_ids: string[];
+};
+
+export type TreeEdgeResponse = {
+  id: string;
+  source: string;
+  target: string;
+};
+
+export type TreeResponse = {
+  id: number;
+  title: string;
+  tree_data: {
+    nodes: TreeNodeResponse[];
+    edges: TreeEdgeResponse[];
+  };
+  readiness_index: number;
+  status: string;
+  source_type: string;
+  created_at: string;
+};
+
+export async function getTreeList(token: string): Promise<TreeResponse[]> {
+  return getAuthJson<TreeResponse[]>("/tree/list", token);
+}
+
+export async function getTree(treeId: number, token: string): Promise<TreeResponse> {
+  return getAuthJson<TreeResponse>(`/tree/${treeId}`, token);
+}
+
+export async function createTreeFromText(description: string, token: string): Promise<TreeResponse> {
+  return postAuthJson<TreeResponse>("/tree/create", { description }, token);
+}
+
+export async function deleteTree(treeId: number, token: string): Promise<{ status: string }> {
+  return request<{ status: string }>(`/tree/${treeId}`, undefined, token, "DELETE");
+}

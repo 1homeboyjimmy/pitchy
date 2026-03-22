@@ -12,7 +12,7 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
 # --- LAYER 1: Torch (cached unless base image changes) ---
 # Use pip cache mount so torch (188MB) is only downloaded once
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+    pip install --timeout 300 --retries 5 torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
 
 # --- LAYER 2: Requirements (cached unless requirements.txt changes) ---
 COPY requirements.txt .
