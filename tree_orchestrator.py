@@ -147,7 +147,7 @@ async def generate_tree_from_text(description: str) -> dict[str, Any]:
     Generate a decision tree structure from text description.
     Tries Claude first, falls back to YandexGPT.
     """
-    prompt = TREE_STRUCTURE_PROMPT.format(description=description)
+    prompt = TREE_STRUCTURE_PROMPT.replace("{description}", description)
 
     # Try Claude first
     raw = await _call_claude(prompt)
