@@ -146,7 +146,7 @@ def _build_headers() -> Dict[str, str]:
     }
 
 
-def _build_payload(system_prompt: str, user_prompt: str, folder_id: str, model_uri: str = None) -> Dict[str, Any]:
+def _build_payload(system_prompt: str, user_prompt: str, folder_id: str, model_uri: str = None, max_tokens: int = 800) -> Dict[str, Any]:
     if not model_uri:
         model_uri = os.getenv(
             "YC_GPT_MODEL_URI",
@@ -157,7 +157,7 @@ def _build_payload(system_prompt: str, user_prompt: str, folder_id: str, model_u
         "completionOptions": {
             "stream": False,
             "temperature": 0.2,
-            "maxTokens": 800,
+            "maxTokens": max_tokens,
         },
         "messages": [
             {"role": "system", "text": system_prompt},
@@ -166,7 +166,7 @@ def _build_payload(system_prompt: str, user_prompt: str, folder_id: str, model_u
     }
 
 
-def call_yandex_gpt(system_prompt: str, user_prompt: str, timeout: int = 20, model_uri: str = None) -> Tuple[str, Dict[str, str]]:
+def call_yandex_gpt(system_prompt: str, user_prompt: str, timeout: int = 20, model_uri: str = None, max_tokens: int = 800) -> Tuple[str, Dict[str, str]]:
     endpoint = os.getenv("YC_GPT_ENDPOINT", DEFAULT_ENDPOINT)
     headers = _build_headers()
     folder_id = os.getenv("YC_FOLDER_ID")
@@ -175,7 +175,7 @@ def call_yandex_gpt(system_prompt: str, user_prompt: str, timeout: int = 20, mod
             "config_error",
             "YC_IAM_TOKEN or YC_FOLDER_ID is missing in environment",
         )
-    payload = _build_payload(system_prompt, user_prompt, folder_id, model_uri)
+    payload = _build_payload(system_prompt, user_prompt, folder_id, model_uri, max_tokens)
 
     try:
         response = requests.post(

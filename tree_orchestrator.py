@@ -157,7 +157,7 @@ async def generate_tree_from_text(description: str) -> dict[str, Any]:
         logger.info("Using YandexGPT for tree structure generation")
         system_prompt = "Ты — архитектор бизнес-аналитики. Генерируй ответ строго в формате JSON."
         try:
-            raw, _usage = call_yandex_gpt(system_prompt, prompt, timeout=60)
+            raw, _usage = call_yandex_gpt(system_prompt, prompt, timeout=60, max_tokens=3000)
         except Exception as e:
             logger.error(f"YandexGPT tree generation failed: {e}")
             return _generate_fallback_tree(description)
