@@ -180,7 +180,14 @@ async def generate_tree_from_text(description: str) -> dict[str, Any]:
             return _generate_fallback_tree(description)
 
     # Validate and normalize
-    return _normalize_tree_data(tree_data, description)
+    result = _normalize_tree_data(tree_data, description)
+
+    # Safety: if AI returned parseable JSON but with no valid nodes, use fallback
+    if not result.get("tree_data", {}).get("nodes"):
+        logger.warning("AI returned JSON but no valid nodes found, using fallback tree")
+        return _generate_fallback_tree(description)
+
+    return result
 
 
 async def generate_tree_from_pdf(text: str, page_refs: dict[str, int] | None = None) -> dict[str, Any]:
