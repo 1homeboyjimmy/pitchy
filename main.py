@@ -23,7 +23,7 @@ from metrics import ERROR_COUNT, REQUEST_COUNT, REQUEST_LATENCY
 from observability import configure_logging
 import uuid
 from redis_client import get_redis
-from yandex_gpt_client import YandexGPTError, call_yandex_gpt
+from yandex_gpt_client import YandexGPTError, call_yandex_gpt, extract_json
 from zai_client import call_zai, generate_chat_title_zai, analyze_search_intent_zai
 from routerai_client import call_routerai
 from search_agent import execute_search_agent
