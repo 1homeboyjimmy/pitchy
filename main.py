@@ -1338,9 +1338,9 @@ def list_chat_messages(
 @app.post("/chat/messages")
 async def create_chat_message(
     payload: ChatMessageCreateRequest,
+    background_tasks: BackgroundTasks,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-    background_tasks: BackgroundTasks = None,
 ) -> StreamingResponse:
     session = (
         db.query(ChatSession)

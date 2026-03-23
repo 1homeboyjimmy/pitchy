@@ -86,14 +86,14 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
       // We'll update the last message in real-time
       let assistantContent = "";
       let fullThoughtContent = "";
-      const startTime = Date.now();
-      const tempAssistantId = Date.now(); // We use timestamp as a key for thoughts
+      const now = new Date();
+      const tempAssistantId = now.getTime();
       
       // Add initial empty assistant message to be populated
       setMessages((prev) => [...prev, {
         role: "assistant",
         content: "",
-        timestamp: new Date().toISOString()
+        timestamp: now.toISOString()
       }]);
 
       const { postTreeChatStream } = await import("@/lib/api");
@@ -106,7 +106,7 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
             setThoughtExpanded(prev => ({ ...prev, [tempAssistantId]: true }));
           } else if (chunk.type === "chunk") {
             if (!thoughtTime[tempAssistantId] && fullThoughtContent) {
-                const duration = Math.round((Date.now() - startTime) / 1000);
+                const duration = Math.round((Date.now() - now.getTime()) / 1000);
                 setThoughtTime(prev => ({ ...prev, [tempAssistantId]: duration }));
             }
             assistantContent += chunk.content;

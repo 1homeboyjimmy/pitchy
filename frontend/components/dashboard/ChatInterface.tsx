@@ -113,12 +113,13 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
             if (!token) throw new Error("No token");
 
             // Add placeholder assistant message
-            const tempAssistantId = Date.now();
+            const now = new Date();
+            const tempAssistantId = now.getTime();
             setMessages((prev) => [...prev, {
                 id: tempAssistantId,
                 role: "assistant",
                 content: "",
-                created_at: new Date().toISOString(),
+                created_at: now.toISOString(),
             }]);
 
             let fullAssistantContent = "";
