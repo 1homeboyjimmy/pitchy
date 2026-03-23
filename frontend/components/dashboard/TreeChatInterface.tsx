@@ -13,6 +13,9 @@ interface Message {
   content: string;
   model_used?: string;
   timestamp: string;
+  thoughts?: string;
+  thoughtTime?: number;
+  thoughtExpanded?: boolean;
 }
 
 interface TreeChatInterfaceProps {
@@ -30,9 +33,6 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
   const [isLoading, setIsLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const [thoughtLines, setThoughtLines] = useState<Record<number, string>>({});
-  const [thoughtExpanded, setThoughtExpanded] = useState<Record<number, boolean>>({});
-  const [thoughtTime, setThoughtTime] = useState<Record<number, number>>({});
 
   // Load history on mount or when activeNode changes
   useEffect(() => {
@@ -103,22 +103,25 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
         for await (const chunk of postTreeChatStream(treeId, messageToSend, token, activeNode?.id, abortController.signal)) {
           if (chunk.type === "thought") {
             fullThoughtContent += chunk.content;
-            setThoughtLines(prev => ({ ...prev, [stableKey]: fullThoughtContent }));
-            setThoughtExpanded(prev => ({ ...prev, [stableKey]: true }));
+            setMessages(prev => prev.map((m, i) => 
+               i === prev.length - 1 ? { ...m, thoughts: fullThoughtContent, thoughtExpanded: true } : m
+            ));
           } else if (chunk.type === "chunk") {
-            if (!thoughtTime[stableKey] && fullThoughtContent) {
+            let durationUpdate = {};
+            if (!assistantContent && fullThoughtContent) {
                 const duration = Math.round((Date.now() - stableKey) / 1000);
-                setThoughtTime(prev => ({ ...prev, [stableKey]: duration }));
+                durationUpdate = { thoughtTime: duration };
             }
             assistantContent += chunk.content;
             setMessages((prev) => {
               const last = prev[prev.length - 1];
               if (last.role === "assistant") {
-                return [...prev.slice(0, -1), { ...last, content: assistantContent }];
+                return [...prev.slice(0, -1), { ...last, content: assistantContent, ...durationUpdate }];
               }
               return prev;
             });
-          } else if (chunk.type === "metadata") {
+          }
+ else if (chunk.type === "metadata") {
             setMessages((prev) => {
               const last = prev[prev.length - 1];
               if (last.role === "assistant") {
@@ -150,7 +153,7 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
       setIsLoading(false);
       abortControllerRef.current = null;
     }
-  }, [input, isLoading, treeId, activeNode, onUpdateTree, thoughtTime]);
+  }, [input, isLoading, treeId, activeNode, onUpdateTree]);
 
   const stopGeneration = () => {
     if (abortControllerRef.current) {
@@ -188,8 +191,7 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
       {/* Chat Area */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
         {messages.map((msg, idx) => {
-          const msgTimestamp = new Date(msg.timestamp).getTime();
-          const hasThoughts = thoughtLines[msgTimestamp] !== undefined;
+          const hasThoughts = msg.thoughts !== undefined;
           const isThinkingOnly = msg.role === "assistant" && msg.content === "" && hasThoughts;
           const isLastAssistant = msg.role === "assistant" && idx === messages.length - 1;
 
@@ -200,26 +202,26 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
               </div>
               <div className={`max-w-[90%] flex flex-col gap-2 ${msg.role === "user" ? "items-end" : "items-start"}`}>
                 {hasThoughts && (
-                  <div className="w-full bg-white/[0.03] rounded-xl border border-white/10 overflow-hidden self-start">
+                  <div className="w-full bg-transparent overflow-hidden self-start">
                     <button 
                         onClick={() => {
-                          setThoughtExpanded(prev => ({ ...prev, [msgTimestamp]: !prev[msgTimestamp] }));
+                          setMessages(prev => prev.map((m, i) => i === idx ? { ...m, thoughtExpanded: !m.thoughtExpanded } : m));
                         }}
-                        className="w-full flex items-center gap-2 px-3 py-1.5 text-[10px] text-white/30 hover:text-white/50 transition-colors bg-white/[0.02] border-b border-white/5"
+                        className="flex items-center gap-2 px-1 py-1 text-[10px] text-white/40 hover:text-white/60 transition-colors"
                     >
-                        <Atom className={`w-3 h-3 ${isLoading && isLastAssistant && !thoughtTime[msgTimestamp] ? "animate-spin" : "text-pitchy-violet"}`} />
+                        <Atom className={`w-3.5 h-3.5 ${isLoading && isLastAssistant && !msg.thoughtTime ? "animate-spin" : "text-pitchy-violet"}`} />
                         <span className="font-medium uppercase tracking-wider">
-                            {thoughtTime[msgTimestamp] ? `Размышления (${thoughtTime[msgTimestamp]} сек)` : "Pitchy рассуждает..."}
+                            {msg.thoughtTime ? `Размышления (${msg.thoughtTime} сек)` : "Pitchy рассуждает..."}
                         </span>
-                        {thoughtExpanded[msgTimestamp] ? <ChevronUp className="w-3 h-3 ml-auto opacity-50" /> : <ChevronDown className="w-3 h-3 ml-auto opacity-50" />}
+                        {msg.thoughtExpanded ? <ChevronUp className="w-3.5 h-3.5 ml-auto opacity-50" /> : <ChevronDown className="w-3.5 h-3.5 ml-auto opacity-50" />}
                     </button>
                     <motion.div
                         initial={false}
-                        animate={{ height: thoughtExpanded[msgTimestamp] ? "auto" : 0 }}
+                        animate={{ height: msg.thoughtExpanded ? "auto" : 0 }}
                         className="overflow-hidden"
                     >
-                        <div className="p-2.5 text-[12px] leading-relaxed text-white/40 italic border-l-2 border-pitchy-violet/30 ml-2 my-1.5 bg-white/[0.01]">
-                            {thoughtLines[msgTimestamp]}
+                        <div className="p-2.5 text-[12px] leading-relaxed text-white/50 italic border-l-2 border-pitchy-violet/30 ml-2 my-1.5 bg-white/[0.02] rounded-r-lg">
+                            {msg.thoughts}
                         </div>
                     </motion.div>
                   </div>
