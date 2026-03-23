@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Send, Bot, User, Loader2, Sparkles, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { getToken } from "@/lib/auth";
-import { postTreeChat, getTreeChatHistory, type TreeNodeResponse, type TreeEdgeResponse } from "@/lib/api";
-import { motion, AnimatePresence } from "framer-motion";
+import { postTreeChat, getTreeChatHistory, type TreeNodeResponse } from "@/lib/api";
+import { motion } from "framer-motion";
 
 interface Message {
   role: "user" | "assistant";
@@ -37,7 +37,7 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
         if (!token) return;
         const res = await getTreeChatHistory(treeId, token);
         if (res.history && res.history.length > 0) {
-          setMessages(res.history);
+          setMessages(res.history as Message[]);
         } else if (activeNode) {
           // Welcome message if no history
           setMessages([{
@@ -51,20 +51,13 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
       }
     };
     loadHistory();
-  }, [treeId]);
-
-  // Handle external triggers (e.g. from buttons)
-  useEffect(() => {
-    if (triggerMessage) {
-      handleSend(triggerMessage);
-    }
-  }, [triggerMessage]);
+  }, [treeId, activeNode]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, isLoading]);
 
-  const handleSend = async (overrideMessage?: string) => {
+  const handleSend = useCallback(async (overrideMessage?: string) => {
     const messageToSend = overrideMessage || input;
     if (!messageToSend.trim() || isLoading) return;
 
@@ -107,7 +100,14 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [input, isLoading, treeId, activeNode, onUpdateTree]);
+
+  // Handle external triggers (e.g. from buttons)
+  useEffect(() => {
+    if (triggerMessage) {
+      handleSend(triggerMessage);
+    }
+  }, [triggerMessage, handleSend]);
 
   return (
     <div className="flex flex-col h-full bg-[#0c0a1a]/80 backdrop-blur-xl border-l border-white/10 w-[400px] shadow-2xl">

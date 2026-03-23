@@ -365,8 +365,8 @@ export async function getTree(treeId: number, token: string): Promise<TreeRespon
   return getAuthJson<TreeResponse>(`/tree/${treeId}`, token);
 }
 
-export async function getTreeChatHistory(treeId: number, token: string): Promise<{ history: any[] }> {
-  return getAuthJson<{ history: any[] }>(`/tree/${treeId}/history`, token);
+export async function getTreeChatHistory(treeId: number, token: string): Promise<{ history: { role: string; content: string; model_used?: string; timestamp: string }[] }> {
+  return getAuthJson<{ history: { role: string; content: string; model_used?: string; timestamp: string }[] }>(`/tree/${treeId}/history`, token);
 }
 
 
