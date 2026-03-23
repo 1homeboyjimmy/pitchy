@@ -11,7 +11,7 @@ pitchy.pro {
   }
 
   # API - API routes to backend
-  @api path /auth* /analysis* /chat* /admin* /health /dev/emails /analyze-startup /me
+  @api path /auth* /analysis* /chat* /admin* /health /dev/emails /analyze-startup /me /tree*
   handle @api {
     reverse_proxy backend:8000
   }

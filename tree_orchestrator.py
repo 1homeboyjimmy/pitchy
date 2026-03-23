@@ -87,9 +87,10 @@ async def _call_claude(prompt: str) -> str | None:
                     "x-api-key": api_key,
                     "anthropic-version": "2023-06-01",
                     "content-type": "application/json",
+                    "User-Agent": "Mozilla/5.0",
                 },
                 json={
-                    "model": "claude-sonnet-4-20250514",
+                    "model": "claude-3-7-sonnet-20250219",
                     "max_tokens": 4096,
                     "messages": [{"role": "user", "content": prompt}],
                 },
