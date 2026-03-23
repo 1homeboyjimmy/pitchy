@@ -80,6 +80,8 @@ async def _call_claude(prompt: str) -> str | None:
 
     try:
         base_url = os.getenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com").rstrip("/")
+        model_id = "claude-sonnet-4-6" if "lumigate.us" in base_url else "claude-3-7-sonnet-20250219"
+        
         async with httpx.AsyncClient(timeout=60) as client:
             resp = await client.post(
                 f"{base_url}/v1/messages",
@@ -90,7 +92,7 @@ async def _call_claude(prompt: str) -> str | None:
                     "User-Agent": "Mozilla/5.0",
                 },
                 json={
-                    "model": "claude-3-7-sonnet-20250219",
+                    "model": model_id,
                     "max_tokens": 4096,
                     "messages": [{"role": "user", "content": prompt}],
                 },
@@ -169,6 +171,7 @@ async def generate_tree_from_text(description: str) -> dict[str, Any]:
         tree_data = extract_json(raw)
         if not tree_data:
             tree_data = json.loads(raw)
+            
     except Exception:
         try:
             # Try to find JSON in the response
@@ -240,17 +243,15 @@ def _normalize_tree_data(raw: dict, description: str) -> dict[str, Any]:
         }
         validated_nodes.append(validated)
 
-    # Validate edges
-    valid_ids = {n["id"] for n in validated_nodes} | {"root"}
+    # Auto-generate edges from parent_id to prevent floating nodes
     validated_edges = []
-    for edge in edges:
-        if not isinstance(edge, dict):
-            continue
-        if edge.get("source") in valid_ids and edge.get("target") in valid_ids:
+    for n in validated_nodes:
+        pid = n["parent_id"]
+        if pid:
             validated_edges.append({
-                "id": edge.get("id", f"e-{edge['source']}-{edge['target']}"),
-                "source": edge["source"],
-                "target": edge["target"],
+                "id": f"e-{pid}-{n['id']}",
+                "source": pid,
+                "target": n["id"]
             })
 
     return {
