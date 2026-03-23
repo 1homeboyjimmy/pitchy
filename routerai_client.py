@@ -68,3 +68,58 @@ async def call_routerai(system_prompt: str, user_message: str, model: str = "z-a
         logger.error(f"RouterAI call failed: {str(e)}")
         logger.error(traceback.format_exc())
         return None, None
+
+
+async def stream_routerai(system_prompt: str, user_message: str, model: str = "z-ai/glm-5"):
+    """
+    Streams response from RouterAI API.
+    Yields chunks of text.
+    """
+    api_key = os.getenv("ROUTERAI_API_KEY")
+    if not api_key:
+        yield "Error: ROUTERAI_API_KEY not set"
+        return
+
+    url = "https://routerai.ru/api/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message}
+        ],
+        "temperature": 0.3,
+        "stream": True
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            async with client.stream("POST", url, headers=headers, json=payload) as response:
+                if response.status_code != 200:
+                    err_body = await response.aread()
+                    logger.error(f"RouterAI streaming error: {response.status_code} - {err_body.decode()}")
+                    yield f"Error: {response.status_code}"
+                    return
+
+                async for line in response.aiter_lines():
+                    if not line.strip():
+                        continue
+                    if line.startswith("data: "):
+                        data_str = line[6:].strip()
+                        if data_str == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(data_str)
+                            delta = chunk["choices"][0].get("delta", {})
+                            if "content" in delta:
+                                yield delta["content"]
+                        except Exception as e:
+                            logger.error(f"Error parsing RouterAI stream chunk: {e}")
+                            continue
+    except Exception as e:
+        logger.error(f"RouterAI streaming failed: {str(e)}")
+        yield f"\n[Ошибка соединения: {str(e)}]"

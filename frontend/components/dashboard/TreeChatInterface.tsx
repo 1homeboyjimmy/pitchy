@@ -56,7 +56,7 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
       }
     };
     loadHistory();
-  }, [treeId, activeNode?.id]);
+  }, [treeId, activeNode]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -131,8 +131,8 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
             if (chunk.hints) setHints(chunk.hints);
           }
         }
-      } catch (err: any) {
-        if (err.name === 'AbortError') {
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name === 'AbortError') {
           console.log("Generation aborted");
         } else {
           throw err;
@@ -149,7 +149,7 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
       setIsLoading(false);
       abortControllerRef.current = null;
     }
-  }, [input, isLoading, treeId, activeNode, onUpdateTree]);
+  }, [input, isLoading, treeId, activeNode, onUpdateTree, thoughtTime]);
 
   const stopGeneration = () => {
     if (abortControllerRef.current) {
@@ -226,14 +226,14 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
                 <ReactMarkdown 
                   remarkPlugins={[remarkGfm]}
                   components={{
-                    table: ({node, ...props}) => (
+                    table: ({...props}) => (
                       <div className="my-3 overflow-x-auto rounded-xl border border-white/10 bg-white/5">
                         <table className="w-full text-left border-collapse" {...props} />
                       </div>
                     ),
-                    thead: ({node, ...props}) => <thead className="bg-white/10" {...props} />,
-                    th: ({node, ...props}) => <th className="p-2 text-[11px] font-bold text-pitchy-cyan-light border-b border-white/10 uppercase tracking-wider" {...props} />,
-                    td: ({node, ...props}) => <td className="p-2 text-[12px] text-white/80 border-b border-white/5 last:border-0" {...props} />,
+                    thead: ({...props}) => <thead className="bg-white/10" {...props} />,
+                    th: ({...props}) => <th className="p-2 text-[11px] font-bold text-pitchy-cyan-light border-b border-white/10 uppercase tracking-wider" {...props} />,
+                    td: ({...props}) => <td className="p-2 text-[12px] text-white/80 border-b border-white/5 last:border-0" {...props} />,
                   }}
                 >
                   {msg.content}

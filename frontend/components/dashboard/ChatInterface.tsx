@@ -5,7 +5,7 @@ import { Send, User, Bot, Loader2, Sparkles, Lightbulb, Users, Calculator, HelpC
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 // Button unused
-import { ChatMessageResponse, ChatSessionDetailResponse, getChatSession, sendChatMessageFeedback } from "@/lib/api";
+import { ChatMessageResponse, ChatSessionDetailResponse, sendChatMessageFeedback } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import { AnalysisCard } from "@/components/dashboard/AnalysisCard";
 import dayjs from "dayjs";
@@ -143,11 +143,11 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                         );
                     }
                 }
-            } catch (err: any) {
-                if (err.name === 'AbortError') {
+            } catch (err: unknown) {
+                if (err instanceof Error && err.name === 'AbortError') {
                     console.log("Generation aborted");
                 } else {
-                    throw err;
+                    console.error("Stream error:", err);
                 }
             }
 
@@ -238,14 +238,14 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                                 <ReactMarkdown 
                                     remarkPlugins={[remarkGfm]}
                                     components={{
-                                        table: ({node, ...props}) => (
+                                        table: ({...props}) => (
                                             <div className="my-4 overflow-x-auto rounded-xl border border-white/10 bg-white/5">
                                                 <table className="w-full text-left border-collapse" {...props} />
                                             </div>
                                         ),
-                                        thead: ({node, ...props}) => <thead className="bg-white/10" {...props} />,
-                                        th: ({node, ...props}) => <th className="p-3 text-sm font-bold text-pitchy-cyan-light border-b border-white/10" {...props} />,
-                                        td: ({node, ...props}) => <td className="p-3 text-sm text-white/80 border-b border-white/5 last:border-0" {...props} />,
+                                        thead: ({...props}) => <thead className="bg-white/10" {...props} />,
+                                        th: ({...props}) => <th className="p-3 text-sm font-bold text-pitchy-cyan-light border-b border-white/10" {...props} />,
+                                        td: ({...props}) => <td className="p-3 text-sm text-white/80 border-b border-white/5 last:border-0" {...props} />,
                                     }}
                                 >
                                     {getDisplayContent(msg)}

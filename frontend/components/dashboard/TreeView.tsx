@@ -31,7 +31,7 @@ type Props = {
   onSwitchToChat?: (context?: string) => void;
 };
 
-export function TreeView({ onSwitchToChat: _onSwitchToChat }: Props) {
+export function TreeView({ }: Props) {
   const [tree, setTree] = useState<TreeState>({ nodes: [], edges: [], readinessIndex: 0, status: "idle" });
   const [description, setDescription] = useState("");
   const [isChatOpen, setIsChatOpen] = useState(false);

@@ -7,6 +7,7 @@ from typing import Any, Dict, Tuple
 
 import jwt
 import requests
+import httpx
 
 
 DEFAULT_ENDPOINT = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
@@ -196,6 +197,51 @@ def call_yandex_gpt(system_prompt: str, user_prompt: str, timeout: int = 20, mod
     if response.status_code >= 500:
         raise YandexGPTError("server_error", "YandexGPT server error", response.status_code)
     if not response.ok:
+        raise YandexGPTError(
+            "bad_request",
+            f"YandexGPT error: {response.text}",
+            response.status_code,
+        )
+
+    data = response.json()
+    try:
+        text = data["result"]["alternatives"][0]["message"]["text"]
+        usage = data["result"].get("usage", {})
+        return text, usage
+    except (KeyError, IndexError, TypeError) as exc:
+        raise YandexGPTError("bad_response", "Unexpected response format") from exc
+
+
+async def async_call_yandex_gpt(system_prompt: str, user_prompt: str, timeout: int = 20, model_uri: str = None, max_tokens: int = 800) -> Tuple[str, Dict[str, str]]:
+    endpoint = os.getenv("YC_GPT_ENDPOINT", DEFAULT_ENDPOINT)
+    headers = _build_headers()
+    folder_id = os.getenv("YC_FOLDER_ID")
+    if not folder_id:
+        raise YandexGPTError(
+            "config_error",
+            "YC_IAM_TOKEN or YC_FOLDER_ID is missing in environment",
+        )
+    payload = _build_payload(system_prompt, user_prompt, folder_id, model_uri, max_tokens)
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(
+                endpoint,
+                json=payload,
+                headers=headers
+            )
+    except httpx.TimeoutException as exc:
+        raise YandexGPTError("timeout", "YandexGPT request timed out") from exc
+    except httpx.RequestError as exc:
+        raise YandexGPTError("unavailable", "YandexGPT API is unreachable") from exc
+
+    if response.status_code == 401:
+        raise YandexGPTError("invalid_token", "Invalid API key or IAM token", 401)
+    if response.status_code == 429:
+        raise YandexGPTError("rate_limit", "Rate limit exceeded", 429)
+    if response.status_code >= 500:
+        raise YandexGPTError("server_error", "YandexGPT server error", response.status_code)
+    if not response.is_success:
         raise YandexGPTError(
             "bad_request",
             f"YandexGPT error: {response.text}",
