@@ -32,6 +32,8 @@ async def call_zai(system_prompt: str, user_message: str, model: str = "z-ai/glm
         "max_tokens": 2048
     }
 
+    # logger.debug(f"ZvenoAI Prompt: {payload}")
+    
     try:
         async with httpx.AsyncClient(timeout=60) as client:
             resp = await client.post(url, headers=headers, json=payload)
@@ -39,9 +41,15 @@ async def call_zai(system_prompt: str, user_message: str, model: str = "z-ai/glm
             data = resp.json()
             content = data["choices"][0]["message"]["content"]
             
+            if not content or not content.strip():
+                logger.warning(f"ZvenoAI returned empty content for model {model}")
+                logger.debug(f"ZvenoAI Full Response: {data}")
+            else:
+                logger.info(f"ZvenoAI response received ({len(content)} chars)")
+
             # Simple heuristic to extract JSON if present
             metrics = None
-            if "---JSON_START---" in content:
+            if content and "---JSON_START---" in content:
                 try:
                     metrics = content.split("---JSON_START---")[1].split("---JSON_END---")[0].strip()
                 except:
