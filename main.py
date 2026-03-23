@@ -24,7 +24,7 @@ from observability import configure_logging
 import uuid
 from redis_client import get_redis
 from yandex_gpt_client import YandexGPTError, call_yandex_gpt, extract_json
-from zai_client import call_zai, generate_chat_title_zai, analyze_search_intent_zai
+from zai_client import generate_chat_title, analyze_search_intent
 from routerai_client import call_routerai
 from search_agent import execute_search_agent
 from db import SessionLocal, get_db
@@ -2164,7 +2164,7 @@ def create_chat_session(
 
 async def rename_chat_session_background(session_id: int, initial_message: str):
     try:
-        title = await generate_chat_title_zai(initial_message)
+        title = await generate_chat_title(initial_message)
         logger.info(f"Generated title '{title}' for session {session_id}")
         
         with SessionLocal() as db:

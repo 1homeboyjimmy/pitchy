@@ -157,12 +157,6 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
                   {msg.content}
                 </ReactMarkdown>
               </div>
-              {msg.role === "assistant" && msg.model_used && (
-                <div className="mt-2 pt-2 border-t border-white/5 flex items-center gap-1.5 opacity-40 hover:opacity-100 transition-opacity">
-                   <div className="w-1.5 h-1.5 rounded-full bg-pitchy-cyan animate-pulse" />
-                   <span className="text-[9px] uppercase tracking-tighter font-bold">Processed by {msg.model_used}</span>
-                </div>
-              )}
             </div>
           </div>
         ))}

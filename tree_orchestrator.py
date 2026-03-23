@@ -1,13 +1,6 @@
 """
 AI Orchestrator for Decision Tree generation.
-
-Multi-model stack:
-- Claude (via Anthropic API) — tree structure generation
-- YandexGPT — content enrichment in Russian
-- GigaChat — financial calculations (fallback to YandexGPT)
-
-All models degrade gracefully: if a specific API is unavailable,
-fallback to YandexGPT (always available).
+Powered by RouterAI (GLM-5).
 """
 from __future__ import annotations
 
@@ -20,7 +13,6 @@ from typing import Any
 
 import httpx
 
-from zai_client import call_zai
 from routerai_client import call_routerai
 from core_tree import CORE_SKELETON
 
@@ -86,79 +78,6 @@ ENRICH_NODE_PROMPT = """Ты — бизнес-эксперт по российс
 Отвечай на русском языке с учётом специфики российского бизнеса."""
 
 
-# ——— Claude API (Anthropic) ———
-
-async def _call_claude(prompt: str) -> str | None:
-    """Call Claude API for tree structure generation. Returns None on failure."""
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        logger.info("ANTHROPIC_API_KEY not set, falling back to YandexGPT")
-        return None
-
-    try:
-        base_url = os.getenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com").rstrip("/")
-        model_id = "claude-sonnet-4-6" if "lumigate.us" in base_url else "claude-3-7-sonnet-20250219"
-        
-        async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.post(
-                f"{base_url}/v1/messages",
-                headers={
-                    "x-api-key": api_key,
-                    "anthropic-version": "2023-06-01",
-                    "content-type": "application/json",
-                    "User-Agent": "Mozilla/5.0",
-                },
-                json={
-                    "model": model_id,
-                    "max_tokens": 4096,
-                    "messages": [{"role": "user", "content": prompt}],
-                },
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            return data["content"][0]["text"]
-    except Exception as e:
-        logger.warning(f"Claude API call failed: {e}")
-        return None
-
-
-# ——— GigaChat API ———
-
-async def _call_gigachat(prompt: str) -> str | None:
-    """Call GigaChat for financial calculations. Returns None on failure."""
-    api_key = os.getenv("GIGACHAT_API_KEY")
-    if not api_key:
-        return None
-
-    try:
-        async with httpx.AsyncClient(timeout=60, verify=False) as client:
-            # Get access token
-            auth_resp = await client.post(
-                "https://ngw.devices.sberbank.ru:9443/api/v2/oauth",
-                headers={
-                    "Authorization": f"Basic {api_key}",
-                    "Content-Type": "application/x-www-form-urlencoded",
-                    "RqUID": str(uuid.uuid4()),
-                },
-                data={"scope": "GIGACHAT_API_PERS"},
-            )
-            auth_resp.raise_for_status()
-            token = auth_resp.json()["access_token"]
-
-            # Call completion
-            resp = await client.post(
-                "https://gigachat.devices.sberbank.ru/api/v1/chat/completions",
-                headers={"Authorization": f"Bearer {token}"},
-                json={
-                    "model": "GigaChat-Max",
-                    "messages": [{"role": "user", "content": prompt}],
-                },
-            )
-            resp.raise_for_status()
-            return resp.json()["choices"][0]["message"]["content"]
-    except Exception as e:
-        logger.warning(f"GigaChat API call failed: {e}")
-        return None
 
 
 # ——— Main orchestrator functions ———
@@ -171,24 +90,13 @@ async def generate_tree_from_text(description: str) -> dict[str, Any]:
     """
     prompt = TREE_EXTRACTION_PROMPT.replace("{description}", description)
 
-    # Try GLM-5 via RouterAI first (as requested by user)
+    # Use GLM-5 via RouterAI
     logger.info("Using GLM-5 (RouterAI) for tree structure generation")
     raw, _ = await call_routerai("Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON.", prompt)
 
-    # Fallback to Claude
     if not raw:
-        logger.info("GLM-5 failed, falling back to Claude")
-        raw = await _call_claude(prompt)
-
-    # Fallback to RouterAI (default)
-    if not raw:
-        logger.info("Using RouterAI fallback for tree structure generation")
-        system_prompt = "Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON."
-        try:
-            raw, _metrics = await call_routerai(system_prompt, prompt)
-        except Exception as e:
-            logger.error(f"RouterAI fallback extraction failed: {e}")
-            return _generate_fallback_tree(description)
+        logger.error("RouterAI extraction failed")
+        return _generate_fallback_tree(description)
 
     # Parse JSON
     try:

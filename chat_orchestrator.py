@@ -7,7 +7,7 @@ from datetime import datetime
 from redis_client import get_redis
 from zai_client import call_zai
 from routerai_client import call_routerai
-from tree_orchestrator import _call_claude, _call_gigachat, _normalize_tree_data
+from tree_orchestrator import _normalize_tree_data
 from search_agent import execute_search_agent
 from perplexity_client import call_perplexity
 from core_tree import CORE_SKELETON
@@ -284,10 +284,9 @@ class ChatOrchestrator:
             return "Извините, не удалось получить юридическую консультацию."
 
     async def _handle_tree_edit(self, user_message: str, state: dict) -> tuple[str, dict]:
-        """Handle tree modifications via Claude."""
-        # Reuse _normalize_tree_data logic but in enrichment mode
-        prompt = f"Пользователь хочет изменить дерево проекта. Текущее дерево: {json.dumps(state['nodes'])}. Запрос: {user_message}. Верни JSON только с измененными полями в формате extracted_data: {{ ключ: значение }}."
-        raw = await _call_claude(prompt)
+        """Handle tree modifications via RouterAI (GLM-5)."""
+        prompt = f"Пользователь хочет изменить дерево проекта. Текущее дерево: {json.dumps(state['nodes'])}. Запрос: {user_message}. Твоя задача — извлечь изменения и вернуть JSON только с измененными полями в формате extracted_data: {{ ключ: значение }}."
+        raw, _ = await call_routerai("Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON.", prompt)
         extracted = self._extract_json_block(raw)
         return "Я обновил структуру проекта на основе ваших пожеланий.", extracted.get("extracted_data", {})
 

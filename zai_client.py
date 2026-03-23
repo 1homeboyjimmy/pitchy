@@ -7,105 +7,35 @@ from routerai_client import call_routerai
 
 logger = logging.getLogger("app")
 
-async def call_zai(system_prompt: str, user_message: str, model: str = "z-ai/glm-4.7") -> Tuple[Optional[str], Optional[str]]:
-    """
-    Calls ZvenoAI API (OpenAI compatible).
-    Returns (reply, metrics_json_string) or (None, None) on failure.
-    """
-    api_key = os.getenv("ZVENOAI_API_KEY")
-    if not api_key:
-        logger.warning("ZVENOAI_API_KEY not set")
-        return None, None
-
-    url = "https://api.zveno.ai/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
-    
-    payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message}
-        ],
-        "temperature": 0.3,
-        "max_tokens": 4096  # Increased to handle long reasoning phase
-    }
-
-    try:
-        async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.post(url, headers=headers, json=payload)
-            resp.raise_for_status()
-            data = resp.json()
-            
-            # Extract content, checking for reasoning fallbacks
-            message = data["choices"][0]["message"]
-            content = message.get("content", "")
-            
-            # If content is empty but reasoning is present (standard for GLM-4 reasoning models)
-            if not content or not content.strip():
-                # Check different naming conventions for reasoning
-                reasoning = message.get("reasoning_content") or \
-                            (message.get("reasoning_details", [{}])[0].get("text") if message.get("reasoning_details") else "")
-                
-                if reasoning:
-                    logger.info(f"Using reasoning fallback for model {model}")
-                    content = reasoning
-
-            if not content or not content.strip():
-                logger.warning(f"ZvenoAI returned empty content for model {model}. Full response: {json.dumps(data, ensure_ascii=False)}")
-                return None, None
-            else:
-                logger.info(f"ZvenoAI response received ({len(content)} chars)")
-
-            # Simple heuristic to extract JSON if present
-            metrics = None
-            if content and "---JSON_START---" in content:
-                try:
-                    metrics = content.split("---JSON_START---")[1].split("---JSON_END---")[0].strip()
-                except:
-                    pass
-            
-            return content, metrics
-    except Exception as e:
-        print(f"DEBUG: ZvenoAI API call failed ({model}): {e}")
-        return None, None
-
-def extract_json_zai(text: str) -> Dict[str, Any]:
-    """Helper to extract JSON from AI response."""
-    try:
-        start = text.find("{")
-        end = text.rfind("}")
-        if start != -1 and end != -1:
-            return json.loads(text[start:end+1])
-    except:
-        pass
-    return {}
-
-async def generate_chat_title_zai(text: str) -> str:
-    """Generate a short 2-4 word title for a chat session."""
+async def generate_chat_title(text: str) -> str:
+    """Generate a short 2-4 word title for a chat session via RouterAI (GLM-5)."""
     system_prompt = (
         "Ты — умный ассистент. Прочитай первое сообщение пользователя и придумай "
         "краткое название для этого диалога из 2-4 слов. Только текст, без кавычек."
     )
-    # Using GLM-5 via RouterAI for titles
     reply, _ = await call_routerai(system_prompt, text[:500])
     if reply:
         return reply.strip(' "\'\n\r\t.-').capitalize()
     return "Новый диалог"
 
-async def analyze_search_intent_zai(text: str) -> Dict[str, Any]:
-    """Analyzes if web search is needed."""
+async def analyze_search_intent(text: str) -> Dict[str, Any]:
+    """Analyzes if web search is needed via RouterAI (GLM-5)."""
     system_prompt = (
         "Ты — умный классификатор запросов. Реши, нужен ли поиск в интернете. "
         "Верни СТРОГО JSON: {'needs_search': bool, 'search_query': str}"
     )
     reply, _ = await call_routerai(system_prompt, text[:1000])
     if reply:
-        parsed = extract_json_zai(reply)
-        return {
-            "needs_search": bool(parsed.get("needs_search", False)),
-            "search_query": str(parsed.get("search_query", "")) if parsed.get("needs_search") else ""
-        }
+        # Mini-helper for JSON since we don't have extract_json here
+        try:
+            start = reply.find("{")
+            end = reply.rfind("}")
+            if start != -1 and end != -1:
+                parsed = json.loads(reply[start:end+1])
+                return {
+                    "needs_search": bool(parsed.get("needs_search", False)),
+                    "search_query": str(parsed.get("search_query", "")) if parsed.get("needs_search") else ""
+                }
+        except:
+            pass
     return {"needs_search": False, "search_query": ""}
