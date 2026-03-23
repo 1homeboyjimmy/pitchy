@@ -161,3 +161,29 @@ class ProjectTree(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     user: Mapped["User"] = relationship(back_populates="project_trees")
+
+
+class ProjectVersion(Base):
+    __tablename__ = "project_versions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("project_trees.id"))
+    tree_data: Mapped[dict] = mapped_column(JSON)
+    version: Mapped[int] = mapped_column(Integer)
+    changed_by: Mapped[str] = mapped_column(String(50))  # "claude", "user", "gigachat"
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    project: Mapped["ProjectTree"] = relationship()
+
+
+class TreeChatHistory(Base):
+    __tablename__ = "tree_chat_history"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("project_trees.id"))
+    message: Mapped[str] = mapped_column(Text)
+    role: Mapped[str] = mapped_column(String(30))  # "user", "assistant"
+    model_used: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    project: Mapped["ProjectTree"] = relationship()

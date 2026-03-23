@@ -346,6 +346,15 @@ export type TreeResponse = {
   created_at: string;
 };
 
+export type TreeChatResponse = {
+  reply: string;
+  tree_data: {
+    nodes: TreeNodeResponse[];
+    edges: TreeEdgeResponse[];
+  };
+  readiness_index: number;
+};
+
 export async function getTreeList(token: string): Promise<TreeResponse[]> {
   return getAuthJson<TreeResponse[]>("/tree/list", token);
 }
@@ -356,6 +365,18 @@ export async function getTree(treeId: number, token: string): Promise<TreeRespon
 
 export async function createTreeFromText(description: string, token: string): Promise<TreeResponse> {
   return postAuthJson<TreeResponse>("/tree/create", { description }, token);
+}
+
+export async function postTreeChat(
+  treeId: number,
+  message: string,
+  token: string,
+  activeNodeId?: string
+): Promise<TreeChatResponse> {
+  return postAuthJson<TreeChatResponse>(`/tree/${treeId}/chat`, {
+    message,
+    active_node_id: activeNodeId
+  }, token);
 }
 
 export async function deleteTree(treeId: number, token: string): Promise<{ status: string }> {

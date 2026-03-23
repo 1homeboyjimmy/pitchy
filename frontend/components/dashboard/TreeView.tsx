@@ -11,6 +11,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { TreeCanvas } from "./TreeCanvas";
+import { TreeChatInterface } from "./TreeChatInterface";
 import type { TreeNodeResponse, TreeEdgeResponse } from "../../lib/api";
 import { GlassCard } from "@/components/shared";
 import { getToken } from "@/lib/auth";
@@ -33,6 +34,8 @@ type Props = {
 export function TreeView({ onSwitchToChat }: Props) {
   const [tree, setTree] = useState<TreeState>({ nodes: [], edges: [], readinessIndex: 0, status: "idle" });
   const [description, setDescription] = useState("");
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [activeChatNode, setActiveChatNode] = useState<TreeNodeResponse | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load user's trees on mount
@@ -168,11 +171,19 @@ export function TreeView({ onSwitchToChat }: Props) {
 
   const handleDiscussInChat = useCallback(
     (node: TreeNodeResponse) => {
-      const context = `Обсудим узел "${node.label}" (статус: ${node.status}). ${node.data.description || ""}`;
-      onSwitchToChat?.(context);
+      setActiveChatNode(node);
+      setIsChatOpen(true);
     },
-    [onSwitchToChat],
+    [],
   );
+
+  const handleUpdateTree = useCallback((nodes: TreeNodeResponse[], readiness: number) => {
+    setTree((prev) => ({
+      ...prev,
+      nodes,
+      readinessIndex: readiness
+    }));
+  }, []);
 
   // ——— Idle / Empty State ———
   if (tree.status === "idle" && tree.nodes.length === 0) {
@@ -330,13 +341,35 @@ export function TreeView({ onSwitchToChat }: Props) {
       </div>
 
       {/* Canvas */}
-      <div className="flex-1 min-h-0">
-        <TreeCanvas
-          treeNodes={tree.nodes}
-          treeEdges={tree.edges}
-          readinessIndex={tree.readinessIndex}
-          onDiscussInChat={handleDiscussInChat}
-        />
+      <div className="flex-1 min-h-0 flex relative overflow-hidden">
+        <div className="flex-1 relative">
+           <TreeCanvas
+             treeNodes={tree.nodes}
+             treeEdges={tree.edges}
+             readinessIndex={tree.readinessIndex}
+             onDiscussInChat={handleDiscussInChat}
+             onNodeClick={(node) => isChatOpen && setActiveChatNode(node)}
+           />
+        </div>
+
+        <AnimatePresence>
+          {isChatOpen && tree.id && (
+            <motion.div
+              initial={{ x: 400, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: 400, opacity: 0 }}
+              transition={{ type: "spring", damping: 30, stiffness: 200 }}
+              className="h-full z-40"
+            >
+              <TreeChatInterface
+                treeId={tree.id}
+                activeNode={activeChatNode}
+                onUpdateTree={handleUpdateTree}
+                onClose={() => setIsChatOpen(false)}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </motion.div>
   );

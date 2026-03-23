@@ -292,3 +292,15 @@ class TreeNodeUpdateRequest(BaseModel):
     data: TreeNodeDataSchema | None = None
     status: str | None = None
 
+
+class TreeChatRequest(BaseModel):
+    message: str = Field(..., min_length=1)
+    active_node_id: str | None = None
+
+
+class TreeChatResponse(BaseModel):
+    status: str = "ok"
+    reply: str
+    tree_data: dict | None = None
+    readiness_index: int | None = None
+

@@ -25,8 +25,9 @@ from sqlalchemy.orm import Session
 from auth import get_current_user
 from db import get_db, SessionLocal
 from models import User, ProjectTree
-from schemas import TreeCreateRequest, TreeResponse, TreeNodeUpdateRequest
+from schemas import TreeCreateRequest, TreeResponse, TreeNodeUpdateRequest, TreeChatRequest, TreeChatResponse
 from tree_orchestrator import generate_tree_from_text, generate_tree_from_pdf
+from chat_orchestrator import ChatOrchestrator
 
 logger = logging.getLogger("app")
 
@@ -228,6 +229,24 @@ def update_tree_node(
     db.commit()
 
     return {"status": "ok", "readiness_index": tree.readiness_index}
+
+
+@router.post("/{tree_id}/chat", response_model=TreeChatResponse)
+async def tree_chat(
+    tree_id: int,
+    payload: TreeChatRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> TreeChatResponse:
+    """Intelligent chat orchestration for the decision tree."""
+    orchestrator = ChatOrchestrator(tree_id, user.id, db)
+    result = await orchestrator.process_message(payload.message, payload.active_node_id)
+    
+    return TreeChatResponse(
+        reply=result["reply"],
+        tree_data=result["tree_data"],
+        readiness_index=result["readiness_index"]
+    )
 
 
 @router.delete("/{tree_id}")

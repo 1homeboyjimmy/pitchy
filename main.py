@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import asyncio
 import os
 import logging
 import time
@@ -134,8 +135,49 @@ configure_logging()
 logger = logging.getLogger("app")
 
 
+async def sync_redis_to_pg():
+    """Background task to sync hot Redis state to PostgreSQL every 5 mins."""
+    from db import SessionLocal
+    from models import ProjectTree
+    import json
+    
+    while True:
+        await asyncio.sleep(300) # 5 minutes
+        redis = get_redis()
+        if not redis:
+            continue
+            
+        try:
+            keys = redis.keys("user:*:tree:*:state")
+            for key in keys:
+                state_raw = redis.get(key)
+                if not state_raw:
+                    continue
+                state = json.loads(state_raw)
+                
+                # Extract ids from key: user:{uid}:tree:{tid}:state
+                parts = key.split(":")
+                u_id = int(parts[1])
+                t_id = int(parts[3])
+                
+                with SessionLocal() as db:
+                    tree = db.query(ProjectTree).filter(ProjectTree.id == t_id, ProjectTree.user_id == u_id).first()
+                    if tree:
+                        # Extract nodes and readiness effectively
+                        nodes = state.get("nodes", [])
+                        tree.tree_data = {"nodes": nodes}
+                        tree.readiness_index = state.get("readiness_index", 0)
+                        # Updated timestamp handled by SQLAlchemy onupdate
+                        db.commit()
+            logger.info(f"Background Sync: Synchronized {len(keys)} trees from Redis to PG.")
+        except Exception as e:
+            logger.error(f"Background Sync Error: {e}")
+
 @asynccontextmanager
-async def lifespan(_: FastAPI):
+async def lifespan(app: FastAPI):
+    # Start background sync
+    asyncio.create_task(sync_redis_to_pg())
+    
     # Start RAG initialization in background thread so server starts immediately
     # and can respond to healthchecks while model loads.
     # Model weights are pre-cached in Docker image, so load is fast (~10-30s).
