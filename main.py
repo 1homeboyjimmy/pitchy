@@ -1335,13 +1335,13 @@ def list_chat_messages(
     ]
 
 
-@app.post("/chat/messages", response_model=ChatMessageResponse)
+@app.post("/chat/messages")
 async def create_chat_message(
     payload: ChatMessageCreateRequest,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-    background_tasks: BackgroundTasks = Depends(),
-) -> StreamingResponse: # Changed return type to StreamingResponse
+    background_tasks: BackgroundTasks = None,
+) -> StreamingResponse:
     session = (
         db.query(ChatSession)
         .filter(ChatSession.id == payload.session_id, ChatSession.user_id == user.id)
@@ -1389,22 +1389,24 @@ async def create_chat_message(
         full_text = ""
         try:
             if provider == "makura":
-                async for chunk in stream_makura(SYSTEM_CHAT_PROMPT, user_prompt):
-                    full_text += chunk
-                    yield chunk
+                raw_gen = stream_makura(SYSTEM_CHAT_PROMPT, user_prompt)
             else:
-                async for chunk in stream_routerai(SYSTEM_CHAT_PROMPT, user_prompt):
-                    full_text += chunk
-                    yield chunk
+                raw_gen = stream_routerai(SYSTEM_CHAT_PROMPT, user_prompt)
+                
+            async for json_chunk in parse_thought_generator(raw_gen):
+                data = json.loads(json_chunk.strip())
+                if data["type"] == "chunk":
+                    full_text += data["content"]
+                yield json_chunk
         except Exception as e:
             logger.error(f"Streaming failed: {e}")
-            yield f"\n[Ошибка генерации: {str(e)}]"
+            yield json.dumps({"type": "error", "content": str(e)}) + "\n"
         finally:
-            if full_text.strip():
+            if full_text.strip() and background_tasks:
                 logger.info(f"Stream finished. Collected {len(full_text)} chars.")
                 background_tasks.add_task(save_assistant_message, session.id, full_text.strip())
 
-    return StreamingResponse(session_chat_generator(), media_type="text/plain")
+    return StreamingResponse(session_chat_generator(), media_type="text/event-stream")
 
 
 @app.get("/chat/messages/search")
