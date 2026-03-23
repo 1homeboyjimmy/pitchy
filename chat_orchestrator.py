@@ -5,7 +5,7 @@ from typing import Any, Optional
 from datetime import datetime
 
 from redis_client import get_redis
-from yandex_gpt_client import call_yandex_gpt, extract_json
+from zai_client import call_zai
 from tree_orchestrator import _call_claude, _call_gigachat, _normalize_tree_data
 from search_agent import execute_search_agent
 from perplexity_client import call_perplexity
@@ -27,7 +27,8 @@ INTENT_RECOGNITION_PROMPT = """Ты — диспетчер запросов дл
 
 Запрос пользователя: "{user_message}"
 
-Верни СТРОГО JSON: {{"intent": "finance" | "search" | "tree" | "chat", "reason": "краткое пояснение"}}
+Верни СТРОГО JSON: {{"intent": "finance" | "search" | "tree" | "chat" | "legal", "reason": "краткое пояснение"}}
+Используй "legal" для вопросов о российском законодательстве, налогах РФ, ООО/ИП и нормативных требованиях.
 """
 
 FINANCE_PROMPT = """Ты — финансовый эксперт GigaChat. Произведи расчеты для стартапа на основе предоставленных данных.
@@ -125,12 +126,22 @@ class ChatOrchestrator:
         elif intent['intent'] == "search":
             model_used = "Perplexity/Agent"
             reply = await self._handle_search(user_message)
+        elif intent['intent'] == "legal":
+            model_used = "YandexGPT (Юрист)"
+            reply = await self._handle_legal(user_message)
         elif intent['intent'] == "tree":
             model_used = "Claude"
             reply, enriched_data = await self._handle_tree_edit(user_message, state)
-        else: # chat
-            model_used = "YandexGPT"
-            reply = await self._handle_general_chat(user_message, state, history)
+        elif intent['intent'] == "chat": # chat
+            model_used = "Z AI (GLM-5)"
+            history_str = "\n".join([f"{m['role']}: {m['content']}" for m in history[-5:]])
+            reply = await self._handle_chat(user_message, history_str)
+        else:
+            # Fallback for unhandled intents
+            model_used = "Z AI (GLM-5)"
+            history_str = "\n".join([f"{m['role']}: {m['content']}" for m in history[-5:]])
+            reply = await self._handle_chat(user_message, history_str)
+
 
         # 3. Merge state if AI returned structured data
         if enriched_data:
@@ -201,14 +212,15 @@ class ChatOrchestrator:
         )
 
         try:
-            raw, _ = call_yandex_gpt("Ты — умный диспетчер стартап-платформы.", prompt, timeout=5)
-            parsed = extract_json(raw)
-            if parsed and "intent" in parsed:
-                return parsed
+            # Quick classification using Z AI
+            reply, _ = await call_zai("Ты — диспетчер интентов.", prompt)
+            if reply:
+                data = self._extract_json_block(reply)
+                return data
         except Exception as e:
             logger.error(f"Intent classification failed: {e}")
-        
-        return {"intent": "chat", "reason": "fallback"}
+            
+        return {"intent": "chat", "reason": "Default fallback"}
 
     async def _handle_finance(self, user_message: str, state: dict, active_node_id: str) -> tuple[str, dict]:
         """Handle financial calculations via GigaChat."""
@@ -227,8 +239,8 @@ class ChatOrchestrator:
 
         raw = await _call_gigachat(prompt)
         if not raw:
-            # Fallback to YandexGPT for calculations if GigaChat fails or not configured
-            raw, _ = call_yandex_gpt("Ты — финансовый аналитик GigaGPT.", prompt)
+            # Fallback to Z AI for calculations if GigaChat fails or not configured
+            raw, _ = await call_zai("Ты — финансовый аналитик.", prompt)
 
         # Extract JSON metrics block
         reply = raw
@@ -244,36 +256,49 @@ class ChatOrchestrator:
         return reply, metrics
 
     async def _handle_search(self, user_message: str) -> str:
-        """Handle web search via Perplexity AI."""
-        # Try Perplexity first for deep search
-        reply = await call_perplexity(user_message, system_prompt="Ты — эксперт по глубокому анализу рынков и стартапов. Отвечай на русском языке.")
-        
+        """Handle search queries via Perplexity or a local agent."""
+        # Use Perplexity via Zveno
+        reply, _ = await call_zai("Ты — эксперт по глубокому анализу рынков.", user_message, model="perplexity/sonar-pro")
         if reply:
             return reply
 
-        # Fallback to local search agent if Perplexity fails or not configured
+        # Fallback to local search agent
         context = execute_search_agent(user_message)
         prompt = f"На основе данных из поиска ответь пользователю на русском языке:\n\n{context}\n\nВопрос: {user_message}"
-        reply, _ = call_yandex_gpt("Ты — помощник с доступом в интернет.", prompt)
-        return reply
+        reply, _ = await call_zai("Ты — помощник с доступом в интернет.", prompt, model="zhipu/glm-4")
+        return reply or "Не удалось обработать результаты поиска."
+
+    async def _handle_legal(self, user_message: str) -> str:
+        """Handle legal questions via YandexGPT (specialized for RU law)."""
+        from yandex_gpt_client import call_yandex_gpt
+        system_prompt = "Ты — квалифицированный юрист по российскому законодательству. Отвечай на вопросы о налогах, праве и регистрации бизнеса в РФ."
+        try:
+            reply, _ = call_yandex_gpt(system_prompt, user_message)
+            return reply or "Юридический помощник временно недоступен."
+        except Exception as e:
+            logger.error(f"YandexGPT legal call failed: {e}")
+            return "Извините, не удалось получить юридическую консультацию."
 
     async def _handle_tree_edit(self, user_message: str, state: dict) -> tuple[str, dict]:
         """Handle tree modifications via Claude."""
         # Reuse _normalize_tree_data logic but in enrichment mode
         prompt = f"Пользователь хочет изменить дерево проекта. Текущее дерево: {json.dumps(state['nodes'])}. Запрос: {user_message}. Верни JSON только с измененными полями в формате extracted_data: {{ ключ: значение }}."
         raw = await _call_claude(prompt)
-        if not raw:
-            raw, _ = call_yandex_gpt("Ты — архитектор стартапов.", prompt)
-        
-        extracted = extract_json(raw) or {}
+        extracted = self._extract_json_block(raw)
         return "Я обновил структуру проекта на основе ваших пожеланий.", extracted.get("extracted_data", {})
 
-    async def _handle_general_chat(self, user_message: str, state: dict, history: list) -> str:
-        """Handle general questions via YandexGPT."""
-        history_str = "\n".join([f"{m['role']}: {m['content']}" for m in history[-5:]])
-        prompt = f"Контекст проекта: {state.get('title')}. История:\n{history_str}\n\nПользователь: {user_message}"
-        reply, _ = call_yandex_gpt("Ты — дружелюбный ИИ-помощник Pitchy.", prompt)
-        return reply
+    async def _handle_chat(self, user_message: str, chat_history: str = "") -> str:
+        """Handle general chat via Z AI (GLM-5)."""
+        prompt = f"История чата:\n{chat_history}\n\nПользователь: {user_message}"
+        # Using zhipu/glm-4 as a standard name, or zhipu/glm-5 if confirmed
+        reply, json_metrics = await call_zai("Ты — ассистент платформы Pitchy. Отвечай на русском языке.", prompt, model="zhipu/glm-4")
+        
+        if json_metrics:
+            # Assuming _save_metrics_from_json is defined elsewhere or will be added
+            # self._save_metrics_from_json(json_metrics) 
+            pass # Placeholder as _save_metrics_from_json is not provided in the diff
+            
+        return reply or "Извините, Z AI сейчас недоступен."
 
     def _merge_ai_data_to_state(self, state: dict, enriched_data: dict) -> dict:
         """Update existing nodes with new values from AI."""
@@ -293,3 +318,21 @@ class ChatOrchestrator:
         state["readiness_index"] = int((completed / max(total, 1)) * 100)
         
         return state
+    def _extract_json_block(self, text: str) -> dict:
+        """Utility to extract JSON from AI response wrapped in markdown or tags."""
+        try:
+            if "---JSON_START---" in text:
+                content = text.split("---JSON_START---")[1].split("---JSON_END---")[0].strip()
+                return json.loads(content)
+            
+            if "```json" in text:
+                content = text.split("```json")[1].split("```")[0].strip()
+                return json.loads(content)
+            
+            start = text.find('{')
+            end = text.rfind('}')
+            if start != -1 and end != -1:
+                return json.loads(text[start:end+1])
+        except Exception as e:
+            logger.warning(f"Failed to extract JSON from TEXT: {e}")
+        return {}

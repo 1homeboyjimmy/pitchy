@@ -23,7 +23,8 @@ from metrics import ERROR_COUNT, REQUEST_COUNT, REQUEST_LATENCY
 from observability import configure_logging
 import uuid
 from redis_client import get_redis
-from yandex_gpt_client import YandexGPTError, call_yandex_gpt, extract_json, generate_chat_title, analyze_search_intent
+from yandex_gpt_client import YandexGPTError, call_yandex_gpt
+from zai_client import call_zai, generate_chat_title_zai, analyze_search_intent_zai
 from search_agent import execute_search_agent
 from db import SessionLocal, get_db
 from models import User, PromoCode, Analysis, Payment, RagLog
@@ -997,7 +998,7 @@ def verify_email(
 
 
 @app.post("/analyze-startup", response_model=AnalyzeResponse)
-def analyze_startup(payload: AnalyzeRequest) -> AnalyzeResponse:
+async def analyze_startup(payload: AnalyzeRequest) -> AnalyzeResponse:
     try:
         context_chunks = rag.get_relevant_chunks(payload.description, top_k=3)
     except RuntimeError as exc:
@@ -1006,9 +1007,9 @@ def analyze_startup(payload: AnalyzeRequest) -> AnalyzeResponse:
     user_prompt = _build_user_prompt(payload.description, context_chunks)
 
     try:
-        raw_text, usage = call_yandex_gpt(SYSTEM_PROMPT, user_prompt)
-        logger.info(f"YandexGPT token usage (anonymous /analyze): {usage}")
-        data = extract_json(raw_text)
+        raw_text, usage = await call_zai(SYSTEM_PROMPT, user_prompt)
+        logger.info(f"Z AI token usage (anonymous /analyze): {usage}")
+        data = extract_json_zai(raw_text)
     except YandexGPTError as exc:
         status = exc.status_code or 502
         raise HTTPException(status_code=status, detail=exc.message) from exc
@@ -1078,9 +1079,9 @@ def create_analysis(
     user_prompt = _build_user_prompt(description, context_chunks)
 
     try:
-        raw_text, usage = call_yandex_gpt(SYSTEM_PROMPT, user_prompt)
-        logger.info(f"YandexGPT token usage (user {user.id} /analyze): {usage}")
-        data = extract_json(raw_text)
+        raw_text, usage = await call_zai(SYSTEM_PROMPT, user_prompt, model="zhipu/glm-4")
+        logger.info(f"Z AI token usage (website analysis): {usage}")
+        data = extract_json_zai(raw_text)
     except YandexGPTError as exc:
         status = exc.status_code or 502
         raise HTTPException(status_code=status, detail=exc.message) from exc
@@ -1172,7 +1173,7 @@ def list_analyses(
 
 
 @app.post("/chat", response_model=ChatResponse)
-def chat(payload: ChatRequest) -> ChatResponse:
+async def chat(payload: ChatRequest) -> ChatResponse:
     if not payload.messages:
         raise HTTPException(status_code=400, detail="messages is required")
 
@@ -1188,8 +1189,8 @@ def chat(payload: ChatRequest) -> ChatResponse:
     user_prompt = _build_chat_prompt(payload.messages, context_chunks)
 
     try:
-        raw_text, usage = call_yandex_gpt(SYSTEM_CHAT_PROMPT, user_prompt)
-        logger.info(f"YandexGPT token usage (anonymous /chat): {usage}")
+        raw_text, usage = await call_zai(SYSTEM_CHAT_PROMPT, user_prompt, model="zhipu/glm-4")
+        logger.info(f"Z AI token usage (chat with docs): {usage}")
     except YandexGPTError as exc:
         status = exc.status_code or 502
         raise HTTPException(status_code=status, detail=exc.message) from exc
@@ -1268,7 +1269,7 @@ def list_chat_messages(
 
 
 @app.post("/chat/messages", response_model=ChatMessageResponse)
-def create_chat_message(
+async def create_chat_message(
     payload: ChatMessageCreateRequest,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -1302,7 +1303,7 @@ def create_chat_message(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     # -- Web Search Agent (Hybrid RAG) --
-    search_decision = analyze_search_intent(payload.content)
+    search_decision = await analyze_search_intent_zai(payload.content)
     if search_decision.get("needs_search") and search_decision.get("search_query"):
         query = search_decision.get("search_query")
         logger.info(f"Agent triggered web search for query: {query}")
@@ -1317,8 +1318,8 @@ def create_chat_message(
     user_prompt = _build_chat_prompt(chat_messages, context_chunks)
 
     try:
-        raw_text, usage = call_yandex_gpt(SYSTEM_CHAT_PROMPT, user_prompt)
-        logger.info(f"YandexGPT token usage (session {session.id} /chat/messages): {usage}")
+        raw_text, usage = await call_zai(SYSTEM_CHAT_PROMPT, user_prompt, model="zhipu/glm-4")
+        logger.info(f"Z AI token usage (session {session.id} /chat/messages): {usage}")
     except YandexGPTError as exc:
         status = exc.status_code or 502
         raise HTTPException(status_code=status, detail=exc.message) from exc
@@ -2165,9 +2166,9 @@ def create_chat_session(
         messages=messages_response,
     )
 
-def rename_chat_session_background(session_id: int, initial_message: str):
+async def rename_chat_session_background(session_id: int, initial_message: str):
     try:
-        title = generate_chat_title(initial_message)
+        title = await generate_chat_title_zai(initial_message)
         logger.info(f"Generated title '{title}' for session {session_id}")
         
         with SessionLocal() as db:
@@ -2456,7 +2457,7 @@ def set_chat_message_feedback(
     return {"status": "ok", "feedback": msg.feedback}
 
 @app.post("/chat/sessions/{session_id}/messages", response_model=ChatMessageResponse)
-def send_chat_message(
+async def send_chat_message(
     session_id: int,
     payload: ChatMessageCreateRequest,
     background_tasks: BackgroundTasks,
@@ -2487,7 +2488,7 @@ def send_chat_message(
         background_tasks.add_task(rename_chat_session_background, session.id, payload.content)
 
     # 2. Generate Assistant Response
-    assistant_text = _generate_interviewer_response(session, db)
+    assistant_text = await _generate_interviewer_response(session, db)
 
     # 3. Save Assistant Message
     ai_msg = DbChatMessage(
@@ -2506,7 +2507,7 @@ def send_chat_message(
         created_at=ai_msg.created_at,
     )
 
-def classify_intent(user_message: str) -> list[str]:
+async def classify_intent(user_message: str) -> list[str]:
     """Router LLM: Determines which RAG collections to search based on the user's intent."""
     system_prompt = (
         "Ты — умный роутер. Определи от 1 до 2 самых подходящих категорий для вопроса пользователя.\n"
@@ -2514,8 +2515,8 @@ def classify_intent(user_message: str) -> list[str]:
         "Ответь ТОЛЬКО названиями категорий через запятую, без лишних слов."
     )
     try:
-        raw_response, usage = call_yandex_gpt(system_prompt, user_message)
-        logger.info(f"YandexGPT token usage (Router LLM): {usage}")
+        raw_response, usage = await call_zai(system_prompt, user_message, model="zhipu/glm-4")
+        logger.info(f"Z AI token usage (Router LLM): {usage}")
         valid_cats = {"pitching", "grants_and_funds", "unit_economics", "target_audience", "legal_and_taxes", "product_management", "platform_rules", "general"}
         found = [c.strip() for c in raw_response.split(",")]
         result = [c for c in found if c in valid_cats]
@@ -2524,7 +2525,7 @@ def classify_intent(user_message: str) -> list[str]:
         logger.error(f"Router LLM failed: {e}")
         return ["general"]
 
-def _generate_interviewer_response(session: ChatSession, db: Session) -> str:
+async def _generate_interviewer_response(session: ChatSession, db: Session) -> str:
     # Fetch history
     history_msgs = sorted(session.messages, key=lambda m: m.created_at)
 
@@ -2549,7 +2550,7 @@ def _generate_interviewer_response(session: ChatSession, db: Session) -> str:
     context_text = ""
     if last_user_text and len(last_user_text) > 10:
         try:
-            categories = classify_intent(last_user_text)
+            categories = await classify_intent(last_user_text)
             logger.info(f"Router LLM selected RAG categories: {categories}")
             chunks = rag.get_relevant_chunks(last_user_text, categories=categories, top_k=5)
             
@@ -2560,7 +2561,7 @@ def _generate_interviewer_response(session: ChatSession, db: Session) -> str:
                 chunks.insert(0, f"--- ИСТОРИЧЕСКИ УСПЕШНЫЕ ДИАЛОГИ (ИСПОЛЬЗУЙ КАК ПРИМЕР) ---\n" + "\n".join(successful_chats) + "\n---------------------------------------------------------------\n")
             
             # -- Web Search Agent (Hybrid RAG) --
-            search_decision = analyze_search_intent(last_user_text)
+            search_decision = await analyze_search_intent_zai(last_user_text)
             if search_decision.get("needs_search") and search_decision.get("search_query"):
                 query = search_decision.get("search_query")
                 logger.info(f"Agent triggered web search for query: {query}")
@@ -2630,8 +2631,8 @@ def _generate_interviewer_response(session: ChatSession, db: Session) -> str:
                     final_user_prompt += "\n\n[СИСТЕМНОЕ СООБЩЕНИЕ]: ЛИМИТ ВОПРОСОВ КЛИЕНТУ ИСЧЕРПАН. СЕЙЧАС ЖЕ ВЫДАЙ ФИНАЛЬНОЕ ПОДРОБНОЕ РЕЗЮМЕ/СОВЕТЫ ПО ТЕМЕ БЕЗ КАКИХ-ЛИБО ВОПРОСОВ."
 
 
-        raw_response, usage = call_yandex_gpt(system_prompt_final, final_user_prompt)
-        logger.info(f"YandexGPT token usage (background summary): {usage}")
+        raw_response, usage = await call_zai(system_prompt_final, final_user_prompt)
+        logger.info(f"Z AI token usage (background summary): {usage}")
 
         # Check if JSON
         clean_text = raw_response.strip()

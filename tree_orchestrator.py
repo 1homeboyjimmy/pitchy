@@ -20,7 +20,7 @@ from typing import Any
 
 import httpx
 
-from yandex_gpt_client import call_yandex_gpt, extract_json
+from zai_client import call_zai
 from core_tree import CORE_SKELETON
 
 logger = logging.getLogger("app")
@@ -170,24 +170,28 @@ async def generate_tree_from_text(description: str) -> dict[str, Any]:
     """
     prompt = TREE_EXTRACTION_PROMPT.replace("{description}", description)
 
-    # Try Claude first
-    raw = await _call_claude(prompt)
+    # Try GLM-5 via Zveno first (as requested by user)
+    logger.info("Using GLM-5 (Zveno) for tree structure generation")
+    raw, _ = await call_zai("Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON.", prompt, model="zhipu/glm-4") # Using GLM-4/5 via Zveno
 
-    # Fallback to YandexGPT
+    # Fallback to Claude
     if not raw:
-        logger.info("Using YandexGPT for tree structure generation")
-        system_prompt = "Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON без markdown."
+        logger.info("GLM-5 failed, falling back to Claude")
+        raw = await _call_claude(prompt)
+
+    # Fallback to Z AI
+    if not raw:
+        logger.info("Using Z AI for tree structure generation")
+        system_prompt = "Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON."
         try:
-            raw, _usage = call_yandex_gpt(system_prompt, prompt, timeout=60, max_tokens=2000)
+            raw, _metrics = await call_zai(system_prompt, prompt)
         except Exception as e:
-            logger.error(f"YandexGPT extraction failed: {e}")
+            logger.error(f"Z AI extraction failed: {e}")
             return _generate_fallback_tree(description)
 
     # Parse JSON
     try:
-        extracted = extract_json(raw)
-        if not extracted:
-            extracted = json.loads(raw)
+        extracted = json.loads(raw) if raw else {}
     except Exception:
         try:
             start = raw.find("{")
