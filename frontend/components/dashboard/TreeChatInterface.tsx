@@ -99,15 +99,16 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
       const { postTreeChatStream } = await import("@/lib/api");
       
       try {
+        const stableKey = now.getTime();
         for await (const chunk of postTreeChatStream(treeId, messageToSend, token, activeNode?.id, abortController.signal)) {
           if (chunk.type === "thought") {
             fullThoughtContent += chunk.content;
-            setThoughtLines(prev => ({ ...prev, [tempAssistantId]: fullThoughtContent }));
-            setThoughtExpanded(prev => ({ ...prev, [tempAssistantId]: true }));
+            setThoughtLines(prev => ({ ...prev, [stableKey]: fullThoughtContent }));
+            setThoughtExpanded(prev => ({ ...prev, [stableKey]: true }));
           } else if (chunk.type === "chunk") {
-            if (!thoughtTime[tempAssistantId] && fullThoughtContent) {
-                const duration = Math.round((Date.now() - now.getTime()) / 1000);
-                setThoughtTime(prev => ({ ...prev, [tempAssistantId]: duration }));
+            if (!thoughtTime[stableKey] && fullThoughtContent) {
+                const duration = Math.round((Date.now() - stableKey) / 1000);
+                setThoughtTime(prev => ({ ...prev, [stableKey]: duration }));
             }
             assistantContent += chunk.content;
             setMessages((prev) => {
@@ -253,7 +254,7 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
             </div>
           );
         })}
-        {isLoading && (
+        {isLoading && messages.length <= 1 && (
           <div className="flex gap-3">
             <div className="w-7 h-7 rounded-lg bg-pitchy-violet flex items-center justify-center shrink-0">
               <Loader2 className="w-4 h-4 text-white animate-spin" />

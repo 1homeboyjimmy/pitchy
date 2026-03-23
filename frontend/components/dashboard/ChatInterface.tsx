@@ -129,14 +129,17 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
 
             try {
                 for await (const data of sendChatMessageStream(session.id, content, token, abortController.signal)) {
+                    // Use a stable key based on the assistant message's created_at timestamp
+                    const stableKey = new Date(now).getTime();
+
                     if (data.type === "thought") {
                         fullThoughtContent += data.content;
-                        setThoughtLines(prev => ({ ...prev, [tempAssistantId]: fullThoughtContent }));
-                        setThoughtExpanded(prev => ({ ...prev, [tempAssistantId]: true }));
+                        setThoughtLines(prev => ({ ...prev, [stableKey]: fullThoughtContent }));
+                        setThoughtExpanded(prev => ({ ...prev, [stableKey]: true }));
                     } else if (data.type === "chunk") {
-                        if (!thoughtTime[tempAssistantId] && fullThoughtContent) {
+                        if (!thoughtTime[stableKey] && fullThoughtContent) {
                             const duration = Math.round((Date.now() - startTime) / 1000);
-                            setThoughtTime(prev => ({ ...prev, [tempAssistantId]: duration }));
+                            setThoughtTime(prev => ({ ...prev, [stableKey]: duration }));
                         }
                         fullAssistantContent += data.content;
                         setMessages((prev) => 
@@ -156,14 +159,21 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
             const updatedSession = await getChatSession(session.id, token);
             onUpdate(updatedSession);
 
-            // Reconcile: Don't lose the streamed content if DB hasn't caught up yet
+            // Reconcile: Don't lose the streamed content or thoughts
             setMessages((prev) => {
                 const dbMsgs = updatedSession.messages;
+                // Check if the DB already has our last assistant message
                 const lastLocal = prev[prev.length - 1];
-                const lastDb = dbMsgs[dbMsgs.length - 1];
+                const hasLastAssistantInDb = dbMsgs.some(m => m.role === "assistant" && (m.content === fullAssistantContent || (fullAssistantContent.length > 0 && m.content.length > 0)));
 
+                if (!hasLastAssistantInDb && lastLocal && lastLocal.role === "assistant") {
+                    // DB is definitely lagging, keep our local version
+                    return [...dbMsgs, lastLocal];
+                }
+                
+                // If DB has it but content is shorter, fix it
+                const lastDb = dbMsgs[dbMsgs.length - 1];
                 if (lastLocal && lastLocal.role === "assistant" && lastDb?.role === "assistant") {
-                    // If local content is longer, it means DB save is still in progress
                     if (fullAssistantContent.length > lastDb.content.length) {
                         return [...dbMsgs.slice(0, -1), { ...lastDb, content: fullAssistantContent }];
                     }
@@ -211,8 +221,9 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                 )}
 
                 {messages.map((msg, idx) => {
+                    const stableKey = new Date(msg.created_at).getTime();
                     const isLastAssistant = msg.role === "assistant" && idx === messages.length - 1;
-                    const hasThoughts = thoughtLines[msg.id] !== undefined;
+                    const hasThoughts = thoughtLines[stableKey] !== undefined;
                     const isThinkingOnly = msg.role === "assistant" && msg.content === "" && hasThoughts;
 
                     return (
@@ -228,24 +239,24 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
 
                             <div className={`max-w-[85%] flex flex-col gap-2 ${msg.role === "user" ? "items-end" : "items-start"}`}>
                                 {hasThoughts && (
-                                    <div className="w-full max-w-[500px] bg-white/[0.03] rounded-xl border border-white/10 overflow-hidden self-start">
+                                    <div className="w-full max-w-[600px] bg-white/[0.03] rounded-xl border border-white/10 overflow-hidden self-start">
                                         <button 
-                                            onClick={() => setThoughtExpanded(prev => ({ ...prev, [msg.id]: !prev[msg.id] }))}
+                                            onClick={() => setThoughtExpanded(prev => ({ ...prev, [stableKey]: !prev[stableKey] }))}
                                             className="w-full flex items-center gap-2 px-3 py-2 text-[11px] text-white/40 hover:text-white/60 transition-colors bg-white/[0.02] border-b border-white/5"
                                         >
-                                            <Atom className={`w-3.5 h-3.5 ${isLoading && isLastAssistant && !thoughtTime[msg.id] ? "animate-spin" : "text-pitchy-violet"}`} />
+                                            <Atom className={`w-3.5 h-3.5 ${isLoading && isLastAssistant && !thoughtTime[stableKey] ? "animate-spin" : "text-pitchy-violet"}`} />
                                             <span className="font-medium">
-                                                {thoughtTime[msg.id] ? `Размышления (${thoughtTime[msg.id]} сек)` : "Pitchy рассуждает..."}
+                                                {thoughtTime[stableKey] ? `Размышления (${thoughtTime[stableKey]} сек)` : "Pitchy рассуждает..."}
                                             </span>
-                                            {thoughtExpanded[msg.id] ? <ChevronUp className="w-3.5 h-3.5 ml-auto opacity-50" /> : <ChevronDown className="w-3.5 h-3.5 ml-auto opacity-50" />}
+                                            {thoughtExpanded[stableKey] ? <ChevronUp className="w-3.5 h-3.5 ml-auto opacity-50" /> : <ChevronDown className="w-3.5 h-3.5 ml-auto opacity-50" />}
                                         </button>
                                         <motion.div
                                             initial={false}
-                                            animate={{ height: thoughtExpanded[msg.id] ? "auto" : 0 }}
+                                            animate={{ height: thoughtExpanded[stableKey] ? "auto" : 0 }}
                                             className="overflow-hidden"
                                         >
                                             <div className="p-3 text-[13px] leading-relaxed text-white/50 italic border-l-2 border-pitchy-violet/30 ml-2 my-2 bg-white/[0.01]">
-                                                {thoughtLines[msg.id]}
+                                                {thoughtLines[stableKey]}
                                             </div>
                                         </motion.div>
                                     </div>
@@ -360,7 +371,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                 }
 
                 {
-                    isLoading && (
+                    isLoading && messages.length <= 1 && (
                         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-4">
                             <div className="w-8 h-8 rounded-full bg-pitchy-violet flex items-center justify-center flex-shrink-0">
                                 <Loader2 className="w-5 h-5 text-white animate-spin" />
