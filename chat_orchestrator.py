@@ -18,8 +18,8 @@ INTENT_RECOGNITION_PROMPT = """Ты — диспетчер запросов дл
 Выдели один из следующих интентов:
 1. 'finance' — расчет юнит-экономики, LTV, CAC, выручки, объемов рынка (TAM/SAM/SOM).
 2. 'search' — поиск внешней информации, конкурентов на рынке, трендов, новостей.
-3. 'tree' — изменение структуры проекта, добавление новых гипотез, пересмотр бизнес-модели.
-4. 'chat' — общие вопросы, объяснение терминов, дружелюбное общение или уточнение деталей.
+3. 'tree' — изменение структуры проекта, добавление новых гипотез, пересмотр бизнес-модели, ПРОПУСК текущего шага или переход к следующему.
+4. 'chat' — общие вопросы, объяснение терминов, дружелюбное общение или уточнение деталей (с учетом активного узла).
 
 Активный узел: {node_label} (тип: {node_type}, описание: {node_desc})
 История чата (последние сообщения):
@@ -130,12 +130,14 @@ class ChatOrchestrator:
             model_used = "YandexGPT (Юрист)"
             reply = await self._handle_legal(user_message)
         elif intent['intent'] == "tree":
-            model_used = "Claude"
-            reply, enriched_data = await self._handle_tree_edit(user_message, state)
+            model_used = "RouterAI (GLM-5)"
+            reply, enriched_data = await self._handle_tree_edit(user_message, state, active_node_id)
         elif intent['intent'] == "chat": # chat
             model_used = "RouterAI (GLM-5)"
             history_str = "\n".join([f"{m['role']}: {m['content']}" for m in history[-5:]])
-            reply = await self._handle_chat(user_message, history_str)
+            # Get active node info for chat context
+            active_node = next((n for n in state.get("nodes", []) if n["id"] == active_node_id), None)
+            reply = await self._handle_chat(user_message, history_str, active_node)
         else:
             # Fallback for unhandled intents
             model_used = "RouterAI (GLM-5)"
@@ -282,40 +284,69 @@ class ChatOrchestrator:
             logger.error(f"YandexGPT legal call failed: {e}")
             return "Извините, не удалось получить юридическую консультацию."
 
-    async def _handle_tree_edit(self, user_message: str, state: dict) -> tuple[str, dict]:
+    async def _handle_tree_edit(self, user_message: str, state: dict, active_node_id: str = None) -> tuple[str, dict]:
         """Handle tree modifications via RouterAI (GLM-5)."""
-        prompt = f"Пользователь хочет изменить дерево проекта. Текущее дерево: {json.dumps(state['nodes'])}. Запрос: {user_message}. Твоя задача — извлечь изменения и вернуть JSON только с измененными полями в формате extracted_data: {{ ключ: значение }}."
+        active_node = next((n for n in state.get("nodes", []) if n["id"] == active_node_id), None)
+        node_context = f"Активный узел: {active_node['label']} (id: {active_node_id})" if active_node else ""
+        
+        prompt = (
+            f"Пользователь хочет изменить дерево проекта. {node_context}. "
+            f"Текущая структура: {json.dumps(state['nodes'])}. "
+            f"Запрос: {user_message}. "
+            "Твоя задача — извлечь изменения. Если пользователь хочет ПРОПУСТИТЬ шаг, верни {'node_id': '...', 'status': 'skipped'}. "
+            "Если пользователь дает данные, верни их в формате extracted_data: { field_name: value }."
+            "Верни СТРОГО JSON."
+        )
         raw, _ = await call_routerai("Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON.", prompt)
         extracted = self._extract_json_block(raw)
-        return "Я обновил структуру проекта на основе ваших пожеланий.", extracted.get("extracted_data", {})
+        return "Я обновил структуру проекта на основе ваших пожеланий.", extracted
 
-    async def _handle_chat(self, user_message: str, chat_history: str = "") -> str:
+    async def _handle_chat(self, user_message: str, chat_history: str = "", active_node: dict = None) -> str:
         """Handle general chat via RouterAI (GLM-5)."""
+        node_context = ""
+        if active_node:
+            node_context = f"Ты сейчас помогаешь пользователю в контексте узла '{active_node.get('label')}' (описание: {active_node.get('data', {}).get('description')}). "
+        
+        system_prompt = f"Ты — ассистент платформы Pitchy. {node_context}Отвечай на русском языке."
         prompt = f"История чата:\n{chat_history}\n\nПользователь: {user_message}"
-        reply, json_metrics = await call_routerai("Ты — ассистент платформы Pitchy. Отвечай на русском языке.", prompt)
+        reply, json_metrics = await call_routerai(system_prompt, prompt)
         
         if json_metrics:
             # Assuming _save_metrics_from_json is defined elsewhere or will be added
             # self._save_metrics_from_json(json_metrics) 
             pass # Placeholder as _save_metrics_from_json is not provided in the diff
             
-        return reply or "Извините, Z AI сейчас недоступен."
+        return reply or "Извините, сейчас я не могу ответить."
 
     def _merge_ai_data_to_state(self, state: dict, enriched_data: dict) -> dict:
         """Update existing nodes with new values from AI."""
-        # Reuse _normalize_tree_data-like logic
         nodes = state["nodes"]
+        # Handle direct node status updates (e.g. skipped)
+        if "node_id" in enriched_data and "status" in enriched_data:
+            target_id = enriched_data["node_id"]
+            for node in nodes:
+                if node["id"] == target_id:
+                    node["status"] = enriched_data["status"]
+                    break
+
+        # Handle field-level extraction
+        data_to_map = enriched_data.get("extracted_data", {})
+        if not data_to_map and not enriched_data.get("node_id"):
+            # Fallback if AI returned flat dict
+            data_to_map = enriched_data
+
         for node in nodes:
             inputs = node.get("data", {}).get("inputs", [])
             for inp in inputs:
                 field = inp.get("field")
-                if field in enriched_data:
-                    inp["value"] = enriched_data[field]
-                    inp["status"] = "completed"
+                if field in data_to_map:
+                    inp["value"] = data_to_map[field]
+                    if node["status"] != "skipped":
+                        inp["status"] = "completed"
         
         # Recalculate readiness
         total = len(nodes)
-        completed = sum(1 for n in nodes if n.get("status") == "completed")
+        completed = sum(1 for n in nodes if n.get("status") in ["completed", "skipped"])
         state["readiness_index"] = int((completed / max(total, 1)) * 100)
         
         return state
