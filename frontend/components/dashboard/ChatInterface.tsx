@@ -117,35 +117,53 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
 
             // Add placeholder assistant message
             const now = new Date();
-            const tempAssistantId = now.getTime();
-            setMessages((prev) => [...prev, {
-                id: tempAssistantId,
-                role: "assistant",
-                content: "",
-                created_at: now.toISOString(),
-            }]);
+            const userClientId = crypto.randomUUID();
+            const assistantClientId = crypto.randomUUID();
 
-            let fullAssistantContent = "";
+            setMessages((prev) => [
+                ...prev,
+                {
+                    id: Date.now(),
+                    role: "user",
+                    content,
+                    created_at: now.toISOString(),
+                    client_id: userClientId
+                },
+                {
+                    id: now.getTime(), // Temporary numeric-like ID for React key, but we'll use client_id for reconciliation
+                    role: "assistant",
+                    content: "",
+                    created_at: now.toISOString(),
+                    client_id: assistantClientId,
+                    thoughtExpanded: true
+                },
+            ]);
+
+            let assistantContent = "";
             let fullThoughtContent = "";
-            const startTime = Date.now();
+            const startTime = now.getTime();
             const { sendChatMessageStream, getChatSession } = await import("@/lib/api");
 
             try {
-                for await (const data of sendChatMessageStream(session.id, content, token, abortController.signal)) {
-                    if (data.type === "thought") {
-                        fullThoughtContent += data.content;
-                        setMessages((prev) => 
-                            prev.map(m => m.id === tempAssistantId ? { ...m, thoughts: fullThoughtContent, thoughtExpanded: true } : m)
-                        );
-                    } else if (data.type === "chunk") {
-                        let durationUpdate = {};
-                        if (!fullAssistantContent && fullThoughtContent) {
+                for await (const chunk of sendChatMessageStream(session.id, content, token, abortController.signal, userClientId, assistantClientId)) {
+                    if (chunk.type === "thought") {
+                        fullThoughtContent += chunk.content;
+                        setMessages(prev => prev.map(m =>
+                            m.client_id === assistantClientId ? { ...m, thoughts: fullThoughtContent } : m
+                        ));
+                    } else if (chunk.type === "chunk") {
+                        let thoughtUpdate = {};
+                        if (!assistantContent && fullThoughtContent) {
                             const duration = Math.round((Date.now() - startTime) / 1000);
-                            durationUpdate = { thoughtTime: duration };
+                            thoughtUpdate = { thoughtTime: duration };
                         }
-                        fullAssistantContent += data.content;
-                        setMessages((prev) => 
-                            prev.map(m => m.id === tempAssistantId ? { ...m, content: fullAssistantContent, ...durationUpdate } : m)
+                        assistantContent += chunk.content;
+                        setMessages((prev) =>
+                            prev.map(m => m.client_id === assistantClientId ? { ...m, content: assistantContent, ...thoughtUpdate } : m)
+                        );
+                    } else if (chunk.type === "metadata") {
+                        setMessages((prev) =>
+                            prev.map(m => m.client_id === assistantClientId ? { ...m, model_used: chunk.model } : m)
                         );
                     }
                 }
@@ -164,27 +182,22 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
             // Reconcile: Don't lose the streamed content or thoughts
             setMessages((prev) => {
                 const dbMsgs = updatedSession.messages as ExtendedChatMessage[];
-                const lastLocal = prev[prev.length - 1];
-                
-                // Find our local streaming message to copy its thoughts
-                const localAssistant = prev.find(m => m.id === tempAssistantId);
-                
-                const hasLastAssistantInDb = dbMsgs.some(m => m.role === "assistant" && (m.content === fullAssistantContent || (fullAssistantContent.length > 0 && m.content.length > 0)));
 
-                let finalMsgs = dbMsgs;
-                if (!hasLastAssistantInDb && lastLocal && lastLocal.role === "assistant") {
-                    finalMsgs = [...dbMsgs, lastLocal];
-                } else {
-                    const lastDb = finalMsgs[finalMsgs.length - 1];
-                    if (lastLocal && lastLocal.role === "assistant" && lastDb?.role === "assistant") {
-                        if (fullAssistantContent.length > lastDb.content.length) {
-                            finalMsgs = [...finalMsgs.slice(0, -1), { ...lastDb, content: fullAssistantContent, thoughts: localAssistant?.thoughts, thoughtTime: localAssistant?.thoughtTime, thoughtExpanded: localAssistant?.thoughtExpanded }];
-                        } else {
-                            finalMsgs = [...finalMsgs.slice(0, -1), { ...lastDb, thoughts: localAssistant?.thoughts, thoughtTime: localAssistant?.thoughtTime, thoughtExpanded: localAssistant?.thoughtExpanded }];
-                        }
+                // Match by client_id for absolute certainty
+                return dbMsgs.map(dbM => {
+                    const localMatch = prev.find(lm => lm.client_id === dbM.client_id);
+                    if (localMatch) {
+                        return {
+                            ...dbM,
+                            thoughts: localMatch.thoughts || dbM.thoughts,
+                            thoughtTime: localMatch.thoughtTime || dbM.thoughtTime,
+                            thoughtExpanded: localMatch.thoughtExpanded !== undefined ? localMatch.thoughtExpanded : dbM.thoughtExpanded,
+                            // Priority Merge for content: if local has more content (e.g., still streaming), keep it
+                            content: (localMatch.content?.length || 0) > (dbM.content?.length || 0) ? localMatch.content : dbM.content
+                        };
                     }
-                }
-                return finalMsgs;
+                    return dbM;
+                });
             });
 
         } catch (error) {

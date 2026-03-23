@@ -243,7 +243,7 @@ async def tree_chat(
     orchestrator = ChatOrchestrator(tree_id, user.id, db)
     
     return StreamingResponse(
-        orchestrator.process_message(payload.message, payload.active_node_id),
+        orchestrator.process_message(payload.message, payload.active_node_id, client_id=payload.client_id, assistant_client_id=payload.assistant_client_id),
         media_type="text/event-stream"
     )
 

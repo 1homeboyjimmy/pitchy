@@ -120,6 +120,7 @@ class ChatMessageResponse(BaseModel):
     role: str
     content: str
     created_at: datetime
+    client_id: str | None = None
 
     class Config:
         from_attributes = True
@@ -133,6 +134,8 @@ class ChatSessionDetailResponse(ChatSessionResponse):
 class ChatMessageCreateRequest(BaseModel):
     # session_id passed in path usually, but can be here too
     content: str = Field(..., min_length=1)
+    client_id: str | None = None
+    assistant_client_id: str | None = None
 
 
 class UserUpdateRequest(BaseModel):
@@ -296,6 +299,8 @@ class TreeNodeUpdateRequest(BaseModel):
 class TreeChatRequest(BaseModel):
     message: str = Field(..., min_length=1)
     active_node_id: str | None = None
+    client_id: str | None = None
+    assistant_client_id: str | None = None
 
 
 class TreeChatResponse(BaseModel):

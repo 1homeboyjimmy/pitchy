@@ -16,6 +16,7 @@ interface Message {
   thoughts?: string;
   thoughtTime?: number;
   thoughtExpanded?: boolean;
+  client_id?: string;
 }
 
 interface TreeChatInterfaceProps {
@@ -66,10 +67,14 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
     const messageToSend = overrideMessage || input;
     if (!messageToSend.trim() || isLoading) return;
 
+    const userClientId = crypto.randomUUID();
+    const assistantClientId = crypto.randomUUID();
+
     const userMsg: Message = {
       role: "user",
       content: messageToSend,
       timestamp: new Date().toISOString(),
+      client_id: userClientId
     };
 
     setMessages((prev) => [...prev, userMsg]);
@@ -93,18 +98,20 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
       setMessages((prev) => [...prev, {
         role: "assistant",
         content: "",
-        timestamp: now.toISOString()
+        timestamp: now.toISOString(),
+        client_id: assistantClientId,
+        thoughtExpanded: true
       }]);
 
       const { postTreeChatStream } = await import("@/lib/api");
       
       try {
         const stableKey = now.getTime();
-        for await (const chunk of postTreeChatStream(treeId, messageToSend, token, activeNode?.id, abortController.signal)) {
+        for await (const chunk of postTreeChatStream(treeId, messageToSend, token, activeNode?.id, abortController.signal, userClientId, assistantClientId)) {
           if (chunk.type === "thought") {
             fullThoughtContent += chunk.content;
-            setMessages(prev => prev.map((m, i) => 
-               i === prev.length - 1 ? { ...m, thoughts: fullThoughtContent, thoughtExpanded: true } : m
+            setMessages(prev => prev.map(m => 
+               m.client_id === assistantClientId ? { ...m, thoughts: fullThoughtContent } : m
             ));
           } else if (chunk.type === "chunk") {
             let durationUpdate = {};
@@ -113,23 +120,16 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
                 durationUpdate = { thoughtTime: duration };
             }
             assistantContent += chunk.content;
-            setMessages((prev) => {
-              const last = prev[prev.length - 1];
-              if (last.role === "assistant") {
-                return [...prev.slice(0, -1), { ...last, content: assistantContent, ...durationUpdate }];
-              }
-              return prev;
-            });
+            setMessages((prev) => 
+              prev.map(m => m.client_id === assistantClientId ? { ...m, content: assistantContent, ...durationUpdate } : m)
+            );
           }
- else if (chunk.type === "metadata") {
-            setMessages((prev) => {
-              const last = prev[prev.length - 1];
-              if (last.role === "assistant") {
-                return [...prev.slice(0, -1), { ...last, model_used: chunk.model }];
-              }
-              return prev;
-            });
-          } else if (chunk.type === "tree_update") {
+          else if (chunk.type === "metadata") {
+            setMessages((prev) => 
+               prev.map(m => m.client_id === assistantClientId ? { ...m, model_used: chunk.model } : m)
+            );
+          }
+ else if (chunk.type === "tree_update") {
             onUpdateTree(chunk.data.nodes, chunk.data.readiness_index);
           } else if (chunk.type === "final") {
             if (chunk.hints) setHints(chunk.hints);

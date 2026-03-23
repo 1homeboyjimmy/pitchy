@@ -100,13 +100,14 @@ class ChatOrchestrator:
             return [json.loads(m) for m in history][::-1] # Reverse to chronological
         return []
 
-    async def add_chat_message(self, role: str, content: str, node_id: Optional[str] = None, model_used: str = None):
+    async def add_chat_message(self, role: str, content: str, node_id: Optional[str] = None, model_used: str = None, client_id: str = None):
         """Add message to Redis list."""
         msg = {
             "role": role,
             "content": content,
             "model_used": model_used,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
+            "client_id": client_id
         }
         if self.redis:
             chat_key = self._get_chat_key(node_id)
@@ -166,7 +167,7 @@ class ChatOrchestrator:
         if buffer:
             yield json.dumps({"type": "thought" if inside_thought else "chunk", "content": buffer}) + "\n"
 
-    async def process_message(self, user_message: str, active_node_id: str = None):
+    async def process_message(self, user_message: str, active_node_id: str = None, client_id: str = None, assistant_client_id: str = None):
         """Main entry point for chat orchestration. Yields JSON chunks."""
         state = await self.load_state()
         history = await self.get_chat_history(node_id=active_node_id)
@@ -222,8 +223,8 @@ class ChatOrchestrator:
             yield json.dumps({"type": "tree_update", "data": state}) + "\n"
 
         # 4. Finalize
-        await self.add_chat_message("user", user_message, node_id=active_node_id)
-        await self.add_chat_message("assistant", reply_full, node_id=active_node_id, model_used=model_used)
+        await self.add_chat_message("user", user_message, node_id=active_node_id, client_id=client_id)
+        await self.add_chat_message("assistant", reply_full, node_id=active_node_id, model_used=model_used, client_id=assistant_client_id)
 
         # Final metadata
         yield json.dumps({

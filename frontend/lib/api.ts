@@ -199,6 +199,7 @@ export type ChatMessageResponse = {
   content: string;
   created_at: string;
   feedback?: number;
+  client_id?: string;
 };
 
 export async function getChatSessions(token: string): Promise<ChatSessionResponse[]> {
@@ -243,7 +244,7 @@ export async function sendChatMessage(sessionId: number, content: string, token:
   return postAuthJson<ChatMessageResponse>(`/chat/sessions/${sessionId}/messages`, { content }, token);
 }
 
-export async function* sendChatMessageStream(sessionId: number, content: string, token: string, signal?: AbortSignal) {
+export async function* sendChatMessageStream(sessionId: number, content: string, token: string, signal?: AbortSignal, clientId?: string, assistantClientId?: string) {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token && token !== COOKIE_SESSION_MARKER) {
     headers.Authorization = `Bearer ${token}`;
@@ -251,7 +252,7 @@ export async function* sendChatMessageStream(sessionId: number, content: string,
   const res = await fetch(`${API_BASE}/chat/sessions/${sessionId}/messages`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({ content, client_id: clientId, assistant_client_id: assistantClientId }),
     credentials: "include",
     signal
   });
@@ -405,9 +406,9 @@ export async function getTreeChatHistory(
   treeId: number, 
   token: string, 
   nodeId?: string
-): Promise<{ history: { role: string; content: string; model_used?: string; timestamp: string }[] }> {
+): Promise<{ history: { role: string; content: string; model_used?: string; timestamp: string; client_id?: string }[] }> {
   const url = nodeId ? `/tree/${treeId}/history?node_id=${nodeId}` : `/tree/${treeId}/history`;
-  return getAuthJson<{ history: { role: string; content: string; model_used?: string; timestamp: string }[] }>(url, token);
+  return getAuthJson<{ history: { role: string; content: string; model_used?: string; timestamp: string; client_id?: string }[] }>(url, token);
 }
 
 
@@ -420,7 +421,9 @@ export async function* postTreeChatStream(
   message: string,
   token: string,
   activeNodeId?: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  clientId?: string,
+  assistantClientId?: string
 ) {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token && token !== COOKIE_SESSION_MARKER) {
@@ -429,7 +432,7 @@ export async function* postTreeChatStream(
   const res = await fetch(`${API_BASE}/tree/${treeId}/chat`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ message, active_node_id: activeNodeId }),
+    body: JSON.stringify({ message, active_node_id: activeNodeId, client_id: clientId, assistant_client_id: assistantClientId }),
     credentials: "include",
     signal
   });

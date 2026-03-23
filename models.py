@@ -130,6 +130,7 @@ class ChatMessage(Base):
     content: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     feedback: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    client_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     session: Mapped["ChatSession"] = relationship(back_populates="messages")
 
@@ -185,5 +186,6 @@ class TreeChatHistory(Base):
     role: Mapped[str] = mapped_column(String(30))  # "user", "assistant"
     model_used: Mapped[str | None] = mapped_column(String(50), nullable=True)
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    client_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     project: Mapped["ProjectTree"] = relationship()

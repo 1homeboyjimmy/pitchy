@@ -1220,12 +1220,12 @@ async def parse_thought_generator(generator):
     if buffer:
         yield json.dumps({"type": "thought" if inside_thought else "chunk", "content": buffer}) + "\n"
 
-async def save_assistant_message(session_id: int, content: str):
+async def save_assistant_message(session_id: int, content: str, client_id: str | None = None):
     """Background task to save streamed assistant message to DB."""
     from db import SessionLocal
     from models import ChatMessage as DbChatMessage
     with SessionLocal() as db:
-        msg = DbChatMessage(session_id=session_id, role="assistant", content=content)
+        msg = DbChatMessage(session_id=session_id, role="assistant", content=content, client_id=client_id)
         db.add(msg)
         db.commit()
 
@@ -1329,7 +1329,7 @@ def list_chat_messages(
     )
     return [
         ChatMessageResponse(
-            id=m.id, role=m.role, content=m.content, created_at=m.created_at
+            id=m.id, role=m.role, content=m.content, created_at=m.created_at, client_id=m.client_id
         )
         for m in messages
     ]
@@ -1351,7 +1351,7 @@ async def create_chat_message(
         raise HTTPException(status_code=404, detail="Chat session not found")
 
     user_message = DbChatMessage(
-        session_id=session.id, role="user", content=payload.content
+        session_id=session.id, role="user", content=payload.content, client_id=payload.client_id
     )
     db.add(user_message)
     db.commit()
@@ -1404,7 +1404,7 @@ async def create_chat_message(
         finally:
             if full_text.strip() and background_tasks:
                 logger.info(f"Stream finished. Collected {len(full_text)} chars.")
-                background_tasks.add_task(save_assistant_message, session.id, full_text.strip())
+                background_tasks.add_task(save_assistant_message, session.id, full_text.strip(), payload.assistant_client_id)
 
     return StreamingResponse(session_chat_generator(), media_type="text/event-stream")
 
