@@ -6,6 +6,9 @@ import traceback
 from typing import Optional, Tuple, Dict, Any
 
 logger = logging.getLogger("app")
+print("ROUTERAI_CLIENT_LOADED")
+
+__all__ = ["call_routerai", "stream_routerai"]
 
 async def call_routerai(system_prompt: str, user_message: str, model: str = "z-ai/glm-5") -> Tuple[Optional[str], Optional[str]]:
     """
