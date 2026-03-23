@@ -186,62 +186,73 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
 
       {/* Chat Area */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
-        {messages.map((msg, idx) => (
-          <div key={idx} className={`flex gap-3 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
-            <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${msg.role === "user" ? "bg-white/10" : "bg-pitchy-violet"}`}>
-              {msg.role === "user" ? <User className="w-4 h-4 text-white/70" /> : <Bot className="w-4 h-4 text-white" />}
-            </div>
-            <div className={`max-w-[85%] p-3 rounded-2xl text-sm leading-relaxed ${
-              msg.role === "user" 
-                ? "bg-white/5 text-white/90 border border-white/10 rounded-tr-sm" 
-                : "bg-pitchy-violet/5 text-white/90 border border-pitchy-violet/20 rounded-tl-sm relative"
-            }`}>
-              <div className="prose prose-invert prose-sm max-w-none">
-                {thoughtLines[new Date(msg.timestamp).getTime()] && (
-                  <div className="mb-3 bg-white/5 rounded-xl border border-white/10 overflow-hidden">
+        {messages.map((msg, idx) => {
+          const msgTimestamp = new Date(msg.timestamp).getTime();
+          const hasThoughts = thoughtLines[msgTimestamp] !== undefined;
+          const isThinkingOnly = msg.role === "assistant" && msg.content === "" && hasThoughts;
+          const isLastAssistant = msg.role === "assistant" && idx === messages.length - 1;
+
+          return (
+            <div key={idx} className={`flex gap-3 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+              <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${msg.role === "user" ? "bg-white/10" : "bg-pitchy-violet"}`}>
+                {msg.role === "user" ? <User className="w-4 h-4 text-white/70" /> : <Bot className="w-4 h-4 text-white" />}
+              </div>
+              <div className={`max-w-[90%] flex flex-col gap-2 ${msg.role === "user" ? "items-end" : "items-start"}`}>
+                {hasThoughts && (
+                  <div className="w-full bg-white/[0.03] rounded-xl border border-white/10 overflow-hidden self-start">
                     <button 
                         onClick={() => {
-                          const key = new Date(msg.timestamp).getTime();
-                          setThoughtExpanded(prev => ({ ...prev, [key]: !prev[key] }));
+                          setThoughtExpanded(prev => ({ ...prev, [msgTimestamp]: !prev[msgTimestamp] }));
                         }}
-                        className="w-full flex items-center gap-2 px-3 py-1.5 text-[10px] text-white/30 hover:text-white/50 transition-colors border-b border-white/5"
+                        className="w-full flex items-center gap-2 px-3 py-1.5 text-[10px] text-white/30 hover:text-white/50 transition-colors bg-white/[0.02] border-b border-white/5"
                     >
-                        <Atom className={`w-3 h-3 ${isLoading && msg.content === "" ? "animate-spin" : ""}`} />
-                        <span>
-                            {thoughtTime[new Date(msg.timestamp).getTime()] ? `Думал ${thoughtTime[new Date(msg.timestamp).getTime()]} сек.` : "Размышление..."}
+                        <Atom className={`w-3 h-3 ${isLoading && isLastAssistant && !thoughtTime[msgTimestamp] ? "animate-spin" : "text-pitchy-violet"}`} />
+                        <span className="font-medium uppercase tracking-wider">
+                            {thoughtTime[msgTimestamp] ? `Размышления (${thoughtTime[msgTimestamp]} сек)` : "Pitchy рассуждает..."}
                         </span>
-                        {thoughtExpanded[new Date(msg.timestamp).getTime()] ? <ChevronUp className="w-3 h-3 ml-auto" /> : <ChevronDown className="w-3 h-3 ml-auto" />}
+                        {thoughtExpanded[msgTimestamp] ? <ChevronUp className="w-3 h-3 ml-auto opacity-50" /> : <ChevronDown className="w-3 h-3 ml-auto opacity-50" />}
                     </button>
                     <motion.div
                         initial={false}
-                        animate={{ height: thoughtExpanded[new Date(msg.timestamp).getTime()] ? "auto" : 0 }}
+                        animate={{ height: thoughtExpanded[msgTimestamp] ? "auto" : 0 }}
                         className="overflow-hidden"
                     >
-                        <div className="p-2 text-xs text-white/40 italic border-l border-white/10 ml-1.5 my-1.5">
-                            {thoughtLines[new Date(msg.timestamp).getTime()]}
+                        <div className="p-2.5 text-[12px] leading-relaxed text-white/40 italic border-l-2 border-pitchy-violet/30 ml-2 my-1.5 bg-white/[0.01]">
+                            {thoughtLines[msgTimestamp]}
                         </div>
                     </motion.div>
                   </div>
                 )}
-                <ReactMarkdown 
-                  remarkPlugins={[remarkGfm]}
-                  components={{
-                    table: ({...props}) => (
-                      <div className="my-3 overflow-x-auto rounded-xl border border-white/10 bg-white/5">
-                        <table className="w-full text-left border-collapse" {...props} />
-                      </div>
-                    ),
-                    thead: ({...props}) => <thead className="bg-white/10" {...props} />,
-                    th: ({...props}) => <th className="p-2 text-[11px] font-bold text-pitchy-cyan-light border-b border-white/10 uppercase tracking-wider" {...props} />,
-                    td: ({...props}) => <td className="p-2 text-[12px] text-white/80 border-b border-white/5 last:border-0" {...props} />,
-                  }}
-                >
-                  {msg.content}
-                </ReactMarkdown>
+
+                {!isThinkingOnly && (
+                  <div className={`p-3 rounded-2xl text-sm leading-relaxed ${
+                    msg.role === "user" 
+                      ? "bg-white/5 text-white/90 border border-white/10 rounded-tr-sm" 
+                      : "bg-pitchy-violet/5 text-white/90 border border-pitchy-violet/20 rounded-tl-sm relative"
+                  }`}>
+                    <div className="prose prose-invert prose-sm max-w-none">
+                      <ReactMarkdown 
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          table: ({...props}) => (
+                            <div className="my-3 overflow-x-auto rounded-xl border border-white/10 bg-white/5">
+                              <table className="w-full text-left border-collapse" {...props} />
+                            </div>
+                          ),
+                          thead: ({...props}) => <thead className="bg-white/10" {...props} />,
+                          th: ({...props}) => <th className="p-2 text-[11px] font-bold text-pitchy-cyan-light border-b border-white/10 uppercase tracking-wider" {...props} />,
+                          td: ({...props}) => <td className="p-2 text-[12px] text-white/80 border-b border-white/5 last:border-0" {...props} />,
+                        }}
+                      >
+                        {msg.content}
+                      </ReactMarkdown>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         {isLoading && (
           <div className="flex gap-3">
             <div className="w-7 h-7 rounded-lg bg-pitchy-violet flex items-center justify-center shrink-0">

@@ -155,7 +155,21 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
             // Fetch updated session to check for analysis or new message IDs
             const updatedSession = await getChatSession(session.id, token);
             onUpdate(updatedSession);
-            setMessages(updatedSession.messages);
+
+            // Reconcile: Don't lose the streamed content if DB hasn't caught up yet
+            setMessages((prev) => {
+                const dbMsgs = updatedSession.messages;
+                const lastLocal = prev[prev.length - 1];
+                const lastDb = dbMsgs[dbMsgs.length - 1];
+
+                if (lastLocal && lastLocal.role === "assistant" && lastDb?.role === "assistant") {
+                    // If local content is longer, it means DB save is still in progress
+                    if (fullAssistantContent.length > lastDb.content.length) {
+                        return [...dbMsgs.slice(0, -1), { ...lastDb, content: fullAssistantContent }];
+                    }
+                }
+                return dbMsgs;
+            });
 
         } catch (error) {
             console.error(error);
@@ -196,91 +210,101 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                     </div>
                 )}
 
-                {messages.map((msg, idx) => (
-                    <motion.div
-                        key={msg.id === -1 ? `temp-${idx}` : msg.id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className={`flex gap-4 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}
-                    >
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${msg.role === "user" ? "bg-white/10" : "bg-pitchy-violet"
-                            }`}>
-                            {msg.role === "user" ? <User className="w-5 h-5 text-white" /> : <Bot className="w-5 h-5 text-white" />}
-                        </div>
+                {messages.map((msg, idx) => {
+                    const isLastAssistant = msg.role === "assistant" && idx === messages.length - 1;
+                    const hasThoughts = thoughtLines[msg.id] !== undefined;
+                    const isThinkingOnly = msg.role === "assistant" && msg.content === "" && hasThoughts;
 
-                        <div className={`max-w-[80%] rounded-2xl p-4 ${msg.role === "user"
-                            ? "bg-white/10 text-white rounded-tr-sm"
-                            : "bg-pitchy-violet/10 border border-pitchy-violet/20 text-white rounded-tl-sm"
-                            }`}>
-                            <div className="text-sm sm:text-base leading-[1.7] md:leading-[1.8] text-white/90 [&>p]:mb-4 [&>p:last-child]:mb-0 [&>ul]:list-disc [&>ul]:pl-6 [&>ul]:mb-4 [&>ul>li]:mb-2 [&>ul>li]:pl-1 [&>ol]:list-decimal [&>ol]:pl-6 [&>ol]:mb-4 [&>ol>li]:mb-2 [&>ol>li]:pl-1 [&>h2]:text-xl [&>h2]:font-bold [&>h2]:text-pitchy-cyan-light [&>h2]:mt-8 [&>h2]:mb-4 [&>h3]:text-lg [&>h3]:font-bold [&>h3]:text-white [&>h3]:mt-6 [&>h3]:mb-3 [&>strong]:text-white [&>strong]:font-semibold break-words">
-                                {thoughtLines[msg.id] && (
-                                    <div className="mb-4 bg-white/5 rounded-xl border border-white/10 overflow-hidden">
+                    return (
+                        <motion.div
+                            key={msg.id === -1 ? `temp-${idx}` : msg.id}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className={`flex gap-4 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}
+                        >
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${msg.role === "user" ? "bg-white/10" : "bg-pitchy-violet"}`}>
+                                {msg.role === "user" ? <User className="w-5 h-5 text-white" /> : <Bot className="w-5 h-5 text-white" />}
+                            </div>
+
+                            <div className={`max-w-[85%] flex flex-col gap-2 ${msg.role === "user" ? "items-end" : "items-start"}`}>
+                                {hasThoughts && (
+                                    <div className="w-full max-w-[500px] bg-white/[0.03] rounded-xl border border-white/10 overflow-hidden self-start">
                                         <button 
                                             onClick={() => setThoughtExpanded(prev => ({ ...prev, [msg.id]: !prev[msg.id] }))}
-                                            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-white/40 hover:text-white/60 transition-colors border-b border-white/5"
+                                            className="w-full flex items-center gap-2 px-3 py-2 text-[11px] text-white/40 hover:text-white/60 transition-colors bg-white/[0.02] border-b border-white/5"
                                         >
-                                            <Atom className={`w-3.5 h-3.5 ${isLoading && !thoughtTime[msg.id] ? "animate-spin" : ""}`} />
-                                            <span>
-                                                {thoughtTime[msg.id] ? `Думал ${thoughtTime[msg.id]} сек.` : "Размышление..."}
+                                            <Atom className={`w-3.5 h-3.5 ${isLoading && isLastAssistant && !thoughtTime[msg.id] ? "animate-spin" : "text-pitchy-violet"}`} />
+                                            <span className="font-medium">
+                                                {thoughtTime[msg.id] ? `Размышления (${thoughtTime[msg.id]} сек)` : "Pitchy рассуждает..."}
                                             </span>
-                                            {thoughtExpanded[msg.id] ? <ChevronUp className="w-3.5 h-3.5 ml-auto" /> : <ChevronDown className="w-3.5 h-3.5 ml-auto" />}
+                                            {thoughtExpanded[msg.id] ? <ChevronUp className="w-3.5 h-3.5 ml-auto opacity-50" /> : <ChevronDown className="w-3.5 h-3.5 ml-auto opacity-50" />}
                                         </button>
                                         <motion.div
                                             initial={false}
                                             animate={{ height: thoughtExpanded[msg.id] ? "auto" : 0 }}
                                             className="overflow-hidden"
                                         >
-                                            <div className="p-3 text-sm text-white/50 italic border-l-2 border-white/20 ml-2 my-2">
+                                            <div className="p-3 text-[13px] leading-relaxed text-white/50 italic border-l-2 border-pitchy-violet/30 ml-2 my-2 bg-white/[0.01]">
                                                 {thoughtLines[msg.id]}
                                             </div>
                                         </motion.div>
                                     </div>
                                 )}
-                                <ReactMarkdown 
-                                    remarkPlugins={[remarkGfm]}
-                                    components={{
-                                        table: ({...props}) => (
-                                            <div className="my-4 overflow-x-auto rounded-xl border border-white/10 bg-white/5">
-                                                <table className="w-full text-left border-collapse" {...props} />
-                                            </div>
-                                        ),
-                                        thead: ({...props}) => <thead className="bg-white/10" {...props} />,
-                                        th: ({...props}) => <th className="p-3 text-sm font-bold text-pitchy-cyan-light border-b border-white/10" {...props} />,
-                                        td: ({...props}) => <td className="p-3 text-sm text-white/80 border-b border-white/5 last:border-0" {...props} />,
-                                    }}
-                                >
-                                    {getDisplayContent(msg)}
-                                </ReactMarkdown>
-                                {msg.id === typingMessageId && (
-                                    <span className="inline-block w-0.5 h-4 bg-pitchy-cyan animate-pulse ml-0.5 align-text-bottom" />
-                                )}
-                            </div>
-                            <div className="flex items-center gap-2 mt-2 w-full">
-                                {msg.role === "assistant" && (
-                                    <div className="flex items-center gap-1 pl-1">
-                                        <button
-                                            onClick={() => handleFeedback(msg.id, msg.feedback === 1 ? 0 : 1)}
-                                            className={`p-1.5 rounded-md transition-colors ${msg.feedback === 1 ? 'text-pitchy-cyan bg-pitchy-cyan/10' : 'text-white/30 hover:text-white/60 hover:bg-white/5'}`}
-                                            title="Хороший ответ (будет добавлен в базу обучения)"
-                                        >
-                                            <ThumbsUp className="w-4 h-4" />
-                                        </button>
-                                        <button
-                                            onClick={() => handleFeedback(msg.id, msg.feedback === -1 ? 0 : -1)}
-                                            className={`p-1.5 rounded-md transition-colors ${msg.feedback === -1 ? 'text-red-400 bg-red-400/10' : 'text-white/30 hover:text-white/60 hover:bg-white/5'}`}
-                                            title="Плохой ответ"
-                                        >
-                                            <ThumbsDown className="w-4 h-4" />
-                                        </button>
+
+                                {!isThinkingOnly && (
+                                    <div className={`p-4 rounded-2xl ${msg.role === "user"
+                                        ? "bg-white/10 text-white rounded-tr-sm"
+                                        : "bg-pitchy-violet/10 border border-pitchy-violet/20 text-white rounded-tl-sm"
+                                        }`}>
+                                        <div className="text-sm sm:text-base leading-[1.7] md:leading-[1.8] text-white/90 [&>p]:mb-4 [&>p:last-child]:mb-0 [&>ul]:list-disc [&>ul]:pl-6 [&>ul]:mb-4 [&>ul>li]:mb-2 [&>ul>li]:pl-1 [&>ol]:list-decimal [&>ol]:pl-6 [&>ol]:mb-4 [&>ol>li]:mb-2 [&>ol>li]:pl-1 [&>h2]:text-xl [&>h2]:font-bold [&>h2]:text-pitchy-cyan-light [&>h2]:mt-8 [&>h2]:mb-4 [&>h3]:text-lg [&>h3]:font-bold [&>h3]:text-white [&>h3]:mt-6 [&>h3]:mb-3 [&>strong]:text-white [&>strong]:font-semibold break-words">
+                                            <ReactMarkdown 
+                                                remarkPlugins={[remarkGfm]}
+                                                components={{
+                                                    table: ({...props}) => (
+                                                        <div className="my-4 overflow-x-auto rounded-xl border border-white/10 bg-white/5">
+                                                            <table className="w-full text-left border-collapse" {...props} />
+                                                        </div>
+                                                    ),
+                                                    thead: ({...props}) => <thead className="bg-white/10" {...props} />,
+                                                    th: ({...props}) => <th className="p-3 text-sm font-bold text-pitchy-cyan-light border-b border-white/10" {...props} />,
+                                                    td: ({...props}) => <td className="p-3 text-sm text-white/80 border-b border-white/5 last:border-0" {...props} />,
+                                                }}
+                                            >
+                                                {getDisplayContent(msg)}
+                                            </ReactMarkdown>
+                                            {msg.id === typingMessageId && (
+                                                <span className="inline-block w-0.5 h-4 bg-pitchy-cyan animate-pulse ml-0.5 align-text-bottom" />
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-2 mt-2 w-full">
+                                            {msg.role === "assistant" && (
+                                                <div className="flex items-center gap-1 pl-1">
+                                                    <button
+                                                        onClick={() => handleFeedback(msg.id, msg.feedback === 1 ? 0 : 1)}
+                                                        className={`p-1.5 rounded-md transition-colors ${msg.feedback === 1 ? 'text-pitchy-cyan bg-pitchy-cyan/10' : 'text-white/30 hover:text-white/60 hover:bg-white/5'}`}
+                                                        title="Хороший ответ"
+                                                    >
+                                                        <ThumbsUp className="w-4 h-4" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleFeedback(msg.id, msg.feedback === -1 ? 0 : -1)}
+                                                        className={`p-1.5 rounded-md transition-colors ${msg.feedback === -1 ? 'text-red-400 bg-red-400/10' : 'text-white/30 hover:text-white/60 hover:bg-white/5'}`}
+                                                        title="Плохой ответ"
+                                                    >
+                                                        <ThumbsDown className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                            )}
+                                            <span className="text-[10px] text-white/30 ml-auto mr-1">
+                                                {dayjs(msg.created_at).format("HH:mm")}
+                                            </span>
+                                        </div>
                                     </div>
                                 )}
-                                <span className="text-[10px] text-white/30 ml-auto mr-1">
-                                    {dayjs(msg.created_at).format("HH:mm")}
-                                </span>
                             </div>
-                        </div>
-                    </motion.div>
-                ))}
+                        </motion.div>
+                    );
+                })}
 
                 {
                     messages.length <= 2 && !session.analysis && !isLoading && (
