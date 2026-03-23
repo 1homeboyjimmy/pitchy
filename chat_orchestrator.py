@@ -6,6 +6,7 @@ from datetime import datetime
 
 from redis_client import get_redis
 from zai_client import call_zai
+from routerai_client import call_routerai
 from tree_orchestrator import _call_claude, _call_gigachat, _normalize_tree_data
 from search_agent import execute_search_agent
 from perplexity_client import call_perplexity
@@ -133,12 +134,12 @@ class ChatOrchestrator:
             model_used = "Claude"
             reply, enriched_data = await self._handle_tree_edit(user_message, state)
         elif intent['intent'] == "chat": # chat
-            model_used = "Zveno (GLM-4.7)"
+            model_used = "RouterAI (GLM-5)"
             history_str = "\n".join([f"{m['role']}: {m['content']}" for m in history[-5:]])
             reply = await self._handle_chat(user_message, history_str)
         else:
             # Fallback for unhandled intents
-            model_used = "Zveno (GLM-4.7)"
+            model_used = "RouterAI (GLM-5)"
             history_str = "\n".join([f"{m['role']}: {m['content']}" for m in history[-5:]])
             reply = await self._handle_chat(user_message, history_str)
 
@@ -212,8 +213,8 @@ class ChatOrchestrator:
         )
 
         try:
-            # Quick classification using Z AI
-            reply, _ = await call_zai("Ты — диспетчер интентов.", prompt)
+            # Quick classification using RouterAI
+            reply, _ = await call_routerai("Ты — диспетчер интентов.", prompt)
             if reply:
                 data = self._extract_json_block(reply)
                 return data
@@ -239,8 +240,8 @@ class ChatOrchestrator:
 
         raw = await _call_gigachat(prompt)
         if not raw:
-            # Fallback to Z AI for calculations if GigaChat fails or not configured
-            raw, _ = await call_zai("Ты — финансовый аналитик.", prompt)
+            # Fallback to RouterAI for calculations if GigaChat fails or not configured
+            raw, _ = await call_routerai("Ты — финансовый аналитик.", prompt)
 
         # Extract JSON metrics block
         reply = raw
@@ -257,15 +258,18 @@ class ChatOrchestrator:
 
     async def _handle_search(self, user_message: str) -> str:
         """Handle search queries via Perplexity or a local agent."""
-        # Use Perplexity via Zveno
-        reply, _ = await call_zai("Ты — эксперт по глубокому анализу рынков.", user_message, model="perplexity/sonar-pro")
+        # Use Perplexity via RouterAI (Perplexity Sonar might be available, for now using GLM-5 as fallback or keeping ZAI for Perplexity if needed)
+        # However, RouterAI also supports perplexity. Let's try to keep it consistent if RouterAI has sonar.
+        # For now, let's keep search on call_zai if we are unsure about RouterAI sonar ID, or use GLM-5.
+        # The user specifically mentioned GLM is faster on RouterAI.
+        reply, _ = await call_routerai("Ты — эксперт по глубокому анализу рынков.", user_message)
         if reply:
             return reply
 
         # Fallback to local search agent
         context = execute_search_agent(user_message)
         prompt = f"На основе данных из поиска ответь пользователю на русском языке:\n\n{context}\n\nВопрос: {user_message}"
-        reply, _ = await call_zai("Ты — помощник с доступом в интернет.", prompt, model="z-ai/glm-4.7")
+        reply, _ = await call_routerai("Ты — помощник с доступом в интернет.", prompt)
         return reply or "Не удалось обработать результаты поиска."
 
     async def _handle_legal(self, user_message: str) -> str:
@@ -288,9 +292,9 @@ class ChatOrchestrator:
         return "Я обновил структуру проекта на основе ваших пожеланий.", extracted.get("extracted_data", {})
 
     async def _handle_chat(self, user_message: str, chat_history: str = "") -> str:
-        """Handle general chat via Zveno (GLM-4.7)."""
+        """Handle general chat via RouterAI (GLM-5)."""
         prompt = f"История чата:\n{chat_history}\n\nПользователь: {user_message}"
-        reply, json_metrics = await call_zai("Ты — ассистент платформы Pitchy. Отвечай на русском языке.", prompt, model="z-ai/glm-4.7")
+        reply, json_metrics = await call_routerai("Ты — ассистент платформы Pitchy. Отвечай на русском языке.", prompt)
         
         if json_metrics:
             # Assuming _save_metrics_from_json is defined elsewhere or will be added

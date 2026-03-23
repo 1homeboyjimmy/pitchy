@@ -25,6 +25,7 @@ import uuid
 from redis_client import get_redis
 from yandex_gpt_client import YandexGPTError, call_yandex_gpt
 from zai_client import call_zai, generate_chat_title_zai, analyze_search_intent_zai
+from routerai_client import call_routerai
 from search_agent import execute_search_agent
 from db import SessionLocal, get_db
 from models import User, PromoCode, Analysis, Payment, RagLog
@@ -1007,7 +1008,7 @@ async def analyze_startup(payload: AnalyzeRequest) -> AnalyzeResponse:
     user_prompt = _build_user_prompt(payload.description, context_chunks)
 
     try:
-        raw_text, usage = await call_zai(SYSTEM_PROMPT, user_prompt)
+        raw_text, usage = await call_routerai(SYSTEM_PROMPT, user_prompt)
         logger.info(f"Z AI token usage (anonymous /analyze): {usage}")
         data = extract_json_zai(raw_text)
     except YandexGPTError as exc:
@@ -1079,7 +1080,7 @@ async def create_analysis(
     user_prompt = _build_user_prompt(description, context_chunks)
 
     try:
-        raw_text, usage = await call_zai(SYSTEM_PROMPT, user_prompt, model="z-ai/glm-4.7")
+        raw_text, usage = await call_routerai(SYSTEM_PROMPT, user_prompt)
         logger.info(f"Z AI token usage (website analysis): {usage}")
         data = extract_json_zai(raw_text)
     except YandexGPTError as exc:
@@ -1189,7 +1190,7 @@ async def chat(payload: ChatRequest) -> ChatResponse:
     user_prompt = _build_chat_prompt(payload.messages, context_chunks)
 
     try:
-        raw_text, usage = await call_zai(SYSTEM_CHAT_PROMPT, user_prompt, model="z-ai/glm-4.7")
+        raw_text, usage = await call_routerai(SYSTEM_CHAT_PROMPT, user_prompt)
         logger.info(f"Z AI token usage (chat with docs): {usage}")
     except YandexGPTError as exc:
         status = exc.status_code or 502
@@ -1318,7 +1319,7 @@ async def create_chat_message(
     user_prompt = _build_chat_prompt(chat_messages, context_chunks)
 
     try:
-        raw_text, usage = await call_zai(SYSTEM_CHAT_PROMPT, user_prompt, model="z-ai/glm-4.7")
+        raw_text, usage = await call_routerai(SYSTEM_CHAT_PROMPT, user_prompt)
         logger.info(f"Z AI token usage (session {session.id} /chat/messages): {usage}")
     except YandexGPTError as exc:
         status = exc.status_code or 502
@@ -2515,12 +2516,12 @@ async def classify_intent(user_message: str) -> list[str]:
         "Ответь ТОЛЬКО названиями категорий через запятую, без лишних слов."
     )
     try:
-        raw_response, usage = await call_zai(system_prompt, user_message, model="z-ai/glm-4.7")
+        raw_response, usage = await call_routerai(system_prompt, user_message)
         if usage:
-            logger.info(f"Z AI token usage (Router LLM): {usage}")
+            logger.info(f"RouterAI token usage (Router LLM): {usage}")
         
         if not raw_response:
-            logger.error("Router LLM failed: No response from ZvenoAI")
+            logger.error("Router LLM (RouterAI) failed: No response")
             return ["general"]
 
         valid_cats = {"pitching", "grants_and_funds", "unit_economics", "target_audience", "legal_and_taxes", "product_management", "platform_rules", "general"}
@@ -2637,12 +2638,12 @@ async def _generate_interviewer_response(session: ChatSession, db: Session) -> s
                     final_user_prompt += "\n\n[СИСТЕМНОЕ СООБЩЕНИЕ]: ЛИМИТ ВОПРОСОВ КЛИЕНТУ ИСЧЕРПАН. СЕЙЧАС ЖЕ ВЫДАЙ ФИНАЛЬНОЕ ПОДРОБНОЕ РЕЗЮМЕ/СОВЕТЫ ПО ТЕМЕ БЕЗ КАКИХ-ЛИБО ВОПРОСОВ."
 
 
-        raw_response, usage = await call_zai(system_prompt_final, final_user_prompt)
+        raw_response, usage = await call_routerai(system_prompt_final, final_user_prompt)
         if usage:
-            logger.info(f"Z AI token usage (background summary): {usage}")
+            logger.info(f"RouterAI token usage (background summary): {usage}")
 
         if not raw_response:
-            logger.error("Interviewer failed: No response from ZvenoAI")
+            logger.error("Interviewer (RouterAI) failed: No response")
             return "Извините, я задумался. Можете повторить?"
 
         # Check if JSON

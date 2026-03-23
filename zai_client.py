@@ -3,6 +3,7 @@ import logging
 import httpx
 import json
 from typing import Optional, Tuple, Dict, Any
+from routerai_client import call_routerai
 
 logger = logging.getLogger("app")
 
@@ -88,11 +89,8 @@ async def generate_chat_title_zai(text: str) -> str:
         "Ты — умный ассистент. Прочитай первое сообщение пользователя и придумай "
         "краткое название для этого диалога из 2-4 слов. Только текст, без кавычек."
     )
-    # Using a fast model for titles
-    # Primary GLM-4.7 model from Z.ai (Zveno preferred)
-    title_model = "z-ai/glm-4.7-flash"
-    
-    reply, _ = await call_zai(system_prompt, text[:500], model=title_model)
+    # Using GLM-5 via RouterAI for titles
+    reply, _ = await call_routerai(system_prompt, text[:500])
     if reply:
         return reply.strip(' "\'\n\r\t.-').capitalize()
     return "Новый диалог"
@@ -103,7 +101,7 @@ async def analyze_search_intent_zai(text: str) -> Dict[str, Any]:
         "Ты — умный классификатор запросов. Реши, нужен ли поиск в интернете. "
         "Верни СТРОГО JSON: {'needs_search': bool, 'search_query': str}"
     )
-    reply, _ = await call_zai(system_prompt, text[:1000], model="z-ai/glm-4.7-flash")
+    reply, _ = await call_routerai(system_prompt, text[:1000])
     if reply:
         parsed = extract_json_zai(reply)
         return {

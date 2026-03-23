@@ -21,6 +21,7 @@ from typing import Any
 import httpx
 
 from zai_client import call_zai
+from routerai_client import call_routerai
 from core_tree import CORE_SKELETON
 
 logger = logging.getLogger("app")
@@ -170,23 +171,23 @@ async def generate_tree_from_text(description: str) -> dict[str, Any]:
     """
     prompt = TREE_EXTRACTION_PROMPT.replace("{description}", description)
 
-    # Try GLM-4.7 via Zveno first (as requested by user)
-    logger.info("Using GLM-4.7 (Zveno) for tree structure generation")
-    raw, _ = await call_zai("Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON.", prompt, model="z-ai/glm-4.7")
+    # Try GLM-5 via RouterAI first (as requested by user)
+    logger.info("Using GLM-5 (RouterAI) for tree structure generation")
+    raw, _ = await call_routerai("Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON.", prompt)
 
     # Fallback to Claude
     if not raw:
         logger.info("GLM-5 failed, falling back to Claude")
         raw = await _call_claude(prompt)
 
-    # Fallback to Z AI (Zveno default)
+    # Fallback to RouterAI (default)
     if not raw:
-        logger.info("Using Zveno fallback for tree structure generation")
+        logger.info("Using RouterAI fallback for tree structure generation")
         system_prompt = "Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON."
         try:
-            raw, _metrics = await call_zai(system_prompt, prompt, model="z-ai/glm-4.7")
+            raw, _metrics = await call_routerai(system_prompt, prompt)
         except Exception as e:
-            logger.error(f"Zveno fallback extraction failed: {e}")
+            logger.error(f"RouterAI fallback extraction failed: {e}")
             return _generate_fallback_tree(description)
 
     # Parse JSON
