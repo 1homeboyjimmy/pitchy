@@ -27,7 +27,7 @@ INTENT_RECOGNITION_PROMPT = """Ты — диспетчер запросов дл
 
 Запрос пользователя: "{user_message}"
 
-Верни СТРОГО JSON: {"intent": "finance" | "search" | "tree" | "chat", "reason": "краткое пояснение"}
+Верни СТРОГО JSON: {{"intent": "finance" | "search" | "tree" | "chat", "reason": "краткое пояснение"}}
 """
 
 FINANCE_PROMPT = """Ты — финансовый эксперт GigaChat. Произведи расчеты для стартапа на основе предоставленных данных.
@@ -39,9 +39,9 @@ FINANCE_PROMPT = """Ты — финансовый эксперт GigaChat. Пр�
 
 В конце ответа добавь блок:
 ---JSON_START---
-{
-  "metrics": { "field_name": value, ... }
-}
+{{
+  "metrics": {{ "field_name": value, ... }}
+}}
 ---JSON_END---
 """
 
