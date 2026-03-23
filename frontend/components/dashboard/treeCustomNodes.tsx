@@ -22,9 +22,10 @@ import {
 
 const statusColors: Record<string, { bg: string; border: string; text: string; glow: string }> = {
   empty:     { bg: "rgba(255,255,255,0.04)", border: "rgba(255,255,255,0.12)", text: "text-white/40", glow: "" },
-  partial:   { bg: "rgba(168,85,247,0.08)", border: "rgba(168,85,247,0.3)", text: "text-purple-300", glow: "shadow-[0_0_12px_rgba(168,85,247,0.15)]" },
-  completed: { bg: "rgba(34,197,94,0.08)",  border: "rgba(34,197,94,0.35)", text: "text-green-300", glow: "shadow-[0_0_12px_rgba(34,197,94,0.15)]" },
-  risk:      { bg: "rgba(239,68,68,0.08)",  border: "rgba(239,68,68,0.35)", text: "text-red-300",   glow: "shadow-[0_0_12px_rgba(239,68,68,0.15)]" },
+  partial:   { bg: "rgba(245,158,11,0.15)",  border: "#D97706", text: "text-[#F59E0B]", glow: "shadow-[0_0_12px_rgba(245,158,11,0.2)]" },
+  completed: { bg: "rgba(16,185,129,0.15)",  border: "#059669", text: "text-[#10B981]", glow: "shadow-[0_0_12px_rgba(16,185,129,0.2)]" },
+  critical:  { bg: "rgba(239,68,68,0.15)",   border: "#DC2626", text: "text-[#EF4444]", glow: "shadow-[0_0_12px_rgba(239,68,68,0.2)]" },
+  skipped:   { bg: "rgba(107,114,128,0.15)", border: "rgba(107,114,128,0.3)", text: "text-[#6B7280]", glow: "opacity-50" },
 };
 
 const typeIcons: Record<string, React.ReactNode> = {
@@ -156,6 +157,7 @@ type TaskNodeData = {
   status: string;
   childCount: number;
   expanded: boolean;
+  progress?: string;
   onToggle: () => void;
 };
 
@@ -182,11 +184,18 @@ export const TaskNode = memo(function TaskNode({ data }: NodeProps) {
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-xs font-medium text-white leading-snug line-clamp-2">{d.label}</p>
-          <span className={`text-[9px] mt-1 inline-block px-1.5 py-0.5 rounded-full ${style.text}`}
-            style={{ background: style.bg, border: `1px solid ${style.border}` }}
-          >
-            {d.nodeType}
-          </span>
+          <div className="flex items-center gap-1 mt-1 flex-wrap">
+            <span className={`text-[9px] inline-block px-1.5 py-0.5 rounded-full ${style.text}`}
+              style={{ background: style.bg, border: `1px solid ${style.border}` }}
+            >
+              {d.nodeType}
+            </span>
+            {d.progress && (
+              <span className="text-[9px] font-bold opacity-80 bg-black/30 px-1.5 py-0.5 rounded text-white/70">
+                {d.progress}
+              </span>
+            )}
+          </div>
         </div>
         {(d.childCount ?? 0) > 0 && (
           <button

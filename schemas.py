@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List
+from typing import List, Any
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
@@ -217,23 +217,46 @@ class ChatSessionAutoRequest(BaseModel):
 
 # ——— Decision Tree Schemas ———
 
+class TreeInputSchema(BaseModel):
+    field: str
+    label: str
+    type: str = "text"  # select, text, number
+    options: list[str] | None = None
+    placeholder: str | None = None
+    required: bool = False
+    status: str = "empty"
+    value: Any = None
+
+class TreeNextActionSchema(BaseModel):
+    title: str
+    target_block: str | None = None
+    reason: str | None = None
+
 class TreeNodeDataSchema(BaseModel):
     description: str | None = None
-    metrics: dict[str, str | int | float] | None = None
+    completion_criteria: dict[str, str] = {}
+    inputs: list[TreeInputSchema] = []
+    outputs: dict[str, str] = {}
+    next_action: TreeNextActionSchema | None = None
+    chat_hint: str | None = None
+    risks: list[str] = []
+    dependencies: list[str] = []
     aiRecommendation: str | None = None
     sourceRef: str | None = None
 
-
 class TreeNodeSchema(BaseModel):
     id: str
-    type: str = "Task"  # Question, Risk, Fact, Task, Artifact
-    status: str = "empty"  # empty, partial, completed, risk
+    type: str = "core"  # core, optional, conditional
+    status: str = "empty"  # empty, partial, completed, critical, skipped
     label: str
     category: str | None = None
     level: int = 0
+    required: bool = True
+    priority: int = 0
+    impact_score: float = 0.0
     data: TreeNodeDataSchema = TreeNodeDataSchema()
-    parent_id: str | None = None
-    children_ids: List[str] = []
+    parent_id: str | None = "root"
+    children_ids: list[str] = []
 
 
 class TreeEdgeSchema(BaseModel):

@@ -16,44 +16,21 @@ import {
 import "@xyflow/react/dist/style.css";
 
 import { ReadinessNode, CategoryNode, TaskNode } from "./treeCustomNodes";
-import { NodeDetailPanel, type TreeNodeData } from "./NodeDetailPanel";
-
-/* ——— types for tree data from API ——— */
-export type ApiTreeNode = {
-  id: string;
-  type: "Question" | "Risk" | "Fact" | "Task" | "Artifact";
-  status: "empty" | "partial" | "completed" | "risk";
-  label: string;
-  category?: string;
-  level: number;
-  data: {
-    description?: string;
-    metrics?: Record<string, string | number>;
-    aiRecommendation?: string;
-    sourceRef?: string;
-  };
-  parent_id: string | null;
-  children_ids: string[];
-};
-
-export type ApiTreeEdge = {
-  id: string;
-  source: string;
-  target: string;
-};
+import { NodeDetailPanel } from "./NodeDetailPanel";
+import type { TreeNodeResponse, TreeEdgeResponse } from "../../lib/api";
 
 type Props = {
-  treeNodes: ApiTreeNode[];
-  treeEdges: ApiTreeEdge[];
+  treeNodes: TreeNodeResponse[];
+  treeEdges: TreeEdgeResponse[];
   readinessIndex: number;
-  onNodeClick?: (node: ApiTreeNode) => void;
-  onDiscussInChat?: (node: TreeNodeData) => void;
+  onNodeClick?: (node: TreeNodeResponse) => void;
+  onDiscussInChat?: (node: TreeNodeResponse) => void;
 };
 
 /* ——— layout helpers ——— */
 function buildFlowElements(
-  apiNodes: ApiTreeNode[],
-  apiEdges: ApiTreeEdge[],
+  apiNodes: TreeNodeResponse[],
+  apiEdges: TreeEdgeResponse[],
   readiness: number,
   expandedIds: Set<string>,
   toggleExpand: (id: string) => void,
@@ -117,6 +94,12 @@ function buildFlowElements(
     const pos = positions.get(n.id) || { x: 0, y: 0 };
     const childCount = n.children_ids.length;
     const expanded = expandedIds.has(n.id);
+    
+    // Calculate progress for the node badge
+    const inputs = n.data?.inputs || [];
+    const totalReq = inputs.filter((i) => i.required).length;
+    const filledReq = inputs.filter((i) => i.required && i.status === "completed").length;
+    const progress = totalReq > 0 ? `${filledReq}/${totalReq}` : undefined;
 
     if (n.level === 1) {
       nodes.push({
@@ -144,6 +127,7 @@ function buildFlowElements(
           status: n.status,
           childCount,
           expanded,
+          progress,
           onToggle: () => toggleExpand(n.id),
         },
         draggable: true,
@@ -167,7 +151,7 @@ function buildFlowElements(
   return { nodes, edges };
 }
 
-function autoLayout(apiNodes: ApiTreeNode[], visibleIds: Set<string>): Map<string, { x: number; y: number }> {
+function autoLayout(apiNodes: TreeNodeResponse[], visibleIds: Set<string>): Map<string, { x: number; y: number }> {
   const positions = new Map<string, { x: number; y: number }>();
   const nodeMap = new Map(apiNodes.map((n) => [n.id, n]));
 
@@ -232,7 +216,7 @@ export function TreeCanvas({
   onDiscussInChat,
 }: Props) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-  const [selectedNode, setSelectedNode] = useState<TreeNodeData | null>(null);
+  const [selectedNode, setSelectedNode] = useState<TreeNodeResponse | null>(null);
 
   const toggleExpand = useCallback((id: string) => {
     setExpandedIds((prev) => {
@@ -261,16 +245,7 @@ export function TreeCanvas({
     (_: React.MouseEvent, node: Node) => {
       const apiNode = treeNodes.find((n) => n.id === node.id);
       if (apiNode) {
-        const detailNode: TreeNodeData = {
-          id: apiNode.id,
-          type: apiNode.type,
-          status: apiNode.status,
-          label: apiNode.label,
-          data: apiNode.data,
-          parent_id: apiNode.parent_id,
-          children_ids: apiNode.children_ids,
-        };
-        setSelectedNode(detailNode);
+        setSelectedNode(apiNode);
         onNodeClick?.(apiNode);
       }
     },

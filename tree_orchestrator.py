@@ -15,44 +15,60 @@ import json
 import logging
 import os
 import uuid
+import copy
 from typing import Any
 
 import httpx
 
 from yandex_gpt_client import call_yandex_gpt, extract_json
+from core_tree import CORE_SKELETON
 
 logger = logging.getLogger("app")
 
 # ——— Prompts ———
 
-TREE_STRUCTURE_PROMPT = """Ты — опытный бизнес-аналитик и архитектор стартапов. Твоя задача — проанализировать описание стартапа и построить JSON-структуру древа принятия решений.
-
-Структура дерева:
-- Уровень 0: Корень (Индекс готовности)
-- Уровень 1: 4 категории — Продукт (product), Рынок (market), Монетизация (monetization), Команда (team)
-- Уровень 2: Конкретные задачи/факты/риски/вопросы внутри каждой категории (3-5 штук)
-
-Каждый узел должен содержать:
-- id: уникальный string-идентификатор (например, "cat-product", "t-mvp")
-- type: один из "Question", "Risk", "Fact", "Task", "Artifact"
-- status: один из "empty", "partial", "completed", "risk"
-- label: краткое название на русском
-- category: для уровня 1 — "product", "market", "monetization", "team"
-- level: число (1 или 2)
-- data: объект с полями description (строка), metrics (объект с числами/строками), aiRecommendation (строка)
-- parent_id: id родительского узла ("root" для уровня 1)
-- children_ids: массив id дочерних узлов
-
-Верни строго JSON-объект с ключами:
-- "nodes": массив узлов (без корневого root — он создаётся автоматически)
-- "edges": массив ребер, каждое — {"id": "e-...", "source": "...", "target": "..."}
-- "readiness_index": число от 0 до 100 — общая оценка готовности стартапа
-- "title": краткое название древа на русском (до 50 символов)
+TREE_EXTRACTION_PROMPT = """Ты — опытный бизнес-аналитик стартапов. Твоя задача — проанализировать описание стартапа и извлечь ключевые факты.
 
 Описание стартапа:
 {description}
 
-Верни ТОЛЬКО JSON, без пояснений."""
+Извлеки следующие ключи (если они упомянуты явно или косвенно). Если данных нет, оставь значение пустым (null).
+Верни СТРОГО JSON-объект вида:
+{
+  "readiness_index": <оценка готовности проекта от 0 до 100, число>,
+  "title": "<Краткое название проекта (2-4 слова)>",
+  "extracted_data": {
+    "concept": "<суть проекта, 1 предложение>",
+    "business_type": "<один из: B2B SaaS, Mobile App, E-commerce, Offline, Hardware, Marketplace, Other>",
+    "client_type": "<один из: B2C, B2B, B2G>",
+    "geo": "<география рынка, например 'Россия' или 'Global'>",
+    "segment_size": <размер сегмента, число или null>,
+    "pain_point": "<основная боль клиента>",
+    "current_solution": "<как клиенты решают проблему сейчас>",
+    "value_proposition": "<в чем ваше преимущество/УТП>",
+    "key_features": "<ключевые фичи>",
+    "competitor_names": "<имена конкурентов>",
+    "competitive_advantage": "<наше конкурентное преимущество>",
+    "tam": <общий рынок TAM, число или null>,
+    "som": <достижимый рынок SOM, число или null>,
+    "revenue_model": "<Подписка (SaaS), Транзакционная (Комиссия), Разовая продажа, Рекламная, Freemium, Другое>",
+    "avg_check": <средний чек, число или null>,
+    "cac": <стоимость привлечения, число или null>,
+    "ltv": <пожизненная ценность, число или null>,
+    "primary_channel": "<основной канал привлечения>",
+    "secondary_channels": "<дополнительные каналы>",
+    "team_size": <размер команды, число или 1>,
+    "missing_roles": "<каких ролей не хватает>",
+    "traction": "<текущий трекшн в метриках или словах>",
+    "mvp_ready": "<Да, В разработке, или Нет (только идея)>",
+    "top_risk": "<главный риск проекта>",
+    "mitigation_plan": "<план Б по снижению риска>",
+    "short_term_goal": "<ближайшая цель на 3 месяца>",
+    "resources_needed": "<какие ресурсы нужны>"
+  }
+}
+
+Верни ТОЛЬКО валидный JSON, без пояснений и markdown-блоков."""
 
 ENRICH_NODE_PROMPT = """Ты — бизнес-эксперт по российскому рынку. Дополни информацию для узла древа принятия решений стартапа.
 
@@ -150,8 +166,9 @@ async def generate_tree_from_text(description: str) -> dict[str, Any]:
     """
     Generate a decision tree structure from text description.
     Tries Claude first, falls back to YandexGPT.
+    Extracts flat key-value pairs and injects them into the CORE_SKELETON.
     """
-    prompt = TREE_STRUCTURE_PROMPT.replace("{description}", description)
+    prompt = TREE_EXTRACTION_PROMPT.replace("{description}", description)
 
     # Try Claude first
     raw = await _call_claude(prompt)
@@ -159,40 +176,100 @@ async def generate_tree_from_text(description: str) -> dict[str, Any]:
     # Fallback to YandexGPT
     if not raw:
         logger.info("Using YandexGPT for tree structure generation")
-        system_prompt = "Ты — архитектор бизнес-аналитики. Генерируй ответ строго в формате JSON."
+        system_prompt = "Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON без markdown."
         try:
-            raw, _usage = call_yandex_gpt(system_prompt, prompt, timeout=60, max_tokens=3000)
+            raw, _usage = call_yandex_gpt(system_prompt, prompt, timeout=60, max_tokens=2000)
         except Exception as e:
-            logger.error(f"YandexGPT tree generation failed: {e}")
+            logger.error(f"YandexGPT extraction failed: {e}")
             return _generate_fallback_tree(description)
 
     # Parse JSON
     try:
-        tree_data = extract_json(raw)
-        if not tree_data:
-            tree_data = json.loads(raw)
-            
+        extracted = extract_json(raw)
+        if not extracted:
+            extracted = json.loads(raw)
     except Exception:
         try:
-            # Try to find JSON in the response
             start = raw.find("{")
             end = raw.rfind("}") + 1
             if start >= 0 and end > start:
-                tree_data = json.loads(raw[start:end])
+                extracted = json.loads(raw[start:end])
             else:
                 return _generate_fallback_tree(description)
         except Exception:
             return _generate_fallback_tree(description)
 
     # Validate and normalize
-    result = _normalize_tree_data(tree_data, description)
+    return _normalize_tree_data(extracted, description)
 
-    # Safety: if AI returned parseable JSON but with no valid nodes, use fallback
-    if not result.get("tree_data", {}).get("nodes"):
-        logger.warning("AI returned JSON but no valid nodes found, using fallback tree")
-        return _generate_fallback_tree(description)
+def _normalize_tree_data(raw: dict, description: str) -> dict[str, Any]:
+    """Normalize and map extracted flat data to the 13-node CORE_SKELETON."""
+    readiness = raw.get("readiness_index", 10)
+    title = raw.get("title", "Анализ стартапа")
+    extracted_data = raw.get("extracted_data", {})
+    
+    if not isinstance(extracted_data, dict):
+        extracted_data = {}
 
-    return result
+    try:
+        readiness = max(0, min(100, int(readiness)))
+    except (TypeError, ValueError):
+        readiness = 10
+
+    # Deepcopy our bulletproof structural backbone
+    nodes = copy.deepcopy(CORE_SKELETON)
+
+    # Inject extracted values into inputs
+    for node in nodes:
+        inputs = node.get("data", {}).get("inputs", [])
+        total_required = 0
+        filled_required = 0
+        has_any_filled = False
+
+        for inp in inputs:
+            if inp.get("required"):
+                total_required += 1
+                
+            field = inp.get("field")
+            if field and field in extracted_data:
+                val = extracted_data[field]
+                if val is not None and str(val).strip() != "":
+                    inp["value"] = val
+                    inp["status"] = "completed"
+                    has_any_filled = True
+                    if inp.get("required"):
+                        filled_required += 1
+
+        # Determine node completion STATUS
+        if total_required > 0:
+            if filled_required == total_required:
+                node["status"] = "completed"
+            elif filled_required > 0 or has_any_filled:
+                node["status"] = "partial"
+            else:
+                node["status"] = "empty"
+        else:
+            node["status"] = "completed" if has_any_filled else "empty"
+
+    # Auto-generate perfect edges directly from parent_id
+    edges = []
+    for n in nodes:
+        pid = n.get("parent_id")
+        if pid:
+            edges.append({
+                "id": f"e-{pid}-{n['id']}",
+                "source": pid,
+                "target": n["id"]
+            })
+
+    return {
+        "title": str(title)[:200],
+        "readiness_index": readiness,
+        "tree_data": {
+            "nodes": nodes,
+            "edges": edges,
+        }
+    }
 
 
 async def generate_tree_from_pdf(text: str, page_refs: dict[str, int] | None = None) -> dict[str, Any]:
@@ -212,20 +289,6 @@ async def generate_tree_from_pdf(text: str, page_refs: dict[str, int] | None = N
     return tree_data
 
 
-def _normalize_tree_data(raw: dict, description: str) -> dict[str, Any]:
-    """Normalize and validate tree data from AI response."""
-    nodes = raw.get("nodes", [])
-    edges = raw.get("edges", [])
-    readiness = raw.get("readiness_index", 0)
-    title = raw.get("title", "Анализ стартапа")
-
-    # Ensure readiness is in valid range
-    try:
-        readiness = max(0, min(100, int(readiness)))
-    except (TypeError, ValueError):
-        readiness = 0
-
-    # Validate nodes have required fields
     validated_nodes = []
     for node in nodes:
         if not isinstance(node, dict) or "id" not in node:
@@ -265,40 +328,24 @@ def _normalize_tree_data(raw: dict, description: str) -> dict[str, Any]:
 
 
 def _generate_fallback_tree(description: str) -> dict[str, Any]:
-    """Generate a basic fallback tree when AI fails."""
-    short_desc = description[:100] + "..." if len(description) > 100 else description
-
-    nodes = [
-        {"id": "cat-product", "type": "Task", "status": "empty", "label": "Продукт", "category": "product", "level": 1, "data": {"description": "Проанализируйте продуктовое предложение", "aiRecommendation": "Определите ключевые фичи MVP"}, "parent_id": "root", "children_ids": ["t-mvp", "t-value"]},
-        {"id": "cat-market", "type": "Task", "status": "empty", "label": "Рынок", "category": "market", "level": 1, "data": {"description": "Оцените целевой рынок"}, "parent_id": "root", "children_ids": ["t-tam", "t-ca"]},
-        {"id": "cat-monetization", "type": "Task", "status": "empty", "label": "Монетизация", "category": "monetization", "level": 1, "data": {"description": "Определите модель монетизации"}, "parent_id": "root", "children_ids": ["t-pricing", "t-unit"]},
-        {"id": "cat-team", "type": "Task", "status": "empty", "label": "Команда", "category": "team", "level": 1, "data": {"description": "Оцените команду проекта"}, "parent_id": "root", "children_ids": ["t-roles"]},
-        # Level 2
-        {"id": "t-mvp", "type": "Task", "status": "empty", "label": "MVP-функции", "level": 2, "data": {"description": "Список ключевых функций MVP"}, "parent_id": "cat-product", "children_ids": []},
-        {"id": "t-value", "type": "Question", "status": "empty", "label": "Value Proposition", "level": 2, "data": {"description": "Уникальное ценностное предложение"}, "parent_id": "cat-product", "children_ids": []},
-        {"id": "t-tam", "type": "Fact", "status": "empty", "label": "TAM/SAM/SOM", "level": 2, "data": {"description": "Расчёт объёмов рынка"}, "parent_id": "cat-market", "children_ids": []},
-        {"id": "t-ca", "type": "Risk", "status": "empty", "label": "Конкурентный анализ", "level": 2, "data": {"description": "Оценка конкурентной среды"}, "parent_id": "cat-market", "children_ids": []},
-        {"id": "t-pricing", "type": "Task", "status": "empty", "label": "Ценообразование", "level": 2, "data": {"description": "Тарифная сетка"}, "parent_id": "cat-monetization", "children_ids": []},
-        {"id": "t-unit", "type": "Task", "status": "empty", "label": "Юнит-экономика", "level": 2, "data": {"description": "LTV, CAC, маржинальность"}, "parent_id": "cat-monetization", "children_ids": []},
-        {"id": "t-roles", "type": "Fact", "status": "empty", "label": "Ключевые роли", "level": 2, "data": {"description": "Состав и компетенции"}, "parent_id": "cat-team", "children_ids": []},
-    ]
-
-    edges = [
-        {"id": "e-root-product", "source": "root", "target": "cat-product"},
-        {"id": "e-root-market", "source": "root", "target": "cat-market"},
-        {"id": "e-root-monetization", "source": "root", "target": "cat-monetization"},
-        {"id": "e-root-team", "source": "root", "target": "cat-team"},
-        {"id": "e-product-mvp", "source": "cat-product", "target": "t-mvp"},
-        {"id": "e-product-value", "source": "cat-product", "target": "t-value"},
-        {"id": "e-market-tam", "source": "cat-market", "target": "t-tam"},
-        {"id": "e-market-ca", "source": "cat-market", "target": "t-ca"},
-        {"id": "e-mon-pricing", "source": "cat-monetization", "target": "t-pricing"},
-        {"id": "e-mon-unit", "source": "cat-monetization", "target": "t-unit"},
-        {"id": "e-team-roles", "source": "cat-team", "target": "t-roles"},
-    ]
+    """Generate a basic fallback tree when AI fails using CORE_SKELETON."""
+    nodes = copy.deepcopy(CORE_SKELETON)
+    edges = []
+    
+    for n in nodes:
+        pid = n.get("parent_id")
+        if pid:
+            edges.append({
+                "id": f"e-{pid}-{n['id']}",
+                "source": pid,
+                "target": n["id"]
+            })
 
     return {
-        "title": f"Анализ: {short_desc}",
+        "title": "Анализ стартапа",
         "readiness_index": 10,
-        "tree_data": {"nodes": nodes, "edges": edges},
+        "tree_data": {
+            "nodes": nodes,
+            "edges": edges,
+        },
     }

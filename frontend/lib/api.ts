@@ -282,19 +282,47 @@ export async function getMe(token: string): Promise<UserResponse> {
 
 /* ——— Tree (Decision Tree) ——— */
 
+export type TreeInputResponse = {
+  field: string;
+  label: string;
+  type: string;
+  options?: string[] | null;
+  placeholder?: string | null;
+  required: boolean;
+  status: "empty" | "partial" | "completed";
+  value?: any;
+};
+
+export type TreeNextActionResponse = {
+  title: string;
+  target_block?: string | null;
+  reason?: string | null;
+};
+
+export type TreeNodeDataResponse = {
+  description?: string | null;
+  completion_criteria?: Record<string, string>;
+  inputs?: TreeInputResponse[];
+  outputs?: Record<string, string>;
+  next_action?: TreeNextActionResponse | null;
+  chat_hint?: string | null;
+  risks?: string[];
+  dependencies?: string[];
+  aiRecommendation?: string | null;
+  sourceRef?: string | null;
+};
+
 export type TreeNodeResponse = {
   id: string;
-  type: "Question" | "Risk" | "Fact" | "Task" | "Artifact";
-  status: "empty" | "partial" | "completed" | "risk";
+  type: "core" | "optional" | "conditional";
+  status: "empty" | "partial" | "completed" | "critical" | "skipped";
   label: string;
-  category?: string;
+  category?: string | null;
   level: number;
-  data: {
-    description?: string;
-    metrics?: Record<string, string | number>;
-    aiRecommendation?: string;
-    sourceRef?: string;
-  };
+  required?: boolean;
+  priority?: number;
+  impact_score?: number;
+  data: TreeNodeDataResponse;
   parent_id: string | null;
   children_ids: string[];
 };
