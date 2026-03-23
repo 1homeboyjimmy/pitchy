@@ -310,6 +310,7 @@ export type TreeNodeDataResponse = {
   dependencies?: string[];
   aiRecommendation?: string | null;
   sourceRef?: string | null;
+  summary?: string | null;
 };
 
 export type TreeNodeResponse = {
@@ -365,8 +366,13 @@ export async function getTree(treeId: number, token: string): Promise<TreeRespon
   return getAuthJson<TreeResponse>(`/tree/${treeId}`, token);
 }
 
-export async function getTreeChatHistory(treeId: number, token: string): Promise<{ history: { role: string; content: string; model_used?: string; timestamp: string }[] }> {
-  return getAuthJson<{ history: { role: string; content: string; model_used?: string; timestamp: string }[] }>(`/tree/${treeId}/history`, token);
+export async function getTreeChatHistory(
+  treeId: number, 
+  token: string, 
+  nodeId?: string
+): Promise<{ history: { role: string; content: string; model_used?: string; timestamp: string }[] }> {
+  const url = nodeId ? `/tree/${treeId}/history?node_id=${nodeId}` : `/tree/${treeId}/history`;
+  return getAuthJson<{ history: { role: string; content: string; model_used?: string; timestamp: string }[] }>(url, token);
 }
 
 

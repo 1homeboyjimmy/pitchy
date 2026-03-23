@@ -26,6 +26,7 @@ from redis_client import get_redis
 from yandex_gpt_client import YandexGPTError, call_yandex_gpt, extract_json
 from zai_client import generate_chat_title, analyze_search_intent
 from routerai_client import call_routerai
+from makura_client import call_makura
 from search_agent import execute_search_agent
 from db import SessionLocal, get_db
 from models import User, PromoCode, Analysis, Payment, RagLog
@@ -1008,8 +1009,12 @@ async def analyze_startup(payload: AnalyzeRequest) -> AnalyzeResponse:
     user_prompt = _build_user_prompt(payload.description, context_chunks)
 
     try:
-        raw_text, usage = await call_routerai(SYSTEM_PROMPT, user_prompt)
-        logger.info(f"Z AI token usage (anonymous /analyze): {usage}")
+        provider = os.getenv("PRIMARY_PROVIDER", "routerai")
+        if provider == "makura":
+            raw_text, usage = await call_makura(SYSTEM_PROMPT, user_prompt)
+        else:
+            raw_text, usage = await call_routerai(SYSTEM_PROMPT, user_prompt)
+        logger.info(f"AI token usage ({provider} /analyze): {usage}")
         data = extract_json_zai(raw_text)
     except YandexGPTError as exc:
         status = exc.status_code or 502
@@ -1080,8 +1085,12 @@ async def create_analysis(
     user_prompt = _build_user_prompt(description, context_chunks)
 
     try:
-        raw_text, usage = await call_routerai(SYSTEM_PROMPT, user_prompt)
-        logger.info(f"Z AI token usage (website analysis): {usage}")
+        provider = os.getenv("PRIMARY_PROVIDER", "routerai")
+        if provider == "makura":
+            raw_text, usage = await call_makura(SYSTEM_PROMPT, user_prompt)
+        else:
+            raw_text, usage = await call_routerai(SYSTEM_PROMPT, user_prompt)
+        logger.info(f"AI token usage ({provider} website analysis): {usage}")
         data = extract_json_zai(raw_text)
     except YandexGPTError as exc:
         status = exc.status_code or 502
@@ -1190,8 +1199,12 @@ async def chat(payload: ChatRequest) -> ChatResponse:
     user_prompt = _build_chat_prompt(payload.messages, context_chunks)
 
     try:
-        raw_text, usage = await call_routerai(SYSTEM_CHAT_PROMPT, user_prompt)
-        logger.info(f"Z AI token usage (chat with docs): {usage}")
+        provider = os.getenv("PRIMARY_PROVIDER", "routerai")
+        if provider == "makura":
+            raw_text, usage = await call_makura(SYSTEM_CHAT_PROMPT, user_prompt)
+        else:
+            raw_text, usage = await call_routerai(SYSTEM_CHAT_PROMPT, user_prompt)
+        logger.info(f"AI token usage ({provider} chat with docs): {usage}")
     except YandexGPTError as exc:
         status = exc.status_code or 502
         raise HTTPException(status_code=status, detail=exc.message) from exc
@@ -1319,8 +1332,12 @@ async def create_chat_message(
     user_prompt = _build_chat_prompt(chat_messages, context_chunks)
 
     try:
-        raw_text, usage = await call_routerai(SYSTEM_CHAT_PROMPT, user_prompt)
-        logger.info(f"Z AI token usage (session {session.id} /chat/messages): {usage}")
+        provider = os.getenv("PRIMARY_PROVIDER", "routerai")
+        if provider == "makura":
+            raw_text, usage = await call_makura(SYSTEM_CHAT_PROMPT, user_prompt)
+        else:
+            raw_text, usage = await call_routerai(SYSTEM_CHAT_PROMPT, user_prompt)
+        logger.info(f"AI token usage ({provider} session {session.id} /chat/messages): {usage}")
     except YandexGPTError as exc:
         status = exc.status_code or 502
         raise HTTPException(status_code=status, detail=exc.message) from exc
@@ -2511,7 +2528,11 @@ async def classify_intent(user_message: str) -> list[str]:
         "Ответь ТОЛЬКО названиями категорий через запятую, без лишних слов."
     )
     try:
-        raw_response, usage = await call_routerai(system_prompt, user_message)
+        provider = os.getenv("PRIMARY_PROVIDER", "routerai")
+        if provider == "makura":
+            raw_response, usage = await call_makura(system_prompt, user_message)
+        else:
+            raw_response, usage = await call_routerai(system_prompt, user_message)
         if usage:
             logger.info(f"RouterAI token usage (Router LLM): {usage}")
         
@@ -2633,9 +2654,17 @@ async def _generate_interviewer_response(session: ChatSession, db: Session) -> s
                     final_user_prompt += "\n\n[СИСТЕМНОЕ СООБЩЕНИЕ]: ЛИМИТ ВОПРОСОВ КЛИЕНТУ ИСЧЕРПАН. СЕЙЧАС ЖЕ ВЫДАЙ ФИНАЛЬНОЕ ПОДРОБНОЕ РЕЗЮМЕ/СОВЕТЫ ПО ТЕМЕ БЕЗ КАКИХ-ЛИБО ВОПРОСОВ."
 
 
-        raw_response, usage = await call_routerai(system_prompt_final, final_user_prompt)
-        if usage:
-            logger.info(f"RouterAI token usage (background summary): {usage}")
+        try:
+            provider = os.getenv("PRIMARY_PROVIDER", "routerai")
+            if provider == "makura":
+                raw_response, usage = await call_makura(system_prompt_final, final_user_prompt)
+            else:
+                raw_response, usage = await call_routerai(system_prompt_final, final_user_prompt)
+            if usage:
+                logger.info(f"AI token usage ({provider} background summary): {usage}")
+        except Exception as e:
+            logger.error(f"Interviewer provider call failed: {e}")
+            raw_response, usage = None, None
 
         if not raw_response:
             logger.error("Interviewer (RouterAI) failed: No response")

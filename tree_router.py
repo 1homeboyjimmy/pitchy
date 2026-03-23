@@ -253,12 +253,13 @@ async def tree_chat(
 @router.get("/{tree_id}/history")
 async def get_tree_chat_history(
     tree_id: int,
+    node_id: str | None = None,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Retrieve chat history for a specific tree from Redis."""
+    """Retrieve chat history for a specific tree or node from Redis."""
     orchestrator = ChatOrchestrator(tree_id, user.id, db)
-    history = await orchestrator.get_chat_history()
+    history = await orchestrator.get_chat_history(node_id=node_id)
     return {"history": history}
 
 

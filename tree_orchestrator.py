@@ -14,6 +14,7 @@ from typing import Any
 import httpx
 
 from routerai_client import call_routerai
+from makura_client import call_makura
 from core_tree import CORE_SKELETON
 
 logger = logging.getLogger("app")
@@ -90,9 +91,14 @@ async def generate_tree_from_text(description: str) -> dict[str, Any]:
     """
     prompt = TREE_EXTRACTION_PROMPT.replace("{description}", description)
 
-    # Use GLM-5 via RouterAI
-    logger.info("Using GLM-5 (RouterAI) for tree structure generation")
-    raw, _ = await call_routerai("Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON.", prompt)
+    # Use GLM-5 via RouterAI or Makura
+    provider = os.getenv("PRIMARY_PROVIDER", "routerai")
+    logger.info(f"Using {provider} for tree structure generation")
+    
+    if provider == "makura":
+        raw, _ = await call_makura("Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON.", prompt)
+    else:
+        raw, _ = await call_routerai("Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON.", prompt)
 
     if not raw:
         logger.error("RouterAI extraction failed")

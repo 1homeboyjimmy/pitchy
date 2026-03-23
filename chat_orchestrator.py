@@ -6,6 +6,7 @@ from datetime import datetime
 
 from redis_client import get_redis
 from routerai_client import call_routerai
+from makura_client import call_makura
 from tree_orchestrator import _normalize_tree_data
 from search_agent import execute_search_agent
 from perplexity_client import call_perplexity
@@ -53,7 +54,12 @@ class ChatOrchestrator:
         self.db = db_session
         self.redis = get_redis()
         self.state_key = f"user:{user_id}:tree:{tree_id}:state"
-        self.chat_key = f"user:{user_id}:tree:{tree_id}:chat"
+
+    def _get_chat_key(self, node_id: Optional[str] = None) -> str:
+        """Generate Redis key for chat history. Global if node_id is None."""
+        if node_id:
+            return f"user:{self.user_id}:tree:{self.tree_id}:node:{node_id}:chat"
+        return f"user:{self.user_id}:tree:{self.tree_id}:chat"
 
     async def load_state(self) -> dict:
         """Load state from Redis (Hot) or fallback to Postgres (Cold)."""
@@ -86,31 +92,33 @@ class ChatOrchestrator:
             self.redis.setex(self.state_key, 86400, json.dumps(state))
         # Note: PG sync is handled by background worker
 
-    async def get_chat_history(self, limit: int = 10) -> list:
+    async def get_chat_history(self, node_id: Optional[str] = None, limit: int = 20) -> list:
         """Get recent chat history from Redis."""
         if self.redis:
-            history = self.redis.lrange(self.chat_key, 0, limit - 1)
+            chat_key = self._get_chat_key(node_id)
+            history = self.redis.lrange(chat_key, 0, limit - 1)
             return [json.loads(m) for m in history][::-1] # Reverse to chronological
         return []
 
-    async def add_chat_message(self, role: str, content: str, model_used: str = None):
+    async def add_chat_message(self, role: str, content: str, node_id: Optional[str] = None, model_used: str = None):
         """Add message to Redis list."""
         msg = {
             "role": role,
             "content": content,
             "model_used": model_used,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now().isoformat()
         }
         if self.redis:
-            self.redis.lpush(self.chat_key, json.dumps(msg))
-            self.redis.ltrim(self.chat_key, 0, 99) # Keep 100 messages
+            chat_key = self._get_chat_key(node_id)
+            self.redis.lpush(chat_key, json.dumps(msg))
+            self.redis.ltrim(chat_key, 0, 99) # Keep 100 messages
 
     async def process_message(self, user_message: str, active_node_id: str = None) -> dict:
         """Main entry point for chat orchestration."""
         state = await self.load_state()
-        history = await self.get_chat_history()
+        history = await self.get_chat_history(node_id=active_node_id)
         
-        # 1. Intent Recognition (0.2s via YandexGPT or fast-path)
+        # 1. Intent Recognition
         intent = await self._classify_intent(user_message, state, history, active_node_id)
         logger.info(f"Orchestrator: User intent classified as '{intent['intent']}'")
 
@@ -151,8 +159,8 @@ class ChatOrchestrator:
             await self.save_state(state)
 
         # 4. Finalize
-        await self.add_chat_message("user", user_message)
-        await self.add_chat_message("assistant", reply, model_used)
+        await self.add_chat_message("user", user_message, node_id=active_node_id)
+        await self.add_chat_message("assistant", reply, node_id=active_node_id, model_used=model_used)
 
         return {
             "reply": reply,
@@ -214,8 +222,13 @@ class ChatOrchestrator:
         )
 
         try:
-            # Quick classification using RouterAI
-            reply, _ = await call_routerai("Ты — диспетчер интентов.", prompt)
+            # Quick classification
+            provider = os.getenv("PRIMARY_PROVIDER", "routerai")
+            if provider == "makura":
+                reply, _ = await call_makura("Ты — диспетчер интентов.", prompt)
+            else:
+                reply, _ = await call_routerai("Ты — диспетчер интентов.", prompt)
+            
             if reply:
                 data = self._extract_json_block(reply)
                 return data
@@ -297,7 +310,12 @@ class ChatOrchestrator:
             "Если пользователь дает данные, верни их в формате extracted_data: { field_name: value }."
             "Верни СТРОГО JSON."
         )
-        raw, _ = await call_routerai("Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON.", prompt)
+        provider = os.getenv("PRIMARY_PROVIDER", "routerai")
+        if provider == "makura":
+            raw, _ = await call_makura("Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON.", prompt)
+        else:
+            raw, _ = await call_routerai("Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON.", prompt)
+            
         extracted = self._extract_json_block(raw)
         return "Я обновил структуру проекта на основе ваших пожеланий.", extracted
 
@@ -309,7 +327,12 @@ class ChatOrchestrator:
         
         system_prompt = f"Ты — ассистент платформы Pitchy. {node_context}Отвечай на русском языке."
         prompt = f"История чата:\n{chat_history}\n\nПользователь: {user_message}"
-        reply, json_metrics = await call_routerai(system_prompt, prompt)
+        
+        provider = os.getenv("PRIMARY_PROVIDER", "routerai")
+        if provider == "makura":
+            reply, json_metrics = await call_makura(system_prompt, prompt)
+        else:
+            reply, json_metrics = await call_routerai(system_prompt, prompt)
         
         if json_metrics:
             # Assuming _save_metrics_from_json is defined elsewhere or will be added
@@ -337,12 +360,23 @@ class ChatOrchestrator:
 
         for node in nodes:
             inputs = node.get("data", {}).get("inputs", [])
+            filled_fields = []
             for inp in inputs:
                 field = inp.get("field")
                 if field in data_to_map:
                     inp["value"] = data_to_map[field]
                     if node["status"] != "skipped":
                         inp["status"] = "completed"
+                
+                if inp.get("value") is not None:
+                    label = inp.get("label", field)
+                    filled_fields.append(f"{label}: {inp['value']}")
+            
+            # Generate summary for visual display if filled
+            if filled_fields:
+                node["data"]["summary"] = " • ".join(filled_fields[:3]) # Show top 3 fields
+                if len(filled_fields) > 3:
+                    node["data"]["summary"] += "..."
         
         # Recalculate readiness
         total = len(nodes)

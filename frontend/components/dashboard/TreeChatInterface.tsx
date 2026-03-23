@@ -30,20 +30,20 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
   const [isLoading, setIsLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Load history on mount
+  // Load history on mount or when activeNode changes
   useEffect(() => {
     const loadHistory = async () => {
       try {
         const token = getToken();
         if (!token) return;
-        const res = await getTreeChatHistory(treeId, token);
+        const res = await getTreeChatHistory(treeId, token, activeNode?.id);
         if (res.history && res.history.length > 0) {
           setMessages(res.history as Message[]);
         } else if (activeNode) {
-          // Welcome message if no history
+          // Welcome message if no history for this node
           setMessages([{
             role: "assistant",
-            content: `Привет! Я Pitchy AI. Я готов помочь с узлом **"${activeNode.label}"**. Что именно мы хотим уточнить или рассчитать?`,
+            content: `Привет! Я Pitchy AI. Я готов помочь с разделом **"${activeNode.label}"**. Что именно мы хотим уточнить или рассчитать?`,
             timestamp: new Date().toISOString()
           }]);
         }
@@ -52,7 +52,7 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
       }
     };
     loadHistory();
-  }, [treeId, activeNode]);
+  }, [treeId, activeNode?.id]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });

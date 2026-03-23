@@ -158,6 +158,7 @@ type TaskNodeData = {
   childCount: number;
   expanded: boolean;
   progress?: string;
+  summary?: string;
   onToggle: () => void;
 };
 
@@ -165,49 +166,69 @@ export const TaskNode = memo(function TaskNode({ data }: NodeProps) {
   const d = data as unknown as TaskNodeData;
   const style = statusColors[d.status] || statusColors.empty;
   const icon = typeIcons[d.nodeType] || typeIcons.Task;
+  const hasSummary = !!d.summary && d.status !== "empty";
 
   return (
     <motion.div
       initial={{ scale: 0.9, opacity: 0 }}
-      animate={{ scale: 1, opacity: 1 }}
+      animate={{ 
+        scale: 1, 
+        opacity: 1,
+        width: hasSummary ? 260 : 180 
+      }}
       whileHover={{ scale: 1.02 }}
-      className={`relative min-w-[140px] max-w-[200px] rounded-xl border backdrop-blur-sm cursor-pointer ${style.glow}`}
+      className={`relative rounded-xl border backdrop-blur-sm cursor-pointer transition-all duration-300 ${style.glow}`}
       style={{ background: style.bg, borderColor: style.border }}
     >
       <Handle type="target" position={Position.Top} className="!bg-white/20 !w-1.5 !h-1.5 !border-none" />
 
-      <div className="p-3 flex items-start gap-2.5">
-        <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${style.text}`}
-          style={{ background: style.bg, border: `1px solid ${style.border}` }}
-        >
-          {icon}
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-xs font-medium text-white leading-snug line-clamp-2">{d.label}</p>
-          <div className="flex items-center gap-1 mt-1 flex-wrap">
-            <span className={`text-[9px] inline-block px-1.5 py-0.5 rounded-full ${style.text}`}
-              style={{ background: style.bg, border: `1px solid ${style.border}` }}
-            >
-              {d.nodeType}
-            </span>
-            {d.progress && (
-              <span className="text-[9px] font-bold opacity-80 bg-black/30 px-1.5 py-0.5 rounded text-white/70">
-                {d.progress}
-              </span>
-            )}
-          </div>
-        </div>
-        {(d.childCount ?? 0) > 0 && (
-          <button
-            onClick={(e) => { e.stopPropagation(); d.onToggle?.(); }}
-            className="w-5 h-5 rounded-full bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors shrink-0"
+      <div className="p-3">
+        <div className="flex items-start gap-2.5">
+          <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${style.text}`}
+            style={{ background: style.bg, border: `1px solid ${style.border}` }}
           >
-            {d.expanded ? (
-              <ChevronDown className="w-3 h-3 text-white/50" />
-            ) : (
-              <ChevronRight className="w-3 h-3 text-white/50" />
-            )}
-          </button>
+            {icon}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-white leading-snug">{d.label}</p>
+            <div className="flex items-center gap-1 mt-1 flex-wrap">
+              <span className={`text-[8px] inline-block px-1.5 py-0.5 rounded-full ${style.text}`}
+                style={{ background: style.bg, border: `1px solid ${style.border}` }}
+              >
+                {d.nodeType}
+              </span>
+              {d.progress && (
+                <span className="text-[8px] font-bold opacity-80 bg-black/30 px-1.2 py-0.5 rounded text-white/70">
+                  {d.progress}
+                </span>
+              )}
+            </div>
+          </div>
+          {(d.childCount ?? 0) > 0 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); d.onToggle?.(); }}
+              className="w-5 h-5 rounded-full bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors shrink-0"
+            >
+              {d.expanded ? (
+                <ChevronDown className="w-3 h-3 text-white/50" />
+              ) : (
+                <ChevronRight className="w-3 h-3 text-white/50" />
+              )}
+            </button>
+          )}
+        </div>
+
+        {/* Expanded Summary */}
+        {hasSummary && (
+          <motion.div 
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            className="mt-2.5 pt-2.5 border-t border-white/5"
+          >
+            <p className="text-[10px] text-white/70 leading-relaxed italic">
+              {d.summary}
+            </p>
+          </motion.div>
         )}
       </div>
 
