@@ -1055,7 +1055,7 @@ def _check_subscription_limits(user: User, db: Session, resource_type: str, sess
 
 
 @app.post("/analysis", response_model=AnalysisResponse)
-def create_analysis(
+async def create_analysis(
     payload: AnalysisCreateRequest,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
