@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Send, Bot, User, Loader2, Sparkles, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { getToken } from "@/lib/auth";
 import { postTreeChat, getTreeChatHistory, type TreeNodeResponse } from "@/lib/api";
 import { motion } from "framer-motion";
@@ -140,7 +141,19 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
                 : "bg-pitchy-violet/5 text-white/90 border border-pitchy-violet/20 rounded-tl-sm relative"
             }`}>
               <div className="prose prose-invert prose-sm max-w-none">
-                <ReactMarkdown>
+                <ReactMarkdown 
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    table: ({node, ...props}) => (
+                      <div className="my-3 overflow-x-auto rounded-xl border border-white/10 bg-white/5">
+                        <table className="w-full text-left border-collapse" {...props} />
+                      </div>
+                    ),
+                    thead: ({node, ...props}) => <thead className="bg-white/10" {...props} />,
+                    th: ({node, ...props}) => <th className="p-2 text-[11px] font-bold text-pitchy-cyan-light border-b border-white/10 uppercase tracking-wider" {...props} />,
+                    td: ({node, ...props}) => <td className="p-2 text-[12px] text-white/80 border-b border-white/5 last:border-0" {...props} />,
+                  }}
+                >
                   {msg.content}
                 </ReactMarkdown>
               </div>

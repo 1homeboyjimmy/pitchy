@@ -3,6 +3,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { Send, User, Bot, Loader2, Sparkles, Lightbulb, Users, Calculator, HelpCircle, ThumbsUp, ThumbsDown } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 // Button unused
 import { ChatMessageResponse, ChatSessionDetailResponse, sendChatMessage, getChatSession, sendChatMessageFeedback } from "@/lib/api";
 import { getToken } from "@/lib/auth";
@@ -166,7 +167,19 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                             : "bg-pitchy-violet/10 border border-pitchy-violet/20 text-white rounded-tl-sm"
                             }`}>
                             <div className="text-sm sm:text-base leading-[1.7] md:leading-[1.8] text-white/90 [&>p]:mb-4 [&>p:last-child]:mb-0 [&>ul]:list-disc [&>ul]:pl-6 [&>ul]:mb-4 [&>ul>li]:mb-2 [&>ul>li]:pl-1 [&>ol]:list-decimal [&>ol]:pl-6 [&>ol]:mb-4 [&>ol>li]:mb-2 [&>ol>li]:pl-1 [&>h2]:text-xl [&>h2]:font-bold [&>h2]:text-pitchy-cyan-light [&>h2]:mt-8 [&>h2]:mb-4 [&>h3]:text-lg [&>h3]:font-bold [&>h3]:text-white [&>h3]:mt-6 [&>h3]:mb-3 [&>strong]:text-white [&>strong]:font-semibold break-words">
-                                <ReactMarkdown>
+                                <ReactMarkdown 
+                                    remarkPlugins={[remarkGfm]}
+                                    components={{
+                                        table: ({node, ...props}) => (
+                                            <div className="my-4 overflow-x-auto rounded-xl border border-white/10 bg-white/5">
+                                                <table className="w-full text-left border-collapse" {...props} />
+                                            </div>
+                                        ),
+                                        thead: ({node, ...props}) => <thead className="bg-white/10" {...props} />,
+                                        th: ({node, ...props}) => <th className="p-3 text-sm font-bold text-pitchy-cyan-light border-b border-white/10" {...props} />,
+                                        td: ({node, ...props}) => <td className="p-3 text-sm text-white/80 border-b border-white/5 last:border-0" {...props} />,
+                                    }}
+                                >
                                     {getDisplayContent(msg)}
                                 </ReactMarkdown>
                                 {msg.id === typingMessageId && (
