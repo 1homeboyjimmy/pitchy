@@ -2516,7 +2516,13 @@ async def classify_intent(user_message: str) -> list[str]:
     )
     try:
         raw_response, usage = await call_zai(system_prompt, user_message, model="z-ai/glm-4.7")
-        logger.info(f"Z AI token usage (Router LLM): {usage}")
+        if usage:
+            logger.info(f"Z AI token usage (Router LLM): {usage}")
+        
+        if not raw_response:
+            logger.error("Router LLM failed: No response from ZvenoAI")
+            return ["general"]
+
         valid_cats = {"pitching", "grants_and_funds", "unit_economics", "target_audience", "legal_and_taxes", "product_management", "platform_rules", "general"}
         found = [c.strip() for c in raw_response.split(",")]
         result = [c for c in found if c in valid_cats]
@@ -2632,7 +2638,12 @@ async def _generate_interviewer_response(session: ChatSession, db: Session) -> s
 
 
         raw_response, usage = await call_zai(system_prompt_final, final_user_prompt)
-        logger.info(f"Z AI token usage (background summary): {usage}")
+        if usage:
+            logger.info(f"Z AI token usage (background summary): {usage}")
+
+        if not raw_response:
+            logger.error("Interviewer failed: No response from ZvenoAI")
+            return "Извините, я задумался. Можете повторить?"
 
         # Check if JSON
         clean_text = raw_response.strip()

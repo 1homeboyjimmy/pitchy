@@ -29,21 +29,32 @@ async def call_zai(system_prompt: str, user_message: str, model: str = "z-ai/glm
             {"role": "user", "content": user_message}
         ],
         "temperature": 0.3,
-        "max_tokens": 2048
+        "max_tokens": 4096  # Increased to handle long reasoning phase
     }
 
-    # logger.debug(f"ZvenoAI Prompt: {payload}")
-    
     try:
         async with httpx.AsyncClient(timeout=60) as client:
             resp = await client.post(url, headers=headers, json=payload)
             resp.raise_for_status()
             data = resp.json()
-            content = data["choices"][0]["message"]["content"]
             
+            # Extract content, checking for reasoning fallbacks
+            message = data["choices"][0]["message"]
+            content = message.get("content", "")
+            
+            # If content is empty but reasoning is present (standard for GLM-4 reasoning models)
             if not content or not content.strip():
-                logger.warning(f"ZvenoAI returned empty content for model {model}")
-                logger.debug(f"ZvenoAI Full Response: {data}")
+                # Check different naming conventions for reasoning
+                reasoning = message.get("reasoning_content") or \
+                            (message.get("reasoning_details", [{}])[0].get("text") if message.get("reasoning_details") else "")
+                
+                if reasoning:
+                    logger.info(f"Using reasoning fallback for model {model}")
+                    content = reasoning
+
+            if not content or not content.strip():
+                logger.warning(f"ZvenoAI returned empty content for model {model}. Full response: {json.dumps(data, ensure_ascii=False)}")
+                return None, None
             else:
                 logger.info(f"ZvenoAI response received ({len(content)} chars)")
 
@@ -57,7 +68,7 @@ async def call_zai(system_prompt: str, user_message: str, model: str = "z-ai/glm
             
             return content, metrics
     except Exception as e:
-        logger.error(f"ZvenoAI API call failed ({model}): {e}")
+        print(f"DEBUG: ZvenoAI API call failed ({model}): {e}")
         return None, None
 
 def extract_json_zai(text: str) -> Dict[str, Any]:
