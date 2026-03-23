@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Bot, User, Loader2, Sparkles, X } from "lucide-react";
+import { Send, Bot, User, Loader2, Sparkles, X, Square, ChevronDown, ChevronUp, Atom } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { getToken } from "@/lib/auth";
-import { postTreeChat, getTreeChatHistory, type TreeNodeResponse } from "@/lib/api";
+import { getTreeChatHistory, type TreeNodeResponse } from "@/lib/api";
 import { motion } from "framer-motion";
 
 interface Message {
@@ -29,6 +29,10 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const [thoughtLines, setThoughtLines] = useState<Record<number, string>>({});
+  const [thoughtExpanded, setThoughtExpanded] = useState<Record<number, boolean>>({});
+  const [thoughtTime, setThoughtTime] = useState<Record<number, number>>({});
 
   // Load history on mount or when activeNode changes
   useEffect(() => {
@@ -76,20 +80,63 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
       const token = getToken();
       if (!token) throw new Error("Unauthorized");
 
-      const res = await postTreeChat(treeId, messageToSend, token, activeNode?.id);
-      
-      const assistantMsg: Message = {
-        role: "assistant",
-        content: res.reply,
-        model_used: res.model,
-        timestamp: new Date().toISOString(),
-      };
-      
-      setMessages((prev) => [...prev, assistantMsg]);
-      if (res.hints) setHints(res.hints);
+      const abortController = new AbortController();
+      abortControllerRef.current = abortController;
 
-      if (res.tree_data) {
-        onUpdateTree(res.tree_data.nodes, res.readiness_index);
+      // We'll update the last message in real-time
+      let assistantContent = "";
+      let fullThoughtContent = "";
+      const startTime = Date.now();
+      const tempAssistantId = Date.now(); // We use timestamp as a key for thoughts
+      
+      // Add initial empty assistant message to be populated
+      setMessages((prev) => [...prev, {
+        role: "assistant",
+        content: "",
+        timestamp: new Date().toISOString()
+      }]);
+
+      const { postTreeChatStream } = await import("@/lib/api");
+      
+      try {
+        for await (const chunk of postTreeChatStream(treeId, messageToSend, token, activeNode?.id, abortController.signal)) {
+          if (chunk.type === "thought") {
+            fullThoughtContent += chunk.content;
+            setThoughtLines(prev => ({ ...prev, [tempAssistantId]: fullThoughtContent }));
+            setThoughtExpanded(prev => ({ ...prev, [tempAssistantId]: true }));
+          } else if (chunk.type === "chunk") {
+            if (!thoughtTime[tempAssistantId] && fullThoughtContent) {
+                const duration = Math.round((Date.now() - startTime) / 1000);
+                setThoughtTime(prev => ({ ...prev, [tempAssistantId]: duration }));
+            }
+            assistantContent += chunk.content;
+            setMessages((prev) => {
+              const last = prev[prev.length - 1];
+              if (last.role === "assistant") {
+                return [...prev.slice(0, -1), { ...last, content: assistantContent }];
+              }
+              return prev;
+            });
+          } else if (chunk.type === "metadata") {
+            setMessages((prev) => {
+              const last = prev[prev.length - 1];
+              if (last.role === "assistant") {
+                return [...prev.slice(0, -1), { ...last, model_used: chunk.model }];
+              }
+              return prev;
+            });
+          } else if (chunk.type === "tree_update") {
+            onUpdateTree(chunk.data.nodes, chunk.data.readiness_index);
+          } else if (chunk.type === "final") {
+            if (chunk.hints) setHints(chunk.hints);
+          }
+        }
+      } catch (err: any) {
+        if (err.name === 'AbortError') {
+          console.log("Generation aborted");
+        } else {
+          throw err;
+        }
       }
     } catch (error) {
       console.error(error);
@@ -100,8 +147,17 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
       }]);
     } finally {
       setIsLoading(false);
+      abortControllerRef.current = null;
     }
   }, [input, isLoading, treeId, activeNode, onUpdateTree]);
+
+  const stopGeneration = () => {
+    if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        setIsLoading(false);
+        abortControllerRef.current = null;
+    }
+  };
 
   // Handle external triggers (e.g. from buttons)
   useEffect(() => {
@@ -141,6 +197,32 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
                 : "bg-pitchy-violet/5 text-white/90 border border-pitchy-violet/20 rounded-tl-sm relative"
             }`}>
               <div className="prose prose-invert prose-sm max-w-none">
+                {thoughtLines[new Date(msg.timestamp).getTime()] && (
+                  <div className="mb-3 bg-white/5 rounded-xl border border-white/10 overflow-hidden">
+                    <button 
+                        onClick={() => {
+                          const key = new Date(msg.timestamp).getTime();
+                          setThoughtExpanded(prev => ({ ...prev, [key]: !prev[key] }));
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-1.5 text-[10px] text-white/30 hover:text-white/50 transition-colors border-b border-white/5"
+                    >
+                        <Atom className={`w-3 h-3 ${isLoading && msg.content === "" ? "animate-spin" : ""}`} />
+                        <span>
+                            {thoughtTime[new Date(msg.timestamp).getTime()] ? `Думал ${thoughtTime[new Date(msg.timestamp).getTime()]} сек.` : "Размышление..."}
+                        </span>
+                        {thoughtExpanded[new Date(msg.timestamp).getTime()] ? <ChevronUp className="w-3 h-3 ml-auto" /> : <ChevronDown className="w-3 h-3 ml-auto" />}
+                    </button>
+                    <motion.div
+                        initial={false}
+                        animate={{ height: thoughtExpanded[new Date(msg.timestamp).getTime()] ? "auto" : 0 }}
+                        className="overflow-hidden"
+                    >
+                        <div className="p-2 text-xs text-white/40 italic border-l border-white/10 ml-1.5 my-1.5">
+                            {thoughtLines[new Date(msg.timestamp).getTime()]}
+                        </div>
+                    </motion.div>
+                  </div>
+                )}
                 <ReactMarkdown 
                   remarkPlugins={[remarkGfm]}
                   components={{
@@ -199,11 +281,11 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
             className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-4 pr-12 text-sm text-white focus:outline-none focus:border-pitchy-violet/50 transition-colors"
           />
           <button 
-            onClick={() => handleSend()}
-            disabled={!input.trim() || isLoading}
-            className="absolute right-1 top-1 p-2 bg-pitchy-violet rounded-lg text-white hover:opacity-90 disabled:opacity-30 transition-all"
+            onClick={() => isLoading ? stopGeneration() : handleSend()}
+            disabled={(!input.trim() && !isLoading)}
+            className={`absolute right-1 top-1 p-2 rounded-lg text-white transition-all ${isLoading ? 'bg-red-500 hover:bg-red-600' : 'bg-pitchy-violet hover:opacity-90 disabled:opacity-30'}`}
           >
-            <Send className="w-4 h-4" />
+            {isLoading ? <Square className="w-4 h-4 fill-white" /> : <Send className="w-4 h-4" />}
           </button>
         </div>
       </div>

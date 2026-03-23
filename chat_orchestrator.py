@@ -9,7 +9,7 @@ from routerai_client import call_routerai
 from makura_client import call_makura
 from tree_orchestrator import _normalize_tree_data
 from search_agent import execute_search_agent
-from perplexity_client import call_perplexity
+from yandex_gpt_client import async_call_yandex_gpt
 from core_tree import CORE_SKELETON
 
 logger = logging.getLogger("app")
@@ -113,62 +113,124 @@ class ChatOrchestrator:
             self.redis.lpush(chat_key, json.dumps(msg))
             self.redis.ltrim(chat_key, 0, 99) # Keep 100 messages
 
-    async def process_message(self, user_message: str, active_node_id: str = None) -> dict:
-        """Main entry point for chat orchestration."""
+    async def _stream_chat(self, user_message: str, history: list, state: dict, active_node_id: str | None):
+        """Core streaming logic for chat with thoughts."""
+        node_context = ""
+        active_node = next((n for n in state.get("nodes", []) if n["id"] == active_node_id), None)
+        if active_node:
+             node_context = f"Ты сейчас помогаешь пользователю в контексте узла '{active_node.get('label')}' (описание: {active_node.get('data', {}).get('description')}). "
+        
+        system_prompt = f"Ты — ассистент платформы Pitchy. {node_context}Отвечай на русском языке. Сначала запиши свои мысли/размышления о запросе внутри тегов <thought>...</thought>, а затем дай итоговый ответ пользователю."
+        
+        chat_history = "\n".join([f"{m['role']}: {m['content']}" for m in history])
+        prompt = f"История чата:\n{chat_history}\n\nПользователь: {user_message}"
+        
+        provider = os.getenv("PRIMARY_PROVIDER", "routerai")
+        if provider == "makura":
+            async for chunk in stream_makura(system_prompt, prompt):
+                yield chunk
+        else:
+            async for chunk in stream_routerai(system_prompt, prompt):
+                yield chunk
+
+    async def _parse_thought_generator(self, generator):
+        """Utility to split stream into thought and chunk JSONs."""
+        inside_thought = False
+        buffer = ""
+        async for chunk in generator:
+            if not chunk: continue
+            buffer += chunk
+            while True:
+                if not inside_thought:
+                    if "<thought>" in buffer:
+                        pre, post = buffer.split("<thought>", 1)
+                        if pre: yield json.dumps({"type": "chunk", "content": pre}) + "\n"
+                        inside_thought = True
+                        buffer = post
+                    else:
+                        if len(buffer) > 10:
+                            to_yield = buffer[:-9]; buffer = buffer[-9:]
+                            yield json.dumps({"type": "chunk", "content": to_yield}) + "\n"
+                        break
+                else:
+                    if "</thought>" in buffer:
+                        content, post = buffer.split("</thought>", 1)
+                        yield json.dumps({"type": "thought", "content": content}) + "\n"
+                        inside_thought = False
+                        buffer = post
+                    else:
+                        if len(buffer) > 11:
+                            to_yield = buffer[:-10]; buffer = buffer[-10:]
+                            yield json.dumps({"type": "thought", "content": to_yield}) + "\n"
+                        break
+        if buffer:
+            yield json.dumps({"type": "thought" if inside_thought else "chunk", "content": buffer}) + "\n"
+
+    async def process_message(self, user_message: str, active_node_id: str = None):
+        """Main entry point for chat orchestration. Yields JSON chunks."""
         state = await self.load_state()
         history = await self.get_chat_history(node_id=active_node_id)
         
-        # 1. Intent Recognition
-        intent = await self._classify_intent(user_message, state, history, active_node_id)
-        logger.info(f"Orchestrator: User intent classified as '{intent['intent']}'")
+        intent_data = await self._classify_intent(user_message, state, history, active_node_id)
+        intent = intent_data.get('intent', 'chat')
+        logger.info(f"Orchestrator: User intent classified as '{intent}'")
 
-        # 2. Route and Execute
-        # Initialize result
-        reply = ""
-        model_used = ""
+        reply_full = ""
+        model_used = "RouterAI (GLM-5)"
         enriched_data = {}
 
-        if intent['intent'] == "finance":
-            model_used = "GigaChat"
-            reply, enriched_data = await self._handle_finance(user_message, state, active_node_id)
-        elif intent['intent'] == "search":
+        if intent == "chat" or intent not in ["tree", "finance", "search", "legal"]:
+            yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
+            async for json_chunk in self._parse_thought_generator(self._stream_chat(user_message, history, state, active_node_id)):
+                data = json.loads(json_chunk.strip())
+                if data["type"] == "chunk": reply_full += data["content"]
+                yield json_chunk
+        
+        elif intent == "tree":
+            reply_full, enriched_data = await self._handle_tree_edit(user_message, state, active_node_id)
+            yield json.dumps({"type": "chunk", "content": reply_full}) + "\n"
+            yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
+        
+        elif intent == "search":
             model_used = "Perplexity/Agent"
-            reply = await self._handle_search(user_message)
-        elif intent['intent'] == "legal":
-            model_used = "YandexGPT (Юрист)"
-            reply = await self._handle_legal(user_message)
-        elif intent['intent'] == "tree":
-            model_used = "RouterAI (GLM-5)"
-            reply, enriched_data = await self._handle_tree_edit(user_message, state, active_node_id)
-        elif intent['intent'] == "chat": # chat
-            model_used = "RouterAI (GLM-5)"
-            history_str = "\n".join([f"{m['role']}: {m['content']}" for m in history[-5:]])
-            # Get active node info for chat context
-            active_node = next((n for n in state.get("nodes", []) if n["id"] == active_node_id), None)
-            reply = await self._handle_chat(user_message, history_str, active_node)
-        else:
-            # Fallback for unhandled intents
-            model_used = "RouterAI (GLM-5)"
-            history_str = "\n".join([f"{m['role']}: {m['content']}" for m in history[-5:]])
-            reply = await self._handle_chat(user_message, history_str)
+            reply_full = await self._handle_search(user_message)
+            yield json.dumps({"type": "chunk", "content": reply_full}) + "\n"
+            yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
 
+        elif intent == "legal":
+            model_used = "YandexGPT (Юрист)"
+            reply_full = await self._handle_legal(user_message)
+            yield json.dumps({"type": "chunk", "content": reply_full}) + "\n"
+            yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
+        
+        elif intent == "finance":
+            model_used = "GigaChat"
+            reply_full, enriched_data = await self._handle_finance(user_message, state, active_node_id)
+            yield json.dumps({"type": "chunk", "content": reply_full}) + "\n"
+            yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
+        
+        else:
+            # Fallback
+            async for chunk in self._stream_chat(user_message, history, state, active_node_id):
+                reply_full += chunk
+                yield json.dumps({"type": "chunk", "content": chunk}) + "\n"
 
         # 3. Merge state if AI returned structured data
         if enriched_data:
             state = self._merge_ai_data_to_state(state, enriched_data)
             await self.save_state(state)
+            yield json.dumps({"type": "tree_update", "data": state}) + "\n"
 
         # 4. Finalize
         await self.add_chat_message("user", user_message, node_id=active_node_id)
-        await self.add_chat_message("assistant", reply, node_id=active_node_id, model_used=model_used)
+        await self.add_chat_message("assistant", reply_full, node_id=active_node_id, model_used=model_used)
 
-        return {
-            "reply": reply,
-            "model": model_used,
-            "tree_data": state,
+        # Final metadata
+        yield json.dumps({
+            "type": "final",
             "readiness_index": state.get("readiness_index", 0),
             "hints": self._get_hints(state, active_node_id)
-        }
+        }) + "\n"
 
     def _get_hints(self, state: dict, active_node_id: str | None) -> list[str]:
         """Generate contextual suggestions based on node focus."""
@@ -222,12 +284,16 @@ class ChatOrchestrator:
         )
 
         try:
-            # Quick classification
-            provider = os.getenv("PRIMARY_PROVIDER", "routerai")
-            if provider == "makura":
-                reply, _ = await call_makura("Ты — диспетчер интентов.", prompt)
-            else:
-                reply, _ = await call_routerai("Ты — диспетчер интентов.", prompt)
+            # For intent recognition, use YandexGPT Lite as it is the fastest
+            folder_id = os.getenv("YC_FOLDER_ID")
+            lite_model_uri = f"gpt://{folder_id}/yandexgpt-lite/latest" if folder_id else None
+            
+            reply, _ = await async_call_yandex_gpt(
+                "Ты — диспетчер интентов.", 
+                prompt,
+                model_uri=lite_model_uri,
+                timeout=10
+            )
             
             if reply:
                 data = self._extract_json_block(reply)
@@ -325,7 +391,7 @@ class ChatOrchestrator:
         if active_node:
             node_context = f"Ты сейчас помогаешь пользователю в контексте узла '{active_node.get('label')}' (описание: {active_node.get('data', {}).get('description')}). "
         
-        system_prompt = f"Ты — ассистент платформы Pitchy. {node_context}Отвечай на русском языке."
+        system_prompt = f"Ты — ассистент платформы Pitchy. {node_context}Отвечай на русском языке. Сначала запиши свои мысли/размышления о запросе внутри тегов <thought>...</thought>, а затем дай итоговый ответ пользователю."
         prompt = f"История чата:\n{chat_history}\n\nПользователь: {user_message}"
         
         provider = os.getenv("PRIMARY_PROVIDER", "routerai")

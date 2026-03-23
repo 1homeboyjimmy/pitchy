@@ -1,11 +1,11 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Send, User, Bot, Loader2, Sparkles, Lightbulb, Users, Calculator, HelpCircle, ThumbsUp, ThumbsDown } from "lucide-react";
+import { Send, User, Bot, Loader2, Sparkles, Lightbulb, Users, Calculator, HelpCircle, ThumbsUp, ThumbsDown, Square, ChevronDown, ChevronUp, Atom } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 // Button unused
-import { ChatMessageResponse, ChatSessionDetailResponse, sendChatMessage, getChatSession, sendChatMessageFeedback } from "@/lib/api";
+import { ChatMessageResponse, ChatSessionDetailResponse, getChatSession, sendChatMessageFeedback } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import { AnalysisCard } from "@/components/dashboard/AnalysisCard";
 import dayjs from "dayjs";
@@ -23,6 +23,10 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const scrollViewportRef = useRef<HTMLDivElement>(null);
+    const abortControllerRef = useRef<AbortController | null>(null);
+    const [thoughtLines, setThoughtLines] = useState<Record<number, string>>({});
+    const [thoughtExpanded, setThoughtExpanded] = useState<Record<number, boolean>>({});
+    const [thoughtTime, setThoughtTime] = useState<Record<number, number>>({});
 
     // Typewriter animation state
     const [typingMessageId, setTypingMessageId] = useState<number | null>(null);
@@ -93,6 +97,9 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
         if (typeof text !== 'string') setInputValue("");
         setIsLoading(true);
 
+        const abortController = new AbortController();
+        abortControllerRef.current = abortController;
+
         const tempUserMsg: ChatMessageResponse = {
             id: -1,
             role: "user",
@@ -105,20 +112,49 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
             const token = getToken();
             if (!token) throw new Error("No token");
 
-            await sendChatMessage(session.id, content, token);
+            // Add placeholder assistant message
+            const tempAssistantId = Date.now();
+            setMessages((prev) => [...prev, {
+                id: tempAssistantId,
+                role: "assistant",
+                content: "",
+                created_at: new Date().toISOString(),
+            }]);
 
-            // Fetch updated session to check for analysis
+            let fullAssistantContent = "";
+            let fullThoughtContent = "";
+            const startTime = Date.now();
+            const { sendChatMessageStream, getChatSession } = await import("@/lib/api");
+
+            try {
+                for await (const data of sendChatMessageStream(session.id, content, token, abortController.signal)) {
+                    if (data.type === "thought") {
+                        fullThoughtContent += data.content;
+                        setThoughtLines(prev => ({ ...prev, [tempAssistantId]: fullThoughtContent }));
+                        setThoughtExpanded(prev => ({ ...prev, [tempAssistantId]: true }));
+                    } else if (data.type === "chunk") {
+                        if (!thoughtTime[tempAssistantId] && fullThoughtContent) {
+                            const duration = Math.round((Date.now() - startTime) / 1000);
+                            setThoughtTime(prev => ({ ...prev, [tempAssistantId]: duration }));
+                        }
+                        fullAssistantContent += data.content;
+                        setMessages((prev) => 
+                            prev.map(m => m.id === tempAssistantId ? { ...m, content: fullAssistantContent } : m)
+                        );
+                    }
+                }
+            } catch (err: any) {
+                if (err.name === 'AbortError') {
+                    console.log("Generation aborted");
+                } else {
+                    throw err;
+                }
+            }
+
+            // Fetch updated session to check for analysis or new message IDs
             const updatedSession = await getChatSession(session.id, token);
             onUpdate(updatedSession);
-
-            // Find the new assistant message to animate
-            const newMsgs = updatedSession.messages;
-            const lastMsg = newMsgs[newMsgs.length - 1];
-            if (lastMsg && lastMsg.role === "assistant") {
-                setDisplayedLength(0);
-                setTypingMessageId(lastMsg.id);
-            }
-            setMessages(newMsgs);
+            setMessages(updatedSession.messages);
 
         } catch (error) {
             console.error(error);
@@ -126,7 +162,16 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
             setMessages((prev) => prev.filter(m => m.id !== -1));
         } finally {
             setIsLoading(false);
+            abortControllerRef.current = null;
             setTimeout(() => textareaRef.current?.focus(), 100);
+        }
+    };
+
+    const stopGeneration = () => {
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+            setIsLoading(false);
+            abortControllerRef.current = null;
         }
     };
 
@@ -167,6 +212,29 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                             : "bg-pitchy-violet/10 border border-pitchy-violet/20 text-white rounded-tl-sm"
                             }`}>
                             <div className="text-sm sm:text-base leading-[1.7] md:leading-[1.8] text-white/90 [&>p]:mb-4 [&>p:last-child]:mb-0 [&>ul]:list-disc [&>ul]:pl-6 [&>ul]:mb-4 [&>ul>li]:mb-2 [&>ul>li]:pl-1 [&>ol]:list-decimal [&>ol]:pl-6 [&>ol]:mb-4 [&>ol>li]:mb-2 [&>ol>li]:pl-1 [&>h2]:text-xl [&>h2]:font-bold [&>h2]:text-pitchy-cyan-light [&>h2]:mt-8 [&>h2]:mb-4 [&>h3]:text-lg [&>h3]:font-bold [&>h3]:text-white [&>h3]:mt-6 [&>h3]:mb-3 [&>strong]:text-white [&>strong]:font-semibold break-words">
+                                {thoughtLines[msg.id] && (
+                                    <div className="mb-4 bg-white/5 rounded-xl border border-white/10 overflow-hidden">
+                                        <button 
+                                            onClick={() => setThoughtExpanded(prev => ({ ...prev, [msg.id]: !prev[msg.id] }))}
+                                            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-white/40 hover:text-white/60 transition-colors border-b border-white/5"
+                                        >
+                                            <Atom className={`w-3.5 h-3.5 ${isLoading && !thoughtTime[msg.id] ? "animate-spin" : ""}`} />
+                                            <span>
+                                                {thoughtTime[msg.id] ? `Думал ${thoughtTime[msg.id]} сек.` : "Размышление..."}
+                                            </span>
+                                            {thoughtExpanded[msg.id] ? <ChevronUp className="w-3.5 h-3.5 ml-auto" /> : <ChevronDown className="w-3.5 h-3.5 ml-auto" />}
+                                        </button>
+                                        <motion.div
+                                            initial={false}
+                                            animate={{ height: thoughtExpanded[msg.id] ? "auto" : 0 }}
+                                            className="overflow-hidden"
+                                        >
+                                            <div className="p-3 text-sm text-white/50 italic border-l-2 border-white/20 ml-2 my-2">
+                                                {thoughtLines[msg.id]}
+                                            </div>
+                                        </motion.div>
+                                    </div>
+                                )}
                                 <ReactMarkdown 
                                     remarkPlugins={[remarkGfm]}
                                     components={{
@@ -327,11 +395,11 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                         rows={1}
                     />
                     <button
-                        onClick={() => handleSendMessage()}
-                        disabled={!inputValue.trim() || isLoading || !!session.analysis}
-                        className="absolute right-3 p-2 rounded-lg bg-pitchy-violet text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-pitchy-violet/80 transition-colors"
+                        onClick={() => isLoading ? stopGeneration() : handleSendMessage()}
+                        disabled={(!inputValue.trim() && !isLoading) || !!session.analysis}
+                        className={`absolute right-3 p-2 rounded-lg text-white transition-colors ${isLoading ? 'bg-red-500/80 hover:bg-red-500' : 'bg-pitchy-violet hover:bg-pitchy-violet/80'}`}
                     >
-                        <Send className="w-4 h-4" />
+                        {isLoading ? <Square className="w-4 h-4 fill-white" /> : <Send className="w-4 h-4" />}
                     </button>
                 </div>
             </div >

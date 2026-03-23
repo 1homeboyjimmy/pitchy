@@ -243,6 +243,41 @@ export async function sendChatMessage(sessionId: number, content: string, token:
   return postAuthJson<ChatMessageResponse>(`/chat/sessions/${sessionId}/messages`, { content }, token);
 }
 
+export async function* sendChatMessageStream(sessionId: number, content: string, token: string, signal?: AbortSignal) {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token && token !== COOKIE_SESSION_MARKER) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  const res = await fetch(`${API_BASE}/chat/sessions/${sessionId}/messages`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ content }),
+    credentials: "include",
+    signal
+  });
+  if (!res.ok) throw new Error("Stream request failed");
+  const reader = res.body?.getReader();
+  if (!reader) return;
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+    for (const line of lines) {
+      if (line.trim()) {
+        try {
+          yield JSON.parse(line);
+        } catch (e) {
+          console.error("Error parsing stream line", e, line);
+        }
+      }
+    }
+  }
+}
+
 export async function sendChatMessageFeedback(sessionId: number, messageId: number, feedback: number, token: string): Promise<{ status: string; feedback: number }> {
   return postAuthJson<{ status: string; feedback: number }>(`/chat/sessions/${sessionId}/messages/${messageId}/feedback`, { feedback }, token);
 }
@@ -380,16 +415,45 @@ export async function createTreeFromText(description: string, token: string): Pr
   return postAuthJson<TreeResponse>("/tree/create", { description }, token);
 }
 
-export async function postTreeChat(
+export async function* postTreeChatStream(
   treeId: number,
   message: string,
   token: string,
-  activeNodeId?: string
-): Promise<TreeChatResponse> {
-  return postAuthJson<TreeChatResponse>(`/tree/${treeId}/chat`, {
-    message,
-    active_node_id: activeNodeId
-  }, token);
+  activeNodeId?: string,
+  signal?: AbortSignal
+) {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token && token !== COOKIE_SESSION_MARKER) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  const res = await fetch(`${API_BASE}/tree/${treeId}/chat`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ message, active_node_id: activeNodeId }),
+    credentials: "include",
+    signal
+  });
+  if (!res.ok) throw new Error("Tree stream request failed");
+  const reader = res.body?.getReader();
+  if (!reader) return;
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+    for (const line of lines) {
+      if (line.trim()) {
+        try {
+          yield JSON.parse(line);
+        } catch (e) {
+          console.error("Error parsing stream line", e, line);
+        }
+      }
+    }
+  }
 }
 
 export async function deleteTree(treeId: number, token: string): Promise<{ status: string }> {

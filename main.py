@@ -25,8 +25,8 @@ import uuid
 from redis_client import get_redis
 from yandex_gpt_client import YandexGPTError, call_yandex_gpt, extract_json
 from zai_client import generate_chat_title, analyze_search_intent
-from routerai_client import call_routerai
-from makura_client import call_makura
+from routerai_client import call_routerai, stream_routerai
+from makura_client import call_makura, stream_makura
 from search_agent import execute_search_agent
 from db import SessionLocal, get_db
 from models import User, PromoCode, Analysis, Payment, RagLog
@@ -88,7 +88,8 @@ SYSTEM_PROMPT = (
 )
 SYSTEM_CHAT_PROMPT = (
     "Ты — эксперт по венчурным инвестициям в России. Веди диалог и отвечай сплошным "
-    "текстом. Никогда не используй markdown-заголовки с решетками (### и подобные). "
+    "текстом. Сначала запиши свои мысли/размышления о запросе внутри тегов <thought>...</thought>, "
+    "а затем дай итоговый ответ пользователю. Никогда не используй markdown-заголовки с решетками (### и подобные). "
     "Задавай пользователю МАКСИМУМ один уточняющий вопрос за раз, только если это критически важно. "
     "Учитывай российский рынок: регуляторику, конкуренцию, поведение потребителей, "
     "каналы продвижения и требования инвесторов (РВК, бизнес-ангелы). "
@@ -1182,8 +1183,55 @@ def list_analyses(
     return results
 
 
-@app.post("/chat", response_model=ChatResponse)
-async def chat(payload: ChatRequest) -> ChatResponse:
+async def parse_thought_generator(generator):
+    """Parses <thought>...</thought> tags and yields JSON chunks."""
+    inside_thought = False
+    buffer = ""
+    async for chunk in generator:
+        if not chunk: continue
+        buffer += chunk
+        
+        while True:
+            if not inside_thought:
+                if "<thought>" in buffer:
+                    pre, post = buffer.split("<thought>", 1)
+                    if pre:
+                        yield json.dumps({"type": "chunk", "content": pre}) + "\n"
+                    inside_thought = True
+                    buffer = post
+                else:
+                    if len(buffer) > 10:
+                        to_yield = buffer[:-9]
+                        buffer = buffer[-9:]
+                        yield json.dumps({"type": "chunk", "content": to_yield}) + "\n"
+                    break
+            else:
+                if "</thought>" in buffer:
+                    content, post = buffer.split("</thought>", 1)
+                    yield json.dumps({"type": "thought", "content": content}) + "\n"
+                    inside_thought = False
+                    buffer = post
+                else:
+                    if len(buffer) > 11:
+                        to_yield = buffer[:-10]
+                        buffer = buffer[-10:]
+                        yield json.dumps({"type": "thought", "content": to_yield}) + "\n"
+                    break
+    if buffer:
+        yield json.dumps({"type": "thought" if inside_thought else "chunk", "content": buffer}) + "\n"
+
+async def save_assistant_message(session_id: int, content: str):
+    """Background task to save streamed assistant message to DB."""
+    from db import SessionLocal
+    from models import ChatMessage as DbChatMessage
+    with SessionLocal() as db:
+        msg = DbChatMessage(session_id=session_id, role="assistant", content=content)
+        db.add(msg)
+        db.commit()
+
+
+@app.post("/chat")
+async def chat(payload: ChatRequest):
     if not payload.messages:
         raise HTTPException(status_code=400, detail="messages is required")
 
@@ -1192,24 +1240,29 @@ async def chat(payload: ChatRequest) -> ChatResponse:
         raise HTTPException(status_code=400, detail="last user message is required")
 
     try:
-        context_chunks = rag.get_relevant_chunks(last_user, top_k=3)
-    except RuntimeError as exc:
+        # Parallel RAG
+        context_chunks = await asyncio.to_thread(rag.get_relevant_chunks, last_user, top_k=3)
+    except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     user_prompt = _build_chat_prompt(payload.messages, context_chunks)
+    provider = os.getenv("PRIMARY_PROVIDER", "routerai")
 
-    try:
-        provider = os.getenv("PRIMARY_PROVIDER", "routerai")
-        if provider == "makura":
-            raw_text, usage = await call_makura(SYSTEM_CHAT_PROMPT, user_prompt)
-        else:
-            raw_text, usage = await call_routerai(SYSTEM_CHAT_PROMPT, user_prompt)
-        logger.info(f"AI token usage ({provider} chat with docs): {usage}")
-    except YandexGPTError as exc:
-        status = exc.status_code or 502
-        raise HTTPException(status_code=status, detail=exc.message) from exc
+    async def chat_generator():
+        full_response = ""
+        try:
+            raw_gen = stream_makura(SYSTEM_CHAT_PROMPT, user_prompt) if provider == "makura" else stream_routerai(SYSTEM_CHAT_PROMPT, user_prompt)
+            async for json_chunk in parse_thought_generator(raw_gen):
+                # Extra clean for saving later
+                data = json.loads(json_chunk.strip())
+                if data["type"] == "chunk":
+                    full_response += data["content"]
+                yield json_chunk
+        except Exception as e:
+            logger.error(f"Streaming failed: {e}")
+            yield json.dumps({"type": "error", "content": str(e)}) + "\n"
 
-    return ChatResponse(reply=raw_text.strip())
+    return StreamingResponse(chat_generator(), media_type="text/event-stream")
 
 
 @app.patch("/chat/sessions/{session_id}", response_model=ChatSessionResponse)
@@ -1287,7 +1340,8 @@ async def create_chat_message(
     payload: ChatMessageCreateRequest,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> ChatMessageResponse:
+    background_tasks: BackgroundTasks = Depends(),
+) -> StreamingResponse: # Changed return type to StreamingResponse
     session = (
         db.query(ChatSession)
         .filter(ChatSession.id == payload.session_id, ChatSession.user_id == user.id)
@@ -1311,50 +1365,46 @@ async def create_chat_message(
     )
     chat_messages = [ChatMessage(role=m.role, content=m.content) for m in history]
 
+    context_chunks = [] # Initialize context_chunks
     try:
-        context_chunks = rag.get_relevant_chunks(payload.content, top_k=3)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-    # -- Web Search Agent (Hybrid RAG) --
-    search_decision = await analyze_search_intent_zai(payload.content)
-    if search_decision.get("needs_search") and search_decision.get("search_query"):
-        query = search_decision.get("search_query")
-        logger.info(f"Agent triggered web search for query: {query}")
-        try:
-            web_context = execute_search_agent(query)
+        # Parallel RAG
+        ch_task = asyncio.to_thread(rag.get_relevant_chunks, payload.content, top_k=3)
+        si_task = analyze_search_intent_zai(payload.content)
+        context_chunks, search_decision = await asyncio.gather(ch_task, si_task)
+        
+        if search_decision.get("needs_search") and search_decision.get("search_query"):
+            query = search_decision.get("search_query")
+            logger.info(f"Agent triggered web search for query: {query}")
+            web_context = await asyncio.to_thread(execute_search_agent, query)
             if web_context:
                 context_chunks.insert(0, f"--- АКТУАЛЬНЫЕ ДАННЫЕ ИЗ ИНТЕРНЕТА (ПОИСК: {query}) ---\n{web_context}\n--- КОНЕЦ ДАННЫХ ИЗ ИНТЕРНЕТА ---")
-        except Exception as e:
-            logger.error(f"Failed to execute search agent: {e}")
+    except Exception as e:
+        logger.error(f"Failed RAG in session message: {e}")
     # -----------------------------------
 
     user_prompt = _build_chat_prompt(chat_messages, context_chunks)
+    provider = os.getenv("PRIMARY_PROVIDER", "routerai")
 
-    try:
-        provider = os.getenv("PRIMARY_PROVIDER", "routerai")
-        if provider == "makura":
-            raw_text, usage = await call_makura(SYSTEM_CHAT_PROMPT, user_prompt)
-        else:
-            raw_text, usage = await call_routerai(SYSTEM_CHAT_PROMPT, user_prompt)
-        logger.info(f"AI token usage ({provider} session {session.id} /chat/messages): {usage}")
-    except YandexGPTError as exc:
-        status = exc.status_code or 502
-        raise HTTPException(status_code=status, detail=exc.message) from exc
+    async def session_chat_generator():
+        full_text = ""
+        try:
+            if provider == "makura":
+                async for chunk in stream_makura(SYSTEM_CHAT_PROMPT, user_prompt):
+                    full_text += chunk
+                    yield chunk
+            else:
+                async for chunk in stream_routerai(SYSTEM_CHAT_PROMPT, user_prompt):
+                    full_text += chunk
+                    yield chunk
+        except Exception as e:
+            logger.error(f"Streaming failed: {e}")
+            yield f"\n[Ошибка генерации: {str(e)}]"
+        finally:
+            if full_text.strip():
+                logger.info(f"Stream finished. Collected {len(full_text)} chars.")
+                background_tasks.add_task(save_assistant_message, session.id, full_text.strip())
 
-    assistant_message = DbChatMessage(
-        session_id=session.id, role="assistant", content=raw_text.strip()
-    )
-    db.add(assistant_message)
-    db.commit()
-    db.refresh(assistant_message)
-
-    return ChatMessageResponse(
-        id=assistant_message.id,
-        role=assistant_message.role,
-        content=assistant_message.content,
-        created_at=assistant_message.created_at,
-    )
+    return StreamingResponse(session_chat_generator(), media_type="text/plain")
 
 
 @app.get("/chat/messages/search")
@@ -2469,14 +2519,14 @@ def set_chat_message_feedback(
 
     return {"status": "ok", "feedback": msg.feedback}
 
-@app.post("/chat/sessions/{session_id}/messages", response_model=ChatMessageResponse)
+@app.post("/chat/sessions/{session_id}/messages")
 async def send_chat_message(
     session_id: int,
     payload: ChatMessageCreateRequest,
     background_tasks: BackgroundTasks,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> ChatMessageResponse:
+):
     session = (
         db.query(ChatSession)
         .filter(ChatSession.id == session_id, ChatSession.user_id == user.id)
@@ -2495,49 +2545,67 @@ async def send_chat_message(
     )
     db.add(user_msg)
     db.commit()
-    db.refresh(session) # Fetch updated messages list
+    db.refresh(session)
 
     if len(session.messages) == 1:
         background_tasks.add_task(rename_chat_session_background, session.id, payload.content)
 
-    # 2. Generate Assistant Response
-    assistant_text = await _generate_interviewer_response(session, db)
+    # 2. Generator with Thoughts
+    async def session_chat_generator():
+        provider = os.getenv("PRIMARY_PROVIDER", "routerai")
+        full_response = ""
+        try:
+            # We need history for contextual responses
+            history = (
+                db.query(DbChatMessage)
+                .filter(DbChatMessage.session_id == session.id)
+                .order_by(DbChatMessage.created_at.asc())
+                .all()
+            )
+            chat_history = [ChatMessage(role=m.role, content=m.content) for m in history]
+            
+            # Identify RAG contexts in parallel
+            try:
+                cats = await classify_intent(payload.content)
+                context_chunks = await asyncio.to_thread(rag.get_relevant_chunks, payload.content, collections=cats, top_k=5)
+            except:
+                context_chunks = []
 
-    # 3. Save Assistant Message
-    ai_msg = DbChatMessage(
-        session_id=session.id,
-        role="assistant",
-        content=assistant_text,
-    )
-    db.add(ai_msg)
-    db.commit()
-    db.refresh(ai_msg)
+            user_prompt = _build_chat_prompt(chat_history, context_chunks)
+            
+            raw_gen = stream_makura(SYSTEM_CHAT_PROMPT, user_prompt) if provider == "makura" else stream_routerai(SYSTEM_CHAT_PROMPT, user_prompt)
+            
+            async for json_chunk in parse_thought_generator(raw_gen):
+                data = json.loads(json_chunk.strip())
+                if data["type"] == "chunk":
+                    full_response += data["content"]
+                yield json_chunk
+            
+            # Save assistant response in background
+            if full_response:
+                background_tasks.add_task(save_assistant_message, session.id, full_response)
+        except Exception as e:
+            logger.error(f"Session streaming failed: {e}")
+            yield json.dumps({"type": "error", "content": str(e)}) + "\n"
 
-    return ChatMessageResponse(
-        id=ai_msg.id,
-        role=ai_msg.role,
-        content=ai_msg.content,
-        created_at=ai_msg.created_at,
-    )
+    return StreamingResponse(session_chat_generator(), media_type="text/event-stream")
 
 async def classify_intent(user_message: str) -> list[str]:
     """Router LLM: Determines which RAG collections to search based on the user's intent."""
     system_prompt = (
         "Ты — умный роутер. Определи от 1 до 2 самых подходящих категорий для вопроса пользователя.\n"
         "Выбирай СТРОГО из списка: pitching, grants_and_funds, unit_economics, target_audience, legal_and_taxes, product_management, platform_rules, general.\n"
-        "Ответь ТОЛЬКО названиями категорий через запятую, без лишних слов."
+        "Отвечей ТОЛЬКО названиями категорий через запятую, без лишних слов."
     )
     try:
-        provider = os.getenv("PRIMARY_PROVIDER", "routerai")
-        if provider == "makura":
-            raw_response, usage = await call_makura(system_prompt, user_message)
-        else:
-            raw_response, usage = await call_routerai(system_prompt, user_message)
-        if usage:
-            logger.info(f"RouterAI token usage (Router LLM): {usage}")
+        # Use YandexGPT Lite for speed
+        folder_id = os.getenv("YC_FOLDER_ID")
+        lite_model_uri = f"gpt://{folder_id}/yandexgpt-lite/latest" if folder_id else None
+        
+        raw_response, _ = await async_call_yandex_gpt(system_prompt, user_message, model_uri=lite_model_uri, timeout=10)
         
         if not raw_response:
-            logger.error("Router LLM (RouterAI) failed: No response")
+            logger.error("Router LLM failed: No response")
             return ["general"]
 
         valid_cats = {"pitching", "grants_and_funds", "unit_economics", "target_audience", "legal_and_taxes", "product_management", "platform_rules", "general"}
@@ -2573,28 +2641,37 @@ async def _generate_interviewer_response(session: ChatSession, db: Session) -> s
     context_text = ""
     if last_user_text and len(last_user_text) > 10:
         try:
-            categories = await classify_intent(last_user_text)
-            logger.info(f"Router LLM selected RAG categories: {categories}")
-            chunks = rag.get_relevant_chunks(last_user_text, categories=categories, top_k=5)
+            # Parallel Phase 1: Intent, History RAG, Search Intent
+            intent_task = classify_intent(last_user_text)
+            history_rag_task = asyncio.to_thread(rag.search_successful_chats, last_user_text, top_k=1)
+            search_intent_task = analyze_search_intent_zai(last_user_text)
             
-            # -- Self-Learning (Feedback) RAG --
-            from rag import search_successful_chats
-            successful_chats = search_successful_chats(last_user_text, top_k=1)
+            categories, successful_chats, search_decision = await asyncio.gather(
+                intent_task, history_rag_task, search_intent_task
+            )
+            
+            # Parallel Phase 2: Chroma RAG (needs categories) and Web Search (if needed)
+            tasks = [asyncio.to_thread(rag.get_relevant_chunks, last_user_text, categories=categories, top_k=5)]
+            
+            needs_search = search_decision.get("needs_search")
+            search_query = search_decision.get("search_query")
+            if needs_search and search_query:
+                logger.info(f"Agent triggered web search for query: {search_query}")
+                tasks.append(asyncio.to_thread(execute_search_agent, search_query))
+            
+            results = await asyncio.gather(*tasks)
+            chunks = results[0] # Chroma chunks
+            
+            if len(results) > 1 and results[1]: # web_context
+                chunks.insert(0, f"--- АКТУАЛЬНЫЕ ДАННЫЕ ИЗ ИНТЕРНЕТА (ПОИСК: {search_query}) ---\n{results[1]}\n--- КОНЕЦ ДАННЫХ ИЗ ИНТЕРНЕТА ---")
+
             if successful_chats:
                 chunks.insert(0, f"--- ИСТОРИЧЕСКИ УСПЕШНЫЕ ДИАЛОГИ (ИСПОЛЬЗУЙ КАК ПРИМЕР) ---\n" + "\n".join(successful_chats) + "\n---------------------------------------------------------------\n")
             
-            # -- Web Search Agent (Hybrid RAG) --
-            search_decision = await analyze_search_intent_zai(last_user_text)
-            if search_decision.get("needs_search") and search_decision.get("search_query"):
-                query = search_decision.get("search_query")
-                logger.info(f"Agent triggered web search for query: {query}")
-                try:
-                    web_context = execute_search_agent(query)
-                    if web_context:
-                        chunks.insert(0, f"--- АКТУАЛЬНЫЕ ДАННЫЕ ИЗ ИНТЕРНЕТА (ПОИСК: {query}) ---\n{web_context}\n--- КОНЕЦ ДАННЫХ ИЗ ИНТЕРНЕТА ---")
-                except Exception as e:
-                    logger.error(f"Failed to execute search agent: {e}")
-            # -----------------------------------
+            context_text = "\n".join(chunks)
+        except Exception as e:
+            logger.error(f"Parallel RAG failed: {e}")
+            pass
             
             context_text = "\n".join(chunks)
         except Exception:
