@@ -25,6 +25,7 @@ type Props = {
   readinessIndex: number;
   onNodeClick?: (node: TreeNodeResponse) => void;
   onDiscussInChat?: (node: TreeNodeResponse) => void;
+  onAction?: (action: string, node: TreeNodeResponse) => void;
 };
 
 /* ——— layout helpers ——— */
@@ -214,6 +215,7 @@ export function TreeCanvas({
   readinessIndex,
   onNodeClick,
   onDiscussInChat,
+  onAction,
 }: Props) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [selectedNode, setSelectedNode] = useState<TreeNodeResponse | null>(null);
@@ -290,6 +292,10 @@ export function TreeCanvas({
         onClose={() => setSelectedNode(null)}
         onDiscussInChat={(n) => {
           onDiscussInChat?.(n);
+          setSelectedNode(null);
+        }}
+        onAction={(action, node) => {
+          onAction?.(action, node);
           setSelectedNode(null);
         }}
       />

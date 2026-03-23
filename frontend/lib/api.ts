@@ -353,6 +353,8 @@ export type TreeChatResponse = {
     edges: TreeEdgeResponse[];
   };
   readiness_index: number;
+  hints?: string[];
+  model?: string;
 };
 
 export async function getTreeList(token: string): Promise<TreeResponse[]> {
@@ -362,6 +364,11 @@ export async function getTreeList(token: string): Promise<TreeResponse[]> {
 export async function getTree(treeId: number, token: string): Promise<TreeResponse> {
   return getAuthJson<TreeResponse>(`/tree/${treeId}`, token);
 }
+
+export async function getTreeChatHistory(treeId: number, token: string): Promise<{ history: any[] }> {
+  return getAuthJson<{ history: any[] }>(`/tree/${treeId}/history`, token);
+}
+
 
 export async function createTreeFromText(description: string, token: string): Promise<TreeResponse> {
   return postAuthJson<TreeResponse>("/tree/create", { description }, token);

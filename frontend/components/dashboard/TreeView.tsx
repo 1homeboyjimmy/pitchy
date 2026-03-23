@@ -36,6 +36,7 @@ export function TreeView({ onSwitchToChat }: Props) {
   const [description, setDescription] = useState("");
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [activeChatNode, setActiveChatNode] = useState<TreeNodeResponse | null>(null);
+  const [chatTrigger, setChatTrigger] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load user's trees on mount
@@ -183,6 +184,14 @@ export function TreeView({ onSwitchToChat }: Props) {
       nodes,
       readinessIndex: readiness
     }));
+  }, []);
+
+  const handleAction = useCallback((action: string, node: TreeNodeResponse) => {
+    setActiveChatNode(node);
+    setIsChatOpen(true);
+    setChatTrigger(action);
+    // Reset trigger quickly so it can be re-fired
+    setTimeout(() => setChatTrigger(null), 50);
   }, []);
 
   // ——— Idle / Empty State ———
@@ -349,6 +358,7 @@ export function TreeView({ onSwitchToChat }: Props) {
              readinessIndex={tree.readinessIndex}
              onDiscussInChat={handleDiscussInChat}
              onNodeClick={(node) => isChatOpen && setActiveChatNode(node)}
+             onAction={handleAction}
            />
         </div>
 
@@ -366,6 +376,7 @@ export function TreeView({ onSwitchToChat }: Props) {
                 activeNode={activeChatNode}
                 onUpdateTree={handleUpdateTree}
                 onClose={() => setIsChatOpen(false)}
+                triggerMessage={chatTrigger}
               />
             </motion.div>
           )}

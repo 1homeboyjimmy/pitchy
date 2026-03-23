@@ -303,4 +303,6 @@ class TreeChatResponse(BaseModel):
     reply: str
     tree_data: dict | None = None
     readiness_index: int | None = None
+    hints: list[str] | None = None
+    model: str | None = None
 

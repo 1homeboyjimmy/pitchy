@@ -8,6 +8,7 @@ type Props = {
   node: TreeNodeResponse | null;
   onClose: () => void;
   onDiscussInChat: (node: TreeNodeResponse) => void;
+  onAction: (action: string, node: TreeNodeResponse) => void;
 };
 
 const statusLabels: Record<string, { label: string; bg: string; text: string }> = {
@@ -18,7 +19,7 @@ const statusLabels: Record<string, { label: string; bg: string; text: string }> 
   skipped: { label: "Отложено", bg: "bg-[#6B7280]/10", text: "text-[#6B7280]" },
 };
 
-export function NodeDetailPanel({ node, onClose, onDiscussInChat }: Props) {
+export function NodeDetailPanel({ node, onClose, onDiscussInChat, onAction }: Props) {
   if (!node) return null;
 
   const data = node.data;
@@ -142,6 +143,7 @@ export function NodeDetailPanel({ node, onClose, onDiscussInChat }: Props) {
               В чат
             </button>
             <button
+              onClick={() => onAction("Заполни данные для этого узла", node)}
               className="flex items-center justify-center gap-2.5 px-4 py-2.5 rounded-xl bg-white/10 text-white text-sm font-medium hover:bg-white/15 transition-all"
             >
               <Edit3 className="w-4 h-4" />
@@ -150,11 +152,17 @@ export function NodeDetailPanel({ node, onClose, onDiscussInChat }: Props) {
           </div>
           
           <div className="grid grid-cols-2 gap-2">
-            <button className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-white/60 hover:text-white hover:bg-white/5 transition-colors">
+            <button 
+              onClick={() => onAction("Покажи примеры заполнения для этого блока", node)}
+              className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-white/60 hover:text-white hover:bg-white/5 transition-colors"
+            >
               <Sparkles className="w-3.5 h-3.5" />
               Примеры
             </button>
-            <button className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-white/60 hover:text-white hover:bg-white/5 transition-colors">
+            <button 
+              onClick={() => onAction("Пропусти этот шаг пока что", node)}
+              className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-white/60 hover:text-white hover:bg-white/5 transition-colors"
+            >
               <FastForward className="w-3.5 h-3.5" />
               Пропустить
             </button>

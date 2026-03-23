@@ -8,6 +8,7 @@ from redis_client import get_redis
 from yandex_gpt_client import call_yandex_gpt, extract_json
 from tree_orchestrator import _call_claude, _call_gigachat, _normalize_tree_data
 from search_agent import execute_search_agent
+from perplexity_client import call_perplexity
 from core_tree import CORE_SKELETON
 
 logger = logging.getLogger("app")
@@ -144,8 +145,37 @@ class ChatOrchestrator:
             "reply": reply,
             "model": model_used,
             "tree_data": state,
-            "readiness_index": state.get("readiness_index", 0)
+            "readiness_index": state.get("readiness_index", 0),
+            "hints": self._get_hints(state, active_node_id)
         }
+
+    def _get_hints(self, state: dict, active_node_id: str | None) -> list[str]:
+        """Generate contextual suggestions based on node focus."""
+        hints = ["Что мне делать дальше?", "Покажи примеры"]
+        if not active_node_id:
+            return hints
+            
+        node = next((n for n in state.get("nodes", []) if n["id"] == active_node_id), None)
+        if not node:
+            return hints
+            
+        label = node.get("label", "")
+        inputs = node.get("data", {}).get("inputs", [])
+        missing = [i for i in inputs if not i.get("value")]
+        
+        if missing:
+            hints.insert(0, f"Помоги заполнить '{missing[0]['label']}'")
+            hints.append("Наведи порядок в данных")
+            
+        if any(w in label for w in ["Рынок", "Финансы", "Экономика", "Цены"]):
+            hints.append("Рассчитай юнит-экономику")
+            hints.append("Какой у меня будет LTV?")
+        elif "Конкурент" in label:
+            hints.append("Найди моих конкурентов в сети")
+        elif "Маркетинг" in label or "Канал" in label:
+            hints.append("Какие каналы продвижения лучше?")
+            
+        return list(set(hints))[:5] # Unique top 5
 
     async def _classify_intent(self, user_message: str, state: dict, history: list, active_node_id: str) -> dict:
         """Determine what the user wants."""
@@ -197,8 +227,8 @@ class ChatOrchestrator:
 
         raw = await _call_gigachat(prompt)
         if not raw:
-            # Fallback to YandexGPT for calculations if GigaChat fails
-            raw, _ = call_yandex_gpt("Ты — финансовый аналитик.", prompt)
+            # Fallback to YandexGPT for calculations if GigaChat fails or not configured
+            raw, _ = call_yandex_gpt("Ты — финансовый аналитик GigaGPT.", prompt)
 
         # Extract JSON metrics block
         reply = raw
@@ -214,7 +244,14 @@ class ChatOrchestrator:
         return reply, metrics
 
     async def _handle_search(self, user_message: str) -> str:
-        """Handle web search via agent."""
+        """Handle web search via Perplexity AI."""
+        # Try Perplexity first for deep search
+        reply = await call_perplexity(user_message, system_prompt="Ты — эксперт по глубокому анализу рынков и стартапов. Отвечай на русском языке.")
+        
+        if reply:
+            return reply
+
+        # Fallback to local search agent if Perplexity fails or not configured
         context = execute_search_agent(user_message)
         prompt = f"На основе данных из поиска ответь пользователю на русском языке:\n\n{context}\n\nВопрос: {user_message}"
         reply, _ = call_yandex_gpt("Ты — помощник с доступом в интернет.", prompt)
