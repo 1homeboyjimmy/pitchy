@@ -170,23 +170,23 @@ async def generate_tree_from_text(description: str) -> dict[str, Any]:
     """
     prompt = TREE_EXTRACTION_PROMPT.replace("{description}", description)
 
-    # Try GLM-5 via Zveno first (as requested by user)
-    logger.info("Using GLM-5 (Zveno) for tree structure generation")
-    raw, _ = await call_zai("Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON.", prompt, model="zhipu/glm-4") # Using GLM-4/5 via Zveno
+    # Try GLM-4.7 via Zveno first (as requested by user)
+    logger.info("Using GLM-4.7 (Zveno) for tree structure generation")
+    raw, _ = await call_zai("Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON.", prompt, model="z-ai/glm-4.7")
 
     # Fallback to Claude
     if not raw:
         logger.info("GLM-5 failed, falling back to Claude")
         raw = await _call_claude(prompt)
 
-    # Fallback to Z AI
+    # Fallback to Z AI (Zveno default)
     if not raw:
-        logger.info("Using Z AI for tree structure generation")
+        logger.info("Using Zveno fallback for tree structure generation")
         system_prompt = "Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON."
         try:
-            raw, _metrics = await call_zai(system_prompt, prompt)
+            raw, _metrics = await call_zai(system_prompt, prompt, model="z-ai/glm-4.7")
         except Exception as e:
-            logger.error(f"Z AI extraction failed: {e}")
+            logger.error(f"Zveno fallback extraction failed: {e}")
             return _generate_fallback_tree(description)
 
     # Parse JSON

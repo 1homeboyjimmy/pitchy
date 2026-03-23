@@ -1079,7 +1079,7 @@ async def create_analysis(
     user_prompt = _build_user_prompt(description, context_chunks)
 
     try:
-        raw_text, usage = await call_zai(SYSTEM_PROMPT, user_prompt, model="zhipu/glm-4")
+        raw_text, usage = await call_zai(SYSTEM_PROMPT, user_prompt, model="z-ai/glm-4.7")
         logger.info(f"Z AI token usage (website analysis): {usage}")
         data = extract_json_zai(raw_text)
     except YandexGPTError as exc:
@@ -1189,7 +1189,7 @@ async def chat(payload: ChatRequest) -> ChatResponse:
     user_prompt = _build_chat_prompt(payload.messages, context_chunks)
 
     try:
-        raw_text, usage = await call_zai(SYSTEM_CHAT_PROMPT, user_prompt, model="zhipu/glm-4")
+        raw_text, usage = await call_zai(SYSTEM_CHAT_PROMPT, user_prompt, model="z-ai/glm-4.7")
         logger.info(f"Z AI token usage (chat with docs): {usage}")
     except YandexGPTError as exc:
         status = exc.status_code or 502
@@ -1318,7 +1318,7 @@ async def create_chat_message(
     user_prompt = _build_chat_prompt(chat_messages, context_chunks)
 
     try:
-        raw_text, usage = await call_zai(SYSTEM_CHAT_PROMPT, user_prompt, model="zhipu/glm-4")
+        raw_text, usage = await call_zai(SYSTEM_CHAT_PROMPT, user_prompt, model="z-ai/glm-4.7")
         logger.info(f"Z AI token usage (session {session.id} /chat/messages): {usage}")
     except YandexGPTError as exc:
         status = exc.status_code or 502
@@ -2515,7 +2515,7 @@ async def classify_intent(user_message: str) -> list[str]:
         "Ответь ТОЛЬКО названиями категорий через запятую, без лишних слов."
     )
     try:
-        raw_response, usage = await call_zai(system_prompt, user_message, model="zhipu/glm-4")
+        raw_response, usage = await call_zai(system_prompt, user_message, model="z-ai/glm-4.7")
         logger.info(f"Z AI token usage (Router LLM): {usage}")
         valid_cats = {"pitching", "grants_and_funds", "unit_economics", "target_audience", "legal_and_taxes", "product_management", "platform_rules", "general"}
         found = [c.strip() for c in raw_response.split(",")]

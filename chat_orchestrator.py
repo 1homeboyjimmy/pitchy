@@ -133,12 +133,12 @@ class ChatOrchestrator:
             model_used = "Claude"
             reply, enriched_data = await self._handle_tree_edit(user_message, state)
         elif intent['intent'] == "chat": # chat
-            model_used = "Z AI (GLM-5)"
+            model_used = "Zveno (GLM-4.7)"
             history_str = "\n".join([f"{m['role']}: {m['content']}" for m in history[-5:]])
             reply = await self._handle_chat(user_message, history_str)
         else:
             # Fallback for unhandled intents
-            model_used = "Z AI (GLM-5)"
+            model_used = "Zveno (GLM-4.7)"
             history_str = "\n".join([f"{m['role']}: {m['content']}" for m in history[-5:]])
             reply = await self._handle_chat(user_message, history_str)
 
@@ -265,7 +265,7 @@ class ChatOrchestrator:
         # Fallback to local search agent
         context = execute_search_agent(user_message)
         prompt = f"На основе данных из поиска ответь пользователю на русском языке:\n\n{context}\n\nВопрос: {user_message}"
-        reply, _ = await call_zai("Ты — помощник с доступом в интернет.", prompt, model="zhipu/glm-4")
+        reply, _ = await call_zai("Ты — помощник с доступом в интернет.", prompt, model="z-ai/glm-4.7")
         return reply or "Не удалось обработать результаты поиска."
 
     async def _handle_legal(self, user_message: str) -> str:
@@ -288,10 +288,9 @@ class ChatOrchestrator:
         return "Я обновил структуру проекта на основе ваших пожеланий.", extracted.get("extracted_data", {})
 
     async def _handle_chat(self, user_message: str, chat_history: str = "") -> str:
-        """Handle general chat via Z AI (GLM-5)."""
+        """Handle general chat via Zveno (GLM-4.7)."""
         prompt = f"История чата:\n{chat_history}\n\nПользователь: {user_message}"
-        # Using zhipu/glm-4 as a standard name, or zhipu/glm-5 if confirmed
-        reply, json_metrics = await call_zai("Ты — ассистент платформы Pitchy. Отвечай на русском языке.", prompt, model="zhipu/glm-4")
+        reply, json_metrics = await call_zai("Ты — ассистент платформы Pitchy. Отвечай на русском языке.", prompt, model="z-ai/glm-4.7")
         
         if json_metrics:
             # Assuming _save_metrics_from_json is defined elsewhere or will be added

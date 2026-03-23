@@ -6,7 +6,7 @@ from typing import Optional, Tuple, Dict, Any
 
 logger = logging.getLogger("app")
 
-async def call_zai(system_prompt: str, user_message: str, model: str = "zhipu/glm-4") -> Tuple[Optional[str], Optional[str]]:
+async def call_zai(system_prompt: str, user_message: str, model: str = "z-ai/glm-4.7") -> Tuple[Optional[str], Optional[str]]:
     """
     Calls ZvenoAI API (OpenAI compatible).
     Returns (reply, metrics_json_string) or (None, None) on failure.
@@ -70,7 +70,10 @@ async def generate_chat_title_zai(text: str) -> str:
         "краткое название для этого диалога из 2-4 слов. Только текст, без кавычек."
     )
     # Using a fast model for titles
-    reply, _ = await call_zai(system_prompt, text[:500], model="zhipu/glm-4")
+    # Primary GLM-4.7 model from Z.ai (Zveno preferred)
+    title_model = "z-ai/glm-4.7-flash"
+    
+    reply, _ = await call_zai(system_prompt, text[:500], model=title_model)
     if reply:
         return reply.strip(' "\'\n\r\t.-').capitalize()
     return "Новый диалог"
@@ -81,7 +84,7 @@ async def analyze_search_intent_zai(text: str) -> Dict[str, Any]:
         "Ты — умный классификатор запросов. Реши, нужен ли поиск в интернете. "
         "Верни СТРОГО JSON: {'needs_search': bool, 'search_query': str}"
     )
-    reply, _ = await call_zai(system_prompt, text[:1000], model="zhipu/glm-4")
+    reply, _ = await call_zai(system_prompt, text[:1000], model="z-ai/glm-4.7-flash")
     if reply:
         parsed = extract_json_zai(reply)
         return {
