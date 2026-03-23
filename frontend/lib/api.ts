@@ -290,7 +290,7 @@ export type TreeInputResponse = {
   placeholder?: string | null;
   required: boolean;
   status: "empty" | "partial" | "completed";
-  value?: any;
+  value?: unknown;
 };
 
 export type TreeNextActionResponse = {

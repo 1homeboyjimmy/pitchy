@@ -10,51 +10,17 @@ import {
   TreePine,
   AlertCircle,
 } from "lucide-react";
-import { TreeCanvas, type ApiTreeNode, type ApiTreeEdge } from "./TreeCanvas";
-import type { TreeNodeData } from "./NodeDetailPanel";
+import { TreeCanvas } from "./TreeCanvas";
+import type { TreeNodeResponse, TreeEdgeResponse } from "../../lib/api";
 import { GlassCard } from "@/components/shared";
 import { getToken } from "@/lib/auth";
-
-/* ——— demo tree for instant preview ——— */
-function makeDemoTree(): { nodes: ApiTreeNode[]; edges: ApiTreeEdge[]; readiness: number } {
-  const nodes: ApiTreeNode[] = [
-    { id: "cat-product",      type: "Task", status: "partial",   label: "Продукт",      category: "product",      level: 1, data: { description: "Анализ продуктового предложения", aiRecommendation: "Определите MVP и ключевые фичи" }, parent_id: "root", children_ids: ["t-mvp","t-ux"] },
-    { id: "cat-market",       type: "Task", status: "partial",   label: "Рынок",        category: "market",       level: 1, data: { description: "Анализ целевого рынка", metrics: { "TAM": "300 млрд ₽", "SAM": "20 млрд ₽", "SOM": "80 млн ₽" } }, parent_id: "root", children_ids: ["t-tam","t-ca"] },
-    { id: "cat-monetization", type: "Task", status: "empty",     label: "Монетизация",  category: "monetization", level: 1, data: { description: "Модель монетизации и юнит-экономика" }, parent_id: "root", children_ids: ["t-pricing","t-unit"] },
-    { id: "cat-team",         type: "Task", status: "completed", label: "Команда",      category: "team",         level: 1, data: { description: "Оценка команды проекта", aiRecommendation: "Рассмотрите найм маркетолога" }, parent_id: "root", children_ids: ["t-roles"] },
-    // Level 2
-    { id: "t-mvp",     type: "Task",     status: "completed", label: "MVP-фичи",           level: 2, data: { description: "Список ключевых функций MVP" },                       parent_id: "cat-product", children_ids: [] },
-    { id: "t-ux",      type: "Question", status: "empty",     label: "UX-исследование",    level: 2, data: { description: "Проведение CustDev интервью" },                        parent_id: "cat-product", children_ids: [] },
-    { id: "t-tam",     type: "Fact",     status: "completed", label: "TAM/SAM/SOM",        level: 2, data: { description: "Расчёт объёмов рынка", metrics: { "TAM": "300B" } },    parent_id: "cat-market",  children_ids: [] },
-    { id: "t-ca",      type: "Risk",     status: "risk",      label: "Конкурентный анализ", level: 2, data: { description: "Оценка прямых конкурентов", aiRecommendation: "Обратите внимание на выход нового конкурента" }, parent_id: "cat-market",  children_ids: [] },
-    { id: "t-pricing", type: "Task",     status: "empty",     label: "Ценообразование",    level: 2, data: { description: "Определение тарифной сетки" },                        parent_id: "cat-monetization", children_ids: [] },
-    { id: "t-unit",    type: "Task",     status: "empty",     label: "Юнит-экономика",     level: 2, data: { description: "Расчёт LTV, CAC, маржинальности" },                    parent_id: "cat-monetization", children_ids: [] },
-    { id: "t-roles",   type: "Fact",     status: "completed", label: "Ключевые роли",      level: 2, data: { description: "Состав и компетенции команды" },                       parent_id: "cat-team",  children_ids: [] },
-  ];
-
-  const edges: ApiTreeEdge[] = [
-    { id: "e-root-product",      source: "root", target: "cat-product" },
-    { id: "e-root-market",       source: "root", target: "cat-market" },
-    { id: "e-root-monetization", source: "root", target: "cat-monetization" },
-    { id: "e-root-team",         source: "root", target: "cat-team" },
-    { id: "e-product-mvp",       source: "cat-product",      target: "t-mvp" },
-    { id: "e-product-ux",        source: "cat-product",      target: "t-ux" },
-    { id: "e-market-tam",        source: "cat-market",       target: "t-tam" },
-    { id: "e-market-ca",         source: "cat-market",       target: "t-ca" },
-    { id: "e-mon-pricing",       source: "cat-monetization", target: "t-pricing" },
-    { id: "e-mon-unit",          source: "cat-monetization", target: "t-unit" },
-    { id: "e-team-roles",        source: "cat-team",         target: "t-roles" },
-  ];
-
-  return { nodes, edges, readiness: 42 };
-}
 
 /* ——— Component ——— */
 
 type TreeState = {
   id?: number;
-  nodes: ApiTreeNode[];
-  edges: ApiTreeEdge[];
+  nodes: TreeNodeResponse[];
+  edges: TreeEdgeResponse[];
   readinessIndex: number;
   status: "idle" | "uploading" | "generating" | "ready" | "error";
   error?: string;
@@ -141,13 +107,12 @@ export function TreeView({ onSwitchToChat }: Props) {
       });
     } catch (e) {
       // Fallback to demo tree for development
-      const demo = makeDemoTree();
       setTree({
-        nodes: demo.nodes,
-        edges: demo.edges,
-        readinessIndex: demo.readiness,
-        status: "ready",
-        error: e instanceof Error ? e.message : "Ошибка. Показан демо-режим.",
+        nodes: [],
+        edges: [],
+        readinessIndex: 0,
+        status: "idle",
+        error: e instanceof Error ? e.message : "Ошибка создания дерева.",
       });
     }
   }, [description]);
@@ -183,13 +148,12 @@ export function TreeView({ onSwitchToChat }: Props) {
         status: "ready",
       });
     } catch (e) {
-      const demo = makeDemoTree();
       setTree({
-        nodes: demo.nodes,
-        edges: demo.edges,
-        readinessIndex: demo.readiness,
-        status: "ready",
-        error: e instanceof Error ? e.message : "Ошибка PDF. Показан демо-режим.",
+        nodes: [],
+        edges: [],
+        readinessIndex: 0,
+        status: "idle",
+        error: e instanceof Error ? e.message : "Ошибка загрузки PDF.",
       });
     }
   }, []);
@@ -203,8 +167,8 @@ export function TreeView({ onSwitchToChat }: Props) {
   );
 
   const handleDiscussInChat = useCallback(
-    (node: TreeNodeData) => {
-      const context = `Обсудим узел "${node.label}" (${node.type}, статус: ${node.status}). ${node.data.description || ""}`;
+    (node: TreeNodeResponse) => {
+      const context = `Обсудим узел "${node.label}" (статус: ${node.status}). ${node.data.description || ""}`;
       onSwitchToChat?.(context);
     },
     [onSwitchToChat],
