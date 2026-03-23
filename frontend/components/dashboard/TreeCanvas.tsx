@@ -52,7 +52,7 @@ function buildFlowElements(
   function revealChildren(parentId: string) {
     const parent = nodeMap.get(parentId);
     if (!parent) return;
-    for (const childId of parent.children_ids) {
+    for (const childId of (parent.children_ids || [])) {
       visibleIds.add(childId);
       if (expandedIds.has(childId)) {
         revealChildren(childId);
@@ -92,7 +92,7 @@ function buildFlowElements(
     if (!visibleIds.has(n.id) || n.id === "root") continue;
 
     const pos = positions.get(n.id) || { x: 0, y: 0 };
-    const childCount = n.children_ids.length;
+    const childCount = n.children_ids?.length || 0;
     const expanded = expandedIds.has(n.id);
     
     // Calculate progress for the node badge
