@@ -35,18 +35,29 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  // Unified key getter to prevent mismatches
+  const getMsgKey = useCallback((m: Message) => {
+    return (m.client_id || (m.timestamp ? new Date(m.timestamp).toISOString() : "no-time"));
+  }, []);
+
   // Robust merge logic to prevent duplicates and data loss
-  const mergeMessages = (current: Message[], incoming: Message[]) => {
+  const mergeMessages = useCallback((current: Message[], incoming: Message[]) => {
     const map = new Map();
+
+    console.log("MERGE CHECK (TREE):", {
+        local_keys: current.map(m => getMsgKey(m)),
+        incoming_keys: incoming.map(m => getMsgKey(m))
+    });
+
     // 1. Load local state
     current.forEach(m => {
-        const key = m.client_id || (m.timestamp ? new Date(m.timestamp).getTime() : "no-time");
-        map.set(key, m);
+        const key = getMsgKey(m);
+        if (key) map.set(key, m);
     });
     
     // 2. Layer server data on top
     incoming.forEach(inc => {
-        const key = inc.client_id || (inc.timestamp ? new Date(inc.timestamp).getTime() : "no-time");
+        const key = getMsgKey(inc);
         const existing = map.get(key);
         if (existing) {
             map.set(key, {
@@ -66,7 +77,7 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
     return Array.from(map.values()).sort((a, b) => 
         new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
     );
-  };
+  }, [getMsgKey]);
 
   // Load history on mount or when activeNode changes
   useEffect(() => {
@@ -173,6 +184,7 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
         }
 
         // Final reconciliation after a small delay
+        // Fetch updated history after a small delay to ensure background tasks finished
         await new Promise(resolve => setTimeout(resolve, 400));
         const { getTreeChatHistory } = await import("@/lib/api");
         const res = await getTreeChatHistory(treeId, token, activeNode?.id);
@@ -241,7 +253,7 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
           const isLastAssistant = msg.role === "assistant" && idx === messages.length - 1;
 
           return (
-            <div key={msg.client_id || msg.timestamp || idx} className={`flex gap-3 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+            <div key={getMsgKey(msg)} className={`flex gap-3 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
               <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${msg.role === "user" ? "bg-white/10" : "bg-pitchy-violet"}`}>
                 {msg.role === "user" ? <User className="w-4 h-4 text-white/70" /> : <Bot className="w-4 h-4 text-white" />}
               </div>
@@ -332,6 +344,8 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
       <div className="p-4 border-t border-white/10 bg-black/20">
         <div className="relative">
           <input
+            id="tree-chat-input"
+            name="tree-chat-message"
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}

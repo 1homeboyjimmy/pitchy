@@ -51,23 +51,37 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
         }
     };
 
+    // Unified key getter to prevent mismatches
+    const getSafeKey = useCallback((m: ExtendedChatMessage) => {
+        return (m.client_id || m.id)?.toString();
+    }, []);
+
     // Shared merge logic to prevent duplicates and data loss
-    const mergeMessages = (current: ExtendedChatMessage[], incoming: ExtendedChatMessage[]) => {
+    const mergeMessages = useCallback((current: ExtendedChatMessage[], incoming: ExtendedChatMessage[]) => {
         const map = new Map();
+        
+        console.log("MERGE CHECK:", {
+            local_keys: current.map(m => getSafeKey(m)),
+            incoming_keys: incoming.map(m => getSafeKey(m))
+        });
+
         // 1. Load local state
-        current.forEach(m => map.set(m.client_id || m.id.toString(), m));
+        current.forEach(m => {
+            const key = getSafeKey(m);
+            if (key) map.set(key, m);
+        });
         
         // 2. Layer server data on top, but respect content progress
         incoming.forEach(inc => {
-            const key = inc.client_id || inc.id.toString();
+            const key = getSafeKey(inc);
             const existing = map.get(key);
             if (existing) {
                 map.set(key, {
                     ...inc,
                     thoughts: existing.thoughts || inc.thoughts,
                     thoughtTime: existing.thoughtTime || inc.thoughtTime,
-                    thoughtExpanded: existing.thoughtExpanded !== undefined ? existing.thoughtExpanded : inc.thoughtExpanded,
-                    // Keep the longer content (fights race conditions between stream end and DB sync)
+                    thoughtExpanded: existing.thoughtExpanded ?? inc.thoughtExpanded,
+                    // Keep the longer content (fights race conditions)
                     content: (existing.content?.length || 0) > (inc.content?.length || 0) 
                         ? existing.content 
                         : inc.content
@@ -80,15 +94,14 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
         return Array.from(map.values()).sort((a, b) => 
             dayjs(a.created_at).valueOf() - dayjs(b.created_at).valueOf()
         );
-    };
+    }, [getSafeKey]);
 
     useEffect(() => {
-        // If we're loading (streaming or reconciling), we still merge to catch other updates
-        // BUT the merge logic preserves our active local content.
+        // Use merge instead of direct replacement to protect streaming state
         if (session.messages) {
             setMessages(prev => mergeMessages(prev, session.messages));
         }
-    }, [session.messages]);
+    }, [session.messages, mergeMessages]);
 
     const scrollToBottom = () => {
         if (scrollViewportRef.current) {
@@ -103,7 +116,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
     // Typewriter effect: reveal characters progressively
     useEffect(() => {
         if (typingMessageId === null) return;
-        const msg = messages.find((m) => (m.client_id || m.id) === typingMessageId);
+        const msg = messages.find((m) => getSafeKey(m) === typingMessageId.toString());
         if (!msg) { setTypingMessageId(null); return; }
         const fullLen = msg.content.length;
         if (displayedLength >= fullLen) {
@@ -119,14 +132,14 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
             setDisplayedLength((prev) => prev + chunk);
         }, speed);
         return () => clearTimeout(timer);
-    }, [typingMessageId, displayedLength, messages]);
+    }, [typingMessageId, displayedLength, messages, getSafeKey]);
 
     const getDisplayContent = useCallback((msg: ChatMessageResponse) => {
-        if ((msg.client_id || msg.id) === typingMessageId) {
+        if (getSafeKey(msg) === typingMessageId?.toString()) {
             return msg.content.slice(0, displayedLength);
         }
         return msg.content;
-    }, [typingMessageId, displayedLength]);
+    }, [typingMessageId, displayedLength, getSafeKey]);
 
     const handleSendMessage = async (text?: string) => {
         const content = typeof text === 'string' ? text : inputValue.trim();
@@ -260,7 +273,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
 
             return (
                 <motion.div
-                    key={messageKey}
+                    key={msg.client_id || msg.id.toString()}
                             initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
                             className={`flex gap-4 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}
@@ -455,7 +468,9 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
             < div className="p-4 bg-white/5 border-t border-white/10 backdrop-blur-md" >
                 <div className="relative flex items-center">
                     <textarea
-                        ref={textareaRef}
+                    id="chat-input"
+                    name="chat-message"
+                    ref={textareaRef}
                         value={inputValue}
                         onChange={(e) => setInputValue(e.target.value)}
                         onKeyDown={handleKeyDown}
