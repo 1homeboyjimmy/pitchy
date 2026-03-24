@@ -1221,7 +1221,6 @@ async def parse_thought_generator(generator):
         yield json.dumps({"type": "thought" if inside_thought else "chunk", "content": buffer}) + "\n"
 
 def save_assistant_message(session_id: int, content: str, client_id: str | None = None):
-    """Background task to save streamed assistant message to DB."""
     from db import SessionLocal
     from models import ChatMessage as DbChatMessage
     db = SessionLocal()
@@ -1233,10 +1232,8 @@ def save_assistant_message(session_id: int, content: str, client_id: str | None 
             client_id=client_id
         )
         db.add(msg)
-        db.commit()
-        db.refresh(msg) # Confirm persistence
-    except Exception as e:
-        logger.error(f"Failed to save assistant message: {e}")
+        db.commit() # Сразу фиксируем в базе
+        db.refresh(msg)
     finally:
         db.close()
 

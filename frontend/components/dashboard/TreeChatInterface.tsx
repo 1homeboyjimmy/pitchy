@@ -44,18 +44,13 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
   const mergeMessages = useCallback((current: Message[], incoming: Message[]) => {
     const map = new Map();
 
-    console.log("MERGE CHECK (TREE):", {
-        local_keys: current.map(m => getMsgKey(m)),
-        incoming_keys: incoming.map(m => getMsgKey(m))
-    });
-
-    // 1. First, load everything from the server (incoming)
+    // 1. Сначала берем всё, что прислал сервер
     incoming.forEach(inc => {
         const key = getMsgKey(inc);
         if (key) map.set(key, inc);
     });
     
-    // 2. Overlay LOCAL state on top
+    // 2. Накладываем локальные сообщения сверху
     current.forEach(loc => {
         const key = getMsgKey(loc);
         if (!key) return;
@@ -63,21 +58,24 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
         const serverMatch = map.get(key);
         
         if (serverMatch) {
-            // Keep the one with longer content (protects streaming)
+            // Если сервер уже знает об этом сообщении, берем серверное,
+            // НО сохраняем локальный текст, если он длиннее (защита от пустой базы)
             map.set(key, {
                 ...serverMatch,
                 content: (loc.content?.length || 0) > (serverMatch.content?.length || 0) 
                     ? loc.content 
                     : serverMatch.content,
-                // Preserve thoughts/expand state
+                // Сохраняем мысли и статус раскрытия
                 thoughts: loc.thoughts || serverMatch.thoughts,
                 thoughtTime: loc.thoughtTime || serverMatch.thoughtTime,
                 thoughtExpanded: loc.thoughtExpanded ?? serverMatch.thoughtExpanded
             });
-        } else if (isLoading) {
-            // IMPORTANT: If we are still loading, don't delete messages found only in local state.
-            // This prevents flickering if the DB refresh is slower than the frontend response.
-            map.set(key, loc);
+        } else {
+            // КЛЮЧЕВОЙ МОМЕНТ: если сообщения НЕТ на сервере, но оно есть локально —
+            // НЕ УДАЛЯЕМ его, пока идет загрузка (isLoading)
+            if (isLoading) {
+                map.set(key, loc);
+            }
         }
     });
     

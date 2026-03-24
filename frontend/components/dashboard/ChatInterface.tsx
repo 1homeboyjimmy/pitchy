@@ -59,19 +59,14 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
     // Shared merge logic to prevent duplicates and data loss
     const mergeMessages = useCallback((current: ExtendedChatMessage[], incoming: ExtendedChatMessage[]) => {
         const map = new Map();
-        
-        console.log("MERGE CHECK:", {
-            local_keys: current.map(m => getSafeKey(m)),
-            incoming_keys: incoming.map(m => getSafeKey(m))
-        });
 
-        // 1. First, load everything from the server (incoming)
+        // 1. Сначала берем всё, что прислал сервер
         incoming.forEach(inc => {
             const key = getSafeKey(inc);
             if (key) map.set(key, inc);
         });
-        
-        // 2. Overlay LOCAL state on top
+
+        // 2. Накладываем локальные сообщения сверху
         current.forEach(loc => {
             const key = getSafeKey(loc);
             if (!key) return;
@@ -79,21 +74,24 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
             const serverMatch = map.get(key);
             
             if (serverMatch) {
-                // If message exists on both, keep the one with longer content (protects streaming)
+                // Если сервер уже знает об этом сообщении, берем серверное,
+                // НО сохраняем локальный текст, если он длиннее (защита от пустой базы)
                 map.set(key, {
                     ...serverMatch,
                     content: (loc.content?.length || 0) > (serverMatch.content?.length || 0) 
                         ? loc.content 
                         : serverMatch.content,
-                    // Preserve thoughts/expand state
+                    // Сохраняем мысли и статус раскрытия
                     thoughts: loc.thoughts || serverMatch.thoughts,
                     thoughtTime: loc.thoughtTime || serverMatch.thoughtTime,
                     thoughtExpanded: loc.thoughtExpanded ?? serverMatch.thoughtExpanded
                 });
-            } else if (isLoading) {
-                // IMPORTANT: If we are still loading, don't delete messages that are only in local state
-                // This prevents the "empty response" flicker before the DB commit is finished.
-                map.set(key, loc);
+            } else {
+                // КЛЮЧЕВОЙ МОМЕНТ: если сообщения НЕТ на сервере, но оно есть локально —
+                // НЕ УДАЛЯЕМ его, пока идет загрузка (isLoading)
+                if (isLoading) {
+                    map.set(key, loc);
+                }
             }
         });
         
