@@ -1417,9 +1417,17 @@ async def create_chat_message(
             logger.error(f"Streaming failed: {e}")
             yield json.dumps({"type": "error", "content": str(e)}) + "\n"
         finally:
-            if full_text.strip() and background_tasks:
+            if full_text.strip():
                 logger.info(f"Stream finished. Collected {len(full_text)} chars.")
-                background_tasks.add_task(save_assistant_message, session.id, full_text.strip(), payload.assistant_client_id)
+                # ИСПОЛЬЗУЕМ asyncio ВМЕСТО background_tasks для StreamingResponse
+                asyncio.create_task(
+                    asyncio.to_thread(
+                        save_assistant_message, 
+                        session.id, 
+                        full_text.strip(), 
+                        payload.assistant_client_id
+                    )
+                )
 
     return StreamingResponse(session_chat_generator(), media_type="text/event-stream")
 
@@ -2621,9 +2629,16 @@ async def send_chat_message(
                     full_response += data["content"]
                 yield json_chunk
             
-            # Save assistant response in background
+            # Save assistant response in background using asyncio instead of background_tasks
             if full_response:
-                background_tasks.add_task(save_assistant_message, session.id, full_response, payload.assistant_client_id)
+                asyncio.create_task(
+                    asyncio.to_thread(
+                        save_assistant_message, 
+                        session.id, 
+                        full_response, 
+                        payload.assistant_client_id
+                    )
+                )
         except Exception as e:
             logger.error(f"Session streaming failed: {e}")
             yield json.dumps({"type": "error", "content": str(e)}) + "\n"
