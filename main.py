@@ -2570,6 +2570,7 @@ async def send_chat_message(
         session_id=session.id,
         role="user",
         content=payload.content,
+        client_id=payload.client_id
     )
     db.add(user_msg)
     db.commit()
@@ -2611,7 +2612,7 @@ async def send_chat_message(
             
             # Save assistant response in background
             if full_response:
-                background_tasks.add_task(save_assistant_message, session.id, full_response)
+                background_tasks.add_task(save_assistant_message, session.id, full_response, payload.assistant_client_id)
         except Exception as e:
             logger.error(f"Session streaming failed: {e}")
             yield json.dumps({"type": "error", "content": str(e)}) + "\n"
