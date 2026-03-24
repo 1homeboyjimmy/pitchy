@@ -91,13 +91,16 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
         const res = await getTreeChatHistory(treeId, token, activeNode?.id);
         if (res.history) {
           setMessages(prev => mergeMessages(prev, res.history as Message[]));
-        } else if (activeNode && messages.length === 0) {
-          // Welcome message if no history for this node
-          setMessages([{
-            role: "assistant",
-            content: `Привет! Я Pitchy AI. Я готов помочь с разделом **"${activeNode.label}"**. Что именно мы хотим уточнить или рассчитать?`,
-            timestamp: new Date().toISOString()
-          }]);
+        } else if (activeNode) {
+          // Welcome message if no history for this node, but only if we don't have local messages
+          setMessages(prev => {
+            if (prev.length > 0) return prev;
+            return [{
+              role: "assistant",
+              content: `Привет! Я Pitchy AI. Я готов помочь с разделом **"${activeNode.label}"**. Что именно мы хотим уточнить или рассчитать?`,
+              timestamp: new Date().toISOString()
+            }];
+          });
         }
       } catch (err) {
         console.error("Failed to load chat history:", err);

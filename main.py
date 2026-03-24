@@ -2451,6 +2451,8 @@ def get_chat_session(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
+    db.refresh(session)
+
     # Manually map messages to avoid N+1 if not careful, though ORM handles it
     msgs = sorted(session.messages, key=lambda m: m.created_at)
 
