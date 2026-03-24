@@ -1220,7 +1220,7 @@ async def parse_thought_generator(generator):
     if buffer:
         yield json.dumps({"type": "thought" if inside_thought else "chunk", "content": buffer}) + "\n"
 
-async def save_assistant_message(session_id: int, content: str, client_id: str | None = None):
+def save_assistant_message(session_id: int, content: str, client_id: str | None = None):
     """Background task to save streamed assistant message to DB."""
     from db import SessionLocal
     from models import ChatMessage as DbChatMessage
@@ -2396,6 +2396,7 @@ def create_chat_session_auto(
         session_id=session.id,
         role="user",
         content=payload.initial_message,
+        client_id=payload.client_id
     )
     db.add(user_msg)
     db.commit()
