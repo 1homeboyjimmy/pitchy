@@ -32,7 +32,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
     const abortControllerRef = useRef<AbortController | null>(null);
 
     // Typewriter animation state
-    const [typingMessageId, setTypingMessageId] = useState<number | null>(null);
+    const [typingMessageId, setTypingMessageId] = useState<string | number | null>(null);
     const [displayedLength, setDisplayedLength] = useState(0);
     const typingSpeed = 12; // ms per character
 
@@ -103,7 +103,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
     // Typewriter effect: reveal characters progressively
     useEffect(() => {
         if (typingMessageId === null) return;
-        const msg = messages.find((m) => m.id === typingMessageId);
+        const msg = messages.find((m) => (m.client_id || m.id) === typingMessageId);
         if (!msg) { setTypingMessageId(null); return; }
         const fullLen = msg.content.length;
         if (displayedLength >= fullLen) {
@@ -122,7 +122,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
     }, [typingMessageId, displayedLength, messages]);
 
     const getDisplayContent = useCallback((msg: ChatMessageResponse) => {
-        if (msg.id === typingMessageId) {
+        if ((msg.client_id || msg.id) === typingMessageId) {
             return msg.content.slice(0, displayedLength);
         }
         return msg.content;
@@ -165,6 +165,9 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                     thoughtExpanded: true
                 },
             ]);
+
+            setTypingMessageId(assistantClientId);
+            setDisplayedLength(0);
 
             let assistantContent = "";
             let fullThoughtContent = "";
@@ -250,13 +253,14 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                 )}
 
                 {messages.map((msg, idx) => {
-                    const isLastAssistant = msg.role === "assistant" && idx === messages.length - 1;
-                    const hasThoughts = msg.thoughts !== undefined;
-                    const isThinkingOnly = msg.role === "assistant" && msg.content === "" && hasThoughts;
+            const messageKey = msg.client_id || msg.id;
+            const hasThoughts = msg.thoughts !== undefined;
+            const isThinkingOnly = msg.role === "assistant" && msg.content === "" && hasThoughts;
+            const isLastAssistant = msg.role === "assistant" && idx === messages.length - 1;
 
-                    return (
-                        <motion.div
-                            key={msg.id === -1 ? `temp-${idx}` : msg.id}
+            return (
+                <motion.div
+                    key={messageKey}
                             initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
                             className={`flex gap-4 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}

@@ -39,11 +39,14 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
   const mergeMessages = (current: Message[], incoming: Message[]) => {
     const map = new Map();
     // 1. Load local state
-    current.forEach(m => map.set(m.client_id || m.timestamp, m));
+    current.forEach(m => {
+        const key = m.client_id || (m.timestamp ? new Date(m.timestamp).getTime() : "no-time");
+        map.set(key, m);
+    });
     
     // 2. Layer server data on top
     incoming.forEach(inc => {
-        const key = inc.client_id || inc.timestamp;
+        const key = inc.client_id || (inc.timestamp ? new Date(inc.timestamp).getTime() : "no-time");
         const existing = map.get(key);
         if (existing) {
             map.set(key, {
