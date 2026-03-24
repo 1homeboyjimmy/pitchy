@@ -197,6 +197,7 @@ export type ChatMessageResponse = {
   id: number;
   role: "user" | "assistant";
   content: string;
+  thoughts?: string;
   created_at: string;
   feedback?: number;
   client_id?: string;
@@ -406,9 +407,9 @@ export async function getTreeChatHistory(
   treeId: number, 
   token: string, 
   nodeId?: string
-): Promise<{ history: { role: string; content: string; model_used?: string; timestamp: string; client_id?: string }[] }> {
+): Promise<{ history: { role: string; content: string; thoughts?: string; model_used?: string; timestamp: string; client_id?: string }[] }> {
   const url = nodeId ? `/tree/${treeId}/history?node_id=${nodeId}` : `/tree/${treeId}/history`;
-  return getAuthJson<{ history: { role: string; content: string; model_used?: string; timestamp: string; client_id?: string }[] }>(url, token);
+  return getAuthJson<{ history: { role: string; content: string; thoughts?: string; model_used?: string; timestamp: string; client_id?: string }[] }>(url, token);
 }
 
 

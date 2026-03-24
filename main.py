@@ -88,15 +88,17 @@ SYSTEM_PROMPT = (
     "достоверные данные из контекста. Отвечай строго в формате JSON без пояснений."
 )
 SYSTEM_CHAT_PROMPT = (
-    "Ты — эксперт по венчурным инвестициям в России. Веди диалог и отвечай сплошным "
-    "текстом. Сначала запиши свои мысли/размышления о запросе внутри тегов <thought>...</thought>, "
-    "а затем дай итоговый ответ пользователю. Никогда не используй markdown-заголовки с решетками (### и подобные). "
+    "Ты — эксперт по венчурным инвестициям в России. Твоя задача — давать глубокий, "
+    "структурированный и визуально приятный анализ проектов. "
+    "Сначала ОБЯЗАТЕЛЬНО запиши свои мысли/размышления о запросе внутри тегов <thought>...</thought>, "
+    "а затем дай итоговый ответ пользователю. "
+    "В итоговом ответе используй богатый Markdown: жирный шрифт, списки, таблицы (особенно для сравнений и цифр), "
+    "цитаты и подходящие по смыслу эмодзи. Используй заголовки (###) для разделения логических блоков. "
     "Задавай пользователю МАКСИМУМ один уточняющий вопрос за раз, только если это критически важно. "
     "Учитывай российский рынок: регуляторику, конкуренцию, поведение потребителей, "
     "каналы продвижения и требования инвесторов (РВК, бизнес-ангелы). "
-    "Если в контексте из интернета (RAG) есть полезная информация, "
-    "ОБЯЗАТЕЛЬНО детально описывай её, перечисляй суммы, условия и названия грантов или программ прямо в чате. "
-    "Избегай сухих ответов в стиле 'ознакомьтесь на сайте'."
+    "Если в контексте из интернета (RAG) есть полезная информация — "
+    "детально описывай её, перечисляй суммы, условия и названия грантов/программ прямо в чате."
 )
 
 
@@ -1221,7 +1223,7 @@ async def parse_thought_generator(generator):
     if buffer:
         yield json.dumps({"type": "thought" if inside_thought else "chunk", "content": buffer}) + "\n"
 
-def save_assistant_message(session_id: int, content: str, client_id: str | None = None):
+def save_assistant_message(session_id: int, content: str, thoughts: str | None = None, client_id: str | None = None):
     from db import SessionLocal
     from models import ChatMessage as DbChatMessage
     db = SessionLocal()
@@ -1229,7 +1231,8 @@ def save_assistant_message(session_id: int, content: str, client_id: str | None 
         msg = DbChatMessage(
             session_id=session_id, 
             role="assistant", 
-            content=content, 
+            content=content,
+            thoughts=thoughts,
             client_id=client_id
         )
         db.add(msg)
@@ -1403,6 +1406,7 @@ async def create_chat_message(
 
     async def session_chat_generator():
         full_text = ""
+        full_thoughts = ""
         try:
             if provider == "makura":
                 raw_gen = stream_makura(SYSTEM_CHAT_PROMPT, user_prompt)
@@ -1413,6 +1417,8 @@ async def create_chat_message(
                 data = json.loads(json_chunk.strip())
                 if data["type"] == "chunk":
                     full_text += data["content"]
+                elif data["type"] == "thought":
+                    full_thoughts += data["content"]
                 yield json_chunk
         except Exception as e:
             logger.error(f"Streaming failed: {e}")
@@ -1425,7 +1431,8 @@ async def create_chat_message(
                     asyncio.to_thread(
                         save_assistant_message, 
                         session.id, 
-                        full_text.strip(), 
+                        full_text.strip(),
+                        full_thoughts.strip() if full_thoughts.strip() else None,
                         payload.assistant_client_id
                     )
                 )
@@ -2603,6 +2610,7 @@ async def send_chat_message(
     async def session_chat_generator():
         provider = os.getenv("PRIMARY_PROVIDER", "routerai")
         full_response = ""
+        full_thoughts = ""
         try:
             # We need history for contextual responses
             history = (
@@ -2628,6 +2636,8 @@ async def send_chat_message(
                 data = json.loads(json_chunk.strip())
                 if data["type"] == "chunk":
                     full_response += data["content"]
+                elif data["type"] == "thought":
+                    full_thoughts += data["content"]
                 yield json_chunk
             
             # Save assistant response in background using asyncio instead of background_tasks
@@ -2636,7 +2646,8 @@ async def send_chat_message(
                     asyncio.to_thread(
                         save_assistant_message, 
                         session.id, 
-                        full_response, 
+                        full_response,
+                        full_thoughts.strip() if full_thoughts.strip() else None,
                         payload.assistant_client_id
                     )
                 )

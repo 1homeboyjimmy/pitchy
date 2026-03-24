@@ -94,18 +94,44 @@ class ChatOrchestrator:
         # Note: PG sync is handled by background worker
 
     async def get_chat_history(self, node_id: Optional[str] = None, limit: int = 20) -> list:
-        """Get recent chat history from Redis."""
+        """Get recent chat history from Redis with PG fallback."""
         if self.redis:
             chat_key = self._get_chat_key(node_id)
             history = self.redis.lrange(chat_key, 0, limit - 1)
-            return [json.loads(m) for m in history][::-1] # Reverse to chronological
+            if history:
+                return [json.loads(m) for m in history][::-1] 
+
+        # PostgreSQL Fallback
+        if self.db:
+            from models import TreeChatHistory
+            query = self.db.query(TreeChatHistory).filter(TreeChatHistory.project_id == self.tree_id)
+            if node_id:
+                # Assuming node_id is NOT directly in TreeChatHistory model yet, 
+                # but for simplicity we filter by tree. 
+                # If we need node-specific history from PG, we'd need another column.
+                pass 
+            
+            history_msgs = query.order_by(TreeChatHistory.timestamp.desc()).limit(limit).all()
+            return [
+                {
+                    "role": m.role,
+                    "content": m.message,
+                    "thoughts": m.thoughts,
+                    "model_used": m.model_used,
+                    "timestamp": m.timestamp.isoformat(),
+                    "client_id": m.client_id
+                }
+                for m in reversed(history_msgs)
+            ]
+        
         return []
 
-    async def add_chat_message(self, role: str, content: str, node_id: Optional[str] = None, model_used: str = None, client_id: str = None):
+    async def add_chat_message(self, role: str, content: str, thoughts: Optional[str] = None, node_id: Optional[str] = None, model_used: str = None, client_id: str = None):
         """Add message to Redis list and PostgreSQL."""
         msg = {
             "role": role,
             "content": content,
+            "thoughts": thoughts,
             "model_used": model_used,
             "timestamp": datetime.now().isoformat(),
             "client_id": client_id
@@ -124,6 +150,7 @@ class ChatOrchestrator:
                     project_id=self.tree_id,
                     role=role,
                     message=content,
+                    thoughts=thoughts,
                     model_used=model_used,
                     client_id=client_id
                 )
@@ -196,6 +223,7 @@ class ChatOrchestrator:
         logger.info(f"Orchestrator: User intent classified as '{intent}'")
 
         reply_full = ""
+        thoughts_full = ""
         model_used = "RouterAI (GLM-5)"
         enriched_data = {}
 
@@ -203,7 +231,10 @@ class ChatOrchestrator:
             yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
             async for json_chunk in self._parse_thought_generator(self._stream_chat(user_message, history, state, active_node_id)):
                 data = json.loads(json_chunk.strip())
-                if data["type"] == "chunk": reply_full += data["content"]
+                if data["type"] == "chunk": 
+                    reply_full += data["content"]
+                elif data["type"] == "thought":
+                    thoughts_full += data["content"]
                 yield json_chunk
         
         elif intent == "tree":
@@ -243,7 +274,7 @@ class ChatOrchestrator:
 
         # 4. Finalize
         await self.add_chat_message("user", user_message, node_id=active_node_id, client_id=client_id)
-        await self.add_chat_message("assistant", reply_full, node_id=active_node_id, model_used=model_used, client_id=assistant_client_id)
+        await self.add_chat_message("assistant", reply_full, thoughts=thoughts_full.strip() if thoughts_full else None, node_id=active_node_id, model_used=model_used, client_id=assistant_client_id)
 
         # Final metadata
         yield json.dumps({

@@ -128,6 +128,7 @@ class ChatMessage(Base):
     session_id: Mapped[int] = mapped_column(ForeignKey("chat_sessions.id"))
     role: Mapped[str] = mapped_column(String(30))
     content: Mapped[str] = mapped_column(Text)
+    thoughts: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     feedback: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     client_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
@@ -183,6 +184,7 @@ class TreeChatHistory(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     project_id: Mapped[int] = mapped_column(ForeignKey("project_trees.id"))
     message: Mapped[str] = mapped_column(Text)
+    thoughts: Mapped[str | None] = mapped_column(Text, nullable=True)
     role: Mapped[str] = mapped_column(String(30))  # "user", "assistant"
     model_used: Mapped[str | None] = mapped_column(String(50), nullable=True)
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

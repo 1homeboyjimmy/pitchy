@@ -121,6 +121,7 @@ class ChatMessageResponse(BaseModel):
     id: int
     role: str
     content: str
+    thoughts: str | None = None
     created_at: datetime
     client_id: str | None = None
 
