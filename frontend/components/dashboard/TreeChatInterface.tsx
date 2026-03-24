@@ -35,19 +35,49 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  // Robust merge logic to prevent duplicates and data loss
+  const mergeMessages = (current: Message[], incoming: Message[]) => {
+    const map = new Map();
+    // 1. Load local state
+    current.forEach(m => map.set(m.client_id || m.timestamp, m));
+    
+    // 2. Layer server data on top
+    incoming.forEach(inc => {
+        const key = inc.client_id || inc.timestamp;
+        const existing = map.get(key);
+        if (existing) {
+            map.set(key, {
+                ...inc,
+                thoughts: existing.thoughts || inc.thoughts,
+                thoughtTime: existing.thoughtTime || inc.thoughtTime,
+                // Keep longer content
+                content: (existing.content?.length || 0) > (inc.content?.length || 0) 
+                    ? existing.content 
+                    : inc.content
+            });
+        } else {
+            map.set(key, inc);
+        }
+    });
+    
+    return Array.from(map.values()).sort((a, b) => 
+        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    );
+  };
+
   // Load history on mount or when activeNode changes
   useEffect(() => {
     const loadHistory = async () => {
-      // Don't overwrite if we're currently sending/loading
+      // Don't overwrite if we're currently sending/loading (handleSend will do its own sync)
       if (isLoading) return;
 
       try {
         const token = getToken();
         if (!token) return;
         const res = await getTreeChatHistory(treeId, token, activeNode?.id);
-        if (res.history && res.history.length > 0) {
-          setMessages(res.history as Message[]);
-        } else if (activeNode) {
+        if (res.history) {
+          setMessages(prev => mergeMessages(prev, res.history as Message[]));
+        } else if (activeNode && messages.length === 0) {
           // Welcome message if no history for this node
           setMessages([{
             role: "assistant",
@@ -144,40 +174,9 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
         const { getTreeChatHistory } = await import("@/lib/api");
         const res = await getTreeChatHistory(treeId, token, activeNode?.id);
         
-          setMessages((prev) => {
-            const dbMsgs = res.history as Message[];
-            
-            // 1. Start with everything from local state
-            const finalMap = new Map();
-            prev.forEach(m => {
-                const key = m.client_id || m.timestamp;
-                finalMap.set(key, m);
-            });
-
-            // 2. Merge database messages on top
-            dbMsgs.forEach(dbM => {
-                const key = dbM.client_id || dbM.timestamp;
-                const localM = finalMap.get(key);
-
-                if (localM) {
-                    finalMap.set(key, {
-                        ...dbM,
-                        thoughts: localM.thoughts || dbM.thoughts,
-                        thoughtTime: localM.thoughtTime || dbM.thoughtTime,
-                        // Keep longer content
-                        content: (localM.content?.length || 0) > (dbM.content?.length || 0) 
-                            ? localM.content 
-                            : dbM.content
-                    });
-                } else {
-                    finalMap.set(key, dbM);
-                }
-            });
-
-            return Array.from(finalMap.values()).sort((a, b) => 
-                new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-            );
-          });
+        if (res.history) {
+          setMessages((prev) => mergeMessages(prev, res.history as Message[]));
+        }
       } catch (err: unknown) {
         if (err instanceof Error && err.name === 'AbortError') {
           console.log("Generation aborted");

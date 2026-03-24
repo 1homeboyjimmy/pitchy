@@ -51,12 +51,44 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
         }
     };
 
+    // Shared merge logic to prevent duplicates and data loss
+    const mergeMessages = (current: ExtendedChatMessage[], incoming: ExtendedChatMessage[]) => {
+        const map = new Map();
+        // 1. Load local state
+        current.forEach(m => map.set(m.client_id || m.id.toString(), m));
+        
+        // 2. Layer server data on top, but respect content progress
+        incoming.forEach(inc => {
+            const key = inc.client_id || inc.id.toString();
+            const existing = map.get(key);
+            if (existing) {
+                map.set(key, {
+                    ...inc,
+                    thoughts: existing.thoughts || inc.thoughts,
+                    thoughtTime: existing.thoughtTime || inc.thoughtTime,
+                    thoughtExpanded: existing.thoughtExpanded !== undefined ? existing.thoughtExpanded : inc.thoughtExpanded,
+                    // Keep the longer content (fights race conditions between stream end and DB sync)
+                    content: (existing.content?.length || 0) > (inc.content?.length || 0) 
+                        ? existing.content 
+                        : inc.content
+                });
+            } else {
+                map.set(key, inc);
+            }
+        });
+        
+        return Array.from(map.values()).sort((a, b) => 
+            dayjs(a.created_at).valueOf() - dayjs(b.created_at).valueOf()
+        );
+    };
+
     useEffect(() => {
-        // If we're loading (streaming or reconciling), don't let incoming session props overwrite local state
-        if (!isLoading) {
-            setMessages(session.messages || []);
+        // If we're loading (streaming or reconciling), we still merge to catch other updates
+        // BUT the merge logic preserves our active local content.
+        if (session.messages) {
+            setMessages(prev => mergeMessages(prev, session.messages));
         }
-    }, [session, isLoading]);
+    }, [session.messages]);
 
     const scrollToBottom = () => {
         if (scrollViewportRef.current) {
@@ -175,60 +207,8 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
             const updatedSession = await getChatSession(session.id, token);
             onUpdate(updatedSession);
 
-            // Reconcile: Ultimate Map-based logic
-            setMessages((prev) => {
-                const dbMsgs = updatedSession.messages as ExtendedChatMessage[];
-                
-                console.log("DEBUG SYNC:", {
-                    local_ids: prev.map(m => m.client_id || m.id),
-                    server_ids: dbMsgs.map(m => m.client_id || m.id),
-                    dbMsgs
-                });
-
-                // 1. Create a map of server messages by client_id (priority) or DB ID
-                const serverMap = new Map();
-                dbMsgs.forEach(m => {
-                    if (m.client_id) {
-                        serverMap.set(m.client_id, m);
-                    } else {
-                        serverMap.set(m.id.toString(), m);
-                    }
-                });
-
-                // 2. Map existing local messages: if they are in the server map, merge them
-                const updatedLocal = prev.map(localM => {
-                    const serverMatch = serverMap.get(localM.client_id) || serverMap.get(localM.id.toString());
-                    if (serverMatch) {
-                        // Crucial: Use server metadata but keep local content if it's the assistant's longer stream
-                        return {
-                            ...serverMatch,
-                            thoughts: localM.thoughts || serverMatch.thoughts,
-                            thoughtTime: localM.thoughtTime || serverMatch.thoughtTime,
-                            thoughtExpanded: localM.thoughtExpanded !== undefined ? localM.thoughtExpanded : serverMatch.thoughtExpanded,
-                            content: (localM.content?.length || 0) > (serverMatch.content?.length || 0) ? localM.content : serverMatch.content
-                        };
-                    }
-                    return localM; // Keep local-only for now (shouldn't happen for matched ones)
-                });
-
-                // 3. Add any server messages that weren't in our local list (e.g. from other devices or missed)
-                const localClientIdSet = new Set(prev.map(m => m.client_id).filter(Boolean));
-                const localIdSet = new Set(prev.map(m => m.id.toString()));
-                
-                const newFromServer = dbMsgs.filter(m => 
-                    (m.client_id && !localClientIdSet.has(m.client_id)) || 
-                    (!m.client_id && !localIdSet.has(m.id.toString()))
-                );
-
-                const final = [...updatedLocal, ...newFromServer];
-                
-                // 4. Final sort by creation time (or ID as fallback) to ensure order
-                return final.sort((a, b) => {
-                    const timeA = new Date(a.created_at).getTime();
-                    const timeB = new Date(b.created_at).getTime();
-                    return timeA - timeB;
-                });
-            });
+            // Reconcile using our shared merge logic
+            setMessages((prev) => mergeMessages(prev, updatedSession.messages || []));
 
         } catch (error) {
             console.error(error);
