@@ -135,6 +135,44 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
             if (chunk.hints) setHints(chunk.hints);
           }
         }
+
+        // Final reconciliation after a small delay
+        await new Promise(resolve => setTimeout(resolve, 400));
+        const { getTreeChatHistory } = await import("@/lib/api");
+        const res = await getTreeChatHistory(treeId, token, activeNode?.id);
+        
+        if (res.history) {
+          setMessages((prev) => {
+            const dbMsgs = res.history as Message[];
+            const serverMap = new Map();
+            dbMsgs.forEach(m => {
+                if (m.client_id) serverMap.set(m.client_id, m);
+                else serverMap.set(m.timestamp, m); // Tree chat uses timestamp as fallback
+            });
+
+            // 1. Update existing messages
+            const updatedLocal = prev.map(localM => {
+                const serverMatch = serverMap.get(localM.client_id) || (localM.timestamp ? serverMap.get(localM.timestamp) : null);
+                if (serverMatch) {
+                    return {
+                        ...serverMatch,
+                        thoughts: localM.thoughts || serverMatch.thoughts,
+                        thoughtTime: localM.thoughtTime || serverMatch.thoughtTime,
+                        content: (localM.content?.length || 0) > (serverMatch.content?.length || 0) ? localM.content : serverMatch.content
+                    };
+                }
+                return localM;
+            });
+
+            // 2. Add any missed ones
+            const localClientIdSet = new Set(prev.map(m => m.client_id).filter(Boolean));
+            const newFromServer = dbMsgs.filter(m => m.client_id && !localClientIdSet.has(m.client_id));
+
+            return [...updatedLocal, ...newFromServer].sort((a, b) => 
+                new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+            );
+          });
+        }
       } catch (err: unknown) {
         if (err instanceof Error && err.name === 'AbortError') {
           console.log("Generation aborted");

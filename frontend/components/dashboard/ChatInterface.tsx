@@ -175,35 +175,64 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                 }
             }
 
-            // Fetch updated session to check for analysis or new message IDs
+            // Fetch updated session after a small delay to ensure background tasks finished
+            await new Promise(resolve => setTimeout(resolve, 400));
             const updatedSession = await getChatSession(session.id, token);
             onUpdate(updatedSession);
 
-            // Reconcile: Don't lose the streamed content or thoughts
+            // Reconcile: Ultimate Map-based logic
             setMessages((prev) => {
                 const dbMsgs = updatedSession.messages as ExtendedChatMessage[];
-                const dbClientIdSet = new Set(dbMsgs.map(m => m.client_id).filter(Boolean));
-
-                // 1. Merge DB messages with local state
-                const merged = dbMsgs.map(dbM => {
-                    const localMatch = prev.find(lm => lm.client_id === dbM.client_id);
-                    if (localMatch) {
-                        return {
-                            ...dbM,
-                            thoughts: localMatch.thoughts || dbM.thoughts,
-                            thoughtTime: localMatch.thoughtTime || dbM.thoughtTime,
-                            thoughtExpanded: localMatch.thoughtExpanded !== undefined ? localMatch.thoughtExpanded : dbM.thoughtExpanded,
-                            // Priority Merge for content: keep the longer one
-                            content: (localMatch.content?.length || 0) > (dbM.content?.length || 0) ? localMatch.content : dbM.content
-                        };
-                    }
-                    return dbM;
+                
+                console.log("DEBUG SYNC:", {
+                    local_ids: prev.map(m => m.client_id || m.id),
+                    server_ids: dbMsgs.map(m => m.client_id || m.id),
+                    dbMsgs
                 });
 
-                // 2. Keep local messages that aren't in DB yet (e.g. still streaming)
-                const pending = prev.filter(pm => pm.client_id && !dbClientIdSet.has(pm.client_id));
+                // 1. Create a map of server messages by client_id (priority) or DB ID
+                const serverMap = new Map();
+                dbMsgs.forEach(m => {
+                    if (m.client_id) {
+                        serverMap.set(m.client_id, m);
+                    } else {
+                        serverMap.set(m.id.toString(), m);
+                    }
+                });
+
+                // 2. Map existing local messages: if they are in the server map, merge them
+                const updatedLocal = prev.map(localM => {
+                    const serverMatch = serverMap.get(localM.client_id) || serverMap.get(localM.id.toString());
+                    if (serverMatch) {
+                        // Crucial: Use server metadata but keep local content if it's the assistant's longer stream
+                        return {
+                            ...serverMatch,
+                            thoughts: localM.thoughts || serverMatch.thoughts,
+                            thoughtTime: localM.thoughtTime || serverMatch.thoughtTime,
+                            thoughtExpanded: localM.thoughtExpanded !== undefined ? localM.thoughtExpanded : serverMatch.thoughtExpanded,
+                            content: (localM.content?.length || 0) > (serverMatch.content?.length || 0) ? localM.content : serverMatch.content
+                        };
+                    }
+                    return localM; // Keep local-only for now (shouldn't happen for matched ones)
+                });
+
+                // 3. Add any server messages that weren't in our local list (e.g. from other devices or missed)
+                const localClientIdSet = new Set(prev.map(m => m.client_id).filter(Boolean));
+                const localIdSet = new Set(prev.map(m => m.id.toString()));
                 
-                return [...merged, ...pending];
+                const newFromServer = dbMsgs.filter(m => 
+                    (m.client_id && !localClientIdSet.has(m.client_id)) || 
+                    (!m.client_id && !localIdSet.has(m.id.toString()))
+                );
+
+                const final = [...updatedLocal, ...newFromServer];
+                
+                // 4. Final sort by creation time (or ID as fallback) to ensure order
+                return final.sort((a, b) => {
+                    const timeA = new Date(a.created_at).getTime();
+                    const timeB = new Date(b.created_at).getTime();
+                    return timeA - timeB;
+                });
             });
 
         } catch (error) {
