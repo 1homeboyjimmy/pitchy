@@ -49,35 +49,42 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
         incoming_keys: incoming.map(m => getMsgKey(m))
     });
 
-    // 1. Load local state
-    current.forEach(m => {
-        const key = getMsgKey(m);
-        if (key) map.set(key, m);
-    });
-    
-    // 2. Layer server data on top
+    // 1. First, load everything from the server (incoming)
     incoming.forEach(inc => {
         const key = getMsgKey(inc);
-        const existing = map.get(key);
-        if (existing) {
+        if (key) map.set(key, inc);
+    });
+    
+    // 2. Overlay LOCAL state on top
+    current.forEach(loc => {
+        const key = getMsgKey(loc);
+        if (!key) return;
+
+        const serverMatch = map.get(key);
+        
+        if (serverMatch) {
+            // Keep the one with longer content (protects streaming)
             map.set(key, {
-                ...inc,
-                thoughts: existing.thoughts || inc.thoughts,
-                thoughtTime: existing.thoughtTime || inc.thoughtTime,
-                // Keep longer content
-                content: (existing.content?.length || 0) > (inc.content?.length || 0) 
-                    ? existing.content 
-                    : inc.content
+                ...serverMatch,
+                content: (loc.content?.length || 0) > (serverMatch.content?.length || 0) 
+                    ? loc.content 
+                    : serverMatch.content,
+                // Preserve thoughts/expand state
+                thoughts: loc.thoughts || serverMatch.thoughts,
+                thoughtTime: loc.thoughtTime || serverMatch.thoughtTime,
+                thoughtExpanded: loc.thoughtExpanded ?? serverMatch.thoughtExpanded
             });
-        } else {
-            map.set(key, inc);
+        } else if (isLoading) {
+            // IMPORTANT: If we are still loading, don't delete messages found only in local state.
+            // This prevents flickering if the DB refresh is slower than the frontend response.
+            map.set(key, loc);
         }
     });
     
     return Array.from(map.values()).sort((a, b) => 
         new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
     );
-  }, [getMsgKey]);
+  }, [getMsgKey, isLoading]);
 
   // Load history on mount or when activeNode changes
   useEffect(() => {

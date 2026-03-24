@@ -1224,10 +1224,21 @@ def save_assistant_message(session_id: int, content: str, client_id: str | None 
     """Background task to save streamed assistant message to DB."""
     from db import SessionLocal
     from models import ChatMessage as DbChatMessage
-    with SessionLocal() as db:
-        msg = DbChatMessage(session_id=session_id, role="assistant", content=content, client_id=client_id)
+    db = SessionLocal()
+    try:
+        msg = DbChatMessage(
+            session_id=session_id, 
+            role="assistant", 
+            content=content, 
+            client_id=client_id
+        )
         db.add(msg)
         db.commit()
+        db.refresh(msg) # Confirm persistence
+    except Exception as e:
+        logger.error(f"Failed to save assistant message: {e}")
+    finally:
+        db.close()
 
 
 @app.post("/chat")

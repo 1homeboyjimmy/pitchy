@@ -65,36 +65,42 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
             incoming_keys: incoming.map(m => getSafeKey(m))
         });
 
-        // 1. Load local state
-        current.forEach(m => {
-            const key = getSafeKey(m);
-            if (key) map.set(key, m);
-        });
-        
-        // 2. Layer server data on top, but respect content progress
+        // 1. First, load everything from the server (incoming)
         incoming.forEach(inc => {
             const key = getSafeKey(inc);
-            const existing = map.get(key);
-            if (existing) {
+            if (key) map.set(key, inc);
+        });
+        
+        // 2. Overlay LOCAL state on top
+        current.forEach(loc => {
+            const key = getSafeKey(loc);
+            if (!key) return;
+
+            const serverMatch = map.get(key);
+            
+            if (serverMatch) {
+                // If message exists on both, keep the one with longer content (protects streaming)
                 map.set(key, {
-                    ...inc,
-                    thoughts: existing.thoughts || inc.thoughts,
-                    thoughtTime: existing.thoughtTime || inc.thoughtTime,
-                    thoughtExpanded: existing.thoughtExpanded ?? inc.thoughtExpanded,
-                    // Keep the longer content (fights race conditions)
-                    content: (existing.content?.length || 0) > (inc.content?.length || 0) 
-                        ? existing.content 
-                        : inc.content
+                    ...serverMatch,
+                    content: (loc.content?.length || 0) > (serverMatch.content?.length || 0) 
+                        ? loc.content 
+                        : serverMatch.content,
+                    // Preserve thoughts/expand state
+                    thoughts: loc.thoughts || serverMatch.thoughts,
+                    thoughtTime: loc.thoughtTime || serverMatch.thoughtTime,
+                    thoughtExpanded: loc.thoughtExpanded ?? serverMatch.thoughtExpanded
                 });
-            } else {
-                map.set(key, inc);
+            } else if (isLoading) {
+                // IMPORTANT: If we are still loading, don't delete messages that are only in local state
+                // This prevents the "empty response" flicker before the DB commit is finished.
+                map.set(key, loc);
             }
         });
         
         return Array.from(map.values()).sort((a, b) => 
             dayjs(a.created_at).valueOf() - dayjs(b.created_at).valueOf()
         );
-    }, [getSafeKey]);
+    }, [getSafeKey, isLoading]);
 
     useEffect(() => {
         // Use merge instead of direct replacement to protect streaming state
