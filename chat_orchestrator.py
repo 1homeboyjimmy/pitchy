@@ -249,7 +249,8 @@ class ChatOrchestrator:
         yield json.dumps({
             "type": "final",
             "readiness_index": state.get("readiness_index", 0),
-            "hints": self._get_hints(state, active_node_id)
+            "hints": self._get_hints(state, active_node_id),
+            "assistant_client_id": assistant_client_id
         }) + "\n"
 
     def _get_hints(self, state: dict, active_node_id: str | None) -> list[str]:

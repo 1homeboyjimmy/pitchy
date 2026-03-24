@@ -316,4 +316,6 @@ class TreeChatResponse(BaseModel):
     readiness_index: int | None = None
     hints: list[str] | None = None
     model: str | None = None
+    client_id: str | None = None
+    assistant_client_id: str | None = None
 
