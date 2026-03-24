@@ -11,6 +11,7 @@ from tree_orchestrator import _normalize_tree_data
 from search_agent import execute_search_agent
 from yandex_gpt_client import async_call_yandex_gpt
 from core_tree import CORE_SKELETON
+from models import TreeChatHistory
 
 logger = logging.getLogger("app")
 
@@ -101,7 +102,7 @@ class ChatOrchestrator:
         return []
 
     async def add_chat_message(self, role: str, content: str, node_id: Optional[str] = None, model_used: str = None, client_id: str = None):
-        """Add message to Redis list."""
+        """Add message to Redis list and PostgreSQL."""
         msg = {
             "role": role,
             "content": content,
@@ -109,10 +110,28 @@ class ChatOrchestrator:
             "timestamp": datetime.now().isoformat(),
             "client_id": client_id
         }
+        
+        # 1. Perspective: Redis (Hot)
         if self.redis:
             chat_key = self._get_chat_key(node_id)
             self.redis.lpush(chat_key, json.dumps(msg))
             self.redis.ltrim(chat_key, 0, 99) # Keep 100 messages
+
+        # 2. Perspective: PostgreSQL (Cold)
+        if self.db:
+            try:
+                db_msg = TreeChatHistory(
+                    project_id=self.tree_id,
+                    role=role,
+                    message=content,
+                    model_used=model_used,
+                    client_id=client_id
+                )
+                self.db.add(db_msg)
+                self.db.commit()
+            except Exception as e:
+                logger.error(f"Failed to save TreeChatHistory to SQL: {e}")
+                self.db.rollback()
 
     async def _stream_chat(self, user_message: str, history: list, state: dict, active_node_id: str | None):
         """Core streaming logic for chat with thoughts."""

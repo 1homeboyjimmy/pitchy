@@ -1261,6 +1261,13 @@ async def chat(payload: ChatRequest):
         except Exception as e:
             logger.error(f"Streaming failed: {e}")
             yield json.dumps({"type": "error", "content": str(e)}) + "\n"
+        finally:
+            # We don't have a session_id here for anonymous /chat, 
+            # but if this endpoint is ever used with a session, we should save it.
+            # Currently /chat is used for the very first message before session exists.
+            # So we might not need to save here if the session is created later.
+            # However, for consistency with other endpoints:
+            pass
 
     return StreamingResponse(chat_generator(), media_type="text/event-stream")
 
@@ -2186,6 +2193,7 @@ def create_chat_session(
             session_id=session.id,
             role="user",
             content=payload.initial_message,
+            client_id=payload.client_id
         )
         db.add(user_msg)
         db.commit()
@@ -2210,7 +2218,7 @@ def create_chat_session(
     ai_msg = DbChatMessage(
         session_id=session.id,
         role="assistant",
-        content=assistant_text,
+        content=assistant_text, client_id=payload.assistant_client_id
     )
     db.add(ai_msg)
     db.commit()
@@ -2251,8 +2259,12 @@ def create_guest_intent(payload: IntentCreateRequest):
     intent_id = str(uuid.uuid4())
     redis = get_redis()
     
-    # Store the text for 1 hour (3600 seconds)
-    redis.setex(f"guest_intent:{intent_id}", 3600, payload.initial_message)
+    # Store the text and client_id for 1 hour (3600 seconds)
+    data = {
+        "initial_message": payload.initial_message,
+        "client_id": payload.client_id
+    }
+    redis.setex(f"guest_intent:{intent_id}", 3600, json.dumps(data))
     
     return IntentResponse(intent_id=intent_id)
 
@@ -2267,14 +2279,21 @@ def create_chat_session_from_intent(
     
     redis = get_redis()
     key = f"guest_intent:{payload.intent_id}"
-    initial_message = redis.get(key)
+    raw_data = redis.get(key)
     
-    if not initial_message:
+    if not raw_data:
         raise HTTPException(status_code=404, detail="Intent not found or expired")
     
-    # Use decoded string if redis returns bytes
-    if isinstance(initial_message, bytes):
-        initial_message = initial_message.decode("utf-8")
+    if isinstance(raw_data, bytes):
+        raw_data = raw_data.decode("utf-8")
+        
+    try:
+        data = json.loads(raw_data)
+        initial_message = data.get("initial_message")
+        client_id = data.get("client_id")
+    except:
+        initial_message = raw_data
+        client_id = None
 
     session = ChatSession(
         user_id=user.id,
@@ -2298,6 +2317,7 @@ def create_chat_session_from_intent(
             session_id=session.id,
             role="user",
             content=initial_message,
+            client_id=client_id
         )
         db.add(user_msg)
         db.commit()
@@ -2323,7 +2343,7 @@ def create_chat_session_from_intent(
     ai_msg = DbChatMessage(
         session_id=session.id,
         role="assistant",
-        content=assistant_text,
+        content=assistant_text, client_id=payload.assistant_client_id
     )
     db.add(ai_msg)
     db.commit()

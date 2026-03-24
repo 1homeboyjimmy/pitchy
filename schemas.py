@@ -103,6 +103,8 @@ class AnalysisResponse(BaseModel):
 class ChatSessionCreateRequest(BaseModel):
     title: str = Field(..., min_length=2)
     initial_message: str | None = None
+    client_id: str | None = None
+    assistant_client_id: str | None = None
 
 
 class ChatSessionResponse(BaseModel):
@@ -207,15 +209,19 @@ class SubscriptionResponse(BaseModel):
 
 class IntentCreateRequest(BaseModel):
     initial_message: str = Field(..., min_length=1)
+    client_id: str | None = None
 
 class IntentResponse(BaseModel):
     intent_id: str
 
 class ChatSessionFromIntentRequest(BaseModel):
     intent_id: str
+    assistant_client_id: str | None = None
 
 class ChatSessionAutoRequest(BaseModel):
     initial_message: str = Field(..., min_length=1)
+    client_id: str | None = None
+    assistant_client_id: str | None = None
 
 
 # ——— Decision Tree Schemas ———
