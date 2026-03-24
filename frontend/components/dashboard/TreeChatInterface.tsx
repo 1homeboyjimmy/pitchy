@@ -38,6 +38,9 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
   // Load history on mount or when activeNode changes
   useEffect(() => {
     const loadHistory = async () => {
+      // Don't overwrite if we're currently sending/loading
+      if (isLoading) return;
+
       try {
         const token = getToken();
         if (!token) return;
@@ -57,7 +60,7 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
       }
     };
     loadHistory();
-  }, [treeId, activeNode]);
+  }, [treeId, activeNode, isLoading]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -141,38 +144,40 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
         const { getTreeChatHistory } = await import("@/lib/api");
         const res = await getTreeChatHistory(treeId, token, activeNode?.id);
         
-        if (res.history) {
           setMessages((prev) => {
             const dbMsgs = res.history as Message[];
-            const serverMap = new Map();
-            dbMsgs.forEach(m => {
-                if (m.client_id) serverMap.set(m.client_id, m);
-                else serverMap.set(m.timestamp, m); // Tree chat uses timestamp as fallback
+            
+            // 1. Start with everything from local state
+            const finalMap = new Map();
+            prev.forEach(m => {
+                const key = m.client_id || m.timestamp;
+                finalMap.set(key, m);
             });
 
-            // 1. Update existing messages
-            const updatedLocal = prev.map(localM => {
-                const serverMatch = serverMap.get(localM.client_id) || (localM.timestamp ? serverMap.get(localM.timestamp) : null);
-                if (serverMatch) {
-                    return {
-                        ...serverMatch,
-                        thoughts: localM.thoughts || serverMatch.thoughts,
-                        thoughtTime: localM.thoughtTime || serverMatch.thoughtTime,
-                        content: (localM.content?.length || 0) > (serverMatch.content?.length || 0) ? localM.content : serverMatch.content
-                    };
+            // 2. Merge database messages on top
+            dbMsgs.forEach(dbM => {
+                const key = dbM.client_id || dbM.timestamp;
+                const localM = finalMap.get(key);
+
+                if (localM) {
+                    finalMap.set(key, {
+                        ...dbM,
+                        thoughts: localM.thoughts || dbM.thoughts,
+                        thoughtTime: localM.thoughtTime || dbM.thoughtTime,
+                        // Keep longer content
+                        content: (localM.content?.length || 0) > (dbM.content?.length || 0) 
+                            ? localM.content 
+                            : dbM.content
+                    });
+                } else {
+                    finalMap.set(key, dbM);
                 }
-                return localM;
             });
 
-            // 2. Add any missed ones
-            const localClientIdSet = new Set(prev.map(m => m.client_id).filter(Boolean));
-            const newFromServer = dbMsgs.filter(m => m.client_id && !localClientIdSet.has(m.client_id));
-
-            return [...updatedLocal, ...newFromServer].sort((a, b) => 
+            return Array.from(finalMap.values()).sort((a, b) => 
                 new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
             );
           });
-        }
       } catch (err: unknown) {
         if (err instanceof Error && err.name === 'AbortError') {
           console.log("Generation aborted");
@@ -234,7 +239,7 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
           const isLastAssistant = msg.role === "assistant" && idx === messages.length - 1;
 
           return (
-            <div key={msg.client_id || idx} className={`flex gap-3 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+            <div key={msg.client_id || msg.timestamp || idx} className={`flex gap-3 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
               <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${msg.role === "user" ? "bg-white/10" : "bg-pitchy-violet"}`}>
                 {msg.role === "user" ? <User className="w-4 h-4 text-white/70" /> : <Bot className="w-4 h-4 text-white" />}
               </div>

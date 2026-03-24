@@ -52,8 +52,11 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
     };
 
     useEffect(() => {
-        setMessages(session.messages || []);
-    }, [session]);
+        // If we're loading (streaming or reconciling), don't let incoming session props overwrite local state
+        if (!isLoading) {
+            setMessages(session.messages || []);
+        }
+    }, [session, isLoading]);
 
     const scrollToBottom = () => {
         if (scrollViewportRef.current) {
@@ -103,23 +106,15 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
         const abortController = new AbortController();
         abortControllerRef.current = abortController;
 
-        const tempUserMsg: ChatMessageResponse = {
-            id: -1,
-            role: "user",
-            content,
-            created_at: new Date().toISOString(),
-        };
-        setMessages((prev) => [...prev, tempUserMsg]);
-
         try {
             const token = getToken();
             if (!token) throw new Error("No token");
 
-            // Add placeholder assistant message
             const now = new Date();
             const userClientId = crypto.randomUUID();
             const assistantClientId = crypto.randomUUID();
 
+            // PUSH ONLY ONCE: Both user and assistant placeholder
             setMessages((prev) => [
                 ...prev,
                 {
@@ -130,7 +125,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                     client_id: userClientId
                 },
                 {
-                    id: now.getTime(), // Temporary numeric-like ID for React key, but we'll use client_id for reconciliation
+                    id: now.getTime() + 1,
                     role: "assistant",
                     content: "",
                     created_at: now.toISOString(),
