@@ -182,9 +182,10 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
             // Reconcile: Don't lose the streamed content or thoughts
             setMessages((prev) => {
                 const dbMsgs = updatedSession.messages as ExtendedChatMessage[];
+                const dbClientIdSet = new Set(dbMsgs.map(m => m.client_id).filter(Boolean));
 
-                // Match by client_id for absolute certainty
-                return dbMsgs.map(dbM => {
+                // 1. Merge DB messages with local state
+                const merged = dbMsgs.map(dbM => {
                     const localMatch = prev.find(lm => lm.client_id === dbM.client_id);
                     if (localMatch) {
                         return {
@@ -192,12 +193,17 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                             thoughts: localMatch.thoughts || dbM.thoughts,
                             thoughtTime: localMatch.thoughtTime || dbM.thoughtTime,
                             thoughtExpanded: localMatch.thoughtExpanded !== undefined ? localMatch.thoughtExpanded : dbM.thoughtExpanded,
-                            // Priority Merge for content: if local has more content (e.g., still streaming), keep it
+                            // Priority Merge for content: keep the longer one
                             content: (localMatch.content?.length || 0) > (dbM.content?.length || 0) ? localMatch.content : dbM.content
                         };
                     }
                     return dbM;
                 });
+
+                // 2. Keep local messages that aren't in DB yet (e.g. still streaming)
+                const pending = prev.filter(pm => pm.client_id && !dbClientIdSet.has(pm.client_id));
+                
+                return [...merged, ...pending];
             });
 
         } catch (error) {

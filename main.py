@@ -2196,6 +2196,7 @@ def create_chat_session(
                 role=user_msg.role,
                 content=user_msg.content,
                 created_at=user_msg.created_at,
+                client_id=user_msg.client_id
             )
         )
 
@@ -2220,6 +2221,7 @@ def create_chat_session(
             role=ai_msg.role,
             content=ai_msg.content,
             created_at=ai_msg.created_at,
+            client_id=ai_msg.client_id
         )
     )
 
@@ -2306,6 +2308,7 @@ def create_chat_session_from_intent(
                 role=user_msg.role,
                 content=user_msg.content,
                 created_at=user_msg.created_at,
+                client_id=user_msg.client_id
             )
         )
 
@@ -2331,6 +2334,7 @@ def create_chat_session_from_intent(
             role=ai_msg.role,
             content=ai_msg.content,
             created_at=ai_msg.created_at,
+            client_id=ai_msg.client_id
         )
     )
 
@@ -2382,6 +2386,7 @@ def create_chat_session_auto(
             role=user_msg.role,
             content=user_msg.content,
             created_at=user_msg.created_at,
+            client_id=user_msg.client_id
         )
     )
 
@@ -2453,7 +2458,8 @@ def get_chat_session(
                 id=m.id,
                 role=m.role,
                 content=m.content,
-                created_at=m.created_at
+                created_at=m.created_at,
+                client_id=m.client_id
             ) for m in msgs
         ],
     )

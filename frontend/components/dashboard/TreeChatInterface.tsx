@@ -196,7 +196,7 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
           const isLastAssistant = msg.role === "assistant" && idx === messages.length - 1;
 
           return (
-            <div key={idx} className={`flex gap-3 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+            <div key={msg.client_id || idx} className={`flex gap-3 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
               <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${msg.role === "user" ? "bg-white/10" : "bg-pitchy-violet"}`}>
                 {msg.role === "user" ? <User className="w-4 h-4 text-white/70" /> : <Bot className="w-4 h-4 text-white" />}
               </div>
