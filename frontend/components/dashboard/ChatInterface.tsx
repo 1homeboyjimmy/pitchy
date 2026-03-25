@@ -287,11 +287,11 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                             </div>
 
                             <div className={`max-w-[85%] flex flex-col gap-2 ${msg.role === "user" ? "items-end" : "items-start"}`}>
-                                {hasThoughts && (
+                                {msg.role === "assistant" && hasThoughts && (
                                     <div className="w-full max-w-[600px] bg-transparent overflow-hidden self-start">
                                         <button 
                                             onClick={() => {
-                                                setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, thoughtExpanded: !m.thoughtExpanded } : m));
+                                                setMessages(prev => prev.map(m => (m.client_id || m.id) === messageKey ? { ...m, thoughtExpanded: !m.thoughtExpanded } : m));
                                             }}
                                             className="flex items-center gap-2 px-1 py-1 text-[12px] text-white/40 hover:text-white/60 transition-colors"
                                         >
@@ -299,17 +299,28 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                                             <span className="font-medium">
                                                 {msg.thoughtTime ? `Размышления (${msg.thoughtTime} сек)` : "Pitchy рассуждает..."}
                                             </span>
-                                            {msg.thoughtExpanded ? <ChevronUp className="w-4 h-4 opacity-50" /> : <ChevronDown className="w-4 h-4 opacity-50" />}
+                                            {msg.thoughtExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                                         </button>
+                                        
                                         <motion.div
                                             initial={false}
-                                            animate={{ height: msg.thoughtExpanded ? "auto" : 0 }}
+                                            animate={{ height: msg.thoughtExpanded ? "auto" : 0, opacity: msg.thoughtExpanded ? 1 : 0 }}
                                             className="overflow-hidden"
                                         >
-                                            <div className="p-3 text-[14px] leading-relaxed text-white/50 italic border-l-2 border-pitchy-violet/30 ml-2 my-1 bg-white/[0.02] rounded-r-lg">
+                                            <div className="mt-1 mb-3 p-3 bg-white/5 rounded-xl border border-white/10 text-[13px] leading-relaxed text-white/50 italic whitespace-pre-wrap">
                                                 {msg.thoughts}
                                             </div>
                                         </motion.div>
+                                    </div>
+                                )}
+
+                                {/* Loading state placeholder */}
+                                {msg.role === "assistant" && !msg.content && !msg.thoughts && isLoading && isLastAssistant && (
+                                    <div className="flex items-center gap-3 p-4 bg-white/5 rounded-2xl border border-white/10 text-white/60">
+                                        <Loader2 className="animate-spin h-5 w-5 text-pitchy-violet" />
+                                        <span className="text-sm font-medium animate-pulse">
+                                            Pitchy анализирует данные и ищет информацию...
+                                        </span>
                                     </div>
                                 )}
 

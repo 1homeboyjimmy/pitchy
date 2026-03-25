@@ -266,11 +266,11 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
                 {msg.role === "user" ? <User className="w-4 h-4 text-white/70" /> : <Bot className="w-4 h-4 text-white" />}
               </div>
               <div className={`max-w-[90%] flex flex-col gap-2 ${msg.role === "user" ? "items-end" : "items-start"}`}>
-                {hasThoughts && (
+                {msg.role === "assistant" && hasThoughts && (
                   <div className="w-full bg-transparent overflow-hidden self-start">
                     <button 
                         onClick={() => {
-                          setMessages(prev => prev.map((m, i) => i === idx ? { ...m, thoughtExpanded: !m.thoughtExpanded } : m));
+                          setMessages(prev => prev.map((m, i) => (m.client_id || i) === (msg.client_id || idx) ? { ...m, thoughtExpanded: !m.thoughtExpanded } : m));
                         }}
                         className="flex items-center gap-2 px-1 py-1 text-[10px] text-white/40 hover:text-white/60 transition-colors"
                     >
@@ -278,17 +278,25 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
                         <span className="font-medium uppercase tracking-wider">
                             {msg.thoughtTime ? `Размышления (${msg.thoughtTime} сек)` : "Pitchy рассуждает..."}
                         </span>
-                        {msg.thoughtExpanded ? <ChevronUp className="w-3.5 h-3.5 ml-auto opacity-50" /> : <ChevronDown className="w-3.5 h-3.5 ml-auto opacity-50" />}
+                        {msg.thoughtExpanded ? <ChevronUp className="w-3.5 h-3.5 ml-auto text-white/20" /> : <ChevronDown className="w-3.5 h-3.5 ml-auto text-white/20" />}
                     </button>
                     <motion.div
                         initial={false}
-                        animate={{ height: msg.thoughtExpanded ? "auto" : 0 }}
+                        animate={{ height: msg.thoughtExpanded ? "auto" : 0, opacity: msg.thoughtExpanded ? 1 : 0 }}
                         className="overflow-hidden"
                     >
-                        <div className="p-2.5 text-[12px] leading-relaxed text-white/50 italic border-l-2 border-pitchy-violet/30 ml-2 my-1.5 bg-white/[0.02] rounded-r-lg">
+                        <div className="mt-1 mb-2 p-3 bg-white/5 rounded-xl border border-white/10 text-[12px] leading-relaxed text-white/50 italic whitespace-pre-wrap">
                             {msg.thoughts}
                         </div>
                     </motion.div>
+                  </div>
+                )}
+
+                {/* Loading state placeholder for new messages */}
+                {msg.role === "assistant" && !msg.content && !msg.thoughts && isLoading && isLastAssistant && (
+                  <div className="flex items-center gap-3 p-3 bg-white/5 rounded-2xl border border-white/10 text-white/50 italic animate-pulse">
+                    <Loader2 className="animate-spin h-3.5 w-3.5 text-pitchy-violet" />
+                    <span className="text-[12px]">Pitchy анализирует данные...</span>
                   </div>
                 )}
 

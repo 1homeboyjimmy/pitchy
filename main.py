@@ -1430,10 +1430,10 @@ async def create_chat_message(
                 asyncio.create_task(
                     asyncio.to_thread(
                         save_assistant_message, 
-                        session.id, 
-                        full_text.strip(),
-                        full_thoughts.strip() if full_thoughts.strip() else None,
-                        payload.assistant_client_id
+                        session_id=session.id, 
+                        content=full_text.strip(),
+                        thoughts=full_thoughts.strip() if full_thoughts.strip() else None,
+                        client_id=payload.assistant_client_id
                     )
                 )
 
@@ -2645,10 +2645,10 @@ async def send_chat_message(
                 asyncio.create_task(
                     asyncio.to_thread(
                         save_assistant_message, 
-                        session.id, 
-                        full_response,
-                        full_thoughts.strip() if full_thoughts.strip() else None,
-                        payload.assistant_client_id
+                        session_id=session.id, 
+                        content=full_response,
+                        thoughts=full_thoughts.strip() if full_thoughts.strip() else None,
+                        client_id=payload.assistant_client_id
                     )
                 )
         except Exception as e:

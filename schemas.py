@@ -319,4 +319,5 @@ class TreeChatResponse(BaseModel):
     model: str | None = None
     client_id: str | None = None
     assistant_client_id: str | None = None
+    thoughts: str | None = None
 
