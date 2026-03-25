@@ -24,17 +24,16 @@ interface TreeChatInterfaceProps {
   activeNode: TreeNodeResponse | null;
   onUpdateTree: (nodes: TreeNodeResponse[], readiness: number) => void;
   onClose: () => void;
-  triggerMessage?: string | null;
 }
 
-export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, triggerMessage }: TreeChatInterfaceProps) {
+export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }: TreeChatInterfaceProps) {
   const [activeTab, setActiveTab] = useState<"analysis" | "chat">("analysis");
   const [messages, setMessages] = useState<Message[]>([]);
   const [hints, setHints] = useState<string[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isEvaluating, setIsEvaluating] = useState(false);
-  const [formData, setFormData] = useState<Record<string, any>>({});
+  const [formData, setFormData] = useState<Record<string, string>>({});
   
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -122,7 +121,7 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
       } catch (err) { console.error(err); }
     };
     loadHistory();
-  }, [treeId, activeNode, isLoading]);
+  }, [treeId, activeNode, isLoading, mergeMessages]);
 
   const scrollToBottom = useCallback((force = false) => {
     if (scrollRef.current) {
@@ -133,9 +132,13 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
   }, []);
 
   useEffect(() => {
-    const isNewMessage = messages.length > 0 && isLoading && messages[messages.length-1].content === "";
-    isNewMessage ? scrollToBottom(true) : scrollToBottom();
-  }, [messages.length, isLoading, scrollToBottom]);
+    const isNewMessage = messages.length > 0 && isLoading && messages[messages.length - 1].content === "";
+    if (isNewMessage) {
+      scrollToBottom(true);
+    } else {
+      scrollToBottom();
+    }
+  }, [messages, isLoading, scrollToBottom]);
 
   const handleSend = useCallback(async (overrideMessage?: string) => {
     const messageToSend = overrideMessage || input;
@@ -193,11 +196,9 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose, t
       setIsLoading(false);
       abortControllerRef.current = null;
     }
-  }, [input, isLoading, treeId, activeNode, onUpdateTree]);
+  }, [input, isLoading, treeId, activeNode, onUpdateTree, mergeMessages]);
 
   const stopGeneration = () => { if (abortControllerRef.current) { abortControllerRef.current.abort(); setIsLoading(false); abortControllerRef.current = null; } };
-
-  useEffect(() => { if (triggerMessage) handleSend(triggerMessage); }, [triggerMessage, handleSend]);
 
   return (
     <div className="flex flex-col h-full bg-[#0c0a1a]/95 backdrop-blur-2xl border-l border-white/10 w-[400px] shadow-2xl relative overflow-hidden">

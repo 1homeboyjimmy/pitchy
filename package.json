@@ -1,4 +1,7 @@
 {
+  "scripts": {
+    "lint": "npm run lint --prefix frontend"
+  },
   "dependencies": {
     "@xyflow/react": "^12.10.1",
     "remark-gfm": "^4.0.1",
