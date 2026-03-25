@@ -1346,12 +1346,7 @@ def list_chat_messages(
         .order_by(DbChatMessage.created_at.asc())
         .all()
     )
-    return [
-        ChatMessageResponse(
-            id=m.id, role=m.role, content=m.content, created_at=m.created_at, client_id=m.client_id
-        )
-        for m in messages
-    ]
+    return [ChatMessageResponse.model_validate(m) for m in messages]
 
 
 @app.post("/chat/messages")
@@ -2222,15 +2217,7 @@ def create_chat_session(
         db.add(user_msg)
         db.commit()
         db.refresh(user_msg)  # Get ID
-        messages_response.append(
-            ChatMessageResponse(
-                id=user_msg.id,
-                role=user_msg.role,
-                content=user_msg.content,
-                created_at=user_msg.created_at,
-                client_id=user_msg.client_id
-            )
-        )
+        messages_response.append(ChatMessageResponse.model_validate(user_msg))
 
     # Generate Assistant Greeting
     assistant_text = (
@@ -2247,15 +2234,7 @@ def create_chat_session(
     db.add(ai_msg)
     db.commit()
     db.refresh(ai_msg)
-    messages_response.append(
-        ChatMessageResponse(
-            id=ai_msg.id,
-            role=ai_msg.role,
-            content=ai_msg.content,
-            created_at=ai_msg.created_at,
-            client_id=ai_msg.client_id
-        )
-    )
+    messages_response.append(ChatMessageResponse.model_validate(ai_msg))
 
     return ChatSessionDetailResponse(
         id=session.id,
@@ -2346,15 +2325,7 @@ def create_chat_session_from_intent(
         db.add(user_msg)
         db.commit()
         db.refresh(user_msg)
-        messages_response.append(
-            ChatMessageResponse(
-                id=user_msg.id,
-                role=user_msg.role,
-                content=user_msg.content,
-                created_at=user_msg.created_at,
-                client_id=user_msg.client_id
-            )
-        )
+        messages_response.append(ChatMessageResponse.model_validate(user_msg))
 
     # Generate Assistant Greeting
     assistant_text = (
@@ -2372,15 +2343,7 @@ def create_chat_session_from_intent(
     db.add(ai_msg)
     db.commit()
     db.refresh(ai_msg)
-    messages_response.append(
-        ChatMessageResponse(
-            id=ai_msg.id,
-            role=ai_msg.role,
-            content=ai_msg.content,
-            created_at=ai_msg.created_at,
-            client_id=ai_msg.client_id
-        )
-    )
+    messages_response.append(ChatMessageResponse.model_validate(ai_msg))
 
     # Clean up intent
     redis.delete(key)
@@ -2425,15 +2388,7 @@ def create_chat_session_auto(
     db.add(user_msg)
     db.commit()
     db.refresh(user_msg)
-    messages_response.append(
-        ChatMessageResponse(
-            id=user_msg.id,
-            role=user_msg.role,
-            content=user_msg.content,
-            created_at=user_msg.created_at,
-            client_id=user_msg.client_id
-        )
-    )
+    messages_response.append(ChatMessageResponse.model_validate(user_msg))
 
     # Fire and forget background rename
     background_tasks.add_task(rename_chat_session_background, session.id, payload.initial_message)
@@ -2501,13 +2456,7 @@ def get_chat_session(
         analysis_id=session.analysis_id,
         analysis=analysis_data,
         messages=[
-            ChatMessageResponse(
-                id=m.id,
-                role=m.role,
-                content=m.content,
-                created_at=m.created_at,
-                client_id=m.client_id
-            ) for m in msgs
+            ChatMessageResponse.model_validate(m) for m in msgs
         ],
     )
 
