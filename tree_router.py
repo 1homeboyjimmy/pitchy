@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 from auth import get_current_user
 from db import get_db, SessionLocal
 from models import User, ProjectTree
-from schemas import TreeCreateRequest, TreeResponse, TreeNodeUpdateRequest, TreeChatRequest, TreeChatResponse
+from schemas import TreeCreateRequest, TreeResponse, TreeNodeUpdateRequest, TreeChatRequest, TreeChatResponse, TreeEvaluateRequest
 from tree_orchestrator import generate_tree_from_text, generate_tree_from_pdf
 from chat_orchestrator import ChatOrchestrator
 
