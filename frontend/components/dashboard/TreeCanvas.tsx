@@ -16,7 +16,6 @@ import {
 import "@xyflow/react/dist/style.css";
 
 import { ReadinessNode, CategoryNode, TaskNode } from "./treeCustomNodes";
-import { NodeDetailPanel } from "./NodeDetailPanel";
 import type { TreeNodeResponse, TreeEdgeResponse } from "../../lib/api";
 
 type Props = {
@@ -66,12 +65,9 @@ function buildFlowElements(
     }
   }
 
-  // Safety net: if AI returned nodes but our strict level/parent logic hid ALL of them,
-  // just show everything so the user doesn't get an empty canvas.
-  if (visibleIds.size === 1 && apiNodes.length > 0) { // Only "root" is visible
-    for (const n of apiNodes) {
-      visibleIds.add(n.id);
-    }
+  // Safety net
+  if (visibleIds.size === 1 && apiNodes.length > 0) {
+    for (const n of apiNodes) visibleIds.add(n.id);
   }
 
   // Auto-layout positions
@@ -137,7 +133,7 @@ function buildFlowElements(
     }
   }
 
-  // Build edges (only between visible nodes)
+  // Build edges
   const edges: Edge[] = apiEdges
     .filter((e) => visibleIds.has(e.source) && visibleIds.has(e.target))
     .map((e) => ({
@@ -157,9 +153,7 @@ function autoLayout(apiNodes: TreeNodeResponse[], visibleIds: Set<string>): Map<
   const positions = new Map<string, { x: number; y: number }>();
   const nodeMap = new Map(apiNodes.map((n) => [n.id, n]));
 
-  // Group visible nodes by level
   const byLevel = new Map<number, string[]>();
-  // Root
   byLevel.set(-1, ["root"]);
   for (const n of apiNodes) {
     if (!visibleIds.has(n.id)) continue;
@@ -170,11 +164,8 @@ function autoLayout(apiNodes: TreeNodeResponse[], visibleIds: Set<string>): Map<
 
   const yGap = 140;
   const xGap = 220;
-
-  // Root position
   positions.set("root", { x: 400, y: 30 });
 
-  // Layout each level centered
   const sortedLevels = [...byLevel.keys()].sort((a, b) => a - b);
   for (const level of sortedLevels) {
     if (level === -1) continue;
@@ -184,25 +175,16 @@ function autoLayout(apiNodes: TreeNodeResponse[], visibleIds: Set<string>): Map<
     const startX = 400 - totalWidth / 2;
 
     for (let i = 0; i < ids.length; i++) {
-      // Try to position near parent
       const node = nodeMap.get(ids[i]);
       const parentPos = node?.parent_id ? positions.get(node.parent_id) : null;
-      
       const x = parentPos 
         ? parentPos.x + (i - (ids.length - 1) / 2) * (xGap * 0.8)
         : startX + i * xGap;
-      
-      positions.set(ids[i], {
-        x,
-        y: 30 + (level + 1) * yGap,
-      });
+      positions.set(ids[i], { x, y: 30 + (level + 1) * yGap });
     }
   }
-
   return positions;
 }
-
-/* ——— Component ——— */
 
 const nodeTypes: NodeTypes = {
   readinessNode: ReadinessNode,
@@ -215,11 +197,8 @@ export function TreeCanvas({
   treeEdges,
   readinessIndex,
   onNodeClick,
-  onDiscussInChat,
-  onAction,
 }: Props) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-  const [selectedNode, setSelectedNode] = useState<TreeNodeResponse | null>(null);
 
   const toggleExpand = useCallback((id: string) => {
     setExpandedIds((prev) => {
@@ -238,7 +217,6 @@ export function TreeCanvas({
   const [nodes, setNodes, onNodesChange] = useNodesState(flowNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(flowEdges);
 
-  // Sync when flowNodes/flowEdges change (new data from WS etc.)
   useMemo(() => {
     setNodes(flowNodes);
     setEdges(flowEdges);
@@ -248,7 +226,6 @@ export function TreeCanvas({
     (_: React.MouseEvent, node: Node) => {
       const apiNode = treeNodes.find((n) => n.id === node.id);
       if (apiNode) {
-        setSelectedNode(apiNode);
         onNodeClick?.(apiNode);
       }
     },
@@ -286,20 +263,6 @@ export function TreeCanvas({
           className="!bg-white/5 !border-white/10 !rounded-xl"
         />
       </ReactFlow>
-
-      {/* Detail Panel */}
-      <NodeDetailPanel
-        node={selectedNode}
-        onClose={() => setSelectedNode(null)}
-        onDiscussInChat={(n) => {
-          onDiscussInChat?.(n);
-          setSelectedNode(null);
-        }}
-        onAction={(action, node) => {
-          onAction?.(action, node);
-          setSelectedNode(null);
-        }}
-      />
     </div>
   );
 }

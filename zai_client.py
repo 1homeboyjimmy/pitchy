@@ -3,28 +3,28 @@ import logging
 import httpx
 import json
 from typing import Optional, Tuple, Dict, Any
-from routerai_client import call_routerai
+from makura_client import call_makura
 
 logger = logging.getLogger("app")
 
 async def generate_chat_title(text: str) -> str:
-    """Generate a short 2-4 word title for a chat session via RouterAI (GLM-5)."""
+    """Generate a short 2-4 word title for a chat session via Makura (GLM-5)."""
     system_prompt = (
         "Ты — умный ассистент. Прочитай первое сообщение пользователя и придумай "
         "краткое название для этого диалога из 2-4 слов. Только текст, без кавычек."
     )
-    reply, _ = await call_routerai(system_prompt, text[:500])
+    reply, _ = await call_makura(system_prompt, text[:500])
     if reply:
         return reply.strip(' "\'\n\r\t.-').capitalize()
     return "Новый диалог"
 
 async def analyze_search_intent(text: str) -> Dict[str, Any]:
-    """Analyzes if web search is needed via RouterAI (GLM-5)."""
+    """Analyzes if web search is needed via Makura (GLM-5)."""
     system_prompt = (
         "Ты — умный классификатор запросов. Реши, нужен ли поиск в интернете. "
         "Верни СТРОГО JSON: {'needs_search': bool, 'search_query': str}"
     )
-    reply, _ = await call_routerai(system_prompt, text[:1000])
+    reply, _ = await call_makura(system_prompt, text[:1000])
     if reply:
         # Mini-helper for JSON since we don't have extract_json here
         try:

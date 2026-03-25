@@ -26,7 +26,6 @@ import uuid
 from redis_client import get_redis
 from yandex_gpt_client import YandexGPTError, call_yandex_gpt, extract_json
 from zai_client import generate_chat_title, analyze_search_intent
-from routerai_client import call_routerai, stream_routerai
 from makura_client import call_makura, stream_makura
 from search_agent import execute_search_agent
 from db import SessionLocal, get_db
@@ -1013,11 +1012,11 @@ async def analyze_startup(payload: AnalyzeRequest) -> AnalyzeResponse:
     user_prompt = _build_user_prompt(payload.description, context_chunks)
 
     try:
-        provider = os.getenv("PRIMARY_PROVIDER", "routerai")
+        provider = os.getenv("PRIMARY_PROVIDER", "makura")
         if provider == "makura":
             raw_text, usage = await call_makura(SYSTEM_PROMPT, user_prompt)
         else:
-            raw_text, usage = await call_routerai(SYSTEM_PROMPT, user_prompt)
+            raw_text, usage = await call_makura(SYSTEM_PROMPT, user_prompt)
         logger.info(f"AI token usage ({provider} /analyze): {usage}")
         data = extract_json_zai(raw_text)
     except YandexGPTError as exc:
@@ -1089,11 +1088,11 @@ async def create_analysis(
     user_prompt = _build_user_prompt(description, context_chunks)
 
     try:
-        provider = os.getenv("PRIMARY_PROVIDER", "routerai")
+        provider = os.getenv("PRIMARY_PROVIDER", "makura")
         if provider == "makura":
             raw_text, usage = await call_makura(SYSTEM_PROMPT, user_prompt)
         else:
-            raw_text, usage = await call_routerai(SYSTEM_PROMPT, user_prompt)
+            raw_text, usage = await call_makura(SYSTEM_PROMPT, user_prompt)
         logger.info(f"AI token usage ({provider} website analysis): {usage}")
         data = extract_json_zai(raw_text)
     except YandexGPTError as exc:
@@ -1258,12 +1257,12 @@ async def chat(payload: ChatRequest):
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     user_prompt = _build_chat_prompt(payload.messages, context_chunks)
-    provider = os.getenv("PRIMARY_PROVIDER", "routerai")
+    provider = os.getenv("PRIMARY_PROVIDER", "makura")
 
     async def chat_generator():
         full_response = ""
         try:
-            raw_gen = stream_makura(SYSTEM_CHAT_PROMPT, user_prompt) if provider == "makura" else stream_routerai(SYSTEM_CHAT_PROMPT, user_prompt)
+            raw_gen = stream_makura(SYSTEM_CHAT_PROMPT, user_prompt)
             async for json_chunk in parse_thought_generator(raw_gen):
                 # Extra clean for saving later
                 data = json.loads(json_chunk.strip())
@@ -1397,7 +1396,7 @@ async def create_chat_message(
     # -----------------------------------
 
     user_prompt = _build_chat_prompt(chat_messages, context_chunks)
-    provider = os.getenv("PRIMARY_PROVIDER", "routerai")
+    provider = os.getenv("PRIMARY_PROVIDER", "makura")
 
     async def session_chat_generator():
         full_text = ""
@@ -1406,7 +1405,7 @@ async def create_chat_message(
             if provider == "makura":
                 raw_gen = stream_makura(SYSTEM_CHAT_PROMPT, user_prompt)
             else:
-                raw_gen = stream_routerai(SYSTEM_CHAT_PROMPT, user_prompt)
+                raw_gen = stream_makura(SYSTEM_CHAT_PROMPT, user_prompt)
                 
             async for json_chunk in parse_thought_generator(raw_gen):
                 data = json.loads(json_chunk.strip())
@@ -2557,7 +2556,7 @@ async def send_chat_message(
 
     # 2. Generator with Thoughts
     async def session_chat_generator():
-        provider = os.getenv("PRIMARY_PROVIDER", "routerai")
+        provider = os.getenv("PRIMARY_PROVIDER", "makura")
         full_response = ""
         full_thoughts = ""
         try:
@@ -2579,7 +2578,7 @@ async def send_chat_message(
 
             user_prompt = _build_chat_prompt(chat_history, context_chunks)
             
-            raw_gen = stream_makura(SYSTEM_CHAT_PROMPT, user_prompt) if provider == "makura" else stream_routerai(SYSTEM_CHAT_PROMPT, user_prompt)
+            raw_gen = stream_makura(SYSTEM_CHAT_PROMPT, user_prompt)
             
             async for json_chunk in parse_thought_generator(raw_gen):
                 data = json.loads(json_chunk.strip())
@@ -2748,11 +2747,11 @@ async def _generate_interviewer_response(session: ChatSession, db: Session) -> s
 
 
         try:
-            provider = os.getenv("PRIMARY_PROVIDER", "routerai")
+            provider = os.getenv("PRIMARY_PROVIDER", "makura")
             if provider == "makura":
                 raw_response, usage = await call_makura(system_prompt_final, final_user_prompt)
             else:
-                raw_response, usage = await call_routerai(system_prompt_final, final_user_prompt)
+                raw_response, usage = await call_makura(system_prompt_final, final_user_prompt)
             if usage:
                 logger.info(f"AI token usage ({provider} background summary): {usage}")
         except Exception as e:
@@ -2760,7 +2759,7 @@ async def _generate_interviewer_response(session: ChatSession, db: Session) -> s
             raw_response, usage = None, None
 
         if not raw_response:
-            logger.error("Interviewer (RouterAI) failed: No response")
+            logger.error("Interviewer (Makura) failed: No response")
             return "Извините, я задумался. Можете повторить?"
 
         # Check if JSON

@@ -107,15 +107,28 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
         }
     }, [session.messages, mergeMessages]);
 
-    const scrollToBottom = () => {
+    const scrollToBottom = (force = false) => {
         if (scrollViewportRef.current) {
-            scrollViewportRef.current.scrollTop = scrollViewportRef.current.scrollHeight;
+            const container = scrollViewportRef.current;
+            const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 150;
+            
+            if (isNearBottom || force) {
+                container.scrollTo({
+                    top: container.scrollHeight,
+                    behavior: "smooth"
+                });
+            }
         }
     };
 
     useEffect(() => {
-        scrollToBottom();
-    }, [messages, isLoading, session.analysis, displayedLength]);
+        // Force scroll on initial load or when loading starts (new message)
+        if (messages.length > 0 && isLoading && displayedLength === 0) {
+            scrollToBottom(true);
+        } else {
+            scrollToBottom();
+        }
+    }, [messages.length, isLoading, session.analysis, displayedLength]);
 
     // Typewriter effect: reveal characters progressively
     useEffect(() => {

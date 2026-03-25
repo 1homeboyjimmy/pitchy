@@ -158,7 +158,7 @@ type TaskNodeData = {
   childCount: number;
   expanded: boolean;
   progress?: string;
-  summary?: string;
+  summary?: Record<string, string> | null;
   onToggle: () => void;
 };
 
@@ -166,7 +166,9 @@ export const TaskNode = memo(function TaskNode({ data }: NodeProps) {
   const d = data as unknown as TaskNodeData;
   const style = statusColors[d.status] || statusColors.empty;
   const icon = typeIcons[d.nodeType] || typeIcons.Task;
-  const hasSummary = !!d.summary && d.status !== "empty";
+  const isCompleted = d.status === "completed";
+  const isActive = d.status === "active";
+  const hasSummary = !!d.summary && Object.keys(d.summary).length > 0;
 
   return (
     <motion.div
@@ -174,10 +176,10 @@ export const TaskNode = memo(function TaskNode({ data }: NodeProps) {
       animate={{ 
         scale: 1, 
         opacity: 1,
-        width: hasSummary ? 260 : 180 
+        width: isCompleted ? 280 : 200 
       }}
       whileHover={{ scale: 1.02 }}
-      className={`relative rounded-xl border backdrop-blur-sm cursor-pointer transition-all duration-300 ${style.glow}`}
+      className={`relative rounded-xl border backdrop-blur-sm cursor-pointer transition-all duration-300 ${style.glow} ${isActive ? "ring-2 ring-pitchy-violet/50 animate-pulse" : ""}`}
       style={{ background: style.bg, borderColor: style.border }}
     >
       <Handle type="target" position={Position.Top} className="!bg-white/20 !w-1.5 !h-1.5 !border-none" />
@@ -192,11 +194,17 @@ export const TaskNode = memo(function TaskNode({ data }: NodeProps) {
           <div className="flex-1 min-w-0">
             <p className="text-xs font-semibold text-white leading-snug">{d.label}</p>
             <div className="flex items-center gap-1 mt-1 flex-wrap">
-              <span className={`text-[8px] inline-block px-1.5 py-0.5 rounded-full ${style.text}`}
-                style={{ background: style.bg, border: `1px solid ${style.border}` }}
-              >
-                {d.nodeType}
-              </span>
+              {isActive ? (
+                 <span className="text-[8px] inline-block px-1.5 py-0.5 rounded-full bg-pitchy-violet/20 text-pitchy-violet border border-pitchy-violet/30 font-bold uppercase tracking-wider">
+                  В процессе
+                 </span>
+              ) : (
+                <span className={`text-[8px] inline-block px-1.5 py-0.5 rounded-full ${style.text}`}
+                  style={{ background: style.bg, border: `1px solid ${style.border}` }}
+                >
+                  {d.nodeType}
+                </span>
+              )}
               {d.progress && (
                 <span className="text-[8px] font-bold opacity-80 bg-black/30 px-1.2 py-0.5 rounded text-white/70">
                   {d.progress}
@@ -218,16 +226,21 @@ export const TaskNode = memo(function TaskNode({ data }: NodeProps) {
           )}
         </div>
 
-        {/* Expanded Summary */}
-        {hasSummary && (
+        {/* AI Summary Table */}
+        {isCompleted && hasSummary && (
           <motion.div 
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
-            className="mt-2.5 pt-2.5 border-t border-white/5"
+            className="mt-3 overflow-hidden border-t border-white/10 pt-2"
           >
-            <p className="text-[10px] text-white/70 leading-relaxed italic">
-              {d.summary}
-            </p>
+            <div className="space-y-1.5">
+              {Object.entries(d.summary as Record<string, string>).map(([key, val]) => (
+                <div key={key} className="flex items-center justify-between gap-2 overflow-hidden">
+                  <span className="text-[9px] text-white/30 uppercase tracking-tight shrink-0 font-medium">{key}:</span>
+                  <span className="text-[10px] text-white/80 font-semibold truncate bg-white/5 px-1.5 py-0.5 rounded border border-white/5">{val}</span>
+                </div>
+              ))}
+            </div>
           </motion.div>
         )}
       </div>

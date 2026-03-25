@@ -246,6 +246,9 @@ class TreeNodeDataSchema(BaseModel):
     description: str | None = None
     completion_criteria: dict[str, str] = {}
     inputs: list[TreeInputSchema] = []
+    form_schema: list[dict[str, Any]] = []  # Для рендера форм в сайдбаре
+    summary: dict[str, str] = {}  # Выжимка от ИИ (таблица)
+    feedback: str | None = None   # Развернутый фидбек от ИИ
     outputs: dict[str, str] = {}
     next_action: TreeNextActionSchema | None = None
     chat_hint: str | None = None
@@ -320,4 +323,9 @@ class TreeChatResponse(BaseModel):
     client_id: str | None = None
     assistant_client_id: str | None = None
     thoughts: str | None = None
+
+
+class TreeEvaluateRequest(BaseModel):
+    node_id: str
+    form_data: dict[str, Any]
 

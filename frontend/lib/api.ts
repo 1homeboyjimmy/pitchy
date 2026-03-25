@@ -336,6 +336,15 @@ export type TreeNextActionResponse = {
   reason?: string | null;
 };
 
+export type TreeFormSchemaItem = {
+  id: string;
+  label: string;
+  type: "text" | "number" | "select" | "textarea";
+  placeholder?: string;
+  options?: string[];
+  required?: boolean;
+};
+
 export type TreeNodeDataResponse = {
   description?: string | null;
   completion_criteria?: Record<string, string>;
@@ -347,7 +356,10 @@ export type TreeNodeDataResponse = {
   dependencies?: string[];
   aiRecommendation?: string | null;
   sourceRef?: string | null;
-  summary?: string | null;
+  form_schema?: TreeFormSchemaItem[];
+  form_data?: Record<string, any>;
+  summary?: Record<string, string> | null;
+  feedback?: string | null;
 };
 
 export type TreeNodeResponse = {
@@ -462,4 +474,13 @@ export async function* postTreeChatStream(
 
 export async function deleteTree(treeId: number, token: string): Promise<{ status: string }> {
   return request<{ status: string }>(`/tree/${treeId}`, undefined, token, "DELETE");
+}
+
+export async function evaluateNode(
+  treeId: number, 
+  node_id: string, 
+  form_data: Record<string, any>, 
+  token: string
+): Promise<TreeResponse> {
+  return postAuthJson<TreeResponse>(`/tree/${treeId}/evaluate-node`, { node_id, form_data }, token);
 }

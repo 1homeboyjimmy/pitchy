@@ -5,7 +5,6 @@ from typing import Any, Optional
 from datetime import datetime
 
 from redis_client import get_redis
-from routerai_client import call_routerai, stream_routerai
 from makura_client import call_makura, stream_makura
 from tree_orchestrator import _normalize_tree_data
 from search_agent import execute_search_agent
@@ -172,12 +171,13 @@ class ChatOrchestrator:
         chat_history = "\n".join([f"{m['role']}: {m['content']}" for m in history])
         prompt = f"История чата:\n{chat_history}\n\nПользователь: {user_message}"
         
-        provider = os.getenv("PRIMARY_PROVIDER", "routerai")
+        provider = os.getenv("PRIMARY_PROVIDER", "makura")
         if provider == "makura":
             async for chunk in stream_makura(system_prompt, prompt):
                 yield chunk
         else:
-            async for chunk in stream_routerai(system_prompt, prompt):
+            # Fallback to makura as well if routerai is deprecated
+            async for chunk in stream_makura(system_prompt, prompt):
                 yield chunk
 
     async def _parse_thought_generator(self, generator):
@@ -224,7 +224,7 @@ class ChatOrchestrator:
 
         reply_full = ""
         thoughts_full = ""
-        model_used = "RouterAI (GLM-5)"
+        model_used = "Makura (GLM-5)"
         enriched_data = {}
 
         if intent == "chat" or intent not in ["tree", "finance", "search", "legal"]:
@@ -372,8 +372,8 @@ class ChatOrchestrator:
 
         raw = await _call_gigachat(prompt)
         if not raw:
-            # Fallback to RouterAI for calculations if GigaChat fails or not configured
-            raw, _ = await call_routerai("Ты — финансовый аналитик.", prompt)
+            # Fallback to Makura for calculations if GigaChat fails or not configured
+            raw, _ = await call_makura("Ты — финансовый аналитик.", prompt)
 
         # Extract JSON metrics block
         reply = raw
@@ -388,20 +388,16 @@ class ChatOrchestrator:
         
         return reply, metrics
 
-    async def _handle_search(self, user_message: str) -> str:
-        """Handle search queries via Perplexity or a local agent."""
-        # Use Perplexity via RouterAI (Perplexity Sonar might be available, for now using GLM-5 as fallback or keeping ZAI for Perplexity if needed)
-        # However, RouterAI also supports perplexity. Let's try to keep it consistent if RouterAI has sonar.
-        # For now, let's keep search on call_zai if we are unsure about RouterAI sonar ID, or use GLM-5.
-        # The user specifically mentioned GLM is faster on RouterAI.
-        reply, _ = await call_routerai("Ты — эксперт по глубокому анализу рынков.", user_message)
+        # Use Makura for search/analysis context
+        # The user specifically mentioned GLM is faster on Makura for this project.
+        reply, _ = await call_makura("Ты — эксперт по глубокому анализу рынков.", user_message)
         if reply:
             return reply
 
         # Fallback to local search agent
         context = execute_search_agent(user_message)
         prompt = f"На основе данных из поиска ответь пользователю на русском языке:\n\n{context}\n\nВопрос: {user_message}"
-        reply, _ = await call_routerai("Ты — помощник с доступом в интернет.", prompt)
+        reply, _ = await call_makura("Ты — помощник с доступом в интернет.", prompt)
         return reply or "Не удалось обработать результаты поиска."
 
     async def _handle_legal(self, user_message: str) -> str:
@@ -416,7 +412,7 @@ class ChatOrchestrator:
             return "Извините, не удалось получить юридическую консультацию."
 
     async def _handle_tree_edit(self, user_message: str, state: dict, active_node_id: str = None) -> tuple[str, dict]:
-        """Handle tree modifications via RouterAI (GLM-5)."""
+        """Handle tree modifications via Makura (GLM-5)."""
         active_node = next((n for n in state.get("nodes", []) if n["id"] == active_node_id), None)
         node_context = f"Активный узел: {active_node['label']} (id: {active_node_id})" if active_node else ""
         
@@ -428,17 +424,17 @@ class ChatOrchestrator:
             "Если пользователь дает данные, верни их в формате extracted_data: { field_name: value }."
             "Верни СТРОГО JSON."
         )
-        provider = os.getenv("PRIMARY_PROVIDER", "routerai")
+        provider = os.getenv("PRIMARY_PROVIDER", "makura")
         if provider == "makura":
             raw, _ = await call_makura("Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON.", prompt)
         else:
-            raw, _ = await call_routerai("Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON.", prompt)
+            raw, _ = await call_makura("Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON.", prompt)
             
         extracted = self._extract_json_block(raw)
         return "Я обновил структуру проекта на основе ваших пожеланий.", extracted
 
     async def _handle_chat(self, user_message: str, chat_history: str = "", active_node: dict = None) -> str:
-        """Handle general chat via RouterAI (GLM-5)."""
+        """Handle general chat via Makura (GLM-5)."""
         node_context = ""
         if active_node:
             node_context = f"Ты сейчас помогаешь пользователю в контексте узла '{active_node.get('label')}' (описание: {active_node.get('data', {}).get('description')}). "
@@ -446,11 +442,11 @@ class ChatOrchestrator:
         system_prompt = f"Ты — ассистент платформы Pitchy. {node_context}Отвечай на русском языке. Сначала запиши свои мысли/размышления о запросе внутри тегов <thought>...</thought>, а затем дай итоговый ответ пользователю."
         prompt = f"История чата:\n{chat_history}\n\nПользователь: {user_message}"
         
-        provider = os.getenv("PRIMARY_PROVIDER", "routerai")
+        provider = os.getenv("PRIMARY_PROVIDER", "makura")
         if provider == "makura":
             reply, json_metrics = await call_makura(system_prompt, prompt)
         else:
-            reply, json_metrics = await call_routerai(system_prompt, prompt)
+            reply, json_metrics = await call_makura(system_prompt, prompt)
         
         if json_metrics:
             # Assuming _save_metrics_from_json is defined elsewhere or will be added

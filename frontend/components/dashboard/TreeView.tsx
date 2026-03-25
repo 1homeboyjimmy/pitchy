@@ -356,9 +356,10 @@ export function TreeView({ }: Props) {
              treeNodes={tree.nodes}
              treeEdges={tree.edges}
              readinessIndex={tree.readinessIndex}
-             onDiscussInChat={handleDiscussInChat}
-             onNodeClick={(node) => isChatOpen && setActiveChatNode(node)}
-             onAction={handleAction}
+             onNodeClick={(node) => {
+               setActiveChatNode(node);
+               setIsChatOpen(true);
+             }}
            />
         </div>
 

@@ -1,6 +1,6 @@
 """
 AI Orchestrator for Decision Tree generation.
-Powered by RouterAI (GLM-5).
+Powered by Makura (GLM-5).
 """
 from __future__ import annotations
 
@@ -13,7 +13,6 @@ from typing import Any
 
 import httpx
 
-from routerai_client import call_routerai
 from makura_client import call_makura
 from core_tree import CORE_SKELETON
 
@@ -92,16 +91,16 @@ async def generate_tree_from_text(description: str) -> dict[str, Any]:
     prompt = TREE_EXTRACTION_PROMPT.replace("{description}", description)
 
     # Use GLM-5 via RouterAI or Makura
-    provider = os.getenv("PRIMARY_PROVIDER", "routerai")
+    provider = os.getenv("PRIMARY_PROVIDER", "makura")
     logger.info(f"Using {provider} for tree structure generation")
     
     if provider == "makura":
         raw, _ = await call_makura("Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON.", prompt)
     else:
-        raw, _ = await call_routerai("Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON.", prompt)
+        raw, _ = await call_makura("Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON.", prompt)
 
     if not raw:
-        logger.error("RouterAI extraction failed")
+        logger.error("Makura extraction failed")
         return _generate_fallback_tree(description)
 
     # Parse JSON

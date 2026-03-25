@@ -569,3 +569,83 @@ CORE_SKELETON: list[dict[str, Any]] = [
         }
     }
 ]
+UNIVERSAL_BASE_NODES: list[dict[str, Any]] = [
+    {
+        "id": "problem",
+        "type": "customAnalysis",
+        "status": "active",
+        "label": "Проблема клиента",
+        "level": 1,
+        "parent_id": "root",
+        "data": {
+            "label": "Проблема клиента",
+            "description": "Какую именно боль или потребность закрывает ваш проект?",
+            "form_schema": [
+                {
+                    "id": "pain",
+                    "label": "В чем заключается главная боль?",
+                    "placeholder": "Например: Компании теряют время на ручной ввод данных...",
+                    "type": "textarea"
+                },
+                {
+                    "id": "impact",
+                    "label": "Насколько это критично для клиента?",
+                    "placeholder": "Например: Это стоит им $2000 в месяц на одного сотрудника...",
+                    "type": "textarea"
+                }
+            ]
+        }
+    },
+    {
+        "id": "solution",
+        "type": "customAnalysis",
+        "status": "active",
+        "label": "Решение / Продукт",
+        "level": 1,
+        "parent_id": "root",
+        "data": {
+            "label": "Решение / Продукт",
+            "description": "Что вы предлагаете рынку?",
+            "form_schema": [
+                {
+                    "id": "product_concept",
+                    "label": "Суть вашего решения",
+                    "placeholder": "Например: AI-ассистент, который автоматизирует перенос данных...",
+                    "type": "textarea"
+                },
+                {
+                    "id": "uvp",
+                    "label": "В чем уникальность (UVP)?",
+                    "placeholder": "Например: Мы работаем в 10 раз быстрее существующих API...",
+                    "type": "textarea"
+                }
+            ]
+        }
+    },
+    {
+        "id": "audience",
+        "type": "customAnalysis",
+        "status": "active",
+        "label": "Целевая аудитория",
+        "level": 1,
+        "parent_id": "root",
+        "data": {
+            "label": "Целевая аудитория",
+            "description": "Кто ваши идеальные клиенты?",
+            "form_schema": [
+                {
+                    "id": "segments",
+                    "label": "Кто ваш идеальный клиент?",
+                    "placeholder": "Например: B2B SaaS компании от 50 человек...",
+                    "type": "textarea"
+                },
+                {
+                    "id": "pain_points",
+                    "label": "Почему они купят именно у вас?",
+                    "placeholder": "Например: Они ищут способы сократить расходы на операционку...",
+                    "type": "textarea"
+                }
+            ]
+        }
+    }
+]

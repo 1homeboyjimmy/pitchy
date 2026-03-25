@@ -42,31 +42,32 @@ async def create_tree(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> TreeResponse:
-    """Create a decision tree from text description."""
-    # Create DB record first
+    """Create a decision tree starting with Universal Base Nodes."""
+    from core_tree import UNIVERSAL_BASE_NODES
+    import copy
+
+    # Instant skeleton initialization instead of slow AI generation
+    nodes = copy.deepcopy(UNIVERSAL_BASE_NODES)
+    
+    # Simple edges for the base nodes (all connected to root)
+    edges = [
+        {"id": f"e-root-{n['id']}", "source": "root", "target": n["id"]}
+        for n in nodes
+    ]
+
     tree = ProjectTree(
         user_id=user.id,
-        title="Генерация...",
+        title=payload.description[:50] + "...",
         source_type="text",
         source_text=payload.description,
-        status="generating",
+        status="ready",  # Ready immediately with base nodes
+        tree_data={
+            "nodes": nodes,
+            "edges": edges
+        },
+        readiness_index=0
     )
     db.add(tree)
-    db.commit()
-    db.refresh(tree)
-
-    # Generate tree structure via AI
-    try:
-        result = await generate_tree_from_text(payload.description)
-        tree.title = result.get("title", "Анализ стартапа")
-        tree.tree_data = result.get("tree_data", {})
-        tree.readiness_index = result.get("readiness_index", 0)
-        tree.status = "ready"
-    except Exception as e:
-        logger.error(f"Tree generation failed: {e}")
-        tree.status = "error"
-
-    tree.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(tree)
 
@@ -258,6 +259,106 @@ async def get_tree_chat_history(
     orchestrator = ChatOrchestrator(tree_id, user.id, db)
     history = await orchestrator.get_chat_history(node_id=node_id)
     return {"history": history}
+
+
+@router.post("/{tree_id}/evaluate-node")
+async def evaluate_node(
+    tree_id: int,
+    payload: TreeEvaluateRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Evaluate a node using form data and dynamic branching."""
+    from makura_client import call_makura
+    import copy
+
+    tree = db.query(ProjectTree).filter(ProjectTree.id == tree_id, ProjectTree.user_id == user.id).first()
+    if not tree:
+        raise HTTPException(status_code=404, detail="Tree not found")
+
+    tree_data = copy.deepcopy(tree.tree_data)
+    nodes = tree_data.get("nodes", [])
+    edges = tree_data.get("edges", [])
+
+    # Find the target node
+    target_node = next((n for n in nodes if n["id"] == payload.node_id), None)
+    if not target_node:
+        raise HTTPException(status_code=404, detail="Node not found")
+
+    # LLM Analysis
+    prompt = f"""Ты — строгий венчурный аналитик. Основатель стартапа заполнил блок '{target_node.get('label')}'.
+Ответы основателя (form_data): {json.dumps(payload.form_data, ensure_ascii=False)}.
+
+Твоя задача:
+1. Создать краткую выжимку (summary) из ответов. Максимум 3-4 ключа. Значения должны быть очень короткими (1-3 слова), так как они пойдут в UI-таблицу.
+2. Дать профессиональный фидбек (feedback). Укажи на риски, слепые зоны или похвали за четкость.
+
+Верни СТРОГО JSON:
+{{ "summary": {{ "Ключ1": "Значение1", "Ключ2": "Значение2" }}, "feedback": "Твой развернутый комментарий" }}"""
+
+    try:
+        raw_ai, _ = await call_makura("Ты — бизнес-аналитик. Отвечай СТРОГО в формате JSON.", prompt)
+        # Parse JSON from AI
+        start = raw_ai.find("{")
+        end = raw_ai.rfind("}") + 1
+        ai_res = json.loads(raw_ai[start:end])
+    except Exception as e:
+        logger.error(f"Analysis failed: {e}")
+        ai_res = {
+            "summary": {"Status": "Ошибка анализа"},
+            "feedback": "Не удалось проанализировать данные. Попробуйте еще раз."
+        }
+
+    # Update Node
+    target_node["status"] = "completed"
+    target_node["data"]["summary"] = ai_res.get("summary", {})
+    target_node["data"]["feedback"] = ai_res.get("feedback", "")
+    target_node["data"]["form_data"] = payload.form_data # Save the inputs too
+
+    # Dynamic Branching Logic
+    new_nodes = []
+    if payload.node_id == "audience":
+        # Add Channels and Competitors
+        if not any(n["id"] == "channels" for n in nodes):
+            new_nodes.append({
+                "id": "channels", "type": "customAnalysis", "status": "active", "label": "Каналы продаж", "level": 2, "parent_id": "audience",
+                "data": {"label": "Каналы продаж", "form_schema": [
+                    {"id": "primary", "label": "Основной канал", "type": "textarea", "placeholder": "SEO, Ads..."},
+                    {"id": "budget", "label": "Тестовый бюджет", "type": "textarea", "placeholder": "100к руб..."}
+                ]}
+            })
+        if not any(n["id"] == "competitors" for n in nodes):
+            new_nodes.append({
+                "id": "competitors", "type": "customAnalysis", "status": "active", "label": "Конкуренты", "level": 2, "parent_id": "audience",
+                "data": {"label": "Конкуренты", "form_schema": [
+                    {"id": "list", "label": "Кто конкуренты?", "type": "textarea", "placeholder": "Google, Yandex..."},
+                    {"id": "advantage", "label": "Ваше преимущество", "type": "textarea", "placeholder": "В 10 раз быстрее..."}
+                ]}
+            })
+    elif payload.node_id == "solution":
+        if not any(n["id"] == "monetization" for n in nodes):
+            new_nodes.append({
+                "id": "monetization", "type": "customAnalysis", "status": "active", "label": "Монетизация", "level": 2, "parent_id": "solution",
+                "data": {"label": "Монетизация", "form_schema": [
+                    {"id": "model", "label": "Модель дохода", "type": "textarea", "placeholder": "SaaS, Реклама..."},
+                    {"id": "price", "label": "Средний чек", "type": "textarea", "placeholder": "500 руб/мес..."}
+                ]}
+            })
+
+    for nn in new_nodes:
+        nodes.append(nn)
+        edges.append({"id": f"e-{nn['parent_id']}-{nn['id']}", "source": nn["parent_id"], "target": nn["id"]})
+
+    # Recalculate Index
+    total = len(nodes)
+    completed = sum(1 for n in nodes if n["status"] == "completed")
+    tree.readiness_index = int((completed / max(total, 1)) * 100)
+    
+    tree.tree_data = {"nodes": nodes, "edges": edges}
+    tree.updated_at = datetime.utcnow()
+    db.commit()
+
+    return TreeResponse.model_validate(tree)
 
 
 @router.delete("/{tree_id}")
