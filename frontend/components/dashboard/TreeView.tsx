@@ -170,11 +170,12 @@ export function TreeView({ }: Props) {
   );
 
 
-  const handleUpdateTree = useCallback((nodes: TreeNodeResponse[], readiness: number) => {
+  const handleUpdateTree = useCallback((nodes: TreeNodeResponse[], readiness: number, edges?: TreeEdgeResponse[]) => {
     setTree((prev) => ({
       ...prev,
       nodes,
-      readinessIndex: readiness
+      readinessIndex: readiness,
+      edges: edges || prev.edges
     }));
   }, []);
 

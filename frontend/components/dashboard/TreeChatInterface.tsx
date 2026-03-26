@@ -5,7 +5,7 @@ import { Send, Bot, User, Loader2, Sparkles, X, Square, ChevronDown, ChevronUp, 
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { getToken } from "@/lib/auth";
-import { getTreeChatHistory, evaluateNode, type TreeNodeResponse } from "@/lib/api";
+import { getTreeChatHistory, evaluateNode, type TreeNodeResponse, type TreeEdgeResponse } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface Message {
@@ -22,7 +22,7 @@ interface Message {
 interface TreeChatInterfaceProps {
   treeId: number;
   activeNode: TreeNodeResponse | null;
-  onUpdateTree: (nodes: TreeNodeResponse[], readiness: number) => void;
+  onUpdateTree: (nodes: TreeNodeResponse[], readiness: number, edges?: TreeEdgeResponse[]) => void;
   onClose: () => void;
 }
 
@@ -60,7 +60,7 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
       const token = getToken();
       if (!token) return;
       const res = await evaluateNode(treeId, activeNode.id, formData, token);
-      onUpdateTree(res.tree_data.nodes, res.readiness_index);
+      onUpdateTree(res.tree_data.nodes, res.readiness_index, res.tree_data.edges);
       // Stay on analysis to show the feedback
     } catch (err) {
       console.error("Evaluation failed:", err);
@@ -181,7 +181,7 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
         } else if (chunk.type === "metadata") {
           setMessages((prev) => prev.map(m => m.client_id === assistantClientId ? { ...m, model_used: chunk.model } : m));
         } else if (chunk.type === "tree_update") {
-          onUpdateTree(chunk.data.nodes, chunk.data.readiness_index);
+          onUpdateTree(chunk.data.nodes, chunk.data.readiness_index, chunk.data.edges);
         } else if (chunk.type === "final") {
           if (chunk.hints) setHints(chunk.hints);
         }

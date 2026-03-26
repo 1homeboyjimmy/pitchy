@@ -21,6 +21,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 
 from auth import get_current_user
 from db import get_db, SessionLocal
@@ -255,9 +256,25 @@ async def get_tree_chat_history(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Retrieve chat history for a specific tree or node from Redis."""
+    """Retrieve chat history for a specific tree or node from Redis/DB."""
     orchestrator = ChatOrchestrator(tree_id, user.id, db)
     history = await orchestrator.get_chat_history(node_id=node_id)
+    
+    if not history and node_id:
+        # Create an automated greeting if history is empty
+        tree = db.query(ProjectTree).filter(ProjectTree.id == tree_id).first()
+        node_label = "этого блока"
+        if tree and tree.tree_data:
+            nodes = tree.tree_data.get("nodes", [])
+            node = next((n for n in nodes if n["id"] == node_id), None)
+            if node:
+                node_label = f"блока **'{node.get('label')}'**"
+
+        greeting = f"Привет! Я Pitchy AI. Я готов помочь тебе заполнить данные для {node_label}. Что именно мы хотим здесь уточнить или рассчитать?"
+        await orchestrator.add_chat_message("assistant", greeting, node_id=node_id)
+        # Reload history to include the new message
+        history = await orchestrator.get_chat_history(node_id=node_id)
+
     return {"history": history}
 
 
@@ -345,16 +362,31 @@ async def evaluate_node(
                 ]}
             })
 
-    for nn in new_nodes:
-        nodes.append(nn)
-        edges.append({"id": f"e-{nn['parent_id']}-{nn['id']}", "source": nn["parent_id"], "target": nn["id"]})
+    # Recalculate node positions for new_nodes
+    if new_nodes:
+        # Get parent position
+        parent_x = target_node.get("position", {}).get("x", 0)
+        parent_y = target_node.get("position", {}).get("y", 0)
+        
+        y_offset = 250
+        x_spacing = 350
+        num_new = len(new_nodes)
+        
+        for i, nn in enumerate(new_nodes):
+            calc_x = parent_x + (i - (num_new - 1) / 2) * x_spacing
+            nn["position"] = {"x": calc_x, "y": parent_y + y_offset}
+            nodes.append(nn)
+            edges.append({"id": f"e-{nn['parent_id']}-{nn['id']}", "source": nn["parent_id"], "target": nn["id"]})
 
     # Recalculate Index
     total = len(nodes)
     completed = sum(1 for n in nodes if n["status"] == "completed")
     tree.readiness_index = int((completed / max(total, 1)) * 100)
     
+    # CRITICAL: Re-assign and flag modified for SQLAlchemy to detect JSON change
     tree.tree_data = {"nodes": nodes, "edges": edges}
+    flag_modified(tree, "tree_data")
+    
     tree.updated_at = datetime.utcnow()
     db.commit()
 

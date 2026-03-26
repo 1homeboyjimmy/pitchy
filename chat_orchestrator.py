@@ -105,10 +105,9 @@ class ChatOrchestrator:
             from models import TreeChatHistory
             query = self.db.query(TreeChatHistory).filter(TreeChatHistory.project_id == self.tree_id)
             if node_id:
-                # Assuming node_id is NOT directly in TreeChatHistory model yet, 
-                # but for simplicity we filter by tree. 
-                # If we need node-specific history from PG, we'd need another column.
-                pass 
+                query = query.filter(TreeChatHistory.node_id == node_id)
+            else:
+                query = query.filter(TreeChatHistory.node_id == None)
             
             history_msgs = query.order_by(TreeChatHistory.timestamp.desc()).limit(limit).all()
             return [
@@ -151,7 +150,8 @@ class ChatOrchestrator:
                     message=content,
                     thoughts=thoughts,
                     model_used=model_used,
-                    client_id=client_id
+                    client_id=client_id,
+                    node_id=node_id
                 )
                 self.db.add(db_msg)
                 self.db.commit()
@@ -164,9 +164,9 @@ class ChatOrchestrator:
         node_context = ""
         active_node = next((n for n in state.get("nodes", []) if n["id"] == active_node_id), None)
         if active_node:
-             node_context = f"Ты сейчас помогаешь пользователю в контексте узла '{active_node.get('label')}' (описание: {active_node.get('data', {}).get('description')}). "
+             node_context = f"Ты сейчас помогаешь пользователю в контексте блока '{active_node.get('label')}'. Твоя цель — помочь основателю заполнить этот раздел максимально детально. "
         
-        system_prompt = f"Ты — ассистент платформы Pitchy. {node_context}Отвечай на русском языке. Сначала запиши свои мысли/размышления о запросе внутри тегов <thought>...</thought>, а затем дай итоговый ответ пользователю."
+        system_prompt = f"Ты — бизнес-ассистент платформы Pitchy. {node_context}Отвечай на русском языке. Сначала запиши свои мысли/размышления о запросе внутри тегов <thought>...</thought>, а затем дай итоговый ответ пользователю."
         
         chat_history = "\n".join([f"{m['role']}: {m['content']}" for m in history])
         prompt = f"История чата:\n{chat_history}\n\nПользователь: {user_message}"

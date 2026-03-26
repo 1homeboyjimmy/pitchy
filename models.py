@@ -189,5 +189,6 @@ class TreeChatHistory(Base):
     model_used: Mapped[str | None] = mapped_column(String(50), nullable=True)
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     client_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    node_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     project: Mapped["ProjectTree"] = relationship()
