@@ -285,7 +285,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
 
                 {messages.map((msg, idx) => {
             const messageKey = msg.client_id || msg.id;
-            const hasThoughts = msg.thoughts !== undefined;
+            const hasThoughts = msg.thoughts !== undefined && msg.thoughts !== null;
             const userMessagesBefore = messages.slice(0, idx).filter(m => m.role === "user").length;
             const showThoughts = hasThoughts && userMessagesBefore > 1;
             const hasContent = msg.content && msg.content.length > 0;

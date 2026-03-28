@@ -368,7 +368,7 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
             >
               <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-white/10">
                 {messages.map((msg, idx) => {
-                  const hasThoughts = msg.thoughts !== undefined;
+                  const hasThoughts = msg.thoughts !== undefined && msg.thoughts !== null;
                   const userMessagesBefore = messages.slice(0, idx).filter(m => m.role === "user").length;
                   const showThoughts = hasThoughts && userMessagesBefore > 1;
                   const hasContent = msg.content && msg.content.length > 0;
