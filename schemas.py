@@ -329,3 +329,11 @@ class TreeEvaluateRequest(BaseModel):
     node_id: str
     form_data: dict[str, Any]
 
+
+class RagSearchRequest(BaseModel):
+    query: str = Field(..., min_length=1)
+
+
+class RagSearchResponse(BaseModel):
+    context: str
+

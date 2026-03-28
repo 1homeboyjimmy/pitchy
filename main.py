@@ -7,10 +7,11 @@ import time
 import random
 from datetime import datetime, timedelta, date
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Response, UploadFile, File, BackgroundTasks
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, UploadFile, File, BackgroundTasks, Security
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.responses import StreamingResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.orm import Session
@@ -60,6 +61,8 @@ from schemas import (
     IntentResponse,
     ChatSessionFromIntentRequest,
     ChatSessionAutoRequest,
+    RagSearchRequest,
+    RagSearchResponse,
 )
 from email_utils import get_dev_emails, send_email
 from sso import yandex_sso, github_sso, google_sso
@@ -1000,6 +1003,37 @@ def verify_email(
     user.email_verify_expires_at = None
     db.commit()
     return {"status": "ok"}
+
+
+security = HTTPBearer()
+
+def verify_rag_token(credentials: HTTPAuthorizationCredentials = Security(security)):
+    token = credentials.credentials
+    expected_token = os.getenv("RAG_API_KEY")
+    if not expected_token or token != expected_token:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or missing RAG API Key",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return token
+
+@app.post("/api/rag/search", response_model=RagSearchResponse)
+async def rag_search_endpoint(
+    payload: RagSearchRequest,
+    token: str = Depends(verify_rag_token)
+) -> RagSearchResponse:
+    try:
+        # Use asyncio.to_thread because rag.get_relevant_chunks is synchronous and might be slow
+        context_chunks = await asyncio.to_thread(rag.get_relevant_chunks, payload.query, top_k=5)
+        context = "\n\n".join(context_chunks)
+        return RagSearchResponse(context=context)
+    except Exception as e:
+        logger.error(f"RAG search error: {e}")
+        # Return empty context or 500 based on requirements. 
+        # User said: "returning an empty string or 500 so as not to crash the server".
+        # I'll return empty string as it's safer for the caller's logic usually.
+        return RagSearchResponse(context="")
 
 
 @app.post("/analyze-startup", response_model=AnalyzeResponse)
