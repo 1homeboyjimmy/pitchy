@@ -286,10 +286,11 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                 {messages.map((msg, idx) => {
             const messageKey = msg.client_id || msg.id;
             const hasThoughts = msg.thoughts !== undefined;
-            const isFirstAssistantMessage = messages.findIndex(m => m.role === "assistant") === idx;
-            const showThoughts = hasThoughts && !isFirstAssistantMessage;
-            const isThinkingOnly = msg.role === "assistant" && msg.content === "" && showThoughts;
+            const userMessagesBefore = messages.slice(0, idx).filter(m => m.role === "user").length;
+            const showThoughts = hasThoughts && userMessagesBefore > 1;
+            const hasContent = msg.content && msg.content.length > 0;
             const isLastAssistant = msg.role === "assistant" && idx === messages.length - 1;
+            const shouldRenderMainBubble = msg.role === "user" || hasContent;
 
             return (
                 <motion.div
@@ -331,7 +332,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                                 )}
 
                                 {/* Loading state placeholder */}
-                                {msg.role === "assistant" && !msg.content && !showThoughts && isLoading && isLastAssistant && (
+                                {msg.role === "assistant" && !hasContent && !showThoughts && isLoading && isLastAssistant && (
                                     <div className="flex items-center gap-3 p-4 bg-white/5 rounded-2xl border border-white/10 text-white/60">
                                         <Loader2 className="animate-spin h-5 w-5 text-pitchy-violet" />
                                         <span className="text-sm font-medium animate-pulse">
@@ -340,7 +341,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                                     </div>
                                 )}
 
-                                {!isThinkingOnly && (
+                                {shouldRenderMainBubble && (
                                     <div className={`p-4 rounded-2xl ${msg.role === "user"
                                         ? "bg-white/10 text-white rounded-tr-sm"
                                         : "bg-pitchy-violet/10 border border-pitchy-violet/20 text-white rounded-tl-sm"

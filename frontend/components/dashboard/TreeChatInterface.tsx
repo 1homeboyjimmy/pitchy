@@ -369,10 +369,11 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
               <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-white/10">
                 {messages.map((msg, idx) => {
                   const hasThoughts = msg.thoughts !== undefined;
-                  const isFirstAssistantMessage = messages.findIndex(m => m.role === "assistant") === idx;
-                  const showThoughts = hasThoughts && !isFirstAssistantMessage;
-                  const isThinkingOnly = msg.role === "assistant" && msg.content === "" && showThoughts;
+                  const userMessagesBefore = messages.slice(0, idx).filter(m => m.role === "user").length;
+                  const showThoughts = hasThoughts && userMessagesBefore > 1;
+                  const hasContent = msg.content && msg.content.length > 0;
                   const isLastAssistant = msg.role === "assistant" && idx === messages.length - 1;
+                  const shouldRenderMainBubble = msg.role === "user" || hasContent;
 
                   return (
                     <div key={getMsgKey(msg)} className={`flex gap-3 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
@@ -392,13 +393,13 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
                             </motion.div>
                           </div>
                         )}
-                        {msg.role === "assistant" && !msg.content && !showThoughts && isLoading && isLastAssistant && (
+                        {msg.role === "assistant" && !hasContent && !showThoughts && isLoading && isLastAssistant && (
                           <div className="flex items-center gap-3 p-3 bg-white/5 rounded-2xl border border-white/10 text-white/50 italic animate-pulse">
                             <Loader2 className="animate-spin h-3.5 w-3.5 text-pitchy-violet" />
                             <span className="text-[12px]">Я анализирую ситуацию...</span>
                           </div>
                         )}
-                        {!isThinkingOnly && (
+                        {shouldRenderMainBubble && (
                           <div className={`p-3 rounded-2xl text-sm leading-relaxed ${msg.role === "user" ? "bg-white/5 text-white/90 border border-white/10 rounded-tr-sm" : "bg-pitchy-violet/5 text-white/90 border border-pitchy-violet/20 rounded-tl-sm relative"}`}>
                             <div className="prose prose-invert prose-sm max-w-none text-white/80">
                               <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
