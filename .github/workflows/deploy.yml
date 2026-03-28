@@ -109,18 +109,18 @@ jobs:
           ignore-unfixed: true
 
       - name: Upload backend SARIF results
-        uses: github/codeql-action/upload-sarif@v4
+        uses: actions/upload-artifact@v4
         if: always()
         with:
-          sarif_file: 'backend-trivy.sarif'
-          category: 'trivy-backend'
+          name: backend-trivy-sarif
+          path: backend-trivy.sarif
 
       - name: Upload frontend SARIF results
-        uses: github/codeql-action/upload-sarif@v4
+        uses: actions/upload-artifact@v4
         if: always()
         with:
-          sarif_file: 'frontend-trivy.sarif'
-          category: 'trivy-frontend'
+          name: frontend-trivy-sarif
+          path: frontend-trivy.sarif
 
   deploy:
     runs-on: ubuntu-latest
