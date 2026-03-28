@@ -24,7 +24,7 @@ from metrics import ERROR_COUNT, REQUEST_COUNT, REQUEST_LATENCY
 from observability import configure_logging
 import uuid
 from redis_client import get_redis
-from yandex_gpt_client import YandexGPTError, call_yandex_gpt, extract_json
+from yandex_gpt_client import YandexGPTError, call_yandex_gpt, extract_json, async_call_yandex_gpt
 from zai_client import generate_chat_title, analyze_search_intent
 from makura_client import call_makura, stream_makura
 from search_agent import execute_search_agent

@@ -31,11 +31,11 @@ async def call_makura(system_prompt: str, user_message: str, model: str = None) 
     payload = {
         "model": model,
         "messages": [
-            {"role": "system", "content": system_prompt},
+            {"role": "system", "content": system_prompt + " Отвечай максимально емко и тезисно. Пиши только суть, без воды и долгих вступлений. Максимум 300 слов."},
             {"role": "user", "content": user_message}
         ],
         "temperature": 0.4,
-        "max_tokens": 4096
+        "max_tokens": 1500
     }
 
     try:
@@ -100,10 +100,11 @@ async def stream_makura(system_prompt: str, user_message: str, model: str = None
     payload = {
         "model": model,
         "messages": [
-            {"role": "system", "content": system_prompt},
+            {"role": "system", "content": system_prompt + " Отвечай максимально емко и тезисно. Пиши только суть, без воды и долгих вступлений. Максимум 300 слов."},
             {"role": "user", "content": user_message}
         ],
         "temperature": 0.4,
+        "max_tokens": 1500,
         "stream": True
     }
 
