@@ -369,7 +369,9 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
               <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-white/10">
                 {messages.map((msg, idx) => {
                   const hasThoughts = msg.thoughts !== undefined;
-                  const isThinkingOnly = msg.role === "assistant" && msg.content === "" && hasThoughts;
+                  const isFirstAssistantMessage = messages.findIndex(m => m.role === "assistant") === idx;
+                  const showThoughts = hasThoughts && !isFirstAssistantMessage;
+                  const isThinkingOnly = msg.role === "assistant" && msg.content === "" && showThoughts;
                   const isLastAssistant = msg.role === "assistant" && idx === messages.length - 1;
 
                   return (
@@ -378,7 +380,7 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
                         {msg.role === "user" ? <User className="w-4 h-4 text-white/70" /> : <Bot className="w-4 h-4 text-white" />}
                       </div>
                       <div className={`max-w-[90%] flex flex-col gap-2 ${msg.role === "user" ? "items-end" : "items-start"}`}>
-                        {msg.role === "assistant" && hasThoughts && (
+                        {msg.role === "assistant" && showThoughts && (
                           <div className="w-full bg-transparent overflow-hidden self-start">
                             <button onClick={() => setMessages(prev => prev.map((m, i) => (m.client_id || i) === (msg.client_id || idx) ? { ...m, thoughtExpanded: !m.thoughtExpanded } : m))} className="flex items-center gap-2 px-1 py-1 text-[10px] text-white/40 hover:text-white/60 transition-colors">
                                 <Atom className={`w-3.5 h-3.5 ${isLoading && isLastAssistant && !msg.thoughtTime ? "animate-spin" : "text-pitchy-violet"}`} />
@@ -390,7 +392,7 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
                             </motion.div>
                           </div>
                         )}
-                        {msg.role === "assistant" && !msg.content && !msg.thoughts && isLoading && isLastAssistant && (
+                        {msg.role === "assistant" && !msg.content && !showThoughts && isLoading && isLastAssistant && (
                           <div className="flex items-center gap-3 p-3 bg-white/5 rounded-2xl border border-white/10 text-white/50 italic animate-pulse">
                             <Loader2 className="animate-spin h-3.5 w-3.5 text-pitchy-violet" />
                             <span className="text-[12px]">Я анализирую ситуацию...</span>

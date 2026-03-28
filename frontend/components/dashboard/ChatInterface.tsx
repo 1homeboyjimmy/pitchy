@@ -15,6 +15,7 @@ interface ExtendedChatMessage extends ChatMessageResponse {
     thoughts?: string;
     thoughtTime?: number;
     thoughtExpanded?: boolean;
+    client_id?: string;
 }
 
 interface ChatInterfaceProps {
@@ -285,7 +286,9 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                 {messages.map((msg, idx) => {
             const messageKey = msg.client_id || msg.id;
             const hasThoughts = msg.thoughts !== undefined;
-            const isThinkingOnly = msg.role === "assistant" && msg.content === "" && hasThoughts;
+            const isFirstAssistantMessage = messages.findIndex(m => m.role === "assistant") === idx;
+            const showThoughts = hasThoughts && !isFirstAssistantMessage;
+            const isThinkingOnly = msg.role === "assistant" && msg.content === "" && showThoughts;
             const isLastAssistant = msg.role === "assistant" && idx === messages.length - 1;
 
             return (
@@ -300,7 +303,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                             </div>
 
                             <div className={`max-w-[85%] flex flex-col gap-2 ${msg.role === "user" ? "items-end" : "items-start"}`}>
-                                {msg.role === "assistant" && hasThoughts && (
+                                {msg.role === "assistant" && showThoughts && (
                                     <div className="w-full max-w-[600px] bg-transparent overflow-hidden self-start">
                                         <button 
                                             onClick={() => {
@@ -328,7 +331,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                                 )}
 
                                 {/* Loading state placeholder */}
-                                {msg.role === "assistant" && !msg.content && !msg.thoughts && isLoading && isLastAssistant && (
+                                {msg.role === "assistant" && !msg.content && !showThoughts && isLoading && isLastAssistant && (
                                     <div className="flex items-center gap-3 p-4 bg-white/5 rounded-2xl border border-white/10 text-white/60">
                                         <Loader2 className="animate-spin h-5 w-5 text-pitchy-violet" />
                                         <span className="text-sm font-medium animate-pulse">
