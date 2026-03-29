@@ -24,8 +24,8 @@ pitchy.pro {
             header_up X-Forwarded-For {remote_ip}
             header_up X-Forwarded-Proto {scheme}
             transport http {
-                # Увеличиваем таймаут для генерации ответов ИИ (Qwen 72B может думать долго)
-                read_timeout 120s
+                # Увеличиваем таймаут для генерации ответов ИИ и тяжелой обработки PDF (до 10 минут)
+                read_timeout 600s
             }
         }
     }

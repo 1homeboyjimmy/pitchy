@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from starlette.concurrency import run_in_threadpool
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.orm import Session
@@ -652,7 +653,11 @@ def login(
 
 @app.post("/auth/logout")
 def logout(response: Response) -> dict:
-    response.delete_cookie(key=get_access_token_cookie_name(), path="/")
+    response.delete_cookie(
+        key=get_access_token_cookie_name(), 
+        path="/",
+        domain=os.getenv("COOKIE_DOMAIN", ".pitchy.pro")
+    )
     return {"status": "ok"}
 
 
@@ -754,7 +759,7 @@ async def auth_callback(
         samesite="lax",
         max_age=get_access_token_max_age(),
         path="/",
-        domain=os.getenv("COOKIE_DOMAIN", None),
+        domain=os.getenv("COOKIE_DOMAIN", ".pitchy.pro"),
     )
     return redirect
 
@@ -1985,8 +1990,8 @@ async def admin_add_rag_pdf(
         with open(filepath, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
             
-        # Parse text
-        text = extract_text_from_pdf(filepath)
+        # Parse text - Execute in threadpool to avoid blocking event loop
+        text = await run_in_threadpool(extract_text_from_pdf, filepath)
         if not text:
             raise HTTPException(status_code=400, detail="Could not extract text from the PDF. It might be scanned or empty.")
             
@@ -1996,7 +2001,8 @@ async def admin_add_rag_pdf(
             f.write(f"Source: Uploaded PDF {file.filename}\n\n")
             f.write(text)
             
-        chunks_added = rag.add_text_to_rag(text)
+        # Load into active RAG - Execute in threadpool
+        chunks_added = await run_in_threadpool(rag.add_text_to_rag, text)
         
         log_entry = RagLog(source_url=file.filename, source_type="PDF", status="SUCCESS", chunks_added=chunks_added)
         db.add(log_entry)
