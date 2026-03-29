@@ -256,20 +256,43 @@ function DashboardContent() {
             { id: "overview", label: "Обзор", icon: LayoutDashboard },
             { id: "chat", label: "Чат", icon: MessageSquare },
             { id: "tree", label: "Древо", icon: GitBranch },
-            { id: "analytics", label: "Аналитика", icon: BarChart3 }
-          ].map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setActiveTab(item.id)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all mb-1 text-left ${activeTab === item.id
-                ? "bg-white/10 text-white border border-white/10"
-                : "text-white/50 hover:text-white hover:bg-white/5"
-                }`}
-            >
-              <item.icon className="w-4 h-4" />
-              {item.label}
-            </button>
-          ))}
+            { id: "custdev", label: "CustDev", icon: BarChart3, href: "https://custdev.pitchy.pro/" }
+          ].map((item) => {
+            const isExternal = 'href' in item;
+            const content = (
+              <>
+                <item.icon className="w-4 h-4" />
+                {item.label}
+              </>
+            );
+
+            if (isExternal && 'href' in item) {
+              return (
+                <a
+                  key={item.id}
+                  href={item.href as string}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all mb-1 text-left text-white/50 hover:text-white hover:bg-white/5"
+                >
+                  {content}
+                </a>
+              );
+            }
+
+            return (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all mb-1 text-left ${activeTab === item.id
+                  ? "bg-white/10 text-white border border-white/10"
+                  : "text-white/50 hover:text-white hover:bg-white/5"
+                  }`}
+              >
+                {content}
+              </button>
+            );
+          })}
 
           {userProfile?.is_admin && (
             <>
@@ -312,20 +335,43 @@ function DashboardContent() {
             { id: "overview", label: "Обзор", icon: LayoutDashboard },
             { id: "chat", label: "Чат", icon: MessageSquare },
             { id: "tree", label: "Древо", icon: GitBranch },
-            { id: "analytics", label: "Аналитика", icon: BarChart3 }
-          ].map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setActiveTab(item.id)}
-              className={`flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === item.id
-                ? "bg-white/10 text-white border border-white/10 shadow-sm"
-                : "text-white/50 border border-transparent hover:text-white hover:bg-white/5"
-                }`}
-            >
-              <item.icon className="w-4 h-4" />
-              {item.label}
-            </button>
-          ))}
+            { id: "custdev", label: "CustDev", icon: BarChart3, href: "https://custdev.pitchy.pro/" }
+          ].map((item) => {
+            const isExternal = 'href' in item;
+            const content = (
+              <>
+                <item.icon className="w-4 h-4" />
+                {item.label}
+              </>
+            );
+
+            if (isExternal && 'href' in item) {
+              return (
+                <a
+                  key={item.id}
+                  href={item.href as string}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all text-white/50 border border-transparent hover:text-white hover:bg-white/5"
+                >
+                  {content}
+                </a>
+              );
+            }
+
+            return (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id)}
+                className={`flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === item.id
+                  ? "bg-white/10 text-white border border-white/10 shadow-sm"
+                  : "text-white/50 border border-transparent hover:text-white hover:bg-white/5"
+                  }`}
+              >
+                {content}
+              </button>
+            );
+          })}
           {userProfile?.is_admin && (
             <button
               onClick={() => setActiveTab("admin")}
@@ -347,8 +393,7 @@ function DashboardContent() {
               {activeTab === "overview" && "Обзор проектов"}
               {activeTab === "chat" && (activeSession ? activeSession.title : "Чат с аналитиком")}
               {activeTab === "tree" && "Древо принятия решений"}
-              {activeTab === "analytics" && "Статистика"}
-              {activeTab === "admin" && "Админ-панель"}
+               {activeTab === "admin" && "Админ-панель"}
             </h1>
             <p className="text-white/40 text-sm">
               {activeTab === "overview" && "Управляйте вашими анализами и запускайте новые."}
@@ -455,13 +500,6 @@ function DashboardContent() {
                 }}
               />
             </motion.div>
-          )}
-
-          {activeTab === "analytics" && (
-            <div key="analytics" className="text-center py-20 text-white/30">
-              <BarChart3 className="w-16 h-16 mx-auto mb-4 opacity-50" />
-              <p>Раздел персональной аналитики в разработке.</p>
-            </div>
           )}
 
           {activeTab === "admin" && userProfile?.is_admin && (
