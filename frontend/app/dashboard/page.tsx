@@ -271,8 +271,6 @@ function DashboardContent() {
                 <a
                   key={item.id}
                   href={item.href as string}
-                  target="_blank"
-                  rel="noopener noreferrer"
                   className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all mb-1 text-left text-white/50 hover:text-white hover:bg-white/5"
                 >
                   {content}
@@ -350,8 +348,6 @@ function DashboardContent() {
                 <a
                   key={item.id}
                   href={item.href as string}
-                  target="_blank"
-                  rel="noopener noreferrer"
                   className="flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all text-white/50 border border-transparent hover:text-white hover:bg-white/5"
                 >
                   {content}

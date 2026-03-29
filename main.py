@@ -603,6 +603,7 @@ def verify_email_code(
         samesite="lax",
         max_age=get_access_token_max_age(),
         path="/",
+        domain=os.getenv("COOKIE_DOMAIN", ".pitchy.pro"),
     )
     return TokenResponse(access_token=token)
 
@@ -644,6 +645,7 @@ def login(
         samesite="lax",
         max_age=get_access_token_max_age(),
         path="/",
+        domain=os.getenv("COOKIE_DOMAIN", ".pitchy.pro"),
     )
     return TokenResponse(access_token=token)
 
