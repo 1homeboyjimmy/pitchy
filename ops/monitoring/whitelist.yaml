@@ -1,0 +1,11 @@
+name: dev/internal-network-whitelist
+description: "Whitelist internal Docker network and localhost to prevent bouncer from blocking inter-container traffic"
+whitelist:
+  reason: "internal traffic"
+  ip:
+    - "127.0.0.1"
+    - "::1"
+  cidr:
+    - "172.16.0.0/12"
+    - "10.0.0.0/8"
+    - "192.168.0.0/16"

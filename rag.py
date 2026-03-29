@@ -104,16 +104,33 @@ def _should_reindex() -> bool:
     return os.getenv("CHROMA_REINDEX", "false").lower() == "true"
 
 
-def _seed_collection(collection: Collection, documents: List[str]):
+def _seed_collection(collection: Collection, documents: List[str], batch_size: int = 100):
     if not documents:
         return
     import time
     import hashlib
-    ids = []
-    for i, doc in enumerate(documents):
-        doc_hash = hashlib.md5(doc.encode('utf-8')).hexdigest()[:10]
-        ids.append(f"doc_{int(time.time())}_{i}_{doc_hash}")
-    collection.add(documents=documents, ids=ids)
+    
+    total = len(documents)
+    print(f"Starting seeding {total} chunks in batches of {batch_size}...")
+    
+    for start_idx in range(0, total, batch_size):
+        end_idx = min(start_idx + batch_size, total)
+        batch_docs = documents[start_idx:end_idx]
+        
+        ids = []
+        for i, doc in enumerate(batch_docs):
+            doc_hash = hashlib.md5(doc.encode('utf-8')).hexdigest()[:10]
+            # Use index + start_idx for unique across batches
+            ids.append(f"doc_{int(time.time())}_{start_idx + i}_{doc_hash}")
+        
+        collection.add(documents=batch_docs, ids=ids)
+        
+        # Small sleep after each batch to allow the event loop (in main loop) to breathe.
+        # This prevents the initial seeding from blocking the FastAPI startup completely.
+        if end_idx < total:
+            time.sleep(0.1)
+            
+    print(f"Finished seeding {total} chunks.")
 
 
 def _rerank_chunks(query: str, documents: List[str], distances: List[float]) -> List[str]:

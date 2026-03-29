@@ -1,36 +1,59 @@
+# Настройка для Grafana (Мониторинг)
 grafana.pitchy.pro {
-  reverse_proxy grafana:3000
+    reverse_proxy grafana:3000
 }
 
+# Основной сайт Pitchy.pro
 pitchy.pro {
-  # Metrics access control
-  handle /metrics {
-    @external not remote_ip private_ranges 127.0.0.1/8 ::1
-    respond @external 403
-    reverse_proxy backend:8000
-  }
+    # Ограничение доступа к метрикам (только для локальных запросов)
+    handle /metrics {
+        @external not remote_ip private_ranges 127.0.0.1/8 ::1
+        respond @external 403
+        reverse_proxy backend:8000
+    }
 
-  # API - API routes to backend
-  @api path /auth* /analysis* /chat* /admin* /health /dev/emails /analyze-startup /me /tree*
-  handle @api {
-    reverse_proxy backend:8000
-  }
+    # API - Маршруты для бэкенда (Python/FastAPI)
+    # Добавлен префикс /api/* для гибкости и основные эндпоинты
+    @api path /api/* /auth* /analysis* /chat* /admin* /health /dev/emails /analyze-startup /me /tree*
+    handle @api {
+        reverse_proxy backend:8000 {
+            transport http {
+                # Увеличиваем таймаут для генерации ответов ИИ (Qwen 72B может думать долго)
+                read_timeout 120s
+            }
+        }
+    }
 
-  header {
-    Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
-    X-Frame-Options "SAMEORIGIN"
-    X-Content-Type-Options "nosniff"
-    Referrer-Policy "strict-origin-when-cross-origin"
-    Permissions-Policy "camera=(), microphone=(), geolocation=()"
-    Content-Security-Policy "default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval'; connect-src 'self' https: wss:;"
-  }
+    # Настройки безопасности и заголовков
+    header {
+        # HSTS (заставляет браузер всегда использовать HTTPS)
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
 
-  encode {
-    gzip
-  }
+        # Защита от кликджекинга
+        X-Frame-Options "SAMEORIGIN"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "strict-origin-when-cross-origin"
 
-  # All other routes serve the Frontend
-  handle {
-    reverse_proxy frontend:3000
-  }
+        # Content Security Policy (Исправлено для работы /account и WebSocket)
+        # Разрешаем подключения к своим поддоменам и внешним API (например, HuggingFace/OpenAI)
+        Content-Security-Policy "default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval'; connect-src 'self' https: wss: pitchy.pro *.pitchy.pro;"
+    }
+
+    # Сжатие контента для ускорения загрузки
+    encode gzip zstd
+
+    # Все остальные запросы направляем на Frontend (Next.js)
+    handle {
+        reverse_proxy frontend:3000 {
+            # Передача реального IP пользователя (важно для логов и аналитики)
+            header_up Host {host}
+            header_up X-Real-IP {remote_ip}
+            header_up X-Forwarded-For {remote_ip}
+            header_up X-Forwarded-Proto {scheme}
+
+            # Поддержка WebSocket (Критично для Next.js dev mode и HMR)
+            header_up Upgrade {>Upgrade}
+            header_up Connection {>Connection}
+        }
+    }
 }
