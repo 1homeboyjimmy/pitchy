@@ -13,10 +13,16 @@ pitchy.pro {
     }
 
     # API - Маршруты для бэкенда (Python/FastAPI)
-    # Добавлен префикс /api/* для гибкости и основные эндпоинты
-    @api path /api/* /auth* /analysis* /chat* /admin* /health /dev/emails /analyze-startup /me /tree*
+    @api {
+        path /auth* /analysis* /chat* /admin* /health /dev/emails /analyze-startup /me /tree* /api/*
+        not path /api/graph/*
+    }
     handle @api {
         reverse_proxy backend:8000 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_ip}
+            header_up X-Forwarded-For {remote_ip}
+            header_up X-Forwarded-Proto {scheme}
             transport http {
                 # Увеличиваем таймаут для генерации ответов ИИ (Qwen 72B может думать долго)
                 read_timeout 120s
