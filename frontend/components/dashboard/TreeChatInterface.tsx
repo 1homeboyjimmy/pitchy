@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Cpu, User, Loader, Star, X, Square, ChevronDown, ChevronUp, Activity, FileText, MessageSquare, CheckCircle, AlertTriangle, Edit3 } from "react-feather";
+import { Cpu, User, Loader, Star, X, ChevronDown, ChevronUp, Activity, FileText, MessageSquare, CheckCircle, AlertTriangle, Edit3 } from "react-feather";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { getToken } from "@/lib/auth";

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { ChevronDown, ChevronUp } from "react-feather";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -21,7 +21,7 @@ export function CollapsibleUserMessage({ content }: CollapsibleUserMessageProps)
   useEffect(() => {
     if (contentRef.current) {
       if (contentRef.current.scrollHeight > MAX_HEIGHT_PX) {
-        setIsOverflowing(true);
+        setTimeout(() => setIsOverflowing(true), 0);
       }
     }
   }, [content]);
