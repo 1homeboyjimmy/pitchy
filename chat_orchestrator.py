@@ -1,6 +1,8 @@
 import json
 import logging
 import copy
+import os
+import asyncio
 from typing import Any, Optional
 from datetime import datetime
 
@@ -11,6 +13,7 @@ from search_agent import execute_search_agent
 from yandex_gpt_client import async_call_yandex_gpt
 from core_tree import CORE_SKELETON
 from models import TreeChatHistory
+import rag
 
 logger = logging.getLogger("app")
 
@@ -193,7 +196,7 @@ class ChatOrchestrator:
                 logger.error(f"Failed to save TreeChatHistory to SQL: {e}")
                 self.db.rollback()
 
-    async def _stream_chat(self, user_message: str, history: list, state: dict, active_node_id: str | None):
+    async def _stream_chat(self, user_message: str, history: list, state: dict, active_node_id: str | None, rag_context: str = ""):
         """Core streaming logic for chat with thoughts."""
         node_context = ""
         active_node = next((n for n in state.get("nodes", []) if n["id"] == active_node_id), None)
@@ -204,7 +207,11 @@ class ChatOrchestrator:
         elif active_node:
              node_context = f"Ты сейчас помогаешь пользователю в контексте блока '{active_node.get('label')}'. Твоя цель — помочь основателю заполнить этот раздел максимально детально. "
         
-        system_prompt = f"{base_prompt} {node_context}Отвечай на русском языке. Сначала запиши свои мысли/размышления о запросе внутри тегов <thought>...</thought>, а затем дай итоговый ответ пользователю."
+        system_prompt = f"{base_prompt} {node_context}Отвечай на русском языке. "
+        if rag_context:
+            system_prompt += f"\n\nИСПОЛЬЗУЙ СЛЕДУЮЩИЙ КОНТЕКСТ ИЗ БАЗЫ ЗНАНИЙ ДЛЯ ОТВЕТА (это экспертные данные для рынка РФ):\n{rag_context}\n\n"
+        
+        system_prompt += "Сначала запиши свои мысли/размышления о запросе внутри тегов <thought>...</thought>, а затем дай итоговый ответ пользователю."
         
         chat_history = "\n".join([f"{m['role']}: {m['content']}" for m in history])
         prompt = f"История чата:\n{chat_history}\n\nПользователь: {user_message}"
@@ -266,8 +273,12 @@ class ChatOrchestrator:
         enriched_data = {}
 
         if intent == "chat" or intent not in ["tree", "finance", "search", "legal"]:
+            # Fetch RAG context for chat
+            rag_context_list = await asyncio.to_thread(rag.get_relevant_chunks, user_message, top_k=3)
+            rag_context = "\n".join(rag_context_list)
+            
             yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
-            async for json_chunk in self._parse_thought_generator(self._stream_chat(user_message, history, state, active_node_id)):
+            async for json_chunk in self._parse_thought_generator(self._stream_chat(user_message, history, state, active_node_id, rag_context=rag_context)):
                 data = json.loads(json_chunk.strip())
                 if data["type"] == "chunk": 
                     reply_full += data["content"]
@@ -282,13 +293,18 @@ class ChatOrchestrator:
         
         elif intent == "search":
             model_used = "Perplexity/Agent"
+            # Logic: Use search handler which now also includes RAG checks
             reply_full = await self._handle_search(user_message)
             yield json.dumps({"type": "chunk", "content": reply_full}) + "\n"
             yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
 
         elif intent == "legal":
             model_used = "YandexGPT (Юрист)"
-            reply_full = await self._handle_legal(user_message)
+            # Fetch RAG context for legal
+            rag_context_list = await asyncio.to_thread(rag.get_relevant_chunks, user_message, categories=["legal_and_taxes"], top_k=3)
+            rag_context = "\n".join(rag_context_list)
+            
+            reply_full = await self._handle_legal(user_message, rag_context=rag_context)
             yield json.dumps({"type": "chunk", "content": reply_full}) + "\n"
             yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
         
@@ -408,40 +424,28 @@ class ChatOrchestrator:
             user_message=user_message
         )
 
-        raw = await _call_gigachat(prompt)
-        if not raw:
-            # Fallback to Makura for calculations if GigaChat fails or not configured
-            raw, _ = await call_makura("Ты — финансовый аналитик.", prompt)
-
-        # Extract JSON metrics block
-        reply = raw
-        metrics = {}
-        if "---JSON_START---" in raw:
-            try:
-                parts = raw.split("---JSON_START---")[1].split("---JSON_END---")
-                metrics = json.loads(parts[0])["metrics"]
-                reply = raw.split("---JSON_START---")[0].strip()
-            except:
-                pass
-        
-        return reply, metrics
-
-        # Use Makura for search/analysis context
-        # The user specifically mentioned GLM is faster on Makura for this project.
-        reply, _ = await call_makura("Ты — эксперт по глубокому анализу рынков.", user_message)
-        if reply:
-            return reply
+        # Try to use local RAG context first or supplement search with it
+        rag_context_list = await asyncio.to_thread(rag.get_relevant_chunks, user_message, top_k=3)
+        rag_context = "\n".join(rag_context_list)
 
         # Fallback to local search agent
-        context = execute_search_agent(user_message)
-        prompt = f"На основе данных из поиска ответь пользователю на русском языке:\n\n{context}\n\nВопрос: {user_message}"
-        reply, _ = await call_makura("Ты — помощник с доступом в интернет.", prompt)
-        return reply or "Не удалось обработать результаты поиска."
+        search_context = execute_search_agent(user_message)
+        
+        full_context = f"ДАННЫЕ ИЗ БАЗЫ ЗНАНИЙ:\n{rag_context}\n\nДАННЫЕ ИЗ ИНТЕРНЕТА:\n{search_context}"
+        prompt = f"На основе предоставленного контекста ответь пользователю на русском языке:\n\n{full_context}\n\nВопрос: {user_message}"
+        
+        # Use Makura for integrated analysis
+        reply, _ = await call_makura("Ты — эксперт по глубокому анализу рынков и бизнес-помощник.", prompt)
+        return reply or "Не удалось обработать результаты поиска и базы знаний."
 
-    async def _handle_legal(self, user_message: str) -> str:
-        """Handle legal questions via YandexGPT (specialized for RU law)."""
+    async def _handle_legal(self, user_message: str, rag_context: str = "") -> str:
+        """Handle legal questions via YandexGPT (specialized for RU law) + RAG."""
         from yandex_gpt_client import call_yandex_gpt
+        
         system_prompt = "Ты — квалифицированный юрист по российскому законодательству. Отвечай на вопросы о налогах, праве и регистрации бизнеса в РФ."
+        if rag_context:
+            system_prompt += f"\nИспользуй следующие выдержки из нормативных документов для подготовки ответа:\n{rag_context}"
+            
         try:
             reply, _ = call_yandex_gpt(system_prompt, user_message)
             return reply or "Юридический помощник временно недоступен."
