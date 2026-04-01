@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Shield, Lock, Server, Eye, Key, RefreshCw } from "lucide-react";
+import { Shield, Lock, Server, Eye, Key, RefreshCw } from "react-feather";
 import Layout from "@/components/Layout";
 
 const securityFeatures = [

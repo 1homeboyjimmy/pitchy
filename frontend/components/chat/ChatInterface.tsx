@@ -3,14 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import TextareaAutosize from "react-textarea-autosize";
-import {
-    Send,
-    Sparkles,
-    Loader2,
-    CheckCircle2,
-    AlertTriangle,
-    Lightbulb,
-} from "lucide-react";
+import { Send, Star, Loader, CheckCircle, AlertTriangle, Zap } from "react-feather";
 import { ScoreRing } from "../ui/ScoreRing";
 import { AnalyzeResponse, postJson, postAuthJson, AnalysisResult } from "@/lib/api";
 import { getToken } from "@/lib/auth";
@@ -210,7 +203,7 @@ export function ChatInterface({
                                     {message.type === "ai" && (
                                         <div className="flex items-center gap-2 mb-2">
                                             <div className="w-5 h-5 rounded-full bg-gradient-to-br from-pitchy-violet to-pitchy-cyan flex items-center justify-center">
-                                                <Sparkles className="w-3 h-3 text-white" />
+                                                <Star className="w-3 h-3 text-white" />
                                             </div>
                                             <span className="text-xs font-medium text-white/60">
                                                 ИИ Аналитик
@@ -306,7 +299,7 @@ export function ChatInterface({
                                             {message.analysis.strengths.length > 0 && (
                                                 <div className="mb-4">
                                                     <h4 className="text-xs font-medium text-emerald-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                                                        <CheckCircle2 className="w-3.5 h-3.5" />
+                                                        <CheckCircle className="w-3.5 h-3.5" />
                                                         Сильные стороны
                                                     </h4>
                                                     <ul className="space-y-1.5">
@@ -358,7 +351,7 @@ export function ChatInterface({
                                                 className="p-3 rounded-xl bg-white/5 border border-white/10"
                                             >
                                                 <h4 className="text-xs font-medium text-pitchy-violet uppercase tracking-wider mb-1 flex items-center gap-1.5">
-                                                    <Lightbulb className="w-3.5 h-3.5" />
+                                                    <Zap className="w-3.5 h-3.5" />
                                                     Рекомендация
                                                 </h4>
                                                 <p className="text-sm text-white/80">
@@ -402,7 +395,7 @@ export function ChatInterface({
                             <div className="glass-card rounded-2xl rounded-tl-sm px-4 py-3">
                                 <div className="flex items-center gap-2 mb-2">
                                     <div className="w-5 h-5 rounded-full bg-gradient-to-br from-pitchy-violet to-pitchy-cyan flex items-center justify-center">
-                                        <Sparkles className="w-3 h-3 text-white" />
+                                        <Star className="w-3 h-3 text-white" />
                                     </div>
                                     <span className="text-xs font-medium text-white/60">
                                         ИИ Аналитик
@@ -468,7 +461,7 @@ export function ChatInterface({
                             className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-xl bg-pitchy-violet text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all hover:shadow-glow-primary cursor-pointer mb-[1px] mr-[1px]"
                         >
                             {isTyping ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
+                                <Loader className="w-4 h-4 animate-spin" />
                             ) : (
                                 <Send className="w-4 h-4 -ml-0.5 mt-0.5" />
                             )}

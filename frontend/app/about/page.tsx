@@ -1,14 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import {
-    Users,
-    Target,
-    Zap,
-    Shield,
-    BarChart3,
-    ChevronRight,
-} from "lucide-react";
+import { Users, Crosshair, Zap, Shield, BarChart2, ChevronRight } from "react-feather";
 import Link from "next/link";
 import Layout from "@/components/Layout";
 
@@ -20,7 +13,7 @@ const advantages = [
         color: "violet",
     },
     {
-        icon: Target,
+        icon: Crosshair,
         title: "Точная оценка",
         description: "ИИ-модели, обученные на тысячах инвестиционных кейсов.",
         color: "cyan",
@@ -32,7 +25,7 @@ const advantages = [
         color: "emerald",
     },
     {
-        icon: BarChart3,
+        icon: BarChart2,
         title: "Детализация",
         description: "Разбивка по 5 метрикам с конкретными рекомендациями.",
         color: "amber",

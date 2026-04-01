@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { ArrowLeft, Home } from "lucide-react";
+import { ArrowLeft, Home } from "react-feather";
 import Link from "next/link";
 import Layout from "@/components/Layout";
 

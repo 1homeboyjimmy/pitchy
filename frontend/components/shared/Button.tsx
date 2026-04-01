@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 import type { ReactNode } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader } from "react-feather";
 
 interface ButtonProps {
     children: ReactNode;
@@ -87,7 +87,7 @@ export function Button({
         ${className}
       `}
         >
-            {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+            {loading && <Loader className="w-4 h-4 animate-spin" />}
             {!loading && icon && iconPosition === "left" && (
                 <span className="flex-shrink-0">{icon}</span>
             )}

@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Calendar, ArrowRight, Building2 } from "lucide-react";
+import { Calendar, ArrowRight, Home } from "react-feather";
 import { ScoreRing } from "../ui/ScoreRing";
 
 interface Analysis {
@@ -42,7 +42,7 @@ export function AnalysisCard({ analysis, index = 0, onClick }: AnalysisCardProps
                                 {analysis.name}
                             </h3>
                             <div className="flex items-center gap-2 mt-0.5">
-                                <Building2 className="w-3.5 h-3.5 text-white/40" />
+                                <Home className="w-3.5 h-3.5 text-white/40" />
                                 <span className="text-xs sm:text-sm text-white/50">
                                     {analysis.category}
                                 </span>

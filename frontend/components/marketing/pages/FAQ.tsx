@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, MessageCircle } from "lucide-react";
+import { Plus, MessageCircle } from "react-feather";
 import { FadeContent } from "../reactbits/FadeContent";
 import { AnimatedContent } from "../reactbits/AnimatedContent";
 import { AnimatedButton } from "../ui-custom/AnimatedButton";

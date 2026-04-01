@@ -2,14 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-  Upload,
-  FileText,
-  Loader2,
-  Sparkles,
-  TreePine,
-  AlertCircle,
-} from "lucide-react";
+import { Upload, FileText, Loader, Star, GitBranch, AlertCircle } from "react-feather";
 import { TreeCanvas } from "./TreeCanvas";
 import { TreeChatInterface } from "./TreeChatInterface";
 import type { TreeNodeResponse, TreeEdgeResponse } from "../../lib/api";
@@ -205,7 +198,7 @@ export function TreeView({ }: Props) {
 
         <div className="flex-1 flex flex-col items-center justify-center px-4">
           <div className="w-16 h-16 rounded-2xl bg-pitchy-violet/10 border border-pitchy-violet/20 flex items-center justify-center mb-6">
-            <TreePine className="w-8 h-8 text-pitchy-violet" />
+            <GitBranch className="w-8 h-8 text-pitchy-violet" />
           </div>
           <h3 className="text-xl sm:text-2xl font-bold text-white mb-2 text-center">
             Древо принятия решений
@@ -230,7 +223,7 @@ export function TreeView({ }: Props) {
                   disabled={description.trim().length < 10}
                   className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-pitchy-violet to-purple-600 text-white text-sm font-medium disabled:opacity-30 hover:opacity-90 transition-opacity cursor-pointer"
                 >
-                  <Sparkles className="w-4 h-4" />
+                  <Star className="w-4 h-4" />
                   Построить древо
                 </button>
               </div>
@@ -275,7 +268,7 @@ export function TreeView({ }: Props) {
           transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
           className="w-16 h-16 rounded-2xl bg-pitchy-violet/10 border border-pitchy-violet/20 flex items-center justify-center mb-6"
         >
-          <Loader2 className="w-8 h-8 text-pitchy-violet" />
+          <Loader className="w-8 h-8 text-pitchy-violet" />
         </motion.div>
         <h3 className="text-lg font-semibold text-white mb-2">
           {tree.status === "uploading" ? "Загрузка PDF..." : "ИИ строит древо..."}

@@ -1,16 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import {
-    MessageSquare,
-    Gauge,
-    LineChart,
-    Shield,
-    Zap,
-    Target,
-    TrendingUp,
-    Search,
-} from "lucide-react";
+import { MessageSquare, Activity, BarChart2, Shield, Zap, Crosshair, TrendingUp, Search } from "react-feather";
 
 const features = [
     {
@@ -21,21 +12,21 @@ const features = [
         color: "violet",
     },
     {
-        icon: Gauge,
+        icon: Activity,
         title: "Индекс готовности",
         description:
             "Получите объективную оценку шансов на успех от 0 до 100 по ключевым метрикам выживаемости.",
         color: "cyan",
     },
     {
-        icon: Target,
+        icon: Crosshair,
         title: "Анализ рынка и ЦА",
         description:
             "Поймите, кто ваш клиент и как отстроиться от конкурентов — будь то маркетплейс, локальная кофейня или инновационный проект.",
         color: "emerald",
     },
     {
-        icon: LineChart,
+        icon: BarChart2,
         title: "Расчет экономики",
         description:
             "Помощь в понимании базовых и продвинутых финансовых показателей: чек, CAC, LTV и окупаемость.",

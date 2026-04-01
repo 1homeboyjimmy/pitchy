@@ -5,15 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import dayjs from "dayjs";
-import {
-  Search,
-  Calendar,
-  TrendingUp,
-  MessageSquare,
-  ArrowRight,
-  LogOut,
-  Loader2,
-} from "lucide-react";
+import { Search, Calendar, TrendingUp, MessageSquare, ArrowRight, LogOut, Loader } from "react-feather";
 import { FadeContent } from "../reactbits/FadeContent";
 import { AnimatedContent } from "../reactbits/AnimatedContent";
 import { AnimatedButton } from "../ui-custom/AnimatedButton";
@@ -84,7 +76,7 @@ export function DashboardPage() {
           animate={{ rotate: 360 }}
           transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
         >
-          <Loader2 className="w-8 h-8 text-violet-400" />
+          <Loader className="w-8 h-8 text-violet-400" />
         </motion.div>
       </div>
     );

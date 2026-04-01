@@ -3,7 +3,7 @@
 import { motion } from "framer-motion";
 import { AnalysisItem } from "@/lib/api";
 import { ScoreRing } from "@/components/ui/ScoreRing";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight } from "react-feather";
 import dayjs from "dayjs";
 
 interface HistoryCardProps {

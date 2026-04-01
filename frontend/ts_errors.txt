@@ -1,0 +1,4 @@
+﻿components/dashboard/treeCustomNodes.tsx(6,88): error TS2724: '"react-feather"' has no exported member named 'CircleDot'. Did you mean 'Circle'?
+components/dashboard/TreeView.tsx(5,42): error TS2305: Module '"react-feather"' has no exported member 'TreePine'.
+components/sections/FeaturesSection.tsx(4,25): error TS2305: Module '"react-feather"' has no exported member 'Gauge'.
+components/sections/FeaturesSection.tsx(4,32): error TS2724: '"react-feather"' has no exported member named 'LineChart'. Did you mean 'PieChart'?

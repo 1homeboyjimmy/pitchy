@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Sparkles, ArrowRight, Loader2 } from "lucide-react";
+import { Star, ArrowRight, Loader } from "react-feather";
 import { TextType } from "../reactbits/TextType";
 import { FadeContent } from "../reactbits/FadeContent";
 import { AnimatedButton } from "../ui-custom/AnimatedButton";
@@ -92,7 +92,7 @@ export function HomePage() {
             className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-violet-500/10 border border-violet-500/20 mb-8"
             whileHover={{ scale: 1.05 }}
           >
-            <Sparkles className="w-4 h-4 text-violet-400" />
+            <Star className="w-4 h-4 text-violet-400" />
             <span className="text-sm text-violet-300">
               Инвестиционный анализ на базе ИИ
             </span>
@@ -143,7 +143,7 @@ export function HomePage() {
                   size="md"
                   icon={
                     isAnalyzing ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <Loader className="w-4 h-4 animate-spin" />
                     ) : (
                       <ArrowRight className="w-4 h-4" />
                     )

@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Shield } from "lucide-react";
+import { Shield } from "react-feather";
 import Layout from "@/components/Layout";
 
 const sections = [

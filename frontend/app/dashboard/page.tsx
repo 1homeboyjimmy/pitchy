@@ -3,18 +3,7 @@
 import { useState, useEffect, Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
-import {
-  LayoutDashboard,
-  MessageSquare,
-  BarChart3,
-  Plus,
-  Sparkles,
-  Lock,
-  ChevronRight,
-  Loader2,
-  Shield,
-  GitBranch
-} from "lucide-react";
+import { Layout as LayoutIcon, MessageSquare, BarChart2, Plus, Star, Lock, ChevronRight, Loader, Shield, GitBranch, Menu } from "react-feather";
 import Layout from "@/components/Layout";
 // StatsCard unused
 import { SessionCard } from "@/components/dashboard/SessionCard";
@@ -94,6 +83,7 @@ function DashboardContent() {
   const [loading, setLoading] = useState(true);
   const [userProfile, setUserProfile] = useState<UserResponse | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   // Handle URL Params for Redirects
   useEffect(() => {
@@ -221,7 +211,7 @@ function DashboardContent() {
   if (loading) {
     return (
       <div className="min-h-[calc(100vh-5rem)] flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-pitchy-violet animate-spin" />
+        <Loader className="w-8 h-8 text-pitchy-violet animate-spin" />
       </div>
     );
   }
@@ -232,10 +222,13 @@ function DashboardContent() {
     <div className="flex min-h-[calc(100vh-5rem)]">
       {/* Sidebar (Desktop) */}
       <motion.aside
-        initial={{ x: -20, opacity: 0 }}
-        animate={{ x: 0, opacity: 1 }}
-        className="hidden lg:flex flex-col w-64 border-r border-white/10 py-6 px-4 shrink-0"
+        initial={false}
+        animate={{ width: isSidebarOpen ? 256 : 0, opacity: isSidebarOpen ? 1 : 0 }}
+        transition={{ duration: 0.3, ease: "easeInOut" }}
+        className="hidden lg:block shrink-0 overflow-hidden sticky top-[4rem] h-[calc(100vh-4rem)] border-white/10"
+        style={{ borderRightWidth: isSidebarOpen ? '1px' : '0px' }}
       >
+        <div className="w-64 flex flex-col py-6 px-4 h-full">
         <div className="mb-8">
           <Button
             onClick={() => {
@@ -253,10 +246,10 @@ function DashboardContent() {
             Меню
           </p>
           {[
-            { id: "overview", label: "Обзор", icon: LayoutDashboard },
+            { id: "overview", label: "Обзор", icon: LayoutIcon },
             { id: "chat", label: "Чат", icon: MessageSquare },
             { id: "tree", label: "Древо", icon: GitBranch },
-            { id: "custdev", label: "CustDev", icon: BarChart3, href: "https://custdev.pitchy.pro/" }
+            { id: "custdev", label: "CustDev", icon: BarChart2, href: "https://custdev.pitchy.pro/" }
           ].map((item) => {
             const isExternal = 'href' in item;
             const content = (
@@ -315,13 +308,14 @@ function DashboardContent() {
         <div className="mt-auto">
           <GlassCard hover={false} className="p-4 bg-gradient-to-br from-pitchy-violet/20 to-transparent border-pitchy-violet/20">
             <div className="flex items-center gap-2 mb-2">
-              <Sparkles className="w-4 h-4 text-pitchy-violet" />
+              <Star className="w-4 h-4 text-pitchy-violet" />
               <span className="text-xs font-bold text-white">PRO Совет</span>
             </div>
             <p className="text-xs text-white/60 leading-relaxed">
               Чем подробнее вы опишете проект в начале, тем точнее будет анализ.
             </p>
           </GlassCard>
+        </div>
         </div>
       </motion.aside>
 
@@ -330,10 +324,10 @@ function DashboardContent() {
         {/* Mobile Navigation (Tabs) */}
         <div className="flex lg:hidden overflow-x-auto gap-2 mb-6 pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 [&::-webkit-scrollbar]:hidden">
           {[
-            { id: "overview", label: "Обзор", icon: LayoutDashboard },
+            { id: "overview", label: "Обзор", icon: LayoutIcon },
             { id: "chat", label: "Чат", icon: MessageSquare },
             { id: "tree", label: "Древо", icon: GitBranch },
-            { id: "custdev", label: "CustDev", icon: BarChart3, href: "https://custdev.pitchy.pro/" }
+            { id: "custdev", label: "CustDev", icon: BarChart2, href: "https://custdev.pitchy.pro/" }
           ].map((item) => {
             const isExternal = 'href' in item;
             const content = (
@@ -384,9 +378,17 @@ function DashboardContent() {
 
         {/* Header / Title */}
         <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-2xl font-bold text-white mb-1">
-              {activeTab === "overview" && "Обзор проектов"}
+          <div className="flex items-center gap-4">
+            <button
+               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+               className="hidden lg:flex p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/70 hover:text-white transition-colors"
+               aria-label="Toggle Sidebar"
+            >
+               <Menu className="w-5 h-5" />
+            </button>
+            <div>
+              <h1 className="text-2xl font-bold text-white mb-1">
+                {activeTab === "overview" && "Обзор проектов"}
               {activeTab === "chat" && (activeSession ? activeSession.title : "Чат с аналитиком")}
               {activeTab === "tree" && "Древо принятия решений"}
                {activeTab === "admin" && "Админ-панель"}
@@ -397,6 +399,7 @@ function DashboardContent() {
               {activeTab === "tree" && "ИИ-визуализация готовности вашего стартапа."}
               {activeTab === "admin" && "Управление пользователями, промокодами и аналитикой платформы."}
             </p>
+          </div>
           </div>
           {/* Mobile Menu Toggle could go here if needed */}
           <div className="lg:hidden">
@@ -460,7 +463,7 @@ function DashboardContent() {
               ) : (
                 <div className="flex flex-col h-[calc(100vh-12rem)] bg-white/5 rounded-2xl border border-white/10 overflow-hidden relative items-center justify-center px-4">
                   <div className="absolute inset-0 bg-noise opacity-30 pointer-events-none" />
-                  <Sparkles className="w-16 h-16 text-pitchy-violet/30 mb-6" />
+                  <Star className="w-16 h-16 text-pitchy-violet/30 mb-6" />
                   <h3 className="text-xl sm:text-2xl font-bold text-white mb-2 text-center">Анализ проекта</h3>
                   <p className="text-sm text-white/50 mb-8 max-w-sm text-center">
                     Нажмите кнопку ниже, чтобы начать новый интерактивный анализ.
@@ -471,7 +474,7 @@ function DashboardContent() {
                     disabled={isCreating}
                     className="px-6 py-3 bg-gradient-to-r from-pitchy-violet to-purple-600 font-medium text-white rounded-xl shadow-[0_0_20px_rgba(168,85,247,0.4)] hover:shadow-[0_0_30px_rgba(168,85,247,0.6)] disabled:opacity-50 transition-all cursor-pointer flex items-center justify-center gap-2"
                   >
-                    {isCreating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
+                    {isCreating ? <Loader className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
                     Начать новый анализ
                   </button>
                 </div>
@@ -520,7 +523,7 @@ export default function AuthDashboard() {
     <Layout>
       <Suspense fallback={
         <div className="min-h-[calc(100vh-5rem)] flex flex-col items-center justify-center">
-          <Loader2 className="w-8 h-8 animate-spin text-pitchy-violet" />
+          <Loader className="w-8 h-8 animate-spin text-pitchy-violet" />
         </div>
       }>
         <DashboardContent />

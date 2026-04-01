@@ -7,7 +7,7 @@ import Layout from "@/components/Layout";
 import { GlassCard, Button } from "@/components/shared";
 import { clearToken, getToken } from "@/lib/auth";
 import { postAuthJson, patchAuthJson, UserProfile } from "@/lib/api";
-import { LogOut, User, Shield, ChevronLeft, CheckIcon } from "lucide-react";
+import { LogOut, User, Shield, ChevronLeft, Check } from "react-feather";
 import { motion, AnimatePresence } from "framer-motion";
 
 export function AccountPageClient() {
@@ -227,7 +227,7 @@ export function AccountPageClient() {
                       )}
                       {user?.email && (user?.email_verified || user?.is_social) && (
                         <span className="text-xs bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20 flex items-center gap-1 whitespace-nowrap">
-                          <CheckIcon className="w-3 h-3" />
+                          <Check className="w-3 h-3" />
                           Подтвержден
                         </span>
                       )}
@@ -478,7 +478,7 @@ export function AccountPageClient() {
           <GlassCard className="w-full max-w-sm p-6 text-center" hover={false}>
             <div className="flex justify-center mb-4">
               <div className="w-12 h-12 rounded-full bg-emerald-500/20 flex items-center justify-center border border-emerald-500/30">
-                <CheckIcon className="w-6 h-6 text-emerald-400" />
+                <Check className="w-6 h-6 text-emerald-400" />
               </div>
             </div>
             <h3 className="text-lg font-bold text-white mb-2">Письмо отправлено!</h3>

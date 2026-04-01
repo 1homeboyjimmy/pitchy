@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { X, Info } from "lucide-react";
+import { X, Info } from "react-feather";
 import { Button } from "./Button";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { patchAuthJson, getMe } from "@/lib/api";

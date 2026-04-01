@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Check, Sparkles, Zap, Crown } from "lucide-react";
+import { Check, Star, Zap, Award } from "react-feather";
 import Link from "next/link";
 import Layout from "@/components/Layout";
 
@@ -11,7 +11,7 @@ const plans = [
         name: "Бесплатный",
         price: { monthly: "0", yearly: "0" },
         description: "Для знакомства с платформой",
-        icon: Sparkles,
+        icon: Star,
         features: [
             "1 проект (анализ) в месяц",
             "До 10 сообщений в чате",
@@ -43,7 +43,7 @@ const plans = [
         name: "Премиум",
         price: { monthly: "999", yearly: "9 990" },
         description: "Для венчурных фондов и B2B",
-        icon: Crown,
+        icon: Award,
         features: [
             "Все функции плана Профессиональный",
             "Неограниченное число проектов",

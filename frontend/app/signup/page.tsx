@@ -2,7 +2,7 @@
 
 import { useState, Suspense } from "react";
 import { motion } from "framer-motion";
-import { User, Mail, Lock, Eye, EyeOff, ArrowRight, Check, Github } from "lucide-react";
+import { User, Mail, Lock, Eye, EyeOff, ArrowRight, Check, GitHub } from "react-feather";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import Layout from "@/components/Layout";
@@ -349,7 +349,7 @@ function SignUpContent() {
                                 href="/auth/github/login"
                                 className="flex items-center justify-center gap-2 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-all hover:scale-[1.02]"
                             >
-                                <Github className="w-4 h-4" />
+                                <GitHub className="w-4 h-4" />
                                 <span className="hidden sm:inline text-sm font-medium pb-0.5">GitHub</span>
                             </a>
                         </div>

@@ -2,7 +2,7 @@
 import { motion } from "framer-motion";
 import dayjs from "dayjs";
 import "dayjs/locale/ru";
-import { Calendar, ChevronRight, Trash2 } from "lucide-react";
+import { Calendar, ChevronRight, Trash2 } from "react-feather";
 
 interface SessionCardProps {
     session: {

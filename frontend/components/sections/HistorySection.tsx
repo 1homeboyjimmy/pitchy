@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { HistoryCard } from "@/components/history/HistoryCard";
 import { AnalysisItem, getAuthJson, AnalysisResult } from "@/lib/api";
 import { getToken, authEvents } from "@/lib/auth";
-import { Loader2, X, Sparkles, CheckCircle2, AlertTriangle, Lightbulb } from "lucide-react";
+import { Loader, X, Star, CheckCircle, AlertTriangle, Zap } from "react-feather";
 import { ScoreRing } from "@/components/ui/ScoreRing";
 
 export function HistorySection() {
@@ -91,14 +91,14 @@ export function HistorySection() {
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="flex items-center gap-2 mb-8">
                     <div className="p-2 rounded-lg bg-pitchy-violet/10">
-                        <Sparkles className="w-5 h-5 text-pitchy-violet" />
+                        <Star className="w-5 h-5 text-pitchy-violet" />
                     </div>
                     <h2 className="text-xl font-bold text-white">История анализов</h2>
                 </div>
 
                 {isLoading && history.length === 0 ? (
                     <div className="flex justify-center py-12">
-                        <Loader2 className="w-6 h-6 text-white/20 animate-spin" />
+                        <Loader className="w-6 h-6 text-white/20 animate-spin" />
                     </div>
                 ) : (
                     <div
@@ -157,7 +157,7 @@ export function HistorySection() {
                                             {analysis.strengths.length > 0 && (
                                                 <div className="p-4 rounded-xl bg-emerald-500/5 border border-emerald-500/10">
                                                     <h4 className="text-xs font-medium text-emerald-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                                                        <CheckCircle2 className="w-3.5 h-3.5" />
+                                                        <CheckCircle className="w-3.5 h-3.5" />
                                                         Сильные стороны
                                                     </h4>
                                                     <ul className="space-y-2">
@@ -191,7 +191,7 @@ export function HistorySection() {
 
                                         <div className="p-4 rounded-xl bg-pitchy-violet/10 border border-pitchy-violet/20">
                                             <h4 className="text-xs font-medium text-pitchy-violet uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                                                <Lightbulb className="w-3.5 h-3.5" />
+                                                <Zap className="w-3.5 h-3.5" />
                                                 Рекомендация
                                             </h4>
                                             <p className="text-sm text-white/80">

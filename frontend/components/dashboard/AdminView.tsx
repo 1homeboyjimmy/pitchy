@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Users, Tag, BarChart2, Plus, Trash2, Shield, Loader2, CreditCard } from "lucide-react";
+import { Users, Tag, BarChart2, Plus, Trash2, Shield, Loader, CreditCard } from "react-feather";
 import { Button, GlassCard } from "@/components/shared";
 import { getToken } from "@/lib/auth";
 import { AreaChart } from "@mantine/charts";
@@ -369,7 +369,7 @@ export function AdminView() {
 
             {loading ? (
                 <div className="py-12 flex justify-center">
-                    <Loader2 className="w-8 h-8 text-pitchy-violet animate-spin" />
+                    <Loader className="w-8 h-8 text-pitchy-violet animate-spin" />
                 </div>
             ) : (
                 <motion.div
@@ -743,7 +743,7 @@ export function AdminView() {
                                         className="px-6"
                                     >
                                         {isScraping ? (
-                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                            <Loader className="w-4 h-4 animate-spin" />
                                         ) : (
                                             "Отправить URL"
                                         )}
@@ -774,7 +774,7 @@ export function AdminView() {
                                         className="px-6"
                                     >
                                         {isScraping ? (
-                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                            <Loader className="w-4 h-4 animate-spin" />
                                         ) : (
                                             "Загрузить PDF"
                                         )}
@@ -827,7 +827,7 @@ export function AdminView() {
                                             className="px-6"
                                         >
                                             {isScraping ? (
-                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                                <Loader className="w-4 h-4 animate-spin" />
                                             ) : (
                                                 "Запустить паука"
                                             )}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Bot, User, Loader2, Sparkles, X, Square, ChevronDown, ChevronUp, Atom, FileText, MessageSquare, CheckCircle2, AlertTriangle, Edit3 } from "lucide-react";
+import { Send, Cpu, User, Loader, Star, X, Square, ChevronDown, ChevronUp, Activity, FileText, MessageSquare, CheckCircle, AlertTriangle, Edit3 } from "react-feather";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { getToken } from "@/lib/auth";
@@ -208,7 +208,7 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-pitchy-violet/20 flex items-center justify-center text-pitchy-violet">
-              <Sparkles className="w-4 h-4" />
+              <Star className="w-4 h-4" />
             </div>
             <div>
               <h3 className="text-sm font-bold text-white leading-none">Управление узлом</h3>
@@ -259,7 +259,7 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
                     <div className="space-y-6 animate-in fade-in slide-in-from-top-4 duration-500">
                       <div className="p-4 rounded-2xl bg-[#10B981]/10 border border-[#10B981]/20">
                          <h4 className="flex items-center gap-2 text-[#10B981] font-bold text-sm mb-3">
-                           <CheckCircle2 className="w-4 h-4" /> Узел проанализирован
+                           <CheckCircle className="w-4 h-4" /> Узел проанализирован
                          </h4>
                          {activeNode.data.feedback && (
                            <p className="text-sm text-white/80 leading-relaxed italic border-l-2 border-[#10B981]/40 pl-3">
@@ -334,7 +334,7 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
                           disabled={isEvaluating}
                           className="w-full py-4 rounded-2xl bg-gradient-to-r from-pitchy-violet to-purple-600 text-white font-bold text-sm shadow-[0_4px_15px_rgba(168,85,247,0.3)] hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:scale-100 flex items-center justify-center gap-2"
                         >
-                          {isEvaluating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                          {isEvaluating ? <Loader className="w-4 h-4 animate-spin" /> : <Star className="w-4 h-4" />}
                           Проанализировать узел
                         </button>
                         <button 
@@ -378,13 +378,13 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
                   return (
                     <div key={getMsgKey(msg)} className={`flex gap-3 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
                       <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${msg.role === "user" ? "bg-white/10" : "bg-pitchy-violet"}`}>
-                        {msg.role === "user" ? <User className="w-4 h-4 text-white/70" /> : <Bot className="w-4 h-4 text-white" />}
+                        {msg.role === "user" ? <User className="w-4 h-4 text-white/70" /> : <Cpu className="w-4 h-4 text-white" />}
                       </div>
                       <div className={`max-w-[90%] flex flex-col gap-2 ${msg.role === "user" ? "items-end" : "items-start"}`}>
                         {msg.role === "assistant" && showThoughts && (
                           <div className="w-full bg-transparent overflow-hidden self-start">
                             <button onClick={() => setMessages(prev => prev.map((m, i) => (m.client_id || i) === (msg.client_id || idx) ? { ...m, thoughtExpanded: !m.thoughtExpanded } : m))} className="flex items-center gap-2 px-1 py-1 text-[10px] text-white/40 hover:text-white/60 transition-colors">
-                                <Atom className={`w-3.5 h-3.5 ${isLoading && isLastAssistant && !msg.thoughtTime ? "animate-spin" : "text-pitchy-violet"}`} />
+                                <Activity className={`w-3.5 h-3.5 ${isLoading && isLastAssistant && !msg.thoughtTime ? "animate-spin" : "text-pitchy-violet"}`} />
                                 <span className="font-medium uppercase tracking-wider">{msg.thoughtTime ? `Размышления (${msg.thoughtTime} сек)` : "Pitchy рассуждает..."}</span>
                                 {msg.thoughtExpanded ? <ChevronUp className="w-3.5 h-3.5 ml-auto text-white/20" /> : <ChevronDown className="w-3.5 h-3.5 ml-auto text-white/20" />}
                             </button>
@@ -395,7 +395,7 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
                         )}
                         {msg.role === "assistant" && !hasContent && !showThoughts && isLoading && isLastAssistant && (
                           <div className="flex items-center gap-3 p-3 bg-white/5 rounded-2xl border border-white/10 text-white/50 italic animate-pulse">
-                            <Loader2 className="animate-spin h-3.5 w-3.5 text-pitchy-violet" />
+                            <Loader className="animate-spin h-3.5 w-3.5 text-pitchy-violet" />
                             <span className="text-[12px]">Я анализирую ситуацию...</span>
                           </div>
                         )}

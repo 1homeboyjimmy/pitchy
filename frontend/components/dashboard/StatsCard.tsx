@@ -1,13 +1,13 @@
 "use client";
 
 import { motion } from "framer-motion";
-import type { LucideIcon } from "lucide-react";
+import type { Icon } from "react-feather";
 
 interface StatsCardProps {
     title: string;
     value: string | number;
     subtitle?: string;
-    icon: LucideIcon;
+    icon: Icon;
     trend?: { value: number; isPositive: boolean };
     index?: number;
     color?: "violet" | "cyan" | "emerald" | "amber";

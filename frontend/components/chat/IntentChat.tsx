@@ -2,11 +2,11 @@
 
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Sparkles, Loader2, Key } from "lucide-react";
+import { Send, Star, Loader, Key } from "react-feather";
 import { useRouter } from "next/navigation";
 import { createGuestIntent } from "@/lib/api";
 import { useAuth } from "@/lib/hooks/useAuth";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight } from "react-feather";
 
 const QUICK_ACTIONS = [
     "Оценить идею стартапа",
@@ -118,7 +118,7 @@ export function IntentChat() {
     if (isLoaded && isAuthenticated) {
         return (
             <div className="w-full max-w-3xl mx-auto text-center p-8 glass-panel rounded-3xl shadow-glow-primary/30 py-12">
-                <Sparkles className="w-12 h-12 mb-4 mx-auto text-pitchy-violet opacity-50" />
+                <Star className="w-12 h-12 mb-4 mx-auto text-pitchy-violet opacity-50" />
                 <h3 className="text-xl sm:text-2xl font-bold text-white mb-2">Основной чат находится в дашборде</h3>
                 <p className="text-white/60 mb-6 text-sm sm:text-base max-w-md mx-auto">Вы уже авторизованы. Перейдите в панель управления, чтобы продолжить работу над вашим проектом.</p>
                 <button
@@ -154,7 +154,7 @@ export function IntentChat() {
                                     {message.type === "ai" && (
                                         <div className="flex items-center gap-2 mb-2">
                                             <div className="w-5 h-5 rounded-full bg-gradient-to-br from-pitchy-violet to-pitchy-cyan flex items-center justify-center">
-                                                <Sparkles className="w-3 h-3 text-white" />
+                                                <Star className="w-3 h-3 text-white" />
                                             </div>
                                             <span className="text-xs font-medium text-white/60">
                                                 Pitchy Copilot
@@ -197,7 +197,7 @@ export function IntentChat() {
                             <div className="glass-card rounded-2xl rounded-tl-sm px-4 py-3">
                                 <div className="flex items-center gap-2 mb-2">
                                     <div className="w-5 h-5 rounded-full bg-gradient-to-br from-pitchy-violet to-pitchy-cyan flex items-center justify-center">
-                                        <Sparkles className="w-3 h-3 text-white" />
+                                        <Star className="w-3 h-3 text-white" />
                                     </div>
                                     <span className="text-xs font-medium text-white/60">
                                         Pitchy Copilot
@@ -253,7 +253,7 @@ export function IntentChat() {
                             className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-xl bg-pitchy-violet text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                         >
                             {isTyping || isRedirecting ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
+                                <Loader className="w-4 h-4 animate-spin" />
                             ) : (
                                 <Send className="w-4 h-4 -ml-0.5 mt-0.5" />
                             )}

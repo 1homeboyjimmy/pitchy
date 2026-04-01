@@ -1,7 +1,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Send, User, Bot, Loader2, Sparkles, Lightbulb, Users, Calculator, HelpCircle, ThumbsUp, ThumbsDown, Square, ChevronDown, ChevronUp, Atom } from "lucide-react";
+import { Send, User, Cpu, Loader, Star, Zap, Users, Grid, HelpCircle, ThumbsUp, ThumbsDown, Square, ChevronDown, ChevronUp, Activity } from "react-feather";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 // Button unused
@@ -278,7 +278,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
             <div ref={scrollViewportRef} className="flex-1 overflow-y-auto p-4 space-y-6 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
                 {messages.length === 0 && (
                     <div className="flex flex-col items-center justify-center h-full text-white/30 text-center p-8">
-                        <Sparkles className="w-12 h-12 mb-4 opacity-50" />
+                        <Star className="w-12 h-12 mb-4 opacity-50" />
                         <p>Начните диалог с описания вашего стартапа.</p>
                     </div>
                 )}
@@ -300,7 +300,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                             className={`flex gap-4 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}
                         >
                             <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${msg.role === "user" ? "bg-white/10" : "bg-pitchy-violet"}`}>
-                                {msg.role === "user" ? <User className="w-5 h-5 text-white" /> : <Bot className="w-5 h-5 text-white" />}
+                                {msg.role === "user" ? <User className="w-5 h-5 text-white" /> : <Cpu className="w-5 h-5 text-white" />}
                             </div>
 
                             <div className={`max-w-[85%] flex flex-col gap-2 ${msg.role === "user" ? "items-end" : "items-start"}`}>
@@ -312,7 +312,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                                             }}
                                             className="flex items-center gap-2 px-1 py-1 text-[12px] text-white/40 hover:text-white/60 transition-colors"
                                         >
-                                            <Atom className={`w-4 h-4 ${isLoading && isLastAssistant && !msg.thoughtTime ? "animate-spin" : "text-pitchy-violet"}`} />
+                                            <Activity className={`w-4 h-4 ${isLoading && isLastAssistant && !msg.thoughtTime ? "animate-spin" : "text-pitchy-violet"}`} />
                                             <span className="font-medium">
                                                 {msg.thoughtTime ? `Размышления (${msg.thoughtTime} сек)` : "Pitchy рассуждает..."}
                                             </span>
@@ -334,7 +334,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                                 {/* Loading state placeholder */}
                                 {msg.role === "assistant" && !hasContent && !showThoughts && isLoading && isLastAssistant && (
                                     <div className="flex items-center gap-3 p-4 bg-white/5 rounded-2xl border border-white/10 text-white/60">
-                                        <Loader2 className="animate-spin h-5 w-5 text-pitchy-violet" />
+                                        <Loader className="animate-spin h-5 w-5 text-pitchy-violet" />
                                         <span className="text-sm font-medium animate-pulse">
                                             Pitchy анализирует данные и ищет информацию...
                                         </span>
@@ -407,7 +407,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl mx-auto w-full">
                                 <button onClick={() => handleSendMessage("Анализ идеи")} className="flex items-center gap-3 p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-colors text-left group">
                                     <div className="w-10 h-10 rounded-lg bg-pitchy-violet/20 flex items-center justify-center text-pitchy-violet group-hover:scale-110 transition-transform">
-                                        <Lightbulb className="w-5 h-5" />
+                                        <Zap className="w-5 h-5" />
                                     </div>
                                     <div>
                                         <div className="text-white font-medium">Анализ идеи</div>
@@ -427,7 +427,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
 
                                 <button onClick={() => handleSendMessage("Посчитать экономику проекта")} className="flex items-center gap-3 p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-colors text-left group">
                                     <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:scale-110 transition-transform">
-                                        <Calculator className="w-5 h-5" />
+                                        <Grid className="w-5 h-5" />
                                     </div>
                                     <div>
                                         <div className="text-white font-medium">Юнит-экономика</div>
@@ -453,7 +453,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                     isLoading && messages.length <= 1 && (
                         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-4">
                             <div className="w-8 h-8 rounded-full bg-pitchy-violet flex items-center justify-center flex-shrink-0">
-                                <Loader2 className="w-5 h-5 text-white animate-spin" />
+                                <Loader className="w-5 h-5 text-white animate-spin" />
                             </div>
                             <div className="bg-pitchy-violet/10 border border-pitchy-violet/20 text-white rounded-2xl rounded-tl-sm p-4 flex items-center">
                                 <span className="animate-pulse">Анализирую...</span>
@@ -471,7 +471,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                         >
                             <div className="text-center mb-6">
                                 <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-sm font-medium mb-2">
-                                    <Sparkles className="w-4 h-4" />
+                                    <Star className="w-4 h-4" />
                                     <span>Анализ готов</span>
                                 </div>
                                 <h3 className="text-xl font-bold text-white">Результаты оценки</h3>

@@ -3,20 +3,7 @@
 import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { motion } from "framer-motion";
-import {
-  Target,
-  ShoppingBag,
-  Globe,
-  DollarSign,
-  Users,
-  AlertTriangle,
-  CheckCircle2,
-  CircleDot,
-  FileText,
-  HelpCircle,
-  ChevronDown,
-  ChevronRight,
-} from "lucide-react";
+import { Crosshair, ShoppingBag, Globe, DollarSign, Users, AlertTriangle, CheckCircle, Circle, FileText, HelpCircle, ChevronDown, ChevronRight } from "react-feather";
 
 /* ——— helpers ——— */
 
@@ -32,8 +19,8 @@ const typeIcons: Record<string, React.ReactNode> = {
   Question: <HelpCircle className="w-3.5 h-3.5" />,
   Risk:     <AlertTriangle className="w-3.5 h-3.5" />,
   Fact:     <FileText className="w-3.5 h-3.5" />,
-  Task:     <CheckCircle2 className="w-3.5 h-3.5" />,
-  Artifact: <CircleDot className="w-3.5 h-3.5" />,
+  Task:     <CheckCircle className="w-3.5 h-3.5" />,
+  Artifact: <Circle className="w-3.5 h-3.5" />,
 };
 
 const categoryIcons: Record<string, React.ReactNode> = {
@@ -108,7 +95,7 @@ type CategoryNodeData = {
 export const CategoryNode = memo(function CategoryNode({ data }: NodeProps) {
   const d = data as unknown as CategoryNodeData;
   const style = statusColors[d.status] || statusColors.empty;
-  const icon = categoryIcons[d.category] || <Target className="w-5 h-5" />;
+  const icon = categoryIcons[d.category] || <Crosshair className="w-5 h-5" />;
 
   return (
     <motion.div

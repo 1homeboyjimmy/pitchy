@@ -4,14 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-  Menu,
-  X,
-  LogOut,
-  User,
-  Mail,
-  Send,
-} from "lucide-react";
+import { Menu, X, LogOut, User, Mail, Send } from "react-feather";
 import { getToken, clearToken, authEvents } from "@/lib/auth";
 
 /* ─── Navigation Items ─── */
@@ -108,7 +101,7 @@ function Header() {
         initial={{ y: -20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-        className={`fixed top-0 left-0 right-0 z-50 h-16 flex items-center transition-all duration-300 ${isScrolled
+        className={`fixed top-0 left-0 right-0 z-50 h-[4rem] group flex items-center transition-all duration-300 ${isScrolled
           ? "bg-pitchy-bg/80 backdrop-blur-xl border-b border-white/8 shadow-lg shadow-black/20"
           : "bg-transparent"
           }`}
@@ -123,7 +116,7 @@ function Header() {
           </Link>
 
           {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center gap-1">
+          <nav className="hidden md:flex items-center gap-1 opacity-0 -translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300 pointer-events-none group-hover:pointer-events-auto">
             {navItems.map((item) => (
               <Link
                 key={item.path}
@@ -139,7 +132,7 @@ function Header() {
           </nav>
 
           {/* Desktop Auth */}
-          <div className="hidden md:flex items-center gap-3">
+          <div className="hidden md:flex items-center gap-3 opacity-0 -translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300 pointer-events-none group-hover:pointer-events-auto">
             {token ? (
               <>
                 <Link

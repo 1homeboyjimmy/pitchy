@@ -2,13 +2,13 @@
 
 import { useEffect, useRef } from "react";
 import { motion } from "framer-motion";
-import { Sparkles, Zap, Target, BarChart3 } from "lucide-react";
+import { Star, Zap, Crosshair, BarChart2 } from "react-feather";
 import { IntentChat } from "@/components/chat/IntentChat";
 
 const features = [
     { icon: Zap, label: "30 секунд", sublabel: "На анализ" },
-    { icon: Target, label: "Индекс готовности", sublabel: "Оценка 0-100" },
-    { icon: BarChart3, label: "Пошаговый план", sublabel: "Что делать завтра" },
+    { icon: Crosshair, label: "Индекс готовности", sublabel: "Оценка 0-100" },
+    { icon: BarChart2, label: "Пошаговый план", sublabel: "Что делать завтра" },
 ];
 
 export function HeroSection() {
@@ -61,7 +61,7 @@ export function HeroSection() {
                     className="flex justify-center mb-6"
                 >
                     <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass-card">
-                        <Sparkles className="w-4 h-4 text-pitchy-violet" />
+                        <Star className="w-4 h-4 text-pitchy-violet" />
                         <span className="text-sm text-white/70">
                             ИИ-Copilot для бизнеса
                         </span>

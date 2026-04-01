@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Mail, MapPin, Clock, Send } from "lucide-react";
+import { Mail, MapPin, Clock, Send } from "react-feather";
 import Layout from "@/components/Layout";
 
 const contactInfo = [

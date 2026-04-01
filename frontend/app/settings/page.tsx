@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Settings, User, Bell, Shield, Palette, Save } from "lucide-react";
+import { Settings, User, Bell, Shield, Framer, Save } from "react-feather";
 import { useRouter } from "next/navigation";
 import Layout from "@/components/Layout";
 import { GlassCard } from "@/components/shared";
@@ -13,7 +13,7 @@ const tabs = [
     { id: "profile", label: "Профиль", icon: User },
     { id: "notifications", label: "Уведомления", icon: Bell },
     { id: "security", label: "Безопасность", icon: Shield },
-    { id: "appearance", label: "Вид", icon: Palette },
+    { id: "appearance", label: "Вид", icon: Framer },
 ];
 
 export default function SettingsPage() {

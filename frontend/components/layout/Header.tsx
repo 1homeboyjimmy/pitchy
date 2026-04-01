@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Menu, X, Zap } from "lucide-react";
+import { Menu, X, Zap } from "react-feather";
 import { AnimatedButton } from "../marketing/ui-custom/AnimatedButton";
 import { clearToken } from "@/lib/auth";
 import { useAuth } from "@/lib/hooks/useAuth";

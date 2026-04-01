@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mail, Lock, User, Loader2 } from "lucide-react";
+import { Mail, Lock, User, Loader } from "react-feather";
 import { useRouter } from "next/navigation";
 import { FadeContent } from "../reactbits/FadeContent";
 import { AnimatedButton } from "../ui-custom/AnimatedButton";
@@ -219,7 +219,7 @@ export function LoginPage() {
                         disabled={isLoading}
                         icon={
                           isLoading ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <Loader className="w-4 h-4 animate-spin" />
                           ) : undefined
                         }
                       >
@@ -297,7 +297,7 @@ export function LoginPage() {
                         disabled={isLoading}
                         icon={
                           isLoading ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <Loader className="w-4 h-4 animate-spin" />
                           ) : undefined
                         }
                       >
@@ -329,7 +329,7 @@ export function LoginPage() {
                         disabled={isLoading}
                         icon={
                           isLoading ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <Loader className="w-4 h-4 animate-spin" />
                           ) : undefined
                         }
                       >
