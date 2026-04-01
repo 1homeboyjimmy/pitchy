@@ -12,6 +12,7 @@ email-validator
 alembic
 psycopg2-binary
 pytest
+pytest-asyncio
 httpx
 redis
 prometheus_client

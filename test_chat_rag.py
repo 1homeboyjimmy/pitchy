@@ -4,6 +4,7 @@ Tests that the orchestrator fetches relevant chunks and passes them to LLM promp
 """
 import asyncio
 import json
+import pytest
 import logging
 import os
 
@@ -29,6 +30,7 @@ def make_mock_db():
     return mock_db
 
 
+@pytest.mark.asyncio
 async def test_rag_retrieval_only():
     """Test that RAG retrieval works correctly for legal queries."""
     print("\n" + "="*60)
@@ -83,6 +85,7 @@ async def test_rag_retrieval_only():
     return found_rkn and found_llc
 
 
+@pytest.mark.asyncio
 async def test_orchestrator_with_rag():
     """Test that ChatOrchestrator integrates RAG into its process_message flow."""
     print("\n" + "="*60)
