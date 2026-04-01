@@ -89,6 +89,7 @@ type CategoryNodeData = {
   status: string;
   childCount: number;
   expanded: boolean;
+  summary?: Record<string, string> | null;
   onToggle: () => void;
 };
 
@@ -96,13 +97,19 @@ export const CategoryNode = memo(function CategoryNode({ data }: NodeProps) {
   const d = data as unknown as CategoryNodeData;
   const style = statusColors[d.status] || statusColors.empty;
   const icon = categoryIcons[d.category] || <Crosshair className="w-5 h-5" />;
+  const isCompleted = d.status === "completed";
+  const hasSummary = !!d.summary && Object.keys(d.summary).length > 0;
 
   return (
     <motion.div
       initial={{ scale: 0.9, opacity: 0 }}
-      animate={{ scale: 1, opacity: 1 }}
+      animate={{ 
+        scale: 1, 
+        opacity: 1,
+        width: isCompleted ? 280 : "auto"
+      }}
       whileHover={{ scale: 1.03 }}
-      className={`relative min-w-[160px] rounded-2xl border backdrop-blur-md cursor-pointer ${style.glow}`}
+      className={`relative min-w-[200px] rounded-2xl border backdrop-blur-md cursor-pointer ${style.glow}`}
       style={{ background: style.bg, borderColor: style.border }}
     >
       <Handle type="target" position={Position.Top} className="!bg-white/20 !w-2 !h-2 !border-none" />
@@ -130,6 +137,30 @@ export const CategoryNode = memo(function CategoryNode({ data }: NodeProps) {
           )}
         </button>
       </div>
+
+      {/* AI Summary Table for CategoryNode */}
+      {isCompleted && hasSummary && (
+        <div className="px-4 pb-4">
+          <motion.div 
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            className="mt-1 overflow-hidden border-t border-white/10 pt-3"
+          >
+            <div className="space-y-1.5">
+              {Object.entries(d.summary as Record<string, string>).map(([key, val]) => (
+                <div key={key} className="flex flex-col gap-0.5 overflow-hidden mb-2 last:mb-0">
+                  <span className="text-[10px] text-white/40 uppercase tracking-tight font-medium shrink-0 leading-tight">
+                    {key}
+                  </span>
+                  <span className="text-[11px] text-white/90 leading-snug break-words">
+                    {val}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        </div>
+      )}
 
       <Handle type="source" position={Position.Bottom} className="!bg-white/20 !w-2 !h-2 !border-none" />
     </motion.div>

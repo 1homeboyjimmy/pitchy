@@ -58,7 +58,7 @@ export function ChatInput({
           placeholder={placeholder}
           disabled={disabled}
           rows={1}
-          className="w-full bg-transparent text-white placeholder-white/30 text-[15px] resize-none overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 focus:outline-none disabled:cursor-not-allowed"
+          className="w-full bg-transparent text-white placeholder-white/30 text-[15px] resize-none overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 focus:outline-none focus:ring-0 border-none !outline-none disabled:cursor-not-allowed"
           style={{
             paddingTop: '16px',
             paddingBottom: '16px',
@@ -70,7 +70,7 @@ export function ChatInput({
         />
 
         {/* Send / Stop Button - Floating at the bottom right */}
-        <div className="absolute right-3 bottom-2">
+        <div className="absolute right-3 bottom-[10px]">
           {isLoading ? (
             <motion.button
               whileTap={{ scale: 0.9 }}
@@ -90,7 +90,7 @@ export function ChatInput({
                   : 'bg-white/5 text-white/30 cursor-not-allowed'
               }`}
             >
-              <Send className="w-4 h-4 ml-0.5" />
+              <Send className="w-4 h-4" />
             </motion.button>
           )}
         </div>

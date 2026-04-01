@@ -109,6 +109,7 @@ function buildFlowElements(
           status: n.status,
           childCount,
           expanded,
+          summary: n.data.summary,
           onToggle: () => toggleExpand(n.id),
         },
         draggable: true,
