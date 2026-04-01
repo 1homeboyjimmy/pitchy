@@ -10,6 +10,8 @@ import { getToken } from "@/lib/auth";
 import { AnalysisCard } from "@/components/dashboard/AnalysisCard";
 import dayjs from "dayjs";
 import "dayjs/locale/ru";
+import { ChatInput } from "@/components/chat/ChatInput";
+import { CollapsibleUserMessage } from "@/components/chat/CollapsibleUserMessage";
 
 interface ExtendedChatMessage extends ChatMessageResponse {
     thoughts?: string;
@@ -342,31 +344,31 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                                 )}
 
                                 {shouldRenderMainBubble && (
-                                    <div className={`p-4 rounded-2xl ${msg.role === "user"
-                                        ? "bg-white/10 text-white rounded-tr-sm"
-                                        : "bg-pitchy-violet/10 border border-pitchy-violet/20 text-white rounded-tl-sm"
-                                        }`}>
-                                        <div className="text-sm sm:text-base leading-[1.7] md:leading-[1.8] text-white/90 [&>p]:mb-4 [&>p:last-child]:mb-0 [&>ul]:list-disc [&>ul]:pl-6 [&>ul]:mb-4 [&>ul>li]:mb-2 [&>ul>li]:pl-1 [&>ol]:list-decimal [&>ol]:pl-6 [&>ol]:mb-4 [&>ol>li]:mb-2 [&>ol>li]:pl-1 [&>h2]:text-xl [&>h2]:font-bold [&>h2]:text-pitchy-cyan-light [&>h2]:mt-8 [&>h2]:mb-4 [&>h3]:text-lg [&>h3]:font-bold [&>h3]:text-white [&>h3]:mt-6 [&>h3]:mb-3 [&>strong]:text-white [&>strong]:font-semibold break-words">
-                                            <ReactMarkdown 
-                                                remarkPlugins={[remarkGfm]}
-                                                components={{
-                                                    table: ({...props}) => (
-                                                        <div className="my-4 overflow-x-auto rounded-xl border border-white/10 bg-white/5">
-                                                            <table className="w-full text-left border-collapse" {...props} />
-                                                        </div>
-                                                    ),
-                                                    thead: ({...props}) => <thead className="bg-white/10" {...props} />,
-                                                    th: ({...props}) => <th className="p-3 text-sm font-bold text-pitchy-cyan-light border-b border-white/10" {...props} />,
-                                                    td: ({...props}) => <td className="p-3 text-sm text-white/80 border-b border-white/5 last:border-0" {...props} />,
-                                                }}
-                                            >
-                                                {getDisplayContent(msg)}
-                                            </ReactMarkdown>
-                                            {msg.id === typingMessageId && (
-                                                <span className="inline-block w-0.5 h-4 bg-pitchy-cyan animate-pulse ml-0.5 align-text-bottom" />
-                                            )}
-                                        </div>
-                                        <div className="flex items-center gap-2 mt-2 w-full">
+                                    msg.role === "user" ? (
+                                        <CollapsibleUserMessage content={getDisplayContent(msg)} />
+                                    ) : (
+                                        <div className="p-4 rounded-2xl bg-pitchy-violet/10 border border-pitchy-violet/20 text-white rounded-tl-sm">
+                                            <div className="text-sm sm:text-base leading-[1.7] md:leading-[1.8] text-white/90 [&>p]:mb-4 [&>p:last-child]:mb-0 [&>ul]:list-disc [&>ul]:pl-6 [&>ul]:mb-4 [&>ul>li]:mb-2 [&>ul>li]:pl-1 [&>ol]:list-decimal [&>ol]:pl-6 [&>ol]:mb-4 [&>ol>li]:mb-2 [&>ol>li]:pl-1 [&>h2]:text-xl [&>h2]:font-bold [&>h2]:text-pitchy-cyan-light [&>h2]:mt-8 [&>h2]:mb-4 [&>h3]:text-lg [&>h3]:font-bold [&>h3]:text-white [&>h3]:mt-6 [&>h3]:mb-3 [&>strong]:text-white [&>strong]:font-semibold break-words">
+                                                <ReactMarkdown 
+                                                    remarkPlugins={[remarkGfm]}
+                                                    components={{
+                                                        table: ({...props}) => (
+                                                            <div className="my-4 overflow-x-auto rounded-xl border border-white/10 bg-white/5">
+                                                                <table className="w-full text-left border-collapse" {...props} />
+                                                            </div>
+                                                        ),
+                                                        thead: ({...props}) => <thead className="bg-white/10" {...props} />,
+                                                        th: ({...props}) => <th className="p-3 text-sm font-bold text-pitchy-cyan-light border-b border-white/10" {...props} />,
+                                                        td: ({...props}) => <td className="p-3 text-sm text-white/80 border-b border-white/5 last:border-0" {...props} />,
+                                                    }}
+                                                >
+                                                    {getDisplayContent(msg)}
+                                                </ReactMarkdown>
+                                                {msg.id === typingMessageId && (
+                                                    <span className="inline-block w-0.5 h-4 bg-pitchy-cyan animate-pulse ml-0.5 align-text-bottom" />
+                                                )}
+                                            </div>
+                                            <div className="flex items-center gap-2 mt-2 w-full">
                                             {msg.role === "assistant" && (
                                                 <div className="flex items-center gap-1 pl-1">
                                                     <button
@@ -390,6 +392,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                                             </span>
                                         </div>
                                     </div>
+                                    )
                                 )}
                             </div>
                         </motion.div>
@@ -497,29 +500,17 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
             </div >
 
             {/* Input Area */}
-            < div className="p-4 bg-white/5 border-t border-white/10 backdrop-blur-md" >
-                <div className="relative flex items-center">
-                    <textarea
-                    id="chat-input"
-                    name="chat-message"
-                    ref={textareaRef}
-                        value={inputValue}
-                        onChange={(e) => setInputValue(e.target.value)}
-                        onKeyDown={handleKeyDown}
-                        placeholder={session.analysis ? "Диалог завершен" : "Отправьте сообщение..."}
-                        disabled={!!session.analysis}
-                        className="w-full bg-black/20 text-white placeholder-white/30 rounded-xl leading-[24px] pl-4 pr-14 py-3 min-h-[50px] max-h-[150px] border border-white/10 focus:border-pitchy-violet/50 focus:outline-none focus:ring-1 focus:ring-pitchy-violet/50 resize-none scrollbar-thin disabled:opacity-50 disabled:cursor-not-allowed"
-                        rows={1}
-                    />
-                    <button
-                        onClick={() => isLoading ? stopGeneration() : handleSendMessage()}
-                        disabled={(!inputValue.trim() && !isLoading) || !!session.analysis}
-                        className={`absolute right-3 p-2 rounded-lg text-white transition-colors ${isLoading ? 'bg-red-500/80 hover:bg-red-500' : 'bg-pitchy-violet hover:bg-pitchy-violet/80'}`}
-                    >
-                        {isLoading ? <Square className="w-4 h-4 fill-white" /> : <Send className="w-4 h-4" />}
-                    </button>
-                </div>
-            </div >
+            <div className="p-4 bg-[transparent] backdrop-blur-md pb-6">
+                <ChatInput
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  onSend={() => handleSendMessage()}
+                  isLoading={isLoading}
+                  onStop={stopGeneration}
+                  disabled={!!session.analysis}
+                  placeholder={session.analysis ? "Диалог завершен" : "Спросите Pitchy..."}
+                />
+            </div>
         </div >
     );
 }

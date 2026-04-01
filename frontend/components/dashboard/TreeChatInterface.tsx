@@ -7,6 +7,8 @@ import remarkGfm from "remark-gfm";
 import { getToken } from "@/lib/auth";
 import { getTreeChatHistory, evaluateNode, type TreeNodeResponse, type TreeEdgeResponse } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
+import { ChatInput } from "@/components/chat/ChatInput";
+import { CollapsibleUserMessage } from "@/components/chat/CollapsibleUserMessage";
 
 interface Message {
   role: "user" | "assistant";
@@ -400,18 +402,22 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
                           </div>
                         )}
                         {shouldRenderMainBubble && (
-                          <div className={`p-3 rounded-2xl text-sm leading-relaxed ${msg.role === "user" ? "bg-white/5 text-white/90 border border-white/10 rounded-tr-sm" : "bg-pitchy-violet/5 text-white/90 border border-pitchy-violet/20 rounded-tl-sm relative"}`}>
-                            <div className="prose prose-invert prose-sm max-w-none text-white/80">
-                              <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
-                                table: ({...props}) => (<div className="my-3 overflow-x-auto rounded-xl border border-white/10 bg-white/5"><table className="w-full text-left border-collapse" {...props} /></div>),
-                                thead: ({...props}) => <thead className="bg-white/10" {...props} />,
-                                th: ({...props}) => <th className="p-2 text-[11px] font-bold text-pitchy-cyan-light border-b border-white/10 uppercase tracking-wider" {...props} />,
-                                td: ({...props}) => <td className="p-2 text-[12px] text-white/80 border-b border-white/5 last:border-0" {...props} />,
-                              }}>
-                                {msg.content}
-                              </ReactMarkdown>
+                          msg.role === "user" ? (
+                            <CollapsibleUserMessage content={msg.content} />
+                          ) : (
+                            <div className="p-3 rounded-2xl text-sm leading-relaxed bg-pitchy-violet/5 text-white/90 border border-pitchy-violet/20 rounded-tl-sm relative">
+                              <div className="prose prose-invert prose-sm max-w-none text-white/80">
+                                <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
+                                  table: ({...props}) => (<div className="my-3 overflow-x-auto rounded-xl border border-white/10 bg-white/5"><table className="w-full text-left border-collapse" {...props} /></div>),
+                                  thead: ({...props}) => <thead className="bg-white/10" {...props} />,
+                                  th: ({...props}) => <th className="p-2 text-[11px] font-bold text-pitchy-cyan-light border-b border-white/10 uppercase tracking-wider" {...props} />,
+                                  td: ({...props}) => <td className="p-2 text-[12px] text-white/80 border-b border-white/5 last:border-0" {...props} />,
+                                }}>
+                                  {msg.content}
+                                </ReactMarkdown>
+                              </div>
                             </div>
-                          </div>
+                          )
                         )}
                       </div>
                     </div>
@@ -429,24 +435,15 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
               )}
 
               {/* Input Area */}
-              <div className="p-4 border-t border-white/10 bg-black/20">
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleSend()}
-                    placeholder={activeNode ? `Спросить про ${activeNode.label}...` : "Задайте вопрос..."}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-4 pr-12 text-sm text-white focus:outline-none focus:border-pitchy-violet/50 transition-colors"
-                  />
-                  <button 
-                    onClick={() => isLoading ? stopGeneration() : handleSend()}
-                    disabled={(!input.trim() && !isLoading)}
-                    className={`absolute right-1 top-1 p-2 rounded-lg text-white transition-all ${isLoading ? 'bg-red-500 hover:bg-red-600' : 'bg-pitchy-violet hover:opacity-90 disabled:opacity-30'}`}
-                  >
-                    {isLoading ? <Square className="w-4 h-4 fill-white" /> : <Send className="w-4 h-4" />}
-                  </button>
-                </div>
+              <div className="p-4 border-t border-white/10 bg-[transparent] pb-6">
+                <ChatInput
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onSend={() => handleSend()}
+                  isLoading={isLoading}
+                  onStop={stopGeneration}
+                  placeholder={activeNode ? `Спросить про ${activeNode.label}...` : "Задайте вопрос..."}
+                />
               </div>
             </motion.div>
           )}
