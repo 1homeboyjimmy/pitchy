@@ -225,7 +225,7 @@ function DashboardContent() {
   if (!isAuthenticated) return <UnauthDashboard />;
 
   return (
-    <div className={`flex transition-all duration-300 ${!isSidebarOpen ? 'min-h-screen' : 'min-h-[calc(100vh-4rem)]'}`}>
+    <div className="flex w-full h-full min-h-0 transition-all duration-300">
       {/* Floating Menu Button for FullScreen Mode */}
       <AnimatePresence>
         {!isSidebarOpen && (

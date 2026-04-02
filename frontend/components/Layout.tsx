@@ -355,9 +355,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const isHeaderHidden = isDashboard && !isSidebarOpen;
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className={`${isDashboard ? "h-screen overflow-hidden" : "min-h-screen"} flex flex-col bg-pitchy-bg`}>
       <Header />
-      <main className={`flex-1 transition-all duration-300 ${isHeaderHidden ? "pt-0" : "pt-16"}`}>
+      <main className={`flex-1 flex flex-col min-h-0 transition-all duration-300 ${isHeaderHidden ? "pt-0" : "pt-16"}`}>
         {children}
       </main>
       {!isDashboard && <Footer />}
