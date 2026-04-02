@@ -84,12 +84,17 @@ function DashboardContent() {
   const [loading, setLoading] = useState(true);
   const [userProfile, setUserProfile] = useState<UserResponse | null>(null);
   const [isCreating, setIsCreating] = useState(false);
-  const { isSidebarOpen, setSidebarOpen, toggleSidebar, setIsDashboard } = useLayoutStore();
+  const { isSidebarOpen, setSidebarOpen, toggleSidebar, setIsDashboard, setIsChatOpen } = useLayoutStore();
 
   useEffect(() => {
     setIsDashboard(true);
     return () => setIsDashboard(false);
   }, [setIsDashboard]);
+
+  useEffect(() => {
+    if (setIsChatOpen) setIsChatOpen(activeTab === "chat");
+    return () => { if (setIsChatOpen) setIsChatOpen(false); }
+  }, [activeTab, setIsChatOpen]);
 
   // Handle URL Params for Redirects
   useEffect(() => {
@@ -225,7 +230,7 @@ function DashboardContent() {
   if (!isAuthenticated) return <UnauthDashboard />;
 
   return (
-    <div className="flex w-full h-full min-h-0 transition-all duration-300">
+    <div className="flex w-full flex-1 min-h-0 transition-all duration-300">
       {/* Floating Menu Button for FullScreen Mode */}
       <AnimatePresence>
         {!isSidebarOpen && (

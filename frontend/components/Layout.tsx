@@ -351,11 +351,13 @@ import { CookieConsent } from "@/components/shared/CookieConsent";
 export function Layout({ children }: { children: React.ReactNode }) {
   // Initialize the auto-logout hook (defaults to 3 hours)
   useIdleTimeout();
-  const { isSidebarOpen, isDashboard } = useLayoutStore();
+  const { isSidebarOpen, isDashboard, isChatOpen } = useLayoutStore();
   const isHeaderHidden = isDashboard && !isSidebarOpen;
+  
+  const lockScroll = isDashboard && isChatOpen;
 
   return (
-    <div className={`${isDashboard ? "h-screen overflow-hidden" : "min-h-screen"} flex flex-col bg-pitchy-bg`}>
+    <div className={`${lockScroll ? "h-[100dvh] overflow-hidden" : "min-h-[100dvh]"} flex flex-col bg-transparent`}>
       <Header />
       <main className={`flex-1 flex flex-col min-h-0 transition-all duration-300 ${isHeaderHidden ? "pt-0" : "pt-16"}`}>
         {children}
