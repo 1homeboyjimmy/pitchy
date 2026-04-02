@@ -54,7 +54,7 @@ export function ChatInput({
 
   const containerContent = (
     <div 
-      className={`relative w-full ${isFullscreen ? 'flex flex-col h-full' : 'flex items-end'} rounded-[24px] bg-white/5 border border-white/10 backdrop-blur-md transition-all duration-300 focus-within:bg-white/10 focus-within:border-white/20 focus-within:shadow-[0_0_20px_rgba(255,255,255,0.05)] ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${isFullscreen ? 'bg-zinc-950/80 p-4 border-white/20 shadow-2xl' : ''}`}
+      className={`relative w-full ${isFullscreen ? 'flex flex-col h-full' : 'flex items-end'} rounded-[24px] bg-white/5 border border-white/10 backdrop-blur-md transition-all duration-300 focus-within:bg-white/10 focus-within:border-white/20 focus-within:shadow-[0_0_20px_rgba(255,255,255,0.05)] ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${isFullscreen ? 'p-4 shadow-2xl' : ''}`}
     >
       <textarea
         ref={textareaRef}
@@ -66,7 +66,10 @@ export function ChatInput({
         rows={1}
         className="w-full bg-transparent text-white placeholder-white/30 text-[15px] resize-none overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 focus:outline-none focus:ring-0 border-none !outline-none disabled:cursor-not-allowed"
         style={isFullscreen ? {
-          paddingBottom: '60px',
+          paddingTop: '16px',
+          paddingBottom: '80px',
+          paddingLeft: '16px',
+          paddingRight: '16px',
           height: '100%'
         } : {
           paddingTop: '16px',
@@ -80,15 +83,17 @@ export function ChatInput({
 
       {/* Action Buttons - Floating at the bottom right */}
       <div className={`absolute right-3 ${isFullscreen ? 'bottom-4' : 'bottom-[10px]'} flex gap-2 items-center`}>
-         <motion.button
-          onClick={() => setIsFullscreen(!isFullscreen)}
-          whileTap={{ scale: 0.9 }}
-          type="button"
-          className="w-9 h-9 rounded-full bg-transparent hover:bg-white/10 flex items-center justify-center text-white/50 hover:text-white transition-colors"
-          title={isFullscreen ? "Свернуть" : "Во весь экран"}
-        >
-          {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-        </motion.button>
+        {!isFullscreen && (
+          <motion.button
+            onClick={() => setIsFullscreen(true)}
+            whileTap={{ scale: 0.9 }}
+            type="button"
+            className="w-9 h-9 rounded-full bg-transparent hover:bg-white/10 flex items-center justify-center text-white/50 hover:text-white transition-colors"
+            title="Во весь экран"
+          >
+            <Maximize2 className="w-4 h-4" />
+          </motion.button>
+        )}
         {isLoading ? (
           <motion.button
             whileTap={{ scale: 0.9 }}
@@ -139,9 +144,19 @@ export function ChatInput({
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="w-full max-w-6xl h-[80vh] flex flex-col"
+              className="w-full max-w-6xl h-[80vh] flex flex-col relative"
             >
               {containerContent}
+              
+              {/* Close / Minimize button placed explicitly at top right outside the input or corner of input */}
+              <motion.button
+                onClick={() => setIsFullscreen(false)}
+                whileTap={{ scale: 0.9 }}
+                className="absolute -top-12 right-0 sm:-right-12 sm:top-0 w-10 h-10 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center text-white backdrop-blur-md transition-colors"
+                title="Свернуть"
+              >
+                <Minimize2 className="w-5 h-5" />
+              </motion.button>
             </motion.div>
           </motion.div>
         )}

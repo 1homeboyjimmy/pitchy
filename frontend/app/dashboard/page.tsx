@@ -225,7 +225,22 @@ function DashboardContent() {
   if (!isAuthenticated) return <UnauthDashboard />;
 
   return (
-    <div className="flex min-h-[calc(100vh-5rem)]">
+    <div className={`flex transition-all duration-300 ${!isSidebarOpen ? 'min-h-screen' : 'min-h-[calc(100vh-4rem)]'}`}>
+      {/* Floating Menu Button for FullScreen Mode */}
+      <AnimatePresence>
+        {!isSidebarOpen && (
+          <motion.button
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            onClick={() => toggleSidebar()}
+            className="fixed top-4 left-4 z-[60] p-2 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/20 text-white shadow-lg transition-colors cursor-pointer"
+            title="Открыть меню"
+          >
+            <Menu className="w-5 h-5" />
+          </motion.button>
+        )}
+      </AnimatePresence>
       {/* Sidebar (Desktop) */}
       <motion.aside
         initial={false}
@@ -326,7 +341,7 @@ function DashboardContent() {
       </motion.aside>
 
       {/* content */}
-      <main className="flex-1 py-6 px-4 sm:px-6 lg:px-8 overflow-hidden w-full">
+      <main className={`flex-1 px-4 sm:px-6 lg:px-8 overflow-hidden w-full flex flex-col transition-all duration-300 ${isSidebarOpen ? 'py-6' : 'pt-6 pb-0'}`}>
         {/* Mobile Navigation (Tabs) */}
         <div className="flex lg:hidden overflow-x-auto gap-2 mb-6 pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 [&::-webkit-scrollbar]:hidden">
           {[
