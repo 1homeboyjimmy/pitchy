@@ -7,7 +7,7 @@
 /* ─── Tailwind v4 Theme ─── */
 @theme {
   /* Colors — Pitchy palette */
-  --color-pitchy-bg: #0A0A0F;
+  --color-pitchy-bg: #131313;
   --color-pitchy-surface: rgba(26, 26, 36, 0.65);
   --color-pitchy-surface-light: rgba(26, 26, 36, 0.45);
   --color-pitchy-violet: #8B5CF6;
@@ -45,11 +45,11 @@
 /* ─── CSS Variables ─── */
 :root {
   /* Core */
-  --background: #0A0A0F;
+  --background: #131313;
   --foreground: #FAFAFA;
 
   /* Pitchy */
-  --pitchy-bg: #0A0A0F;
+  --pitchy-bg: #131313;
   --pitchy-bg-secondary: #111118;
   --pitchy-surface: rgba(26, 26, 36, 0.65);
   --pitchy-surface-hover: rgba(26, 26, 36, 0.75);
@@ -254,7 +254,7 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
   gap: 8px;
   padding: 12px 24px;
   background: white;
-  color: #0A0A0F;
+  color: #131313;
   border: 1px solid white;
   border-radius: 12px;
   font-weight: 500;

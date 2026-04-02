@@ -266,7 +266,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
     };
 
     return (
-        <div className="flex flex-col flex-1 h-full min-h-0 bg-[#0A0A0F] rounded-2xl border border-white/10 overflow-hidden relative">
+        <div className="flex flex-col flex-1 h-full min-h-0 bg-[#131313] rounded-2xl border border-white/10 overflow-hidden relative">
             <div className="absolute inset-0 bg-noise opacity-30 pointer-events-none" />
 
             {/* Messages Area */}
@@ -495,7 +495,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
             </div >
 
             {/* Input Area */}
-            <div className="p-4 bg-[#0A0A0F] pb-6 z-10 relative">
+            <div className="p-4 bg-[#131313] pb-6 z-10 relative">
                 <ChatInput
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}

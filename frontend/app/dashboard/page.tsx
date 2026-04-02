@@ -492,7 +492,7 @@ function DashboardContent() {
                   onUpdate={(updated) => setActiveSession(updated)}
                 />
               ) : (
-                <div className="flex flex-col flex-1 h-full bg-[#0A0A0F] rounded-2xl border border-white/10 overflow-hidden relative items-center justify-center px-4">
+                <div className="flex flex-col flex-1 h-full bg-[#131313] rounded-2xl border border-white/10 overflow-hidden relative items-center justify-center px-4">
                   <div className="absolute inset-0 bg-noise opacity-30 pointer-events-none" />
                   <Star className="w-16 h-16 text-pitchy-violet/30 mb-6" />
                   <h3 className="text-xl sm:text-2xl font-bold text-white mb-2 text-center">Анализ проекта</h3>
