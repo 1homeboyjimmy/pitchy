@@ -2,7 +2,7 @@
 
 import React, { useRef, useEffect, useState } from "react";
 import { Send, Square, Maximize2, Minimize2 } from "react-feather";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 
 interface ChatInputProps {
   value: string;
@@ -30,12 +30,12 @@ export function ChatInput({
   useEffect(() => {
     if (textareaRef.current) {
       if (isFullscreen) {
-        textareaRef.current.style.height = '100%';
+        // In expanded mode, we fix the height to a large value
+        textareaRef.current.style.height = '300px';
       } else {
-        // Reset height to calculate real auto height
+        // Auto adjust based on scrollHeight
         textareaRef.current.style.height = 'auto';
-        // Set to scrollHeight or at least one line (e.g., 24px + padding)
-        textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
+        textareaRef.current.style.height = `${Math.min(Math.max(textareaRef.current.scrollHeight, 40), 200)}px`;
       }
     }
   }, [value, isFullscreen]);
@@ -46,121 +46,65 @@ export function ChatInput({
       e.preventDefault();
       if (!disabled && value.trim() && !isLoading) {
         onSend();
-        // optionally collapse fullscreen after send?
-        // setIsFullscreen(false); 
       }
     }
   };
 
-  const containerContent = (
-    <div 
-      className={`relative w-full ${isFullscreen ? 'flex flex-col h-full' : 'flex items-end'} rounded-[24px] bg-white/5 border border-white/10 backdrop-blur-md transition-all duration-300 focus-within:bg-white/10 focus-within:border-white/20 focus-within:shadow-[0_0_20px_rgba(255,255,255,0.05)] ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${isFullscreen ? 'p-4 shadow-2xl' : ''}`}
-    >
-      <textarea
-        ref={textareaRef}
-        value={value}
-        onChange={onChange}
-        onKeyDown={handleKeyDown}
-        placeholder={placeholder}
-        disabled={disabled}
-        rows={1}
-        className="w-full bg-transparent text-white placeholder-white/30 text-[15px] resize-none overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 focus:outline-none focus:ring-0 border-none !outline-none disabled:cursor-not-allowed"
-        style={isFullscreen ? {
-          paddingTop: '16px',
-          paddingBottom: '80px',
-          paddingLeft: '16px',
-          paddingRight: '16px',
-          height: '100%'
-        } : {
-          paddingTop: '16px',
-          paddingBottom: '16px',
-          paddingLeft: '20px',
-          paddingRight: '100px',
-          minHeight: '56px',
-          maxHeight: '200px'
-        }}
-      />
+  return (
+    <div className="relative w-full max-w-4xl mx-auto">
+      <div 
+        className={`relative w-full flex flex-col rounded-[24px] bg-[#111118] border border-white/10 transition-all duration-300 focus-within:border-white/20 focus-within:shadow-[0_0_20px_rgba(255,255,255,0.05)] ${disabled ? 'opacity-50 cursor-not-allowed' : ''} shadow-lg`}
+      >
+        <textarea
+          ref={textareaRef}
+          value={value}
+          onChange={onChange}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder}
+          disabled={disabled}
+          rows={1}
+          className="w-full bg-transparent text-white placeholder-white/30 text-[15px] resize-none overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 focus:outline-none focus:ring-0 border-none !outline-none disabled:cursor-not-allowed px-5 py-4"
+          style={{ minHeight: '56px' }}
+        />
 
-      {/* Action Buttons - Floating at the bottom right */}
-      <div className={`absolute right-3 ${isFullscreen ? 'bottom-4' : 'bottom-[10px]'} flex gap-2 items-center`}>
-        {!isFullscreen && (
+        {/* Action Buttons - safely placed inside the container at the bottom */}
+        <div className="flex justify-between items-center w-full px-3 pb-2 pt-1 mt-auto">
           <motion.button
-            onClick={() => setIsFullscreen(true)}
+            onClick={() => setIsFullscreen(!isFullscreen)}
             whileTap={{ scale: 0.9 }}
             type="button"
-            className="w-9 h-9 rounded-full bg-transparent hover:bg-white/10 flex items-center justify-center text-white/50 hover:text-white transition-colors"
-            title="Во весь экран"
+            className="w-9 h-9 rounded-full bg-transparent hover:bg-white/10 flex items-center justify-center text-white/40 hover:text-white transition-colors ml-1"
+            title={isFullscreen ? "Свернуть" : "Во весь экран"}
           >
-            <Maximize2 className="w-4 h-4" />
+            {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
           </motion.button>
-        )}
-        {isLoading ? (
-          <motion.button
-            whileTap={{ scale: 0.9 }}
-            onClick={onStop}
-            className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
-          >
-            <Square className="w-4 h-4 fill-white" />
-          </motion.button>
-        ) : (
-          <motion.button
-            whileTap={{ scale: 0.9 }}
-            onClick={() => {
-              onSend();
-            }}
-            disabled={disabled || !value.trim()}
-            className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors ${
-              value.trim() && !disabled 
-                ? 'bg-white text-black hover:bg-white/90' 
-                : 'bg-white/5 text-white/30 cursor-not-allowed'
-            }`}
-          >
-            <Send className="w-4 h-4" />
-          </motion.button>
-        )}
+          
+          <div className="flex items-center">
+            {isLoading ? (
+              <motion.button
+                whileTap={{ scale: 0.9 }}
+                onClick={onStop}
+                className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors mr-1"
+              >
+                <Square className="w-4 h-4 fill-white" />
+              </motion.button>
+            ) : (
+              <motion.button
+                whileTap={{ scale: 0.9 }}
+                onClick={onSend}
+                disabled={disabled || !value.trim()}
+                className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors mr-1 ${
+                  value.trim() && !disabled 
+                    ? 'bg-white text-black hover:bg-white/90 shadow-md' 
+                    : 'bg-white/5 text-white/30 cursor-not-allowed'
+                }`}
+              >
+                <Send className="w-4 h-4 ml-[2px]" />
+              </motion.button>
+            )}
+          </div>
+        </div>
       </div>
     </div>
-  );
-
-  return (
-    <>
-      {/* Normal static container */}
-      {!isFullscreen && (
-        <div className="relative w-full max-w-4xl mx-auto">
-          {containerContent}
-        </div>
-      )}
-
-      {/* Fullscreen Modal Overlay */}
-      <AnimatePresence>
-        {isFullscreen && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-8 bg-black/60 backdrop-blur-sm"
-          >
-            <motion.div 
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="w-full max-w-6xl h-[80vh] flex flex-col relative"
-            >
-              {containerContent}
-              
-              {/* Close / Minimize button placed explicitly at top right outside the input or corner of input */}
-              <motion.button
-                onClick={() => setIsFullscreen(false)}
-                whileTap={{ scale: 0.9 }}
-                className="absolute -top-12 right-0 sm:-right-12 sm:top-0 w-10 h-10 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center text-white backdrop-blur-md transition-colors"
-                title="Свернуть"
-              >
-                <Minimize2 className="w-5 h-5" />
-              </motion.button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </>
   );
 }

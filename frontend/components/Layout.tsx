@@ -360,7 +360,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <main className={`flex-1 transition-all duration-300 ${isHeaderHidden ? "pt-0" : "pt-16"}`}>
         {children}
       </main>
-      <Footer />
+      {!isDashboard && <Footer />}
       <CookieConsent />
     </div>
   );

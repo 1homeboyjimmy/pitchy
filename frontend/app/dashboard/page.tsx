@@ -479,7 +479,7 @@ function DashboardContent() {
               initial={{ opacity: 0, scale: 0.98 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.98 }}
-              className="h-full"
+              className="h-full flex-1 flex flex-col min-h-0"
             >
               {activeSession ? (
                 <ChatInterface
@@ -487,7 +487,7 @@ function DashboardContent() {
                   onUpdate={(updated) => setActiveSession(updated)}
                 />
               ) : (
-                <div className="flex flex-col h-[calc(100vh-12rem)] bg-white/5 rounded-2xl border border-white/10 overflow-hidden relative items-center justify-center px-4">
+                <div className="flex flex-col flex-1 h-full bg-[#0A0A0F] rounded-2xl border border-white/10 overflow-hidden relative items-center justify-center px-4">
                   <div className="absolute inset-0 bg-noise opacity-30 pointer-events-none" />
                   <Star className="w-16 h-16 text-pitchy-violet/30 mb-6" />
                   <h3 className="text-xl sm:text-2xl font-bold text-white mb-2 text-center">Анализ проекта</h3>

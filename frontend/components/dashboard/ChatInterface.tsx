@@ -266,11 +266,12 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
     };
 
     return (
-        <div className="flex flex-col h-[calc(100vh-12rem)] bg-white/5 rounded-2xl border border-white/10 overflow-hidden relative">
+        <div className="flex flex-col flex-1 h-full min-h-0 bg-[#0A0A0F] rounded-2xl border border-white/10 overflow-hidden relative">
             <div className="absolute inset-0 bg-noise opacity-30 pointer-events-none" />
 
             {/* Messages Area */}
-            <div ref={scrollViewportRef} className="flex-1 overflow-y-auto p-4 space-y-6 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+            <div ref={scrollViewportRef} className="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+                <div className="max-w-4xl mx-auto w-full space-y-6">
                 {messages.length === 0 && (
                     <div className="flex flex-col items-center justify-center h-full text-white/30 text-center p-8">
                         <Star className="w-12 h-12 mb-4 opacity-50" />
@@ -298,7 +299,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                                 {msg.role === "user" ? <User className="w-5 h-5 text-white" /> : <Cpu className="w-5 h-5 text-white" />}
                             </div>
 
-                            <div className={`max-w-[85%] flex flex-col gap-2 ${msg.role === "user" ? "items-end" : "items-start"}`}>
+                            <div className={`flex-1 min-w-0 flex flex-col gap-2 ${msg.role === "user" ? "items-end" : "items-start"}`}>
                                 {msg.role === "assistant" && showThoughts && (
                                     <div className="w-full max-w-[600px] bg-transparent overflow-hidden self-start">
                                         <button 
@@ -490,10 +491,11 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                 }
 
                 <div ref={messagesEndRef} />
+                </div>
             </div >
 
             {/* Input Area */}
-            <div className="p-4 bg-[transparent] backdrop-blur-md pb-6">
+            <div className="p-4 bg-[#0A0A0F] pb-6 z-10 relative">
                 <ChatInput
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
