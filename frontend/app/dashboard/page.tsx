@@ -234,7 +234,7 @@ function DashboardContent() {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
             onClick={() => toggleSidebar()}
-            className="fixed top-4 left-4 z-[60] p-2 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/20 text-white shadow-lg transition-colors cursor-pointer"
+            className="fixed top-6 left-[max(1.5rem,calc(50vw-35rem))] z-[60] p-2.5 rounded-xl bg-pitchy-bg/80 hover:bg-white/10 backdrop-blur-xl border border-white/20 text-white shadow-lg shadow-black/20 transition-colors cursor-pointer"
             title="Открыть меню"
           >
             <Menu className="w-5 h-5" />

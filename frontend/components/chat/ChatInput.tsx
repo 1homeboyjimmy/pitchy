@@ -53,8 +53,9 @@ export function ChatInput({
   return (
     <div className="relative w-full max-w-4xl mx-auto">
       <div 
-        className={`relative w-full flex flex-col rounded-[24px] bg-[#111118] border border-white/10 transition-all duration-300 focus-within:border-white/20 focus-within:shadow-[0_0_20px_rgba(255,255,255,0.05)] ${disabled ? 'opacity-50 cursor-not-allowed' : ''} shadow-lg`}
+        className={`relative w-full flex flex-col rounded-[20px] bg-[#111118] border border-white/10 transition-all duration-300 focus-within:border-white/20 focus-within:shadow-[0_0_20px_rgba(255,255,255,0.05)] ${disabled ? 'opacity-50 cursor-not-allowed' : ''} shadow-lg overflow-hidden group`}
       >
+        <div className="absolute top-0 left-0 right-0 h-6 bg-gradient-to-b from-[#111118] to-transparent z-10 pointer-events-none opacity-0 transition-opacity duration-300 group-focus-within:opacity-100" />
         <textarea
           ref={textareaRef}
           value={value}
@@ -63,7 +64,7 @@ export function ChatInput({
           placeholder={placeholder}
           disabled={disabled}
           rows={1}
-          className="w-full bg-transparent text-white placeholder-white/30 text-[15px] resize-none overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 focus:outline-none focus:ring-0 border-none !outline-none disabled:cursor-not-allowed px-5 py-4"
+          className="w-full bg-transparent text-white placeholder-white/30 text-[15px] resize-none overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 focus:outline-none focus:ring-0 border-none !outline-none disabled:cursor-not-allowed px-5 py-4 pb-2 z-0 relative"
           style={{ minHeight: '56px' }}
         />
 

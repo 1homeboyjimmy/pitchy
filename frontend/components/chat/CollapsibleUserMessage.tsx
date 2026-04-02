@@ -27,7 +27,7 @@ export function CollapsibleUserMessage({ content }: CollapsibleUserMessageProps)
   }, [content]);
 
   return (
-    <div className="w-full bg-white/10 text-white rounded-2xl rounded-tr-sm px-4 pt-3 pb-3 relative">
+    <div className="w-fit max-w-[90%] md:max-w-[70%] lg:max-w-[60%] ml-auto bg-white/10 text-white rounded-3xl rounded-tr-sm px-5 pt-3 pb-3 relative inline-block text-left shadow-lg">
       <motion.div
          layout
          initial={false}
