@@ -11,6 +11,7 @@ import { ChatInterface } from "@/components/dashboard/ChatInterface";
 import { AdminView } from "@/components/dashboard/AdminView";
 import { TreeView } from "@/components/dashboard/TreeView";
 import { GlassCard, Button } from "@/components/shared";
+import { useLayoutStore } from "@/lib/store/layout";
 import { getToken } from "@/lib/auth";
 import {
   getChatSessions,
@@ -83,7 +84,12 @@ function DashboardContent() {
   const [loading, setLoading] = useState(true);
   const [userProfile, setUserProfile] = useState<UserResponse | null>(null);
   const [isCreating, setIsCreating] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const { isSidebarOpen, setSidebarOpen, toggleSidebar, setIsDashboard } = useLayoutStore();
+
+  useEffect(() => {
+    setIsDashboard(true);
+    return () => setIsDashboard(false);
+  }, [setIsDashboard]);
 
   // Handle URL Params for Redirects
   useEffect(() => {
@@ -377,35 +383,40 @@ function DashboardContent() {
         </div>
 
         {/* Header / Title */}
-        <div className="flex justify-between items-center mb-8">
-          <div className="flex items-center gap-4">
-            <button
-               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-               className="hidden lg:flex p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/70 hover:text-white transition-colors"
-               aria-label="Toggle Sidebar"
+        <AnimatePresence>
+          {isSidebarOpen && (
+            <motion.div 
+              initial={{ height: 0, opacity: 0, marginBottom: 0 }}
+              animate={{ height: "auto", opacity: 1, marginBottom: 32 }}
+              exit={{ height: 0, opacity: 0, marginBottom: 0, overflow: "hidden" }}
+              className="flex justify-between items-center"
             >
-               <Menu className="w-5 h-5" />
-            </button>
-            <div>
-              <h1 className="text-2xl font-bold text-white mb-1">
-                {activeTab === "overview" && "Обзор проектов"}
-              {activeTab === "chat" && (activeSession ? activeSession.title : "Чат с аналитиком")}
-              {activeTab === "tree" && "Древо принятия решений"}
-               {activeTab === "admin" && "Админ-панель"}
-            </h1>
-            <p className="text-white/40 text-sm">
-              {activeTab === "overview" && "Управляйте вашими анализами и запускайте новые."}
-              {activeTab === "chat" && "Интерактивный анализ вашего стартапа."}
-              {activeTab === "tree" && "ИИ-визуализация готовности вашего стартапа."}
-              {activeTab === "admin" && "Управление пользователями, промокодами и аналитикой платформы."}
-            </p>
-          </div>
-          </div>
-          {/* Mobile Menu Toggle could go here if needed */}
-          <div className="lg:hidden">
-            {/* Simplified mobile nav just for context, mostly Layout handles it */}
-          </div>
-        </div>
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={() => toggleSidebar()}
+                  className="hidden lg:flex p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/70 hover:text-white transition-colors"
+                  aria-label="Toggle Sidebar"
+                >
+                  <Menu className="w-5 h-5" />
+                </button>
+                <div>
+                  <h1 className="text-2xl font-bold text-white mb-1">
+                    {activeTab === "overview" && "Обзор проектов"}
+                  {activeTab === "chat" && (activeSession ? activeSession.title : "Чат с аналитиком")}
+                  {activeTab === "tree" && "Древо принятия решений"}
+                  {activeTab === "admin" && "Админ-панель"}
+                </h1>
+                <p className="text-white/40 text-sm">
+                  {activeTab === "overview" && "Управляйте вашими анализами и запускайте новые."}
+                  {activeTab === "chat" && "Интерактивный анализ вашего стартапа."}
+                  {activeTab === "tree" && "ИИ-визуализация готовности вашего стартапа."}
+                  {activeTab === "admin" && "Управление пользователями, промокодами и аналитикой платформы."}
+                </p>
+              </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <AnimatePresence mode="wait">
           {activeTab === "overview" && (

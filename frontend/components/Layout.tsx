@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Menu, X, LogOut, User, Mail, Send } from "react-feather";
 import { getToken, clearToken, authEvents } from "@/lib/auth";
+import { useLayoutStore } from "@/lib/store/layout";
 
 /* ─── Navigation Items ─── */
 const navItems = [
@@ -65,6 +66,8 @@ function Header() {
   // Use state for token to trigger re-renders
   const [token, setTokenState] = useState<string | null>(null);
 
+  const { isSidebarOpen, isDashboard } = useLayoutStore();
+
   useEffect(() => {
     // Initial check - wrap in setTimeout to avoid synchronous setState warning
     const timer = setTimeout(() => {
@@ -95,13 +98,15 @@ function Header() {
     router.push("/");
   };
 
+  const isHeaderHidden = isDashboard && !isSidebarOpen;
+
   return (
     <>
       <motion.header
         initial={{ y: -20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
+        animate={{ y: isHeaderHidden ? -100 : 0, opacity: isHeaderHidden ? 0 : 1 }}
         transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-        className={`fixed top-0 left-0 right-0 z-50 h-[4rem] group flex items-center transition-all duration-300 ${isScrolled
+        className={`fixed top-0 left-0 right-0 z-50 h-[4rem] flex items-center transition-all duration-300 ${isScrolled
           ? "bg-pitchy-bg/80 backdrop-blur-xl border-b border-white/8 shadow-lg shadow-black/20"
           : "bg-transparent"
           }`}
@@ -116,7 +121,7 @@ function Header() {
           </Link>
 
           {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center gap-1 opacity-0 -translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300 pointer-events-none group-hover:pointer-events-auto">
+          <nav className="hidden md:flex items-center gap-1 transition-all duration-300">
             {navItems.map((item) => (
               <Link
                 key={item.path}
@@ -132,7 +137,7 @@ function Header() {
           </nav>
 
           {/* Desktop Auth */}
-          <div className="hidden md:flex items-center gap-3 opacity-0 -translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300 pointer-events-none group-hover:pointer-events-auto">
+          <div className="hidden md:flex items-center gap-3 transition-all duration-300">
             {token ? (
               <>
                 <Link
@@ -346,11 +351,15 @@ import { CookieConsent } from "@/components/shared/CookieConsent";
 export function Layout({ children }: { children: React.ReactNode }) {
   // Initialize the auto-logout hook (defaults to 3 hours)
   useIdleTimeout();
+  const { isSidebarOpen, isDashboard } = useLayoutStore();
+  const isHeaderHidden = isDashboard && !isSidebarOpen;
 
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
-      <main className="flex-1 pt-16">{children}</main>
+      <main className={`flex-1 transition-all duration-300 ${isHeaderHidden ? "pt-0" : "pt-16"}`}>
+        {children}
+      </main>
       <Footer />
       <CookieConsent />
     </div>

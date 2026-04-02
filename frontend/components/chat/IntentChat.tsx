@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { createGuestIntent } from "@/lib/api";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { ArrowRight } from "react-feather";
+import { ChatInput } from "./ChatInput";
 
 const QUICK_ACTIONS = [
     "Оценить идею стартапа",
@@ -235,30 +236,21 @@ export function IntentChat() {
                 </div>
 
                 {/* Input Area */}
-                <div className="p-4 sm:p-6 border-t border-white/8 bg-black/20">
-                    <div className="relative w-full cursor-text rounded-[14px] border border-white/10 bg-white/5 transition-all duration-200 flex items-end gap-2 p-1.5">
-                        <textarea
-                            ref={inputRef}
-                            value={inputValue}
-                            onChange={(e) => setInputValue(e.target.value)}
-                            onKeyDown={handleKeyDown}
-                            placeholder="Опишите вашу идею или задайте вопрос..."
-                            rows={1}
-                            className="flex-1 bg-transparent border-none !outline-none resize-none overflow-y-auto min-h-[40px] max-h-[150px] py-2.5 pl-3 text-white placeholder-white/40 text-sm focus:!outline-none focus:!ring-0 scrollbar-none"
-                            disabled={isTyping || isRedirecting}
-                        />
-                        <button
-                            onClick={() => handleSend()}
-                            disabled={!inputValue.trim() || isTyping || isRedirecting}
-                            className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-xl bg-pitchy-violet text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                        >
-                            {isTyping || isRedirecting ? (
-                                <Loader className="w-4 h-4 animate-spin" />
-                            ) : (
-                                <Send className="w-4 h-4 -ml-0.5 mt-0.5" />
-                            )}
-                        </button>
-                    </div>
+                <div className="p-4 sm:p-6 bg-transparent">
+                    <ChatInput
+                        value={inputValue}
+                        onChange={(e) => {
+                            setInputValue(e.target.value);
+                            // sync to auto-resize
+                            if (inputRef.current) {
+                                inputRef.current.value = e.target.value;
+                            }
+                        }}
+                        onSend={() => handleSend()}
+                        isLoading={isTyping || isRedirecting}
+                        placeholder="Опишите вашу идею или задайте вопрос..."
+                        disabled={isTyping || isRedirecting}
+                    />
                 </div>
             </div>
         </div>
