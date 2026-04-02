@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Providers } from "./providers";
-import { DarkVeilWrapper } from "@/components/effects/DarkVeilWrapper";
 import "./globals.css";
 import "@mantine/core/styles.css";
 import "@mantine/notifications/styles.css";
@@ -56,7 +55,6 @@ export default function RootLayout({
         <BreadcrumbsSchema />
         <Providers>
           <LightRaysWrapper />
-          <DarkVeilWrapper />
           {children}
         </Providers>
       </body>
