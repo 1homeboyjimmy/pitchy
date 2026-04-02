@@ -415,7 +415,7 @@ export function AdminView() {
                             </GlassCard>
 
                             {/* Promo codes list */}
-                            <div className="bg-[#0F0F13] border border-white/10 rounded-2xl overflow-hidden">
+                            <div className="bg-[#131313] border border-white/10 rounded-2xl overflow-hidden">
                                 <table className="w-full text-left text-sm text-white">
                                     <thead className="bg-white/5 text-white/50 border-b border-white/10">
                                         <tr>
@@ -455,7 +455,7 @@ export function AdminView() {
                         <div className="space-y-6 mt-6">
                             <div className="flex items-center justify-between">
                                 <h3 className="text-xl font-bold text-white">Аналитика платформы</h3>
-                                <div className="flex bg-[#0F0F13] border border-white/10 rounded-xl p-1">
+                                <div className="flex bg-[#131313] border border-white/10 rounded-xl p-1">
                                     {[
                                         { label: "24 часа", value: "24h" },
                                         { label: "3 дня", value: "3d" },
@@ -587,7 +587,7 @@ export function AdminView() {
 
                     {activeTab === "users" && (
                         <div className="space-y-6">
-                            <div className="bg-[#0F0F13] border border-white/10 rounded-2xl overflow-hidden overflow-x-auto">
+                            <div className="bg-[#131313] border border-white/10 rounded-2xl overflow-hidden overflow-x-auto">
                                 <table className="w-full text-left text-sm text-white min-w-[800px]">
                                     <thead className="bg-white/5 text-white/50 border-b border-white/10">
                                         <tr>

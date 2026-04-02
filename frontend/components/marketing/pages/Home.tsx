@@ -83,8 +83,7 @@ export function HomePage() {
   );
 
   return (
-    <div className="min-h-[calc(100vh-5rem)] flex flex-col items-center justify-center px-4 py-12 relative">
-      <div className="absolute inset-0 bg-gradient-to-b from-violet-950/20 via-transparent to-transparent pointer-events-none" />
+    <div className="min-h-[calc(100vh-5rem)] flex flex-col items-center justify-center px-4 py-12 relative overflow-hidden">
 
       <div className="relative z-10 w-full max-w-4xl mx-auto text-center">
         <FadeContent delay={0.2}>

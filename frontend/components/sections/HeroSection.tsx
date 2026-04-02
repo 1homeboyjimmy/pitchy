@@ -43,7 +43,7 @@ export function HeroSection() {
                 transition={{ duration: 1.5, ease: [0.16, 1, 0.3, 1] }}
                 className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[600px] h-[600px] rounded-full"
                 style={{
-                    background: "radial-gradient(circle, rgba(139, 92, 246, 0.15) 0%, transparent 60%)",
+                    background: "radial-gradient(circle, rgba(255, 255, 255, 0.03) 0%, transparent 60%)",
                     filter: "blur(60px)",
                     transform: "translate(calc(-50% + var(--mouse-x, 0px)), calc(-25% + var(--mouse-y, 0px)))",
                     transition: "transform 0.3s ease-out",

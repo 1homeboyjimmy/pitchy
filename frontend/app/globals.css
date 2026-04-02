@@ -8,8 +8,8 @@
 @theme {
   /* Colors — Pitchy palette */
   --color-pitchy-bg: #131313;
-  --color-pitchy-surface: rgba(26, 26, 36, 0.65);
-  --color-pitchy-surface-light: rgba(26, 26, 36, 0.45);
+  --color-pitchy-surface: rgba(19, 19, 19, 0.65);
+  --color-pitchy-surface-light: rgba(19, 19, 19, 0.45);
   --color-pitchy-violet: #8B5CF6;
   --color-pitchy-violet-light: #A78BFA;
   --color-pitchy-violet-dark: #7C3AED;
@@ -50,9 +50,9 @@
 
   /* Pitchy */
   --pitchy-bg: #131313;
-  --pitchy-bg-secondary: #111118;
-  --pitchy-surface: rgba(26, 26, 36, 0.65);
-  --pitchy-surface-hover: rgba(26, 26, 36, 0.75);
+  --pitchy-bg-secondary: #0d0d0d;
+  --pitchy-surface: rgba(30, 30, 30, 0.65);
+  --pitchy-surface-hover: rgba(40, 40, 40, 0.75);
   --pitchy-border: rgba(255, 255, 255, 0.06);
   --pitchy-border-hover: rgba(255, 255, 255, 0.1);
   --pitchy-violet: #8B5CF6;
@@ -136,14 +136,14 @@ body {
 
 /* ─── Glassmorphism ─── */
 .glass-panel {
-  background: rgba(26, 26, 36, 0.65);
+  background: rgba(19, 19, 19, 0.75);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .glass-card {
-  background: rgba(26, 26, 36, 0.45);
+  background: rgba(25, 25, 25, 0.45);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.06);
@@ -168,7 +168,7 @@ body {
 /* ─── Gradients ─── */
 .gradient-hero {
   background: radial-gradient(ellipse 80% 50% at 50% -20%,
-      rgba(139, 92, 246, 0.15) 0%,
+      rgba(255, 255, 255, 0.03) 0%,
       transparent 60%);
 }
 
