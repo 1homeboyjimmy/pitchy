@@ -126,7 +126,10 @@ async def stream_makura(system_prompt: str, user_message: str, model: str = None
                             break
                         try:
                             chunk = json.loads(data_str)
-                            delta = chunk["choices"][0].get("delta", {})
+                            choices = chunk.get("choices", [])
+                            if not choices:
+                                continue
+                            delta = choices[0].get("delta", {})
                             if "content" in delta:
                                 yield delta["content"]
                         except Exception as e:

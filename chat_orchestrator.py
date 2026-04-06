@@ -438,6 +438,26 @@ class ChatOrchestrator:
         reply, _ = await call_makura("Ты — эксперт по глубокому анализу рынков и бизнес-помощник.", prompt)
         return reply or "Не удалось обработать результаты поиска и базы знаний."
 
+    async def _handle_search(self, user_message: str) -> str:
+        """Handle internet search intent by using Tavily and returning insights."""
+        from search_agent import async_search_with_sources
+        sources, search_context = await async_search_with_sources(user_message)
+        
+        prompt = (
+            "Ты — бизнес-аналитик. Пользователь задал вопрос, требующий поиска в интернете.\n\n"
+            f"Найденная информация из сети:\n{search_context}\n\n"
+            f"Вопрос пользователя: {user_message}\n\n"
+            "Дай развернутый ответ на основе интернета. Укажи источники, если уместно."
+        )
+        
+        reply, _ = await call_makura("Ты — эксперт по поиску и сводке информации.", prompt)
+        
+        if sources:
+            source_links = "\n\n**Источники:**\n" + "\n".join([f"- [{s['title']}]({s['url']})" for s in sources])
+            reply = (reply or "") + source_links
+            
+        return reply or "Поиск не дал результатов."
+
     async def _handle_legal(self, user_message: str, rag_context: str = "") -> str:
         """Handle legal questions via YandexGPT (specialized for RU law) + RAG."""
         from yandex_gpt_client import call_yandex_gpt
