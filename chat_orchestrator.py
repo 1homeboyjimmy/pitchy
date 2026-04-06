@@ -161,7 +161,7 @@ class ChatOrchestrator:
         
         return []
 
-    async def add_chat_message(self, role: str, content: str, thoughts: Optional[str] = None, node_id: Optional[str] = None, model_used: str = None, client_id: str = None):
+    async def add_chat_message(self, role: str, content: str, thoughts: Optional[str] = None, node_id: Optional[str] = None, model_used: str = None, client_id: str = None, sources: list[dict] = None):
         """Add message to Redis list and PostgreSQL."""
         msg = {
             "role": role,
@@ -169,7 +169,8 @@ class ChatOrchestrator:
             "thoughts": thoughts,
             "model_used": model_used,
             "timestamp": datetime.now().isoformat(),
-            "client_id": client_id
+            "client_id": client_id,
+            "sources": sources
         }
         
         # 1. Perspective: Redis (Hot)
@@ -188,7 +189,8 @@ class ChatOrchestrator:
                     thoughts=thoughts,
                     model_used=model_used,
                     client_id=client_id,
-                    node_id=node_id
+                    node_id=node_id,
+                    sources=sources
                 )
                 self.db.add(db_msg)
                 self.db.commit()
@@ -271,19 +273,20 @@ class ChatOrchestrator:
         thoughts_full = ""
         model_used = "Makura (GLM-5)"
         enriched_data = {}
+        sources_list = None
 
-        trace = None
         try:
-            from langfuse import Langfuse
-            langfuse_client = Langfuse()
-            trace = langfuse_client.trace(
+            from langfuse.decorators import observe, langfuse_context
+        except ImportError:
+            langfuse_context = None
+
+        if langfuse_context:
+            langfuse_context.update_current_observation(
                 name=f"chat_orchestrator_{intent}",
                 user_id=str(self.user_id),
                 session_id=str(self.session_id),
                 tags=[intent, "deep_search" if use_deep_search else "basic_search"]
             )
-        except Exception as e:
-            logger.warning(f"Langfuse init failed: {e}")
 
         try:
             if intent == "chat" or intent not in ["tree", "finance", "search", "legal"]:
@@ -316,6 +319,8 @@ class ChatOrchestrator:
                         reply_full += data.get("content", "")
                     elif data["type"] == "thought":
                         thoughts_full += data.get("content", "")
+                    elif data["type"] == "sources":
+                        sources_list = data.get("data", [])
                     yield json_chunk
 
 
@@ -342,13 +347,12 @@ class ChatOrchestrator:
                     yield json.dumps({"type": "chunk", "content": chunk}) + "\n"
                     
         finally:
-            if trace and (reply_full or thoughts_full):
+            if langfuse_context and (reply_full or thoughts_full):
                 try:
-                    trace.generation(
-                        name="orchestrator_completion",
+                    langfuse_context.update_current_observation(
                         model=model_used,
                         input=user_message,
-                        completion=f"<thought>{thoughts_full}</thought>\n\n{reply_full}" if thoughts_full else reply_full
+                        output=f"<thought>{thoughts_full}</thought>\n\n{reply_full}" if thoughts_full else reply_full
                     )
                 except Exception as e:
                     logger.error(f"Langfuse generation tracking failed: {e}")
@@ -361,7 +365,7 @@ class ChatOrchestrator:
 
         # 4. Finalize
         await self.add_chat_message("user", user_message, node_id=active_node_id, client_id=client_id)
-        await self.add_chat_message("assistant", reply_full, thoughts=thoughts_full.strip() if thoughts_full else None, node_id=active_node_id, model_used=model_used, client_id=assistant_client_id)
+        await self.add_chat_message("assistant", reply_full, thoughts=thoughts_full.strip() if thoughts_full else None, node_id=active_node_id, model_used=model_used, client_id=assistant_client_id, sources=sources_list)
 
         # Final metadata
         yield json.dumps({

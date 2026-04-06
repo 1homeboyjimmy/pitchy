@@ -1264,7 +1264,7 @@ async def parse_thought_generator(generator):
     if buffer:
         yield json.dumps({"type": "thought" if inside_thought else "chunk", "content": buffer}) + "\n"
 
-def save_assistant_message(session_id: int, content: str, thoughts: str | None = None, client_id: str | None = None):
+def save_assistant_message(session_id: int, content: str, thoughts: str | None = None, client_id: str | None = None, sources: list[dict] | None = None):
     from db import SessionLocal
     from models import ChatMessage as DbChatMessage
     db = SessionLocal()
@@ -1274,7 +1274,8 @@ def save_assistant_message(session_id: int, content: str, thoughts: str | None =
             role="assistant", 
             content=content,
             thoughts=thoughts,
-            client_id=client_id
+            client_id=client_id,
+            sources=sources
         )
         db.add(msg)
         db.commit() # Сразу фиксируем в базе
@@ -2598,24 +2599,25 @@ async def send_chat_message(
         background_tasks.add_task(rename_chat_session_background, session.id, payload.content)
 
     # 2. Generator with Thoughts
+    try:
+        from langfuse.decorators import observe, langfuse_context
+    except ImportError:
+        observe = lambda **kw: lambda f: f
+        langfuse_context = None
+
+    @observe(name="main_chat", as_type="generation")
     async def session_chat_generator():
-        provider = os.getenv("PRIMARY_PROVIDER", "makura")
-        full_response = ""
-        full_thoughts = ""
-        
-        trace = None
-        try:
-            from langfuse import Langfuse
-            langfuse_client = Langfuse()
-            trace = langfuse_client.trace(
-                name="main_chat",
+        if langfuse_context:
+            langfuse_context.update_current_observation(
                 user_id=str(user.id),
                 session_id=str(session.id),
                 tags=["main_chat", "deep_search" if getattr(payload, "use_deep_search", False) else "basic_search"]
             )
-        except Exception as e:
-            logger.warning(f"Langfuse init failed: {e}")
-            
+        
+        provider = os.getenv("PRIMARY_PROVIDER", "makura")
+        full_response = ""
+        full_thoughts = ""
+        
         try:
             # We need history for contextual responses
             history = (
@@ -2663,20 +2665,20 @@ async def send_chat_message(
                         session_id=session.id, 
                         content=full_response,
                         thoughts=full_thoughts.strip() if full_thoughts.strip() else None,
-                        client_id=payload.assistant_client_id
+                        client_id=payload.assistant_client_id,
+                        sources=sources if getattr(payload, "use_deep_search", False) else None
                     )
                 )
         except Exception as e:
             logger.error(f"Session streaming failed: {e}")
             yield json.dumps({"type": "error", "content": str(e)}) + "\n"
         finally:
-            if trace and (full_response or full_thoughts):
+            if langfuse_context and (full_response or full_thoughts):
                 try:
-                    trace.generation(
-                        name="main_chat_completion",
-                        model=provider,
+                    langfuse_context.update_current_observation(
                         input=payload.content,
-                        completion=f"<thought>{full_thoughts}</thought>\n\n{full_response}" if full_thoughts else full_response
+                        output=f"<thought>{full_thoughts}</thought>\n\n{full_response}" if full_thoughts else full_response,
+                        model=provider
                     )
                 except Exception as e:
                     logger.error(f"Langfuse tracking failed: {e}")
