@@ -258,7 +258,7 @@ class ChatOrchestrator:
         if buffer:
             yield json.dumps({"type": "thought" if inside_thought else "chunk", "content": buffer}) + "\n"
 
-    async def process_message(self, user_message: str, active_node_id: str = None, client_id: str = None, assistant_client_id: str = None):
+    async def process_message(self, user_message: str, active_node_id: str = None, client_id: str = None, assistant_client_id: str = None, use_deep_search: bool = False):
         """Main entry point for chat orchestration. Yields JSON chunks."""
         state = await self.load_state()
         history = await self.get_chat_history(node_id=active_node_id)
@@ -272,53 +272,86 @@ class ChatOrchestrator:
         model_used = "Makura (GLM-5)"
         enriched_data = {}
 
-        if intent == "chat" or intent not in ["tree", "finance", "search", "legal"]:
-            # Fetch RAG context for chat
-            rag_context_list = await asyncio.to_thread(rag.get_relevant_chunks, user_message, top_k=3)
-            rag_context = "\n".join(rag_context_list)
-            
-            yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
-            async for json_chunk in self._parse_thought_generator(self._stream_chat(user_message, history, state, active_node_id, rag_context=rag_context)):
-                data = json.loads(json_chunk.strip())
-                if data["type"] == "chunk": 
-                    reply_full += data["content"]
-                elif data["type"] == "thought":
-                    thoughts_full += data["content"]
-                yield json_chunk
-        
-        elif intent == "tree":
-            reply_full, enriched_data = await self._handle_tree_edit(user_message, state, active_node_id)
-            yield json.dumps({"type": "chunk", "content": reply_full}) + "\n"
-            yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
-        
-        elif intent == "search":
-            model_used = "Perplexity/Agent"
-            # Logic: Use search handler which now also includes RAG checks
-            reply_full = await self._handle_search(user_message)
-            yield json.dumps({"type": "chunk", "content": reply_full}) + "\n"
-            yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
+        trace = None
+        try:
+            from langfuse import Langfuse
+            langfuse_client = Langfuse()
+            trace = langfuse_client.trace(
+                name=f"chat_orchestrator_{intent}",
+                user_id=str(self.user_id),
+                session_id=str(self.session_id),
+                tags=[intent, "deep_search" if use_deep_search else "basic_search"]
+            )
+        except Exception as e:
+            logger.warning(f"Langfuse init failed: {e}")
 
-        elif intent == "legal":
-            model_used = "YandexGPT (Юрист)"
-            # Fetch RAG context for legal
-            rag_context_list = await asyncio.to_thread(rag.get_relevant_chunks, user_message, categories=["legal_and_taxes"], top_k=3)
-            rag_context = "\n".join(rag_context_list)
+        try:
+            if intent == "chat" or intent not in ["tree", "finance", "search", "legal"]:
+                # Fetch RAG context for chat
+                rag_context_list = await asyncio.to_thread(rag.get_relevant_chunks, user_message, top_k=3)
+                rag_context = "\n".join(rag_context_list)
+                
+                yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
+                async for json_chunk in self._parse_thought_generator(self._stream_chat(user_message, history, state, active_node_id, rag_context=rag_context)):
+                    data = json.loads(json_chunk.strip())
+                    if data["type"] == "chunk": 
+                        reply_full += data["content"]
+                    elif data["type"] == "thought":
+                        thoughts_full += data["content"]
+                    yield json_chunk
             
-            reply_full = await self._handle_legal(user_message, rag_context=rag_context)
-            yield json.dumps({"type": "chunk", "content": reply_full}) + "\n"
-            yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
-        
-        elif intent == "finance":
-            model_used = "GigaChat"
-            reply_full, enriched_data = await self._handle_finance(user_message, state, active_node_id)
-            yield json.dumps({"type": "chunk", "content": reply_full}) + "\n"
-            yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
-        
-        else:
-            # Fallback
-            async for chunk in self._stream_chat(user_message, history, state, active_node_id):
-                reply_full += chunk
-                yield json.dumps({"type": "chunk", "content": chunk}) + "\n"
+            elif intent == "tree":
+                reply_full, enriched_data = await self._handle_tree_edit(user_message, state, active_node_id)
+                yield json.dumps({"type": "chunk", "content": reply_full}) + "\n"
+                yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
+            
+            elif intent == "search":
+                model_used = "Perplexity/Agent"
+                yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
+                
+                # Logic: Use search handler that yields chunks natively
+                async for json_chunk in self._handle_search(user_message, use_deep_search):
+                    data = json.loads(json_chunk.strip())
+                    if data["type"] == "chunk": 
+                        reply_full += data.get("content", "")
+                    elif data["type"] == "thought":
+                        thoughts_full += data.get("content", "")
+                    yield json_chunk
+
+
+            elif intent == "legal":
+                model_used = "YandexGPT (Юрист)"
+                # Fetch RAG context for legal
+                rag_context_list = await asyncio.to_thread(rag.get_relevant_chunks, user_message, categories=["legal_and_taxes"], top_k=3)
+                rag_context = "\n".join(rag_context_list)
+                
+                reply_full = await self._handle_legal(user_message, rag_context=rag_context)
+                yield json.dumps({"type": "chunk", "content": reply_full}) + "\n"
+                yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
+            
+            elif intent == "finance":
+                model_used = "GigaChat"
+                reply_full, enriched_data = await self._handle_finance(user_message, state, active_node_id)
+                yield json.dumps({"type": "chunk", "content": reply_full}) + "\n"
+                yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
+            
+            else:
+                # Fallback
+                async for chunk in self._stream_chat(user_message, history, state, active_node_id):
+                    reply_full += chunk
+                    yield json.dumps({"type": "chunk", "content": chunk}) + "\n"
+                    
+        finally:
+            if trace and (reply_full or thoughts_full):
+                try:
+                    trace.generation(
+                        name="orchestrator_completion",
+                        model=model_used,
+                        input=user_message,
+                        completion=f"<thought>{thoughts_full}</thought>\n\n{reply_full}" if thoughts_full else reply_full
+                    )
+                except Exception as e:
+                    logger.error(f"Langfuse generation tracking failed: {e}")
 
         # 3. Merge state if AI returned structured data
         if enriched_data:
@@ -438,25 +471,30 @@ class ChatOrchestrator:
         reply, _ = await call_makura("Ты — эксперт по глубокому анализу рынков и бизнес-помощник.", prompt)
         return reply or "Не удалось обработать результаты поиска и базы знаний."
 
-    async def _handle_search(self, user_message: str) -> str:
-        """Handle internet search intent by using Tavily and returning insights."""
+    async def _handle_search(self, user_message: str, use_deep_search: bool = False):
+        """Handle internet search intent by using Tavily and returning insights stream."""
         from search_agent import async_search_with_sources
-        sources, search_context = await async_search_with_sources(user_message)
+        
+        # 1. Inform client that we are starting search
+        yield json.dumps({"type": "thought", "content": "Ищу информацию в интернете..."}) + "\n"
+        
+        sources, search_context = await async_search_with_sources(user_message, use_deep_search)
+        
+        if sources:
+            # Yield the sources as a structured chunk right away
+            yield json.dumps({"type": "sources", "data": sources}) + "\n"
         
         prompt = (
             "Ты — бизнес-аналитик. Пользователь задал вопрос, требующий поиска в интернете.\n\n"
             f"Найденная информация из сети:\n{search_context}\n\n"
             f"Вопрос пользователя: {user_message}\n\n"
-            "Дай развернутый ответ на основе интернета. Укажи источники, если уместно."
+            "Дай развернутый ответ на основе интернета. Можешь сослаться на источники по номерам, но не выводи ссылки."
         )
+        system = "Ты — эксперт по поиску и сводке информации. Сначала напиши свои мысли в <thought>...</thought>, а затем ответ."
         
-        reply, _ = await call_makura("Ты — эксперт по поиску и сводке информации.", prompt)
-        
-        if sources:
-            source_links = "\n\n**Источники:**\n" + "\n".join([f"- [{s['title']}]({s['url']})" for s in sources])
-            reply = (reply or "") + source_links
-            
-        return reply or "Поиск не дал результатов."
+        # Stream from Makura and parse thoughts correctly
+        async for chunk in self._parse_thought_generator(stream_makura(system, prompt)):
+            yield chunk
 
     async def _handle_legal(self, user_message: str, rag_context: str = "") -> str:
         """Handle legal questions via YandexGPT (specialized for RU law) + RAG."""

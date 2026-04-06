@@ -139,6 +139,7 @@ class ChatMessageCreateRequest(BaseModel):
     content: str = Field(..., min_length=1)
     client_id: str | None = None
     assistant_client_id: str | None = None
+    use_deep_search: bool = False
 
 
 class UserUpdateRequest(BaseModel):
@@ -311,6 +312,7 @@ class TreeChatRequest(BaseModel):
     active_node_id: str | None = None
     client_id: str | None = None
     assistant_client_id: str | None = None
+    use_deep_search: bool = False
 
 
 class TreeChatResponse(BaseModel):

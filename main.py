@@ -2604,6 +2604,20 @@ async def send_chat_message(
         provider = os.getenv("PRIMARY_PROVIDER", "makura")
         full_response = ""
         full_thoughts = ""
+        
+        trace = None
+        try:
+            from langfuse import Langfuse
+            langfuse_client = Langfuse()
+            trace = langfuse_client.trace(
+                name="main_chat",
+                user_id=str(user.id),
+                session_id=str(session.id),
+                tags=["main_chat", "deep_search" if getattr(payload, "use_deep_search", False) else "basic_search"]
+            )
+        except Exception as e:
+            logger.warning(f"Langfuse init failed: {e}")
+            
         try:
             # We need history for contextual responses
             history = (
@@ -2621,8 +2635,18 @@ async def send_chat_message(
             except:
                 context_chunks = []
 
+            # If user wants deep_search from main chat, we could also call tavily here, but for now we'll stick to RAG
             user_prompt = _build_chat_prompt(chat_history, context_chunks)
             
+            # Additional internet search if requested
+            if getattr(payload, "use_deep_search", False):
+                from search_agent import async_search_with_sources
+                sources, search_ctx = await async_search_with_sources(payload.content, use_deep_search=True)
+                if search_ctx:
+                    user_prompt = f"ДАННЫЕ ИЗ БАЗЫ:\n\n{context_chunks}\n\nДАННЫЕ ИЗ ИНТЕРНЕТА:\n\n{search_ctx}\n\nВопрос: {payload.content}"
+                    if sources:
+                        yield json.dumps({"type": "sources", "data": sources}) + "\n"
+
             raw_gen = stream_makura(SYSTEM_CHAT_PROMPT, user_prompt)
             
             async for json_chunk in parse_thought_generator(raw_gen):
@@ -2647,8 +2671,24 @@ async def send_chat_message(
         except Exception as e:
             logger.error(f"Session streaming failed: {e}")
             yield json.dumps({"type": "error", "content": str(e)}) + "\n"
+        finally:
+            if trace and (full_response or full_thoughts):
+                try:
+                    trace.generation(
+                        name="main_chat_completion",
+                        model=provider,
+                        input=payload.content,
+                        completion=f"<thought>{full_thoughts}</thought>\n\n{full_response}" if full_thoughts else full_response
+                    )
+                except Exception as e:
+                    logger.error(f"Langfuse tracking failed: {e}")
 
-    return StreamingResponse(session_chat_generator(), media_type="text/event-stream")
+    headers = {
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no"
+    }
+    return StreamingResponse(session_chat_generator(), media_type="text/event-stream", headers=headers)
 
 async def classify_intent(user_message: str) -> list[str]:
     """Router LLM: Determines which RAG collections to search based on the user's intent."""

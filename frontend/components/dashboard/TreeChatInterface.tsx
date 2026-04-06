@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Cpu, User, Loader, Star, X, ChevronDown, ChevronUp, Activity, FileText, MessageSquare, CheckCircle, AlertTriangle, Edit3 } from "react-feather";
+import { Cpu, User, Loader, Star, X, ChevronDown, ChevronUp, Activity, FileText, MessageSquare, CheckCircle, AlertTriangle, Edit3, Globe, Link2 } from "react-feather";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { getToken } from "@/lib/auth";
@@ -19,6 +19,8 @@ interface Message {
   thoughtTime?: number;
   thoughtExpanded?: boolean;
   client_id?: string;
+  sources?: { title: string; url: string }[];
+  sourcesExpanded?: boolean;
 }
 
 interface TreeChatInterfaceProps {
@@ -34,6 +36,7 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
   const [hints, setHints] = useState<string[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [useDeepSearch, setUseDeepSearch] = useState(false);
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [formData, setFormData] = useState<Record<string, string>>({});
   
@@ -169,7 +172,7 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
       const { postTreeChatStream } = await import("@/lib/api");
       const stableKey = now.getTime();
       
-      for await (const chunk of postTreeChatStream(treeId, messageToSend, token, activeNode?.id, abortController.signal, userClientId, assistantClientId)) {
+      for await (const chunk of postTreeChatStream(treeId, messageToSend, token, activeNode?.id, abortController.signal, userClientId, assistantClientId, useDeepSearch)) {
         if (chunk.type === "thought") {
           fullThoughtContent += chunk.content;
           setMessages(prev => prev.map(m => m.client_id === assistantClientId ? { ...m, thoughts: fullThoughtContent } : m));
@@ -180,6 +183,8 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
           }
           assistantContent += chunk.content;
           setMessages((prev) => prev.map(m => m.client_id === assistantClientId ? { ...m, content: assistantContent, ...durationUpdate } : m));
+        } else if (chunk.type === "sources") {
+          setMessages((prev) => prev.map(m => m.client_id === assistantClientId ? { ...m, sources: chunk.data } : m));
         } else if (chunk.type === "metadata") {
           setMessages((prev) => prev.map(m => m.client_id === assistantClientId ? { ...m, model_used: chunk.model } : m));
         } else if (chunk.type === "tree_update") {
@@ -419,6 +424,51 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
                             </div>
                           )
                         )}
+
+                        {/* Qwen-Style Sources Rendering */}
+                        {msg.role === "assistant" && msg.sources && msg.sources.length > 0 && (
+                          <div className="w-full mt-2">
+                            <button
+                              onClick={() => setMessages(prev => prev.map((m, i) => (m.client_id || i) === (msg.client_id || idx) ? { ...m, sourcesExpanded: !m.sourcesExpanded } : m))}
+                              className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 text-[11px] text-white/60 hover:text-white transition-all w-fit"
+                            >
+                              <Globe className="w-3.5 h-3.5 text-pitchy-violet" />
+                              <span className="font-semibold">{msg.sources.length} ИСТОЧНИКОВ</span>
+                              {msg.sourcesExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                            </button>
+                            
+                            <AnimatePresence>
+                              {msg.sourcesExpanded && (
+                                <motion.div
+                                  initial={{ height: 0, opacity: 0 }}
+                                  animate={{ height: "auto", opacity: 1 }}
+                                  exit={{ height: 0, opacity: 0 }}
+                                  className="overflow-hidden mt-2"
+                                >
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-2 bg-white/5 border border-white/10 rounded-xl">
+                                    {msg.sources.map((s, i) => (
+                                      <a
+                                        key={i}
+                                        href={s.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex flex-col p-3 rounded-lg bg-black/20 hover:bg-white/5 border border-transparent hover:border-white/10 transition-all group"
+                                      >
+                                        <div className="flex items-center gap-2 mb-1">
+                                          <div className="w-5 h-5 rounded bg-white/10 flex items-center justify-center shrink-0">
+                                            <Link2 className="w-3 h-3 text-white/50 group-hover:text-white" />
+                                          </div>
+                                          <span className="text-[12px] text-white/80 font-medium line-clamp-1">{s.title || "Источник"}</span>
+                                        </div>
+                                        <span className="text-[10px] text-white/40 line-clamp-1 truncate block ml-7">{s.url}</span>
+                                      </a>
+                                    ))}
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
@@ -442,6 +492,8 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
                   onSend={() => handleSend()}
                   isLoading={isLoading}
                   onStop={stopGeneration}
+                  useDeepSearch={useDeepSearch}
+                  onToggleDeepSearch={() => setUseDeepSearch(!useDeepSearch)}
                   placeholder={activeNode ? `Спросить про ${activeNode.label}...` : "Задайте вопрос..."}
                 />
               </div>

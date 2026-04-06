@@ -1,7 +1,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { User, Cpu, Loader, Star, Zap, Users, Grid, HelpCircle, ThumbsUp, ThumbsDown, ChevronDown, ChevronUp, Activity } from "react-feather";
+import { User, Cpu, Loader, Star, Zap, Users, Grid, HelpCircle, ThumbsUp, ThumbsDown, ChevronDown, ChevronUp, Activity, Globe, Link2 } from "react-feather";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 // Button unused
@@ -18,6 +18,8 @@ interface ExtendedChatMessage extends ChatMessageResponse {
     thoughtTime?: number;
     thoughtExpanded?: boolean;
     client_id?: string;
+    sources?: { title: string; url: string }[];
+    sourcesExpanded?: boolean;
 }
 
 interface ChatInterfaceProps {
@@ -29,6 +31,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
     const [messages, setMessages] = useState<ExtendedChatMessage[]>(session.messages || []);
     const [inputValue, setInputValue] = useState("");
     const [isLoading, setIsLoading] = useState(false);
+    const [useDeepSearch, setUseDeepSearch] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const scrollViewportRef = useRef<HTMLDivElement>(null);
@@ -208,7 +211,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
             const { sendChatMessageStream, getChatSession } = await import("@/lib/api");
 
             try {
-                for await (const chunk of sendChatMessageStream(session.id, content, token, abortController.signal, userClientId, assistantClientId)) {
+                for await (const chunk of sendChatMessageStream(session.id, content, token, abortController.signal, userClientId, assistantClientId, useDeepSearch)) {
                     if (chunk.type === "thought") {
                         fullThoughtContent += chunk.content;
                         setMessages(prev => prev.map(m =>
@@ -223,6 +226,10 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                         assistantContent += chunk.content;
                         setMessages((prev) =>
                             prev.map(m => m.client_id === assistantClientId ? { ...m, content: assistantContent, ...thoughtUpdate } : m)
+                        );
+                    } else if (chunk.type === "sources") {
+                        setMessages((prev) =>
+                            prev.map(m => m.client_id === assistantClientId ? { ...m, sources: chunk.data } : m)
                         );
                     } else if (chunk.type === "metadata") {
                         setMessages((prev) =>
@@ -388,6 +395,48 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                                     </div>
                                     )
                                 )}
+
+                                {/* Qwen-Style Sources Rendering */}
+                                {msg.role === "assistant" && msg.sources && msg.sources.length > 0 && (
+                                  <div className="w-full mt-2">
+                                    <button
+                                      onClick={() => setMessages(prev => prev.map(m => (m.client_id || m.id) === messageKey ? { ...m, sourcesExpanded: !m.sourcesExpanded } : m))}
+                                      className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 text-[11px] text-white/60 hover:text-white transition-all w-fit"
+                                    >
+                                      <Globe className="w-3.5 h-3.5 text-pitchy-violet" />
+                                      <span className="font-semibold">{msg.sources.length} ИСТОЧНИКОВ</span>
+                                      {msg.sourcesExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                                    </button>
+                                    
+                                    {msg.sourcesExpanded && (
+                                        <motion.div
+                                          initial={{ height: 0, opacity: 0 }}
+                                          animate={{ height: "auto", opacity: 1 }}
+                                          className="overflow-hidden mt-2"
+                                        >
+                                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-2 bg-white/5 border border-white/10 rounded-xl">
+                                            {msg.sources.map((s, i) => (
+                                              <a
+                                                key={i}
+                                                href={s.url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="flex flex-col p-3 rounded-lg bg-black/20 hover:bg-white/5 border border-transparent hover:border-white/10 transition-all group"
+                                              >
+                                                <div className="flex items-center gap-2 mb-1">
+                                                  <div className="w-5 h-5 rounded bg-white/10 flex items-center justify-center shrink-0">
+                                                    <Link2 className="w-3 h-3 text-white/50 group-hover:text-white" />
+                                                  </div>
+                                                  <span className="text-[12px] text-white/80 font-medium line-clamp-1">{s.title || "Источник"}</span>
+                                                </div>
+                                                <span className="text-[10px] text-white/40 line-clamp-1 truncate block ml-7">{s.url}</span>
+                                              </a>
+                                            ))}
+                                          </div>
+                                        </motion.div>
+                                    )}
+                                  </div>
+                                )}
                             </div>
                         </motion.div>
                     );
@@ -502,6 +551,8 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                   onSend={() => handleSendMessage()}
                   isLoading={isLoading}
                   onStop={stopGeneration}
+                  useDeepSearch={useDeepSearch}
+                  onToggleDeepSearch={() => setUseDeepSearch(!useDeepSearch)}
                   disabled={!!session.analysis}
                   placeholder={session.analysis ? "Диалог завершен" : "Спросите Pitchy..."}
                 />

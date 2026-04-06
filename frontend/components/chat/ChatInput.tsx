@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useRef, useEffect, useState } from "react";
-import { Send, Square, Maximize2, Minimize2 } from "react-feather";
+import { Send, Square, Maximize2, Minimize2, Globe } from "react-feather";
 import { motion } from "framer-motion";
 
 interface ChatInputProps {
@@ -12,6 +12,8 @@ interface ChatInputProps {
   onStop?: () => void;
   placeholder?: string;
   disabled?: boolean;
+  useDeepSearch?: boolean;
+  onToggleDeepSearch?: () => void;
 }
 
 export function ChatInput({
@@ -22,6 +24,8 @@ export function ChatInput({
   onStop,
   placeholder = "Введите сообщение...",
   disabled = false,
+  useDeepSearch = false,
+  onToggleDeepSearch,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -70,15 +74,33 @@ export function ChatInput({
 
         {/* Action Buttons - safely placed inside the container at the bottom */}
         <div className="flex justify-between items-center w-full px-3 pb-2 pt-1 mt-auto">
-          <motion.button
-            onClick={() => setIsFullscreen(!isFullscreen)}
-            whileTap={{ scale: 0.9 }}
-            type="button"
-            className="w-9 h-9 rounded-full bg-transparent hover:bg-white/10 flex items-center justify-center text-white/40 hover:text-white transition-colors ml-1"
-            title={isFullscreen ? "Свернуть" : "Во весь экран"}
-          >
-            {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-          </motion.button>
+          <div className="flex items-center gap-1 ml-1">
+            <motion.button
+              onClick={() => setIsFullscreen(!isFullscreen)}
+              whileTap={{ scale: 0.9 }}
+              type="button"
+              className="w-9 h-9 rounded-full bg-transparent hover:bg-white/10 flex items-center justify-center text-white/40 hover:text-white transition-colors"
+              title={isFullscreen ? "Свернуть" : "Во весь экран"}
+            >
+              {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+            </motion.button>
+
+            {onToggleDeepSearch && (
+              <motion.button
+                onClick={onToggleDeepSearch}
+                whileTap={{ scale: 0.9 }}
+                type="button"
+                className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors ${
+                  useDeepSearch 
+                    ? "bg-blue-500/20 text-blue-400" 
+                    : "bg-transparent text-white/40 hover:bg-white/10 hover:text-white"
+                }`}
+                title={useDeepSearch ? "Глубокий поиск включен" : "Включить глубокий поиск"}
+              >
+                <Globe className="w-4 h-4" />
+              </motion.button>
+            )}
+          </div>
           
           <div className="flex items-center">
             {isLoading ? (

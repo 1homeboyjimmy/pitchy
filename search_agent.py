@@ -39,19 +39,20 @@ def execute_search_agent(query: str) -> str:
         logger.error(f"Tavily search error: {e}")
         return f"Произошла ошибка при поиске в интернете: {str(e)}"
 
-async def async_search_with_sources(query: str) -> tuple[list[dict], str]:
+async def async_search_with_sources(query: str, use_deep_search: bool = False) -> tuple[list[dict], str]:
     """
     Асинхронная функция поиска для нового потокового агента.
     Возвращает (sources_list, context_string).
     """
-    logger.info(f"Executing async API search using Tavily for query: {query}")
+    logger.info(f"Executing async API search using Tavily for query: {query}, deep_search: {use_deep_search}")
     tavily = _get_tavily_client()
     if not tavily:
         return [], "Интернет-поиск отключен (отсутствует TAVILY_API_KEY)."
     
     try:
+        depth = "advanced" if use_deep_search else "basic"
         # Вызов в отдельном потоке, так как tavily.search блокирующий
-        response = await asyncio.to_thread(tavily.search, query, search_depth="basic", max_results=3)
+        response = await asyncio.to_thread(tavily.search, query, search_depth=depth, max_results=3)
         results = response.get("results", [])
         
         sources = [{"title": r.get("title", "Источник"), "url": r.get("url", "")} for r in results]

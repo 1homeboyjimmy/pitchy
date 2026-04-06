@@ -198,6 +198,7 @@ export type ChatMessageResponse = {
   role: "user" | "assistant";
   content: string;
   thoughts?: string;
+  sources?: { title: string; url: string }[];
   created_at: string;
   feedback?: number;
   client_id?: string;
@@ -245,7 +246,7 @@ export async function sendChatMessage(sessionId: number, content: string, token:
   return postAuthJson<ChatMessageResponse>(`/chat/sessions/${sessionId}/messages`, { content }, token);
 }
 
-export async function* sendChatMessageStream(sessionId: number, content: string, token: string, signal?: AbortSignal, clientId?: string, assistantClientId?: string) {
+export async function* sendChatMessageStream(sessionId: number, content: string, token: string, signal?: AbortSignal, clientId?: string, assistantClientId?: string, useDeepSearch?: boolean) {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token && token !== COOKIE_SESSION_MARKER) {
     headers.Authorization = `Bearer ${token}`;
@@ -253,7 +254,7 @@ export async function* sendChatMessageStream(sessionId: number, content: string,
   const res = await fetch(`${API_BASE}/chat/sessions/${sessionId}/messages`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ content, client_id: clientId, assistant_client_id: assistantClientId }),
+    body: JSON.stringify({ content, client_id: clientId, assistant_client_id: assistantClientId, use_deep_search: useDeepSearch }),
     credentials: "include",
     signal
   });
@@ -436,7 +437,8 @@ export async function* postTreeChatStream(
   activeNodeId?: string,
   signal?: AbortSignal,
   clientId?: string,
-  assistantClientId?: string
+  assistantClientId?: string,
+  useDeepSearch?: boolean
 ) {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token && token !== COOKIE_SESSION_MARKER) {
@@ -445,7 +447,7 @@ export async function* postTreeChatStream(
   const res = await fetch(`${API_BASE}/tree/${treeId}/chat`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ message, active_node_id: activeNodeId, client_id: clientId, assistant_client_id: assistantClientId }),
+    body: JSON.stringify({ message, active_node_id: activeNodeId, client_id: clientId, assistant_client_id: assistantClientId, use_deep_search: useDeepSearch }),
     credentials: "include",
     signal
   });
