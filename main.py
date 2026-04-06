@@ -260,6 +260,9 @@ app.include_router(billing.router)
 import tree_router
 app.include_router(tree_router.router)
 
+import agent_router
+app.include_router(agent_router.router)
+
 allowed_origins = [
     origin.strip()
     for origin in os.getenv("FRONTEND_ORIGINS", "http://localhost:3000").split(",")

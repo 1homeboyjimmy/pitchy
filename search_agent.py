@@ -1,73 +1,73 @@
+import os
 import asyncio
 import logging
-from duckduckgo_search import DDGS
-from scraper import fetch_article, extract_text
+from tavily import TavilyClient
 
 logger = logging.getLogger(__name__)
 
-def perform_web_search(query: str, max_results: int = 5) -> list[tuple[str, str]]:
-    """
-    Выполняет поиск в DuckDuckGo и возвращает список кортежей (url, snippet) топ-результатов.
-    """
-    results_list = []
-    try:
-        with DDGS() as ddgs:
-            # Ищем топ n результатов
-            results = ddgs.text(query, max_results=max_results)
-            for r in results:
-                url = r.get("href")
-                snippet = r.get("body", "")
-                if url:
-                    results_list.append((url, snippet))
-    except Exception as e:
-        logger.error(f"Error performing web search for '{query}': {e}")
-    return results_list
+def _get_tavily_client() -> TavilyClient | None:
+    api_key = os.getenv("TAVILY_API_KEY", "")
+    if not api_key:
+        logger.warning("TAVILY_API_KEY is missing. Web search is disabled.")
+        return None
+    return TavilyClient(api_key=api_key)
 
-def fetch_and_scrape_links(search_results: list[tuple[str, str]]) -> str:
-    """
-    Скачивает и парсит переданные ссылки.
-    Склеивает результаты в единый markdown-текст с ограничением по длине для каждой статьи.
-    """
-    compiled_text = ""
-    MAX_CHARS_PER_ARTICLE = 6000  # Increased to capture actual article body but limited to fit 5 pages
+from langfuse.decorators import observe
 
-    for idx, (url, snippet) in enumerate(search_results, 1):
-        html = fetch_article(url)
-        if not html:
-            # Если не смогли скачать, хотя бы добавим сниппет
-            compiled_text += f"### Источник {idx}: {url}\nКраткое описание из поиска: {snippet}\n\n"
-            continue
-        
-        text = extract_text(html)
-        if not text:
-            compiled_text += f"### Источник {idx}: {url}\nКраткое описание из поиска: {snippet}\n\n"
-            continue
-        
-        # Обрезаем текст
-        if len(text) > MAX_CHARS_PER_ARTICLE:
-            text = text[:MAX_CHARS_PER_ARTICLE] + "...\n[Текст обрезан]"
-        
-        compiled_text += f"### Источник {idx}: {url}\nКраткое описание из поиска: {snippet}\nСодержимое страницы:\n{text}\n\n"
-        
-    return compiled_text.strip()
-
+@observe(as_type="span", name="tavily_search_sync")
 def execute_search_agent(query: str) -> str:
     """
-    Оркестратор агента поиска по интернету.
-    1. Ищет ссылки по запросу.
-    2. Скачивает их содержимое.
-    3. Формирует текстовый контекст для RAG.
+    Синхронный оркестратор агента поиска по интернету (для обратной совместимости).
+    Ищет информацию в Tavily и возвращает markdown-строку с контекстом.
     """
-    logger.info(f"Executing web search agent for query: {query}")
-    search_results = perform_web_search(query, max_results=5)
+    logger.info(f"Executing web search agent using Tavily for query: {query}")
+    tavily = _get_tavily_client()
+    if not tavily:
+        return "Интернет-поиск отключен (отсутствует TAVILY_API_KEY)."
+
+    try:
+        response = tavily.search(query, search_depth="basic", max_results=3)
+        results = response.get("results", [])
+        if not results:
+            return "Интернет-поиск не дал результатов по этому запросу."
+        
+        compiled_text = ""
+        for idx, r in enumerate(results, 1):
+            url = r.get("url", "unknown_url")
+            content = r.get("content", "")
+            compiled_text += f"### Источник {idx}: {url}\nСодержимое страницы:\n{content}\n\n"
+            
+        return compiled_text.strip()
+    except Exception as e:
+        logger.error(f"Tavily search error: {e}")
+        return f"Произошла ошибка при поиске в интернете: {str(e)}"
+
+@observe(as_type="span", name="tavily_search_async")
+async def async_search_with_sources(query: str) -> tuple[list[dict], str]:
+    """
+    Асинхронная функция поиска для нового потокового агента.
+    Возвращает (sources_list, context_string).
+    """
+    logger.info(f"Executing async API search using Tavily for query: {query}")
+    tavily = _get_tavily_client()
+    if not tavily:
+        return [], "Интернет-поиск отключен (отсутствует TAVILY_API_KEY)."
     
-    if not search_results:
-        return "Интернет-поиск не дал результатов по этому запросу."
+    try:
+        # Вызов в отдельном потоке, так как tavily.search блокирующий
+        response = await asyncio.to_thread(tavily.search, query, search_depth="basic", max_results=3)
+        results = response.get("results", [])
+        
+        sources = [{"title": r.get("title", "Источник"), "url": r.get("url", "")} for r in results]
+        
+        compiled_text = ""
+        for idx, r in enumerate(results, 1):
+            url = r.get("url", "unknown_url")
+            content = r.get("content", "")
+            compiled_text += f"### Источник {idx}: {url}\nСодержимое страницы:\n{content}\n\n"
+            
+        return sources, compiled_text.strip()
     
-    logger.info(f"Found {len(search_results)} URLs. Starting to scrape...")
-    context = fetch_and_scrape_links(search_results)
-    
-    if not context:
-         return "Не удалось извлечь читаемый текст с найденных сайтов."
-    
-    return context
+    except Exception as e:
+        logger.error(f"Async Tavily search error: {e}")
+        return [], f"Произошла ошибка при поиске в интернете: {str(e)}"
