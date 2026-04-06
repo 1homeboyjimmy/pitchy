@@ -12,9 +12,6 @@ def _get_tavily_client() -> TavilyClient | None:
         return None
     return TavilyClient(api_key=api_key)
 
-from langfuse.decorators import observe
-
-@observe(as_type="span", name="tavily_search_sync")
 def execute_search_agent(query: str) -> str:
     """
     Синхронный оркестратор агента поиска по интернету (для обратной совместимости).
@@ -42,7 +39,6 @@ def execute_search_agent(query: str) -> str:
         logger.error(f"Tavily search error: {e}")
         return f"Произошла ошибка при поиске в интернете: {str(e)}"
 
-@observe(as_type="span", name="tavily_search_async")
 async def async_search_with_sources(query: str) -> tuple[list[dict], str]:
     """
     Асинхронная функция поиска для нового потокового агента.

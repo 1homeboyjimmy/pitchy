@@ -6,7 +6,6 @@ from pydantic import BaseModel
 from search_agent import async_search_with_sources
 from makura_client import stream_makura
 from main import SYSTEM_CHAT_PROMPT
-from langfuse.decorators import observe, langfuse_context
 from langfuse import Langfuse
 from typing import Optional
 
@@ -21,8 +20,10 @@ class FeedbackRequest(BaseModel):
     value: float  # Для оценок 1 или -1
     comment: Optional[str] = None
 
-@observe(name="agent_session")
 async def agent_stream(query: str):
+    # Создаем стабильный трейс вручную
+    trace = langfuse_client.trace(name="agent_session_stream")
+    
     # Отправляем статус поиска
     yield f"data: {json.dumps({'event': 'status', 'data': 'Выполняю поиск в интернете через Tavily...'})}\n\n"
     
@@ -30,7 +31,6 @@ async def agent_stream(query: str):
     sources, search_context = await async_search_with_sources(query)
 
     if sources:
-        # Отправляем найденные источники клиенту
         yield f"data: {json.dumps({'event': 'sources', 'data': sources})}\n\n"
     else:
         yield f"data: {json.dumps({'event': 'status', 'data': search_context})}\n\n"
@@ -47,14 +47,10 @@ async def agent_stream(query: str):
         if chunk.startswith("Error:") or chunk.startswith("\n[Ошибка"):
             yield f"data: {json.dumps({'event': 'status', 'data': f'Ошибка LLM: {chunk}'})}\n\n"
         else:
-            # Отправляем кусок текста
             yield f"data: {json.dumps({'event': 'text_chunk', 'data': chunk})}\n\n"
         
-    # Получаем сгенерированный Langfuse trace_id для отправки клиенту
-    trace_id = langfuse_context.get_current_trace_id()
-
-    # Сигнал завершения с trace_id
-    yield f"data: {json.dumps({'event': 'done', 'data': {'trace_id': trace_id}})}\n\n"
+    # Сигнал завершения с ID
+    yield f"data: {json.dumps({'event': 'done', 'data': {'trace_id': trace.id}})}\n\n"
 
 @router.post("/ask")
 async def ask_agent(request: AskRequest):

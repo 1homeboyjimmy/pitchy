@@ -4,11 +4,9 @@ import httpx
 import json
 import traceback
 from typing import Optional, Tuple, Dict, Any
-from langfuse.decorators import observe
 
 logger = logging.getLogger("app")
 
-@observe(as_type="generation", name="makura_api_call")
 async def call_makura(system_prompt: str, user_message: str, model: str = None) -> Tuple[Optional[str], Optional[str]]:
     """
     Calls Makura.ai API (OpenAI compatible).
@@ -80,7 +78,6 @@ async def call_makura(system_prompt: str, user_message: str, model: str = None) 
         return None, None
 
 
-@observe(as_type="generation", name="makura_api_stream")
 async def stream_makura(system_prompt: str, user_message: str, model: str = None):
     """
     Streams response from Makura.ai API.
