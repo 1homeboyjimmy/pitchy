@@ -50,9 +50,10 @@ async def async_search_with_sources(query: str, use_deep_search: bool = False) -
         return [], "Интернет-поиск отключен (отсутствует TAVILY_API_KEY)."
     
     try:
+        safe_query = query[:390] if len(query) > 390 else query
         depth = "advanced" if use_deep_search else "basic"
         # Вызов в отдельном потоке, так как tavily.search блокирующий
-        response = await asyncio.to_thread(tavily.search, query, search_depth=depth, max_results=3)
+        response = await asyncio.to_thread(tavily.search, safe_query, search_depth=depth, max_results=3)
         results = response.get("results", [])
         
         sources = [{"title": r.get("title", "Источник"), "url": r.get("url", "")} for r in results]
