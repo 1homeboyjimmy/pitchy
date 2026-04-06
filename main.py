@@ -260,8 +260,6 @@ app.include_router(billing.router)
 import tree_router
 app.include_router(tree_router.router)
 
-import agent_router
-app.include_router(agent_router.router)
 
 allowed_origins = [
     origin.strip()
