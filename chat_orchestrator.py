@@ -12,8 +12,18 @@ from tree_orchestrator import _normalize_tree_data
 from search_agent import execute_search_agent
 from yandex_gpt_client import async_call_yandex_gpt
 from core_tree import CORE_SKELETON
-from models import TreeChatHistory
 import rag
+
+# Langfuse normalization: SDK looks for LANGFUSE_HOST, but server sets LANGFUSE_BASE_URL
+if os.getenv("LANGFUSE_BASE_URL") and not os.getenv("LANGFUSE_HOST"):
+    os.environ["LANGFUSE_HOST"] = os.environ["LANGFUSE_BASE_URL"]
+
+try:
+    from langfuse.decorators import observe, langfuse_context
+except ImportError:
+    # Dummy decorator and context if library is missing
+    observe = lambda **kw: lambda f: f
+    langfuse_context = None
 
 logger = logging.getLogger("app")
 
@@ -260,6 +270,7 @@ class ChatOrchestrator:
         if buffer:
             yield json.dumps({"type": "thought" if inside_thought else "chunk", "content": buffer}) + "\n"
 
+    @observe(name="orchestrator_process_message")
     async def process_message(self, user_message: str, active_node_id: str = None, client_id: str = None, assistant_client_id: str = None, use_deep_search: bool = False):
         """Main entry point for chat orchestration. Yields JSON chunks."""
         state = await self.load_state()
@@ -274,11 +285,6 @@ class ChatOrchestrator:
         model_used = "Makura (GLM-5)"
         enriched_data = {}
         sources_list = None
-
-        try:
-            from langfuse.decorators import observe, langfuse_context
-        except ImportError:
-            langfuse_context = None
 
         if langfuse_context:
             langfuse_context.update_current_observation(

@@ -18,6 +18,11 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from dotenv import load_dotenv
+load_dotenv()
+
+# Langfuse normalization: SDK looks for LANGFUSE_HOST, but server sets LANGFUSE_BASE_URL
+if os.getenv("LANGFUSE_BASE_URL") and not os.getenv("LANGFUSE_HOST"):
+    os.environ["LANGFUSE_HOST"] = os.environ["LANGFUSE_BASE_URL"]
 
 import rag
 from scraper import scrape_and_save, extract_text_from_pdf
