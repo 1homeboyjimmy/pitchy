@@ -172,6 +172,8 @@ services:
     cap_add:
       - NET_ADMIN
       - NET_RAW
+    volumes:
+      - ./ops/monitoring/crowdsec-firewall-bouncer.yaml:/config/crowdsec-firewall-bouncer.yaml:ro
     environment:
       API_URL: http://127.0.0.1:8080
       CROWDSEC_BOUNCER_API_KEY: ${CROWDSEC_BOUNCER_KEY:-}

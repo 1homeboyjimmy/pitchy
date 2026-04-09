@@ -41,7 +41,7 @@ echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
 
 # ---- PULL PRE-BUILT IMAGES FROM GHCR ----
 echo "Pulling pre-built images from GHCR..."
-APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" pull
+APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" pull -q
 
 # ---- STOP OLD CONTAINERS ----
 docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" down --timeout 10 --remove-orphans 2>/dev/null || true
