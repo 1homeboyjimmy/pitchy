@@ -129,6 +129,15 @@ async function request<T>(
     credentials: "include",
   });
   if (!res.ok) {
+    // Handle expired/invalid token globally
+    if (res.status === 401 && typeof window !== "undefined") {
+      window.localStorage.removeItem("vi_auth_state");
+      // Avoid redirect loops on auth pages
+      if (!window.location.pathname.startsWith("/login")) {
+        window.location.href = "/login?expired=1";
+      }
+      throw new Error("Invalid token");
+    }
     const err = await res.json().catch(() => ({}));
     const detail = typeof err?.detail === "string" ? err.detail : "Request failed";
     throw new Error(detail);
@@ -258,7 +267,15 @@ export async function* sendChatMessageStream(sessionId: number, content: string,
     credentials: "include",
     signal
   });
-  if (!res.ok) throw new Error("Stream request failed");
+  if (!res.ok) {
+    if (res.status === 401 && typeof window !== "undefined") {
+      window.localStorage.removeItem("vi_auth_state");
+      if (!window.location.pathname.startsWith("/login")) {
+        window.location.href = "/login?expired=1";
+      }
+    }
+    throw new Error("Stream request failed");
+  }
   const reader = res.body?.getReader();
   if (!reader) return;
   const decoder = new TextDecoder();
@@ -451,7 +468,15 @@ export async function* postTreeChatStream(
     credentials: "include",
     signal
   });
-  if (!res.ok) throw new Error("Tree stream request failed");
+  if (!res.ok) {
+    if (res.status === 401 && typeof window !== "undefined") {
+      window.localStorage.removeItem("vi_auth_state");
+      if (!window.location.pathname.startsWith("/login")) {
+        window.location.href = "/login?expired=1";
+      }
+    }
+    throw new Error("Tree stream request failed");
+  }
   const reader = res.body?.getReader();
   if (!reader) return;
   const decoder = new TextDecoder();

@@ -60,6 +60,15 @@ function LoginContent() {
 
         <div className="glass-panel rounded-3xl p-8">
           <form onSubmit={handleSubmit} className="space-y-5">
+            {searchParams?.get("expired") && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-sm text-amber-400"
+              >
+                Сессия истекла. Пожалуйста, войдите снова.
+              </motion.div>
+            )}
             {error && (
               <motion.div
                 initial={{ opacity: 0, y: -10 }}
