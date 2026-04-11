@@ -14,6 +14,7 @@ from chromadb.api.models.Collection import Collection  # noqa: E402
 from chromadb.api.types import Documents, EmbeddingFunction, Embeddings  # noqa: E402
 from sentence_transformers import SentenceTransformer  # noqa: E402
 from langchain_text_splitters import RecursiveCharacterTextSplitter  # noqa: E402
+from langfuse.decorators import observe  # noqa: E402
 
 
 DOCS_DIR = Path(os.getenv("CHROMA_DOCS_DIR", "sample_docs"))
@@ -242,6 +243,7 @@ def init_rag() -> None:
     _RAG_INSTANCE = StartupRAG.build()
 
 
+@observe(name="rag_retrieval")
 def get_relevant_chunks(text: str, categories: List[str] = None, top_k: int = 3) -> List[str]:
     if _RAG_INSTANCE is None:
         raise RuntimeError("RAG is not initialized")

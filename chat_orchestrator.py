@@ -18,12 +18,7 @@ import rag
 if os.getenv("LANGFUSE_BASE_URL") and not os.getenv("LANGFUSE_HOST"):
     os.environ["LANGFUSE_HOST"] = os.environ["LANGFUSE_BASE_URL"]
 
-try:
-    from langfuse.decorators import observe, langfuse_context
-except ImportError:
-    # Dummy decorator and context if library is missing
-    observe = lambda **kw: lambda f: f
-    langfuse_context = None
+from langfuse.decorators import observe, langfuse_context
 
 logger = logging.getLogger("app")
 
