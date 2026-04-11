@@ -62,6 +62,10 @@ services:
       CHROMA_HTTP_HOST: chroma
       CHROMA_HTTP_PORT: 8000
       CHROMA_REINDEX: "false"
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL:-https://cloud.langfuse.com}
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
     volumes:
       - ai_models:/app/model_data
       - lockbox_secrets:/run/secrets

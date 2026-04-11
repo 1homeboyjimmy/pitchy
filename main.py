@@ -213,6 +213,14 @@ async def lifespan(app: FastAPI):
     t = threading.Thread(target=_init_rag_bg, daemon=True)
     t.start()
     yield
+    # Shutdown logic
+    try:
+        from langfuse import Langfuse
+        langfuse_client = Langfuse()
+        logger.info("Flushing Langfuse events before shutdown...")
+        langfuse_client.flush()
+    except Exception as e:
+        logger.warning(f"Failed to flush Langfuse on shutdown: {e}")
 
 
 class AdminRAGRequest(BaseModel):
@@ -2633,11 +2641,20 @@ async def send_chat_message(
             )
             chat_history = [ChatMessage(role=m.role, content=m.content) for m in history]
             
-            # Identify RAG contexts in parallel
+            # Identify RAG contexts in parallel to reduce latency
             try:
-                cats = await classify_intent(payload.content)
-                context_chunks = await asyncio.to_thread(rag.get_relevant_chunks, payload.content, collections=cats, top_k=5)
-            except:
+                # Use asyncio.gather to run intent classification and vector search concurrently
+                cats_task = asyncio.create_task(classify_intent(payload.content))
+                context_task = asyncio.to_thread(rag.get_relevant_chunks, payload.content, collections=None, top_k=5)
+                cats, context_chunks = await asyncio.gather(cats_task, context_task)
+                
+                # If cats were found, we might want to refine RAG, but for TTFB it's often better to just use initial results
+                # or do a quick second-pass if the first one was too broad.
+                # For now, we use the broad search results but filter by cats if they arrived.
+                if cats:
+                    context_chunks = [c for c in context_chunks if any(cat in c.get('metadata', {}).get('collection', '') for cat in cats)] or context_chunks
+            except Exception as e:
+                logger.error(f"Error in parallel RAG/Classification: {e}")
                 context_chunks = []
 
             # If user wants deep_search from main chat, we could also call tavily here, but for now we'll stick to RAG

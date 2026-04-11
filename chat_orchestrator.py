@@ -276,7 +276,11 @@ class ChatOrchestrator:
         state = await self.load_state()
         history = await self.get_chat_history(node_id=active_node_id)
         
-        intent_data = await self._classify_intent(user_message, state, history, active_node_id)
+        # Identify intent and initial RAG context in parallel to save 1-3 seconds
+        intent_task = asyncio.create_task(self._classify_intent(user_message, state, history, active_node_id))
+        rag_task = asyncio.to_thread(rag.get_relevant_chunks, user_message, top_k=5)
+        
+        intent_data, initial_rag_chunks = await asyncio.gather(intent_task, rag_task)
         intent = intent_data.get('intent', 'chat')
         logger.info(f"Orchestrator: User intent classified as '{intent}'")
 
@@ -296,9 +300,8 @@ class ChatOrchestrator:
 
         try:
             if intent == "chat" or intent not in ["tree", "finance", "search", "legal"]:
-                # Fetch RAG context for chat
-                rag_context_list = await asyncio.to_thread(rag.get_relevant_chunks, user_message, top_k=3)
-                rag_context = "\n".join(rag_context_list)
+                # Use pre-fetched RAG context
+                rag_context = "\n".join(initial_rag_chunks[:3])
                 
                 yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
                 async for json_chunk in self._parse_thought_generator(self._stream_chat(user_message, history, state, active_node_id, rag_context=rag_context)):
@@ -332,19 +335,21 @@ class ChatOrchestrator:
 
             elif intent == "legal":
                 model_used = "YandexGPT (Юрист)"
-                # Fetch RAG context for legal
-                rag_context_list = await asyncio.to_thread(rag.get_relevant_chunks, user_message, categories=["legal_and_taxes"], top_k=3)
-                rag_context = "\n".join(rag_context_list)
+                # Use pre-fetched context shifted to legal collections if needed, OR just use initial ones to save time
+                rag_context = "\n".join(initial_rag_chunks[:3])
                 
                 reply_full = await self._handle_legal(user_message, rag_context=rag_context)
                 yield json.dumps({"type": "chunk", "content": reply_full}) + "\n"
                 yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
             
             elif intent == "finance":
-                model_used = "GigaChat"
-                reply_full, enriched_data = await self._handle_finance(user_message, state, active_node_id)
-                yield json.dumps({"type": "chunk", "content": reply_full}) + "\n"
+                model_used = "Makura (Finance Expert)"
                 yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
+                async for json_chunk in self._handle_finance(user_message, state, active_node_id):
+                    data = json.loads(json_chunk.strip())
+                    if data["type"] == "chunk":
+                        reply_full += data.get("content", "")
+                    yield json_chunk
             
             else:
                 # Fallback
@@ -452,34 +457,35 @@ class ChatOrchestrator:
             
         return {"intent": "chat", "reason": "Default fallback"}
 
-    async def _handle_finance(self, user_message: str, state: dict, active_node_id: str) -> tuple[str, dict]:
-        """Handle financial calculations via GigaChat."""
+    async def _handle_finance(self, user_message: str, state: dict, active_node_id: str):
+        """Handle financial calculations via Makura with streaming."""
         node_info = next((n for n in state["nodes"] if n["id"] == active_node_id), {})
-        tree_metrics = {} # Actually nodes inputs/outputs
+        tree_metrics = {}
         for n in state["nodes"]:
             for inp in n.get("data", {}).get("inputs", []):
                 if inp.get("value"):
                     tree_metrics[inp["field"]] = inp["value"]
 
+        # Run RAG and Search in parallel to reduce latency
+        rag_task = asyncio.to_thread(rag.get_relevant_chunks, user_message, top_k=3)
+        from search_agent import async_search_with_sources
+        search_task = async_search_with_sources(user_message, use_deep_search=False)
+        
+        rag_context_list, (sources, search_context) = await asyncio.gather(rag_task, search_task)
+        
+        rag_context = "\n".join(rag_context_list)
+        full_context = f"ДАННЫЕ ИЗ БАЗЫ ЗНАНИЙ:\n{rag_context}\n\nДАННЫЕ ИЗ ИНТЕРНЕТА:\n{search_context}"
+        
         prompt = FINANCE_PROMPT.format(
             node_context=json.dumps(node_info),
             tree_metrics=json.dumps(tree_metrics),
             user_message=user_message
         )
-
-        # Try to use local RAG context first or supplement search with it
-        rag_context_list = await asyncio.to_thread(rag.get_relevant_chunks, user_message, top_k=3)
-        rag_context = "\n".join(rag_context_list)
-
-        # Fallback to local search agent
-        search_context = execute_search_agent(user_message)
+        system_prompt = f"Ты финансовый эксперт Pitchy. На основе предоставленного контекста ответь пользователю:\n{full_context}"
         
-        full_context = f"ДАННЫЕ ИЗ БАЗЫ ЗНАНИЙ:\n{rag_context}\n\nДАННЫЕ ИЗ ИНТЕРНЕТА:\n{search_context}"
-        prompt = f"На основе предоставленного контекста ответь пользователю на русском языке:\n\n{full_context}\n\nВопрос: {user_message}"
-        
-        # Use Makura for integrated analysis
-        reply, _ = await call_makura("Ты — эксперт по глубокому анализу рынков и бизнес-помощник.", prompt)
-        return reply or "Не удалось обработать результаты поиска и базы знаний."
+        # Use stream_makura for immediate feedback
+        async for chunk in stream_makura(prompt, system_prompt=system_prompt):
+            yield json.dumps({"type": "chunk", "content": chunk}) + "\n"
 
     async def _handle_search(self, user_message: str, use_deep_search: bool = False):
         """Handle internet search intent by using Tavily and returning insights stream."""
