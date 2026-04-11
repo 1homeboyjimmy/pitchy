@@ -257,23 +257,31 @@ class StartupRAG:
         fetch_k = min(top_k * 3, 15)
         query_embedding = self.embedding_fn.encode_query(text)
         
+        from concurrent.futures import ThreadPoolExecutor
+        
         all_docs = []
         all_distances = []
-        for cat in categories:
-             if cat in self.collections:
-                 # Check if empty
-                 if self.collections[cat].count() == 0:
-                     continue
-                 try:
-                     res = self.collections[cat].query(
-                         query_embeddings=[query_embedding],
-                         n_results=min(fetch_k, self.collections[cat].count()),
-                         include=["documents", "distances"]
-                     )
-                     all_docs.extend(res.get("documents", [[]])[0])
-                     all_distances.extend(res.get("distances", [[]])[0])
-                 except Exception:
-                     pass
+        
+        def query_cat(cat):
+            if cat in self.collections:
+                if self.collections[cat].count() == 0:
+                    return [], []
+                try:
+                    res = self.collections[cat].query(
+                        query_embeddings=[query_embedding],
+                        n_results=min(fetch_k, self.collections[cat].count()),
+                        include=["documents", "distances"]
+                    )
+                    return res.get("documents", [[]])[0], res.get("distances", [[]])[0]
+                except Exception:
+                    return [], []
+            return [], []
+
+        with ThreadPoolExecutor(max_workers=len(categories)) as executor:
+            results = list(executor.map(query_cat, categories))
+            for docs, dists in results:
+                all_docs.extend(docs)
+                all_distances.extend(dists)
 
         reranked = _rerank_chunks(text, all_docs, all_distances)
         return reranked[:top_k]

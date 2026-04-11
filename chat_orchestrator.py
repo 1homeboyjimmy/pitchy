@@ -309,6 +309,8 @@ class ChatOrchestrator:
                 rag_context = "\n".join(initial_rag_chunks[:3])
                 
                 yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
+                start_time = time.time()
+                ttft = None
                 async for json_chunk in self._parse_thought_generator(self._stream_chat(user_message, history, state, active_node_id, rag_context=rag_context)):
                     # Check for usage sentinel from stream_makura
                     if isinstance(json_chunk, dict) and "__usage__" in json_chunk:
@@ -316,8 +318,12 @@ class ChatOrchestrator:
                         continue
                     data = json.loads(json_chunk.strip())
                     if data["type"] == "chunk": 
+                        if ttft is None:
+                            ttft = time.time() - start_time
                         reply_full += data["content"]
                     elif data["type"] == "thought":
+                        if ttft is None:
+                            ttft = time.time() - start_time
                         thoughts_full += data["content"]
                     yield json_chunk
             
@@ -330,12 +336,21 @@ class ChatOrchestrator:
                 model_used = "Perplexity/Agent"
                 yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
                 
+                start_time = time.time()
+                ttft = None
                 # Logic: Use search handler that yields chunks natively
                 async for json_chunk in self._handle_search(user_message, use_deep_search):
+                    if isinstance(json_chunk, dict) and "__usage__" in json_chunk:
+                        usage_data = json_chunk["__usage__"]
+                        continue
                     data = json.loads(json_chunk.strip())
                     if data["type"] == "chunk": 
+                        if ttft is None:
+                            ttft = time.time() - start_time
                         reply_full += data.get("content", "")
                     elif data["type"] == "thought":
+                        if ttft is None:
+                            ttft = time.time() - start_time
                         thoughts_full += data.get("content", "")
                     elif data["type"] == "sources":
                         sources_list = data.get("data", [])
@@ -387,12 +402,17 @@ class ChatOrchestrator:
                         est_output = len(reply_full) // 4
                         lf_usage = {"input": est_input, "output": est_output, "total": est_input + est_output}
                     
-                    langfuse_context.update_current_observation(
-                        model=model_used,
-                        input=user_message,
-                        output=f"<thought>{thoughts_full}</thought>\n\n{reply_full}" if thoughts_full else reply_full,
-                        usage=lf_usage if lf_usage else None
-                    )
+                    update_params = {
+                        "model": model_used,
+                        "input": user_message,
+                        "output": f"<thought>{thoughts_full}</thought>\n\n{reply_full}" if thoughts_full else reply_full,
+                    }
+                    if lf_usage:
+                        update_params["usage"] = lf_usage
+                    if ttft is not None:
+                        update_params["metadata"] = {"ttft": ttft}
+                    
+                    langfuse_context.update_current_observation(**update_params)
                 except Exception as e:
                     logger.error(f"Langfuse generation tracking failed: {e}")
 

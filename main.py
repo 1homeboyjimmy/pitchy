@@ -1246,8 +1246,9 @@ async def parse_thought_generator(generator):
     buffer = ""
     async for chunk in generator:
         if not chunk: continue
-        # Skip __usage__ sentinel dicts from stream_makura
+        # Pass through usage sentinel dicts so callers can log them to Langfuse
         if isinstance(chunk, dict):
+            yield chunk
             continue
         buffer += chunk
         
@@ -1323,7 +1324,12 @@ async def chat(payload: ChatRequest):
         try:
             raw_gen = stream_makura(SYSTEM_CHAT_PROMPT, user_prompt)
             async for json_chunk in parse_thought_generator(raw_gen):
-                # Extra clean for saving later
+                # Usage sentinel passed as dict
+                if isinstance(json_chunk, dict):
+                    if "__usage__" in json_chunk:
+                        usage_data = json_chunk["__usage__"]
+                    continue
+
                 data = json.loads(json_chunk.strip())
                 if data["type"] == "chunk":
                     full_response += data["content"]
@@ -1467,6 +1473,11 @@ async def create_chat_message(
                 raw_gen = stream_makura(SYSTEM_CHAT_PROMPT, user_prompt)
                 
             async for json_chunk in parse_thought_generator(raw_gen):
+                if isinstance(json_chunk, dict):
+                    if "__usage__" in json_chunk:
+                        usage_data = json_chunk["__usage__"]
+                    continue
+
                 data = json.loads(json_chunk.strip())
                 if data["type"] == "chunk":
                     full_text += data["content"]
@@ -2675,9 +2686,18 @@ async def send_chat_message(
 
             raw_gen = stream_makura(SYSTEM_CHAT_PROMPT, user_prompt)
             
+            start_time = time.time()
+            ttft = None
             async for json_chunk in parse_thought_generator(raw_gen):
+                if isinstance(json_chunk, dict):
+                    if "__usage__" in json_chunk:
+                        usage_data = json_chunk["__usage__"]
+                    continue
+
                 data = json.loads(json_chunk.strip())
                 if data["type"] == "chunk":
+                    if ttft is None:
+                        ttft = time.time() - start_time
                     full_response += data["content"]
                 elif data["type"] == "thought":
                     full_thoughts += data["content"]
@@ -2699,13 +2719,23 @@ async def send_chat_message(
             logger.error(f"Session streaming failed: {e}")
             yield json.dumps({"type": "error", "content": str(e)}) + "\n"
         finally:
-            if langfuse_context and (full_response or full_thoughts):
+            if langfuse_context and (full_response or full_thoughts or usage_data):
                 try:
-                    langfuse_context.update_current_observation(
-                        input=payload.content,
-                        output=f"<thought>{full_thoughts}</thought>\n\n{full_response}" if full_thoughts else full_response,
-                        model=provider
-                    )
+                    update_params = {
+                        "input": payload.content,
+                        "output": f"<thought>{full_thoughts}</thought>\n\n{full_response}" if full_thoughts else full_response,
+                        "model": provider
+                    }
+                    if usage_data:
+                        update_params["usage"] = {
+                            "input": usage_data.get("prompt_tokens", 0),
+                            "output": usage_data.get("completion_tokens", 0),
+                            "total": usage_data.get("total_tokens", 0)
+                        }
+                    if ttft is not None:
+                        update_params["metadata"] = {"ttft": ttft}
+                    
+                    langfuse_context.update_current_observation(**update_params)
                 except Exception as e:
                     logger.error(f"Langfuse tracking failed: {e}")
 

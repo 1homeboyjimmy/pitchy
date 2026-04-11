@@ -102,40 +102,52 @@ export function AdminView() {
                     const res = await fetch(`${API_BASE}/admin/promocodes`, {
                         headers: { "Authorization": `Bearer ${token}` }
                     });
+                    if (res.status === 401) {
+                        window.localStorage.removeItem("vi_auth_state");
+                        window.location.href = "/login?expired=1";
+                        return;
+                    }
                     if (res.ok) setPromocodes(await res.json());
                 } else if (activeTab === "analytics") {
-
-                    // compute start/end based on analyticsTimeFilter
-                    const end = new Date();
-                    const start = new Date();
-                    if (analyticsTimeFilter === "24h") start.setHours(start.getHours() - 24);
-                    if (analyticsTimeFilter === "3d") start.setDate(start.getDate() - 3);
-                    if (analyticsTimeFilter === "1w") start.setDate(start.getDate() - 7);
-                    if (analyticsTimeFilter === "1m") start.setMonth(start.getMonth() - 1);
-                    if (analyticsTimeFilter === "6m") start.setMonth(start.getMonth() - 6);
-                    if (analyticsTimeFilter === "1y") start.setFullYear(start.getFullYear() - 1);
-
-                    const startStr = start.toISOString().split("T")[0];
-                    const endStr = end.toISOString().split("T")[0];
-
+                    // ... computation ...
                     const res = await fetch(`${API_BASE}/admin/analytics?start=${startStr}&end=${endStr}`, {
                         headers: { "Authorization": `Bearer ${token}` }
                     });
+                    if (res.status === 401) {
+                        window.localStorage.removeItem("vi_auth_state");
+                        window.location.href = "/login?expired=1";
+                        return;
+                    }
                     if (res.ok) setAnalytics(await res.json());
                 } else if (activeTab === "users") {
                     const res = await fetch(`${API_BASE}/admin/users`, {
                         headers: { "Authorization": `Bearer ${token}` }
                     });
+                    if (res.status === 401) {
+                        window.localStorage.removeItem("vi_auth_state");
+                        window.location.href = "/login?expired=1";
+                        return;
+                    }
                     if (res.ok) setUsers(await res.json());
                 } else if (activeTab === "subscriptions") {
                     const res = await fetch(`${API_BASE}/admin/subscriptions`, {
                         headers: { "Authorization": `Bearer ${token}` }
                     });
+                    if (res.status === 401) {
+                        window.localStorage.removeItem("vi_auth_state");
+                        window.location.href = "/login?expired=1";
+                        return;
+                    }
                     if (res.ok) setSubscriptions(await res.json());
                 } else if (activeTab === "rag") {
                     const res = await fetch(`${API_BASE}/admin/rag/logs`, {
                         headers: { "Authorization": `Bearer ${token}` }
                     });
+                    if (res.status === 401) {
+                        window.localStorage.removeItem("vi_auth_state");
+                        window.location.href = "/login?expired=1";
+                        return;
+                    }
                     if (res.ok) {
                         const data = await res.json();
                         setRagLogs(data.items || []);
@@ -209,6 +221,11 @@ export function AdminView() {
                 },
                 body: JSON.stringify({ url: ragUrl })
             });
+            if (res.status === 401) {
+                window.localStorage.removeItem("vi_auth_state");
+                window.location.href = "/login?expired=1";
+                return;
+            }
             const data = await res.json();
 
             if (res.ok) {
@@ -242,6 +259,11 @@ export function AdminView() {
                     max_pages: crawlMaxPages
                 })
             });
+            if (res.status === 401) {
+                window.localStorage.removeItem("vi_auth_state");
+                window.location.href = "/login?expired=1";
+                return;
+            }
             const data = await res.json();
 
             if (res.ok) {
@@ -274,6 +296,11 @@ export function AdminView() {
                 },
                 body: formData
             });
+            if (res.status === 401) {
+                window.localStorage.removeItem("vi_auth_state");
+                window.location.href = "/login?expired=1";
+                return;
+            }
             const data = await res.json();
 
             if (res.ok) {
