@@ -210,10 +210,27 @@ class StartupRAG:
         docs_by_cat = _load_documents_by_category()
         embedding_fn = GeminiEmbeddingFunction()
         client = _build_client()
+        reindex = _should_reindex()
+
+        if reindex:
+            logger.warning("CHROMA_REINDEX=true — will DELETE and re-create all collections. This costs API tokens!")
 
         collections = {}
         for cat in CATEGORIES:
             try:
+                existing_count = 0
+                try:
+                    existing_col = client.get_collection(name=cat)
+                    existing_count = existing_col.count()
+                except Exception:
+                    pass  # Collection doesn't exist yet
+
+                if reindex and existing_count > 0:
+                    # Delete old collection to avoid dimension mismatch and duplicates
+                    logger.info(f"[{cat}] Deleting old collection ({existing_count} chunks) for reindex...")
+                    client.delete_collection(name=cat)
+                    existing_count = 0
+
                 col = client.get_or_create_collection(
                     name=cat,
                     embedding_function=embedding_fn,
@@ -221,11 +238,12 @@ class StartupRAG:
                 )
                 collections[cat] = col
                 
-                # Seed if empty or reindex is forced
-                if col.count() == 0 or _should_reindex():
-                    if docs_by_cat.get(cat):
-                        logger.info(f"[{cat}] Seeding {len(docs_by_cat[cat])} chunks...")
-                        _seed_collection(col, docs_by_cat[cat])
+                # Only seed if collection is truly empty
+                if col.count() == 0 and docs_by_cat.get(cat):
+                    logger.info(f"[{cat}] Seeding {len(docs_by_cat[cat])} chunks...")
+                    _seed_collection(col, docs_by_cat[cat])
+                elif col.count() > 0:
+                    logger.info(f"[{cat}] Already has {col.count()} chunks, skipping seed.")
             except Exception as e:
                 logger.error(f"Failed to load collection '{cat}': {e}")
 
