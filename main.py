@@ -2646,7 +2646,7 @@ async def send_chat_message(
             try:
                 # Use asyncio.gather to run intent classification and vector search concurrently
                 cats_task = asyncio.create_task(classify_intent(payload.content))
-                context_task = asyncio.to_thread(rag.get_relevant_chunks, payload.content, collections=None, top_k=5)
+                context_task = asyncio.to_thread(rag.get_relevant_chunks, payload.content, categories=None, top_k=5)
                 cats, context_chunks = await asyncio.gather(cats_task, context_task)
                 
                 # If cats were found, we might want to refine RAG, but for TTFB it's often better to just use initial results

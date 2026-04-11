@@ -363,6 +363,10 @@ class ChatOrchestrator:
             else:
                 # Fallback
                 async for chunk in self._stream_chat(user_message, history, state, active_node_id):
+                    if isinstance(chunk, dict):
+                        if "__usage__" in chunk:
+                            usage_data = chunk["__usage__"]
+                        continue
                     reply_full += chunk
                     yield json.dumps({"type": "chunk", "content": chunk}) + "\n"
                     
