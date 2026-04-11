@@ -23,7 +23,8 @@ def execute_search_agent(query: str) -> str:
         return "Интернет-поиск отключен (отсутствует TAVILY_API_KEY)."
 
     try:
-        response = tavily.search(query, search_depth="basic", max_results=3)
+        localized_query = f"{query} в России"
+        response = tavily.search(localized_query, search_depth="basic", max_results=3)
         results = response.get("results", [])
         if not results:
             return "Интернет-поиск не дал результатов по этому запросу."
@@ -50,7 +51,8 @@ async def async_search_with_sources(query: str, use_deep_search: bool = False) -
         return [], "Интернет-поиск отключен (отсутствует TAVILY_API_KEY)."
     
     try:
-        safe_query = query[:390] if len(query) > 390 else query
+        localized_query = f"{query} в России"
+        safe_query = localized_query[:390] if len(localized_query) > 390 else localized_query
         depth = "advanced" if use_deep_search else "basic"
         results_count = 10 if use_deep_search else 3
         
