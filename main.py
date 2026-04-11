@@ -1246,6 +1246,9 @@ async def parse_thought_generator(generator):
     buffer = ""
     async for chunk in generator:
         if not chunk: continue
+        # Skip __usage__ sentinel dicts from stream_makura
+        if isinstance(chunk, dict):
+            continue
         buffer += chunk
         
         while True:
