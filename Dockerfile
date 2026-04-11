@@ -1,29 +1,18 @@
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    HF_HOME=/app/.hf_cache
+    PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
 # Install security patches + curl for deploy healthchecks
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
-# --- LAYER 1: Torch (cached unless base image changes) ---
-# Use pip cache mount so torch (188MB) is only downloaded once
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --timeout 300 --retries 5 torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
-
-# --- LAYER 2: Requirements (cached unless requirements.txt changes) ---
+# --- LAYER 1: Requirements (cached unless requirements.txt changes) ---
 COPY requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements.txt
 
-# --- LAYER 3: Pre-download embedding model (cached unless requirements change) ---
-# Model download BEFORE code copy so code-only changes don't re-download the 466MB model
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('intfloat/multilingual-e5-small')" \
-    && echo 'Model cached at:' && du -sh /app/.hf_cache/
-
-# --- LAYER 4: Code (only this layer rebuilds on code changes) ---
+# --- LAYER 2: Code (only this layer rebuilds on code changes) ---
 COPY . .
 
 EXPOSE 8000

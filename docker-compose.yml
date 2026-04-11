@@ -41,12 +41,11 @@ services:
       CHROMA_HTTP_PORT: 8000
       CHROMA_REINDEX: ${CHROMA_REINDEX:-false}
       FRONTEND_ORIGINS: ${FRONTEND_ORIGINS:-http://localhost:3000}
-      HF_HOME: /app/.cache/huggingface
+      ROUTERAI_API_KEY: ${ROUTERAI_API_KEY:-}
     env_file:
       - .env
     volumes:
       - ./:/app
-      - hf_cache:/app/.cache/huggingface
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     ports:
       - "8000:8000"
@@ -74,4 +73,3 @@ volumes:
   redis_data:
   chroma_data:
   frontend_node_modules:
-  hf_cache:

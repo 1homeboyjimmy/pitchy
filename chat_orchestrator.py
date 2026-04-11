@@ -234,7 +234,6 @@ class ChatOrchestrator:
             async for chunk in stream_makura(system_prompt, prompt):
                 yield chunk
         else:
-            # Fallback to makura as well if routerai is deprecated
             async for chunk in stream_makura(system_prompt, prompt):
                 yield chunk
 
@@ -244,6 +243,10 @@ class ChatOrchestrator:
         buffer = ""
         async for chunk in generator:
             if not chunk: continue
+            # Pass through usage sentinel dicts without parsing
+            if isinstance(chunk, dict):
+                yield chunk
+                continue
             buffer += chunk
             while True:
                 if not inside_thought:
@@ -290,6 +293,7 @@ class ChatOrchestrator:
         model_used = "Makura (GLM-5)"
         enriched_data = {}
         sources_list = None
+        usage_data = {}  # Token usage tracking
 
         if langfuse_context:
             langfuse_context.update_current_observation(
@@ -306,6 +310,10 @@ class ChatOrchestrator:
                 
                 yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
                 async for json_chunk in self._parse_thought_generator(self._stream_chat(user_message, history, state, active_node_id, rag_context=rag_context)):
+                    # Check for usage sentinel from stream_makura
+                    if isinstance(json_chunk, dict) and "__usage__" in json_chunk:
+                        usage_data = json_chunk["__usage__"]
+                        continue
                     data = json.loads(json_chunk.strip())
                     if data["type"] == "chunk": 
                         reply_full += data["content"]
@@ -361,10 +369,25 @@ class ChatOrchestrator:
         finally:
             if langfuse_context and (reply_full or thoughts_full):
                 try:
+                    # Build usage dict for Langfuse
+                    lf_usage = {}
+                    if usage_data:
+                        lf_usage = {
+                            "input": usage_data.get("prompt_tokens", 0),
+                            "output": usage_data.get("completion_tokens", 0),
+                            "total": usage_data.get("total_tokens", 0),
+                        }
+                    elif reply_full:
+                        # Estimate tokens from character count (~4 chars/token for Russian)
+                        est_input = len(user_message) // 4
+                        est_output = len(reply_full) // 4
+                        lf_usage = {"input": est_input, "output": est_output, "total": est_input + est_output}
+                    
                     langfuse_context.update_current_observation(
                         model=model_used,
                         input=user_message,
-                        output=f"<thought>{thoughts_full}</thought>\n\n{reply_full}" if thoughts_full else reply_full
+                        output=f"<thought>{thoughts_full}</thought>\n\n{reply_full}" if thoughts_full else reply_full,
+                        usage=lf_usage if lf_usage else None
                     )
                 except Exception as e:
                     logger.error(f"Langfuse generation tracking failed: {e}")
@@ -486,6 +509,8 @@ class ChatOrchestrator:
         
         # Use stream_makura for immediate feedback
         async for chunk in stream_makura(prompt, system_prompt=system_prompt):
+            if isinstance(chunk, dict):
+                continue  # Skip usage sentinel
             yield json.dumps({"type": "chunk", "content": chunk}) + "\n"
 
     async def _handle_search(self, user_message: str, use_deep_search: bool = False):
@@ -543,9 +568,9 @@ class ChatOrchestrator:
         )
         provider = os.getenv("PRIMARY_PROVIDER", "makura")
         if provider == "makura":
-            raw, _ = await call_makura("Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON.", prompt)
+            raw, _, _ = await call_makura("Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON.", prompt)
         else:
-            raw, _ = await call_makura("Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON.", prompt)
+            raw, _, _ = await call_makura("Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON.", prompt)
             
         extracted = self._extract_json_block(raw)
         return "Я обновил структуру проекта на основе ваших пожеланий.", extracted
@@ -565,9 +590,9 @@ class ChatOrchestrator:
         
         provider = os.getenv("PRIMARY_PROVIDER", "makura")
         if provider == "makura":
-            reply, json_metrics = await call_makura(system_prompt, prompt)
+            reply, json_metrics, _ = await call_makura(system_prompt, prompt)
         else:
-            reply, json_metrics = await call_makura(system_prompt, prompt)
+            reply, json_metrics, _ = await call_makura(system_prompt, prompt)
         
         if json_metrics:
             # Assuming _save_metrics_from_json is defined elsewhere or will be added

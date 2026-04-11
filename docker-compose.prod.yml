@@ -61,13 +61,13 @@ services:
       REDIS_URL: redis://redis:6379/0
       CHROMA_HTTP_HOST: chroma
       CHROMA_HTTP_PORT: 8000
-      CHROMA_REINDEX: "false"
+      CHROMA_REINDEX: ${CHROMA_REINDEX:-false}
+      ROUTERAI_API_KEY: ${ROUTERAI_API_KEY:-}
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
       LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL:-https://cloud.langfuse.com}
       TAVILY_API_KEY: ${TAVILY_API_KEY:-}
     volumes:
-      - ai_models:/app/model_data
       - lockbox_secrets:/run/secrets
       - admin_docs:/app/admin_docs
     env_file:
@@ -194,7 +194,6 @@ volumes:
   chroma_data:
   caddy_data:
   caddy_config:
-  ai_models:
   lockbox_secrets:
   admin_docs:
   loki_data:

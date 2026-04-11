@@ -56,11 +56,14 @@ async def call_makura(system_prompt: str, user_message: str, model: str = None) 
             message = data["choices"][0]["message"]
             content = message.get("content", "")
             
+            # Extract token usage from API response
+            usage = data.get("usage", {})
+            
             if not content or not content.strip():
                 logger.warning(f"Makura returned empty content for model {model}.")
-                return None, None
+                return None, None, usage
             else:
-                logger.info(f"Makura response received ({len(content)} chars)")
+                logger.info(f"Makura response received ({len(content)} chars, tokens: {usage})")
 
             # Simple heuristic to extract JSON if present
             metrics = None
@@ -70,12 +73,12 @@ async def call_makura(system_prompt: str, user_message: str, model: str = None) 
                 except:
                     pass
             
-            return content, metrics
+            return content, metrics, usage
 
     except Exception as e:
         logger.error(f"Makura call failed: {str(e)}")
         logger.error(traceback.format_exc())
-        return None, None
+        return None, None, {}
 
 
 async def stream_makura(system_prompt: str, user_message: str, model: str = None):
@@ -117,6 +120,7 @@ async def stream_makura(system_prompt: str, user_message: str, model: str = None
                     yield f"Error: {response.status_code}"
                     return
 
+                usage_data = {}
                 async for line in response.aiter_lines():
                     if not line.strip():
                         continue
@@ -126,6 +130,9 @@ async def stream_makura(system_prompt: str, user_message: str, model: str = None
                             break
                         try:
                             chunk = json.loads(data_str)
+                            # Capture usage from the final chunk (OpenAI-compatible APIs send it there)
+                            if "usage" in chunk and chunk["usage"]:
+                                usage_data = chunk["usage"]
                             choices = chunk.get("choices", [])
                             if not choices:
                                 continue
@@ -135,6 +142,9 @@ async def stream_makura(system_prompt: str, user_message: str, model: str = None
                         except Exception as e:
                             logger.error(f"Error parsing Makura stream chunk: {e}")
                             continue
+                # Yield usage as a special sentinel dict at the very end
+                if usage_data:
+                    yield {"__usage__": usage_data}
     except Exception as e:
         logger.error(f"Makura streaming failed: {str(e)}")
         yield f"\n[Ошибка соединения: {str(e)}]"

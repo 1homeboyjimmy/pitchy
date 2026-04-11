@@ -19,7 +19,6 @@ prometheus_client
 fastapi-sso>=0.7.0
 pydantic-settings
 beautifulsoup4
-sentence-transformers
 langchain-text-splitters
 python-dateutil
 yookassa
@@ -34,3 +33,4 @@ flask>=3.1.3
 werkzeug>=3.1.6
 tavily-python
 langfuse==2.53.8
+openai>=1.0.0

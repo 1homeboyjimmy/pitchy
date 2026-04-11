@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import List
 import os
 import re
+import logging
 
 # Workaround for pydantic v1 config error in chromadb
 os.environ["CHROMA_SERVER_NOFILE"] = "65535"
@@ -12,8 +13,8 @@ os.environ["CHROMA_SERVER_NOFILE"] = "65535"
 import chromadb  # noqa: E402
 from chromadb.api.models.Collection import Collection  # noqa: E402
 from chromadb.api.types import Documents, EmbeddingFunction, Embeddings  # noqa: E402
-from sentence_transformers import SentenceTransformer  # noqa: E402
 from langchain_text_splitters import RecursiveCharacterTextSplitter  # noqa: E402
+
 try:  # noqa: E402
     from langfuse.decorators import observe
 except Exception as _lf_err:
@@ -24,6 +25,7 @@ except Exception as _lf_err:
             return fn
         return _wrap
 
+logger = logging.getLogger("rag")
 
 DOCS_DIR = Path(os.getenv("CHROMA_DOCS_DIR", "sample_docs"))
 ADMIN_DOCS_DIR = Path(os.getenv("ADMIN_DOCS_DIR", "admin_docs"))
@@ -33,34 +35,59 @@ CHROMA_HTTP_HOST = os.getenv("CHROMA_HTTP_HOST")
 CHROMA_HTTP_PORT = int(os.getenv("CHROMA_HTTP_PORT", "8000"))
 
 # --- Model Configuration ---
-EMBEDDING_MODEL_NAME = "intfloat/multilingual-e5-small"
+EMBEDDING_MODEL_NAME = "google/gemini-embedding-001"
+EMBEDDING_API_BASE = "https://routerai.ru/api/v1"
 # Metadata key to track which model was used for embeddings
 MODEL_META_KEY = "embedding_model"
 
 
-_CACHED_EMBEDDING_MODEL = None
-
-class E5EmbeddingFunction(EmbeddingFunction):
-    """Embedding function using multilingual-e5-small.
-    E5 models require 'query: ' prefix for queries and 'passage: ' for documents.
+class GeminiEmbeddingFunction(EmbeddingFunction):
+    """Embedding function using Google Gemini Embedding via RouterAI API.
+    Uses OpenAI-compatible /v1/embeddings endpoint.
     """
     def __init__(self):
-        global _CACHED_EMBEDDING_MODEL
-        if _CACHED_EMBEDDING_MODEL is None:
-            print(f"Loading embedding model {EMBEDDING_MODEL_NAME}...")
-            _CACHED_EMBEDDING_MODEL = SentenceTransformer(EMBEDDING_MODEL_NAME)
-        self.model = _CACHED_EMBEDDING_MODEL
+        from openai import OpenAI
+        api_key = os.getenv("ROUTERAI_API_KEY", "")
+        if not api_key:
+            logger.warning("ROUTERAI_API_KEY not set — embeddings will fail")
+        self._client = OpenAI(
+            api_key=api_key,
+            base_url=EMBEDDING_API_BASE,
+        )
+        self._model = EMBEDDING_MODEL_NAME
 
     def __call__(self, input: Documents) -> Embeddings:
-        # E5 models expect prefixed input; for ChromaDB add/upsert we use passage prefix
-        prefixed = [f"passage: {text}" for text in input]
-        embeddings = self.model.encode(prefixed, normalize_embeddings=True)
-        return [e.tolist() for e in embeddings]
+        """Embed a batch of documents. Batches in groups of 20 to stay within API limits."""
+        all_embeddings: Embeddings = []
+        batch_size = 20
+        for start in range(0, len(input), batch_size):
+            batch = input[start:start + batch_size]
+            try:
+                response = self._client.embeddings.create(
+                    model=self._model,
+                    input=batch,
+                    encoding_format="float",
+                )
+                all_embeddings.extend([item.embedding for item in response.data])
+            except Exception as e:
+                logger.error(f"Embedding API error (batch {start}–{start+len(batch)}): {e}")
+                # Return zero vectors so ChromaDB doesn't crash; data quality will be poor
+                dim = 3072
+                all_embeddings.extend([[0.0] * dim for _ in batch])
+        return all_embeddings
 
     def encode_query(self, text: str) -> list[float]:
-        """Encode a search query with 'query: ' prefix for better retrieval."""
-        embedding = self.model.encode(f"query: {text}", normalize_embeddings=True)
-        return embedding.tolist()
+        """Encode a single search query."""
+        try:
+            response = self._client.embeddings.create(
+                model=self._model,
+                input=text,
+                encoding_format="float",
+            )
+            return response.data[0].embedding
+        except Exception as e:
+            logger.error(f"Embedding API error (query): {e}")
+            return [0.0] * 3072
 
 
 def _chunk_text(text: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> List[str]:
@@ -113,14 +140,15 @@ def _should_reindex() -> bool:
     return os.getenv("CHROMA_REINDEX", "false").lower() == "true"
 
 
-def _seed_collection(collection: Collection, documents: List[str], batch_size: int = 100):
+def _seed_collection(collection: Collection, documents: List[str], batch_size: int = 20):
+    """Seed a collection with documents. Uses smaller batches + sleep to respect API rate limits."""
     if not documents:
         return
     import time
     import hashlib
     
     total = len(documents)
-    print(f"Starting seeding {total} chunks in batches of {batch_size}...")
+    logger.info(f"Starting seeding {total} chunks in batches of {batch_size}...")
     
     for start_idx in range(0, total, batch_size):
         end_idx = min(start_idx + batch_size, total)
@@ -129,17 +157,15 @@ def _seed_collection(collection: Collection, documents: List[str], batch_size: i
         ids = []
         for i, doc in enumerate(batch_docs):
             doc_hash = hashlib.md5(doc.encode('utf-8')).hexdigest()[:10]
-            # Use index + start_idx for unique across batches
             ids.append(f"doc_{int(time.time())}_{start_idx + i}_{doc_hash}")
         
         collection.add(documents=batch_docs, ids=ids)
         
-        # Small sleep after each batch to allow the event loop (in main loop) to breathe.
-        # This prevents the initial seeding from blocking the FastAPI startup completely.
+        # Sleep between batches to respect RouterAI API rate limits
         if end_idx < total:
-            time.sleep(0.1)
+            time.sleep(0.5)
             
-    print(f"Finished seeding {total} chunks.")
+    logger.info(f"Finished seeding {total} chunks.")
 
 
 def _rerank_chunks(query: str, documents: List[str], distances: List[float]) -> List[str]:
@@ -177,19 +203,17 @@ def _rerank_chunks(query: str, documents: List[str], distances: List[float]) -> 
 class StartupRAG:
     client: chromadb.ClientAPI
     collections: dict[str, Collection]
-    embedding_fn: E5EmbeddingFunction
+    embedding_fn: GeminiEmbeddingFunction
 
     @classmethod
     def build(cls) -> "StartupRAG":
         docs_by_cat = _load_documents_by_category()
-        embedding_fn = E5EmbeddingFunction()
+        embedding_fn = GeminiEmbeddingFunction()
         client = _build_client()
 
         collections = {}
         for cat in CATEGORIES:
             try:
-                # We skip deleting logic here to prevent long delays, 
-                # but if re-indexing is on, the user should clear chroma_db folder manually.
                 col = client.get_or_create_collection(
                     name=cat,
                     embedding_function=embedding_fn,
@@ -200,10 +224,10 @@ class StartupRAG:
                 # Seed if empty or reindex is forced
                 if col.count() == 0 or _should_reindex():
                     if docs_by_cat.get(cat):
-                        print(f"[{cat}] Seeding {len(docs_by_cat[cat])} chunks...")
+                        logger.info(f"[{cat}] Seeding {len(docs_by_cat[cat])} chunks...")
                         _seed_collection(col, docs_by_cat[cat])
             except Exception as e:
-                print(f"Failed to load collection '{cat}': {e}")
+                logger.error(f"Failed to load collection '{cat}': {e}")
 
         return cls(client=client, collections=collections, embedding_fn=embedding_fn)
 
@@ -240,7 +264,7 @@ class StartupRAG:
         if not documents or category not in self.collections:
              return
         _seed_collection(self.collections[category], documents)
-        print(f"Added {len(documents)} new chunks to {category} collection.")
+        logger.info(f"Added {len(documents)} new chunks to {category} collection.")
 
 
 _RAG_INSTANCE: StartupRAG | None = None
@@ -281,7 +305,7 @@ def healthcheck() -> bool:
 def index_successful_chat_interaction(user_query: str, ai_response: str, message_id: int):
     """Saves a highly-rated chat pair into the successful_chats collection for future RAG usage."""
     client = _build_client()
-    embedding_fn = E5EmbeddingFunction()
+    embedding_fn = GeminiEmbeddingFunction()
     
     collection = client.get_or_create_collection(
         name="successful_chats",
@@ -296,12 +320,12 @@ def index_successful_chat_interaction(user_query: str, ai_response: str, message
         documents=[text_content],
         ids=[doc_id]
     )
-    print(f"✅ Indexed successful chat interaction {doc_id} into successful_chats")
+    logger.info(f"Indexed successful chat interaction {doc_id} into successful_chats")
 
 def search_successful_chats(query: str, top_k: int = 1) -> List[str]:
     """Finds a previously highly-rated similar interaction."""
     client = _build_client()
-    embedding_fn = E5EmbeddingFunction()
+    embedding_fn = GeminiEmbeddingFunction()
     try:
         collection = client.get_collection(
             name="successful_chats",
@@ -323,10 +347,10 @@ def search_successful_chats(query: str, top_k: int = 1) -> List[str]:
     docs = result.get("documents", [[]])[0]
     distances = result.get("distances", [[]])[0]
     
-    # Simple distance threshold (e.g., < 0.25 similarity threshold for highly similar)
+    # Simple distance threshold for highly similar matches
     relevant = []
     for doc, dist in zip(docs, distances):
-        if dist < 0.35: # Close similarity needed for exact historical matches
+        if dist < 0.35:
             relevant.append(doc)
             
     return relevant
