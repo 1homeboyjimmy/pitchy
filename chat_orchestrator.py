@@ -18,7 +18,13 @@ import rag
 if os.getenv("LANGFUSE_BASE_URL") and not os.getenv("LANGFUSE_HOST"):
     os.environ["LANGFUSE_HOST"] = os.environ["LANGFUSE_BASE_URL"]
 
-from langfuse.decorators import observe, langfuse_context
+try:
+    from langfuse.decorators import observe, langfuse_context
+except Exception as _lf_err:
+    import logging as _lf_logging
+    _lf_logging.getLogger("langfuse").warning("Langfuse decorators unavailable: %s", _lf_err)
+    observe = lambda **kw: lambda f: f
+    langfuse_context = None
 
 logger = logging.getLogger("app")
 

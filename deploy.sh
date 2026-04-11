@@ -70,7 +70,9 @@ fi
 # ---- DATABASE MIGRATIONS ----
 echo "Applying database migrations..."
 sleep 5  # Give postgres a moment to accept connections
-docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" exec -T backend python -m alembic upgrade head
+timeout 60 docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" exec -T backend python -m alembic upgrade head || {
+  echo "WARNING: Migrations failed or timed out (exit=$?), continuing..."
+}
 
 # ---- PRUNE OLD IMAGES (but NOT build cache) ----
 docker image prune -f

@@ -2612,7 +2612,12 @@ async def send_chat_message(
         background_tasks.add_task(rename_chat_session_background, session.id, payload.content)
 
     # 2. Generator with Thoughts
-    from langfuse.decorators import observe, langfuse_context
+    try:
+        from langfuse.decorators import observe, langfuse_context
+    except Exception:
+        logger.warning("Langfuse decorators unavailable in main_chat")
+        observe = lambda **kw: lambda f: f
+        langfuse_context = None
 
     @observe(name="main_chat", as_type="generation")
     async def session_chat_generator():

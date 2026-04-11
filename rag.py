@@ -14,7 +14,15 @@ from chromadb.api.models.Collection import Collection  # noqa: E402
 from chromadb.api.types import Documents, EmbeddingFunction, Embeddings  # noqa: E402
 from sentence_transformers import SentenceTransformer  # noqa: E402
 from langchain_text_splitters import RecursiveCharacterTextSplitter  # noqa: E402
-from langfuse.decorators import observe  # noqa: E402
+try:  # noqa: E402
+    from langfuse.decorators import observe
+except Exception as _lf_err:
+    import logging as _lf_logging
+    _lf_logging.getLogger("langfuse").warning("Langfuse decorators unavailable: %s", _lf_err)
+    def observe(**kw):  # noqa: E402
+        def _wrap(fn):
+            return fn
+        return _wrap
 
 
 DOCS_DIR = Path(os.getenv("CHROMA_DOCS_DIR", "sample_docs"))
