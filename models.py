@@ -33,6 +33,7 @@ class User(Base):
     social_accounts: Mapped[list["SocialAccount"]] = relationship(back_populates="user")
     payments: Mapped[list["Payment"]] = relationship(back_populates="user")
     project_trees: Mapped[list["ProjectTree"]] = relationship(back_populates="user")
+    tool_results: Mapped[list["ToolResult"]] = relationship(back_populates="user")
 
 
 class Payment(Base):
@@ -194,3 +195,17 @@ class TreeChatHistory(Base):
     node_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     project: Mapped["ProjectTree"] = relationship()
+
+
+class ToolResult(Base):
+    __tablename__ = "tool_results"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    query: Mapped[str] = mapped_column(Text)
+    tool_type: Mapped[str] = mapped_column(String(50))  # "quick-search", "deep-research"
+    content: Mapped[str] = mapped_column(Text)
+    sources: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="tool_results")

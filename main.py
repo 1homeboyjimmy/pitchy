@@ -34,10 +34,10 @@ from redis_client import get_redis
 from yandex_gpt_client import YandexGPTError, call_yandex_gpt, extract_json, async_call_yandex_gpt
 from zai_client import generate_chat_title, analyze_search_intent
 from makura_client import call_makura, stream_makura
-from search_agent import execute_search_agent
+from search_agent import execute_search_agent, execute_deep_research, async_search_with_sources
 from db import SessionLocal, get_db
-from models import User, PromoCode, Analysis, Payment, RagLog
-from models import Analysis, ChatMessage as DbChatMessage, ChatSession, ErrorLog, User, PromoCode, Payment
+from models import User, PromoCode, Analysis, Payment, RagLog, ToolResult
+from models import Analysis, ChatMessage as DbChatMessage, ChatSession, ErrorLog, User, PromoCode, Payment, ToolResult
 from sqlalchemy import func as sa_func
 from schemas import (
     AnalysisCreateRequest,
@@ -69,6 +69,9 @@ from schemas import (
     ChatSessionAutoRequest,
     RagSearchRequest,
     RagSearchResponse,
+    ToolResultResponse,
+    ToolSearchRequest,
+    ToolResearchRequest,
 )
 from email_utils import get_dev_emails, send_email
 from sso import yandex_sso, github_sso, google_sso
@@ -1532,6 +1535,105 @@ def search_chat_messages(
         }
         for msg, session in messages
     ]
+
+
+# ——— Tools API (Search & Research) ———
+
+@app.get("/api/tools/history", response_model=list[ToolResultResponse])
+def get_tools_history(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[ToolResultResponse]:
+    """Возвращает историю использования инструментов (поиск и исследования)."""
+    results = (
+        db.query(ToolResult)
+        .filter(ToolResult.user_id == user.id)
+        .order_by(ToolResult.created_at.desc())
+        .all()
+    )
+    return results
+
+
+@app.get("/api/tools/results/{result_id}", response_model=ToolResultResponse)
+def get_tool_result(
+    result_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ToolResultResponse:
+    """Возвращает конкретный результат из истории."""
+    result = (
+        db.query(ToolResult)
+        .filter(ToolResult.id == result_id, ToolResult.user_id == user.id)
+        .first()
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="Result not found")
+    return result
+
+
+@app.delete("/api/tools/results/{result_id}")
+def delete_tool_result(
+    result_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Удаляет результат из истории."""
+    result = (
+        db.query(ToolResult)
+        .filter(ToolResult.id == result_id, ToolResult.user_id == user.id)
+        .first()
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="Result not found")
+    db.delete(result)
+    db.commit()
+    return {"status": "ok"}
+
+
+@app.post("/api/tools/quick-search", response_model=ToolResultResponse)
+async def tool_quick_search(
+    payload: ToolSearchRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ToolResultResponse:
+    """Запускает быстрый региональный поиск и сохраняет результат в историю."""
+    sources, context = await async_search_with_sources(payload.query, use_deep_search=False)
+    
+    # Store result
+    result = ToolResult(
+        user_id=user.id,
+        query=payload.query,
+        tool_type="quick-search",
+        content=context,
+        sources=sources
+    )
+    db.add(result)
+    db.commit()
+    db.refresh(result)
+    return result
+
+
+@app.post("/api/tools/deep-research", response_model=ToolResultResponse)
+async def tool_deep_research(
+    payload: ToolResearchRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ToolResultResponse:
+    """Запускает глубокое агентное исследование и сохраняет отчет в историю."""
+    content, sources = await execute_deep_research(payload.query)
+    
+    # Store result
+    result = ToolResult(
+        user_id=user.id,
+        query=payload.query,
+        tool_type="deep-research",
+        content=content,
+        sources=sources
+    )
+    db.add(result)
+    db.commit()
+    db.refresh(result)
+    return result
 
 
 @app.get("/admin/users", response_model=list[UserResponse])

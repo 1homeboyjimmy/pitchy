@@ -511,3 +511,34 @@ export async function evaluateNode(
 ): Promise<TreeResponse> {
   return postAuthJson<TreeResponse>(`/tree/${treeId}/evaluate-node`, { node_id, form_data }, token);
 }
+
+/* ——— Tools ——— */
+
+export type ToolResultResponse = {
+  id: number;
+  query: string;
+  tool_type: "quick-search" | "deep-research";
+  content: string;
+  sources: { title: string; url: string }[] | null;
+  created_at: string;
+};
+
+export async function getToolsHistory(token: string): Promise<ToolResultResponse[]> {
+  return getAuthJson<ToolResultResponse[]>("/api/tools/history", token);
+}
+
+export async function getToolResult(id: number, token: string): Promise<ToolResultResponse> {
+  return getAuthJson<ToolResultResponse>(`/api/tools/results/${id}`, token);
+}
+
+export async function deleteToolResult(id: number, token: string): Promise<{ status: string }> {
+  return request<{ status: string }>(`/api/tools/results/${id}`, undefined, token, "DELETE");
+}
+
+export async function toolQuickSearch(query: string, token: string): Promise<ToolResultResponse> {
+  return postAuthJson<ToolResultResponse>("/api/tools/quick-search", { query }, token);
+}
+
+export async function toolDeepResearch(query: string, token: string): Promise<ToolResultResponse> {
+  return postAuthJson<ToolResultResponse>("/api/tools/deep-research", { query }, token);
+}

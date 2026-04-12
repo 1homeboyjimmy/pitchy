@@ -340,3 +340,21 @@ class RagSearchRequest(BaseModel):
 class RagSearchResponse(BaseModel):
     context: str
 
+
+class ToolResultResponse(BaseModel):
+    id: int
+    query: str
+    tool_type: str
+    content: str
+    sources: list[dict] | None = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class ToolSearchRequest(BaseModel):
+    query: str = Field(..., min_length=1)
+
+class ToolResearchRequest(BaseModel):
+    query: str = Field(..., min_length=1)
+
