@@ -339,3 +339,45 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
     scroll-behavior: auto !important;
   }
 }
+
+/* ─── Presentation Print Styles ─── */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .presentation-print-container, .presentation-print-container * {
+    visibility: visible;
+    color: black !important;
+  }
+  .presentation-print-container .text-white,
+  .presentation-print-container .text-white\/80,
+  .presentation-print-container .text-white\/90,
+  .presentation-print-container h1,
+  .presentation-print-container h2 {
+    color: #131313 !important;
+    -webkit-text-fill-color: #131313 !important;
+  }
+  .presentation-print-container {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    background: white !important;
+  }
+  .presentation-print-container > div > div {
+    /* Each slide wrapper */
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: transparent !important;
+  }
+  .print\:page-break-after-always {
+    page-break-after: always;
+  }
+  @page {
+    size: landscape;
+    margin: 0;
+  }
+}

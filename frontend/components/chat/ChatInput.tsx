@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useRef, useEffect, useState } from "react";
-import { Send, Square, Maximize2, Minimize2, Globe, Sliders, Activity, ChevronUp } from "react-feather";
+import { Send, Square, Maximize2, Minimize2, Globe, Sliders, Activity, ChevronUp, DownloadCloud } from "react-feather";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface ChatInputProps {
@@ -16,6 +16,7 @@ interface ChatInputProps {
   onToggleDeepSearch?: () => void;
   isResearchMode?: boolean;
   onToggleResearchMode?: () => void;
+  onOpenImportModal?: () => void;
 }
 
 export function ChatInput({
@@ -30,6 +31,7 @@ export function ChatInput({
   onToggleDeepSearch,
   isResearchMode = false,
   onToggleResearchMode,
+  onOpenImportModal,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -165,6 +167,24 @@ export function ChatInput({
                           <span className="text-[10px] text-white/30">Глубокое агентное исследование</span>
                         </div>
                       </button>
+
+                      {onOpenImportModal && (
+                        <button
+                          onClick={() => {
+                            setIsToolsOpen(false);
+                            onOpenImportModal();
+                          }}
+                          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-white/70 hover:bg-white/5 hover:text-white mt-1"
+                        >
+                          <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-white/5">
+                            <DownloadCloud className="w-4 h-4" />
+                          </div>
+                          <div className="flex flex-col items-start">
+                            <span className="text-sm font-medium">Импорт из других ИИ</span>
+                            <span className="text-[10px] text-white/30">Перенести контекст стартапа</span>
+                          </div>
+                        </button>
+                      )}
                     </div>
                   </motion.div>
                 )}

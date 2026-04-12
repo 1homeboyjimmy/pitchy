@@ -12,6 +12,9 @@ import dayjs from "dayjs";
 import "dayjs/locale/ru";
 import { ChatInput } from "@/components/chat/ChatInput";
 import { CollapsibleUserMessage } from "@/components/chat/CollapsibleUserMessage";
+import { PresentationDrawer } from "./PresentationDrawer";
+import { PresentationSlide, importContext, ImportContextResponse } from "@/lib/api";
+import { ContextImportModal } from "@/components/chat/ContextImportModal";
 
 interface ExtendedChatMessage extends ChatMessageResponse {
     thoughts?: string;
@@ -39,6 +42,13 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const scrollViewportRef = useRef<HTMLDivElement>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
+
+    // Presentation state
+    const [presentationSlides, setPresentationSlides] = useState<PresentationSlide[] | null>(null);
+    const [isPresentationOpen, setIsPresentationOpen] = useState(false);
+
+    // Import Modal state
+    const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
     // Typewriter animation state
     const [typingMessageId, setTypingMessageId] = useState<string | number | null>(null);
@@ -243,6 +253,10 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                         setMessages((prev) =>
                             prev.map(m => m.client_id === assistantClientId ? { ...m, sources: chunk.data, isResearch: true } : m)
                         );
+                    } else if (chunk.type === "presentation") {
+                        setPresentationSlides(chunk.data);
+                        // Delay opening the drawer slightly so the user sees the "success" message
+                        setTimeout(() => setIsPresentationOpen(true), 1500);
                     } else if (chunk.type === "metadata") {
                         setMessages((prev) =>
                             prev.map(m => m.client_id === assistantClientId ? { ...m, model_used: chunk.model } : m)
@@ -568,10 +582,41 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                   onToggleDeepSearch={() => setUseDeepSearch(!useDeepSearch)}
                   isResearchMode={isResearchMode}
                   onToggleResearchMode={() => setIsResearchMode(!isResearchMode)}
+                  onOpenImportModal={() => setIsImportModalOpen(true)}
                   disabled={!!session.analysis}
                   placeholder={session.analysis ? "Диалог завершен" : "Спросите Pitchy..."}
                 />
+                
+                {presentationSlides && presentationSlides.length > 0 && (
+                    <div className="mt-4 flex justify-center">
+                        <button
+                            onClick={() => setIsPresentationOpen(true)}
+                            className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-pitchy-violet to-pitchy-cyan text-white text-sm font-bold rounded-xl shadow-[0_0_15px_rgba(168,85,247,0.3)] hover:shadow-[0_0_25px_rgba(168,85,247,0.5)] transition-all"
+                        >
+                            <FileText className="w-4 h-4" />
+                            Открыть презентацию
+                        </button>
+                    </div>
+                )}
             </div>
+
+            {/* Presentation Drawer Overlay */}
+            <PresentationDrawer 
+                isOpen={isPresentationOpen} 
+                onClose={() => setIsPresentationOpen(false)} 
+                slides={presentationSlides || []} 
+            />
+
+            {/* Context Import Modal */}
+            <ContextImportModal
+                isOpen={isImportModalOpen}
+                onClose={() => setIsImportModalOpen(false)}
+                onSubmit={async (text) => {
+                    const token = getToken();
+                    if (!token) return { success: false, message: "No token" };
+                    return await importContext({ text, session_id: session.id }, token);
+                }}
+            />
         </div >
     );
 }

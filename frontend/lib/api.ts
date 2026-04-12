@@ -41,6 +41,13 @@ export type ChatSession = {
   created_at: string;
 };
 
+export type PresentationSlide = {
+  type: string;
+  title?: string;
+  subtitle?: string;
+  content?: string | string[];
+};
+
 export type UserProfile = {
   id: number;
   email: string;
@@ -422,6 +429,25 @@ export type TreeResponse = {
   source_type: string;
   created_at: string;
 };
+
+export type RagSearchResponse = {
+  results: any[];
+};
+
+export type ImportContextRequest = {
+  text: string;
+  session_id?: number | null;
+};
+
+export type ImportContextResponse = {
+  success: boolean;
+  message?: string;
+  summary?: any;
+};
+
+export async function importContext(data: ImportContextRequest, token: string): Promise<ImportContextResponse> {
+  return postAuthJson<ImportContextResponse>("/api/v1/import-context", data, token);
+}
 
 export type TreeChatResponse = {
   reply: string;

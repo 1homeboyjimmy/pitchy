@@ -35,6 +35,7 @@ INTENT_RECOGNITION_PROMPT = """Ты — диспетчер запросов дл
 2. 'search' — поиск внешней информации, конкурентов на рынке, трендов, новостей.
 3. 'tree' — изменение структуры проекта, добавление новых гипотез, пересмотр бизнес-модели, ПРОПУСК текущего шага или переход к следующему.
 4. 'chat' — общие вопросы, объяснение терминов, дружелюбное общение или уточнение деталей (с учетом активного узла).
+5. 'presentation' — создание, генерация или показ презентации, слайдов, питч-дека.
 
 Активный узел: {node_label} (тип: {node_type}, описание: {node_desc})
 История чата (последние сообщения):
@@ -42,7 +43,7 @@ INTENT_RECOGNITION_PROMPT = """Ты — диспетчер запросов дл
 
 Запрос пользователя: "{user_message}"
 
-Верни СТРОГО JSON: {{"intent": "finance" | "search" | "tree" | "chat" | "legal", "reason": "краткое пояснение"}}
+Верни СТРОГО JSON: {{"intent": "finance" | "search" | "tree" | "chat" | "legal" | "presentation", "reason": "краткое пояснение"}}
 Используй "legal" для вопросов о российском законодательстве, налогах РФ, ООО/ИП и нормативных требованиях.
 """
 
@@ -304,7 +305,7 @@ class ChatOrchestrator:
             )
 
         try:
-            if intent == "chat" or intent not in ["tree", "finance", "search", "legal"]:
+            if intent == "chat" or intent not in ["tree", "finance", "search", "legal", "presentation"]:
                 # Use pre-fetched RAG context
                 rag_context = "\n".join([c["text"] if isinstance(c, dict) else c for c in initial_rag_chunks[:3]])
                 
@@ -373,6 +374,29 @@ class ChatOrchestrator:
                     if data["type"] == "chunk":
                         reply_full += data.get("content", "")
                     yield json_chunk
+            
+            elif intent == "presentation":
+                model_used = "Makura (Presentation Builder)"
+                yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
+                
+                # Start showing generation UI quickly
+                yield json.dumps({"type": "chunk", "content": "Начинаю сборку вашей презентации... Пожалуйста, подождите, это займет около 10-15 секунд.\n\n"}) + "\n"
+                reply_full += "Начинаю сборку вашей презентации... Пожалуйста, подождите, это займет около 10-15 секунд.\n\n"
+                
+                rag_context = "\n".join([c["text"] if isinstance(c, dict) else c for c in initial_rag_chunks[:3]])
+                slides, raw_reply, usage_ret = await self._handle_presentation(user_message, state, rag_context)
+                
+                if usage_ret:
+                    usage_data = usage_ret
+                
+                if slides:
+                    yield json.dumps({"type": "presentation", "data": slides}) + "\n"
+                    yield json.dumps({"type": "chunk", "content": "Презентация успешно сгенерирована! Открываю панель просмотра."}) + "\n"
+                    reply_full += "Презентация успешно сгенерирована! Открываю панель просмотра."
+                else:
+                    yield json.dumps({"type": "chunk", "content": "К сожалению, не удалось сгенерировать правильный формат презентации. Попробуйте еще раз."}) + "\n"
+                    reply_full += "К сожалению, не удалось сгенерировать правильный формат презентации. Попробуйте еще раз."
+
             
             else:
                 # Fallback
@@ -627,6 +651,53 @@ class ChatOrchestrator:
             pass # Placeholder as _save_metrics_from_json is not provided in the diff
             
         return reply or "Извините, сейчас я не могу ответить."
+
+    async def _handle_presentation(self, user_message: str, state: dict, rag_context: str = "") -> tuple[list, str, dict]:
+        """Handle presentation generation via Makura."""
+        tree_metadata = json.dumps(state.get("nodes", []), ensure_ascii=False)
+        
+        system_prompt = "Ты — эксперт по созданию презентаций (pitch decks) для стартапов."
+        prompt = (
+            f"Пользователь запросил: {user_message}\n\n"
+            f"Текущие данные проекта:\n{tree_metadata}\n\n"
+            f"Контекст из базы знаний (рынок, конкуренты):\n{rag_context}\n\n"
+            "Верни СТРОГО JSON-массив из 5-10 объектов. Ничего кроме JSON возвращать не нужно.\n"
+            "Допустимые 'type' слайдов: 'Hero', 'Problem', 'Solution', 'Market', 'BusinessModel', 'Team', 'CallToAction'.\n"
+            "У каждого слайда должны быть поля 'title', 'content', и (если применимо) 'subtitle'. 'content' можно делать массивом строк.\n"
+            "Пример ответа:\n"
+            "[\n"
+            "  {\"type\": \"Hero\", \"title\": \"AppName\", \"subtitle\": \"Слоган...\", \"content\": \"Доп инфо\"},\n"
+            "  {\"type\": \"Problem\", \"title\": \"Проблема\", \"content\": [\"Боль 1\", \"Боль 2\"]}\n"
+            "]\n"
+        )
+        
+        reply, _, usage_data = await call_makura(system_prompt, prompt, model=os.getenv("MAKURA_MODEL", "glm-5"))
+        
+        if not reply:
+            return [], "", {}
+            
+        try:
+            # Clean up potential markdown formatting
+            cleaned = reply.strip()
+            if cleaned.startswith("```json"):
+                cleaned = cleaned[7:]
+            if cleaned.startswith("```"):
+                cleaned = cleaned[3:]
+            if cleaned.endswith("```"):
+                cleaned = cleaned[:-3]
+                
+            cleaned = cleaned.strip()
+            slides = json.loads(cleaned)
+            
+            if not isinstance(slides, list):
+                if isinstance(slides, dict) and "slides" in slides:
+                    slides = slides["slides"]
+                else:
+                    slides = []
+            return slides, reply, usage_data
+        except Exception as e:
+            logger.error(f"Failed to parse presentation JSON: {e}\nRaw reply: {reply}")
+            return [], reply, usage_data
 
     def _merge_ai_data_to_state(self, state: dict, enriched_data: dict) -> dict:
         """Update existing nodes with new values from AI."""

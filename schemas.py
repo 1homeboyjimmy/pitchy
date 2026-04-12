@@ -144,6 +144,23 @@ class ChatMessageCreateRequest(BaseModel):
     use_research: bool = False
 
 
+class ProjectContext(BaseModel):
+    project_name: str | None = None
+    problem: str | None = None
+    solution: str | None = None
+    target_audience: str | None = None
+    features: List[str] = []
+    raw_text: str | None = None
+
+class ImportContextRequest(BaseModel):
+    text: str = Field(..., min_length=10)
+    session_id: int | None = None
+
+class ImportContextResponse(BaseModel):
+    success: bool
+    summary: ProjectContext | None = None
+    message: str | None = None
+
 class UserUpdateRequest(BaseModel):
     name: str | None = Field(None, min_length=2)
     email: EmailStr | None = None
@@ -339,8 +356,7 @@ class RagSearchRequest(BaseModel):
 
 
 class RagSearchResponse(BaseModel):
-    context: str
-
+    results: list[dict]
 
 class ToolResultResponse(BaseModel):
     id: int

@@ -77,7 +77,10 @@ from schemas import (
     ToolResultResponse,
     ToolSearchRequest,
     ToolResearchRequest,
+    ImportContextRequest,
+    ImportContextResponse,
 )
+from import_parser import ImportParser
 from email_utils import get_dev_emails, send_email
 from sso import yandex_sso, github_sso, google_sso
 import billing
@@ -1678,6 +1681,40 @@ async def tool_deep_research(
     db.commit()
     db.refresh(result)
     return result
+@app.post("/api/v1/import-context", response_model=ImportContextResponse)
+async def api_import_context(
+    payload: ImportContextRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ImportContextResponse:
+    """Parses text/json from external LLMs and saves it to RAG & optionally ChatSession."""
+    try:
+        context, message = await ImportParser.parse(payload.text)
+        
+        # Save raw_text to RAG
+        if context and context.raw_text:
+            rag.add_text_to_rag(context.raw_text)
+            
+        # If session_id is provided, inject a system message
+        if payload.session_id:
+            session = db.query(ChatSession).filter(
+                ChatSession.id == payload.session_id,
+                ChatSession.user_id == user.id
+            ).first()
+            if session:
+                context_str = context.model_dump_json() if context else "Не удалось структурировать."
+                sys_msg = DbChatMessage(
+                    session_id=session.id,
+                    role="system",
+                    content=f"Пользователь импортировал данные из внешней сессии. Основные тезисы: {context_str}",
+                )
+                db.add(sys_msg)
+                db.commit()
+
+        return ImportContextResponse(success=True, summary=context, message=message)
+    except Exception as e:
+        logger.error(f"Import failed: {e}")
+        return ImportContextResponse(success=False, message=str(e))
 
 
 @app.get("/admin/users", response_model=list[UserResponse])
