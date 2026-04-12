@@ -431,7 +431,7 @@ export type TreeResponse = {
 };
 
 export type RagSearchResponse = {
-  results: Record<string, unknown>[];
+  context: string;
 };
 
 export type ImportContextRequest = {

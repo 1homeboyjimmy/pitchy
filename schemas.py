@@ -356,7 +356,7 @@ class RagSearchRequest(BaseModel):
 
 
 class RagSearchResponse(BaseModel):
-    results: list[dict]
+    context: str
 
 class ToolResultResponse(BaseModel):
     id: int
