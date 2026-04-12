@@ -526,12 +526,6 @@ function DashboardContent() {
             </motion.div>
           )}
 
-              exit={{ opacity: 0, scale: 0.98 }}
-              className="h-full flex-1 flex flex-col min-h-0"
-            >
-              <ToolsView />
-            </motion.div>
-          )}
 
           {activeTab === "admin" && userProfile?.is_admin && (
             <motion.div

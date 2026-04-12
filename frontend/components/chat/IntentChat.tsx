@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Star, Loader, Key } from "react-feather";
+import { Star, Key } from "react-feather";
 import { useRouter } from "next/navigation";
 import { createGuestIntent } from "@/lib/api";
 import { useAuth } from "@/lib/hooks/useAuth";
@@ -109,12 +109,6 @@ export function IntentChat() {
         }
     };
 
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault();
-            handleSend();
-        }
-    };
 
     if (isLoaded && isAuthenticated) {
         return (

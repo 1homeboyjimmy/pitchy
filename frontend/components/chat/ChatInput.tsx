@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useRef, useEffect, useState } from "react";
-import { Send, Square, Maximize2, Minimize2, Globe, Sliders, Search, Activity, ChevronUp } from "react-feather";
+import { Send, Square, Maximize2, Minimize2, Globe, Sliders, Activity, ChevronUp } from "react-feather";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface ChatInputProps {

@@ -203,7 +203,7 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
       setIsLoading(false);
       abortControllerRef.current = null;
     }
-  }, [input, isLoading, treeId, activeNode, onUpdateTree, mergeMessages]);
+  }, [input, isLoading, treeId, activeNode, onUpdateTree, mergeMessages, useDeepSearch]);
 
   const stopGeneration = () => { if (abortControllerRef.current) { abortControllerRef.current.abort(); setIsLoading(false); abortControllerRef.current = null; } };
 
