@@ -111,7 +111,7 @@ async def execute_deep_research(query: str) -> tuple[str, list[dict]]:
 async def stream_deep_research(query: str):
     """
     Асинхронный генератор для многоэтапного исследования (Deep Research).
-    Использует стриминг Tavily для трансляции прогресса, источников и отчета.
+    Использует стриминг Tavily (SSE формат) для трансляции прогресса, источников и отчета.
     """
     logger.info(f"Steaming Deep Research using Tavily for query: {query}")
     tavily = await _get_tavily_client()
@@ -120,30 +120,53 @@ async def stream_deep_research(query: str):
         return
 
     try:
-        # stream=True returns an async generator of events
-        async for event in tavily.research(query, stream=True, model="pro", country="russia"):
-            # Tavily events usually include:
-            # - type: "progress" | "sources" | "content" | "complete"
-            # - content or sources data
-            event_type = event.get("type")
+        # stream=True returns a coroutine that must be awaited to get the async iterator
+        stream = await tavily.research(query, stream=True, model="pro", country="russia")
+        
+        async for raw_event in stream:
+            if not isinstance(raw_event, bytes):
+                continue
             
-            if event_type == "progress":
-                yield {"type": "thought", "content": event.get("content", "") + "\n"}
-            elif event_type == "sources":
-                sources = event.get("sources", [])
-                formatted_sources = []
-                for s in sources:
-                    if isinstance(s, dict):
-                        formatted_sources.append({"title": s.get("title", "Источник"), "url": s.get("url", "")})
-                    elif isinstance(s, str):
-                        formatted_sources.append({"title": "Источник", "url": s})
-                yield {"type": "sources", "data": formatted_sources}
-            elif event_type == "content":
-                yield {"type": "chunk", "content": event.get("content", "")}
-            elif event_type == "complete":
-                # Final content if any
-                if event.get("content"):
-                    yield {"type": "chunk", "content": event.get("content", "")}
+            # SSE events are usually strings starting with "data: "
+            line = raw_event.decode('utf-8').strip()
+            if not line.startswith("data: "):
+                continue
+                
+            data_str = line[len("data: "):]
+            if data_str == "[DONE]":
+                break
+                
+            try:
+                data = json.loads(data_str)
+                choices = data.get("choices", [])
+                if not choices:
+                    continue
+                
+                delta = choices[0].get("delta", {})
+                
+                # 1. Handle Thought/Planning (from tool_calls)
+                if "tool_calls" in delta:
+                    # Planning steps
+                    tc_list = delta["tool_calls"].get("tool_call", [])
+                    for tc in tc_list:
+                        args = tc.get("arguments")
+                        if args:
+                            yield {"type": "thought", "content": f"{args}\n"}
+                    
+                    # Sources
+                    tr_list = delta["tool_calls"].get("tool_response", [])
+                    for tr in tr_list:
+                        sources = tr.get("sources", [])
+                        if sources:
+                            formatted_sources = [{"title": s.get("title", "Источник"), "url": s.get("url", "")} for s in sources]
+                            yield {"type": "sources", "data": formatted_sources}
+                
+                # 2. Handle Content Chunks
+                if "content" in delta and delta["content"]:
+                    yield {"type": "chunk", "content": delta["content"]}
+                
+            except json.JSONDecodeError:
+                continue
                 
     except Exception as e:
         logger.error(f"Tavily Deep Research streaming error: {e}")

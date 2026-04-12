@@ -225,7 +225,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                     if (chunk.type === "thought") {
                         fullThoughtContent += chunk.content;
                         setMessages(prev => prev.map(m =>
-                            m.client_id === assistantClientId ? { ...m, thoughts: fullThoughtContent } : m
+                            m.client_id === assistantClientId ? { ...m, thoughts: fullThoughtContent, isResearch: true, thoughtExpanded: true } : m
                         ));
                     } else if (chunk.type === "chunk") {
                         let thoughtUpdate = {};
@@ -235,11 +235,11 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                         }
                         assistantContent += chunk.content;
                         setMessages((prev) =>
-                            prev.map(m => m.client_id === assistantClientId ? { ...m, content: assistantContent, ...thoughtUpdate } : m)
+                            prev.map(m => m.client_id === assistantClientId ? { ...m, content: assistantContent, isResearch: isResearchMode || useDeepSearch, ...thoughtUpdate } : m)
                         );
                     } else if (chunk.type === "sources") {
                         setMessages((prev) =>
-                            prev.map(m => m.client_id === assistantClientId ? { ...m, sources: chunk.data } : m)
+                            prev.map(m => m.client_id === assistantClientId ? { ...m, sources: chunk.data, isResearch: true } : m)
                         );
                     } else if (chunk.type === "metadata") {
                         setMessages((prev) =>
@@ -299,9 +299,9 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
 
                 {messages.map((msg, idx) => {
             const messageKey = msg.client_id || msg.id;
-            const hasThoughts = msg.thoughts !== undefined && msg.thoughts !== null;
+            const hasThoughts = msg.thoughts !== undefined && msg.thoughts !== null && msg.thoughts.length > 0;
             const userMessagesBefore = messages.slice(0, idx).filter(m => m.role === "user").length;
-            const showThoughts = hasThoughts && userMessagesBefore > 1;
+            const showThoughts = hasThoughts && (userMessagesBefore > 1 || msg.isResearch);
             const hasContent = msg.content && msg.content.length > 0;
             const isLastAssistant = msg.role === "assistant" && idx === messages.length - 1;
             const shouldRenderMainBubble = msg.role === "user" || hasContent;
