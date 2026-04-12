@@ -1,15 +1,15 @@
-import os
-import asyncio
-import logging
-from tavily import AsyncTavilyClient
+from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
 async def _get_tavily_client() -> AsyncTavilyClient | None:
+    load_dotenv() # Ensure .env is loaded in this context
     api_key = os.getenv("TAVILY_API_KEY", "")
     if not api_key:
-        logger.warning("TAVILY_API_KEY is missing. Web search is disabled.")
+        logger.warning("TAVILY_API_KEY is missing. Web search (Tavily) is disabled.")
         return None
+    # Log key presence without exposing the full key
+    logger.info(f"Tavily client initialized with key starting with {api_key[:5]}...")
     return AsyncTavilyClient(api_key=api_key)
 
 async def execute_search_agent(query: str) -> str:
@@ -127,46 +127,50 @@ async def stream_deep_research(query: str):
             if not isinstance(raw_event, bytes):
                 continue
             
-            # SSE events are usually strings starting with "data: "
-            line = raw_event.decode('utf-8').strip()
-            if not line.startswith("data: "):
-                continue
-                
-            data_str = line[len("data: "):]
-            if data_str == "[DONE]":
-                break
-                
-            try:
-                data = json.loads(data_str)
-                choices = data.get("choices", [])
-                if not choices:
+            # SSE chunks can contain multiple lines (event: and data:)
+            chunk_str = raw_event.decode('utf-8')
+            for line in chunk_str.split('\n'):
+                line = line.strip()
+                if not line.startswith("data: "):
                     continue
-                
-                delta = choices[0].get("delta", {})
-                
-                # 1. Handle Thought/Planning (from tool_calls)
-                if "tool_calls" in delta:
-                    # Planning steps
-                    tc_list = delta["tool_calls"].get("tool_call", [])
-                    for tc in tc_list:
-                        args = tc.get("arguments")
-                        if args:
-                            yield {"type": "thought", "content": f"{args}\n"}
                     
-                    # Sources
-                    tr_list = delta["tool_calls"].get("tool_response", [])
-                    for tr in tr_list:
-                        sources = tr.get("sources", [])
-                        if sources:
-                            formatted_sources = [{"title": s.get("title", "Источник"), "url": s.get("url", "")} for s in sources]
-                            yield {"type": "sources", "data": formatted_sources}
-                
-                # 2. Handle Content Chunks
-                if "content" in delta and delta["content"]:
-                    yield {"type": "chunk", "content": delta["content"]}
-                
-            except json.JSONDecodeError:
-                continue
+                data_str = line[6:]
+                if data_str == "[DONE]":
+                    break
+                    
+                try:
+                    data = json.loads(data_str)
+                    choices = data.get("choices", [])
+                    if not choices:
+                        continue
+                    
+                    delta = choices[0].get("delta", {})
+                    
+                    # 1. Handle tool_calls (Thoughts & Sources)
+                    if "tool_calls" in delta:
+                        tc_container = delta["tool_calls"]
+                        
+                        # Handle tool_call (Planning/Reflection thoughts)
+                        if "tool_call" in tc_container:
+                            for tc in tc_container["tool_call"]:
+                                args = tc.get("arguments")
+                                if args:
+                                    yield {"type": "thought", "content": f"{args}\n"}
+                        
+                        # Handle tool_response (Sources)
+                        if "tool_response" in tc_container:
+                            for tr in tc_container["tool_response"]:
+                                sources = tr.get("sources", [])
+                                if sources:
+                                    formatted_sources = [{"title": s.get("title", "Источник"), "url": s.get("url", "")} for s in sources]
+                                    yield {"type": "sources", "data": formatted_sources}
+                    
+                    # 2. Handle Content Chunks (The actual report)
+                    if "content" in delta and delta["content"]:
+                        yield {"type": "chunk", "content": delta["content"]}
+                    
+                except json.JSONDecodeError:
+                    continue
                 
     except Exception as e:
         logger.error(f"Tavily Deep Research streaming error: {e}")

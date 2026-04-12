@@ -20,9 +20,14 @@ from sqlalchemy import text
 from dotenv import load_dotenv
 load_dotenv()
 
-# Langfuse normalization: SDK looks for LANGFUSE_HOST, but server sets LANGFUSE_BASE_URL
 if os.getenv("LANGFUSE_BASE_URL") and not os.getenv("LANGFUSE_HOST"):
     os.environ["LANGFUSE_HOST"] = os.environ["LANGFUSE_BASE_URL"]
+
+try:
+    from langfuse.decorators import observe, langfuse_context
+except Exception as _lf_err:
+    observe = lambda **kw: lambda f: f
+    langfuse_context = None
 
 import rag
 from scraper import scrape_and_save, extract_text_from_pdf
@@ -1417,6 +1422,7 @@ def list_chat_messages(
 
 
 @app.post("/chat/messages")
+@observe(name="create_chat_message")
 async def create_chat_message(
     payload: ChatMessageCreateRequest,
     background_tasks: BackgroundTasks,
@@ -1454,25 +1460,37 @@ async def create_chat_message(
             
             async def research_generator():
                 full_content = ""
-                final_sources = []
-                async for chunk in stream_deep_research(payload.content):
-                    if chunk["type"] == "chunk":
-                        full_content += chunk["content"]
-                    elif chunk["type"] == "sources":
-                        final_sources = chunk["data"]
-                    
-                    yield json.dumps(chunk) + "\n"
-                
-                # Save assistant message once finished
-                if full_content.strip():
-                    save_assistant_message(
-                        session_id=session.id,
-                        content=full_content.strip(),
-                        thoughts="Глубокое исследование завершено.",
-                        client_id=payload.assistant_client_id
-                    )
+                try:
+                    async for chunk in stream_deep_research(payload.content):
+                        if chunk["type"] == "chunk":
+                            full_content += chunk["content"]
+                        yield json.dumps(chunk) + "\n"
+                finally:
+                    # Save assistant message
+                    if full_content.strip():
+                        save_assistant_message(
+                            session_id=session.id,
+                            content=full_content.strip(),
+                            thoughts="Глубокое исследование завершено.",
+                            client_id=payload.assistant_client_id
+                        )
+                    # Report usage to Langfuse if available
+                    if langfuse_context:
+                        est_tokens = (len(payload.content) + len(full_content)) // 4
+                        langfuse_context.update_current_observation(
+                            usage={"total": est_tokens},
+                            metadata={"type": "deep_research"}
+                        )
 
-            return StreamingResponse(research_generator(), media_type="text/event-stream")
+            return StreamingResponse(
+                research_generator(), 
+                media_type="text/event-stream",
+                headers={
+                    "X-Accel-Buffering": "no",
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive"
+                }
+            )
 
         # Parallel RAG for normal chat
         ch_task = asyncio.to_thread(rag.get_relevant_chunks, payload.content, top_k=3)
