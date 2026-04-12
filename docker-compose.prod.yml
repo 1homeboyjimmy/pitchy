@@ -44,7 +44,7 @@ services:
           memory: 1G
 
   backend:
-    image: ghcr.io/1homeboyjimmy/pitchy/backend:latest
+    build: .
     restart: unless-stopped
     logging:
       driver: "json-file"
@@ -79,7 +79,12 @@ services:
           memory: 4G
 
   frontend:
-    image: ghcr.io/1homeboyjimmy/pitchy/frontend:latest
+    build:
+      context: ./frontend
+      target: runner
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-https://pitchy.pro}
+        BACKEND_INTERNAL_URL: http://backend:8000
     restart: unless-stopped
     logging:
       driver: "json-file"
