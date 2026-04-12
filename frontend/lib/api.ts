@@ -439,10 +439,19 @@ export type ImportContextRequest = {
   session_id?: number | null;
 };
 
+export type ProjectContextType = {
+  project_name?: string | null;
+  problem?: string | null;
+  solution?: string | null;
+  target_audience?: string | null;
+  features?: string[];
+  raw_text?: string | null;
+};
+
 export type ImportContextResponse = {
   success: boolean;
   message?: string;
-  summary?: Record<string, unknown>;
+  summary?: ProjectContextType;
 };
 
 export async function importContext(data: ImportContextRequest, token: string): Promise<ImportContextResponse> {
