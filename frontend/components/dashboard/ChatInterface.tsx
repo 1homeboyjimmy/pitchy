@@ -20,6 +20,8 @@ interface ExtendedChatMessage extends ChatMessageResponse {
     client_id?: string;
     sources?: { title: string; url: string }[];
     sourcesExpanded?: boolean;
+    isResearch?: boolean;
+    model_used?: string;
 }
 
 interface ChatInterfaceProps {
