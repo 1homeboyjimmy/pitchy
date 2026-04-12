@@ -80,7 +80,7 @@ function DashboardContent() {
   const [loading, setLoading] = useState(true);
   const [userProfile, setUserProfile] = useState<UserResponse | null>(null);
   const [isCreating, setIsCreating] = useState(false);
-  const { isSidebarOpen, setSidebarOpen, toggleSidebar, setIsDashboard, setIsChatOpen } = useLayoutStore();
+  const { isSidebarOpen, toggleSidebar, setIsDashboard, setIsChatOpen } = useLayoutStore();
 
   useEffect(() => {
     setIsDashboard(true);

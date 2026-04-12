@@ -431,7 +431,7 @@ export type TreeResponse = {
 };
 
 export type RagSearchResponse = {
-  results: any[];
+  results: Record<string, unknown>[];
 };
 
 export type ImportContextRequest = {
@@ -442,7 +442,7 @@ export type ImportContextRequest = {
 export type ImportContextResponse = {
   success: boolean;
   message?: string;
-  summary?: any;
+  summary?: Record<string, unknown>;
 };
 
 export async function importContext(data: ImportContextRequest, token: string): Promise<ImportContextResponse> {

@@ -1,7 +1,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { User, Cpu, Loader, Star, Zap, Users, Grid, HelpCircle, ThumbsUp, ThumbsDown, ChevronDown, ChevronUp, Activity, Globe, Link2 } from "react-feather";
+import { User, Cpu, Loader, Star, Zap, Users, Grid, HelpCircle, ThumbsUp, ThumbsDown, ChevronDown, ChevronUp, Activity, Globe, Link2, FileText } from "react-feather";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 // Button unused
@@ -13,7 +13,7 @@ import "dayjs/locale/ru";
 import { ChatInput } from "@/components/chat/ChatInput";
 import { CollapsibleUserMessage } from "@/components/chat/CollapsibleUserMessage";
 import { PresentationDrawer } from "./PresentationDrawer";
-import { PresentationSlide, importContext, ImportContextResponse } from "@/lib/api";
+import { PresentationSlide, importContext } from "@/lib/api";
 import { ContextImportModal } from "@/components/chat/ContextImportModal";
 
 interface ExtendedChatMessage extends ChatMessageResponse {

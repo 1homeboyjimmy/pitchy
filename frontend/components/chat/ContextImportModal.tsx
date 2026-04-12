@@ -31,7 +31,7 @@ export function ContextImportModal({ isOpen, onClose, onSubmit }: ContextImportM
     try {
       const res = await onSubmit(inputText);
       setResult(res);
-    } catch (e) {
+    } catch {
       setResult({ success: false, message: "Произошла ошибка при отправке." });
     } finally {
       setIsSubmitting(false);
