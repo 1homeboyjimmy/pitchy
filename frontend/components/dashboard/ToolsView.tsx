@@ -242,7 +242,7 @@ export function ToolsView() {
                       <Shield className="w-4 h-4" />
                       <span>АГЕНТНОСТЬ</span>
                     </div>
-                    <p className="text-xs text-white/40 leading-relaxed">Режим исследования запускает цепочку действий: поиск -> анализ -> синтез отчета.</p>
+                    <p className="text-xs text-white/40 leading-relaxed">Режим исследования запускает цепочку действий: поиск → анализ → синтез отчета.</p>
                   </div>
                 </div>
               </div>
