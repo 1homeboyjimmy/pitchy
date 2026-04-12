@@ -125,8 +125,11 @@ async def stream_deep_research(query: str):
         return
 
     try:
+        # Enforce Russian language output for both thoughts and final report
+        russian_query = f"{query}\n\nВАЖНО: Отвечай строго на РУССКОМ языке. Все твои мысли и итоговый отчет должны быть на русском."
+        
         # stream=True returns a coroutine that must be awaited to get the async iterator
-        stream = await tavily.research(query, stream=True, model="pro", country="russia")
+        stream = await tavily.research(russian_query, stream=True, model="pro", country="russia")
         
         async for raw_event in stream:
             if not isinstance(raw_event, bytes):
