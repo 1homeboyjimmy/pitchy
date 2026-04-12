@@ -1448,7 +1448,39 @@ async def create_chat_message(
 
     context_chunks = [] # Initialize context_chunks
     try:
-        # Parallel RAG
+        if payload.use_research:
+            # Special case: Deep Agentic Research
+            logger.info(f"Triggering Deep Research in chat for session {session.id}")
+            report_content, sources = await execute_deep_research(payload.content)
+            
+            # Save as ToolResult for history
+            tool_res = ToolResult(
+                user_id=user.id,
+                query=payload.content,
+                tool_type="research",
+                result_text=report_content,
+                sources=sources
+            )
+            db.add(tool_res)
+            db.commit()
+
+            async def research_generator():
+                yield json.dumps({"type": "thought", "content": "Запускаю глубокое агентное исследование по вашему запросу...\nАнализирую источники и синтезирую отчет...\n"}) + "\n"
+                await asyncio.sleep(0.5)
+                yield json.dumps({"type": "chunk", "content": report_content}) + "\n"
+                yield json.dumps({"type": "sources", "data": sources}) + "\n"
+                
+                # Save assistant message
+                save_assistant_message(
+                    session_id=session.id,
+                    content=report_content,
+                    thoughts="Глубокое исследование завершено.",
+                    client_id=payload.assistant_client_id
+                )
+
+            return StreamingResponse(research_generator(), media_type="text/event-stream")
+
+        # Parallel RAG for normal chat
         ch_task = asyncio.to_thread(rag.get_relevant_chunks, payload.content, top_k=3)
         si_task = analyze_search_intent_zai(payload.content)
         context_chunks, search_decision = await asyncio.gather(ch_task, si_task)
@@ -1460,7 +1492,7 @@ async def create_chat_message(
             if web_context:
                 context_chunks.insert(0, f"--- АКТУАЛЬНЫЕ ДАННЫЕ ИЗ ИНТЕРНЕТА (ПОИСК: {query}) ---\n{web_context}\n--- КОНЕЦ ДАННЫХ ИЗ ИНТЕРНЕТА ---")
     except Exception as e:
-        logger.error(f"Failed RAG in session message: {e}")
+        logger.error(f"Failed RAG / Research in session message: {e}")
     # -----------------------------------
 
     user_prompt = _build_chat_prompt(chat_messages, context_chunks)

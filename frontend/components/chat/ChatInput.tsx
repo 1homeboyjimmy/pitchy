@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useRef, useEffect, useState } from "react";
-import { Send, Square, Maximize2, Minimize2, Globe } from "react-feather";
-import { motion } from "framer-motion";
+import { Send, Square, Maximize2, Minimize2, Globe, Sliders, Search, Activity, ChevronUp } from "react-feather";
+import { motion, AnimatePresence } from "framer-motion";
 
 interface ChatInputProps {
   value: string;
@@ -14,6 +14,8 @@ interface ChatInputProps {
   disabled?: boolean;
   useDeepSearch?: boolean;
   onToggleDeepSearch?: () => void;
+  isResearchMode?: boolean;
+  onToggleResearchMode?: () => void;
 }
 
 export function ChatInput({
@@ -26,9 +28,24 @@ export function ChatInput({
   disabled = false,
   useDeepSearch = false,
   onToggleDeepSearch,
+  isResearchMode = false,
+  onToggleResearchMode,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isToolsOpen, setIsToolsOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsToolsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // Auto-expand logic based on content ONLY if not fullscreen
   useEffect(() => {
@@ -95,11 +112,64 @@ export function ChatInput({
                     ? "bg-blue-500/20 text-blue-400" 
                     : "bg-transparent text-white/40 hover:bg-white/10 hover:text-white"
                 }`}
-                title={useDeepSearch ? "Глубокий поиск включен" : "Включить глубокий поиск"}
+                title={useDeepSearch ? "Быстрый поиск включен" : "Включить быстрый поиск"}
               >
                 <Globe className="w-4 h-4" />
               </motion.button>
             )}
+
+            <div className="relative" ref={menuRef}>
+              <motion.button
+                onClick={() => setIsToolsOpen(!isToolsOpen)}
+                whileTap={{ scale: 0.95 }}
+                type="button"
+                className={`flex items-center gap-2 px-3 h-9 rounded-full transition-all ${
+                  isResearchMode 
+                    ? "bg-pitchy-violet text-white shadow-[0_0_15px_rgba(139,92,246,0.3)]"
+                    : "bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white"
+                }`}
+              >
+                <Sliders className="w-4 h-4" />
+                <span className="text-xs font-medium">Инструменты</span>
+                <ChevronUp className={`w-3 h-3 transition-transform duration-200 ${isToolsOpen ? 'rotate-180' : ''}`} />
+              </motion.button>
+
+              <AnimatePresence>
+                {isToolsOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                    className="absolute bottom-full left-0 mb-3 w-64 bg-[#1A1A24] border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-50 backdrop-blur-xl"
+                  >
+                    <div className="p-2 border-b border-white/5">
+                      <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest px-3 py-1">Доступные функции</span>
+                    </div>
+                    <div className="p-1">
+                      <button
+                        onClick={() => {
+                          onToggleResearchMode?.();
+                          setIsToolsOpen(false);
+                        }}
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors ${
+                          isResearchMode 
+                            ? "bg-pitchy-violet/20 text-pitchy-violet" 
+                            : "text-white/70 hover:bg-white/5 hover:text-white"
+                        }`}
+                      >
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isResearchMode ? 'bg-pitchy-violet text-white' : 'bg-white/5'}`}>
+                          <Activity className="w-4 h-4" />
+                        </div>
+                        <div className="flex flex-col items-start">
+                          <span className="text-sm font-medium">Deep Research</span>
+                          <span className="text-[10px] text-white/30">Глубокое агентное исследование</span>
+                        </div>
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
           
           <div className="flex items-center">

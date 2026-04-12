@@ -3,14 +3,13 @@
 import { useState, useEffect, Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
-import { Layout as LayoutIcon, MessageSquare, BarChart2, Plus, Star, Lock, ChevronRight, Loader, Shield, GitBranch, Menu, BookOpen } from "react-feather";
+import { Layout as LayoutIcon, MessageSquare, BarChart2, Plus, Star, Lock, ChevronRight, Loader, Shield, GitBranch, Menu } from "react-feather";
 import Layout from "@/components/Layout";
 // StatsCard unused
 import { SessionCard } from "@/components/dashboard/SessionCard";
 import { ChatInterface } from "@/components/dashboard/ChatInterface";
 import { AdminView } from "@/components/dashboard/AdminView";
 import { TreeView } from "@/components/dashboard/TreeView";
-import { ToolsView } from "@/components/dashboard/ToolsView";
 import { GlassCard, Button } from "@/components/shared";
 import { useLayoutStore } from "@/lib/store/layout";
 import { getToken } from "@/lib/auth";
@@ -67,12 +66,8 @@ function UnauthDashboard() {
 
 import { useSearchParams } from "next/navigation";
 
-// ... imports ...
-
 import { useAuth } from "@/lib/hooks/useAuth";
 import { setToken } from "@/lib/auth";
-
-// ...
 
 function DashboardContent() {
   const router = useRouter();
@@ -158,8 +153,6 @@ function DashboardContent() {
     };
     init();
   }, [isLoaded, token]); // Re-run when auth is loaded/changed
-
-  // ... createSession handlers using token from hook ...
 
   const handleCreateEmptySession = async () => {
     setIsCreating(true);
@@ -276,7 +269,6 @@ function DashboardContent() {
             { id: "overview", label: "Обзор", icon: LayoutIcon },
             { id: "chat", label: "Чат", icon: MessageSquare },
             { id: "tree", label: "Древо", icon: GitBranch },
-            { id: "tools", label: "Инструменты", icon: BookOpen },
             { id: "custdev", label: "CustDev", icon: BarChart2, href: "https://custdev.pitchy.pro/" }
           ].map((item) => {
             const isExternal = 'href' in item;
@@ -355,7 +347,6 @@ function DashboardContent() {
             { id: "overview", label: "Обзор", icon: LayoutIcon },
             { id: "chat", label: "Чат", icon: MessageSquare },
             { id: "tree", label: "Древо", icon: GitBranch },
-            { id: "tools", label: "Инструменты", icon: BookOpen },
             { id: "custdev", label: "CustDev", icon: BarChart2, href: "https://custdev.pitchy.pro/" }
           ].map((item) => {
             const isExternal = 'href' in item;
@@ -427,14 +418,12 @@ function DashboardContent() {
                     {activeTab === "overview" && "Обзор проектов"}
                   {activeTab === "chat" && (activeSession ? activeSession.title : "Чат с аналитиком")}
                   {activeTab === "tree" && "Древо принятия решений"}
-                  {activeTab === "tools" && "AI Инструменты"}
                   {activeTab === "admin" && "Админ-панель"}
                 </h1>
                 <p className="text-white/40 text-sm">
                   {activeTab === "overview" && "Управляйте вашими анализами и запускайте новые."}
                   {activeTab === "chat" && "Интерактивный анализ вашего стартапа."}
                   {activeTab === "tree" && "ИИ-визуализация готовности вашего стартапа."}
-                  {activeTab === "tools" && "Региональный поиск и глубокие исследования рынка."}
                   {activeTab === "admin" && "Управление пользователями, промокодами и аналитикой платформы."}
                 </p>
               </div>
@@ -537,11 +526,6 @@ function DashboardContent() {
             </motion.div>
           )}
 
-          {activeTab === "tools" && (
-            <motion.div
-              key="tools"
-              initial={{ opacity: 0, scale: 0.98 }}
-              animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.98 }}
               className="h-full flex-1 flex flex-col min-h-0"
             >

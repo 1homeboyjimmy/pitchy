@@ -32,6 +32,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
     const [inputValue, setInputValue] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [useDeepSearch, setUseDeepSearch] = useState(false);
+    const [isResearchMode, setIsResearchMode] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const scrollViewportRef = useRef<HTMLDivElement>(null);
@@ -211,7 +212,16 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
             const { sendChatMessageStream, getChatSession } = await import("@/lib/api");
 
             try {
-                for await (const chunk of sendChatMessageStream(session.id, content, token, abortController.signal, userClientId, assistantClientId, useDeepSearch)) {
+                for await (const chunk of sendChatMessageStream(
+                    session.id, 
+                    content, 
+                    token, 
+                    abortController.signal, 
+                    userClientId, 
+                    assistantClientId, 
+                    useDeepSearch,
+                    isResearchMode
+                )) {
                     if (chunk.type === "thought") {
                         fullThoughtContent += chunk.content;
                         setMessages(prev => prev.map(m =>
@@ -259,6 +269,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
             setMessages((prev) => prev.filter(m => m.id !== -1));
         } finally {
             setIsLoading(false);
+            setIsResearchMode(false); // Reset research mode after send
             abortControllerRef.current = null;
             setTimeout(() => textareaRef.current?.focus(), 100);
         }
@@ -553,6 +564,8 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                   onStop={stopGeneration}
                   useDeepSearch={useDeepSearch}
                   onToggleDeepSearch={() => setUseDeepSearch(!useDeepSearch)}
+                  isResearchMode={isResearchMode}
+                  onToggleResearchMode={() => setIsResearchMode(!isResearchMode)}
                   disabled={!!session.analysis}
                   placeholder={session.analysis ? "Диалог завершен" : "Спросите Pitchy..."}
                 />

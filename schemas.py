@@ -141,6 +141,7 @@ class ChatMessageCreateRequest(BaseModel):
     client_id: str | None = None
     assistant_client_id: str | None = None
     use_deep_search: bool = False
+    use_research: bool = False
 
 
 class UserUpdateRequest(BaseModel):

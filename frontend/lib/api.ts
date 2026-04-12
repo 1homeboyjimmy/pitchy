@@ -255,7 +255,16 @@ export async function sendChatMessage(sessionId: number, content: string, token:
   return postAuthJson<ChatMessageResponse>(`/chat/sessions/${sessionId}/messages`, { content }, token);
 }
 
-export async function* sendChatMessageStream(sessionId: number, content: string, token: string, signal?: AbortSignal, clientId?: string, assistantClientId?: string, useDeepSearch?: boolean) {
+export async function* sendChatMessageStream(
+    sessionId: number,
+    content: string,
+    token: string,
+    signal?: AbortSignal,
+    userClientId?: string,
+    assistantClientId?: string,
+    useDeepSearch: boolean = false,
+    useResearch: boolean = false
+) {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token && token !== COOKIE_SESSION_MARKER) {
     headers.Authorization = `Bearer ${token}`;
@@ -263,7 +272,7 @@ export async function* sendChatMessageStream(sessionId: number, content: string,
   const res = await fetch(`${API_BASE}/chat/sessions/${sessionId}/messages`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ content, client_id: clientId, assistant_client_id: assistantClientId, use_deep_search: useDeepSearch }),
+    body: JSON.stringify({ content, client_id: userClientId, assistant_client_id: assistantClientId, use_deep_search: useDeepSearch, use_research: useResearch }),
     credentials: "include",
     signal
   });
