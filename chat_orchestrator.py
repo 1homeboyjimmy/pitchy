@@ -275,7 +275,7 @@ class ChatOrchestrator:
             yield json.dumps({"type": "thought" if inside_thought else "chunk", "content": buffer}) + "\n"
 
     @observe(name="orchestrator_process_message")
-    async def process_message(self, user_message: str, active_node_id: str = None, client_id: str = None, assistant_client_id: str = None, use_deep_search: bool = False):
+    async def process_message(self, user_message: str, active_node_id: str = None, client_id: str = None, assistant_client_id: str = None, use_deep_search: bool = False, use_research: bool = False):
         """Main entry point for chat orchestration. Yields JSON chunks."""
         state = await self.load_state()
         history = await self.get_chat_history(node_id=active_node_id)
@@ -292,8 +292,8 @@ class ChatOrchestrator:
         thoughts_full = ""
         model_used = "Makura (GLM-5)"
         enriched_data = {}
-        sources_list = None
-        usage_data = {}  # Token usage tracking
+        sources_list = []
+        usage_data = None  # Token usage tracking
 
         if langfuse_context:
             langfuse_context.update_current_observation(
@@ -306,7 +306,7 @@ class ChatOrchestrator:
         try:
             if intent == "chat" or intent not in ["tree", "finance", "search", "legal"]:
                 # Use pre-fetched RAG context
-                rag_context = "\n".join([c["text"] for c in initial_rag_chunks[:3]])
+                rag_context = "\n".join([c["text"] if isinstance(c, dict) else c for c in initial_rag_chunks[:3]])
                 
                 yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
                 start_time = time.time()
@@ -332,14 +332,14 @@ class ChatOrchestrator:
                 yield json.dumps({"type": "chunk", "content": reply_full}) + "\n"
                 yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
             
-            elif intent == "search":
-                model_used = "Perplexity/Agent"
+            elif intent == "search" or use_research:
+                model_used = "Tavily/Agent"
                 yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
                 
                 start_time = time.time()
                 ttft = None
                 # Logic: Use search handler that yields chunks natively
-                async for json_chunk in self._handle_search(user_message, use_deep_search):
+                async for json_chunk in self._handle_search(user_message, use_deep_search or use_research, use_research):
                     if isinstance(json_chunk, dict) and "__usage__" in json_chunk:
                         usage_data = json_chunk["__usage__"]
                         continue
@@ -359,7 +359,7 @@ class ChatOrchestrator:
 
             elif intent == "legal":
                 # Use pre-fetched context shifted to legal collections if needed, OR just use initial ones to save time
-                rag_context = "\n".join([c["text"] for c in initial_rag_chunks[:3]])
+                rag_context = "\n".join([c["text"] if isinstance(c, dict) else c for c in initial_rag_chunks[:3]])
                 
                 reply_full = await self._handle_legal(user_message, rag_context=rag_context)
                 yield json.dumps({"type": "chunk", "content": reply_full}) + "\n"
@@ -536,17 +536,22 @@ class ChatOrchestrator:
                 continue  # Skip usage sentinel
             yield json.dumps({"type": "chunk", "content": chunk}) + "\n"
 
-    async def _handle_search(self, user_message: str, use_deep_search: bool = False):
-        """Handle internet search intent by using Tavily and returning insights stream."""
+    async def _handle_search(self, user_message: str, use_deep_search: bool = False, use_research: bool = False):
+        """Handle internet search intent by calling Tavily streaming research or basic search."""
+        if use_research:
+            from search_agent import stream_deep_research
+            async for chunk in stream_deep_research(user_message):
+                yield json.dumps(chunk) + "\n"
+            return
+
         from search_agent import async_search_with_sources
         
-        # 1. Inform client that we are starting search
+        # 1. Inform client that we are starting basic/deep search (non-agentic)
         yield json.dumps({"type": "thought", "content": "Ищу информацию в интернете..."}) + "\n"
         
         sources, search_context = await async_search_with_sources(user_message, use_deep_search)
         
         if sources:
-            # Yield the sources as a structured chunk right away
             yield json.dumps({"type": "sources", "data": sources}) + "\n"
         
         prompt = (
@@ -557,7 +562,6 @@ class ChatOrchestrator:
         )
         system = "Ты — эксперт по поиску и сводке информации. Сначала напиши свои мысли в <thought>...</thought>, а затем ответ."
         
-        # Stream from Makura and parse thoughts correctly
         async for chunk in self._parse_thought_generator(stream_makura(system, prompt)):
             yield chunk
 

@@ -2791,6 +2791,10 @@ async def send_chat_message(
         provider = os.getenv("PRIMARY_PROVIDER", "makura")
         full_response = ""
         full_thoughts = ""
+        usage_data = None
+        sources = []
+        start_time = time.time()
+        ttft = None
         
         try:
             # We need history for contextual responses
@@ -2813,42 +2817,54 @@ async def send_chat_message(
                 if cats:
                     context_chunks = [
                         c for c in context_chunks 
-                        if any(cat in c.get('metadata', {}).get('collection', '') for cat in cats)
+                        if isinstance(c, dict) and any(cat in c.get('metadata', {}).get('collection', '') for cat in cats)
                     ] or context_chunks
             except Exception as e:
                 logger.error(f"Error in parallel RAG/Classification: {e}")
                 context_chunks = []
 
-            # If user wants deep_search from main chat, we could also call tavily here, but for now we'll stick to RAG
-            user_prompt = _build_chat_prompt(chat_history, context_chunks)
+            # 3. MODE: DEEP RESEARCH
+            if getattr(payload, "use_research", False):
+                from search_agent import stream_deep_research
+                async for chunk in stream_deep_research(payload.content):
+                    if chunk["type"] == "chunk":
+                        if ttft is None: ttft = time.time() - start_time
+                        full_response += chunk["content"]
+                    elif chunk["type"] == "thought":
+                        full_thoughts += chunk["content"]
+                    elif chunk["type"] == "sources":
+                        sources = chunk.get("data", [])
+                    yield json.dumps(chunk) + "\n"
             
-            # Additional internet search if requested
-            if getattr(payload, "use_deep_search", False):
-                from search_agent import async_search_with_sources
-                sources, search_ctx = await async_search_with_sources(payload.content, use_deep_search=True)
-                if search_ctx:
-                    user_prompt = f"ДАННЫЕ ИЗ БАЗЫ:\n\n{context_chunks}\n\nДАННЫЕ ИЗ ИНТЕРНЕТА:\n\n{search_ctx}\n\nВопрос: {payload.content}"
-                    if sources:
-                        yield json.dumps({"type": "sources", "data": sources}) + "\n"
+            # 4. MODE: QUICK SEARCH OR REGULAR CHAT
+            else:
+                user_prompt = _build_chat_prompt(chat_history, context_chunks)
+                
+                # Additional internet search if requested (Quick Search)
+                if getattr(payload, "use_deep_search", False):
+                    from search_agent import async_search_with_sources
+                    sources, search_ctx = await async_search_with_sources(payload.content, use_deep_search=True)
+                    if search_ctx:
+                        user_prompt = f"ДАННЫЕ ИЗ БАЗЫ:\n\n{context_chunks}\n\nДАННЫЕ ИЗ ИНТЕРНЕТА:\n\n{search_ctx}\n\nВопрос: {payload.content}"
+                        if sources:
+                            yield json.dumps({"type": "sources", "data": sources}) + "\n"
 
-            raw_gen = stream_makura(SYSTEM_CHAT_PROMPT, user_prompt)
-            
-            start_time = time.time()
-            ttft = None
-            async for json_chunk in parse_thought_generator(raw_gen):
-                if isinstance(json_chunk, dict):
-                    if "__usage__" in json_chunk:
-                        usage_data = json_chunk["__usage__"]
-                    continue
+                raw_gen = stream_makura(SYSTEM_CHAT_PROMPT, user_prompt)
+                
+                async for json_chunk in parse_thought_generator(raw_gen):
+                    if isinstance(json_chunk, dict):
+                        if "__usage__" in json_chunk:
+                            usage_data = json_chunk["__usage__"]
+                        continue
 
-                data = json.loads(json_chunk.strip())
-                if data["type"] == "chunk":
-                    if ttft is None:
-                        ttft = time.time() - start_time
-                    full_response += data["content"]
-                elif data["type"] == "thought":
-                    full_thoughts += data["content"]
-                yield json_chunk
+                    data = json.loads(json_chunk.strip())
+                    if data["type"] == "chunk":
+                        if ttft is None:
+                            ttft = time.time() - start_time
+                        full_response += data["content"]
+                    elif data["type"] == "thought":
+                        full_thoughts += data["content"]
+                    yield json_chunk
             
             # Save assistant response in background using asyncio instead of background_tasks
             if full_response:

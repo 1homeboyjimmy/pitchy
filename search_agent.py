@@ -153,22 +153,27 @@ async def stream_deep_research(query: str):
                     
                     # 1. Handle tool_calls (Thoughts & Sources)
                     if "tool_calls" in delta:
-                        tc_container = delta["tool_calls"]
+                        tc_list = delta["tool_calls"]
+                        if isinstance(tc_list, dict):
+                            # Handle case where it's a single dict instead of list
+                            tc_list = [tc_list]
                         
-                        # Handle tool_call (Planning/Reflection thoughts)
-                        if "tool_call" in tc_container:
-                            for tc in tc_container["tool_call"]:
-                                args = tc.get("arguments")
-                                if args:
-                                    yield {"type": "thought", "content": f"{args}\n"}
-                        
-                        # Handle tool_response (Sources)
-                        if "tool_response" in tc_container:
-                            for tr in tc_container["tool_response"]:
-                                sources = tr.get("sources", [])
-                                if sources:
-                                    formatted_sources = [{"title": s.get("title", "Источник"), "url": s.get("url", "")} for s in sources]
-                                    yield {"type": "sources", "data": formatted_sources}
+                        for tc in tc_list:
+                            # Handle tool_call (Planning/Reflection thoughts)
+                            if "tool_call" in tc:
+                                for sub_tc in tc["tool_call"] if isinstance(tc["tool_call"], list) else [tc["tool_call"]]:
+                                    args = sub_tc.get("arguments")
+                                    if args:
+                                        # args usually contains the internal plan/reflection
+                                        yield {"type": "thought", "content": f"{args}\n"}
+                            
+                            # Handle tool_response (Sources)
+                            if "tool_response" in tc:
+                                for sub_tr in tc["tool_response"] if isinstance(tc["tool_response"], list) else [tc["tool_response"]]:
+                                    sources = sub_tr.get("sources", [])
+                                    if sources:
+                                        formatted_sources = [{"title": s.get("title", "Источник"), "url": s.get("url", "")} for s in sources]
+                                        yield {"type": "sources", "data": formatted_sources}
                     
                     # 2. Handle Content Chunks (The actual report)
                     if "content" in delta and delta["content"]:
