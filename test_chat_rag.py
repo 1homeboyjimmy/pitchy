@@ -54,11 +54,12 @@ async def test_rag_retrieval_only():
     found_rkn = False
     found_fine = False
     for i, chunk in enumerate(chunks):
+        text = chunk["text"] if isinstance(chunk, dict) else chunk
         print(f"\n--- Chunk {i+1} (first 200 chars) ---")
-        print(chunk[:200])
-        if "Роскомнадзор" in chunk:
+        print(text[:200])
+        if "Роскомнадзор" in text:
             found_rkn = True
-        if "300 000" in chunk or "штраф" in chunk.lower():
+        if "300 000" in text or "штраф" in text.lower():
             found_fine = True
     
     # Test LLC query
@@ -70,9 +71,10 @@ async def test_rag_retrieval_only():
     
     found_llc = False
     for i, chunk in enumerate(chunks2):
+        text = chunk["text"] if isinstance(chunk, dict) else chunk
         print(f"\n--- Chunk {i+1} (first 200 chars) ---")
-        print(chunk[:200])
-        if "ООО" in chunk or "Устав" in chunk or "Р11001" in chunk:
+        print(text[:200])
+        if "ООО" in text or "Устав" in text or "Р11001" in text:
             found_llc = True
 
     print("\n\n" + "="*60)

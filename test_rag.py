@@ -19,7 +19,8 @@ def test_rag():
     print("Results:")
 
     for i, res in enumerate(results):
-        print(f"{i+1}. {res[:100]}...")
+        text = res["text"] if isinstance(res, dict) else res
+        print(f"{i+1}. {text[:100]}...")
 
 
 if __name__ == "__main__":

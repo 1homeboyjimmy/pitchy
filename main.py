@@ -1055,7 +1055,7 @@ async def rag_search_endpoint(
     try:
         # Use asyncio.to_thread because rag.get_relevant_chunks is synchronous and might be slow
         context_chunks = await asyncio.to_thread(rag.get_relevant_chunks, payload.query, top_k=5)
-        context = "\n\n".join(context_chunks)
+        context = "\n\n".join([c["text"] for c in context_chunks])
         return RagSearchResponse(context=context)
     except Exception as e:
         logger.error(f"RAG search error: {e}")

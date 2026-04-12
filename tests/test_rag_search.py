@@ -11,7 +11,10 @@ from main import app
 
 def test_rag_search_success():
     """Test successful RAG search with valid token."""
-    mock_chunks = ["Результат 1", "Результат 2"]
+    mock_chunks = [
+        {"text": "Результат 1", "metadata": {"collection": "general"}},
+        {"text": "Результат 2", "metadata": {"collection": "general"}}
+    ]
     with mock.patch("rag.get_relevant_chunks", return_value=mock_chunks):
         with TestClient(app) as client:
             headers = {"Authorization": "Bearer test_token_123"}
