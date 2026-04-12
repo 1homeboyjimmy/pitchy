@@ -107,3 +107,46 @@ async def execute_deep_research(query: str) -> tuple[str, list[dict]]:
         return f"Произошла ошибка при глубоком исследовании: {str(e)}", []
     finally:
         if tavily: await tavily.close()
+
+async def stream_deep_research(query: str):
+    """
+    Асинхронный генератор для многоэтапного исследования (Deep Research).
+    Использует стриминг Tavily для трансляции прогресса, источников и отчета.
+    """
+    logger.info(f"Steaming Deep Research using Tavily for query: {query}")
+    tavily = await _get_tavily_client()
+    if not tavily:
+        yield {"type": "chunk", "content": "Интернет-поиск отключен."}
+        return
+
+    try:
+        # stream=True returns an async generator of events
+        async for event in tavily.research(query, stream=True, model="pro", country="russia"):
+            # Tavily events usually include:
+            # - type: "progress" | "sources" | "content" | "complete"
+            # - content or sources data
+            event_type = event.get("type")
+            
+            if event_type == "progress":
+                yield {"type": "thought", "content": event.get("content", "") + "\n"}
+            elif event_type == "sources":
+                sources = event.get("sources", [])
+                formatted_sources = []
+                for s in sources:
+                    if isinstance(s, dict):
+                        formatted_sources.append({"title": s.get("title", "Источник"), "url": s.get("url", "")})
+                    elif isinstance(s, str):
+                        formatted_sources.append({"title": "Источник", "url": s})
+                yield {"type": "sources", "data": formatted_sources}
+            elif event_type == "content":
+                yield {"type": "chunk", "content": event.get("content", "")}
+            elif event_type == "complete":
+                # Final content if any
+                if event.get("content"):
+                    yield {"type": "chunk", "content": event.get("content", "")}
+                
+    except Exception as e:
+        logger.error(f"Tavily Deep Research streaming error: {e}")
+        yield {"type": "chunk", "content": f"\n\n[Ошибка исследования: {str(e)}]"}
+    finally:
+        if tavily: await tavily.close()

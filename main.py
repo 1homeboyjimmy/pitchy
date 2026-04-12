@@ -1449,34 +1449,28 @@ async def create_chat_message(
     context_chunks = [] # Initialize context_chunks
     try:
         if payload.use_research:
-            # Special case: Deep Agentic Research
-            logger.info(f"Triggering Deep Research in chat for session {session.id}")
-            report_content, sources = await execute_deep_research(payload.content)
+            # New streaming research agent
+            logger.info(f"Triggering Streaming Deep Research in chat for session {session.id}")
             
-            # Save as ToolResult for history
-            tool_res = ToolResult(
-                user_id=user.id,
-                query=payload.content,
-                tool_type="research",
-                result_text=report_content,
-                sources=sources
-            )
-            db.add(tool_res)
-            db.commit()
-
             async def research_generator():
-                yield json.dumps({"type": "thought", "content": "Запускаю глубокое агентное исследование по вашему запросу...\nАнализирую источники и синтезирую отчет...\n"}) + "\n"
-                await asyncio.sleep(0.5)
-                yield json.dumps({"type": "chunk", "content": report_content}) + "\n"
-                yield json.dumps({"type": "sources", "data": sources}) + "\n"
+                full_content = ""
+                final_sources = []
+                async for chunk in stream_deep_research(payload.content):
+                    if chunk["type"] == "chunk":
+                        full_content += chunk["content"]
+                    elif chunk["type"] == "sources":
+                        final_sources = chunk["data"]
+                    
+                    yield json.dumps(chunk) + "\n"
                 
-                # Save assistant message
-                save_assistant_message(
-                    session_id=session.id,
-                    content=report_content,
-                    thoughts="Глубокое исследование завершено.",
-                    client_id=payload.assistant_client_id
-                )
+                # Save assistant message once finished
+                if full_content.strip():
+                    save_assistant_message(
+                        session_id=session.id,
+                        content=full_content.strip(),
+                        thoughts="Глубокое исследование завершено.",
+                        client_id=payload.assistant_client_id
+                    )
 
             return StreamingResponse(research_generator(), media_type="text/event-stream")
 
