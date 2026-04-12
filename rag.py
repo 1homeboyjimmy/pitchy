@@ -168,9 +168,9 @@ def _seed_collection(collection: Collection, documents: List[str], batch_size: i
     logger.info(f"Finished seeding {total} chunks.")
 
 
-def _rerank_chunks(query: str, documents: List[str], distances: List[float]) -> List[str]:
+def _rerank_chunks(query: str, entries: List[dict], distances: List[float]) -> List[dict]:
     """Simple reranking based on keyword overlap + distance score."""
-    if not documents:
+    if not entries:
         return []
 
     query_words = set(re.findall(r'\w{3,}', query.lower()))
@@ -178,7 +178,8 @@ def _rerank_chunks(query: str, documents: List[str], distances: List[float]) -> 
     scored = []
     # Deduplicate documents first
     seen = set()
-    for doc, dist in zip(documents, distances):
+    for entry, dist in zip(entries, distances):
+        doc = entry["text"]
         # Skip very short or garbage chunks
         if len(doc.strip()) < 50:
             continue
@@ -193,10 +194,10 @@ def _rerank_chunks(query: str, documents: List[str], distances: List[float]) -> 
         similarity = max(0, 1 - dist)
 
         combined = 0.7 * similarity + 0.3 * overlap
-        scored.append((doc, combined))
+        scored.append((entry, combined))
 
     scored.sort(key=lambda x: x[1], reverse=True)
-    return [doc for doc, _ in scored]
+    return [entry for entry, _ in scored]
 
 
 @dataclass
@@ -249,7 +250,7 @@ class StartupRAG:
 
         return cls(client=client, collections=collections, embedding_fn=embedding_fn)
 
-    def query(self, text: str, categories: List[str] = None, top_k: int = 3) -> List[str]:
+    def query(self, text: str, categories: List[str] = None, top_k: int = 3) -> List[dict]:
         """Query specific collections and rerank across all of them."""
         if not categories:
             categories = ["general"]
@@ -270,9 +271,14 @@ class StartupRAG:
                     res = self.collections[cat].query(
                         query_embeddings=[query_embedding],
                         n_results=min(fetch_k, self.collections[cat].count()),
-                        include=["documents", "distances"]
+                        include=["documents", "distances", "metadatas"]
                     )
-                    return res.get("documents", [[]])[0], res.get("distances", [[]])[0]
+                    docs = res.get("documents", [[]])[0]
+                    dists = res.get("distances", [[]])[0]
+                    metas = res.get("metadatas", [[]])[0]
+                    
+                    # Store as tuples to preserve metadata during reranking
+                    return [{"text": d, "metadata": m or {}} for d, m in zip(docs, metas)], dists
                 except Exception:
                     return [], []
             return [], []
@@ -302,7 +308,7 @@ def init_rag() -> None:
 
 
 @observe(name="rag_retrieval")
-def get_relevant_chunks(text: str, categories: List[str] = None, top_k: int = 3) -> List[str]:
+def get_relevant_chunks(text: str, categories: List[str] = None, top_k: int = 3) -> List[dict]:
     if _RAG_INSTANCE is None:
         raise RuntimeError("RAG is not initialized")
     return _RAG_INSTANCE.query(text, categories=categories, top_k=top_k)
@@ -348,7 +354,7 @@ def index_successful_chat_interaction(user_query: str, ai_response: str, message
     )
     logger.info(f"Indexed successful chat interaction {doc_id} into successful_chats")
 
-def search_successful_chats(query: str, top_k: int = 1) -> List[str]:
+def search_successful_chats(query: str, top_k: int = 1) -> List[dict]:
     """Finds a previously highly-rated similar interaction."""
     client = _build_client()
     embedding_fn = GeminiEmbeddingFunction()
@@ -367,16 +373,17 @@ def search_successful_chats(query: str, top_k: int = 1) -> List[str]:
     result = collection.query(
         query_embeddings=[query_embedding],
         n_results=top_k,
-        include=["documents", "distances"]
+        include=["documents", "distances", "metadatas"]
     )
     
     docs = result.get("documents", [[]])[0]
     distances = result.get("distances", [[]])[0]
+    metas = result.get("metadatas", [[]])[0]
     
     # Simple distance threshold for highly similar matches
     relevant = []
-    for doc, dist in zip(docs, distances):
+    for doc, dist, meta in zip(docs, distances, metas):
         if dist < 0.35:
-            relevant.append(doc)
+            relevant.append({"text": doc, "metadata": meta or {}})
             
     return relevant

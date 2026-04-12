@@ -33,8 +33,10 @@ async def check_rag():
             continue
         
         for i, chunk in enumerate(chunks):
-            print(f"Chunk {i+1}:")
-            print(chunk[:500] + "..." if len(chunk) > 500 else chunk)
+            text = chunk["text"]
+            meta = chunk["metadata"]
+            print(f"Chunk {i+1} [Collection: {meta.get('collection', 'N/A')}]:")
+            print(text[:500] + "..." if len(text) > 500 else text)
             print("-" * 20)
 
 if __name__ == "__main__":

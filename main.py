@@ -432,9 +432,9 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
 
 
-def _build_user_prompt(description: str, context_chunks: list[str]) -> str:
+def _build_user_prompt(description: str, context_chunks: list[dict]) -> str:
     context_block = "\n".join(
-        [f"{idx + 1}. {chunk}" for idx, chunk in enumerate(context_chunks)]
+        [f"{idx + 1}. {chunk['text'] if isinstance(chunk, dict) else chunk}" for idx, chunk in enumerate(context_chunks)]
     )
     return (
         "Описание стартапа:\n"
@@ -488,9 +488,9 @@ def _format_chat_history(messages: list[ChatMessage], limit: int = 10) -> str:
     return "\n".join(lines)
 
 
-def _build_chat_prompt(messages: list[ChatMessage], context_chunks: list[str]) -> str:
+def _build_chat_prompt(messages: list[ChatMessage], context_chunks: list[dict]) -> str:
     context_block = "\n".join(
-        [f"{idx + 1}. {chunk}" for idx, chunk in enumerate(context_chunks)]
+        [f"{idx + 1}. {chunk['text'] if isinstance(chunk, dict) else chunk}" for idx, chunk in enumerate(context_chunks)]
     )
     history = _format_chat_history(messages)
     return (
@@ -2809,11 +2809,12 @@ async def send_chat_message(
                 context_task = asyncio.to_thread(rag.get_relevant_chunks, payload.content, categories=None, top_k=5)
                 cats, context_chunks = await asyncio.gather(cats_task, context_task)
                 
-                # If cats were found, we might want to refine RAG, but for TTFB it's often better to just use initial results
-                # or do a quick second-pass if the first one was too broad.
                 # For now, we use the broad search results but filter by cats if they arrived.
                 if cats:
-                    context_chunks = [c for c in context_chunks if any(cat in c.get('metadata', {}).get('collection', '') for cat in cats)] or context_chunks
+                    context_chunks = [
+                        c for c in context_chunks 
+                        if any(cat in c.get('metadata', {}).get('collection', '') for cat in cats)
+                    ] or context_chunks
             except Exception as e:
                 logger.error(f"Error in parallel RAG/Classification: {e}")
                 context_chunks = []

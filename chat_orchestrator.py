@@ -306,7 +306,7 @@ class ChatOrchestrator:
         try:
             if intent == "chat" or intent not in ["tree", "finance", "search", "legal"]:
                 # Use pre-fetched RAG context
-                rag_context = "\n".join(initial_rag_chunks[:3])
+                rag_context = "\n".join([c["text"] for c in initial_rag_chunks[:3]])
                 
                 yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
                 start_time = time.time()
@@ -358,9 +358,8 @@ class ChatOrchestrator:
 
 
             elif intent == "legal":
-                model_used = "YandexGPT (Юрист)"
                 # Use pre-fetched context shifted to legal collections if needed, OR just use initial ones to save time
-                rag_context = "\n".join(initial_rag_chunks[:3])
+                rag_context = "\n".join([c["text"] for c in initial_rag_chunks[:3]])
                 
                 reply_full = await self._handle_legal(user_message, rag_context=rag_context)
                 yield json.dumps({"type": "chunk", "content": reply_full}) + "\n"
@@ -521,7 +520,7 @@ class ChatOrchestrator:
         
         rag_context_list, (sources, search_context) = await asyncio.gather(rag_task, search_task)
         
-        rag_context = "\n".join(rag_context_list)
+        rag_context = "\n".join([c["text"] for c in rag_context_list])
         full_context = f"ДАННЫЕ ИЗ БАЗЫ ЗНАНИЙ:\n{rag_context}\n\nДАННЫЕ ИЗ ИНТЕРНЕТА:\n{search_context}"
         
         prompt = FINANCE_PROMPT.format(
