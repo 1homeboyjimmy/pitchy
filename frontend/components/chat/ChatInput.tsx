@@ -17,6 +17,7 @@ interface ChatInputProps {
   isResearchMode?: boolean;
   onToggleResearchMode?: () => void;
   onOpenImportModal?: () => void;
+  onGeneratePresentation?: () => void;
 }
 
 export function ChatInput({
@@ -32,6 +33,7 @@ export function ChatInput({
   isResearchMode = false,
   onToggleResearchMode,
   onOpenImportModal,
+  onGeneratePresentation,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -168,23 +170,37 @@ export function ChatInput({
                         </div>
                       </button>
 
-                      {onOpenImportModal && (
-                        <button
-                          onClick={() => {
-                            setIsToolsOpen(false);
-                            onOpenImportModal();
-                          }}
-                          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-white/70 hover:bg-white/5 hover:text-white mt-1"
-                        >
-                          <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-white/5">
-                            <DownloadCloud className="w-4 h-4" />
-                          </div>
-                          <div className="flex flex-col items-start">
-                            <span className="text-sm font-medium">Импорт из других ИИ</span>
-                            <span className="text-[10px] text-white/30">Перенести контекст стартапа</span>
-                          </div>
-                        </button>
-                      )}
+                      <button
+                        onClick={() => {
+                          setIsToolsOpen(false);
+                          onOpenImportModal?.();
+                        }}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-white/70 hover:bg-white/5 hover:text-white mt-1"
+                      >
+                        <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-white/5">
+                          <DownloadCloud className="w-4 h-4" />
+                        </div>
+                        <div className="flex flex-col items-start">
+                          <span className="text-sm font-medium">Импорт из других ИИ</span>
+                          <span className="text-[10px] text-white/30">Перенести контекст стартапа</span>
+                        </div>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setIsToolsOpen(false);
+                          onGeneratePresentation?.();
+                        }}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-white/70 hover:bg-white/5 hover:text-white mt-1"
+                      >
+                        <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-white/5">
+                          <Activity className="w-4 h-4 text-pitchy-cyan" />
+                        </div>
+                        <div className="flex flex-col items-start">
+                          <span className="text-sm font-medium">Слайды проекта</span>
+                          <span className="text-[10px] text-white/30">Генерация презентации</span>
+                        </div>
+                      </button>
                     </div>
                   </motion.div>
                 )}
