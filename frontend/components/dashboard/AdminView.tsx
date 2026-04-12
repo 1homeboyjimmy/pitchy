@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
+import dayjs from "dayjs";
 import { Users, Tag, BarChart2, Plus, Trash2, Shield, Loader, CreditCard } from "react-feather";
 import { Button, GlassCard } from "@/components/shared";
 import { getToken } from "@/lib/auth";
@@ -109,7 +110,9 @@ export function AdminView() {
                     }
                     if (res.ok) setPromocodes(await res.json());
                 } else if (activeTab === "analytics") {
-                    // ... computation ...
+                    const endStr = dayjs().format("YYYY-MM-DD");
+                    const startStr = dayjs().subtract(30, "day").format("YYYY-MM-DD");
+                    
                     const res = await fetch(`${API_BASE}/admin/analytics?start=${startStr}&end=${endStr}`, {
                         headers: { "Authorization": `Bearer ${token}` }
                     });
