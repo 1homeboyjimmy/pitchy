@@ -46,6 +46,7 @@ export type PresentationSlide = {
   title?: string;
   subtitle?: string;
   content?: string | string[];
+  html?: string;
 };
 
 export type UserProfile = {

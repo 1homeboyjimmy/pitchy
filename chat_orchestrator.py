@@ -383,6 +383,16 @@ class ChatOrchestrator:
                 yield json.dumps({"type": "chunk", "content": "Начинаю сборку вашей презентации... Пожалуйста, подождите, это займет около 10-15 секунд.\n\n"}) + "\n"
                 reply_full += "Начинаю сборку вашей презентации... Пожалуйста, подождите, это займет около 10-15 секунд.\n\n"
                 
+                yield json.dumps({"type": "status", "content": "Инициализация запроса..."}) + "\n"
+                await asyncio.sleep(1)
+                yield json.dumps({"type": "status", "content": "Search: Анализ трендов и рынка..."}) + "\n"
+                await asyncio.sleep(1.5)
+                yield json.dumps({"type": "status", "content": "Image Search: Подбор визуальных метафор..."}) + "\n"
+                await asyncio.sleep(1)
+                yield json.dumps({"type": "status", "content": "Initialize Design..."}) + "\n"
+                await asyncio.sleep(1)
+                yield json.dumps({"type": "status", "content": "Вёрстка слайдов..."}) + "\n"
+                
                 rag_context = "\n".join([c["text"] if isinstance(c, dict) else c for c in initial_rag_chunks[:3]])
                 slides, raw_reply, usage_ret = await self._handle_presentation(user_message, state, rag_context)
                 
@@ -668,14 +678,15 @@ class ChatOrchestrator:
             f"Пользователь запросил: {user_message}\n\n"
             f"Текущие данные проекта:\n{tree_metadata}\n\n"
             f"Контекст из базы знаний (рынок, конкуренты):\n{rag_context}\n\n"
-            "Твоя задача — сгенерировать КОНТЕНТ для слайдов инвесторской презентации.\n"
+            "Твоя задача — сгенерировать КОНТЕНТ и ВЕРСТКУ для слайдов инвесторской презентации.\n"
             "Верни СТРОГО JSON-массив из 5-10 объектов. Ничего кроме JSON возвращать не нужно.\n"
             "Допустимые 'type' слайдов: 'Hero', 'Problem', 'Solution', 'Market', 'BusinessModel', 'Team', 'CallToAction'.\n"
-            "У каждого слайда должны быть поля 'title', 'content', и (если применимо) 'subtitle'. 'content' ОБЯЗАТЕЛЬНО должен быть массивом строк (тезисы).\n"
+            "У каждого слайда должны быть поля 'type', 'title' и 'html'.\n"
+            "В поле 'html' должен быть валидный HTML-код с классами TailwindCSS для темной темы (bg-[#131313] text-white). Используй flex, grid, gap, градиенты текста (bg-gradient-to-r) для создания премиального дизайна.\n"
             "Пример ответа:\n"
             "[\n"
-            "  {\"type\": \"Hero\", \"title\": \"AppName\", \"subtitle\": \"Слоган...\", \"content\": [\"Доп инфо\"]},\n"
-            "  {\"type\": \"Problem\", \"title\": \"Проблема\", \"content\": [\"Боль 1\", \"Боль 2\"]}\n"
+            "  {\"type\": \"Hero\", \"title\": \"Название\", \"html\": \"<div class='flex flex-col items-center justify-center p-12 h-full bg-gradient-to-b from-[#1a1a2e] to-[#131313] relative'><h1 class='text-6xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-600 mb-6'>AppName</h1><p class='text-2xl text-white/80'>Слоган</p></div>\"},\n"
+            "  {\"type\": \"Problem\", \"title\": \"Проблема\", \"html\": \"<div class='flex flex-col justify-center p-12 h-full'><h2 class='text-4xl font-bold border-l-4 border-red-500 pl-4 mb-8'>Проблема</h2><div class='space-y-4'><div class='p-6 bg-white/5 rounded-xl border border-white/10'><p class='text-xl text-white/90'>Боль 1</p></div><div class='p-6 bg-white/5 rounded-xl border border-white/10'><p class='text-xl text-white/90'>Боль 2</p></div></div></div>\"}\n"
             "]\n"
         )
         

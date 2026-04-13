@@ -9,9 +9,11 @@ interface PresentationDrawerProps {
   onClose: () => void;
   slides: PresentationSlide[];
   isLoading?: boolean;
+  statusText?: string | null;
 }
 
-export function PresentationDrawer({ isOpen, onClose, slides, isLoading }: PresentationDrawerProps) {
+export function PresentationDrawer({ isOpen, onClose, slides, isLoading, statusText }: PresentationDrawerProps) {
+  const [viewMode, setViewMode] = useState<"preview" | "html">("preview");
   const contentRef = useRef<HTMLDivElement>(null);
 
   const handlePrint = () => {
@@ -44,6 +46,22 @@ export function PresentationDrawer({ isOpen, onClose, slides, isLoading }: Prese
                 Сгенерированная презентация
               </h2>
               <div className="flex items-center gap-4">
+                {slides.length > 0 && (
+                  <div className="flex bg-white/5 rounded-lg p-1 mr-2 border border-white/10">
+                    <button 
+                      onClick={() => setViewMode("preview")}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${viewMode === "preview" ? "bg-pitchy-violet text-white shadow" : "text-white/60 hover:text-white"}`}
+                    >
+                      Preview
+                    </button>
+                    <button 
+                      onClick={() => setViewMode("html")}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${viewMode === "html" ? "bg-pitchy-violet text-white shadow" : "text-white/60 hover:text-white"}`}
+                    >
+                      HTML
+                    </button>
+                  </div>
+                )}
                 <button
                   onClick={handlePrint}
                   className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-pitchy-violet to-purple-600 hover:opacity-90 text-white rounded-lg transition-opacity text-sm font-medium"
@@ -77,17 +95,27 @@ export function PresentationDrawer({ isOpen, onClose, slides, isLoading }: Prese
                     <h3 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-white/60 mb-3">
                       Pitchy создает вашу презентацию
                     </h3>
-                    <p className="text-white/40 max-w-sm text-sm leading-relaxed">
-                      Мы анализируем данные вашего проекта и упаковываем их в профессиональные слайды. Это займет несколько секунд.
+                    <p className="text-white/40 max-w-sm text-sm leading-relaxed min-h-[40px]">
+                      {statusText || "Мы анализируем данные вашего проекта и упаковываем их в профессиональные слайды. Это займет несколько секунд."}
                     </p>
                   </div>
                 )}
 
-                {slides.map((slide, index) => (
-                  <div key={index} className="print:page-break-after-always shadow-2xl print:shadow-none bg-[#131313] rounded-2xl print:rounded-none">
-                    <SlideRenderer slide={slide} />
+                {viewMode === "preview" ? (
+                  slides.map((slide, index) => (
+                    <div key={index} className="print:page-break-after-always shadow-2xl print:shadow-none bg-[#131313] rounded-2xl print:rounded-none">
+                      <SlideRenderer slide={slide} />
+                    </div>
+                  ))
+                ) : (
+                  <div className="bg-black border border-white/10 p-6 rounded-2xl w-full text-pitchy-cyan-light font-mono text-sm overflow-x-auto shadow-inner">
+                    <pre>
+                      <code>
+                        {JSON.stringify(slides, null, 2)}
+                      </code>
+                    </pre>
                   </div>
-                ))}
+                )}
 
                 {!isLoading && slides.length === 0 && (
                   <div className="text-center py-20 text-white/20">

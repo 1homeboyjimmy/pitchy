@@ -47,6 +47,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
     const [presentationSlides, setPresentationSlides] = useState<PresentationSlide[] | null>(null);
     const [isPresentationOpen, setIsPresentationOpen] = useState(false);
     const [isGeneratingSlides, setIsGeneratingSlides] = useState(false);
+    const [generationStatus, setGenerationStatus] = useState<string | null>(null);
 
     // Import Modal state
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -191,6 +192,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
 
         if (isPresentationRequest) {
             setPresentationSlides(null); // Clear old slides
+            setGenerationStatus(null);
             setIsGeneratingSlides(true);
             setIsPresentationOpen(true);
         }
@@ -284,6 +286,8 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                         setPresentationSlides(chunk.data);
                         setIsGeneratingSlides(false);
                         // Drawer is already open from handleSendMessage
+                    } else if (chunk.type === "status") {
+                        setGenerationStatus(chunk.content);
                     } else if (chunk.type === "metadata") {
                         setMessages((prev) =>
                             prev.map(m => m.client_id === assistantClientId ? { ...m, model_used: chunk.model } : m)
@@ -631,12 +635,12 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                 )}
             </div>
 
-            {/* Presentation Drawer Overlay */}
             <PresentationDrawer 
                 isOpen={isPresentationOpen} 
                 onClose={() => setIsPresentationOpen(false)} 
                 slides={presentationSlides || []} 
                 isLoading={isGeneratingSlides}
+                statusText={generationStatus}
             />
 
             {/* Context Import Modal */}
