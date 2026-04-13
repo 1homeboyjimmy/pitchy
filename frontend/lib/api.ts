@@ -270,7 +270,8 @@ export async function* sendChatMessageStream(
     userClientId?: string,
     assistantClientId?: string,
     useDeepSearch: boolean = false,
-    useResearch: boolean = false
+    useResearch: boolean = false,
+    intent?: string
 ) {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token && token !== COOKIE_SESSION_MARKER) {
@@ -279,7 +280,14 @@ export async function* sendChatMessageStream(
   const res = await fetch(`${API_BASE}/chat/sessions/${sessionId}/messages`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ content, client_id: userClientId, assistant_client_id: assistantClientId, use_deep_search: useDeepSearch, use_research: useResearch }),
+    body: JSON.stringify({ 
+      content, 
+      client_id: userClientId, 
+      assistant_client_id: assistantClientId, 
+      use_deep_search: useDeepSearch, 
+      use_research: useResearch,
+      intent
+    }),
     credentials: "include",
     signal
   });

@@ -142,6 +142,7 @@ class ChatMessageCreateRequest(BaseModel):
     assistant_client_id: str | None = None
     use_deep_search: bool = False
     use_research: bool = False
+    intent: str | None = None
 
 
 class ProjectContext(BaseModel):

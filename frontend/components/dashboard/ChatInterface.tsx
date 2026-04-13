@@ -178,7 +178,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
         return msg.content;
     }, [typingMessageId, displayedLength, getSafeKey]);
 
-    const handleSendMessage = async (text?: string) => {
+    const handleSendMessage = async (text?: string, forceIntent?: string) => {
         const content = typeof text === 'string' ? text : inputValue.trim();
         if (!content || isLoading) return;
 
@@ -188,8 +188,9 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
         // Check for presentation request to trigger Agent Mode UX
         const contentLower = content.toLowerCase();
         const isPresentationRequest = 
-            (contentLower.includes("презентаци") || contentLower.includes("слайд") || contentLower.includes("презу") || contentLower.includes("питч") || contentLower.includes("pitch deck")) &&
-            (contentLower.includes("сдел") || contentLower.includes("сгенер") || contentLower.includes("покаж") || contentLower.includes("созд") || contentLower.includes("выведи") || contentLower.includes("хочу"));
+            forceIntent === 'presentation' ||
+            ((contentLower.includes("презентаци") || contentLower.includes("слайд") || contentLower.includes("презу") || contentLower.includes("питч") || contentLower.includes("pitch deck")) &&
+            (contentLower.includes("сдел") || contentLower.includes("сгенер") || contentLower.includes("покаж") || contentLower.includes("созд") || contentLower.includes("выведи") || contentLower.includes("хочу")));
 
         if (isPresentationRequest) {
             setPresentationSlides(null); // Clear old slides
@@ -245,7 +246,8 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                     userClientId, 
                     assistantClientId, 
                     useDeepSearch,
-                    isResearchMode
+                    isResearchMode,
+                    forceIntent || (isPresentationRequest ? 'presentation' : undefined)
                 )) {
                     if (chunk.type === "thought") {
                         fullThoughtContent += chunk.content;
@@ -598,8 +600,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                   onToggleResearchMode={() => setIsResearchMode(!isResearchMode)}
                   onOpenImportModal={() => setIsImportModalOpen(true)}
                   onGeneratePresentation={() => {
-                    setInputValue("Сгенерируй презентацию по моему проекту");
-                    if (textareaRef.current) textareaRef.current.focus();
+                    handleSendMessage("Сгенерируй презентацию по моему проекту", "presentation");
                   }}
                   disabled={!!session.analysis}
                   placeholder={session.analysis ? "Диалог завершен" : "Спросите Pitchy..."}

@@ -2860,10 +2860,16 @@ async def send_chat_message(
                 # Use asyncio.gather to run intent classification and vector search concurrently
                 cats_task = asyncio.create_task(classify_intent(payload.content))
                 context_task = asyncio.to_thread(rag.get_relevant_chunks, payload.content, categories=None, top_k=5)
-                # Also check for presentation intent
-                msg_lower = payload.content.lower()
-                is_pres_request = any(kw in msg_lower for kw in ["презентаци", "слайды", "слайд", "презу", "питч", "pitch deck"]) and \
-                                 any(action in msg_lower for action in ["сдел", "сгенер", "покаж", "созд", "выведи", "хочу"])
+                # Check for presentation intent (explicit or keyword-based)
+                is_pres_request = payload.intent == "presentation"
+                
+                if not is_pres_request:
+                    msg_lower = payload.content.lower()
+                    is_pres_request = any(kw in msg_lower for kw in ["презентаци", "слайды", "слайд", "презу", "питч", "pitch deck"]) and \
+                                     any(action in msg_lower for action in ["сдел", "сгенер", "покаж", "созд", "выведи", "хочу"])
+                
+                if is_pres_request:
+                    logger.info(f"Detected presentation intent for session {session.id} (explicit: {payload.intent == 'presentation'})")
                 
                 cats, context_chunks = await asyncio.gather(cats_task, context_task)
                 
