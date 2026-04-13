@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useRef, useEffect, useState } from "react";
-import { Send, Square, Maximize2, Minimize2, Globe, Sliders, Activity, ChevronUp, DownloadCloud } from "react-feather";
+import { Send, Square, Maximize2, Minimize2, Globe, Sliders, Activity, ChevronUp, DownloadCloud, FileText, X } from "react-feather";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface ChatInputProps {
@@ -19,6 +19,7 @@ interface ChatInputProps {
   onOpenImportModal?: () => void;
   isPresentationMode?: boolean;
   onTogglePresentationMode?: () => void;
+  onCancelPresentationMode?: () => void;
 }
 
 export function ChatInput({
@@ -36,6 +37,7 @@ export function ChatInput({
   onOpenImportModal,
   isPresentationMode = false,
   onTogglePresentationMode,
+  onCancelPresentationMode,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -79,8 +81,56 @@ export function ChatInput({
 
   return (
     <div className="relative w-full max-w-4xl mx-auto">
+      {/* Agent Mode Banner */}
+      <AnimatePresence>
+        {isPresentationMode && (
+          <motion.div
+            initial={{ opacity: 0, y: 20, height: 0 }}
+            animate={{ opacity: 1, y: 0, height: 'auto' }}
+            exit={{ opacity: 0, y: 10, height: 0 }}
+            transition={{ duration: 0.3, ease: 'easeOut' }}
+            className="mb-3 overflow-hidden"
+          >
+            <div className="relative rounded-2xl border border-pitchy-cyan/30 bg-gradient-to-r from-pitchy-violet/10 via-[#111118] to-pitchy-cyan/10 p-4 backdrop-blur-xl">
+              {/* Animated gradient top line */}
+              <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-pitchy-violet via-pitchy-cyan to-pitchy-violet bg-[length:200%_100%] animate-[shimmer_3s_ease-in-out_infinite]" />
+              
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pitchy-violet to-pitchy-cyan flex items-center justify-center flex-shrink-0 shadow-[0_0_20px_rgba(139,92,246,0.3)]">
+                    <FileText className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                      Режим генерации презентации
+                      <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-pitchy-cyan/20 text-pitchy-cyan uppercase tracking-wider">Agent</span>
+                    </h4>
+                    <p className="text-xs text-white/50 mt-1 leading-relaxed">
+                      Опишите тему, ключевые тезисы и стиль вашей презентации.
+                      <br />
+                      Pitchy создаст питч-дек на 6–10 слайдов.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => onCancelPresentationMode?.()}
+                  className="p-1.5 rounded-lg text-white/30 hover:text-white hover:bg-white/10 transition-colors flex-shrink-0"
+                  title="Отменить режим презентации"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div 
-        className={`relative w-full flex flex-col rounded-[20px] bg-[#111118] border border-white/10 transition-all duration-300 focus-within:border-white/20 focus-within:shadow-[0_0_20px_rgba(255,255,255,0.05)] ${disabled ? 'opacity-50 cursor-not-allowed' : ''} shadow-lg overflow-hidden group`}
+        className={`relative w-full flex flex-col rounded-[20px] bg-[#111118] transition-all duration-300 shadow-lg overflow-hidden group ${
+          isPresentationMode 
+            ? 'border-2 border-pitchy-cyan/40 shadow-[0_0_30px_rgba(0,200,255,0.1)]' 
+            : 'border border-white/10 focus-within:border-white/20 focus-within:shadow-[0_0_20px_rgba(255,255,255,0.05)]'
+        } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
       >
         <div className="absolute top-0 left-0 right-0 h-6 bg-gradient-to-b from-[#111118] to-transparent z-10 pointer-events-none opacity-0 transition-opacity duration-300 group-focus-within:opacity-100" />
         <textarea
@@ -88,7 +138,7 @@ export function ChatInput({
           value={value}
           onChange={onChange}
           onKeyDown={handleKeyDown}
-          placeholder={placeholder}
+          placeholder={isPresentationMode ? "Опишите идею для вашей презентации..." : placeholder}
           disabled={disabled}
           rows={1}
           className="w-full bg-transparent text-white placeholder-white/30 text-[15px] resize-none overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 focus:outline-none focus:ring-0 border-none !outline-none disabled:cursor-not-allowed px-5 py-4 pb-2 z-0 relative"
@@ -200,11 +250,11 @@ export function ChatInput({
                         }`}
                       >
                         <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isPresentationMode ? 'bg-pitchy-cyan text-black' : 'bg-white/5'}`}>
-                          <Activity className={`w-4 h-4 ${isPresentationMode ? 'text-black' : 'text-pitchy-cyan'}`} />
+                          <FileText className={`w-4 h-4 ${isPresentationMode ? 'text-black' : 'text-pitchy-cyan'}`} />
                         </div>
                         <div className="flex flex-col items-start">
                           <span className="text-sm font-medium">Слайды проекта</span>
-                          <span className="text-[10px] text-white/30">Генерация презентации</span>
+                          <span className="text-[10px] text-white/30">Агентный режим — питч-дек</span>
                         </div>
                       </button>
                     </div>

@@ -620,9 +620,10 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                   onToggleResearchMode={() => setIsResearchMode(!isResearchMode)}
                   isPresentationMode={isPresentationMode}
                   onTogglePresentationMode={() => setIsPresentationMode(!isPresentationMode)}
+                  onCancelPresentationMode={() => setIsPresentationMode(false)}
                   onOpenImportModal={() => setIsImportModalOpen(true)}
                   disabled={!!session.analysis}
-                  placeholder={session.analysis ? "Диалог завершен" : "Спросите Pitchy..."}
+                  placeholder={isPresentationMode ? "Опишите идею для вашей презентации..." : (session.analysis ? "Диалог завершен" : "Спросите Pitchy...")}
                 />
                 
                 {presentationSlides && presentationSlides.length > 0 && (
