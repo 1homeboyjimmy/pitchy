@@ -35,7 +35,8 @@ async def call_makura(system_prompt: str, user_message: str, model: str = None) 
             {"role": "user", "content": user_message}
         ],
         "temperature": 0.4,
-        "max_tokens": 4000
+        "max_tokens": 4000,
+        "thinking": {"type": "enabled"}
     }
 
     try:
@@ -108,7 +109,8 @@ async def stream_makura(system_prompt: str, user_message: str, model: str = None
         ],
         "temperature": 0.4,
         "max_tokens": 4000,
-        "stream": True
+        "stream": True,
+        "thinking": {"type": "enabled"}
     }
 
     try:
@@ -137,6 +139,11 @@ async def stream_makura(system_prompt: str, user_message: str, model: str = None
                             if not choices:
                                 continue
                             delta = choices[0].get("delta", {})
+                            
+                            # Handle native Z-AI/GLM reasoning_content
+                            if "reasoning_content" in delta and delta["reasoning_content"]:
+                                yield {"__thinking__": delta["reasoning_content"]}
+                                
                             if "content" in delta:
                                 yield delta["content"]
                         except Exception as e:

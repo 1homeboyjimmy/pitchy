@@ -1268,7 +1268,13 @@ async def parse_thought_generator(generator):
     buffer = ""
     async for chunk in generator:
         if not chunk: continue
-        # Pass through usage sentinel dicts so callers can log them to Langfuse
+        
+        # Handle native GLM-5 thinking chunks from makura_client
+        if isinstance(chunk, dict) and "__thinking__" in chunk:
+            yield json.dumps({"type": "thought", "content": chunk["__thinking__"]}) + "\n"
+            continue
+            
+        # Pass through usage sentinel dicts 
         if isinstance(chunk, dict):
             yield chunk
             continue
@@ -2885,18 +2891,26 @@ async def send_chat_message(
 
             # 3.1 MODE: PRESENTATION GENERATION
             if is_pres_request:
-                yield json.dumps({"type": "chunk", "content": "Начинаю сборку вашей презентации... Это займет около 10 секунд.\n\n"}) + "\n"
-                full_response += "Начинаю сборку вашей презентации... Это займет около 10 секунд.\n\n"
+                yield json.dumps({"type": "chunk", "content": "Начинаю сборку вашей презентации...\n\n"}) + "\n"
+                full_response += "Начинаю сборку вашей презентации...\n\n"
                 
                 # Use history and context to build slides
                 history_text = "\n".join([f"{m.role}: {m.content[:200]}" for m in history[-10:]])
                 context_text = "\n".join([c["text"] if isinstance(c, dict) else c for c in context_chunks[:3]])
                 
-                slides, raw_reply, usage_ret = await _handle_presentation_in_chat(payload.content, history_text, context_text)
-                if usage_ret: usage_data = usage_ret
+                final_slides = []
+                async for item in _handle_presentation_in_chat(payload.content, history_text, context_text):
+                    if item["type"] == "thought":
+                        full_thoughts += item["content"]
+                        yield json.dumps(item) + "\n"
+                    elif item["type"] == "presentation":
+                        final_slides = item["data"]
+                        yield json.dumps(item) + "\n"
+                    elif item["type"] == "chunk":
+                        full_response += item["content"]
+                        yield json.dumps(item) + "\n"
                 
-                if slides:
-                    yield json.dumps({"type": "presentation", "data": slides}) + "\n"
+                if final_slides:
                     msg = "Презентация успешно сгенерирована! Открываю панель просмотра."
                     yield json.dumps({"type": "chunk", "content": msg}) + "\n"
                     full_response += msg
@@ -3017,30 +3031,53 @@ async def classify_intent(user_message: str) -> list[str]:
         logger.error(f"Router LLM failed: {e}")
         return ["general"]
 
-async def _handle_presentation_in_chat(user_message: str, history_text: str, rag_context: str) -> tuple[list, str, dict]:
-    """Helper to generate slides from main chat context."""
-    system_prompt = "Ты — эксперт по созданию презентаций (pitch decks) для стартапов."
-    prompt = (
-        f"Пользователь запросил: {user_message}\n\n"
-        f"История диалога:\n{history_text}\n\n"
-        f"Контекст из базы знаний:\n{rag_context}\n\n"
-        "Твоя задача — сгенерировать КОНТЕНТ для слайдов инвесторской презентации.\n"
-        "Верни СТРОГО JSON-массив из 6-10 объектов. Ничего кроме JSON возвращать не нужно.\n"
-        "Допустимые 'type' слайдов: 'Hero', 'Problem', 'Solution', 'Market', 'BusinessModel', 'Team', 'CallToAction'.\n"
-        "У каждого слайда должны быть поля 'title', 'content', и (если применимо) 'subtitle'. 'content' ОБЯЗАТЕЛЬНО должен быть массивом строк (тезисы).\n"
-        "Пример ответа:\n"
+async def _handle_presentation_in_chat(user_message: str, history_text: str, rag_context: str):
+    """
+    Acts as a Slide Agent. Uses streaming to provide thoughts and then yields the slides.
+    Following Z.AI Agent Task patterns.
+    """
+    system_prompt = (
+        "Ты — GLM Slide Agent, эксперт по созданию профессиональных инвестиционных презентаций (Pitch Decks). "
+        "Твоя задача — проанализировать проект и создать структуру и контент для 6-10 слайдов.\n\n"
+        "ПРОТОКОЛ РАБОТЫ:\n"
+        "1. Тебе будет включен Thinking Mode. СНАЧАЛА детально проанализируй проект, выдели УТП, боли рынка и решение.\n"
+        "2. Сформируй структуру презентации, следуя стандартам Sequoia Capital или Y Combinator.\n"
+        "3. Генерируй контент для каждого слайда в формате JSON.\n\n"
+        "ОБЯЗАТЕЛЬНЫЕ ТРЕБОВАНИЯ К КОНТЕНТУ:\n"
+        "- Тексты должны быть на русском языке, в профессиональном бизнес-стиле.\n"
+        "- content должен быть массивом из 3-5 четких тезисов.\n\n"
+        "ФОРМАТ ВЫВОДА (ТОЛЬКО JSON):\n"
         "[\n"
         "  {\"type\": \"Hero\", \"title\": \"Название\", \"subtitle\": \"Слоган\", \"content\": [\"Тезис 1\"]},\n"
-        "  {\"type\": \"Problem\", \"title\": \"Проблема\", \"content\": [\"Боль 1\", \"Боль 2\"]}\n"
-        "]\n"
+        "  ...\n"
+        "]\n\n"
+        "Допустимые типы: 'Hero', 'Problem', 'Solution', 'Market', 'BusinessModel', 'Team', 'CallToAction'."
     )
     
-    reply, _, usage_data = await call_makura(system_prompt, prompt)
-    if not reply: return [], "", {}
+    prompt = (
+        f"ЗАПРОС ПОЛЬЗОВАТЕЛЯ: {user_message}\n\n"
+        f"ИСТОРИЯ ДИАЛОГА:\n{history_text}\n\n"
+        f"КОНТЕКСТ ИЗ БАЗЫ ЗНАНИЙ (RAG):\n{rag_context}\n\n"
+        "Создай презентацию прямо сейчас."
+    )
     
+    full_content = ""
     try:
-        # Robust extraction
-        cleaned = reply.strip()
+        # We use stream_makura here to capture reasoning_content and content
+        async for chunk in stream_makura(system_prompt, prompt):
+            if isinstance(chunk, dict):
+                if "__thinking__" in chunk:
+                    yield {"type": "thought", "content": chunk["__thinking__"]}
+                elif "__usage__" in chunk:
+                    # Ignore usage for now or handle if needed
+                    pass
+                continue
+            
+            # This is normal content (the JSON slides)
+            full_content += chunk
+            
+        # At the end, parse the full_content as JSON
+        cleaned = full_content.strip()
         if "```json" in cleaned:
             cleaned = cleaned.split("```json")[1].split("```")[0].strip()
         elif "```" in cleaned:
@@ -3052,10 +3089,12 @@ async def _handle_presentation_in_chat(user_message: str, history_text: str, rag
             cleaned = cleaned[start:end+1]
             
         slides = json.loads(cleaned)
-        return slides if isinstance(slides, list) else [], reply, usage_data
+        if isinstance(slides, list):
+            yield {"type": "presentation", "data": slides}
+            
     except Exception as e:
-        logger.error(f"Failed to parse slides JSON in main chat: {e}\nRaw: {reply}")
-        return [], reply, usage_data
+        logger.error(f"Failed Slide Agent Flow: {e}")
+        yield {"type": "chunk", "content": f"\nОшибка при сборке слайдов: {str(e)}"}
 
 async def _generate_interviewer_response(session: ChatSession, db: Session) -> str:
     # Fetch history

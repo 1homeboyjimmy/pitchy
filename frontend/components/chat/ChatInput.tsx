@@ -140,15 +140,15 @@ export function ChatInput({
 
               <AnimatePresence>
                 {isToolsOpen && (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                    className="absolute bottom-full left-0 mb-3 w-64 bg-[#1A1A24] border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-50 backdrop-blur-xl"
-                  >
-                    <div className="p-2 border-b border-white/5">
-                      <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest px-3 py-1">Доступные функции</span>
-                    </div>
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                      className="absolute bottom-full left-0 mb-3 w-64 bg-[#1A1A24] border border-white/20 rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.5)] z-50 backdrop-blur-2xl"
+                    >
+                      <div className="p-3 border-b border-white/10 bg-white/5">
+                        <span className="text-[11px] font-bold text-pitchy-violet uppercase tracking-widest px-2">ДОСТУПНЫЕ ИНСТРУМЕНТЫ</span>
+                      </div>
                     <div className="p-1">
                       <button
                         onClick={() => {
