@@ -1681,7 +1681,7 @@ async def tool_deep_research(
     db.commit()
     db.refresh(result)
     return result
-@app.post("/api/v1/import-context", response_model=ImportContextResponse)
+@app.post("/chat/import-context", response_model=ImportContextResponse)
 async def api_import_context(
     payload: ImportContextRequest,
     user: User = Depends(get_current_user),

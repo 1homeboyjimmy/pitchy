@@ -455,7 +455,7 @@ export type ImportContextResponse = {
 };
 
 export async function importContext(data: ImportContextRequest, token: string): Promise<ImportContextResponse> {
-  return postAuthJson<ImportContextResponse>("/api/v1/import-context", data, token);
+  return postAuthJson<ImportContextResponse>("/chat/import-context", data, token);
 }
 
 export type TreeChatResponse = {
