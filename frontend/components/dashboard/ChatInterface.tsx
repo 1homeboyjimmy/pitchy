@@ -178,7 +178,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
         return msg.content;
     }, [typingMessageId, displayedLength, getSafeKey]);
 
-    const handleSendMessage = async (text?: string, forceIntent?: string) => {
+    const handleSendMessage = async (text?: string, forceIntent?: string, silent: boolean = false) => {
         const content = typeof text === 'string' ? text : inputValue.trim();
         if (!content || isLoading) return;
 
@@ -210,24 +210,39 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
             const assistantClientId = crypto.randomUUID();
 
             // PUSH ONLY ONCE: Both user and assistant placeholder
-            setMessages((prev) => [
-                ...prev,
-                {
-                    id: Date.now(),
-                    role: "user",
-                    content,
-                    created_at: now.toISOString(),
-                    client_id: userClientId
-                },
-                {
-                    id: now.getTime() + 1,
-                    role: "assistant",
-                    content: "",
-                    created_at: now.toISOString(),
-                    client_id: assistantClientId,
-                    thoughtExpanded: true
-                },
-            ]);
+            if (!silent) {
+                setMessages((prev) => [
+                    ...prev,
+                    {
+                        id: Date.now(),
+                        role: "user",
+                        content,
+                        created_at: now.toISOString(),
+                        client_id: userClientId
+                    },
+                    {
+                        id: now.getTime() + 1,
+                        role: "assistant",
+                        content: "",
+                        created_at: now.toISOString(),
+                        client_id: assistantClientId,
+                        thoughtExpanded: true
+                    },
+                ]);
+            } else {
+                // If silent, only push the assistant placeholder
+                setMessages((prev) => [
+                    ...prev,
+                    {
+                        id: now.getTime() + 1,
+                        role: "assistant",
+                        content: "",
+                        created_at: now.toISOString(),
+                        client_id: assistantClientId,
+                        thoughtExpanded: true
+                    },
+                ]);
+            }
 
             setTypingMessageId(assistantClientId);
             setDisplayedLength(0);
@@ -600,7 +615,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                   onToggleResearchMode={() => setIsResearchMode(!isResearchMode)}
                   onOpenImportModal={() => setIsImportModalOpen(true)}
                   onGeneratePresentation={() => {
-                    handleSendMessage("Сгенерируй презентацию по моему проекту", "presentation");
+                    handleSendMessage("Сгенерируй презентацию по моему проекту", "presentation", true);
                   }}
                   disabled={!!session.analysis}
                   placeholder={session.analysis ? "Диалог завершен" : "Спросите Pitchy..."}
