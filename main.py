@@ -2848,6 +2848,11 @@ async def send_chat_message(
                 # Use asyncio.gather to run intent classification and vector search concurrently
                 cats_task = asyncio.create_task(classify_intent(payload.content))
                 context_task = asyncio.to_thread(rag.get_relevant_chunks, payload.content, categories=None, top_k=5)
+                # Also check for presentation intent
+                msg_lower = payload.content.lower()
+                is_pres_request = any(kw in msg_lower for kw in ["презентаци", "слайды", "слайд", "презу", "питч", "pitch deck"]) and \
+                                 any(action in msg_lower for action in ["сдел", "сгенер", "покаж", "созд", "выведи", "хочу"])
+                
                 cats, context_chunks = await asyncio.gather(cats_task, context_task)
                 
                 # For now, we use the broad search results but filter by cats if they arrived.
@@ -2860,8 +2865,30 @@ async def send_chat_message(
                 logger.error(f"Error in parallel RAG/Classification: {e}")
                 context_chunks = []
 
-            # 3. MODE: DEEP RESEARCH
-            if getattr(payload, "use_research", False):
+            # 3.1 MODE: PRESENTATION GENERATION
+            elif is_pres_request:
+                yield json.dumps({"type": "chunk", "content": "Начинаю сборку вашей презентации... Это займет около 10 секунд.\n\n"}) + "\n"
+                full_response += "Начинаю сборку вашей презентации... Это займет около 10 секунд.\n\n"
+                
+                # Use history and context to build slides
+                history_text = "\n".join([f"{m.role}: {m.content[:200]}" for m in history[-10:]])
+                context_text = "\n".join([c["text"] if isinstance(c, dict) else c for c in context_chunks[:3]])
+                
+                slides, raw_reply, usage_ret = await _handle_presentation_in_chat(payload.content, history_text, context_text)
+                if usage_ret: usage_data = usage_ret
+                
+                if slides:
+                    yield json.dumps({"type": "presentation", "data": slides}) + "\n"
+                    msg = "Презентация успешно сгенерирована! Открываю панель просмотра."
+                    yield json.dumps({"type": "chunk", "content": msg}) + "\n"
+                    full_response += msg
+                else:
+                    msg = "К сожалению, не удалось сгенерировать правильный формат презентации. Попробуйте еще раз или уточните запрос."
+                    yield json.dumps({"type": "chunk", "content": msg}) + "\n"
+                    full_response += msg
+
+            # 4. MODE: DEEP RESEARCH
+            elif getattr(payload, "use_research", False):
                 from search_agent import stream_deep_research
                 async for chunk in stream_deep_research(payload.content):
                     if chunk["type"] == "chunk":
@@ -2971,6 +2998,46 @@ async def classify_intent(user_message: str) -> list[str]:
     except Exception as e:
         logger.error(f"Router LLM failed: {e}")
         return ["general"]
+
+async def _handle_presentation_in_chat(user_message: str, history_text: str, rag_context: str) -> tuple[list, str, dict]:
+    """Helper to generate slides from main chat context."""
+    system_prompt = "Ты — эксперт по созданию презентаций (pitch decks) для стартапов."
+    prompt = (
+        f"Пользователь запросил: {user_message}\n\n"
+        f"История диалога:\n{history_text}\n\n"
+        f"Контекст из базы знаний:\n{rag_context}\n\n"
+        "Твоя задача — сгенерировать КОНТЕНТ для слайдов инвесторской презентации.\n"
+        "Верни СТРОГО JSON-массив из 6-10 объектов. Ничего кроме JSON возвращать не нужно.\n"
+        "Допустимые 'type' слайдов: 'Hero', 'Problem', 'Solution', 'Market', 'BusinessModel', 'Team', 'CallToAction'.\n"
+        "У каждого слайда должны быть поля 'title', 'content', и (если применимо) 'subtitle'. 'content' ОБЯЗАТЕЛЬНО должен быть массивом строк (тезисы).\n"
+        "Пример ответа:\n"
+        "[\n"
+        "  {\"type\": \"Hero\", \"title\": \"Название\", \"subtitle\": \"Слоган\", \"content\": [\"Тезис 1\"]},\n"
+        "  {\"type\": \"Problem\", \"title\": \"Проблема\", \"content\": [\"Боль 1\", \"Боль 2\"]}\n"
+        "]\n"
+    )
+    
+    reply, _, usage_data = await call_makura(system_prompt, prompt)
+    if not reply: return [], "", {}
+    
+    try:
+        # Robust extraction
+        cleaned = reply.strip()
+        if "```json" in cleaned:
+            cleaned = cleaned.split("```json")[1].split("```")[0].strip()
+        elif "```" in cleaned:
+            cleaned = cleaned.split("```")[1].split("```")[0].strip()
+            
+        start = cleaned.find('[')
+        end = cleaned.rfind(']')
+        if start != -1 and end != -1:
+            cleaned = cleaned[start:end+1]
+            
+        slides = json.loads(cleaned)
+        return slides if isinstance(slides, list) else [], reply, usage_data
+    except Exception as e:
+        logger.error(f"Failed to parse slides JSON in main chat: {e}\nRaw: {reply}")
+        return [], reply, usage_data
 
 async def _generate_interviewer_response(session: ChatSession, db: Session) -> str:
     # Fetch history

@@ -35,7 +35,7 @@ INTENT_RECOGNITION_PROMPT = """Ты — диспетчер запросов дл
 2. 'search' — поиск внешней информации, конкурентов на рынке, трендов, новостей.
 3. 'tree' — изменение структуры проекта, добавление новых гипотез, пересмотр бизнес-модели, ПРОПУСК текущего шага или переход к следующему.
 4. 'chat' — общие вопросы, объяснение терминов, дружелюбное общение или уточнение деталей (с учетом активного узла).
-5. 'presentation' — создание, генерация или показ презентации, слайдов, питч-дека.
+5. 'presentation' — СОЗДАНИЕ, ГЕНЕРАЦИЯ или показ презентации, слайдов, питч-дека. Если пользователь просит "сделай", "сгенерируй", "покажи" презентацию/слайды — это ВСЕГДА 'presentation'.
 
 Активный узел: {node_label} (тип: {node_type}, описание: {node_desc})
 История чата (последние сообщения):
@@ -487,6 +487,13 @@ class ChatOrchestrator:
 
     async def _classify_intent(self, user_message: str, state: dict, history: list, active_node_id: str) -> dict:
         """Determine what the user wants."""
+        # 0. Heuristic check to bypass LLM for obvious presentation requests
+        msg_lower = user_message.lower()
+        pres_keywords = ["презентаци", "слайды", "слайд", "презу", "питч", "pitch deck", " deck"]
+        if any(kw in msg_lower for kw in pres_keywords):
+            if any(action in msg_lower for action in ["сдел", "сгенер", "покаж", "созд", "выведи", "хочу"]):
+                return {"intent": "presentation", "reason": "Keyword heuristic: presentation request detected"}
+
         # Find active node info
         node_label = "Не выбран"
         node_type = "N/A"
@@ -661,12 +668,13 @@ class ChatOrchestrator:
             f"Пользователь запросил: {user_message}\n\n"
             f"Текущие данные проекта:\n{tree_metadata}\n\n"
             f"Контекст из базы знаний (рынок, конкуренты):\n{rag_context}\n\n"
+            "Твоя задача — сгенерировать КОНТЕНТ для слайдов инвесторской презентации.\n"
             "Верни СТРОГО JSON-массив из 5-10 объектов. Ничего кроме JSON возвращать не нужно.\n"
             "Допустимые 'type' слайдов: 'Hero', 'Problem', 'Solution', 'Market', 'BusinessModel', 'Team', 'CallToAction'.\n"
-            "У каждого слайда должны быть поля 'title', 'content', и (если применимо) 'subtitle'. 'content' можно делать массивом строк.\n"
+            "У каждого слайда должны быть поля 'title', 'content', и (если применимо) 'subtitle'. 'content' ОБЯЗАТЕЛЬНО должен быть массивом строк (тезисы).\n"
             "Пример ответа:\n"
             "[\n"
-            "  {\"type\": \"Hero\", \"title\": \"AppName\", \"subtitle\": \"Слоган...\", \"content\": \"Доп инфо\"},\n"
+            "  {\"type\": \"Hero\", \"title\": \"AppName\", \"subtitle\": \"Слоган...\", \"content\": [\"Доп инфо\"]},\n"
             "  {\"type\": \"Problem\", \"title\": \"Проблема\", \"content\": [\"Боль 1\", \"Боль 2\"]}\n"
             "]\n"
         )
