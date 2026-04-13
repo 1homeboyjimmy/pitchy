@@ -41,8 +41,10 @@ from zai_client import generate_chat_title, analyze_search_intent
 from makura_client import call_makura, stream_makura
 from search_agent import execute_search_agent, execute_deep_research, async_search_with_sources
 from db import SessionLocal, get_db
-from models import User, PromoCode, Analysis, Payment, RagLog, ToolResult
-from models import Analysis, ChatMessage as DbChatMessage, ChatSession, ErrorLog, User, PromoCode, Payment, ToolResult
+from models import (
+    Analysis, ChatMessage as DbChatMessage, ChatSession, ErrorLog, 
+    User, PromoCode, Payment, RagLog, ToolResult, SocialAccount, ProjectTree
+)
 from sqlalchemy import func as sa_func
 from schemas import (
     AnalysisCreateRequest,
@@ -430,9 +432,18 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 
 @app.exception_handler(Exception)
-async def unhandled_exception_handler(request: Request, exc: Exception):
+async def global_exception_handler(request: Request, exc: Exception):
+    import traceback
+    error_details = traceback.format_exc()
+    logger.error(f"GLOBAL ERROR: {str(exc)}\n{error_details}", extra={
+        "path": request.url.path,
+        "method": request.method,
+    })
     _log_error(request, 500, str(exc))
-    return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Внутренняя ошибка сервера. Мы уже работаем над исправлением."}
+    )
 
 
 def _build_user_prompt(description: str, context_chunks: list[dict]) -> str:
@@ -3092,12 +3103,7 @@ async def _generate_interviewer_response(session: ChatSession, db: Session) -> s
             if successful_chats:
                 chunks.insert(0, f"--- ИСТОРИЧЕСКИ УСПЕШНЫЕ ДИАЛОГИ (ИСПОЛЬЗУЙ КАК ПРИМЕР) ---\n" + "\n".join(successful_chats) + "\n---------------------------------------------------------------\n")
             
-            context_text = "\n".join(chunks)
-        except Exception as e:
-            logger.error(f"Parallel RAG failed: {e}")
-            pass
-            
-            context_text = "\n".join(chunks)
+            context_text = "\n".join(chunks) if 'chunks' in locals() else ""
         except Exception:
             pass
 
