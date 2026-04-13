@@ -8,9 +8,10 @@ interface PresentationDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   slides: PresentationSlide[];
+  isLoading?: boolean;
 }
 
-export function PresentationDrawer({ isOpen, onClose, slides }: PresentationDrawerProps) {
+export function PresentationDrawer({ isOpen, onClose, slides, isLoading }: PresentationDrawerProps) {
   const contentRef = useRef<HTMLDivElement>(null);
 
   const handlePrint = () => {
@@ -65,11 +66,35 @@ export function PresentationDrawer({ isOpen, onClose, slides }: PresentationDraw
                ref={contentRef}
             >
               <div className="max-w-4xl mx-auto space-y-12 print:space-y-0 print:max-w-none w-full">
+                {isLoading && slides.length === 0 && (
+                  <div className="flex flex-col items-center justify-center py-20 text-center">
+                    <div className="relative mb-8">
+                      <div className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-pitchy-violet to-pitchy-cyan animate-spin [animation-duration:3s]" />
+                      <div className="absolute inset-2 bg-[#0a0a0a] rounded-xl flex items-center justify-center">
+                        <FileText className="w-8 h-8 text-pitchy-violet animate-pulse" />
+                      </div>
+                    </div>
+                    <h3 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-white/60 mb-3">
+                      Pitchy создает вашу презентацию
+                    </h3>
+                    <p className="text-white/40 max-w-sm text-sm leading-relaxed">
+                      Мы анализируем данные вашего проекта и упаковываем их в профессиональные слайды. Это займет несколько секунд.
+                    </p>
+                  </div>
+                )}
+
                 {slides.map((slide, index) => (
                   <div key={index} className="print:page-break-after-always shadow-2xl print:shadow-none bg-[#131313] rounded-2xl print:rounded-none">
                     <SlideRenderer slide={slide} />
                   </div>
                 ))}
+
+                {!isLoading && slides.length === 0 && (
+                  <div className="text-center py-20 text-white/20">
+                    <FileText className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                    <p>Нет доступных слайдов</p>
+                  </div>
+                )}
               </div>
             </div>
           </motion.div>

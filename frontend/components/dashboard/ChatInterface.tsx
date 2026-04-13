@@ -46,6 +46,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
     // Presentation state
     const [presentationSlides, setPresentationSlides] = useState<PresentationSlide[] | null>(null);
     const [isPresentationOpen, setIsPresentationOpen] = useState(false);
+    const [isGeneratingSlides, setIsGeneratingSlides] = useState(false);
 
     // Import Modal state
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -184,6 +185,18 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
         if (typeof text !== 'string') setInputValue("");
         setIsLoading(true);
 
+        // Check for presentation request to trigger Agent Mode UX
+        const contentLower = content.toLowerCase();
+        const isPresentationRequest = 
+            (contentLower.includes("презентаци") || contentLower.includes("слайд") || contentLower.includes("презу") || contentLower.includes("питч") || contentLower.includes("pitch deck")) &&
+            (contentLower.includes("сдел") || contentLower.includes("сгенер") || contentLower.includes("покаж") || contentLower.includes("созд") || contentLower.includes("выведи") || contentLower.includes("хочу"));
+
+        if (isPresentationRequest) {
+            setPresentationSlides(null); // Clear old slides
+            setIsGeneratingSlides(true);
+            setIsPresentationOpen(true);
+        }
+
         const abortController = new AbortController();
         abortControllerRef.current = abortController;
 
@@ -255,8 +268,8 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                         );
                     } else if (chunk.type === "presentation") {
                         setPresentationSlides(chunk.data);
-                        // Delay opening the drawer slightly so the user sees the "success" message
-                        setTimeout(() => setIsPresentationOpen(true), 1500);
+                        setIsGeneratingSlides(false);
+                        // Drawer is already open from handleSendMessage
                     } else if (chunk.type === "metadata") {
                         setMessages((prev) =>
                             prev.map(m => m.client_id === assistantClientId ? { ...m, model_used: chunk.model } : m)
@@ -285,6 +298,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
             setMessages((prev) => prev.filter(m => m.id !== -1));
         } finally {
             setIsLoading(false);
+            setIsGeneratingSlides(false);
             setIsResearchMode(false); // Reset research mode after send
             abortControllerRef.current = null;
             setTimeout(() => textareaRef.current?.focus(), 100);
@@ -583,7 +597,10 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                   isResearchMode={isResearchMode}
                   onToggleResearchMode={() => setIsResearchMode(!isResearchMode)}
                   onOpenImportModal={() => setIsImportModalOpen(true)}
-                  onGeneratePresentation={() => handleSendMessage("Сгенерируй презентацию по моему проекту")}
+                  onGeneratePresentation={() => {
+                    setInputValue("Сгенерируй презентацию по моему проекту");
+                    if (textareaRef.current) textareaRef.current.focus();
+                  }}
                   disabled={!!session.analysis}
                   placeholder={session.analysis ? "Диалог завершен" : "Спросите Pitchy..."}
                 />
@@ -606,6 +623,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                 isOpen={isPresentationOpen} 
                 onClose={() => setIsPresentationOpen(false)} 
                 slides={presentationSlides || []} 
+                isLoading={isGeneratingSlides}
             />
 
             {/* Context Import Modal */}
