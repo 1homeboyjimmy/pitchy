@@ -17,7 +17,8 @@ interface ChatInputProps {
   isResearchMode?: boolean;
   onToggleResearchMode?: () => void;
   onOpenImportModal?: () => void;
-  onGeneratePresentation?: () => void;
+  isPresentationMode?: boolean;
+  onTogglePresentationMode?: () => void;
 }
 
 export function ChatInput({
@@ -33,7 +34,8 @@ export function ChatInput({
   isResearchMode = false,
   onToggleResearchMode,
   onOpenImportModal,
-  onGeneratePresentation,
+  isPresentationMode = false,
+  onTogglePresentationMode,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -128,7 +130,7 @@ export function ChatInput({
                 whileTap={{ scale: 0.95 }}
                 type="button"
                 className={`flex items-center gap-2 px-3 h-9 rounded-full transition-all ${
-                  isResearchMode 
+                  isResearchMode || isPresentationMode
                     ? "bg-pitchy-violet text-white shadow-[0_0_15px_rgba(139,92,246,0.3)]"
                     : "bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white"
                 }`}
@@ -189,12 +191,16 @@ export function ChatInput({
                       <button
                         onClick={() => {
                           setIsToolsOpen(false);
-                          onGeneratePresentation?.();
+                          onTogglePresentationMode?.();
                         }}
-                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-white/70 hover:bg-white/5 hover:text-white mt-1"
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors mt-1 ${
+                          isPresentationMode 
+                            ? "bg-pitchy-cyan/20 text-pitchy-cyan" 
+                            : "text-white/70 hover:bg-white/5 hover:text-white"
+                        }`}
                       >
-                        <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-white/5">
-                          <Activity className="w-4 h-4 text-pitchy-cyan" />
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isPresentationMode ? 'bg-pitchy-cyan text-black' : 'bg-white/5'}`}>
+                          <Activity className={`w-4 h-4 ${isPresentationMode ? 'text-black' : 'text-pitchy-cyan'}`} />
                         </div>
                         <div className="flex flex-col items-start">
                           <span className="text-sm font-medium">Слайды проекта</span>

@@ -38,6 +38,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
     const [isLoading, setIsLoading] = useState(false);
     const [useDeepSearch, setUseDeepSearch] = useState(false);
     const [isResearchMode, setIsResearchMode] = useState(false);
+    const [isPresentationMode, setIsPresentationMode] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const scrollViewportRef = useRef<HTMLDivElement>(null);
@@ -187,8 +188,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
         setIsLoading(true);
 
         // Check for presentation request to trigger Agent Mode UX
-        const contentLower = content.toLowerCase();
-        const isPresentationRequest = forceIntent === 'presentation';
+        const isPresentationRequest = forceIntent === 'presentation' || isPresentationMode;
 
         if (isPresentationRequest) {
             setPresentationSlides(null); // Clear old slides
@@ -261,7 +261,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                     assistantClientId, 
                     useDeepSearch,
                     isResearchMode,
-                    forceIntent || (isPresentationRequest ? 'presentation' : undefined)
+                    isPresentationRequest ? 'presentation' : (forceIntent || undefined)
                 )) {
                     if (chunk.type === "thought") {
                         fullThoughtContent += chunk.content;
@@ -318,6 +318,10 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
             setIsLoading(false);
             setIsGeneratingSlides(false);
             setIsResearchMode(false); // Reset research mode after send
+            if (isPresentationRequest && !isPresentationOpen) {
+                // Keep presentation open if it generated
+                setIsPresentationMode(false); // Turn off after successful generation
+            }
             abortControllerRef.current = null;
             setTimeout(() => textareaRef.current?.focus(), 100);
         }
@@ -614,10 +618,9 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                   onToggleDeepSearch={() => setUseDeepSearch(!useDeepSearch)}
                   isResearchMode={isResearchMode}
                   onToggleResearchMode={() => setIsResearchMode(!isResearchMode)}
+                  isPresentationMode={isPresentationMode}
+                  onTogglePresentationMode={() => setIsPresentationMode(!isPresentationMode)}
                   onOpenImportModal={() => setIsImportModalOpen(true)}
-                  onGeneratePresentation={() => {
-                    setInputValue("Хочу создать презентацию. Мой проект: ");
-                  }}
                   disabled={!!session.analysis}
                   placeholder={session.analysis ? "Диалог завершен" : "Спросите Pitchy..."}
                 />
