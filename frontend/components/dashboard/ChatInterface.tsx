@@ -187,10 +187,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
 
         // Check for presentation request to trigger Agent Mode UX
         const contentLower = content.toLowerCase();
-        const isPresentationRequest = 
-            forceIntent === 'presentation' ||
-            ((contentLower.includes("презентаци") || contentLower.includes("слайд") || contentLower.includes("презу") || contentLower.includes("питч") || contentLower.includes("pitch deck")) &&
-            (contentLower.includes("сдел") || contentLower.includes("сгенер") || contentLower.includes("покаж") || contentLower.includes("созд") || contentLower.includes("выведи") || contentLower.includes("хочу")));
+        const isPresentationRequest = forceIntent === 'presentation';
 
         if (isPresentationRequest) {
             setPresentationSlides(null); // Clear old slides
