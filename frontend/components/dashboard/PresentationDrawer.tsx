@@ -2,7 +2,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { X, Download, FileText } from "react-feather";
 import { PresentationSlide } from "@/lib/api";
 import { SlideRenderer } from "./SlideRenderer";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 
 interface PresentationDrawerProps {
   isOpen: boolean;
