@@ -616,7 +616,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                   onToggleResearchMode={() => setIsResearchMode(!isResearchMode)}
                   onOpenImportModal={() => setIsImportModalOpen(true)}
                   onGeneratePresentation={() => {
-                    handleSendMessage("Сгенерируй презентацию по моему проекту", "presentation", true);
+                    setInputValue("Хочу создать презентацию. Мой проект: ");
                   }}
                   disabled={!!session.analysis}
                   placeholder={session.analysis ? "Диалог завершен" : "Спросите Pitchy..."}

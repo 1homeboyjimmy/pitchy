@@ -37,7 +37,12 @@ if [[ -n "$runtime_health_host" ]]; then
 fi
 
 # ---- LOGIN TO GHCR ----
-echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+if [[ -n "${GITHUB_TOKEN:-}" && -n "${GITHUB_ACTOR:-}" ]]; then
+  echo "Logging into GHCR..."
+  echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+else
+  echo "GITHUB_TOKEN or GITHUB_ACTOR not set. Skipping docker login (assuming public image or already authenticated)..."
+fi
 
 # ---- PULL PRE-BUILT IMAGES FROM GHCR ----
 echo "Pulling pre-built images from GHCR..."
