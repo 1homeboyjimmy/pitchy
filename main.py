@@ -2844,6 +2844,7 @@ async def send_chat_message(
             chat_history = [ChatMessage(role=m.role, content=m.content) for m in history]
             
             # Identify RAG contexts in parallel to reduce latency
+            is_pres_request = False
             try:
                 # Use asyncio.gather to run intent classification and vector search concurrently
                 cats_task = asyncio.create_task(classify_intent(payload.content))
@@ -2866,7 +2867,7 @@ async def send_chat_message(
                 context_chunks = []
 
             # 3.1 MODE: PRESENTATION GENERATION
-            elif is_pres_request:
+            if is_pres_request:
                 yield json.dumps({"type": "chunk", "content": "Начинаю сборку вашей презентации... Это займет около 10 секунд.\n\n"}) + "\n"
                 full_response += "Начинаю сборку вашей презентации... Это займет около 10 секунд.\n\n"
                 
