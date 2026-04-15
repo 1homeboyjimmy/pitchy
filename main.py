@@ -1108,12 +1108,12 @@ async def analyze_startup(payload: AnalyzeRequest) -> AnalyzeResponse:
         raise HTTPException(status_code=502, detail="Invalid analysis schema from YandexGPT") from exc
 
 
-def _check_subscription_limits(user: User, db: Session, resource_type: str, session_id: int = None):
+def _check_subscription_limits(user: User, db: Session, resource_type: str, session_id: int = None, feature: str = None, is_search: bool = False):
     if user.is_admin:
         return
 
     tier = "free"
-    if user.subscription_tier in ("pro", "premium"):
+    if user.subscription_tier in ("pro", "premium", "starter", "tester"):
         if not user.subscription_expires_at or user.subscription_expires_at > datetime.utcnow():
             tier = user.subscription_tier
 
