@@ -312,7 +312,12 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
 
         } catch (error) {
             console.error(error);
-            alert("Ошибка отправки сообщения");
+            if (error instanceof Error && error.message.includes("API_ERROR:")) {
+                const parts = error.message.split("API_ERROR:");
+                alert(parts[1] || "Ошибка отправки сообщения (отказано в доступе)");
+            } else {
+                alert("Ошибка отправки сообщения");
+            }
             setMessages((prev) => prev.filter(m => m.id !== -1));
         } finally {
             setIsLoading(false);

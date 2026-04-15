@@ -299,7 +299,18 @@ export async function* sendChatMessageStream(
         window.location.href = "/login?expired=1";
       }
     }
-    throw new Error("Stream request failed");
+    let errorDetail = "Stream request failed";
+    try {
+        const errorData = await res.json();
+        if (errorData && errorData.detail) {
+            errorDetail = `API_ERROR:${errorData.detail}`;
+        } else if (res.status === 403) {
+            errorDetail = "API_ERROR:Функция недоступна на вашем тарифе";
+        }
+    } catch (e) {
+        // ignore json parse error
+    }
+    throw new Error(errorDetail);
   }
   const reader = res.body?.getReader();
   if (!reader) return;

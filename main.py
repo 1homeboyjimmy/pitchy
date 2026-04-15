@@ -1139,12 +1139,26 @@ def _check_subscription_limits(user: User, db: Session, resource_type: str, sess
             
     elif resource_type == "message":
         if tier == "tester":
-            total_messages_count = db.query(DbChatMessage).join(ChatSession).filter(
-                ChatSession.user_id == user.id,
-                DbChatMessage.role == "user"
-            ).count()
-            if total_messages_count >= 25:
-                raise HTTPException(status_code=403, detail="Лимит сообщений тарифа Tester исчерпан (25). Пожалуйста, обновите подписку.")
+            redis = get_redis()
+            if redis:
+                key = f"tester_limit_{user.id}_{'search' if is_search else 'normal'}"
+                count = redis.get(key)
+                count = int(count) if count else 0
+                max_allowed = 5 if is_search else 20
+                if count >= max_allowed:
+                    raise HTTPException(
+                        status_code=403, 
+                        detail=f"Лимит {'поисковых' if is_search else 'обычных'} сообщений тарифа Tester исчерпан ({max_allowed}). Для использования полного функционала оформите полноценную подписку."
+                    )
+                redis.incr(key)
+            else:
+                # fallback for missing redis
+                total_messages_count = db.query(DbChatMessage).join(ChatSession).filter(
+                    ChatSession.user_id == user.id,
+                    DbChatMessage.role == "user"
+                ).count()
+                if total_messages_count >= 25:
+                    raise HTTPException(status_code=403, detail="Лимит сообщений тарифа Tester исчерпан (25). Пожалуйста, обновите подписку.")
                 
         elif tier == "free" and session_id:
             msg_count = db.query(DbChatMessage).filter(
@@ -2833,7 +2847,7 @@ async def send_chat_message(
         db, 
         "message", 
         session.id, 
-        feature="deep_research" if getattr(payload, "use_deep_search", False) else None,
+        feature="deep_research" if getattr(payload, "use_research", False) else getattr(payload, "intent", None),
         is_search=getattr(payload, "use_deep_search", False)
     )
 
