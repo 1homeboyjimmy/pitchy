@@ -13,6 +13,7 @@ from search_agent import execute_search_agent
 from yandex_gpt_client import async_call_yandex_gpt
 from core_tree import CORE_SKELETON
 import rag
+from models import User
 
 # Langfuse normalization: SDK looks for LANGFUSE_HOST, but server sets LANGFUSE_BASE_URL
 if os.getenv("LANGFUSE_BASE_URL") and not os.getenv("LANGFUSE_HOST"):
@@ -246,14 +247,26 @@ class ChatOrchestrator:
             if not chunk: continue
             # Pass through usage sentinel dicts without parsing
             if isinstance(chunk, dict):
-                yield chunk
+                if "__thinking__" in chunk:
+                    yield json.dumps({"type": "thought", "content": chunk["__thinking__"]}) + "\n"
+                elif "__usage__" in chunk:
+                    yield chunk
                 continue
+                
             buffer += chunk
             while True:
                 if not inside_thought:
-                    if "<thought>" in buffer:
-                        pre, post = buffer.split("<thought>", 1)
-                        if pre: yield json.dumps({"type": "chunk", "content": pre}) + "\n"
+                    start_idx = buffer.find("<thought>")
+                    thought_len = 9
+                    if start_idx == -1:
+                        start_idx = buffer.find("<think>")
+                        thought_len = 7
+                        
+                    if start_idx != -1:
+                        pre = buffer[:start_idx]
+                        post = buffer[start_idx + thought_len:]
+                        if pre: 
+                            yield json.dumps({"type": "chunk", "content": pre}) + "\n"
                         inside_thought = True
                         buffer = post
                     else:
@@ -262,8 +275,15 @@ class ChatOrchestrator:
                             yield json.dumps({"type": "chunk", "content": to_yield}) + "\n"
                         break
                 else:
-                    if "</thought>" in buffer:
-                        content, post = buffer.split("</thought>", 1)
+                    end_idx = buffer.find("</thought>")
+                    end_len = 10
+                    if end_idx == -1:
+                        end_idx = buffer.find("</think>")
+                        end_len = 8
+                        
+                    if end_idx != -1:
+                        content = buffer[:end_idx]
+                        post = buffer[end_idx + end_len:]
                         yield json.dumps({"type": "thought", "content": content}) + "\n"
                         inside_thought = False
                         buffer = post
@@ -272,6 +292,7 @@ class ChatOrchestrator:
                             to_yield = buffer[:-10]; buffer = buffer[-10:]
                             yield json.dumps({"type": "thought", "content": to_yield}) + "\n"
                         break
+                        
         if buffer:
             yield json.dumps({"type": "thought" if inside_thought else "chunk", "content": buffer}) + "\n"
 
@@ -314,8 +335,9 @@ class ChatOrchestrator:
                 ttft = None
                 async for json_chunk in self._parse_thought_generator(self._stream_chat(user_message, history, state, active_node_id, rag_context=rag_context)):
                     # Check for usage sentinel from stream_makura
-                    if isinstance(json_chunk, dict) and "__usage__" in json_chunk:
-                        usage_data = json_chunk["__usage__"]
+                    if isinstance(json_chunk, dict):
+                        if "__usage__" in json_chunk:
+                            usage_data = json_chunk["__usage__"]
                         continue
                     data = json.loads(json_chunk.strip())
                     if data["type"] == "chunk": 
@@ -329,6 +351,12 @@ class ChatOrchestrator:
                     yield json_chunk
             
             elif intent == "tree":
+                user_obj = self.db.query(User).filter(User.id == self.user_id).first()
+                if user_obj and user_obj.subscription_tier == "tester":
+                    msg = "Функция работы с древом стартапа недоступна в тарифе Tester. Для использования полного функционала оформите полноценную подписку."
+                    yield json.dumps({"type": "chunk", "content": msg}) + "\n"
+                    return
+                
                 reply_full, enriched_data = await self._handle_tree_edit(user_message, state, active_node_id)
                 yield json.dumps({"type": "chunk", "content": reply_full}) + "\n"
                 yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
@@ -341,8 +369,9 @@ class ChatOrchestrator:
                 ttft = None
                 # Logic: Use search handler that yields chunks natively
                 async for json_chunk in self._handle_search(user_message, use_deep_search or use_research, use_research):
-                    if isinstance(json_chunk, dict) and "__usage__" in json_chunk:
-                        usage_data = json_chunk["__usage__"]
+                    if isinstance(json_chunk, dict):
+                        if "__usage__" in json_chunk:
+                            usage_data = json_chunk["__usage__"]
                         continue
                     data = json.loads(json_chunk.strip())
                     if data["type"] == "chunk": 
@@ -370,12 +399,22 @@ class ChatOrchestrator:
                 model_used = "Makura (Finance Expert)"
                 yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
                 async for json_chunk in self._handle_finance(user_message, state, active_node_id):
+                    if isinstance(json_chunk, dict):
+                        if "__usage__" in json_chunk:
+                            usage_data = json_chunk["__usage__"]
+                        continue
                     data = json.loads(json_chunk.strip())
                     if data["type"] == "chunk":
                         reply_full += data.get("content", "")
                     yield json_chunk
             
             elif intent == "presentation":
+                user_obj = self.db.query(User).filter(User.id == self.user_id).first()
+                if user_obj and user_obj.subscription_tier == "tester":
+                    msg = "Генерация презентаций недоступна в тарифе Tester. Для использования полного функционала оформите полноценную подписку."
+                    yield json.dumps({"type": "chunk", "content": msg}) + "\n"
+                    return
+                    
                 model_used = "Makura (Presentation Builder)"
                 yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
                 
@@ -410,13 +449,17 @@ class ChatOrchestrator:
             
             else:
                 # Fallback
-                async for chunk in self._stream_chat(user_message, history, state, active_node_id):
-                    if isinstance(chunk, dict):
-                        if "__usage__" in chunk:
-                            usage_data = chunk["__usage__"]
+                async for json_chunk in self._parse_thought_generator(self._stream_chat(user_message, history, state, active_node_id)):
+                    if isinstance(json_chunk, dict):
+                        if "__usage__" in json_chunk:
+                            usage_data = json_chunk["__usage__"]
                         continue
-                    reply_full += chunk
-                    yield json.dumps({"type": "chunk", "content": chunk}) + "\n"
+                    data = json.loads(json_chunk.strip())
+                    if data["type"] == "chunk":
+                        reply_full += data["content"]
+                    elif data["type"] == "thought":
+                        thoughts_full += data["content"]
+                    yield json_chunk
                     
         finally:
             if langfuse_context and (reply_full or thoughts_full):

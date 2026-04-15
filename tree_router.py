@@ -44,6 +44,9 @@ async def create_tree(
     db: Session = Depends(get_db),
 ) -> TreeResponse:
     """Create a decision tree starting with Universal Base Nodes."""
+    if user.subscription_tier == "tester":
+        raise HTTPException(status_code=403, detail="Древо стартапа недоступно в тарифе Tester. Оформите подписку.")
+    
     from core_tree import UNIVERSAL_BASE_NODES
     import copy
 
@@ -82,6 +85,9 @@ async def upload_pdf(
     db: Session = Depends(get_db),
 ) -> TreeResponse:
     """Upload a PDF and generate a decision tree from its contents."""
+    if user.subscription_tier == "tester":
+        raise HTTPException(status_code=403, detail="Загрузка PDF недоступна в тарифе Tester. Оформите подписку.")
+        
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Только PDF файлы поддерживаются")
 

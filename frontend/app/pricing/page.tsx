@@ -13,51 +13,58 @@ const plans = [
         description: "Для знакомства с платформой",
         icon: Star,
         features: [
-            "1 проект (анализ) в месяц",
-            "До 10 сообщений в чате",
-            "Базовый текстовый скоринг",
-            "Оценка по 100-балльной шкале",
+            "Базовый ИИ чат до 10 запросов в месяц"
         ],
         cta: "Начать бесплатно",
         popular: false,
         color: "white",
     },
     {
-        name: "Профессиональный",
-        price: { monthly: "499", yearly: "4 990" },
+        name: "Starter",
+        price: { monthly: "1 490", yearly: "14 900" },
         description: "Для соло-фаундеров и ангелов",
         icon: Zap,
         features: [
-            "5 проектов в месяц",
-            "Безлимитные сообщения в чате",
-            "Генерация структуры презентации",
-            "Имитация питча со злым инвестором",
-            "Бессрочная история чатов",
-            "Экспорт в PDF и TXT",
+            "Улучшенная модель Pitchy",
+            "Рабочие места: 1",
+            "Продвинутый CustDev",
+            "До 100 запросов в месяц"
         ],
         cta: "Оформить подписку",
         popular: true,
         color: "violet",
     },
     {
-        name: "Премиум",
-        price: { monthly: "999", yearly: "9 990" },
-        description: "Для венчурных фондов и B2B",
+        name: "Pro",
+        price: { monthly: "3 499", yearly: "34 990" },
+        description: "Для фондов и B2B",
         icon: Award,
         features: [
-            "Все функции плана Профессиональный",
-            "Неограниченное число проектов",
-            "Поиск в интернете и проверка юрлиц",
-            "Массовый анализ до 20 проектов",
-            "Динамический финансовый анализ",
-            "PDF Отчёты (без лого Pitchy)",
-            "Кастомные промпты",
+            "Лучшая модель Pitchy (DeepSearch)",
+            "Рабочие места: 1",
+            "До 500 запросов в месяц",
+            "Совместные проекты"
         ],
         cta: "Оформить подписку",
         popular: false,
         color: "cyan",
     },
 ];
+
+const testerPlan = {
+    name: "Tester",
+    price: { monthly: "1", yearly: "1" },
+    description: "Промо-режим для участников интенсива",
+    icon: Star,
+    features: [
+        "20 базовых сообщений в чате",
+        "5 запросов с глубоким поиском",
+        "Ограничение сложных функций"
+    ],
+    cta: "Начать",
+    popular: true,
+    color: "pink",
+};
 
 import { createPayment } from "@/lib/api";
 import { useAuth } from "@/lib/hooks/useAuth";
@@ -67,7 +74,7 @@ export default function PricingPage() {
     const [isYearly, setIsYearly] = useState(false);
     const [isLoading, setIsLoading] = useState<string | null>(null);
     const [promoCode, setPromoCode] = useState("");
-    const [appliedPromo, setAppliedPromo] = useState<{ code: string, discount: number } | null>(null);
+    const [appliedPromo, setAppliedPromo] = useState<{ code: string, discount: number, target_tier?: string | null, fixed_price?: number | null } | null>(null);
     const [promoError, setPromoError] = useState("");
     const [isCheckingPromo, setIsCheckingPromo] = useState(false);
     const { isAuthenticated, token } = useAuth();
@@ -76,8 +83,9 @@ export default function PricingPage() {
     const handleSubscribe = async (planName: string) => {
         const tierMap: Record<string, string> = {
             "Бесплатный": "free",
-            "Профессиональный": "pro",
-            "Премиум": "premium"
+            "Starter": "starter",
+            "Pro": "pro",
+            "Tester": "tester"
         };
         const tier = tierMap[planName];
 
@@ -122,7 +130,12 @@ export default function PricingPage() {
             const data = await res.json();
 
             if (data.valid) {
-                setAppliedPromo({ code: promoCode.trim(), discount: data.discount_percent });
+                setAppliedPromo({ 
+                    code: promoCode.trim(), 
+                    discount: data.discount_percent,
+                    target_tier: data.target_tier,
+                    fixed_price: data.fixed_price
+                });
                 setPromoCode("");
             } else {
                 setPromoError(data.detail || "Неверный промокод");
@@ -134,6 +147,8 @@ export default function PricingPage() {
             setIsCheckingPromo(false);
         }
     };
+
+    const displayedPlans = appliedPromo?.target_tier === "tester" ? [testerPlan] : plans;
 
     return (
         <Layout>
@@ -211,14 +226,16 @@ export default function PricingPage() {
                     </motion.div>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        {plans.map((plan, i) => (
+                        {displayedPlans.map((plan, i) => {
+                            const isSelected = appliedPromo?.target_tier === "tester" ? true : plan.popular;
+                            return (
                             <motion.div
                                 key={plan.name}
                                 initial={{ opacity: 0, y: 20 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ delay: i * 0.1 }}
                                 whileHover={{ scale: 1.02, y: -4 }}
-                                className={`relative glass-card-hover p-6 sm:p-8 ${plan.popular
+                                className={`relative glass-card-hover p-6 sm:p-8 ${isSelected
                                     ? "border-pitchy-violet/30 shadow-glow-primary/20"
                                     : ""
                                     }`}
@@ -293,7 +310,8 @@ export default function PricingPage() {
                                     {isLoading === plan.name ? "Загрузка..." : plan.cta}
                                 </button>
                             </motion.div>
-                        ))}
+                            );
+                        })}
                     </div>
 
                     <div className="mt-16 text-center max-w-2xl mx-auto space-y-4">

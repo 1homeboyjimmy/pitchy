@@ -60,6 +60,8 @@ class PromoCode(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     code: Mapped[str] = mapped_column(String(50), unique=True, index=True)
     discount_percent: Mapped[int] = mapped_column(Integer)
+    target_tier: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    fixed_price: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
     max_uses: Mapped[int | None] = mapped_column(Integer, nullable=True)
     current_uses: Mapped[int] = mapped_column(Integer, default=0)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

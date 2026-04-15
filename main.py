@@ -1117,10 +1117,17 @@ def _check_subscription_limits(user: User, db: Session, resource_type: str, sess
         if not user.subscription_expires_at or user.subscription_expires_at > datetime.utcnow():
             tier = user.subscription_tier
 
+    if tier == "tester":
+        if feature in ("custdev", "presentation", "deep_research", "import", "tree"):
+             raise HTTPException(status_code=403, detail="Эта функция недоступна в тарифе Tester. Для использования полного функционала оформите полноценную подписку.")
+
     if tier == "premium":
         return
         
     if resource_type == "project":
+        if tier == "tester":
+             raise HTTPException(status_code=403, detail="Создание проектов недоступно в тарифе Tester.")
+             
         analyses_count = db.query(Analysis).filter(Analysis.user_id == user.id).count()
         chat_sessions_count = db.query(ChatSession).filter(ChatSession.user_id == user.id, ChatSession.analysis_id == None).count()
         total_projects = analyses_count + chat_sessions_count
@@ -1131,7 +1138,15 @@ def _check_subscription_limits(user: User, db: Session, resource_type: str, sess
             raise HTTPException(status_code=403, detail="Pro tier limit: maximum 5 projects. Please upgrade your subscription.")
             
     elif resource_type == "message":
-        if tier == "free" and session_id:
+        if tier == "tester":
+            total_messages_count = db.query(DbChatMessage).join(ChatSession).filter(
+                ChatSession.user_id == user.id,
+                DbChatMessage.role == "user"
+            ).count()
+            if total_messages_count >= 25:
+                raise HTTPException(status_code=403, detail="Лимит сообщений тарифа Tester исчерпан (25). Пожалуйста, обновите подписку.")
+                
+        elif tier == "free" and session_id:
             msg_count = db.query(DbChatMessage).filter(
                 DbChatMessage.session_id == session_id,
                 DbChatMessage.role == "user"
@@ -1146,7 +1161,7 @@ async def create_analysis(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> AnalysisResponse:
-    _check_subscription_limits(user, db, "project")
+    _check_subscription_limits(user, db, "project", feature="custdev")
 
     description_parts = [
         f"Название: {payload.name}",
@@ -1684,6 +1699,7 @@ async def tool_deep_research(
     db: Session = Depends(get_db),
 ) -> ToolResultResponse:
     """Запускает глубокое агентное исследование и сохраняет отчет в историю."""
+    _check_subscription_limits(user, db, "tool", feature="deep_research")
     content, sources = await execute_deep_research(payload.query)
     
     # Store result
@@ -1705,6 +1721,7 @@ async def api_import_context(
     db: Session = Depends(get_db),
 ) -> ImportContextResponse:
     """Parses text/json from external LLMs and saves it to RAG & optionally ChatSession."""
+    _check_subscription_limits(user, db, "tool", feature="import")
     try:
         context, message = await ImportParser.parse(payload.text)
         
@@ -2064,6 +2081,8 @@ def create_promocode(
     promo = PromoCode(
         code=payload.code.upper(),
         discount_percent=payload.discount_percent,
+        target_tier=payload.target_tier,
+        fixed_price=payload.fixed_price,
         max_uses=payload.max_uses,
         expires_at=payload.expires_at,
     )
@@ -2809,7 +2828,14 @@ async def send_chat_message(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    _check_subscription_limits(user, db, "message", session.id)
+    _check_subscription_limits(
+        user, 
+        db, 
+        "message", 
+        session.id, 
+        feature="deep_research" if getattr(payload, "use_deep_search", False) else None,
+        is_search=getattr(payload, "use_deep_search", False)
+    )
 
     # 1. Save User Message
     user_msg = DbChatMessage(

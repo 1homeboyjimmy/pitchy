@@ -331,7 +331,7 @@ export async function createPayment(tier: string, is_annual: boolean, promo_code
   return postAuthJson<{ confirmation_url: string }>("/billing/create-payment", { tier, is_annual, promo_code }, token);
 }
 
-export async function validatePromoCode(code: string): Promise<{ valid: boolean, discount_percent: number, detail?: string }> {
+export async function validatePromoCode(code: string): Promise<{ valid: boolean, discount_percent: number, target_tier?: string | null, fixed_price?: number | null, detail?: string }> {
   const response = await fetch(`${API_BASE}/billing/promo/validate`, {
     method: "POST",
     headers: {

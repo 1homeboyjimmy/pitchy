@@ -182,6 +182,8 @@ class PasswordChangeRequest(BaseModel):
 class PromoCodeCreate(BaseModel):
     code: str = Field(..., min_length=2, max_length=50)
     discount_percent: int = Field(..., ge=1, le=100)
+    target_tier: str | None = None
+    fixed_price: float | None = None
     max_uses: int | None = None
     expires_at: datetime | None = None
 
@@ -189,6 +191,8 @@ class PromoCodeResponse(BaseModel):
     id: int
     code: str
     discount_percent: int
+    target_tier: str | None = None
+    fixed_price: float | None = None
     max_uses: int | None
     current_uses: int
     expires_at: datetime | None

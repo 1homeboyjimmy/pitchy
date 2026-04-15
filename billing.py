@@ -23,20 +23,24 @@ def setup_yookassa():
     Configuration.secret_key = secrets.get("YOOKASSA_SECRET_KEY") or os.getenv("YOOKASSA_SECRET_KEY", "test_key")
 
 PRICING_PLANS = {
-    "pro": {
-        "monthly": 499,
-        "yearly": 4990
+    "starter": {
+        "monthly": 1490,
+        "yearly": 14900
     },
-    "premium": {
-        "monthly": 999,
-        "yearly": 9990
+    "pro": {
+        "monthly": 3499,
+        "yearly": 34990
+    },
+    "tester": {
+        "monthly": 1,
+        "yearly": 1
     }
 }
 
 from pydantic import BaseModel
 
 class CreatePaymentRequest(BaseModel):
-    tier: str # "pro" or "premium"
+    tier: str # "starter", "pro", or "tester"
     is_annual: bool = False
     promo_code: str | None = None
 
@@ -49,6 +53,8 @@ class ValidatePromoRequest(BaseModel):
 class ValidatePromoResponse(BaseModel):
     valid: bool
     discount_percent: int
+    target_tier: str | None = None
+    fixed_price: float | None = None
     detail: str | None = None
 
 @router.post("/promo/validate", response_model=ValidatePromoResponse)
@@ -65,7 +71,12 @@ async def validate_promo(request: ValidatePromoRequest, db: Session = Depends(ge
     if promo.max_uses and promo.current_uses >= promo.max_uses:
         return ValidatePromoResponse(valid=False, discount_percent=0, detail="Максимальное количество использований исчерпано")
         
-    return ValidatePromoResponse(valid=True, discount_percent=promo.discount_percent)
+    return ValidatePromoResponse(
+        valid=True, 
+        discount_percent=promo.discount_percent,
+        target_tier=promo.target_tier,
+        fixed_price=float(promo.fixed_price) if promo.fixed_price is not None else None
+    )
 
 
 @router.post("/create-payment", response_model=CreatePaymentResponse)
@@ -84,7 +95,14 @@ async def create_payment(
         code = request.promo_code.strip().upper()
         promo = db.query(PromoCode).filter(PromoCode.code == code).first()
         if promo and (not promo.expires_at or promo.expires_at > datetime.utcnow()) and (not promo.max_uses or promo.current_uses < promo.max_uses):
-            amount = amount * (100 - promo.discount_percent) / 100
+            if promo.fixed_price is not None:
+                amount = float(promo.fixed_price)
+            else:
+                amount = amount * (100 - promo.discount_percent) / 100
+                
+            if promo.target_tier:
+                request.tier = promo.target_tier
+                
             promo_id = promo.id
         else:
              raise HTTPException(status_code=400, detail="Invalid or expired promo code")
