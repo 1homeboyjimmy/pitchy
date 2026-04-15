@@ -1311,8 +1311,15 @@ async def parse_thought_generator(generator):
         
         while True:
             if not inside_thought:
-                if "<thought>" in buffer:
-                    pre, post = buffer.split("<thought>", 1)
+                start_idx = buffer.find("<thought>")
+                thought_len = 9
+                if start_idx == -1:
+                    start_idx = buffer.find("<think>")
+                    thought_len = 7
+                    
+                if start_idx != -1:
+                    pre = buffer[:start_idx]
+                    post = buffer[start_idx + thought_len:]
                     if pre:
                         yield json.dumps({"type": "chunk", "content": pre}) + "\n"
                     inside_thought = True
@@ -1324,8 +1331,15 @@ async def parse_thought_generator(generator):
                         yield json.dumps({"type": "chunk", "content": to_yield}) + "\n"
                     break
             else:
-                if "</thought>" in buffer:
-                    content, post = buffer.split("</thought>", 1)
+                end_idx = buffer.find("</thought>")
+                end_len = 10
+                if end_idx == -1:
+                    end_idx = buffer.find("</think>")
+                    end_len = 8
+                    
+                if end_idx != -1:
+                    content = buffer[:end_idx]
+                    post = buffer[end_idx + end_len:]
                     yield json.dumps({"type": "thought", "content": content}) + "\n"
                     inside_thought = False
                     buffer = post
