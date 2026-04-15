@@ -236,11 +236,13 @@ export function AccountPageClient() {
                     <div className="inline-flex items-center mt-1">
                       <span className={`text-xs px-2.5 py-1 rounded-full border font-medium ${user?.subscription_tier === 'premium'
                         ? 'bg-pitchy-cyan/10 text-pitchy-cyan border-pitchy-cyan/20'
-                        : user?.subscription_tier === 'pro'
+                        : user?.subscription_tier === 'pro' || user?.subscription_tier === 'starter'
                           ? 'bg-pitchy-violet/10 text-pitchy-violet border-pitchy-violet/20'
-                          : 'bg-white/5 text-white/70 border-white/10'
+                          : user?.subscription_tier === 'tester'
+                            ? 'bg-pink-500/10 text-pink-400 border-pink-500/20'
+                            : 'bg-white/5 text-white/70 border-white/10'
                         }`}>
-                        Тариф: {user?.subscription_tier === 'premium' ? 'Премиум' : user?.subscription_tier === 'pro' ? 'Профессиональный' : 'Бесплатный'}
+                        Тариф: {user?.subscription_tier === 'premium' ? 'Премиум' : user?.subscription_tier === 'pro' ? 'Pro' : user?.subscription_tier === 'starter' ? 'Starter' : user?.subscription_tier === 'tester' ? 'Tester' : 'Бесплатный'}
                       </span>
                       {user?.is_admin && (
                         <span className="text-xs px-2.5 py-1 rounded-full border font-medium bg-amber-500/10 text-amber-500 border-amber-500/20 ml-2">
