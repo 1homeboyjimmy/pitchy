@@ -14,6 +14,8 @@ type PromoCode = {
     max_uses: number | null;
     current_uses: number;
     expires_at: string | null;
+    target_tier?: string | null;
+    fixed_price?: number | null;
     created_at: string;
 };
 
@@ -87,7 +89,7 @@ export function AdminView() {
     const [crawlMaxPages, setCrawlMaxPages] = useState(50);
 
     // New Promo Form
-    const [newPromo, setNewPromo] = useState({ code: "", discount_percent: 10, max_uses: "" });
+    const [newPromo, setNewPromo] = useState({ code: "", discount_percent: 10, max_uses: "", target_tier: "", fixed_price: "" });
 
     // Use relative paths so Next.js rewrites proxy to backend
     const API_BASE = "";
@@ -178,14 +180,16 @@ export function AdminView() {
                 body: JSON.stringify({
                     code: newPromo.code.toUpperCase(),
                     discount_percent: newPromo.discount_percent,
-                    max_uses: newPromo.max_uses ? parseInt(newPromo.max_uses) : null
+                    max_uses: newPromo.max_uses ? parseInt(newPromo.max_uses) : null,
+                    target_tier: newPromo.target_tier.trim() || null,
+                    fixed_price: newPromo.fixed_price ? parseFloat(newPromo.fixed_price) : null
                 })
             });
 
             if (res.ok) {
                 const created = await res.json();
                 setPromocodes([created, ...promocodes]);
-                setNewPromo({ code: "", discount_percent: 10, max_uses: "" });
+                setNewPromo({ code: "", discount_percent: 10, max_uses: "", target_tier: "", fixed_price: "" });
             } else {
                 alert("Ошибка при создании промокода. Возможно, он уже существует.");
             }
@@ -411,7 +415,7 @@ export function AdminView() {
                             {/* Create new promo form */}
                             <GlassCard hover={false} className="p-6 border border-pitchy-violet/30">
                                 <h3 className="text-lg font-bold text-white mb-4">Создать промокод</h3>
-                                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
                                     <input
                                         type="text"
                                         placeholder="Код (например TITLE20)"
@@ -422,9 +426,9 @@ export function AdminView() {
                                     <input
                                         type="number"
                                         placeholder="% Скидки"
-                                        min="1" max="100"
+                                        min="0" max="100"
                                         value={newPromo.discount_percent}
-                                        onChange={(e) => setNewPromo({ ...newPromo, discount_percent: parseInt(e.target.value) })}
+                                        onChange={(e) => setNewPromo({ ...newPromo, discount_percent: parseInt(e.target.value) || 0 })}
                                         className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white outline-none focus:border-pitchy-violet"
                                     />
                                     <input
@@ -432,6 +436,20 @@ export function AdminView() {
                                         placeholder="Кол-во использований (не обяз.)"
                                         value={newPromo.max_uses}
                                         onChange={(e) => setNewPromo({ ...newPromo, max_uses: e.target.value })}
+                                        className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white outline-none focus:border-pitchy-violet w-full"
+                                    />
+                                    <input
+                                        type="text"
+                                        placeholder="Тариф (напр. tester)"
+                                        value={newPromo.target_tier}
+                                        onChange={(e) => setNewPromo({ ...newPromo, target_tier: e.target.value })}
+                                        className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white outline-none focus:border-pitchy-violet"
+                                    />
+                                    <input
+                                        type="number"
+                                        placeholder="Фикс. цена в ₽ (напр. 1)"
+                                        value={newPromo.fixed_price}
+                                        onChange={(e) => setNewPromo({ ...newPromo, fixed_price: e.target.value })}
                                         className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white outline-none focus:border-pitchy-violet"
                                     />
                                     <Button
@@ -451,6 +469,7 @@ export function AdminView() {
                                         <tr>
                                             <th className="px-6 py-4 font-medium">КОД</th>
                                             <th className="px-6 py-4 font-medium text-center">СКИДКА %</th>
+                                            <th className="px-6 py-4 font-medium text-center">ТАРИФ/ЦЕНА</th>
                                             <th className="px-6 py-4 font-medium text-center">ИСПОЛЬЗОВАНО</th>
                                             <th className="px-6 py-4 font-medium text-right">ДЕЙСТВИЕ</th>
                                         </tr>
@@ -460,6 +479,12 @@ export function AdminView() {
                                             <tr key={promo.id} className="border-b border-white/5">
                                                 <td className="px-6 py-4 font-bold text-pitchy-cyan">{promo.code}</td>
                                                 <td className="px-6 py-4 text-center">{promo.discount_percent}%</td>
+                                                <td className="px-6 py-4 text-center text-white/70">
+                                                    {promo.target_tier ? (
+                                                        <span className="bg-pitchy-violet/20 text-pitchy-violet px-2 py-0.5 rounded-full text-xs">{promo.target_tier}</span>
+                                                    ) : "—"}
+                                                    {promo.fixed_price && <span className="ml-2 text-xs">{promo.fixed_price} ₽</span>}
+                                                </td>
                                                 <td className="px-6 py-4 text-center text-white/50">
                                                     {promo.current_uses} / {promo.max_uses ? promo.max_uses : '∞'}
                                                 </td>
