@@ -36,7 +36,7 @@ const plans = [
     },
     {
         name: "Pro",
-        price: { monthly: "3 499", yearly: "34 990" },
+        price: { monthly: "3 490", yearly: "34 900" },
         description: "Для фондов и B2B",
         icon: Award,
         features: [
