@@ -103,10 +103,14 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                     content: (loc.content?.length || 0) > (serverMatch.content?.length || 0) 
                         ? loc.content 
                         : serverMatch.content,
-                    // Сохраняем мысли и статус раскрытия
-                    thoughts: loc.thoughts || serverMatch.thoughts,
+                    // Always pick the longer/non-null thoughts to prevent loss
+                    thoughts: (loc.thoughts?.length || 0) >= (serverMatch.thoughts?.length || 0)
+                        ? loc.thoughts
+                        : serverMatch.thoughts,
                     thoughtTime: loc.thoughtTime || serverMatch.thoughtTime,
-                    thoughtExpanded: loc.thoughtExpanded ?? serverMatch.thoughtExpanded
+                    thoughtExpanded: loc.thoughtExpanded ?? serverMatch.thoughtExpanded,
+                    isResearch: loc.isResearch || serverMatch.isResearch,
+                    sources: (loc.sources?.length || 0) > (serverMatch.sources?.length || 0) ? loc.sources : serverMatch.sources,
                 });
             } else {
                 // КЛЮЧЕВОЙ МОМЕНТ: если сообщения НЕТ на сервере, но оно есть локально —
