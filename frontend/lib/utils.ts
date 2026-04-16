@@ -9,9 +9,8 @@
 export function stripThoughts(content: string): string {
     if (!content) return "";
     return content
-        .replace(/<think>[\s\S]*?<\/think>/gi, "")
-        .replace(/<thought>[\s\S]*?<\/thought>/gi, "")
-        .replace(/<think>[\s\S]*$/gi, "") // Handle unclosed tags
-        .replace(/<thought>[\s\S]*$/gi, "")
+        .replace(/<(think|thought|tool_call|tool_thought)>[\s\S]*?<\/\1>/gi, "")
+        .replace(/<(think|thought|tool_call|tool_thought)>[\s\S]*?<(think|thought|tool_call|tool_thought)>/gi, "") // Handle malformed tags like <tag>...<tag>
+        .replace(/<(think|thought|tool_call|tool_thought)>[\s\S]*$/gi, "") // Handle unclosed tags
         .trim();
 }

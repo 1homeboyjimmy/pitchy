@@ -251,7 +251,7 @@ class ChatOrchestrator:
         """
         inside_thought = False
         buffer = ""
-        tags = [("<thought>", "</thought>"), ("<think>", "</think>")]
+        tags = [("<thought>", "</thought>"), ("<think>", "</think>"), ("<tool_call>", "</tool_call>"), ("<tool_thought>", "</tool_thought>")]
         
         async for chunk in generator:
             if isinstance(chunk, dict):
