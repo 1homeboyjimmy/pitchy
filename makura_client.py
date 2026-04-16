@@ -104,7 +104,7 @@ async def stream_makura(system_prompt: str, user_message: str, model: str = None
     payload = {
         "model": model,
         "messages": [
-            {"role": "system", "content": system_prompt + "\n\nОТВЕЧАЙ СТРОГО НА РУССКОМ ЯЗЫКЕ. ИСПОЛЬЗОВАНИЕ КИТАЙСКИХ ИЕРОГЛИФОВ КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО."},
+            {"role": "system", "content": "ОТВЕЧАЙ СТРОГО НА РУССКОМ ЯЗЫКЕ. ИСПОЛЬЗОВАНИЕ КИТАЙСКИХ ИЕРОГЛИФОВ КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО.\n\n" + system_prompt + "\n\nВНИМАНИЕ: ОТВЕЧАЙ ТОЛЬКО НА РУССКОМ. НИКАКИХ КИТАЙСКИХ СИМВОЛОВ."},
             {"role": "user", "content": user_message}
         ],
         "temperature": 0.4,

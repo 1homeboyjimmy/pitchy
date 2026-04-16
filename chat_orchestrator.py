@@ -249,7 +249,7 @@ class ChatOrchestrator:
         Extracts <think>...</think> or <thought>...</thought> tags and yields them as metadata types.
         Ensures tags are NOT leaked into the main 'chunk' content.
         """
-        inside_thought = False
+        active_start_tag = None
         buffer = ""
         tags = [("<thought>", "</thought>"), ("<think>", "</think>"), ("<tool_call>", "</tool_call>"), ("<tool_thought>", "</tool_thought>")]
         
@@ -257,7 +257,7 @@ class ChatOrchestrator:
             if isinstance(chunk, dict):
                 # Flush buffer before handling metadata/dict chunks
                 if buffer:
-                    if inside_thought:
+                    if active_start_tag:
                         yield json.dumps({"type": "thought", "content": buffer}) + "\n"
                     else:
                         yield json.dumps({"type": "chunk", "content": buffer}) + "\n"
@@ -281,7 +281,7 @@ class ChatOrchestrator:
             while True:
                 found_tag = False
                 for start_tag, end_tag in tags:
-                    if not inside_thought:
+                    if not active_start_tag:
                         s_idx = buffer.find(start_tag)
                         if s_idx != -1:
                             # Content before the tag is a chunk
@@ -291,28 +291,32 @@ class ChatOrchestrator:
                             
                             # Move buffer past the start tag
                             buffer = buffer[s_idx + len(start_tag):]
-                            inside_thought = True
+                            active_start_tag = start_tag
                             found_tag = True
                             break
                     else:
-                        e_idx = buffer.find(end_tag)
-                        if e_idx != -1:
-                            # Content inside tags is a thought
-                            thought_content = buffer[:e_idx]
-                            if thought_content:
-                                yield json.dumps({"type": "thought", "content": thought_content}) + "\n"
-                            
-                            # Move buffer past the end tag
-                            buffer = buffer[e_idx + len(end_tag):]
-                            inside_thought = False
-                            found_tag = True
-                            break
+                        # Only look for the end_tag corresponding to the current active_start_tag
+                        # though 'tags' loop iterates over all, we only care if we match the one we started.
+                        # For simplicity, if we find ANY closing tag that matches OUR opening tag:
+                        if start_tag == active_start_tag:
+                            e_idx = buffer.find(end_tag)
+                            if e_idx != -1:
+                                # Content inside tags is a thought
+                                thought_content = buffer[:e_idx]
+                                if thought_content:
+                                    yield json.dumps({"type": "thought", "content": thought_content}) + "\n"
+                                
+                                # Move buffer past the end tag
+                                buffer = buffer[e_idx + len(end_tag):]
+                                active_start_tag = None
+                                found_tag = True
+                                break
                 
                 if not found_tag:
                     # If no complete tag found, yield what we can but keep a small buffer
                     # to avoid splitting a tag that might be coming in the next chunk.
                     max_tag_len = 12
-                    if not inside_thought:
+                    if not active_start_tag:
                         if len(buffer) > max_tag_len:
                             to_yield = buffer[:-max_tag_len]
                             buffer = buffer[-max_tag_len:]
@@ -331,7 +335,10 @@ class ChatOrchestrator:
                 final_content = final_content.replace(start_tag, "").replace(end_tag, "")
             
             if final_content.strip():
-                yield json.dumps({"type": "thought" if inside_thought else "chunk", "content": final_content}) + "\n"
+                # FALLBACK: If we are at the end of the stream and still have an active_start_tag,
+                # we decide whether to hide it or leak it.
+                is_pure_thought = active_start_tag in ["<think>", "<thought>"]
+                yield json.dumps({"type": "thought" if is_pure_thought else "chunk", "content": final_content}) + "\n"
 
     @observe(name="orchestrator_process_message")
     async def process_message(self, user_message: str, active_node_id: str = None, client_id: str = None, assistant_client_id: str = None, use_deep_search: bool = False, use_research: bool = False):
