@@ -31,7 +31,7 @@ async def call_makura(system_prompt: str, user_message: str, model: str = None) 
     payload = {
         "model": model,
         "messages": [
-            {"role": "system", "content": system_prompt + " Опиши ситуацию максимально полно и подробно."},
+            {"role": "system", "content": SYSTEM_CHAT_PROMPT + "\n\n" + system_prompt},
             {"role": "user", "content": user_message}
         ],
         "temperature": 0.4,
@@ -45,13 +45,13 @@ async def call_makura(system_prompt: str, user_message: str, model: str = None) 
             
             if resp.status_code != 200:
                 logger.error(f"Makura error: {resp.status_code} - Body: {resp.text}")
-                return None, None
+                return None, None, {}
                 
             try:
                 data = resp.json()
             except Exception as json_err:
                 logger.error(f"Failed to parse Makura JSON: {str(json_err)}. Raw body: {resp.text[:500]}")
-                return None, None
+                return None, None, {}
             
             # Extract content
             message = data["choices"][0]["message"]
@@ -104,7 +104,7 @@ async def stream_makura(system_prompt: str, user_message: str, model: str = None
     payload = {
         "model": model,
         "messages": [
-            {"role": "system", "content": system_prompt + " Опиши ситуацию максимально полно и подробно."},
+            {"role": "system", "content": system_prompt + "\n\nОТВЕЧАЙ СТРОГО НА РУССКОМ ЯЗЫКЕ. ИСПОЛЬЗОВАНИЕ КИТАЙСКИХ ИЕРОГЛИФОВ КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО."},
             {"role": "user", "content": user_message}
         ],
         "temperature": 0.4,

@@ -9,6 +9,7 @@ import { getTreeChatHistory, evaluateNode, type TreeNodeResponse, type TreeEdgeR
 import { motion, AnimatePresence } from "framer-motion";
 import { ChatInput } from "@/components/chat/ChatInput";
 import { CollapsibleUserMessage } from "@/components/chat/CollapsibleUserMessage";
+import { stripThoughts } from "@/lib/utils";
 
 interface Message {
   role: "user" | "assistant";
@@ -418,7 +419,7 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
                                   th: ({...props}) => <th className="p-2 text-[11px] font-bold text-pitchy-cyan-light border-b border-white/10 uppercase tracking-wider" {...props} />,
                                   td: ({...props}) => <td className="p-2 text-[12px] text-white/80 border-b border-white/5 last:border-0" {...props} />,
                                 }}>
-                                  {msg.content}
+                                  {stripThoughts(msg.content)}
                                 </ReactMarkdown>
                               </div>
                             </div>

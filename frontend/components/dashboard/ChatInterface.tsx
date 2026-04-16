@@ -15,6 +15,7 @@ import { CollapsibleUserMessage } from "@/components/chat/CollapsibleUserMessage
 import { PresentationDrawer } from "./PresentationDrawer";
 import { PresentationSlide, importContext } from "@/lib/api";
 import { ContextImportModal } from "@/components/chat/ContextImportModal";
+import { stripThoughts } from "@/lib/utils";
 
 interface ExtendedChatMessage extends ChatMessageResponse {
     thoughts?: string;
@@ -178,10 +179,10 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
     }, [typingMessageId, displayedLength, messages, getSafeKey]);
 
     const getDisplayContent = useCallback((msg: ChatMessageResponse) => {
-        if (getSafeKey(msg) === typingMessageId?.toString()) {
-            return msg.content.slice(0, displayedLength);
-        }
-        return msg.content;
+        const rawContent = getSafeKey(msg) === typingMessageId?.toString()
+            ? msg.content.slice(0, displayedLength)
+            : msg.content;
+        return stripThoughts(rawContent);
     }, [typingMessageId, displayedLength, getSafeKey]);
 
     const handleSendMessage = async (text?: string, forceIntent?: string, silent: boolean = false) => {
@@ -362,7 +363,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
             const messageKey = msg.client_id || msg.id;
             const hasThoughts = msg.thoughts !== undefined && msg.thoughts !== null && msg.thoughts.length > 0;
             const userMessagesBefore = messages.slice(0, idx).filter(m => m.role === "user").length;
-            const showThoughts = hasThoughts && (userMessagesBefore > 1 || msg.isResearch);
+            const showThoughts = hasThoughts;
             const hasContent = msg.content && msg.content.length > 0;
             const isLastAssistant = msg.role === "assistant" && idx === messages.length - 1;
             const shouldRenderMainBubble = msg.role === "user" || hasContent;
@@ -421,7 +422,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                                         <CollapsibleUserMessage content={getDisplayContent(msg)} />
                                     ) : (
                                         <div className="p-4 rounded-2xl bg-pitchy-violet/10 border border-pitchy-violet/20 text-white rounded-tl-sm">
-                                            <div className="text-sm sm:text-base leading-[1.7] md:leading-[1.8] text-white/90 [&>p]:mb-4 [&>p:last-child]:mb-0 [&>ul]:list-disc [&>ul]:pl-6 [&>ul]:mb-4 [&>ul>li]:mb-2 [&>ul>li]:pl-1 [&>ol]:list-decimal [&>ol]:pl-6 [&>ol]:mb-4 [&>ol>li]:mb-2 [&>ol>li]:pl-1 [&>h2]:text-xl [&>h2]:font-bold [&>h2]:text-pitchy-cyan-light [&>h2]:mt-8 [&>h2]:mb-4 [&>h3]:text-lg [&>h3]:font-bold [&>h3]:text-white [&>h3]:mt-6 [&>h3]:mb-3 [&>strong]:text-white [&>strong]:font-semibold break-words">
+                                            <div className="text-sm sm:text-base leading-[1.7] md:leading-[1.8] text-white/90 [&_p]:mb-4 [&_p:last-child]:mb-0 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:mb-4 [&_ul>li]:mb-2 [&_ul>li]:pl-1 [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:mb-4 [&_ol>li]:mb-2 [&_ol>li]:pl-1 [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-pitchy-cyan-light [&_h2]:mt-8 [&_h2]:mb-4 [&_h3]:text-lg [&_h3]:font-bold [&_h3]:text-white [&_h3]:mt-6 [&_h3]:mb-3 [&_strong]:text-white [&_strong]:font-semibold break-words">
                                                 <ReactMarkdown 
                                                     remarkPlugins={[remarkGfm]}
                                                     components={{

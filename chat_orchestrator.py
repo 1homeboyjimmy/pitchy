@@ -49,51 +49,49 @@ INTENT_RECOGNITION_PROMPT = """Ты — диспетчер запросов дл
 """
 
 ROLE_PROMPTS = {
-    "project_description": """Ты — опытный product-менеджер и эксперт по валидации стартапов. 
-Твоя текущая роль и единственная функция в этом чате: **Анализ идеи продукта или бизнеса**.
+    "project_description": """Ты — опытный product-менеджер и эксперт по стартапам. 
+ОТВЕЧАЙ СТРОГО НА РУССКОМ ЯЗЫКЕ. Использование китайских иероглифов или любых других языков КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО.
+Твоя роль: Анализ идеи продукта и бизнес-модели.
 
-Твоя задача: помогать пользователю оценивать жизнеспособность концепции, проблематику, предлагаемое решение, анализировать конкурентов, формулировать уникальное ценностное предложение (UVP) и общую бизнес-модель.
+Помогай пользователю оценивать жизнеспособность концепции, проблематику, решение, конкурентов и UVP.
+ВАЖНЫЕ ПРАВИЛА:
+1. ДЕТАЛИЗАЦИЯ: На вопросы по валидации идеи отвечай подробно и структурированно. 
+2. ГРАНИЦЫ: Если запрос касается финансов или сегментации ЦА, дай краткий ответ и направь в соответствующий раздел платформы.""",
 
-ВАЖНЫЕ ПРАВИЛА ВЗАИМОДЕЙСТВИЯ:
-1. ДЕТАЛИЗАЦИЯ ПО ТЕМЕ: На любые вопросы, напрямую связанные с валидацией, концепцией и анализом идеи, отвечай максимально подробно, глубоко и структурированно. Задавай наводящие вопросы для улучшения идеи.
-2. ЖЕСТКИЕ ГРАНИЦЫ: В нашей системе есть отдельные функции для "Расчета Юнит-экономики" и "Анализа Целевой Аудитории (ЦА)". Если запрос пользователя касается этих тем или других вопросов вне "Анализа идеи", дай ПРЕДЕЛЬНО КРАТКИЙ ответ (1-2 предложения максимум) и вежливо направь его использовать соответствующий раздел сайта для глубокого анализа. Не делай финансовых расчетов и не расписывай детальные портреты ЦА в этом чате.""",
+    "target_audience": """Ты — маркетолог-исследователь. 
+ОТВЕЧАЙ СТРОГО НА РУССКОМ ЯЗЫКЕ. Использование китайских иероглифов или любых других языков КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО.
+Твоя роль: Анализ целевой аудитории (ЦА).
 
-    "target_audience": """Ты — опытный маркетолог-исследователь и product-менеджер. 
-Твоя текущая роль и единственная функция в этом чате: **Анализ целевой аудитории (ЦА)**.
+Помогай сегментировать рынок, составлять портреты пользователей, выявлять боли, потребности и паттерны (JTBD).
+ВАЖНЫЕ ПРАВИЛА:
+1. ДЕТАЛИЗАЦИЯ: На вопросы о пользователях и сегментации отвечай максимально глубоко.
+2. ГРАНИЦЫ: Если запрос касается экономики или концепции продукта, дай краткий ответ и направь в нужный раздел.""",
 
-Твоя задача: помогать пользователю сегментировать рынок, составлять подробные, глубокие портреты пользователей, выявлять их боли, потребности, страхи, JTBD (Job-to-be-Done) и поведенческие паттерны.
+    "unit_economics": """Ты — финансовый директор (CFO) и эксперт по метрикам. 
+ОТВЕЧАЙ СТРОГО НА РУССКОМ ЯЗЫКЕ. Использование китайских иероглифов или любых других языков КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО.
+Твоя роль: Расчет юнит-экономики.
 
-ВАЖНЫЕ ПРАВИЛА ВЗАИМОДЕЙСТВИЯ:
-1. ДЕТАЛИЗАЦИЯ ПО ТЕМЕ: На любые вопросы, связанные с пользователями, мотивацией покупок, сегментацией (B2B/B2C) и психографикой, отвечай максимально подробно. Разворачивай каждый портрет в деталях с инсайтами.
-2. ЖЕСТКИЕ ГРАНИЦЫ: В нашей системе есть отдельные функции для "Анализа идеи" (оценка концепции продукта) и "Расчета Юнит-экономики" (финансовых метрик). Если запрос пользователя касается финансов (расчет метрик CAC/LTV), технической валидации идеи или других тем вне ЦА, дай ПРЕДЕЛЬНО КРАТКИЙ ответ (1-2 предложения максимум) и вежливо направь его использовать соответствующий раздел сайта для глубокого анализа. Не делай финансовых расчетов в этом чате.""",
-
-    "unit_economics": """Ты — финансовый директор (CFO) и эксперт по стартап-метрикам. 
-Твоя текущая роль и единственная функция в этом чате: **Расчет юнит-экономики**.
-
-Твоя задача: помогать пользователю строить финансовую модель, рассчитывать ключевые метрики (CAC, LTV, ARPU, ARPPU, Margin, ROI, CPA и т.д.), оценивать точку безубыточности, анализировать постоянные/переменные расходы и доходы.
-
-ВАЖНЫЕ ПРАВИЛА ВЗАИМОДЕЙСТВИЯ:
-1. ДЕТАЛИЗАЦИЯ ПО ТЕМЕ: На вопросы, касающиеся расчетов, финансов, ценообразования и метрик, отвечай максимально подробно. Приводи формулы, пошаговые вычисления и развернутые объяснения математических моделей.
-2. ЖЕСТКИЕ ГРАНИЦЫ: В нашей системе есть отдельные функции для "Анализа идеи" и "Анализа Целевой Аудитории (ЦА)". Если запрос пользователя касается бизнес-концепции, маркетингового анализа сегментов ЦА или других общих бизнес-вопросов вне темы "Юнит-экономики", дай ПРЕДЕЛЬНО КРАТКИЙ ответ (1-2 предложения максимум) и вежливо направь его использовать соответствующий раздел сайта для глубокого анализа."""
+Помогай считать CAC, LTV, ROI и другие метрики. Приводи формулы и пошаговые вычисления.
+ВАЖНЫЕ ПРАВИЛА:
+1. ДЕТАЛИЗАЦИЯ: На финансовые вопросы отвечай максимально подробно с цифрами.
+2. ГРАНИЦЫ: Если запрос про идею или маркетинг без цифр, дай краткий ответ и направь в нужный раздел."""
 }
 
-FINANCE_PROMPT = """Ты — финансовый директор (CFO) и эксперт по стартап-метрикам. 
-Твоя текущая роль: **Расчет юнит-экономики**.
-Твоя задача: помогать пользователю строить финансовую модель, рассчитывать ключевые метрики, оценивать точку безубыточности.
+FINANCE_PROMPT = """Ты — финансовый эксперт. 
+ОТВЕЧАЙ СТРОГО НА РУССКОМ ЯЗЫКЕ. Использование китайских иероглифов КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО.
 
-ЖЕСТКИЕ ГРАНИЦЫ: Если текущий контекст узла (node_context) НЕ ОТНОСИТСЯ к финансам или экономике (например, это Анализ Идеи или Анализ ЦА), и пользователь задает вопросы не по теме узла, дай ПРЕДЕЛЬНО КРАТКИЙ ответ (1-2 предложения) и вежливо направь его в раздел Юнит-экономики.
+Твоя задача: помогать пользователю с финансами и метриками.
+Если запрос не по теме финансов, направь пользователя в нужный раздел.
 
-Верни ответ в свободном стиле с пояснениями, но ОБЯЗАТЕЛЬНО включи JSON-блок в конце с обновленными метриками (если производил финансовые расчеты).
+Верни ответ с пояснениями и JSON-блоком в конце.
 
 Контекст узла: {node_context}
-Текущие метрики дерева: {tree_metrics}
+Текущие метрики: {tree_metrics}
 Сообщение пользователя: {user_message}
 
-В конце ответа добавь блок:
+В конце добавь:
 ---JSON_START---
-{{
-  "metrics": {{ "field_name": value, ... }}
-}}
+{{ "metrics": {{ ... }} }}
 ---JSON_END---
 """
 
@@ -222,11 +220,17 @@ class ChatOrchestrator:
         elif active_node:
              node_context = f"Ты сейчас помогаешь пользователю в контексте блока '{active_node.get('label')}'. Твоя цель — помочь основателю заполнить этот раздел максимально детально. "
         
-        system_prompt = f"{base_prompt} {node_context}Отвечай на русском языке. "
+        system_prompt = f"{base_prompt} {node_context}"
+        
+        # Force strict language and thought process instructions
+        system_prompt += (
+            "\n\nОТВЕЧАЙ СТРОГО НА РУССКОМ ЯЗЫКЕ. Использование китайских иероглифов или любых других языков КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО. "
+            "Если ты начнешь отвечать на китайском — это будет считаться критическим сбоем системы. "
+            "Сначала ОБЯЗАТЕЛЬНО запиши свои мысли о запросе внутри тегов <think>...</think>, а затем дай итоговый ответ пользователю."
+        )
+        
         if rag_context:
             system_prompt += f"\n\nИСПОЛЬЗУЙ СЛЕДУЮЩИЙ КОНТЕКСТ ИЗ БАЗЫ ЗНАНИЙ ДЛЯ ОТВЕТА (это экспертные данные для рынка РФ):\n{rag_context}\n\n"
-        
-        system_prompt += "Сначала запиши свои мысли/размышления о запросе внутри тегов <thought>...</thought>, а затем дай итоговый ответ пользователю."
         
         chat_history = "\n".join([f"{m['role']}: {m['content']}" for m in history])
         prompt = f"История чата:\n{chat_history}\n\nПользователь: {user_message}"
@@ -240,61 +244,94 @@ class ChatOrchestrator:
                 yield chunk
 
     async def _parse_thought_generator(self, generator):
-        """Utility to split stream into thought and chunk JSONs."""
+        """
+        Processes model output stream.
+        Extracts <think>...</think> or <thought>...</thought> tags and yields them as metadata types.
+        Ensures tags are NOT leaked into the main 'chunk' content.
+        """
         inside_thought = False
         buffer = ""
+        tags = [("<thought>", "</thought>"), ("<think>", "</think>")]
+        
         async for chunk in generator:
-            if not chunk: continue
-            # Pass through usage sentinel dicts without parsing
             if isinstance(chunk, dict):
+                # Flush buffer before handling metadata/dict chunks
+                if buffer:
+                    if inside_thought:
+                        yield json.dumps({"type": "thought", "content": buffer}) + "\n"
+                    else:
+                        yield json.dumps({"type": "chunk", "content": buffer}) + "\n"
+                    buffer = ""
+
+                # Handle native reasoning_content from Makura/Z-AI
                 if "__thinking__" in chunk:
                     yield json.dumps({"type": "thought", "content": chunk["__thinking__"]}) + "\n"
+                    continue
                 elif "__usage__" in chunk:
-                    yield chunk
-                continue
-                
-            buffer += chunk
-            while True:
-                if not inside_thought:
-                    start_idx = buffer.find("<thought>")
-                    thought_len = 9
-                    if start_idx == -1:
-                        start_idx = buffer.find("<think>")
-                        thought_len = 7
-                        
-                    if start_idx != -1:
-                        pre = buffer[:start_idx]
-                        post = buffer[start_idx + thought_len:]
-                        if pre: 
-                            yield json.dumps({"type": "chunk", "content": pre}) + "\n"
-                        inside_thought = True
-                        buffer = post
-                    else:
-                        if len(buffer) > 10:
-                            to_yield = buffer[:-9]; buffer = buffer[-9:]
-                            yield json.dumps({"type": "chunk", "content": to_yield}) + "\n"
-                        break
+                    yield json.dumps({"type": "metadata", "usage": chunk["__usage__"]}) + "\n"
+                    continue
                 else:
-                    end_idx = buffer.find("</thought>")
-                    end_len = 10
-                    if end_idx == -1:
-                        end_idx = buffer.find("</think>")
-                        end_len = 8
-                        
-                    if end_idx != -1:
-                        content = buffer[:end_idx]
-                        post = buffer[end_idx + end_len:]
-                        yield json.dumps({"type": "thought", "content": content}) + "\n"
-                        inside_thought = False
-                        buffer = post
+                    yield json.dumps(chunk) + "\n"
+                    continue
+
+            # Handle text-based tags in the main content stream
+            buffer += chunk
+            
+            # Continuous processing of the buffer
+            while True:
+                found_tag = False
+                for start_tag, end_tag in tags:
+                    if not inside_thought:
+                        s_idx = buffer.find(start_tag)
+                        if s_idx != -1:
+                            # Content before the tag is a chunk
+                            pre = buffer[:s_idx]
+                            if pre:
+                                yield json.dumps({"type": "chunk", "content": pre}) + "\n"
+                            
+                            # Move buffer past the start tag
+                            buffer = buffer[s_idx + len(start_tag):]
+                            inside_thought = True
+                            found_tag = True
+                            break
                     else:
-                        if len(buffer) > 11:
-                            to_yield = buffer[:-10]; buffer = buffer[-10:]
+                        e_idx = buffer.find(end_tag)
+                        if e_idx != -1:
+                            # Content inside tags is a thought
+                            thought_content = buffer[:e_idx]
+                            if thought_content:
+                                yield json.dumps({"type": "thought", "content": thought_content}) + "\n"
+                            
+                            # Move buffer past the end tag
+                            buffer = buffer[e_idx + len(end_tag):]
+                            inside_thought = False
+                            found_tag = True
+                            break
+                
+                if not found_tag:
+                    # If no complete tag found, yield what we can but keep a small buffer
+                    # to avoid splitting a tag that might be coming in the next chunk.
+                    max_tag_len = 12
+                    if not inside_thought:
+                        if len(buffer) > max_tag_len:
+                            to_yield = buffer[:-max_tag_len]
+                            buffer = buffer[-max_tag_len:]
+                            yield json.dumps({"type": "chunk", "content": to_yield}) + "\n"
+                    else:
+                        if len(buffer) > max_tag_len:
+                            to_yield = buffer[:-max_tag_len]
+                            buffer = buffer[-max_tag_len:]
                             yield json.dumps({"type": "thought", "content": to_yield}) + "\n"
-                        break
+                    break
                         
         if buffer:
-            yield json.dumps({"type": "thought" if inside_thought else "chunk", "content": buffer}) + "\n"
+            # Clean up residual tags from final buffer
+            final_content = buffer
+            for start_tag, end_tag in tags:
+                final_content = final_content.replace(start_tag, "").replace(end_tag, "")
+            
+            if final_content.strip():
+                yield json.dumps({"type": "thought" if inside_thought else "chunk", "content": final_content}) + "\n"
 
     @observe(name="orchestrator_process_message")
     async def process_message(self, user_message: str, active_node_id: str = None, client_id: str = None, assistant_client_id: str = None, use_deep_search: bool = False, use_research: bool = False):
