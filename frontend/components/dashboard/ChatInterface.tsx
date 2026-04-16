@@ -116,7 +116,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
             } else {
                 // КЛЮЧЕВОЙ МОМЕНТ: если сообщения НЕТ на сервере, но оно есть локально —
                 // НЕ УДАЛЯЕМ его, пока идет загрузка (isLoading)
-                if (isLoading) {
+                if (isLoading || (loc.content && loc.content.length > 0)) {
                     map.set(key, loc);
                 }
             }

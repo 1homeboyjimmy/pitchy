@@ -360,6 +360,7 @@ class ChatOrchestrator:
         enriched_data = {}
         sources_list = []
         usage_data = None  # Token usage tracking
+        message_saved = False  # Track if the message was successfully saved
 
         if langfuse_context:
             langfuse_context.update_current_observation(
@@ -506,6 +507,19 @@ class ChatOrchestrator:
                     yield json_chunk
                     
         finally:
+            # Rescue save: if message wasn't saved (e.g. stream aborted), save the partial response
+            if not message_saved and (reply_full.strip() or thoughts_full.strip()):
+                # use create_task for fire-and-forget saving
+                asyncio.create_task(self.add_chat_message(
+                    "assistant", 
+                    reply_full, 
+                    thoughts=thoughts_full.strip() if thoughts_full else None, 
+                    node_id=active_node_id, 
+                    model_used=model_used, 
+                    client_id=assistant_client_id, 
+                    sources=sources_list
+                ))
+
             if langfuse_context and (reply_full or thoughts_full):
                 try:
                     # Build usage dict for Langfuse
@@ -543,6 +557,7 @@ class ChatOrchestrator:
             yield json.dumps({"type": "tree_update", "data": state}) + "\n"
 
         # 4. Finalize
+        message_saved = True # Prevent double-saving in finally block
         await self.add_chat_message("user", user_message, node_id=active_node_id, client_id=client_id)
         await self.add_chat_message("assistant", reply_full, thoughts=thoughts_full.strip() if thoughts_full else None, node_id=active_node_id, model_used=model_used, client_id=assistant_client_id, sources=sources_list)
 

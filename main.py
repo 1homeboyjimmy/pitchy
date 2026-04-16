@@ -2900,6 +2900,7 @@ async def send_chat_message(
         sources = []
         start_time = time.time()
         ttft = None
+        message_saved = False  # Track if the message was successfully queued for saving
         
         try:
             # We need history for contextual responses
@@ -3004,9 +3005,15 @@ async def send_chat_message(
                     if data["type"] == "chunk":
                         if ttft is None:
                             ttft = time.time() - start_time
-                        full_response += data["content"]
+                        content = data["content"]
+                        if isinstance(content, list):
+                            content = "".join(str(c) for c in content)
+                        full_response += str(content)
                     elif data["type"] == "thought":
-                        full_thoughts += data["content"]
+                        content = data["content"]
+                        if isinstance(content, list):
+                            content = "".join(str(c) for c in content)
+                        full_thoughts += str(content)
                     yield json_chunk
             
             # Fallback: if model produced only thoughts (no visible response),
@@ -3020,6 +3027,7 @@ async def send_chat_message(
 
             # Save assistant response in background using asyncio instead of background_tasks
             if full_response:
+                message_saved = True
                 asyncio.create_task(
                     asyncio.to_thread(
                         save_assistant_message, 
@@ -3034,6 +3042,18 @@ async def send_chat_message(
             logger.error(f"Session streaming failed: {e}")
             yield json.dumps({"type": "error", "content": str(e)}) + "\n"
         finally:
+            # Rescue save: if message wasn't saved (e.g. stream aborted), save the partial response
+            if not message_saved and full_response.strip():
+                asyncio.create_task(
+                    asyncio.to_thread(
+                        save_assistant_message, 
+                        session_id=session.id, 
+                        content=full_response,
+                        thoughts=full_thoughts.strip() if full_thoughts.strip() else None,
+                        client_id=payload.assistant_client_id,
+                        sources=sources if getattr(payload, "use_deep_search", False) else None
+                    )
+                )
             if langfuse_context and (full_response or full_thoughts or usage_data):
                 try:
                     update_params = {

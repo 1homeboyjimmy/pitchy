@@ -31,7 +31,7 @@ async def call_makura(system_prompt: str, user_message: str, model: str = None) 
     payload = {
         "model": model,
         "messages": [
-            {"role": "system", "content": SYSTEM_CHAT_PROMPT + "\n\n" + system_prompt},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message}
         ],
         "temperature": 0.4,
