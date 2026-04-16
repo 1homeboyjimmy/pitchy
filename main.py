@@ -3013,6 +3013,15 @@ async def send_chat_message(
                         full_thoughts += data["content"]
                     yield json_chunk
             
+            # Fallback: if model produced only thoughts (no visible response),
+            # use thoughts as the response so the user sees something
+            full_response = full_response.strip()
+            if not full_response and full_thoughts.strip():
+                full_response = full_thoughts.strip()
+                full_thoughts = ""
+                # Emit the rescued content as a chunk so frontend displays it
+                yield json.dumps({"type": "chunk", "content": full_response}) + "\n"
+
             # Save assistant response in background using asyncio instead of background_tasks
             if full_response:
                 asyncio.create_task(
