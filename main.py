@@ -1126,7 +1126,8 @@ def _check_subscription_limits(user: User, db: Session, resource_type: str, sess
         
     if resource_type == "project":
         if tier == "tester":
-             raise HTTPException(status_code=403, detail="Создание проектов недоступно в тарифе Tester.")
+             # Tester can create unlimited chat sessions; CustDev analysis is blocked by feature check above
+             return
              
         analyses_count = db.query(Analysis).filter(Analysis.user_id == user.id).count()
         chat_sessions_count = db.query(ChatSession).filter(ChatSession.user_id == user.id, ChatSession.analysis_id == None).count()
