@@ -320,7 +320,7 @@ async def evaluate_node(
 {{ "summary": {{ "Ключ1": "Значение1", "Ключ2": "Значение2" }}, "feedback": "Твой развернутый комментарий" }}"""
 
     try:
-        raw_ai, _ = await call_makura("Ты — бизнес-аналитик. Отвечай СТРОГО в формате JSON.", prompt)
+        raw_ai, _, _ = await call_makura("Ты — бизнес-аналитик. Отвечай СТРОГО в формате JSON.", prompt)
         # Parse JSON from AI
         start = raw_ai.find("{")
         end = raw_ai.rfind("}") + 1

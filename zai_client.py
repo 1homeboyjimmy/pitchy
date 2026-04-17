@@ -13,7 +13,7 @@ async def generate_chat_title(text: str) -> str:
         "Ты — умный ассистент. Прочитай первое сообщение пользователя и придумай "
         "краткое название для этого диалога из 2-4 слов. Только текст, без кавычек."
     )
-    reply, _ = await call_makura(system_prompt, text[:500])
+    reply, _, _ = await call_makura(system_prompt, text[:500])
     if reply:
         return reply.strip(' "\'\n\r\t.-').capitalize()
     return "Новый диалог"
@@ -24,7 +24,7 @@ async def analyze_search_intent(text: str) -> Dict[str, Any]:
         "Ты — умный классификатор запросов. Реши, нужен ли поиск в интернете. "
         "Верни СТРОГО JSON: {'needs_search': bool, 'search_query': str}"
     )
-    reply, _ = await call_makura(system_prompt, text[:1000])
+    reply, _, _ = await call_makura(system_prompt, text[:1000])
     if reply:
         # Mini-helper for JSON since we don't have extract_json here
         try:

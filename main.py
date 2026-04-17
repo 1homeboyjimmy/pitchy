@@ -1087,9 +1087,9 @@ async def analyze_startup(payload: AnalyzeRequest) -> AnalyzeResponse:
     try:
         provider = os.getenv("PRIMARY_PROVIDER", "makura")
         if provider == "makura":
-            raw_text, usage = await call_makura(SYSTEM_PROMPT, user_prompt)
+            raw_text, _, usage = await call_makura(SYSTEM_PROMPT, user_prompt)
         else:
-            raw_text, usage = await call_makura(SYSTEM_PROMPT, user_prompt)
+            raw_text, _, usage = await call_makura(SYSTEM_PROMPT, user_prompt)
         logger.info(f"AI token usage ({provider} /analyze): {usage}")
         data = extract_json_zai(raw_text)
     except YandexGPTError as exc:
@@ -1202,9 +1202,9 @@ async def create_analysis(
     try:
         provider = os.getenv("PRIMARY_PROVIDER", "makura")
         if provider == "makura":
-            raw_text, usage = await call_makura(SYSTEM_PROMPT, user_prompt)
+            raw_text, _, usage = await call_makura(SYSTEM_PROMPT, user_prompt)
         else:
-            raw_text, usage = await call_makura(SYSTEM_PROMPT, user_prompt)
+            raw_text, _, usage = await call_makura(SYSTEM_PROMPT, user_prompt)
         logger.info(f"AI token usage ({provider} website analysis): {usage}")
         data = extract_json_zai(raw_text)
     except YandexGPTError as exc:
@@ -3300,9 +3300,9 @@ async def _generate_interviewer_response(session: ChatSession, db: Session) -> s
         try:
             provider = os.getenv("PRIMARY_PROVIDER", "makura")
             if provider == "makura":
-                raw_response, usage = await call_makura(system_prompt_final, final_user_prompt)
+                raw_response, _, usage = await call_makura(system_prompt_final, final_user_prompt)
             else:
-                raw_response, usage = await call_makura(system_prompt_final, final_user_prompt)
+                raw_response, _, usage = await call_makura(system_prompt_final, final_user_prompt)
             if usage:
                 logger.info(f"AI token usage ({provider} background summary): {usage}")
         except Exception as e:

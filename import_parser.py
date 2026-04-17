@@ -38,7 +38,7 @@ class ImportParser:
         if not extracted:
             logger.info("ImportParser: Valid JSON not found, falling back to LLM.")
             try:
-                ai_reply, _ = await call_makura(
+                ai_reply, _, _ = await call_makura(
                     system_prompt=cls.SYSTEM_PROMPT,
                     user_message=f"Извлеки данные из следующего текста:\n\n{raw_text}"
                 )

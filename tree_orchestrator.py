@@ -95,9 +95,9 @@ async def generate_tree_from_text(description: str) -> dict[str, Any]:
     logger.info(f"Using {provider} for tree structure generation")
     
     if provider == "makura":
-        raw, _ = await call_makura("Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON.", prompt)
+        raw, _, _ = await call_makura("Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON.", prompt)
     else:
-        raw, _ = await call_makura("Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON.", prompt)
+        raw, _, _ = await call_makura("Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON.", prompt)
 
     if not raw:
         logger.error("Makura extraction failed")
