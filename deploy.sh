@@ -4,7 +4,7 @@ export PATH="$HOME/yandex-cloud/bin:$PATH"
 set -euo pipefail
 
 REPO_DIR="/opt/ai-startup"
-COMPOSE_FILE="docker-compose.prod.yml"
+COMPOSE_FILE="docker-compose.yml"
 BASE_ENV_FILE=".env"
 RUNTIME_ENV_FILE=".env.runtime"
 HEALTHCHECK_URL="${HEALTHCHECK_URL:-http://127.0.0.1/health}"
@@ -65,11 +65,16 @@ if ! grep -q "CROWDSEC_BOUNCER_KEY" "$RUNTIME_ENV_FILE"; then
   # Generate a random API key
   BOUNCER_KEY=$(head -c 16 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 32)
   # Register the bouncer with crowdsec using the generated key
-  docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" exec -T crowdsec cscli bouncers add firewall-bouncer -k "$BOUNCER_KEY" || true
-  # Add the key to the runtime env file so the bouncer container can pick it up
-  echo "CROWDSEC_BOUNCER_KEY=$BOUNCER_KEY" >> "$RUNTIME_ENV_FILE"
-  # Restart the bouncer so it picks up the new env var
-  APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" up -d crowdsec-bouncer-firewall
+  if docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" exec -T crowdsec cscli bouncers add firewall-bouncer -k "$BOUNCER_KEY"; then
+    # Add the key to the runtime env file so the bouncer container can pick it up
+    echo "CROWDSEC_BOUNCER_KEY=$BOUNCER_KEY" >> "$RUNTIME_ENV_FILE"
+    # Restart the bouncer so it picks up the new env var
+    APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" up -d crowdsec-bouncer-firewall
+    echo "CrowdSec Bouncer registered successfully."
+  else
+    echo "ERROR: Failed to register CrowdSec Bouncer. Deployment aborted to prevent insecure state."
+    exit 1
+  fi
 fi
 
 # ---- DATABASE MIGRATIONS ----
