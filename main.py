@@ -1129,8 +1129,10 @@ def _check_subscription_limits(user: User, db: Session, resource_type: str, sess
         chat_sessions_count = db.query(ChatSession).filter(ChatSession.user_id == user.id, ChatSession.analysis_id == None).count()
         total_projects = analyses_count + chat_sessions_count
         
-        if tier == "free" and total_projects >= 1:
-            raise HTTPException(status_code=403, detail="Free tier limit: maximum 1 project. Please upgrade your subscription.")
+        if tier == "free":
+            # Бесплатный тариф: безлимитные чаты, но анализов пусть будет 1
+            if feature == "custdev" and analyses_count >= 1:
+                raise HTTPException(status_code=403, detail="Free tier limit: maximum 1 analysis project. Please upgrade your subscription.")
         elif tier == "pro" and total_projects >= 5:
             raise HTTPException(status_code=403, detail="Pro tier limit: maximum 5 projects. Please upgrade your subscription.")
             
@@ -1167,11 +1169,18 @@ def _check_subscription_limits(user: User, db: Session, resource_type: str, sess
 
 
 @app.post("/analysis", response_model=AnalysisResponse)
+@observe(name="create_analysis")
 async def create_analysis(
     payload: AnalysisCreateRequest,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> AnalysisResponse:
+    if langfuse_context:
+        langfuse_context.update_current_trace(
+            user_id=str(user.id),
+            tags=["analysis", user.subscription_tier or "free"]
+        )
+
     _check_subscription_limits(user, db, "project", feature="custdev")
 
     description_parts = [
@@ -1489,6 +1498,12 @@ async def create_chat_message(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
+    if langfuse_context:
+        langfuse_context.update_current_trace(
+            user_id=str(user.id),
+            session_id=str(payload.session_id)
+        )
+
     session = (
         db.query(ChatSession)
         .filter(ChatSession.id == payload.session_id, ChatSession.user_id == user.id)
