@@ -309,6 +309,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                     console.log("Generation aborted");
                 } else {
                     console.error("Stream error:", err);
+                    throw err;
                 }
             }
 
