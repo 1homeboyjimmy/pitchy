@@ -84,21 +84,19 @@ export function UpgradeModal({ isOpen, onClose, message }: UpgradeModalProps) {
               </h2>
               <p className="text-white/50 text-sm text-center mb-6 leading-relaxed">
                 {message || "Вы использовали все доступные сообщения на тарифе Tester."}
-                {" "}Перейдите на тариф Starter, чтобы продолжить работу с Pitchy.
+                {" "}Оформите подписку, чтобы продолжить работу с Pitchy.
               </p>
 
               {/* Discount badge */}
               <div className="flex justify-center mb-5">
-                <motion.div
-                  animate={{ scale: [1, 1.05, 1] }}
-                  transition={{ duration: 2, repeat: Infinity }}
+                <div
                   className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-gradient-to-r from-emerald-500/20 to-green-500/20 border border-emerald-500/30"
                 >
                   <Zap className="w-4 h-4 text-emerald-400" />
                   <span className="text-emerald-400 text-sm font-bold">
-                    Скидка {discount}% — специально для вас
+                    Скидка {discount}% для вас по промокоду STARTER30
                   </span>
-                </motion.div>
+                </div>
               </div>
 
               {/* Price block */}
@@ -139,7 +137,7 @@ export function UpgradeModal({ isOpen, onClose, message }: UpgradeModalProps) {
                 onClick={handleUpgrade}
                 className="w-full py-3.5 rounded-xl font-bold text-white text-base bg-gradient-to-r from-pitchy-violet to-pitchy-cyan hover:shadow-[0_0_30px_rgba(168,85,247,0.4)] transition-shadow flex items-center justify-center gap-2"
               >
-                Перейти на Starter
+                Перейти к тарифам
                 <ArrowRight className="w-5 h-5" />
               </motion.button>
 
