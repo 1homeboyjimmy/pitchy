@@ -66,7 +66,7 @@ def parse_sitemap(sitemap_url: str) -> list[str]:
         resp.raise_for_status()
         
         root = ET.fromstring(resp.content)
-        # Sitemaps use namespaces, e.g. {http://www.sitemaps.org/schemas/sitemap/0.9}url
+        # Sitemaps use namespacessss, e.g. {http://www.sitemaps.org/schemas/sitemap/0.9}url
         urls = []
         for elem in root.iter():
             if 'loc' in elem.tag:
