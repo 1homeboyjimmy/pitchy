@@ -20,6 +20,7 @@ class User(Base):
     failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0)
     locked_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     email_verify_token_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    email_verify_code_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     email_verify_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     password_reset_token_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     password_reset_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

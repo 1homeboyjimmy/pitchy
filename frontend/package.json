@@ -19,7 +19,9 @@
     "@xyflow/react": "^12.10.1",
     "date-fns": "^4.1.0",
     "dayjs": "^1.11.19",
+    "dompurify": "^3.4.0",
     "framer-motion": "^12.33.0",
+    "isomorphic-dompurify": "^3.9.0",
     "next": "16.2.3",
     "ogl": "^1.0.11",
     "react": "19.2.3",
@@ -32,6 +34,7 @@
   "devDependencies": {
     "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4",
+    "@types/dompurify": "^3.0.5",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

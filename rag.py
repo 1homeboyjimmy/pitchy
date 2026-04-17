@@ -91,6 +91,11 @@ class GeminiEmbeddingFunction(EmbeddingFunction):
 
 
 def _chunk_text(text: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> List[str]:
+    # Strip HTML tags to prevent XSS/injection into RAG
+    text = re.sub(r'<[^>]+>', ' ', text)
+    # Convert multiple spaces to single
+    text = re.sub(r'\s+', ' ', text).strip()
+    
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,

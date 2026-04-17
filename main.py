@@ -332,6 +332,18 @@ async def metrics_middleware(request: Request, call_next):
     if response.status_code >= 400:
         ERROR_COUNT.labels(method=method, path=path, status=status_code).inc()
 
+    # Security Headers
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: https:; "
+        "font-src 'self' data: https:; "
+        "connect-src 'self' https://cloud.langfuse.com https://api.makura.ai https://lumigate.us https://api.routerai.ru https://api.tavily.com;"
+    )
+
     logger.info(
         "request_complete",
         extra={
@@ -346,7 +358,6 @@ async def metrics_middleware(request: Request, call_next):
 AUTH_RATE_LIMIT = {}
 AUTH_RATE_WINDOW_SECONDS = int(os.getenv("AUTH_RATE_WINDOW_SECONDS", "600"))
 AUTH_RATE_MAX = int(os.getenv("AUTH_RATE_MAX", "10"))
-
 
 def _check_rate_limit(ip: str) -> None:
     now = datetime.utcnow().timestamp()
@@ -368,10 +379,41 @@ def _check_rate_limit(ip: str) -> None:
 
     timestamps = AUTH_RATE_LIMIT.get(ip, [])
     timestamps = [t for t in timestamps if now - t < AUTH_RATE_WINDOW_SECONDS]
-    if len(timestamps) >= AUTH_RATE_MAX:
-        raise HTTPException(status_code=429, detail="Too many requests")
     timestamps.append(now)
     AUTH_RATE_LIMIT[ip] = timestamps
+    if len(timestamps) > AUTH_RATE_MAX:
+        raise HTTPException(status_code=429, detail="Too many requests")
+
+def _check_registration_rate_limit(ip: str) -> None:
+    """Strict rate limit for registration: 3 per hour."""
+    now = datetime.utcnow().timestamp()
+    redis_client = get_redis()
+    limit = 3
+    window = 3600  # 1 hour
+    
+    if redis_client:
+        key = f"rate:register:{ip}"
+        try:
+            count = int(redis_client.incr(key))
+            if count == 1:
+                redis_client.expire(key, window)
+            if count > limit:
+                raise HTTPException(status_code=429, detail="Registration limit reached (3 per hour)")
+            return
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+    # Fallback in-memory (not persistent across restarts but better than nothing)
+    if not hasattr(_check_registration_rate_limit, "_limits"):
+        _check_registration_rate_limit._limits = {}
+    
+    limits = _check_registration_rate_limit._limits
+    timestamps = [t for t in limits.get(ip, []) if now - t < window]
+    if len(timestamps) >= limit:
+         raise HTTPException(status_code=429, detail="Registration limit reached (3 per hour)")
+    timestamps.append(now)
+    limits[ip] = timestamps
 
 
 def _log_error(
@@ -554,6 +596,7 @@ def register(
 ) -> dict:
     ip = request.client.host if request.client else "unknown"
     _check_rate_limit(ip)
+    _check_registration_rate_limit(ip)
     exists = db.query(User).filter(User.email == payload.email).first()
     if exists:
         if not exists.email_verified:
@@ -563,16 +606,22 @@ def register(
         else:
             raise HTTPException(status_code=400, detail="Email already registered")
 
-    # Generate 6-digit code
+    # Generate 6-digit code for manual entry
     verify_code = "".join([str(random.randint(0, 9)) for _ in range(6)])
     verify_hash = hash_token(verify_code)
+    
+    # Generate long token for links
+    verify_token_str = secrets.token_urlsafe(32)
+    verify_token_hash = hash_token(verify_token_str)
+    
     verify_expires = datetime.utcnow() + timedelta(hours=24)
 
     user = User(
         email=payload.email,
         name=payload.name,
         password_hash=hash_password(payload.password),
-        email_verify_token_hash=verify_hash,
+        email_verify_token_hash=verify_token_hash, # Link token
+        email_verify_code_hash=verify_hash,       # 6-digit code (I'll add this to models)
         email_verify_expires_at=verify_expires,
         email_verified=False,
         is_active=True,
@@ -612,17 +661,18 @@ def verify_email_code(
         # Already verified, just log in
         pass
     else:
-        if not user.email_verify_token_hash or not user.email_verify_expires_at:
+        if not user.email_verify_code_hash or not user.email_verify_expires_at:
             raise HTTPException(status_code=400, detail="No pending verification")
 
         if datetime.utcnow() > user.email_verify_expires_at:
             raise HTTPException(status_code=400, detail="Verification code expired")
 
-        if not verify_token(payload.code, user.email_verify_token_hash):
+        if not verify_token(payload.code, user.email_verify_code_hash):
             raise HTTPException(status_code=400, detail="Invalid verification code")
 
         user.email_verified = True
         user.email_verify_token_hash = None
+        user.email_verify_code_hash = None
         user.email_verify_expires_at = None
         db.commit()
 
@@ -1613,15 +1663,19 @@ async def create_chat_message(
             if full_text.strip():
                 logger.info(f"Stream finished. Collected {len(full_text)} chars.")
                 # ИСПОЛЬЗУЕМ asyncio ВМЕСТО background_tasks для StreamingResponse
-                asyncio.create_task(
-                    asyncio.to_thread(
-                        save_assistant_message, 
-                        session_id=session.id, 
-                        content=full_text.strip(),
-                        thoughts=full_thoughts.strip() if full_thoughts.strip() else None,
-                        client_id=payload.assistant_client_id
-                    )
-                )
+                async def _save_bg():
+                    try:
+                        await asyncio.to_thread(
+                            save_assistant_message, 
+                            session_id=session.id, 
+                            content=full_text.strip(),
+                            thoughts=full_thoughts.strip() if full_thoughts.strip() else None,
+                            client_id=payload.assistant_client_id
+                        )
+                    except Exception as bg_err:
+                        logger.error(f"Background save_assistant_message failed: {bg_err}")
+
+                asyncio.create_task(_save_bg())
 
     return StreamingResponse(session_chat_generator(), media_type="text/event-stream")
 

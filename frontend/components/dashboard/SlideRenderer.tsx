@@ -1,11 +1,13 @@
+import DOMPurify from "isomorphic-dompurify";
 import { PresentationSlide } from "@/lib/api";
 
 export function SlideRenderer({ slide }: { slide: PresentationSlide }) {
   if (slide.html) {
+    const sanitizedHtml = DOMPurify.sanitize(slide.html);
     return (
       <div 
         className="w-full h-[500px] md:h-auto md:aspect-video flex items-stretch justify-stretch relative overflow-hidden rounded-2xl print:h-[100vh] print:rounded-none bg-[#131313]" 
-        dangerouslySetInnerHTML={{ __html: slide.html }}
+        dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
       />
     );
   }

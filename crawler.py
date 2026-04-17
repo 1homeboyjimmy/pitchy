@@ -2,10 +2,36 @@ import argparse
 import time
 import logging
 import sys
+import socket
+import ipaddress
 from urllib.parse import urlparse, urljoin
 import requests
 from bs4 import BeautifulSoup
 import xml.etree.ElementTree as ET
+
+def is_safe_url(url: str) -> bool:
+    """SSRF Protection: Checks if the URL resolves to a public IP."""
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme not in ['http', 'https']:
+            return False
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+            
+        # Basic check for common local hostnames
+        if hostname.lower() in ['localhost', 'all', 'any']:
+            return False
+
+        ip_str = socket.gethostbyname(hostname)
+        ip = ipaddress.ip_address(ip_str)
+        
+        # Check if the IP is private or reserved
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved:
+            return False
+        return True
+    except Exception:
+        return False
 
 from dotenv import load_dotenv
 
@@ -29,6 +55,9 @@ logger = logging.getLogger(__name__)
 
 def parse_sitemap(sitemap_url: str) -> list[str]:
     """Parses a sitemap.xml and returns a list of URLs."""
+    if not is_safe_url(sitemap_url):
+        logger.warning(f"SSRF Protection blocked sitemap fetch: {sitemap_url}")
+        return []
     logger.info(f"Fetching sitemap: {sitemap_url}")
     try:
         # Spoof user-agent just in case
@@ -51,6 +80,9 @@ def parse_sitemap(sitemap_url: str) -> list[str]:
 
 def crawl_website(start_url: str, max_pages: int) -> list[str]:
     """Crawls a website starting from a URL, finding links within the same domain."""
+    if not is_safe_url(start_url):
+        logger.warning(f"SSRF Protection blocked crawl: {start_url}")
+        return []
     logger.info(f"Starting crawl at {start_url} (max {max_pages} pages)")
     
     domain = urlparse(start_url).netloc
