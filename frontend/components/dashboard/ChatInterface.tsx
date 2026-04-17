@@ -15,6 +15,7 @@ import { CollapsibleUserMessage } from "@/components/chat/CollapsibleUserMessage
 import { PresentationDrawer } from "./PresentationDrawer";
 import { PresentationSlide, importContext } from "@/lib/api";
 import { ContextImportModal } from "@/components/chat/ContextImportModal";
+import { UpgradeModal } from "@/components/chat/UpgradeModal";
 import { stripThoughts } from "@/lib/utils";
 
 interface ExtendedChatMessage extends ChatMessageResponse {
@@ -53,6 +54,10 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
 
     // Import Modal state
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+
+    // Upgrade Modal state (shown on limit errors)
+    const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
+    const [upgradeModalMessage, setUpgradeModalMessage] = useState<string | undefined>(undefined);
 
     // Typewriter animation state
     const [typingMessageId, setTypingMessageId] = useState<string | number | null>(null);
@@ -318,12 +323,25 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
         } catch (error) {
             console.error(error);
             if (error instanceof Error && error.message.includes("API_ERROR:")) {
-                const parts = error.message.split("API_ERROR:");
-                alert(parts[1] || "Ошибка отправки сообщения (отказано в доступе)");
+                const detail = error.message.split("API_ERROR:")[1] || "";
+                // Detect limit exhaustion errors → show upgrade modal
+                if (detail.includes("Лимит") || detail.includes("лимит") || detail.includes("исчерпан")) {
+                    setUpgradeModalMessage(detail);
+                    setIsUpgradeModalOpen(true);
+                } else {
+                    alert(detail || "Ошибка отправки сообщения (отказано в доступе)");
+                }
             } else {
                 alert("Ошибка отправки сообщения");
             }
-            setMessages((prev) => prev.filter(m => m.id !== -1));
+            setMessages((prev) => {
+                // Remove the placeholder user+assistant messages that failed to send
+                const last = prev.length;
+                if (last >= 2 && prev[last - 1].role === "assistant" && prev[last - 1].content === "") {
+                    return prev.slice(0, -2);
+                }
+                return prev.filter(m => m.id !== -1);
+            });
         } finally {
             setIsLoading(false);
             setIsGeneratingSlides(false);
@@ -666,6 +684,13 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                     if (!token) return { success: false, message: "No token" };
                     return await importContext({ text, session_id: session.id }, token);
                 }}
+            />
+
+            {/* Upgrade Modal (limit exhausted) */}
+            <UpgradeModal
+                isOpen={isUpgradeModalOpen}
+                onClose={() => setIsUpgradeModalOpen(false)}
+                message={upgradeModalMessage}
             />
         </div >
     );
