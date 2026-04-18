@@ -184,7 +184,8 @@ services:
           memory: 128M
 
   crowdsec-bouncer-firewall:
-    image: crowdsecurity/crowdsec-firewall-bouncer-iptables:latest
+    image: ghcr.io/shgew/cs-firewall-bouncer-docker:latest
+    container_name: crowdsec-firewall-bouncer
     restart: unless-stopped
     network_mode: host
     cap_add:
@@ -193,6 +194,8 @@ services:
     environment:
       API_URL: http://127.0.0.1:8080
       API_KEY: ${CROWDSEC_BOUNCER_KEY:-}
+    volumes:
+      - ./ops/monitoring/crowdsec-firewall-bouncer.yaml:/config/crowdsec-firewall-bouncer.yaml:ro
     depends_on:
       - crowdsec
     deploy:
