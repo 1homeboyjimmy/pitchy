@@ -2,7 +2,7 @@ FROM node:20-slim AS deps
 WORKDIR /app
 COPY package*.json ./
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci
+    npm ci --legacy-peer-deps
 
 FROM node:20-slim AS dev
 WORKDIR /app
