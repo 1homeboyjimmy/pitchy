@@ -250,7 +250,7 @@ class ChatSessionAutoRequest(BaseModel):
     assistant_client_id: str | None = None
 
 
-# ——— Decision Tree Schemas ———
+# ——— Smart Roadmap (Интерактивная дорожная карта) Schemas ———
 
 class TreeInputSchema(BaseModel):
     field: str

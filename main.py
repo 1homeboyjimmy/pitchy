@@ -50,8 +50,7 @@ from metrics import ERROR_COUNT, REQUEST_COUNT, REQUEST_LATENCY
 from observability import configure_logging
 import uuid
 from redis_client import get_redis
-from yandex_gpt_client import YandexGPTError, call_yandex_gpt, extract_json, async_call_yandex_gpt
-from zai_client import generate_chat_title, analyze_search_intent
+from zai_client import generate_chat_title, analyze_search_intent as analyze_search_intent_zai
 from makura_client import call_makura, stream_makura
 from search_agent import execute_search_agent, execute_deep_research, async_search_with_sources
 from db import SessionLocal, get_db
@@ -113,6 +112,18 @@ from auth import (
     verify_password,
     verify_token,
 )
+
+def extract_json_zai(text: str) -> dict:
+    """Safe JSON extraction for AI responses."""
+    try:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start != -1 and end != -1:
+            return json.loads(text[start : end + 1])
+        return json.loads(text)
+    except Exception:
+        return {}
+
 
 logger = logging.getLogger(__name__)
 
@@ -1156,16 +1167,18 @@ async def analyze_startup(payload: AnalyzeRequest) -> AnalyzeResponse:
             raw_text, _, usage = await call_makura(SYSTEM_PROMPT, user_prompt)
         logger.info(f"AI token usage ({provider} /analyze): {usage}")
         data = extract_json_zai(raw_text)
-    except YandexGPTError as exc:
-        status = exc.status_code or 502
-        raise HTTPException(status_code=status, detail=exc.message) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=502, detail="Invalid JSON from YandexGPT") from exc
+    except Exception as exc:
+        logger.error(f"Analysis error: {exc}")
+        raise HTTPException(
+            status_code=502, detail="Ошибка при анализе (AI Service Error)"
+        ) from exc
     try:
         normalized = _normalize_analyze_data(data)
         return AnalyzeResponse(**normalized)
     except (ValidationError, TypeError, ValueError) as exc:
-        raise HTTPException(status_code=502, detail="Invalid analysis schema from YandexGPT") from exc
+        raise HTTPException(
+            status_code=502, detail="Некорректный формат ответа от AI"
+        ) from exc
 
 
 def _check_subscription_limits(user: User, db: Session, resource_type: str, session_id: int = None, feature: str = None, is_search: bool = False):
@@ -1179,7 +1192,10 @@ def _check_subscription_limits(user: User, db: Session, resource_type: str, sess
 
     if tier == "tester":
         if feature in ("custdev", "presentation", "deep_research", "import", "tree"):
-             raise HTTPException(status_code=403, detail="Эта функция недоступна в тарифе Tester. Для использования полного функционала оформите полноценную подписку.")
+            raise HTTPException(
+                status_code=403,
+                detail="Эта функция недоступна в тарифе Tester. Для использования полного функционала Smart Roadmap (Интерактивной дорожной карты) оформите полноценную подписку.",
+            )
 
     if tier == "premium":
         return
@@ -1271,15 +1287,17 @@ async def create_analysis(
             raw_text, _, usage = await call_makura(SYSTEM_PROMPT, user_prompt)
         logger.info(f"AI token usage ({provider} website analysis): {usage}")
         data = extract_json_zai(raw_text)
-    except YandexGPTError as exc:
-        status = exc.status_code or 502
-        raise HTTPException(status_code=status, detail=exc.message) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=502, detail="Invalid JSON from YandexGPT") from exc
+    except Exception as exc:
+        logger.error(f"Analysis error: {exc}")
+        raise HTTPException(
+            status_code=502, detail="Ошибка при анализе проекта (AI Service Error)"
+        ) from exc
     try:
         normalized = _normalize_analyze_data(data)
     except (TypeError, ValueError) as exc:
-        raise HTTPException(status_code=502, detail="Invalid analysis schema from YandexGPT") from exc
+        raise HTTPException(
+            status_code=502, detail="Некорректный формат анализа от AI"
+        ) from exc
 
     analysis = Analysis(
         user_id=user.id,

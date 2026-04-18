@@ -3,6 +3,7 @@ import logging
 import copy
 import os
 import asyncio
+import time
 from typing import Any, Optional
 from datetime import datetime
 
@@ -10,10 +11,12 @@ from redis_client import get_redis
 from makura_client import call_makura, stream_makura
 from tree_orchestrator import _normalize_tree_data
 from search_agent import execute_search_agent
-from yandex_gpt_client import async_call_yandex_gpt
 from core_tree import CORE_SKELETON
 import rag
-from models import User
+from models import User, ProjectTree
+from llm_client import dispatch_intent, request_roadmap_edit
+from ops.cache.semantic_cache import semantic_cache
+from schemas.llm import IntentClassification, RoadmapEditResponse
 
 # Langfuse normalization: SDK looks for LANGFUSE_HOST, but server sets LANGFUSE_BASE_URL
 if os.getenv("LANGFUSE_BASE_URL") and not os.getenv("LANGFUSE_HOST"):
@@ -30,21 +33,21 @@ except Exception as _lf_err:
 logger = logging.getLogger("app")
 
 INTENT_RECOGNITION_PROMPT = """Ты — диспетчер запросов для бизнес-платформы Pitchy.
-Проанализируй запрос пользователя на основе контекста активного узла и истории чата.
+Проанализируй запрос пользователя на основе контекста активного узла Интерактивной дорожной карты (Smart Roadmap) и истории чата.
 Выдели один из следующих интентов:
 1. 'finance' — расчет юнит-экономики, LTV, CAC, выручки, объемов рынка (TAM/SAM/SOM).
 2. 'search' — поиск внешней информации, конкурентов на рынке, трендов, новостей.
-3. 'tree' — изменение структуры проекта, добавление новых гипотез, пересмотр бизнес-модели, ПРОПУСК текущего шага или переход к следующему.
+3. 'roadmap' — изменение структуры дорожной карты, добавление новых гипотез, пересмотр бизнес-модели, ПРОПУСК текущего шага или переход к следующему.
 4. 'chat' — общие вопросы, объяснение терминов, дружелюбное общение или уточнение деталей (с учетом активного узла).
 5. 'presentation' — СОЗДАНИЕ, ГЕНЕРАЦИЯ или показ презентации, слайдов, питч-дека. Если пользователь просит "сделай", "сгенерируй", "покажи" презентацию/слайды — это ВСЕГДА 'presentation'.
 
-Активный узел: {node_label} (тип: {node_type}, описание: {node_desc})
+Активный узел Roadmap: {node_label} (тип: {node_type}, описание: {node_desc})
 История чата (последние сообщения):
 {chat_history}
 
 Запрос пользователя: "{user_message}"
 
-Верни СТРОГО JSON: {{"intent": "finance" | "search" | "tree" | "chat" | "legal" | "presentation", "reason": "краткое пояснение"}}
+Верни СТРОГО JSON: {{"intent": "finance" | "search" | "roadmap" | "chat" | "legal" | "presentation", "reason": "краткое пояснение"}}
 Используй "legal" для вопросов о российском законодательстве, налогах РФ, ООО/ИП и нормативных требованиях.
 """
 
@@ -53,40 +56,40 @@ ROLE_PROMPTS = {
 ОТВЕЧАЙ СТРОГО НА РУССКОМ ЯЗЫКЕ. Использование китайских иероглифов или любых других языков КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО.
 Твоя роль: Анализ идеи продукта и бизнес-модели.
 
-Помогай пользователю оценивать жизнеспособность концепции, проблематику, решение, конкурентов и UVP.
+Помогай пользователю оценивать жизнеспособность концепции, проблематику, решение, конкурентов и UVP в рамках Интерактивной дорожной карты (Smart Roadmap).
 ВАЖНЫЕ ПРАВИЛА:
 1. ДЕТАЛИЗАЦИЯ: На вопросы по валидации идеи отвечай подробно и структурированно. 
-2. ГРАНИЦЫ: Если запрос касается финансов или сегментации ЦА, дай краткий ответ и направь в соответствующий раздел платформы.""",
+2. ГРАНИЦЫ: Если запрос касается финансов или сегментации ЦА, дай краткий ответ и направь в соответствующий раздел дорожной карты.""",
 
     "target_audience": """Ты — маркетолог-исследователь. 
 ОТВЕЧАЙ СТРОГО НА РУССКОМ ЯЗЫКЕ. Использование китайских иероглифов или любых других языков КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО.
 Твоя роль: Анализ целевой аудитории (ЦА).
 
-Помогай сегментировать рынок, составлять портреты пользователей, выявлять боли, потребности и паттерны (JTBD).
+Помогай сегментировать рынок, составлять портреты пользователей, выявлять боли, потребности и паттерны (JTBD) для Smart Roadmap.
 ВАЖНЫЕ ПРАВИЛА:
 1. ДЕТАЛИЗАЦИЯ: На вопросы о пользователях и сегментации отвечай максимально глубоко.
-2. ГРАНИЦЫ: Если запрос касается экономики или концепции продукта, дай краткий ответ и направь в нужный раздел.""",
+2. ГРАНИЦЫ: Если запрос касается экономики или концепции продукта, дай краткий ответ и направь в нужный раздел дорожной карты.""",
 
     "unit_economics": """Ты — финансовый директор (CFO) и эксперт по метрикам. 
 ОТВЕЧАЙ СТРОГО НА РУССКОМ ЯЗЫКЕ. Использование китайских иероглифов или любых других языков КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО.
 Твоя роль: Расчет юнит-экономики.
 
-Помогай считать CAC, LTV, ROI и другие метрики. Приводи формулы и пошаговые вычисления.
+Помогай считать CAC, LTV, ROI и другие метрики для Smart Roadmap. Приводи формулы и пошаговые вычисления.
 ВАЖНЫЕ ПРАВИЛА:
 1. ДЕТАЛИЗАЦИЯ: На финансовые вопросы отвечай максимально подробно с цифрами.
-2. ГРАНИЦЫ: Если запрос про идею или маркетинг без цифр, дай краткий ответ и направь в нужный раздел."""
+2. ГРАНИЦЫ: Если запрос про идею или маркетинг без цифр, дай краткий ответ и направь в нужный раздел дорожной карты."""
 }
 
 FINANCE_PROMPT = """Ты — финансовый эксперт. 
 ОТВЕЧАЙ СТРОГО НА РУССКОМ ЯЗЫКЕ. Использование китайских иероглифов КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО.
 
-Твоя задача: помогать пользователю с финансами и метриками.
+Твоя задача: помогать пользователю с финансами и метриками в рамках Smart Roadmap.
 Если запрос не по теме финансов, направь пользователя в нужный раздел.
 
 Верни ответ с пояснениями и JSON-блоком в конце.
 
-Контекст узла: {node_context}
-Текущие метрики: {tree_metrics}
+Контекст блока: {node_context}
+Текущие метрики дорожной карты: {tree_metrics}
 Сообщение пользователя: {user_message}
 
 В конце добавь:
@@ -117,7 +120,6 @@ class ChatOrchestrator:
                 return json.loads(cached)
 
         # Fallback to DB
-        from models import ProjectTree
         tree = self.db.query(ProjectTree).filter(ProjectTree.id == self.tree_id).first()
         if not tree:
             return {"nodes": [], "readiness_index": 0}
@@ -193,6 +195,7 @@ class ChatOrchestrator:
         # 2. Perspective: PostgreSQL (Cold)
         if self.db:
             try:
+                from models import TreeChatHistory
                 db_msg = TreeChatHistory(
                     project_id=self.tree_id,
                     role=role,
@@ -235,13 +238,8 @@ class ChatOrchestrator:
         chat_history = "\n".join([f"{m['role']}: {m['content']}" for m in history])
         prompt = f"История чата:\n{chat_history}\n\nПользователь: {user_message}"
         
-        provider = os.getenv("PRIMARY_PROVIDER", "makura")
-        if provider == "makura":
-            async for chunk in stream_makura(system_prompt, prompt):
-                yield chunk
-        else:
-            async for chunk in stream_makura(system_prompt, prompt):
-                yield chunk
+        async for chunk in stream_makura(system_prompt, prompt):
+            yield chunk
 
     async def _parse_thought_generator(self, generator):
         """
@@ -343,20 +341,37 @@ class ChatOrchestrator:
     @observe(name="orchestrator_process_message")
     async def process_message(self, user_message: str, active_node_id: str = None, client_id: str = None, assistant_client_id: str = None, use_deep_search: bool = False, use_research: bool = False):
         """Main entry point for chat orchestration. Yields JSON chunks."""
-        state = await self.load_state()
+        
+        # Step 0: Fast Path (Semantic Cache)
+        # Data isolation: cache is scoped to the specific project_id
+        cached_response = await semantic_cache.get(query=user_message, project_id=str(self.tree_id))
+        if cached_response and not use_deep_search and not use_research:
+            yield json.dumps({"type": "chunk", "content": cached_response}) + "\n"
+            yield json.dumps({"type": "metadata", "model": "Semantic Cache (Hit)"}) + "\n"
+            yield json.dumps({"type": "final", "readiness_index": 0}) + "\n"
+            return
+
+        # Step 1: Parallel Execution (asyncio.gather)
+        # Concurrent Intent Discovery, RAG Retrieval, and State Loading
+        intent_task = asyncio.create_task(dispatch_intent(user_message))
+        rag_task = asyncio.to_thread(rag.get_relevant_chunks, user_message, top_k=5)
+        state_task = asyncio.create_task(self.load_state())
+        
+        # return_exceptions=True prevents 500 error if one of the tasks fails
+        results = await asyncio.gather(intent_task, rag_task, state_task, return_exceptions=True)
+        
+        intent_data = results[0] if not isinstance(results[0], Exception) else IntentClassification(intent="chat", reasoning="Fallback due to error", confidence=0.0)
+        initial_rag_chunks = results[1] if not isinstance(results[1], Exception) else []
+        state = results[2] if not isinstance(results[2], Exception) else {"nodes": [], "readiness_index": 0}
+        
         history = await self.get_chat_history(node_id=active_node_id)
         
-        # Identify intent and initial RAG context in parallel to save 1-3 seconds
-        intent_task = asyncio.create_task(self._classify_intent(user_message, state, history, active_node_id))
-        rag_task = asyncio.to_thread(rag.get_relevant_chunks, user_message, top_k=5)
-        
-        intent_data, initial_rag_chunks = await asyncio.gather(intent_task, rag_task)
-        intent = intent_data.get('intent', 'chat')
-        logger.info(f"Orchestrator: User intent classified as '{intent}'")
+        intent = intent_data.intent if intent_data.intent != "tree" else "roadmap" # Safe mapping
+        logger.info(f"Orchestrator: User intent classified as '{intent}' by Qwen 2.5")
 
         reply_full = ""
         thoughts_full = ""
-        model_used = "Makura (GLM-5)"
+        model_used = "Makura (GLM-4)"
         enriched_data = {}
         sources_list = []
         usage_data = None  # Token usage tracking
@@ -366,12 +381,12 @@ class ChatOrchestrator:
             langfuse_context.update_current_observation(
                 name=f"chat_orchestrator_{intent}",
                 user_id=str(self.user_id),
-                session_id=str(self.session_id),
+                session_id=str(self.tree_id),
                 tags=[intent, "deep_search" if use_deep_search else "basic_search"]
             )
 
         try:
-            if intent == "chat" or intent not in ["tree", "finance", "search", "legal", "presentation"]:
+            if intent == "chat" or intent not in ["roadmap", "finance", "search", "legal", "presentation", "tree"]:
                 # Use pre-fetched RAG context
                 rag_context = "\n".join([c["text"] if isinstance(c, dict) else c for c in initial_rag_chunks[:3]])
                 
@@ -395,14 +410,14 @@ class ChatOrchestrator:
                         thoughts_full += data["content"]
                     yield json_chunk
             
-            elif intent == "tree":
+            elif intent in ["roadmap", "tree"]:
                 user_obj = self.db.query(User).filter(User.id == self.user_id).first()
                 if user_obj and user_obj.subscription_tier == "tester":
-                    msg = "Функция работы с древом стартапа недоступна в тарифе Tester. Для использования полного функционала оформите полноценную подписку."
+                    msg = "Функция работы с интерактивной дорожной картой недоступна в тарифе Tester. Для использования полного функционала оформите полноценную подписку."
                     yield json.dumps({"type": "chunk", "content": msg}) + "\n"
                     return
                 
-                reply_full, enriched_data = await self._handle_tree_edit(user_message, state, active_node_id)
+                reply_full, enriched_data = await self._handle_roadmap_edit(user_message, state, active_node_id)
                 yield json.dumps({"type": "chunk", "content": reply_full}) + "\n"
                 yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
             
@@ -561,6 +576,11 @@ class ChatOrchestrator:
         await self.add_chat_message("user", user_message, node_id=active_node_id, client_id=client_id)
         await self.add_chat_message("assistant", reply_full, thoughts=thoughts_full.strip() if thoughts_full else None, node_id=active_node_id, model_used=model_used, client_id=assistant_client_id, sources=sources_list)
 
+        # Step 3: Background Cache Save
+        # Only cache general chat responses that are successful and not tool-based
+        if intent == "chat" and reply_full and not use_deep_search and not use_research:
+            asyncio.create_task(semantic_cache.set(query=user_message, response=reply_full, project_id=str(self.tree_id)))
+
         # Final metadata
         yield json.dumps({
             "type": "final",
@@ -597,55 +617,6 @@ class ChatOrchestrator:
             
         return list(set(hints))[:5] # Unique top 5
 
-    async def _classify_intent(self, user_message: str, state: dict, history: list, active_node_id: str) -> dict:
-        """Determine what the user wants."""
-        # 0. Heuristic check to bypass LLM for obvious presentation requests
-        msg_lower = user_message.lower()
-        pres_keywords = ["презентаци", "слайды", "слайд", "презу", "питч", "pitch deck", " deck"]
-        if any(kw in msg_lower for kw in pres_keywords):
-            if any(action in msg_lower for action in ["сдел", "сгенер", "покаж", "созд", "выведи", "хочу"]):
-                return {"intent": "presentation", "reason": "Keyword heuristic: presentation request detected"}
-
-        # Find active node info
-        node_label = "Не выбран"
-        node_type = "N/A"
-        node_desc = ""
-        for n in state.get("nodes", []):
-            if n["id"] == active_node_id:
-                node_label = n["label"]
-                node_type = n.get("type", "core")
-                node_desc = n.get("data", {}).get("description", "")
-                break
-
-        history_str = "\n".join([f"{m['role']}: {m['content'][:100]}" for m in history[-5:]])
-        
-        prompt = INTENT_RECOGNITION_PROMPT.format(
-            node_label=node_label,
-            node_type=node_type,
-            node_desc=node_desc,
-            chat_history=history_str,
-            user_message=user_message
-        )
-
-        try:
-            # For intent recognition, use YandexGPT Lite as it is the fastest
-            folder_id = os.getenv("YC_FOLDER_ID")
-            lite_model_uri = f"gpt://{folder_id}/yandexgpt-lite/latest" if folder_id else None
-            
-            reply, _ = await async_call_yandex_gpt(
-                "Ты — диспетчер интентов.", 
-                prompt,
-                model_uri=lite_model_uri,
-                timeout=10
-            )
-            
-            if reply:
-                data = self._extract_json_block(reply)
-                return data
-        except Exception as e:
-            logger.error(f"Intent classification failed: {e}")
-            
-        return {"intent": "chat", "reason": "Default fallback"}
 
     async def _handle_finance(self, user_message: str, state: dict, active_node_id: str):
         """Handle financial calculations via Makura with streaming."""
@@ -709,41 +680,41 @@ class ChatOrchestrator:
             yield chunk
 
     async def _handle_legal(self, user_message: str, rag_context: str = "") -> str:
-        """Handle legal questions via YandexGPT (specialized for RU law) + RAG."""
-        from yandex_gpt_client import call_yandex_gpt
-        
+        """Handle legal questions via Makura (specialized for RU law) + RAG."""
         system_prompt = "Ты — квалифицированный юрист по российскому законодательству. Отвечай на вопросы о налогах, праве и регистрации бизнеса в РФ."
         if rag_context:
             system_prompt += f"\nИспользуй следующие выдержки из нормативных документов для подготовки ответа:\n{rag_context}"
             
         try:
-            reply, _ = call_yandex_gpt(system_prompt, user_message)
+            reply, _, _ = await call_makura(system_prompt, user_message)
             return reply or "Юридический помощник временно недоступен."
         except Exception as e:
-            logger.error(f"YandexGPT legal call failed: {e}")
+            logger.error(f"Legal call failed: {e}")
             return "Извините, не удалось получить юридическую консультацию."
 
-    async def _handle_tree_edit(self, user_message: str, state: dict, active_node_id: str = None) -> tuple[str, dict]:
-        """Handle tree modifications via Makura (GLM-5)."""
+    async def _handle_roadmap_edit(self, user_message: str, state: dict, active_node_id: str = None) -> tuple[str, dict]:
+        """Handle roadmap modifications via Instructor and Qwen 2.5."""
         active_node = next((n for n in state.get("nodes", []) if n["id"] == active_node_id), None)
-        node_context = f"Активный узел: {active_node['label']} (id: {active_node_id})" if active_node else ""
+        node_context = f"Активный узел Roadmap: {active_node['label']} (id: {active_node_id})" if active_node else "Глобальный контекст"
         
-        prompt = (
-            f"Пользователь хочет изменить дерево проекта. {node_context}. "
-            f"Текущая структура: {json.dumps(state['nodes'])}. "
-            f"Запрос: {user_message}. "
-            "Твоя задача — извлечь изменения. Если пользователь хочет ПРОПУСТИТЬ шаг, верни {'node_id': '...', 'status': 'skipped'}. "
-            "Если пользователь дает данные, верни их в формате extracted_data: { field_name: value }."
-            "Верни СТРОГО JSON."
-        )
-        provider = os.getenv("PRIMARY_PROVIDER", "makura")
-        if provider == "makura":
-            raw, _, _ = await call_makura("Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON.", prompt)
-        else:
-            raw, _, _ = await call_makura("Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON.", prompt)
+        project_context = f"Активный узел: {node_context}. Текущая структура Roadmap: {json.dumps(state['nodes'])}"
+        
+        try:
+            edit_response: RoadmapEditResponse = await request_roadmap_edit(user_message, project_context)
             
-        extracted = self._extract_json_block(raw)
-        return "Я обновил структуру проекта на основе ваших пожеланий.", extracted
+            # Map Pydantic model back to the expected dict structure for backward compatibility
+            enriched = {
+                "action": edit_response.action,
+                "node_id": edit_response.node_id,
+                "node_content": edit_response.node_content,
+                "priority": edit_response.priority,
+                "justification": edit_response.justification
+            }
+            
+            return f"Интерактивная дорожная карта обновлена: {edit_response.justification}", enriched
+        except Exception as e:
+            logger.error(f"Roadmap edit extraction failed: {e}")
+            return "Извините, не удалось обработать изменение дорожной карты.", {}
 
     async def _handle_chat(self, user_message: str, chat_history: str = "", active_node: dict = None) -> str:
         """Handle general chat via Makura (GLM-5)."""
@@ -863,21 +834,3 @@ class ChatOrchestrator:
         state["readiness_index"] = int((completed / max(total, 1)) * 100)
         
         return state
-    def _extract_json_block(self, text: str) -> dict:
-        """Utility to extract JSON from AI response wrapped in markdown or tags."""
-        try:
-            if "---JSON_START---" in text:
-                content = text.split("---JSON_START---")[1].split("---JSON_END---")[0].strip()
-                return json.loads(content)
-            
-            if "```json" in text:
-                content = text.split("```json")[1].split("```")[0].strip()
-                return json.loads(content)
-            
-            start = text.find('{')
-            end = text.rfind('}')
-            if start != -1 and end != -1:
-                return json.loads(text[start:end+1])
-        except Exception as e:
-            logger.warning(f"Failed to extract JSON from TEXT: {e}")
-        return {}

@@ -1,5 +1,5 @@
 """
-AI Orchestrator for Decision Tree generation.
+AI Orchestrator for Smart Roadmap generation.
 Powered by Makura (GLM-5).
 """
 from __future__ import annotations
@@ -20,7 +20,7 @@ logger = logging.getLogger("app")
 
 # ——— Prompts ———
 
-TREE_EXTRACTION_PROMPT = """Ты — опытный бизнес-аналитик стартапов. Твоя задача — проанализировать описание стартапа и извлечь ключевые факты.
+TREE_EXTRACTION_PROMPT = """Ты — опытный бизнес-аналитик стартапов. Твоя задача — проанализировать описание стартапа и извлечь ключевые факты для Интерактивной дорожной карты (Smart Roadmap).
 
 Описание стартапа:
 {description}
@@ -63,11 +63,11 @@ TREE_EXTRACTION_PROMPT = """Ты — опытный бизнес-аналити�
 
 Верни ТОЛЬКО валидный JSON, без пояснений и markdown-блоков."""
 
-ENRICH_NODE_PROMPT = """Ты — бизнес-эксперт по российскому рынку. Дополни информацию для узла древа принятия решений стартапа.
+ENRICH_NODE_PROMPT = """Ты — бизнес-эксперт по российскому рынку. Дополни информацию для блока Интерактивной дорожной карты (Smart Roadmap) стартапа.
 
 Контекст стартапа: {context}
 
-Узел: {node_label} (тип: {node_type})
+Блок: {node_label} (тип: {node_type})
 Текущее описание: {current_description}
 
 Дополни:
@@ -84,15 +84,15 @@ ENRICH_NODE_PROMPT = """Ты — бизнес-эксперт по российс
 
 async def generate_tree_from_text(description: str) -> dict[str, Any]:
     """
-    Generate a decision tree structure from text description.
-    Tries Claude first, falls back to YandexGPT.
+    Generate a Smart Roadmap structure from text description.
+    Uses Makura (GLM) for structure generation.
     Extracts flat key-value pairs and injects them into the CORE_SKELETON.
     """
     prompt = TREE_EXTRACTION_PROMPT.replace("{description}", description)
 
     # Use GLM-5 via RouterAI or Makura
     provider = os.getenv("PRIMARY_PROVIDER", "makura")
-    logger.info(f"Using {provider} for tree structure generation")
+    logger.info(f"Using {provider} for Smart Roadmap structure generation")
     
     if provider == "makura":
         raw, _, _ = await call_makura("Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON.", prompt)
@@ -205,45 +205,6 @@ async def generate_tree_from_pdf(text: str, page_refs: dict[str, int] | None = N
                     node["data"]["sourceRef"] = f"PDF, стр. {page}"
 
     return tree_data
-
-
-    validated_nodes = []
-    for node in nodes:
-        if not isinstance(node, dict) or "id" not in node:
-            continue
-        validated = {
-            "id": str(node["id"]),
-            "type": node.get("type", "Task"),
-            "status": node.get("status", "empty"),
-            "label": node.get("label", "Без названия"),
-            "category": node.get("category"),
-            "level": node.get("level", 2),
-            "data": node.get("data", {}),
-            "parent_id": node.get("parent_id", "root"),
-            "children_ids": node.get("children_ids", []),
-        }
-        validated_nodes.append(validated)
-
-    # Auto-generate edges from parent_id to prevent floating nodes
-    validated_edges = []
-    for n in validated_nodes:
-        pid = n["parent_id"]
-        if pid:
-            validated_edges.append({
-                "id": f"e-{pid}-{n['id']}",
-                "source": pid,
-                "target": n["id"]
-            })
-
-    return {
-        "title": str(title)[:200],
-        "readiness_index": readiness,
-        "tree_data": {
-            "nodes": validated_nodes,
-            "edges": validated_edges,
-        },
-    }
-
 
 def _generate_fallback_tree(description: str) -> dict[str, Any]:
     """Generate a basic fallback tree when AI fails using CORE_SKELETON."""

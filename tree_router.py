@@ -1,16 +1,16 @@
 """
-FastAPI router for Decision Tree endpoints.
+FastAPI router for Smart Roadmap (Интерактивная дорожная карта) endpoints.
 
 REST API:
-- POST /tree/create — create tree from text
-- POST /tree/upload-pdf — create tree from PDF upload
-- GET  /tree/list — list user's trees
-- GET  /tree/{tree_id} — get single tree
-- PATCH /tree/{tree_id}/nodes/{node_id} — update a node
-- DELETE /tree/{tree_id} — delete tree
+- POST /tree/create — create roadmap from text
+- POST /tree/upload-pdf — create roadmap from PDF upload
+- GET  /tree/list — list user's roadmaps
+- GET  /tree/{tree_id} — get single roadmap
+- PATCH /tree/{tree_id}/nodes/{node_id} — update a block
+- DELETE /tree/{tree_id} — delete roadmap
 
 WebSocket:
-- WS /tree/{tree_id}/ws — streaming tree updates
+- WS /tree/{tree_id}/ws — streaming roadmap updates
 """
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ from chat_orchestrator import ChatOrchestrator
 
 logger = logging.getLogger("app")
 
-router = APIRouter(prefix="/tree", tags=["tree"])
+router = APIRouter(prefix="/tree", tags=["Smart Roadmap"])
 
 
 # ——— REST Endpoints ———
@@ -43,9 +43,9 @@ async def create_tree(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> TreeResponse:
-    """Create a decision tree starting with Universal Base Nodes."""
+    """Create a Smart Roadmap starting with Universal Base Nodes."""
     if user.subscription_tier == "tester":
-        raise HTTPException(status_code=403, detail="Древо стартапа недоступно в тарифе Tester. Оформите подписку.")
+        raise HTTPException(status_code=403, detail="Интерактивная дорожная карта недоступна в тарифе Tester. Оформите подписку.")
     
     from core_tree import UNIVERSAL_BASE_NODES
     import copy
