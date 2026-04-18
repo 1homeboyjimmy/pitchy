@@ -565,8 +565,6 @@ export default function AdminPage() {
                 </Card>
               </Stack>
             )}
-              </Table.Tbody>
-            </Table>
           </Stack>
         )}
       </Card>
