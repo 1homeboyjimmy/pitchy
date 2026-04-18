@@ -29,19 +29,19 @@ class User(Base):
     cookie_consent: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
-    analyses: Mapped[list["Analysis"]] = relationship(back_populates="user")
-    chat_sessions: Mapped[list["ChatSession"]] = relationship(back_populates="user")
-    social_accounts: Mapped[list["SocialAccount"]] = relationship(back_populates="user")
-    payments: Mapped[list["Payment"]] = relationship(back_populates="user")
-    project_trees: Mapped[list["ProjectTree"]] = relationship(back_populates="user")
-    tool_results: Mapped[list["ToolResult"]] = relationship(back_populates="user")
+    analyses: Mapped[list["Analysis"]] = relationship(back_populates="user", cascade="all, delete-orphan", passive_deletes=True)
+    chat_sessions: Mapped[list["ChatSession"]] = relationship(back_populates="user", cascade="all, delete-orphan", passive_deletes=True)
+    social_accounts: Mapped[list["SocialAccount"]] = relationship(back_populates="user", cascade="all, delete-orphan", passive_deletes=True)
+    payments: Mapped[list["Payment"]] = relationship(back_populates="user", cascade="all, delete-orphan", passive_deletes=True)
+    project_trees: Mapped[list["ProjectTree"]] = relationship(back_populates="user", cascade="all, delete-orphan", passive_deletes=True)
+    tool_results: Mapped[list["ToolResult"]] = relationship(back_populates="user", cascade="all, delete-orphan", passive_deletes=True)
 
 
 class Payment(Base):
     __tablename__ = "payments"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     yookassa_payment_id: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     amount: Mapped[float] = mapped_column(Numeric(10, 2))
     currency: Mapped[str] = mapped_column(String(3), default="RUB")
@@ -75,7 +75,7 @@ class SocialAccount(Base):
     __tablename__ = "social_accounts"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     provider: Mapped[str] = mapped_column(String(50))
     provider_id: Mapped[str] = mapped_column(String(255))
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -88,7 +88,7 @@ class Analysis(Base):
     __tablename__ = "analyses"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     payload_text: Mapped[str] = mapped_column(Text)
     investment_score: Mapped[int] = mapped_column(Integer)
     strengths: Mapped[list[str]] = mapped_column(JSON)
@@ -104,7 +104,7 @@ class ChatSession(Base):
     __tablename__ = "chat_sessions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     title: Mapped[str] = mapped_column(String(200))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     analysis_id: Mapped[int | None] = mapped_column(ForeignKey("analyses.id"), nullable=True)
@@ -157,7 +157,7 @@ class ProjectTree(Base):
     __tablename__ = "project_trees"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     title: Mapped[str] = mapped_column(String(200), default="Новое древо")
     source_type: Mapped[str] = mapped_column(String(50), default="text")  # text, pdf, chat
     source_text: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -168,6 +168,8 @@ class ProjectTree(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     user: Mapped["User"] = relationship(back_populates="project_trees")
+    versions: Mapped[list["ProjectVersion"]] = relationship(back_populates="project", cascade="all, delete-orphan")
+    chat_history: Mapped[list["TreeChatHistory"]] = relationship(back_populates="project", cascade="all, delete-orphan")
 
 
 class ProjectVersion(Base):
@@ -180,7 +182,7 @@ class ProjectVersion(Base):
     changed_by: Mapped[str] = mapped_column(String(50))  # "claude", "user", "gigachat"
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
-    project: Mapped["ProjectTree"] = relationship()
+    project: Mapped["ProjectTree"] = relationship(back_populates="versions")
 
 
 class TreeChatHistory(Base):
@@ -197,14 +199,14 @@ class TreeChatHistory(Base):
     client_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
     node_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
-    project: Mapped["ProjectTree"] = relationship()
+    project: Mapped["ProjectTree"] = relationship(back_populates="chat_history")
 
 
 class ToolResult(Base):
     __tablename__ = "tool_results"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     query: Mapped[str] = mapped_column(Text)
     tool_type: Mapped[str] = mapped_column(String(50))  # "quick-search", "deep-research"
     content: Mapped[str] = mapped_column(Text)
