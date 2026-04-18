@@ -36,7 +36,14 @@ import {
   IconLock,
   IconLockOpen,
   IconTrash,
+  IconDatabase,
+  IconReload,
+  IconWorld,
+  IconFileText,
+  IconEye,
+  IconChartDots,
 } from "@tabler/icons-react";
+import { notifications } from "@mantine/notifications";
 
 export default function AdminPage() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -49,6 +56,8 @@ export default function AdminPage() {
     dayjs().format("YYYY-MM-DD"),
   ]);
   const [loading, setLoading] = useState(true);
+  const [vizStatus, setVizStatus] = useState<"idling" | "processing">("idling");
+  const [activeTab, setActiveTab] = useState("analytics");
 
   const rangeQuery = useMemo(() => {
     const [start, end] = range;
@@ -91,6 +100,39 @@ export default function AdminPage() {
     };
     load();
   }, [loadAdminData]);
+
+  // Check RAG Viz status
+  const checkVizStatus = useCallback(async () => {
+    const token = getToken();
+    if (!token) return;
+    try {
+      const res = await getAuthJson<{status: "idling" | "processing"}>("/admin/rag/viz/status", token);
+      setVizStatus(res.status);
+    } catch(e) {}
+  }, []);
+
+  useEffect(() => {
+    if (!profile?.is_admin) return;
+    checkVizStatus();
+    const interval = setInterval(() => {
+      if (vizStatus === "processing") {
+        checkVizStatus();
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [profile, vizStatus, checkVizStatus]);
+
+  const rebuildViz = async () => {
+    const token = getToken();
+    if (!token) return;
+    setVizStatus("processing");
+    await postAuthJson("/admin/rag/viz/rebuild", {}, token);
+    notifications.show({
+      title: "Генерация запущена",
+      message: "Карта пересчитывается в фоне. Это может занять до 1-2 минут.",
+      color: "blue"
+    });
+  };
 
   useEffect(() => {
     const token = getToken();
@@ -237,23 +279,22 @@ export default function AdminPage() {
                   </Badge>
                 </Group>
               </Card>
-              <Card withBorder radius="md">
-                <Text fw={600}>Ошибки</Text>
-                <Text size="sm" c="dimmed" mt={4}>
-                  Всего записей: {errors?.count ?? 0}
-                </Text>
-                <Button
-                  mt="sm"
-                  variant="light"
-                  leftSection={<IconDownload size={16} />}
-                  onClick={exportErrors}
-                >
-                  Экспорт CSV
-                </Button>
               </Card>
             </SimpleGrid>
 
-            {analytics ? (
+            <SegmentedControl
+              mt="md"
+              value={activeTab}
+              onChange={setActiveTab}
+              data={[
+                { label: "Аналитика", value: "analytics" },
+                { label: "Пользователи", value: "users" },
+                { label: "База знаний (RAG)", value: "rag" },
+                { label: "Ошибки", value: "errors" },
+              ]}
+            />
+
+            {activeTab === "analytics" && analytics && (
               <Stack gap="lg" mt="md">
                 <Title order={4}>Аналитика проектов</Title>
                 <Card withBorder radius="md">
@@ -317,142 +358,214 @@ export default function AdminPage() {
                   />
                 </Card>
               </Stack>
-            ) : null}
+            )}
 
-            <Card withBorder radius="md">
-              <Text fw={600} mb="sm">
-                Топ пользователей по активности
-              </Text>
-              {topUsers.length === 0 ? (
-                <Text size="sm" c="dimmed">
-                  Нет данных.
-                </Text>
-              ) : (
-                <Table striped highlightOnHover>
+            {activeTab === "rag" && (
+              <Stack gap="lg" mt="md">
+                <Group justify="space-between">
+                  <Title order={4}>Семантическая карта знаний</Title>
+                  <Group>
+                    {vizStatus === "processing" ? (
+                      <Badge color="orange" leftSection={<Loader size={12} />}>Обработка t-SNE...</Badge>
+                    ) : (
+                      <Badge color="green">Карта актуальна</Badge>
+                    )}
+                    <Button 
+                      variant="light" 
+                      leftSection={<IconReload size={16} />} 
+                      onClick={rebuildViz}
+                      loading={vizStatus === "processing"}
+                    >
+                      Обновить карту
+                    </Button>
+                  </Group>
+                </Group>
+                
+                <Card withBorder radius="md" p={0} style={{ overflow: "hidden", height: 600 }}>
+                  <iframe 
+                    src="/api/admin/rag/viz" 
+                    style={{ width: "100%", height: "100%", border: "none" }}
+                    title="RAG Semantic Map"
+                  />
+                </Card>
+
+                <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
+                  <Card withBorder radius="md">
+                    <Group mb="md">
+                      <IconWorld color="#5c75f3" />
+                      <Text fw={600}>Добавить URL</Text>
+                    </Group>
+                    <Stack>
+                       <Text size="sm" c="dimmed">Введите адрес статьи или документации для сканирования и добавления в RAG.</Text>
+                       <Button variant="outline">Сканировать ссылку</Button>
+                    </Stack>
+                  </Card>
+                  <Card withBorder radius="md">
+                    <Group mb="md">
+                      <IconFileText color="#5c75f3" />
+                      <Text fw={600}>Загрузить PDF</Text>
+                    </Group>
+                    <Stack>
+                       <Text size="sm" c="dimmed">Загрузите PDF-файл. Текст будет автоматически извлечен и разбит на чанки.</Text>
+                       <Button variant="outline">Загрузить файл</Button>
+                    </Stack>
+                  </Card>
+                </SimpleGrid>
+              </Stack>
+            )}
+
+            {activeTab === "users" && (
+              <Stack gap="md">
+                <Card withBorder radius="md">
+                  <Text fw={600} mb="sm">
+                    Топ пользователей по активности
+                  </Text>
+                  {topUsers.length === 0 ? (
+                    <Text size="sm" c="dimmed">
+                      Нет данных.
+                    </Text>
+                  ) : (
+                    <Table striped highlightOnHover>
+                      <Table.Thead>
+                        <Table.Tr>
+                          <Table.Th>Email</Table.Th>
+                          <Table.Th>Имя</Table.Th>
+                          <Table.Th>Анализы</Table.Th>
+                          <Table.Th>Сообщения</Table.Th>
+                          <Table.Th>Всего</Table.Th>
+                        </Table.Tr>
+                      </Table.Thead>
+                      <Table.Tbody>
+                        {topUsers.map((user) => (
+                          <Table.Tr key={user.id}>
+                            <Table.Td>{user.email}</Table.Td>
+                            <Table.Td>{user.name}</Table.Td>
+                            <Table.Td>{user.analyses}</Table.Td>
+                            <Table.Td>{user.messages}</Table.Td>
+                            <Table.Td>{user.total}</Table.Td>
+                          </Table.Tr>
+                        ))}
+                      </Table.Tbody>
+                    </Table>
+                  )}
+                </Card>
+
+                <Table striped highlightOnHover mt="sm">
                   <Table.Thead>
                     <Table.Tr>
                       <Table.Th>Email</Table.Th>
                       <Table.Th>Имя</Table.Th>
-                      <Table.Th>Анализы</Table.Th>
-                      <Table.Th>Сообщения</Table.Th>
-                      <Table.Th>Всего</Table.Th>
+                      <Table.Th>Админ</Table.Th>
+                      <Table.Th>Активен</Table.Th>
+                      <Table.Th>Подтвержден</Table.Th>
+                      <Table.Th>Создан</Table.Th>
+                      <Table.Th>Действия</Table.Th>
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
-                    {topUsers.map((user) => (
+                    {users.map((user) => (
                       <Table.Tr key={user.id}>
                         <Table.Td>{user.email}</Table.Td>
                         <Table.Td>{user.name}</Table.Td>
-                        <Table.Td>{user.analyses}</Table.Td>
-                        <Table.Td>{user.messages}</Table.Td>
-                        <Table.Td>{user.total}</Table.Td>
-                      </Table.Tr>
-                    ))}
-                  </Table.Tbody>
-                </Table>
-              )}
-            </Card>
-
-            <Card withBorder radius="md">
-              <Text fw={600} mb="sm">
-                Лог ошибок
-              </Text>
-              {errors?.items?.length ? (
-                <Table striped highlightOnHover>
-                  <Table.Thead>
-                    <Table.Tr>
-                      <Table.Th>Дата</Table.Th>
-                      <Table.Th>Код</Table.Th>
-                      <Table.Th>Метод</Table.Th>
-                      <Table.Th>Путь</Table.Th>
-                      <Table.Th>Пользователь</Table.Th>
-                      <Table.Th>Детали</Table.Th>
-                    </Table.Tr>
-                  </Table.Thead>
-                  <Table.Tbody>
-                    {errors.items.map((err) => (
-                      <Table.Tr key={err.id}>
+                        <Table.Td>{user.is_admin ? "Yes" : "No"}</Table.Td>
+                        <Table.Td>{user.is_active ? "Yes" : "No"}</Table.Td>
+                        <Table.Td>{user.email_verified ? "Yes" : "No"}</Table.Td>
                         <Table.Td>
-                          {dayjs(err.created_at).format("YYYY-MM-DD HH:mm")}
+                          {new Date(user.created_at).toLocaleString()}
                         </Table.Td>
-                        <Table.Td>{err.status_code}</Table.Td>
-                        <Table.Td>{err.method}</Table.Td>
-                        <Table.Td>{err.path}</Table.Td>
-                        <Table.Td>{err.user_id ?? "—"}</Table.Td>
-                        <Table.Td>{err.detail}</Table.Td>
+                        <Table.Td>
+                          <Group gap="xs">
+                            {!user.is_admin ? (
+                              <ActionIcon
+                                color="violet"
+                                variant="light"
+                                onClick={() => makeAdmin(user.id)}
+                              >
+                                <IconCrown size={16} />
+                              </ActionIcon>
+                            ) : null}
+                            {user.is_active ? (
+                              <ActionIcon
+                                color="red"
+                                variant="light"
+                                onClick={() => blockUser(user.id)}
+                              >
+                                <IconLock size={16} />
+                              </ActionIcon>
+                            ) : (
+                              <ActionIcon
+                                color="green"
+                                variant="light"
+                                onClick={() => unblockUser(user.id)}
+                              >
+                                <IconLockOpen size={16} />
+                              </ActionIcon>
+                            )}
+                            <ActionIcon
+                              color="red"
+                              variant="light"
+                              onClick={() => deleteUser(user.id)}
+                            >
+                              <IconTrash size={16} />
+                            </ActionIcon>
+                          </Group>
+                        </Table.Td>
                       </Table.Tr>
                     ))}
                   </Table.Tbody>
                 </Table>
-              ) : (
-                <Text size="sm" c="dimmed">
-                  Ошибок за выбранный период нет.
-                </Text>
-              )}
-            </Card>
+              </Stack>
+            )}
 
-            <Table striped highlightOnHover mt="sm">
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Email</Table.Th>
-                  <Table.Th>Имя</Table.Th>
-                  <Table.Th>Админ</Table.Th>
-                  <Table.Th>Активен</Table.Th>
-                  <Table.Th>Подтвержден</Table.Th>
-                  <Table.Th>Создан</Table.Th>
-                  <Table.Th>Действия</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {users.map((user) => (
-                  <Table.Tr key={user.id}>
-                    <Table.Td>{user.email}</Table.Td>
-                    <Table.Td>{user.name}</Table.Td>
-                    <Table.Td>{user.is_admin ? "Yes" : "No"}</Table.Td>
-                    <Table.Td>{user.is_active ? "Yes" : "No"}</Table.Td>
-                    <Table.Td>{user.email_verified ? "Yes" : "No"}</Table.Td>
-                    <Table.Td>
-                      {new Date(user.created_at).toLocaleString()}
-                    </Table.Td>
-                    <Table.Td>
-                      <Group gap="xs">
-                        {!user.is_admin ? (
-                          <ActionIcon
-                            color="violet"
-                            variant="light"
-                            onClick={() => makeAdmin(user.id)}
-                          >
-                            <IconCrown size={16} />
-                          </ActionIcon>
-                        ) : null}
-                        {user.is_active ? (
-                          <ActionIcon
-                            color="red"
-                            variant="light"
-                            onClick={() => blockUser(user.id)}
-                          >
-                            <IconLock size={16} />
-                          </ActionIcon>
-                        ) : (
-                          <ActionIcon
-                            color="green"
-                            variant="light"
-                            onClick={() => unblockUser(user.id)}
-                          >
-                            <IconLockOpen size={16} />
-                          </ActionIcon>
-                        )}
-                        <ActionIcon
-                          color="red"
-                          variant="light"
-                          onClick={() => deleteUser(user.id)}
-                        >
-                          <IconTrash size={16} />
-                        </ActionIcon>
-                      </Group>
-                    </Table.Td>
-                  </Table.Tr>
-                ))}
+            {activeTab === "errors" && (
+              <Stack gap="md">
+                <Card withBorder radius="md">
+                  <Group justify="space-between" mb="sm">
+                    <Text fw={600}>Лог ошибок</Text>
+                    <Button
+                      variant="light"
+                      size="xs"
+                      leftSection={<IconDownload size={14} />}
+                      onClick={exportErrors}
+                    >
+                      Экспорт CSV
+                    </Button>
+                  </Group>
+                  {errors?.items?.length ? (
+                    <Table striped highlightOnHover>
+                      <Table.Thead>
+                        <Table.Tr>
+                          <Table.Th>Дата</Table.Th>
+                          <Table.Th>Код</Table.Th>
+                          <Table.Th>Метод</Table.Th>
+                          <Table.Th>Путь</Table.Th>
+                          <Table.Th>Пользователь</Table.Th>
+                          <Table.Th>Детали</Table.Th>
+                        </Table.Tr>
+                      </Table.Thead>
+                      <Table.Tbody>
+                        {errors.items.map((err) => (
+                          <Table.Tr key={err.id}>
+                            <Table.Td>
+                              {dayjs(err.created_at).format("YYYY-MM-DD HH:mm")}
+                            </Table.Td>
+                            <Table.Td>{err.status_code}</Table.Td>
+                            <Table.Td>{err.method}</Table.Td>
+                            <Table.Td>{err.path}</Table.Td>
+                            <Table.Td>{err.user_id ?? "—"}</Table.Td>
+                            <Table.Td>{err.detail}</Table.Td>
+                          </Table.Tr>
+                        ))}
+                      </Table.Tbody>
+                    </Table>
+                  ) : (
+                    <Text size="sm" c="dimmed">
+                      Ошибок за выбранный период нет.
+                    </Text>
+                  )}
+                </Card>
+              </Stack>
+            )}
               </Table.Tbody>
             </Table>
           </Stack>

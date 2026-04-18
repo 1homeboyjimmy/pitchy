@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, date
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, UploadFile, File, BackgroundTasks, Security
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from starlette.concurrency import run_in_threadpool
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
@@ -98,6 +98,13 @@ from schemas import (
 from import_parser import ImportParser
 from email_utils import get_dev_emails, send_email
 from sso import yandex_sso, github_sso, google_sso
+
+# Admin Visualization Imports
+try:
+    from ops.admin.visualize_full_rag import visualize_rag, STATUS_FILE
+except ImportError:
+    visualize_rag = None
+    STATUS_FILE = "rag_viz.lock"
 import billing
 from auth import (
     create_access_token,
@@ -2443,6 +2450,50 @@ def admin_rag_crawl(
         message=f"Глубокий скан запущен в фоне. Ожидается обход до {req.max_pages} страниц.",
         chunks_added=0
     )
+
+# --- RAG Visualization Admin Endpoints ---
+
+@app.get("/admin/rag/viz")
+def admin_get_rag_viz(
+    _: User = Depends(require_admin),
+):
+    """
+    Serves the pre-generated RAG visualization HTML map.
+    Safe-serves with admin check to protect document content.
+    """
+    path = "rag_visualization.html"
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Visualization not generated yet. Please trigger a rebuild.")
+    return FileResponse(path)
+
+@app.get("/admin/rag/viz/status")
+def admin_get_rag_viz_status(
+    _: User = Depends(require_admin),
+):
+    """
+    Checks if the visualization map is currently being rebuilt.
+    """
+    is_busy = os.path.exists(STATUS_FILE)
+    return {"status": "processing" if is_busy else "idling"}
+
+@app.post("/admin/rag/viz/rebuild")
+def admin_rebuild_rag_viz(
+    background_tasks: BackgroundTasks,
+    _: User = Depends(require_admin),
+):
+    """
+    Triggers a background task to rebuild the semantic RAG map.
+    """
+    if os.path.exists(STATUS_FILE):
+        return {"status": "already_processing", "message": "Rebuild is already in progress."}
+    
+    if visualize_rag is None:
+        raise HTTPException(status_code=500, detail="Visualization module not found on server.")
+
+    # Run as a background task to avoid blocking the API
+    background_tasks.add_task(visualize_rag, collection_name='all', dims=3)
+    
+    return {"status": "started", "message": "Rebuild task spawned in background."}
 
 @app.get("/admin/payments", response_model=list[PaymentResponse])
 def admin_payments(
