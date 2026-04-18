@@ -48,6 +48,12 @@ fi
 echo "Pulling pre-built images from GHCR..."
 APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" pull -q
 
+# ---- CREATE PRE-DEPLOYMENT BACKUP ----
+if [[ -f "ops/backup/backup.sh" ]]; then
+  echo "Creating pre-deployment database backup..."
+  bash ops/backup/backup.sh || echo "WARNING: Pre-deployment backup failed, continuing anyway..."
+fi
+
 # ---- STOP OLD CONTAINERS ----
 docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" down --timeout 10 --remove-orphans 2>/dev/null || true
 docker rm -f $(docker ps -aq --filter "label=com.docker.compose.project=ai-startup") 2>/dev/null || true
@@ -81,13 +87,21 @@ fi
 
 # ---- DATABASE MIGRATIONS ----
 echo "Applying database migrations..."
-sleep 5  # Give postgres a moment to accept connections
+# Wait for postgres to be healthy
+for i in {1..10}; do
+  if docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" exec -T postgres pg_isready -U "$(read_runtime_env_value "POSTGRES_USER")" -d "$(read_runtime_env_value "POSTGRES_DB")"; then
+    echo "Postgres is ready for migrations."
+    break
+  fi
+  echo "Waiting for postgres... ($i/10)"
+  sleep 2
+done
 timeout 60 docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" exec -T backend python -m alembic upgrade head || {
   echo "WARNING: Migrations failed or timed out (exit=$?), continuing..."
 }
 
-# ---- PRUNE OLD IMAGES (but NOT build cache) ----
-docker image prune -f
+# ---- PRUNE OLD IMAGES ----
+docker image prune -af
 
 # ---- HEALTHCHECK ----
 health_ok="false"
@@ -131,5 +145,6 @@ if [[ "$health_ok" != "true" ]]; then
 fi
 
 echo "Deploy successful!"
-# Clean up dangling images only (not build cache)
-docker image prune -f 2>/dev/null || true
+# Final cleanup of all unused images and containers
+docker image prune -af 2>/dev/null || true
+docker container prune -f 2>/dev/null || true

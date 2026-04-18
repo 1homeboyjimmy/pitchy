@@ -13,6 +13,13 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./backups:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   redis:
     image: redis:7-alpine
@@ -73,6 +80,12 @@ services:
     env_file:
       - ${APP_ENV_FILE:-.env}
     command: uvicorn main:app --host 0.0.0.0 --port 8000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     deploy:
       resources:
         limits:
@@ -153,7 +166,7 @@ services:
     image: crowdsecurity/crowdsec:latest
     restart: unless-stopped
     environment:
-      COLLECTIONS: "crowdsecurity/caddy crowdsecurity/linux"
+      COLLECTIONS: "crowdsecurity/caddy crowdsecurity/linux crowdsecurity/geo-blocking"
     volumes:
       - crowdsec_db:/var/lib/crowdsec/data
       - crowdsec_config:/etc/crowdsec
@@ -162,6 +175,7 @@ services:
       - /var/log:/var/log/host:ro
       - ./ops/monitoring/crowdsec-acquis.yaml:/etc/crowdsec/acquis.d/ssh.yaml:ro
       - ./ops/monitoring/whitelist.yaml:/etc/crowdsec/parsers/s02-enrich/pitchy-whitelist.yaml:ro
+      - ./ops/monitoring/geoblock-profile.yaml:/etc/crowdsec/profiles.d/geoblock.yaml:ro
     ports:
       - "127.0.0.1:8080:8080"
     deploy:

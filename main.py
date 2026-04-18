@@ -21,6 +21,19 @@ from sqlalchemy import text
 from dotenv import load_dotenv
 load_dotenv()
 
+import sentry_sdk
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+
+SENTRY_DSN = os.getenv("SENTRY_DSN")
+if SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        integrations=[FastApiIntegration()],
+        traces_sample_rate=1.0,
+        profiles_sample_rate=1.0,
+        environment=os.getenv("APP_ENV", "production"),
+    )
+
 if os.getenv("LANGFUSE_BASE_URL") and not os.getenv("LANGFUSE_HOST"):
     os.environ["LANGFUSE_HOST"] = os.environ["LANGFUSE_BASE_URL"]
 

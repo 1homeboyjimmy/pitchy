@@ -18,6 +18,14 @@ pitchy.pro {
         not path /api/graph/*
     }
     handle @api {
+        # Rate limiting (requires caddy-ratelimit plugin)
+        # rate_limit {
+        #     zone api {
+        #         key {remote_ip}
+        #         events 100
+        #         window 1m
+        #     }
+        # }
         reverse_proxy backend:8000 {
             header_up Host {host}
             header_up X-Real-IP {remote_ip}

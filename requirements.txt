@@ -34,3 +34,4 @@ werkzeug>=3.1.6
 tavily-python>=0.5.0
 langfuse==2.53.8
 openai>=1.0.0
+sentry-sdk[fastapi]

@@ -129,7 +129,7 @@ class ChatMessage(Base):
     __tablename__ = "chat_messages"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    session_id: Mapped[int] = mapped_column(ForeignKey("chat_sessions.id"))
+    session_id: Mapped[int] = mapped_column(ForeignKey("chat_sessions.id", ondelete="CASCADE"))
     role: Mapped[str] = mapped_column(String(30))
     content: Mapped[str] = mapped_column(Text)
     thoughts: Mapped[str | None] = mapped_column(Text, nullable=True)

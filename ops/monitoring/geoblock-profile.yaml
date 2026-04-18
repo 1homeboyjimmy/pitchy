@@ -1,0 +1,7 @@
+name: geoblock_ua
+filters:
+  - Alert.Remediation == true && Alert.GetMeta("Country") == "UA"
+decisions:
+  - type: ban
+    duration: 72h
+on_success: break
