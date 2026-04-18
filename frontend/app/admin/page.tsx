@@ -279,7 +279,6 @@ export default function AdminPage() {
                   </Badge>
                 </Group>
               </Card>
-              </Card>
             </SimpleGrid>
 
             <SegmentedControl
