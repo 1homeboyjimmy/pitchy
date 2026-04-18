@@ -30,7 +30,9 @@
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
     "zustand": "^5.0.12",
-    "@sentry/nextjs": "^8.54.0"
+    "@sentry/nextjs": "^8.54.0",
+    "recharts": "^2.15.0",
+    "lucide-react": "^0.473.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
