@@ -65,6 +65,8 @@ if ! grep -q "CROWDSEC_BOUNCER_KEY" "$RUNTIME_ENV_FILE"; then
   # Generate a random API key
   BOUNCER_KEY=$(head -c 16 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 32)
   # Register the bouncer with crowdsec using the generated key
+  # First, remove if exists to avoid "already exists" error
+  docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" exec -T crowdsec cscli bouncers delete firewall-bouncer || true
   if docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" exec -T crowdsec cscli bouncers add firewall-bouncer -k "$BOUNCER_KEY"; then
     # Add the key to the runtime env file so the bouncer container can pick it up
     echo "CROWDSEC_BOUNCER_KEY=$BOUNCER_KEY" >> "$RUNTIME_ENV_FILE"
