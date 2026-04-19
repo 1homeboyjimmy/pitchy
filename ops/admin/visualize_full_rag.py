@@ -9,11 +9,14 @@ import plotly.express as px
 import logging
 
 # Setup logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# We don't call basicConfig here to avoid clobbering main app's logging setup
 logger = logging.getLogger("RAG-Viz")
+logger.setLevel(logging.INFO)
 
-# Default ChromaDB path
+# Default paths
+DEFAULT_ADMIN_DOCS = "admin_docs"
 CHROMA_PATH = os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")
+DEFAULT_OUTPUT = os.path.join(DEFAULT_ADMIN_DOCS, "rag_visualization.html")
 
 def fetch_data(client, collection_names):
     """Fetches documents, embeddings, and metadata from specified collections."""
@@ -44,7 +47,8 @@ def fetch_data(client, collection_names):
             
     return all_data
 
-STATUS_FILE = os.path.abspath("rag_viz.lock")
+# Ensure status file is in admin_docs for persistence/access
+STATUS_FILE = os.path.abspath(os.path.join(DEFAULT_ADMIN_DOCS, "rag_viz.lock"))
 
 def set_status(busy: bool):
     if busy:
@@ -54,8 +58,14 @@ def set_status(busy: bool):
         if os.path.exists(STATUS_FILE):
             os.remove(STATUS_FILE)
 
-def visualize_rag(collection_name=None, dims=3, output_file="rag_visualization.html", method='tsne'):
+def visualize_rag(collection_name=None, dims=3, output_file=None, method='tsne'):
     """Main visualization logic."""
+    if output_file is None:
+        output_file = DEFAULT_OUTPUT
+
+    # Ensure target directory exists
+    os.makedirs(os.path.dirname(os.path.abspath(output_file)), exist_ok=True)
+
     set_status(True)
     try:
         # Versioning: backup previous file
@@ -66,8 +76,15 @@ def visualize_rag(collection_name=None, dims=3, output_file="rag_visualization.h
             logger.info(f"Existing visualization backed up to {backup_file}")
 
         # 1. Connect to ChromaDB
-        logger.info(f"Connecting to ChromaDB at: {CHROMA_PATH}")
-        client = chromadb.PersistentClient(path=CHROMA_PATH)
+        http_host = os.getenv("CHROMA_HTTP_HOST")
+        http_port = os.getenv("CHROMA_HTTP_PORT", "8000")
+
+        if http_host:
+            logger.info(f"Connecting to ChromaDB via HTTP at {http_host}:{http_port}")
+            client = chromadb.HttpClient(host=http_host, port=int(http_port))
+        else:
+            logger.info(f"Connecting to ChromaDB via PersistentClient at: {CHROMA_PATH}")
+            client = chromadb.PersistentClient(path=CHROMA_PATH)
         
         # 2. Identify collections
         all_collections = [c.name for c in client.list_collections()]
@@ -141,7 +158,7 @@ if __name__ == "__main__":
     parser.add_argument("--collection", type=str, default=None, help="Collection name to visualize (or 'all')")
     parser.add_argument("--dims", type=int, choices=[2, 3], default=3, help="Dimensions for visualization (2 or 3)")
     parser.add_argument("--method", type=str, choices=['tsne', 'pca'], default='tsne', help="Reduction method")
-    parser.add_argument("--output", type=str, default="rag_visualization.html", help="Output HTML file name")
+    parser.add_argument("--output", type=str, default=None, help="Output HTML file name")
     
     args = parser.parse_args()
     

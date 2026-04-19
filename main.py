@@ -101,10 +101,11 @@ from sso import yandex_sso, github_sso, google_sso
 
 # Admin Visualization Imports
 try:
-    from ops.admin.visualize_full_rag import visualize_rag, STATUS_FILE
+    from ops.admin.visualize_full_rag import visualize_rag, STATUS_FILE, DEFAULT_OUTPUT
 except ImportError:
     visualize_rag = None
-    STATUS_FILE = "rag_viz.lock"
+    DEFAULT_OUTPUT = os.path.join("admin_docs", "rag_visualization.html")
+    STATUS_FILE = os.path.join("admin_docs", "rag_viz.lock")
 import billing
 from auth import (
     create_access_token,
@@ -2464,7 +2465,7 @@ def admin_get_rag_viz(
     Serves the pre-generated RAG visualization HTML map.
     Safe-serves with admin check to protect document content.
     """
-    path = "rag_visualization.html"
+    path = DEFAULT_OUTPUT
     if not os.path.exists(path):
         raise HTTPException(status_code=404, detail="Visualization not generated yet. Please trigger a rebuild.")
     return FileResponse(path)
