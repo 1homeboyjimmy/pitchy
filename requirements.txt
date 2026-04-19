@@ -36,3 +36,5 @@ langfuse==2.53.8
 openai>=1.0.0
 sentry-sdk[fastapi]
 instructor
+pandas
+plotly

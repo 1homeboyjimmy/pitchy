@@ -1,18 +1,42 @@
-FROM python:3.11-slim
+# --- STAGE 1: Builder ---
+FROM python:3.11-slim as builder
+
+WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
+# Install build dependencies for heavy C-extensions (like multidict inside aiohttp or chromadb deps)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+
+# Pre-compile wheels to speed up future installs and keep the runner stage clean
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip wheel --no-cache-dir --no-deps --wheel-dir /app/wheels -r requirements.txt
+
+# --- STAGE 2: Runner ---
+FROM python:3.11-slim
+
 WORKDIR /app
 
-# Install security patches + curl for deploy healthchecks
-RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
-# --- LAYER 1: Requirements (cached unless requirements.txt changes) ---
-COPY requirements.txt .
-RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements.txt
+# Install runtime dependencies (curl for healthchecks)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
-# --- LAYER 2: Code (only this layer rebuilds on code changes) ---
+# Install packages from wheels collected in the builder stage
+COPY --from=builder /app/wheels /wheels
+COPY --from=builder /app/requirements.txt .
+RUN pip install --no-cache /wheels/*
+
+# Copy application code
 COPY . .
 
 EXPOSE 8000
