@@ -25,7 +25,7 @@ def fetch_data(client, collection_names):
             collection = client.get_collection(name)
             data = collection.get(include=['documents', 'embeddings', 'metadatas'])
             
-            if not data['embeddings']:
+            if data.get('embeddings') is None or len(data['embeddings']) == 0:
                 logger.warning(f"Collection '{name}' has no embeddings. Skipping.")
                 continue
                 
