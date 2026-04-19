@@ -45,9 +45,8 @@ else
 fi
 
 # ---- PULL IMAGES ----
-echo "Updating images (including backend/frontend)..."
-# Even though backend/frontend are built locally, pulling ensures the daemon syncs with the latest registry tags.
-APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" pull || echo "WARNING: Some images failed to pull, using local cache."
+echo "Updating images from registry (quiet mode)..."
+APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" pull -q || echo "WARNING: Some images failed to pull, using local cache."
 
 # ---- CREATE PRE-DEPLOYMENT BACKUP ----
 if [[ -f "ops/backup/backup.sh" ]]; then

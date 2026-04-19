@@ -40,3 +40,8 @@ def configure_logging() -> None:
     root.setLevel(level)
     if not root.handlers:
         root.addHandler(handler)
+
+    # Suppress verbose library logs
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("chromadb").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
