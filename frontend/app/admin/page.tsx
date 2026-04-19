@@ -382,7 +382,7 @@ export default function AdminPage() {
                 
                 <Card withBorder radius="md" p={0} style={{ overflow: "hidden", height: 600 }}>
                   <iframe 
-                    src="/api/admin/rag/viz" 
+                    src="/admin/rag/viz" 
                     style={{ width: "100%", height: "100%", border: "none" }}
                     title="RAG Semantic Map"
                   />
