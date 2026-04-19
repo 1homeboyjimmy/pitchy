@@ -44,10 +44,10 @@ else
   echo "GITHUB_TOKEN or GITHUB_ACTOR not set. Skipping docker login..."
 fi
 
-# ---- PULL EXTERNAL IMAGES ----
-echo "Updating external dependencies (postgres, redis, etc.)..."
-# We skip pulling backend/frontend because they were just built locally on this same machine
-APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" pull postgres redis chroma caddy loki promtail grafana crowdsec crowdsec-bouncer-firewall || echo "WARNING: Some external images failed to pull, using local cache."
+# ---- PULL IMAGES ----
+echo "Updating images (including backend/frontend)..."
+# Even though backend/frontend are built locally, pulling ensures the daemon syncs with the latest registry tags.
+APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" pull || echo "WARNING: Some images failed to pull, using local cache."
 
 # ---- CREATE PRE-DEPLOYMENT BACKUP ----
 if [[ -f "ops/backup/backup.sh" ]]; then
