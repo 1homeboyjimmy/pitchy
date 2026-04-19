@@ -192,10 +192,8 @@ services:
       - NET_ADMIN
       - NET_RAW
     environment:
-      API_URL: http://127.0.0.1:8080
-      API_KEY: ${CROWDSEC_BOUNCER_KEY:-}
-    volumes:
-      - ./ops/monitoring/crowdsec-firewall-bouncer.yaml:/config/crowdsec-firewall-bouncer.yaml:ro
+      CROWDSEC_LAPI_URL: http://127.0.0.1:8080
+      CROWDSEC_LAPI_KEY: ${CROWDSEC_BOUNCER_KEY:-}
     depends_on:
       - crowdsec
     deploy:
