@@ -88,6 +88,9 @@ export function AdminView() {
     const [crawlIsSitemap, setCrawlIsSitemap] = useState(false);
     const [crawlMaxPages, setCrawlMaxPages] = useState(50);
 
+    // RAG Visualization State
+    const [vizStatus, setVizStatus] = useState<"idling" | "processing">("idling");
+
     // New Promo Form
     const [newPromo, setNewPromo] = useState({ code: "", discount_percent: 10, max_uses: "", target_tier: "", fixed_price: "" });
 
@@ -145,6 +148,7 @@ export function AdminView() {
                     }
                     if (res.ok) setSubscriptions(await res.json());
                 } else if (activeTab === "rag") {
+                    fetchVizStatus();
                     const res = await fetch(`${API_BASE}/admin/rag/logs`, {
                         headers: { "Authorization": `Bearer ${token}` }
                     });
@@ -167,6 +171,44 @@ export function AdminView() {
         };
         fetchData();
     }, [activeTab, API_BASE, analyticsTimeFilter]);
+
+    useEffect(() => {
+        let interval: NodeJS.Timeout;
+        if (activeTab === "rag" && vizStatus === "processing") {
+            interval = setInterval(fetchVizStatus, 5000);
+        }
+        return () => clearInterval(interval);
+    }, [activeTab, vizStatus]);
+
+    const fetchVizStatus = async () => {
+        try {
+            const token = getToken();
+            const res = await fetch(`${API_BASE}/admin/rag/viz/status`, {
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setVizStatus(data.status);
+            }
+        } catch (e) {
+            console.error("Fetch viz status error", e);
+        }
+    };
+
+    const handleRebuildViz = async () => {
+        try {
+            const token = getToken();
+            const res = await fetch(`${API_BASE}/admin/rag/viz/rebuild`, {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            if (res.ok) {
+                setVizStatus("processing");
+            }
+        } catch (e) {
+            console.error("Rebuild viz error", e);
+        }
+    };
 
     const handleCreatePromo = async () => {
         try {
@@ -899,6 +941,38 @@ export function AdminView() {
                                         <p className="font-medium text-sm">{ragResult.message}</p>
                                     </motion.div>
                                 )}
+
+                                <div className="mt-8 border-t border-white/10 pt-6">
+                                    <h4 className="text-white font-medium mb-2">Визуализация базы (Semantic Map)</h4>
+                                    <p className="text-white/50 mb-4 text-xs">
+                                        Постройте 3D-карту всех знаний системы. Это помогает увидеть, как ИИ группирует информацию по темам. 
+                                        Сборка карты может занять 1-2 минуты.
+                                    </p>
+                                    <div className="flex items-center gap-4">
+                                        <div className="flex-1 flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-4 py-2">
+                                            <div className={`w-2 h-2 rounded-full ${vizStatus === 'processing' ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`}></div>
+                                            <span className="text-sm text-white/70">
+                                                Статус: {vizStatus === 'processing' ? 'Сборка карты...' : 'Карта готова'}
+                                            </span>
+                                        </div>
+                                        <Button
+                                            variant="secondary"
+                                            onClick={handleRebuildViz}
+                                            disabled={vizStatus === 'processing'}
+                                            className="px-6"
+                                        >
+                                            {vizStatus === 'processing' ? <Loader className="w-4 h-4 animate-spin" /> : "Обновить карту"}
+                                        </Button>
+                                        <a 
+                                            href="/admin/rag/viz" 
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            className="px-6 py-2 bg-pitchy-violet/20 hover:bg-pitchy-violet/30 text-pitchy-violet rounded-xl text-sm font-medium transition-colors flex items-center gap-2"
+                                        >
+                                            Открыть карту
+                                        </a>
+                                    </div>
+                                </div>
 
                                 <div className="mt-8 border-t border-white/10 pt-6">
                                     <div className="flex items-center justify-between mb-4">

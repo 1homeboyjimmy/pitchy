@@ -287,6 +287,9 @@ class RagLogResponse(BaseModel):
     error_message: str | None
     created_at: datetime
 
+    class Config:
+        from_attributes = True
+
 def background_crawl(url: str, is_sitemap: bool, max_pages: int, delay: float):
     from crawler import parse_sitemap, crawl_website, append_to_rag
     import logging
