@@ -81,7 +81,7 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
-          command_timeout: 20m
+          command_timeout: 30m
           script: |
             export GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
             export GITHUB_ACTOR=${{ github.actor }}

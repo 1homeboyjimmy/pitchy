@@ -41,12 +41,13 @@ if [[ -n "${GITHUB_TOKEN:-}" && -n "${GITHUB_ACTOR:-}" ]]; then
   echo "Logging into GHCR..."
   echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
 else
-  echo "GITHUB_TOKEN or GITHUB_ACTOR not set. Skipping docker login (assuming public image or already authenticated)..."
+  echo "GITHUB_TOKEN or GITHUB_ACTOR not set. Skipping docker login..."
 fi
 
-# ---- PULL PRE-BUILT IMAGES FROM GHCR ----
-echo "Pulling pre-built images from GHCR..."
-APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" pull -q
+# ---- PULL EXTERNAL IMAGES ----
+echo "Updating external dependencies (postgres, redis, etc.)..."
+# We skip pulling backend/frontend because they were just built locally on this same machine
+APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" pull postgres redis chroma caddy loki promtail grafana crowdsec crowdsec-bouncer-firewall || echo "WARNING: Some external images failed to pull, using local cache."
 
 # ---- CREATE PRE-DEPLOYMENT BACKUP ----
 if [[ -f "ops/backup/backup.sh" ]]; then
@@ -55,7 +56,8 @@ if [[ -f "ops/backup/backup.sh" ]]; then
 fi
 
 # ---- STOP OLD CONTAINERS ----
-docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" down --timeout 10 --remove-orphans 2>/dev/null || true
+echo "Stopping old containers..."
+docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" down --timeout 10 --remove-orphans || true
 docker rm -f $(docker ps -aq --filter "label=com.docker.compose.project=ai-startup") 2>/dev/null || true
 docker container prune -f 2>/dev/null || true
 
