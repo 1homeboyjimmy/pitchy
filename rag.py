@@ -104,11 +104,62 @@ def _chunk_text(text: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> 
     return splitter.split_text(text)
 
 
+# Isolated Semantic Buckets
 CATEGORIES = [
-    "pitching", "grants_and_funds", "unit_economics",
-    "target_audience", "legal_and_taxes", "product_management",
-    "platform_rules", "general"
+    "market_analysis",   # Trends, reports, stats
+    "project_profiles", # Team, contacts, founders
+    "legal_regulations", # Taxes, laws, TOS
+    "pitching_tips",    # Unit economics, product management, pitching logic
+    "general"
 ]
+
+def _is_junk_chunk(text: str) -> bool:
+    """Heuristic check to identify low-value or junk chunks."""
+    if len(text.strip()) < 80:
+        return True # Too short to have meaningful context
+    
+    # Check for excessive link/handle density (likely just a contact list)
+    link_patterns = [r't\.me/', r'http', r'@[\w_]+', r'\+\d{10,15}']
+    matches = sum(1 for p in link_patterns if re.search(p, text))
+    if matches >= 3 and len(text) < 300:
+        return True
+        
+    # Check for legal boilerplate without context
+    boilerplate = ["6.2.2", "7.1.3", "privacy policy", "terms of service", "права третьих лиц"]
+    if any(b in text.lower() for b in boilerplate) and len(text) < 200:
+        return True
+        
+    return False
+
+def _preprocess_chunk(text: str, category: str) -> str:
+    """Injects semantic context tags to increase separation in vector space."""
+    tags = {
+        "market_analysis": "[КОНТЕКСТ: АНАЛИЗ РЫНКА / ТРЕНДЫ]",
+        "project_profiles": "[КОНТЕКСТ: ПРОФИЛЬ ПРОЕКТА / КОНТАКТЫ]",
+        "legal_regulations": "[КОНТЕКСТ: ЗАКОНОДАТЕЛЬСТВО / ПРАВО]",
+        "pitching_tips": "[КОНТЕКСТ: МЕТОДОЛОГИЯ / ПИТЧИНГ]",
+    }
+    tag = tags.get(category, "[КОНТЕКСТ: ОБЩЕЕ]")
+    return f"{tag}\n{text}"
+
+def resolve_routing_intent(query: str) -> List[str]:
+    """Determines which collections to search based on keywords in user query."""
+    q = query.lower()
+    intents = {
+        "legal_regulations": ["налог", "закон", "оферта", "юрист", "договор", "право", "regulation", "tax", "law"],
+        "project_profiles": ["кто", "никита", "контакт", "связаться", "автор", "founder", "contact", "telegram", "канал"],
+        "pitching_tips": ["питч", "презентация", "юнит", "экономика", "инвестор", "выступление", "pitch", "deck", "economics"],
+        "market_analysis": ["рынок", "объем", "тренд", "анализ", "конкурент", "market", "size", "trend", "analysis"]
+    }
+    
+    selected = set()
+    for cat, keywords in intents.items():
+        if any(k in q for k in keywords):
+            selected.add(cat)
+            
+    if not selected:
+        return ["general", "market_analysis"]
+    return list(selected)
 
 def _load_documents_by_category() -> dict[str, List[str]]:
     docs_by_cat = {cat: [] for cat in CATEGORIES}
@@ -145,7 +196,7 @@ def _should_reindex() -> bool:
     return os.getenv("CHROMA_REINDEX", "false").lower() == "true"
 
 
-def _seed_collection(collection: Collection, documents: List[str], batch_size: int = 20):
+def _seed_collection(collection: Collection, documents: List[str], category: str, batch_size: int = 20, source: str = "unknown"):
     """Seed a collection with documents. Uses smaller batches + sleep to respect API rate limits."""
     if not documents:
         return
@@ -153,24 +204,44 @@ def _seed_collection(collection: Collection, documents: List[str], batch_size: i
     import hashlib
     
     total = len(documents)
-    logger.info(f"Starting seeding {total} chunks in batches of {batch_size}...")
+    logger.info(f"[{category}] Cleaning and seeding {total} chunks...")
     
-    for start_idx in range(0, total, batch_size):
-        end_idx = min(start_idx + batch_size, total)
-        batch_docs = documents[start_idx:end_idx]
+    valid_docs = []
+    valid_metas = []
+    
+    for doc in documents:
+        if _is_junk_chunk(doc):
+            continue
+            
+        processed_doc = _preprocess_chunk(doc, category)
+        valid_docs.append(processed_doc)
+        valid_metas.append({
+            "source": source,
+            "category": category,
+            "ingested_at": datetime.now().isoformat(),
+            MODEL_META_KEY: EMBEDDING_MODEL_NAME
+        })
+
+    total_valid = len(valid_docs)
+    if total_valid == 0:
+        return
+
+    for start_idx in range(0, total_valid, batch_size):
+        end_idx = min(start_idx + batch_size, total_valid)
+        batch_docs = valid_docs[start_idx:end_idx]
+        batch_metas = valid_metas[start_idx:end_idx]
         
         ids = []
         for i, doc in enumerate(batch_docs):
             doc_hash = hashlib.md5(doc.encode('utf-8')).hexdigest()[:10]
-            ids.append(f"doc_{int(time.time())}_{start_idx + i}_{doc_hash}")
+            ids.append(f"{category}_{int(time.time())}_{start_idx + i}_{doc_hash}")
         
-        collection.add(documents=batch_docs, ids=ids)
+        collection.add(documents=batch_docs, ids=ids, metadatas=batch_metas)
         
-        # Sleep between batches to respect RouterAI API rate limits
-        if end_idx < total:
+        if end_idx < total_valid:
             time.sleep(0.5)
             
-    logger.info(f"Finished seeding {total} chunks.")
+    logger.info(f"[{category}] Finished seeding {total_valid} chunks (filtered {(total - total_valid)} junk chunks).")
 
 
 def _rerank_chunks(query: str, entries: List[dict], distances: List[float]) -> List[dict]:
@@ -198,7 +269,9 @@ def _rerank_chunks(query: str, entries: List[dict], distances: List[float]) -> L
         overlap = len(query_words & doc_words) / max(len(query_words), 1)
         similarity = max(0, 1 - dist)
 
-        combined = 0.7 * similarity + 0.3 * overlap
+        # Shift weight to vector similarity (0.9) to handle Russian morphology gracefully
+        # without needing a stemmer, keeping lexical overlap as a subtle 0.1 bonus.
+        combined = 0.9 * similarity + 0.1 * overlap
         scored.append((entry, combined))
 
     scored.sort(key=lambda x: x[1], reverse=True)
@@ -247,7 +320,7 @@ class StartupRAG:
                 # Only seed if collection is truly empty
                 if col.count() == 0 and docs_by_cat.get(cat):
                     logger.info(f"[{cat}] Seeding {len(docs_by_cat[cat])} chunks...")
-                    _seed_collection(col, docs_by_cat[cat])
+                    _seed_collection(col, docs_by_cat[cat], category=cat)
                 elif col.count() > 0:
                     logger.info(f"[{cat}] Already has {col.count()} chunks, skipping seed.")
             except Exception as e:
@@ -258,7 +331,8 @@ class StartupRAG:
     def query(self, text: str, categories: List[str] = None, top_k: int = 3) -> List[dict]:
         """Query specific collections and rerank across all of them."""
         if not categories:
-            categories = ["general"]
+            categories = resolve_routing_intent(text)
+            logger.info(f"Routed intent to collections: {categories}")
             
         fetch_k = min(top_k * 3, 15)
         query_embedding = self.embedding_fn.encode_query(text)

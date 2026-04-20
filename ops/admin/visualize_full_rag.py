@@ -111,6 +111,12 @@ def visualize_rag(collection_name=None, dims=3, output_file=None, method='tsne')
         embeddings = np.array(df['embedding'].tolist())
         
         # 4. Dimensionality Reduction
+        if len(embeddings) < 5:
+            logger.warning(f"Collection has only {len(embeddings)} points. Too few for reliable t-SNE. Skipping Plotting details.")
+            fig = px.scatter(title=f"Collection '{target_collections[0]}' has too few points (<5) for 3D visualization")
+            fig.write_html(output_file)
+            return
+
         logger.info(f"Reducing dimensions to {dims}D using {method.upper()}...")
         if method.lower() == 'pca':
             reducer = PCA(n_components=dims)
@@ -146,6 +152,19 @@ def visualize_rag(collection_name=None, dims=3, output_file=None, method='tsne')
             )
             
         fig.update_traces(marker=dict(size=5, opacity=0.7))
+        
+        # Force hover data to include coordinates and IDs
+        fig.update_traces(
+            hovertemplate="<br>".join([
+                "<b>ID: %{customdata[0]}</b>",
+                "Collection: %{customdata[1]}",
+                "X: %{x}",
+                "Y: %{y}",
+                "Z: %{z}" if dims == 3 else "",
+                "<br>Text: %{customdata[2]}"
+            ])
+        )
+        
         fig.write_html(output_file)
         logger.info(f"DONE! Visualization saved to: {output_file}")
         print(f"\n[SUCCESS] Visualization complete.")
