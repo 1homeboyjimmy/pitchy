@@ -50,7 +50,7 @@ from metrics import ERROR_COUNT, REQUEST_COUNT, REQUEST_LATENCY
 from observability import configure_logging
 import uuid
 from redis_client import get_redis
-from zai_client import generate_chat_title, analyze_search_intent as analyze_search_intent_zai
+from slm_dispatcher import slm_dispatcher
 from makura_client import call_makura, stream_makura
 from search_agent import execute_search_agent, execute_deep_research, async_search_with_sources
 from db import SessionLocal, get_db
@@ -131,6 +131,17 @@ def extract_json_zai(text: str) -> dict:
         return json.loads(text)
     except Exception:
         return {}
+
+async def classify_intent(user_message: str) -> list[str]:
+    """Router LLM: Determines which RAG collections to search based on the user's intent."""
+    try:
+        # Use SLM for fast routing
+        categories = await slm_dispatcher.classify_query_intent(user_message)
+        logger.info(f"SLM Router determined categories: {categories}")
+        return categories
+    except Exception as e:
+        logger.error(f"Router SLM failed: {e}")
+        return ["general"]
 
 
 logger = logging.getLogger(__name__)
@@ -2716,7 +2727,7 @@ def create_chat_session(
 
 async def rename_chat_session_background(session_id: int, initial_message: str):
     try:
-        title = await generate_chat_title(initial_message)
+        title = await slm_dispatcher.generate_chat_title(initial_message)
         logger.info(f"Generated title '{title}' for session {session_id}")
         
         with SessionLocal() as db:
@@ -3237,31 +3248,6 @@ async def send_chat_message(
     }
     return StreamingResponse(session_chat_generator(), media_type="text/event-stream", headers=headers)
 
-async def classify_intent(user_message: str) -> list[str]:
-    """Router LLM: Determines which RAG collections to search based on the user's intent."""
-    system_prompt = (
-        "Ты — умный роутер. Определи от 1 до 2 самых подходящих категорий для вопроса пользователя.\n"
-        "Выбирай СТРОГО из списка: pitching, grants_and_funds, unit_economics, target_audience, legal_and_taxes, product_management, platform_rules, general.\n"
-        "Отвечей ТОЛЬКО названиями категорий через запятую, без лишних слов."
-    )
-    try:
-        # Use YandexGPT Lite for speed
-        folder_id = os.getenv("YC_FOLDER_ID")
-        lite_model_uri = f"gpt://{folder_id}/yandexgpt-lite/latest" if folder_id else None
-        
-        raw_response, _ = await async_call_yandex_gpt(system_prompt, user_message, model_uri=lite_model_uri, timeout=10)
-        
-        if not raw_response:
-            logger.error("Router LLM failed: No response")
-            return ["general"]
-
-        valid_cats = {"pitching", "grants_and_funds", "unit_economics", "target_audience", "legal_and_taxes", "product_management", "platform_rules", "general"}
-        found = [c.strip() for c in raw_response.split(",")]
-        result = [c for c in found if c in valid_cats]
-        return result if result else ["general"]
-    except Exception as e:
-        logger.error(f"Router LLM failed: {e}")
-        return ["general"]
 
 async def _handle_presentation_in_chat(user_message: str, history_text: str, rag_context: str):
     """
@@ -3356,7 +3342,7 @@ async def _generate_interviewer_response(session: ChatSession, db: Session) -> s
             # Parallel Phase 1: Intent, History RAG, Search Intent
             intent_task = classify_intent(last_user_text)
             history_rag_task = asyncio.to_thread(rag.search_successful_chats, last_user_text, top_k=1)
-            search_intent_task = analyze_search_intent_zai(last_user_text)
+            search_intent_task = slm_dispatcher.detect_search_intent(last_user_text)
             
             categories, successful_chats, search_decision = await asyncio.gather(
                 intent_task, history_rag_task, search_intent_task

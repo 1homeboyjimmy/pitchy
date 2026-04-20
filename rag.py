@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List
+from typing import List, Dict
 import os
+import asyncio
 import re
 import logging
+from datetime import datetime
 
 # Workaround for pydantic v1 config error in chromadb
 os.environ["CHROMA_SERVER_NOFILE"] = "65535"
@@ -14,6 +16,7 @@ import chromadb  # noqa: E402
 from chromadb.api.models.Collection import Collection  # noqa: E402
 from chromadb.api.types import Documents, EmbeddingFunction, Embeddings  # noqa: E402
 from langchain_text_splitters import RecursiveCharacterTextSplitter  # noqa: E402
+from slm_dispatcher import slm_dispatcher  # noqa: E402
 
 try:  # noqa: E402
     from langfuse.decorators import observe
@@ -161,29 +164,24 @@ def resolve_routing_intent(query: str) -> List[str]:
         return ["general", "market_analysis"]
     return list(selected)
 
-def _load_documents_by_category() -> dict[str, List[str]]:
-    docs_by_cat = {cat: [] for cat in CATEGORIES}
-    
+def _load_raw_documents() -> List[Dict[str, str]]:
+    """Loads all raw documents from admin and sample directories without category assumptions."""
+    raw_docs = []
     # Load from both sample_docs (bundled) and admin_docs (persistent volume)
     for docs_dir in [DOCS_DIR, ADMIN_DOCS_DIR]:
         if not docs_dir.exists():
             continue
         
-        for cat in CATEGORIES:
-            cat_dir = docs_dir / cat
-            if cat_dir.exists() and cat_dir.is_dir():
-                for path in cat_dir.glob("*.txt"):
-                    content = path.read_text(encoding="utf-8").strip()
-                    if content:
-                        docs_by_cat[cat].extend(_chunk_text(content))
-                    
-        # Also load root .txt into "general"
-        for path in docs_dir.glob("*.txt"):
-            content = path.read_text(encoding="utf-8").strip()
-            if content:
-                docs_by_cat["general"].extend(_chunk_text(content))
+        # Scan all .txt recursively
+        for path in docs_dir.rglob("*.txt"):
+            try:
+                content = path.read_text(encoding="utf-8").strip()
+                if content:
+                    raw_docs.append({"content": content, "source": path.name})
+            except Exception as e:
+                logger.error(f"Failed to read {path}: {e}")
             
-    return docs_by_cat
+    return raw_docs
 
 
 def _build_client() -> chromadb.ClientAPI:
@@ -196,52 +194,38 @@ def _should_reindex() -> bool:
     return os.getenv("CHROMA_REINDEX", "false").lower() == "true"
 
 
-def _seed_collection(collection: Collection, documents: List[str], category: str, batch_size: int = 20, source: str = "unknown"):
-    """Seed a collection with documents. Uses smaller batches + sleep to respect API rate limits."""
-    if not documents:
+def _smart_ingest_batch(rag_instance: "StartupRAG", chunks: List[str], source: str):
+    """Classifies and distributes a batch of chunks into the correct RAG collections."""
+    if not chunks:
         return
-    import time
-    import hashlib
+
+    # 1. SLM Classification
+    categories = asyncio.run(slm_dispatcher.classify_chunks_batch(chunks))
     
-    total = len(documents)
-    logger.info(f"[{category}] Cleaning and seeding {total} chunks...")
-    
-    valid_docs = []
-    valid_metas = []
-    
-    for doc in documents:
-        if _is_junk_chunk(doc):
+    # 2. Distribute based on classification
+    for chunk, cat in zip(chunks, categories):
+        if cat == "junk" or _is_junk_chunk(chunk):
             continue
             
-        processed_doc = _preprocess_chunk(doc, category)
-        valid_docs.append(processed_doc)
-        valid_metas.append({
-            "source": source,
-            "category": category,
-            "ingested_at": datetime.now().isoformat(),
-            MODEL_META_KEY: EMBEDDING_MODEL_NAME
-        })
-
-    total_valid = len(valid_docs)
-    if total_valid == 0:
-        return
-
-    for start_idx in range(0, total_valid, batch_size):
-        end_idx = min(start_idx + batch_size, total_valid)
-        batch_docs = valid_docs[start_idx:end_idx]
-        batch_metas = valid_metas[start_idx:end_idx]
+        target_cat = cat if cat in CATEGORIES else "general"
         
-        ids = []
-        for i, doc in enumerate(batch_docs):
-            doc_hash = hashlib.md5(doc.encode('utf-8')).hexdigest()[:10]
-            ids.append(f"{category}_{int(time.time())}_{start_idx + i}_{doc_hash}")
-        
-        collection.add(documents=batch_docs, ids=ids, metadatas=batch_metas)
-        
-        if end_idx < total_valid:
-            time.sleep(0.5)
+        # 3. Add to collection
+        if target_cat in rag_instance.collections:
+            processed_text = _preprocess_chunk(chunk, target_cat)
+            import hashlib
+            import time
+            doc_id = f"{target_cat}_{int(time.time())}_{hashlib.md5(chunk.encode()).hexdigest()[:8]}"
             
-    logger.info(f"[{category}] Finished seeding {total_valid} chunks (filtered {(total - total_valid)} junk chunks).")
+            rag_instance.collections[target_cat].add(
+                documents=[processed_text],
+                ids=[doc_id],
+                metadatas=[{
+                    "source": source,
+                    "category": target_cat,
+                    "ingested_at": datetime.now().isoformat(),
+                    MODEL_META_KEY: EMBEDDING_MODEL_NAME
+                }]
+            )
 
 
 def _rerank_chunks(query: str, entries: List[dict], distances: List[float]) -> List[dict]:
@@ -286,47 +270,46 @@ class StartupRAG:
 
     @classmethod
     def build(cls) -> "StartupRAG":
-        docs_by_cat = _load_documents_by_category()
+        raw_docs = _load_raw_documents()
         embedding_fn = GeminiEmbeddingFunction()
         client = _build_client()
         reindex = _should_reindex()
 
         if reindex:
-            logger.warning("CHROMA_REINDEX=true — will DELETE and re-create all collections. This costs API tokens!")
+            logger.warning("CHROMA_REINDEX=true — will DELETE and re-create all collections.")
 
         collections = {}
         for cat in CATEGORIES:
             try:
-                existing_count = 0
-                try:
-                    existing_col = client.get_collection(name=cat)
-                    existing_count = existing_col.count()
-                except Exception:
-                    pass  # Collection doesn't exist yet
-
-                if reindex and existing_count > 0:
-                    # Delete old collection to avoid dimension mismatch and duplicates
-                    logger.info(f"[{cat}] Deleting old collection ({existing_count} chunks) for reindex...")
-                    client.delete_collection(name=cat)
-                    existing_count = 0
-
+                if reindex:
+                    try:
+                        client.delete_collection(name=cat)
+                    except:
+                        pass
+                
                 col = client.get_or_create_collection(
                     name=cat,
                     embedding_function=embedding_fn,
                     metadata={"hnsw:space": "cosine", MODEL_META_KEY: EMBEDDING_MODEL_NAME}
                 )
                 collections[cat] = col
-                
-                # Only seed if collection is truly empty
-                if col.count() == 0 and docs_by_cat.get(cat):
-                    logger.info(f"[{cat}] Seeding {len(docs_by_cat[cat])} chunks...")
-                    _seed_collection(col, docs_by_cat[cat], category=cat)
-                elif col.count() > 0:
-                    logger.info(f"[{cat}] Already has {col.count()} chunks, skipping seed.")
             except Exception as e:
                 logger.error(f"Failed to load collection '{cat}': {e}")
 
-        return cls(client=client, collections=collections, embedding_fn=embedding_fn)
+        instance = cls(client=client, collections=collections, embedding_fn=embedding_fn)
+        
+        if reindex and raw_docs:
+            logger.info(f"Starting SMART INGESTION for {len(raw_docs)} documents...")
+            for doc_entry in raw_docs:
+                chunks = _chunk_text(doc_entry["content"])
+                # Process chunks in batches of 10 to SLM
+                batch_size = 10
+                for i in range(0, len(chunks), batch_size):
+                    batch = chunks[i:i+batch_size]
+                    _smart_ingest_batch(instance, batch, source=doc_entry["source"])
+            logger.info("SMART INGESTION complete.")
+
+        return instance
 
     def query(self, text: str, categories: List[str] = None, top_k: int = 3) -> List[dict]:
         """Query specific collections and rerank across all of them."""
