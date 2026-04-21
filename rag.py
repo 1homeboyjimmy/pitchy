@@ -109,11 +109,13 @@ def _chunk_text(text: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> 
 
 # Isolated Semantic Buckets
 CATEGORIES = [
-    "market_analysis",   # Trends, reports, stats
-    "project_profiles", # Team, contacts, founders
-    "legal_regulations", # Taxes, laws, TOS
-    "pitching_tips",    # Unit economics, product management, pitching logic
-    "general"
+    "market_analysis",   # Рынки, конкуренты, проблемы и решения
+    "target_audience",   # ЦА, сегменты, CustDev
+    "unit_economics",    # Новая база: финмодели, метрики CAC/LTV, формулы
+    "pitching_tips",     # Структуры презентаций, выступления
+    "grants_and_funds",  # Акселераторы, фонды, гранты
+    "legal_regulations", # Законы, налоги, оферты
+    "platform_manual",   # Вместо general: инструкции по платформе Pitchy и Интерактивной дорожной карте
 ]
 
 def _is_junk_chunk(text: str) -> bool:
@@ -131,6 +133,11 @@ def _is_junk_chunk(text: str) -> bool:
     boilerplate = ["6.2.2", "7.1.3", "privacy policy", "terms of service", "права третьих лиц"]
     if any(b in text.lower() for b in boilerplate) and len(text) < 200:
         return True
+
+    # Check for networking/spam
+    spam_words = ["ищу партнерства", "коллабы", "набираю людей", "вакансия", "прожарка"]
+    if any(s in text.lower() for s in spam_words):
+        return True
         
     return False
 
@@ -138,9 +145,12 @@ def _preprocess_chunk(text: str, category: str) -> str:
     """Injects semantic context tags to increase separation in vector space."""
     tags = {
         "market_analysis": "[КОНТЕКСТ: АНАЛИЗ РЫНКА / ТРЕНДЫ]",
-        "project_profiles": "[КОНТЕКСТ: ПРОФИЛЬ ПРОЕКТА / КОНТАКТЫ]",
-        "legal_regulations": "[КОНТЕКСТ: ЗАКОНОДАТЕЛЬСТВО / ПРАВО]",
+        "target_audience": "[КОНТЕКСТ: ЦЕЛЕВАЯ АУДИТОРИЯ / CUSTDEV]",
+        "unit_economics": "[КОНТЕКСТ: ЮНИТ ЭКОНОМИКА / МЕТРИКИ]",
         "pitching_tips": "[КОНТЕКСТ: МЕТОДОЛОГИЯ / ПИТЧИНГ]",
+        "grants_and_funds": "[КОНТЕКСТ: ГРАНТЫ / ФОНДЫ / АКСЕЛЕРАТОРЫ]",
+        "legal_regulations": "[КОНТЕКСТ: ЗАКОНОДАТЕЛЬСТВО / ПРАВО]",
+        "platform_manual": "[КОНТЕКСТ: ИНСТРУКЦИИ ПЛАТФОРМЫ]",
     }
     tag = tags.get(category, "[КОНТЕКСТ: ОБЩЕЕ]")
     return f"{tag}\n{text}"
@@ -150,9 +160,12 @@ def resolve_routing_intent(query: str) -> List[str]:
     q = query.lower()
     intents = {
         "legal_regulations": ["налог", "закон", "оферта", "юрист", "договор", "право", "regulation", "tax", "law"],
-        "project_profiles": ["кто", "никита", "контакт", "связаться", "автор", "founder", "contact", "telegram", "канал"],
-        "pitching_tips": ["питч", "презентация", "юнит", "экономика", "инвестор", "выступление", "pitch", "deck", "economics"],
-        "market_analysis": ["рынок", "объем", "тренд", "анализ", "конкурент", "market", "size", "trend", "analysis"]
+        "pitching_tips": ["питч", "презентация", "инвестор", "выступление", "pitch", "deck"],
+        "market_analysis": ["рынок", "объем", "тренд", "анализ", "конкурент", "market", "size", "trend", "analysis"],
+        "target_audience": ["ца", "аудитория", "кастдев", "custdev", "сегмент", "интервью", "b2b", "b2c"],
+        "unit_economics": ["юнит", "экономика", "cac", "ltv", "роялти", "pnl", "excel", "метрики", "финанс"],
+        "grants_and_funds": ["грант", "фонд", "фси", "акселератор", "инвестиции", "субсидия", "инвестор"],
+        "platform_manual": ["pitchy", "платформа", "инструкция", "как", "вопрос", "дорожн", "карта"]
     }
     
     selected = set()
@@ -161,7 +174,7 @@ def resolve_routing_intent(query: str) -> List[str]:
             selected.add(cat)
             
     if not selected:
-        return ["general", "market_analysis"]
+        return ["platform_manual", "market_analysis"]
     return list(selected)
 
 def _load_raw_documents() -> List[Dict[str, str]]:
@@ -207,7 +220,7 @@ def _smart_ingest_batch(rag_instance: "StartupRAG", chunks: List[str], source: s
         if cat == "junk" or _is_junk_chunk(chunk):
             continue
             
-        target_cat = cat if cat in CATEGORIES else "general"
+        target_cat = cat if cat in CATEGORIES else "platform_manual"
         
         # 3. Add to collection
         if target_cat in rag_instance.collections:
@@ -354,7 +367,7 @@ class StartupRAG:
         reranked = _rerank_chunks(text, all_docs, all_distances)
         return reranked[:top_k]
 
-    def add_documents(self, documents: List[str], category: str = "general"):
+    def add_documents(self, documents: List[str], category: str = "platform_manual"):
         if not documents or category not in self.collections:
              return
         _seed_collection(self.collections[category], documents)

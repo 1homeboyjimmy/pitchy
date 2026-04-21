@@ -65,11 +65,11 @@ class SLMClient:
         """Determines which RAG collections to search based on user question."""
         system_prompt = (
             "You are a routing assistant. Determine the most relevant categories for the user's query.\n"
-            "Categories: market_analysis, project_profiles, legal_regulations, pitching_tips, general.\n"
+            "Categories: market_analysis, target_audience, unit_economics, pitching_tips, grants_and_funds, legal_regulations, platform_manual.\n"
             "Return JSON: {\"categories\": [\"category1\", ...]}"
         )
         data = await self._call_json(system_prompt, f"Query: {query}")
-        return data.get("categories", ["general"])
+        return data.get("categories", ["platform_manual"])
 
     async def detect_search_intent(self, query: str) -> bool:
         """Determines if a web search is required."""
@@ -96,12 +96,14 @@ class SLMClient:
             
         system_prompt = (
             "You are an expert document classifier. Categorize each provided text chunk into one of the following:\n"
-            "1. market_analysis: Market trends, reports, statistics, industry data.\n"
-            "2. project_profiles: Team bios, contact info, owner details, founder social links.\n"
-            "3. legal_regulations: Laws, taxes, TOS, legal documents, regulations.\n"
-            "4. pitching_tips: Unit economics, pitch deck advice, investor relations, methodology.\n"
-            "5. general: General startup knowledge, generic advice.\n"
-            "6. junk: Boilerplate, broken text, menus, footers, irrelevant spam.\n\n"
+            "1. market_analysis: Сухие продуктовые метрики, описание проблемы и решения. Только факты.\n"
+            "2. target_audience: ЦА, сегменты, CustDev.\n"
+            "3. unit_economics: Новая база: финмодели, метрики CAC/LTV, формулы.\n"
+            "4. pitching_tips: Структуры презентаций, выступления.\n"
+            "5. grants_and_funds: Акселераторы, фонды, гранты.\n"
+            "6. legal_regulations: Законы, налоги, оферты.\n"
+            "7. platform_manual: Инструкции по платформе Pitchy и Интерактивной дорожной карте.\n"
+            "8. junk: Юридическая вода в футерах, контакты, визитки людей, поиск партнеров, HR-объявления (найм), просьбы о фидбеке, призывы к сотрудничеству и любой нетворкинг.\n\n"
             "Return JSON: {\"results\": [\"category\", ...]} in the same order as input."
         )
         
@@ -111,9 +113,9 @@ class SLMClient:
         data = await self._call_json(system_prompt, user_prompt)
         results = data.get("results", [])
         
-        # Pad with 'general' if SLM returns fewer results than chunks
+        # Pad with 'platform_manual' if SLM returns fewer results than chunks
         while len(results) < len(chunks):
-            results.append("general")
+            results.append("platform_manual")
             
         return results[:len(chunks)]
 
