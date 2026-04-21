@@ -25,7 +25,8 @@ async def call_makura(system_prompt: str, user_message: str, model: str = None) 
     url = "https://api.makura.ai/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "Prompt-Cache": "true"
     }
 
     payload = {
@@ -98,7 +99,9 @@ async def stream_makura(system_prompt: str, user_message: str, model: str = None
     url = "https://api.makura.ai/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "Prompt-Cache": "true",
+        "X-Accel-Buffering": "no"
     }
 
     payload = {

@@ -242,32 +242,72 @@ def _smart_ingest_batch(rag_instance: "StartupRAG", chunks: List[str], source: s
 
 
 def _rerank_chunks(query: str, entries: List[dict], distances: List[float]) -> List[dict]:
-    """Simple reranking based on keyword overlap + distance score."""
+    """Reranking using Jina AI Reranker API with fallback to distance score."""
     if not entries:
         return []
 
-    query_words = set(re.findall(r'\w{3,}', query.lower()))
-
-    scored = []
-    # Deduplicate documents first
+    # Dedup and filter
     seen = set()
+    filtered_entries = []
+    filtered_distances = []
+    
     for entry, dist in zip(entries, distances):
         doc = entry["text"]
-        # Skip very short or garbage chunks
         if len(doc.strip()) < 50:
             continue
-            
         doc_hash = hash(doc)
         if doc_hash in seen:
             continue
         seen.add(doc_hash)
+        filtered_entries.append(entry)
+        filtered_distances.append(dist)
+        
+    if not filtered_entries:
+        return []
 
+    jina_api_key = os.getenv("JINA_API_KEY")
+    if jina_api_key:
+        try:
+            import requests
+            url = "https://api.jina.ai/v1/rerank"
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {jina_api_key}"
+            }
+            payload = {
+                "model": "jina-reranker-v2-base-multilingual",
+                "query": query,
+                "documents": [e["text"] for e in filtered_entries],
+                "top_n": len(filtered_entries)
+            }
+            
+            # Using timeout to fail fast and fallback
+            response = requests.post(url, json=payload, headers=headers, timeout=5.0)
+            response.raise_for_status()
+            result = response.json()
+            
+            res_results = result.get("results", [])
+            
+            # Reorder based on Jina scores
+            reranked = []
+            for r in res_results:
+                idx = r["index"]
+                reranked.append(filtered_entries[idx])
+            
+            logger.info(f"Successfully reranked {len(reranked)} chunks using Jina AI.")
+            return reranked
+            
+        except Exception as e:
+            logger.error(f"Jina reranker API failed, falling back to base sorting: {e}")
+
+    # Fallback to local cosine + lexical overlap scoring
+    scored = []
+    query_words = set(re.findall(r'\w{3,}', query.lower()))
+    for entry, dist in zip(filtered_entries, filtered_distances):
+        doc = entry["text"]
         doc_words = set(re.findall(r'\w{3,}', doc.lower()))
         overlap = len(query_words & doc_words) / max(len(query_words), 1)
         similarity = max(0, 1 - dist)
-
-        # Shift weight to vector similarity (0.9) to handle Russian morphology gracefully
-        # without needing a stemmer, keeping lexical overlap as a subtle 0.1 bonus.
         combined = 0.9 * similarity + 0.1 * overlap
         scored.append((entry, combined))
 

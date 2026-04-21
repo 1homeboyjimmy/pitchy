@@ -61,24 +61,21 @@ class SLMClient:
             logger.error(f"SLM call failed: {e}. Raw content: {content}")
             return {}
 
-    async def classify_query_intent(self, query: str) -> List[str]:
-        """Determines which RAG collections to search based on user question."""
+    async def classify_query_intent(self, query: str) -> Dict[str, Any]:
+        """Determines RAG categories, web search requirement, and finance context."""
         system_prompt = (
             "You are a routing assistant. Determine the most relevant categories for the user's query.\n"
             "Categories: market_analysis, target_audience, unit_economics, pitching_tips, grants_and_funds, legal_regulations, platform_manual.\n"
-            "Return JSON: {\"categories\": [\"category1\", ...]}"
+            "Also determine if a real-time web search is required (`is_deep_search`).\n"
+            "And determine if the query relates to finance/unit economics (`is_finance`).\n"
+            "Return JSON: {\"categories\": [\"category1\", ...], \"is_deep_search\": false, \"is_finance\": false}"
         )
         data = await self._call_json(system_prompt, f"Query: {query}")
-        return data.get("categories", ["platform_manual"])
-
-    async def detect_search_intent(self, query: str) -> bool:
-        """Determines if a web search is required."""
-        system_prompt = (
-            "Decide if the query requires a real-time web search for fresh data.\n"
-            "Return JSON: {\"requires_web\": true/false}"
-        )
-        data = await self._call_json(system_prompt, f"Query: {query}")
-        return data.get("requires_web", False)
+        return {
+            "categories": data.get("categories", ["platform_manual"]),
+            "is_deep_search": data.get("is_deep_search", False),
+            "is_finance": data.get("is_finance", False)
+        }
 
     async def generate_chat_title(self, first_message: str) -> str:
         """Generates a concise 2-4 word title for the chat."""

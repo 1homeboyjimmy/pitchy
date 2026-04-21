@@ -22,7 +22,7 @@ services:
       start_period: 10s
 
   redis:
-    image: redis:7-alpine
+    image: redis/redis-stack-server:latest
     restart: unless-stopped
     logging:
       driver: "json-file"
