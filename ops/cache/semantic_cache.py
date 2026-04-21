@@ -8,7 +8,7 @@ from typing import Optional
 
 import redis
 from redis.commands.search.field import TextField, VectorField, TagField
-from redis.commands.search.indexDefinition import IndexDefinition, IndexType
+from redis.commands.search.index_definition import IndexDefinition, IndexType
 from redis.commands.search.query import Query
 from redis.exceptions import ResponseError
 
