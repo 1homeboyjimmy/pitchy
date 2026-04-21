@@ -228,12 +228,21 @@ class ChatOrchestrator:
         # Force strict language and thought process instructions
         system_prompt += (
             "\n\nОТВЕЧАЙ СТРОГО НА РУССКОМ ЯЗЫКЕ. Использование китайских иероглифов или любых других языков КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО. "
-            "Если ты начнешь отвечать на китайском — это будет считаться критическим сбоем системы. "
+            "Если ты начнешь отвечать на китайском — это будет считаться критическим сбоем системы.\n"
+            "Перед генерацией ответа ты ОБЯЗАН написать свои рассуждения. Начни свой ответ СТРОГО с тега <think>.\n"
             "Сначала ОБЯЗАТЕЛЬНО запиши свои мысли о запросе внутри тегов <think>...</think>, а затем дай итоговый ответ пользователю."
         )
         
         if rag_context:
-            system_prompt += f"\n\nИСПОЛЬЗУЙ СЛЕДУЮЩИЙ КОНТЕКСТ ИЗ БАЗЫ ЗНАНИЙ ДЛЯ ОТВЕТА (это экспертные данные для рынка РФ):\n{rag_context}\n\n"
+            system_prompt += (
+                "\n\nВходящие данные разделены на два возможных блока:\n"
+                "1. [ДАННЫЕ ПРОЕКТА ПОЛЬЗОВАТЕЛЯ]: Текущий статус стартапа (из Smart Roadmap).\n"
+                "2. [РЫНОЧНЫЙ КОНТЕКСТ (RAG)]: Примеры, статьи, бенчмарки из базы знаний.\n"
+                "КРИТИЧЕСКОЕ ПРАВИЛО: НИКОГДА не выдавай стартапы или метрики из [РЫНОЧНОГО КОНТЕКСТА] за "
+                "проект пользователя. Если данные о проекте пользователя пусты или их недостаточно, "
+                "ты ОБЯЗАН задать уточняющие вопросы. Используй рыночный контекст ТОЛЬКО как примеры для сравнения.\n\n"
+                f"{rag_context}\n\n"
+            )
         
         chat_history = "\n".join([f"{m['role']}: {m['content']}" for m in history])
         prompt = f"История чата:\n{chat_history}\n\nПользователь: {user_message}"
@@ -378,6 +387,7 @@ class ChatOrchestrator:
             return
 
         # Step 1: Parallel Execution (asyncio.gather)
+        yield json.dumps({"type": "status", "content": "Анализирую профиль стартапа и интент..."}) + "\n"
         intent_task = asyncio.create_task(dispatch_intent(user_message))
         from slm_dispatcher import slm_dispatcher
         slm_intent_task = asyncio.create_task(slm_dispatcher.classify_query_intent(user_message))
@@ -420,6 +430,7 @@ class ChatOrchestrator:
         # Step 1.5: Web Search if needed
         search_texts = []
         if intent == "search" or is_deep_search or use_deep_search or use_research:
+            yield json.dumps({"type": "status", "content": "Ищу бенчмарки в интернете (Exa AI)..."}) + "\n"
             yield json.dumps({"type": "thought", "content": "Выполняю поиск по интернету (Exa AI)...\n"}) + "\n"
             from search_agent import async_search_with_sources
             search_sources, search_context = await async_search_with_sources(user_message, use_deep_search=True)
@@ -437,6 +448,7 @@ class ChatOrchestrator:
         swarm_facts = ""
         
         if (intent in ["chat", "finance", "search", "presentation"]) and chunks_to_swarm:
+            yield json.dumps({"type": "status", "content": "Запускаю рой агентов для валидации цифр..."}) + "\n"
             yield json.dumps({"type": "thought", "content": "Анализирую данные роем агентов (Qwen 2.5)...\n"}) + "\n"
             swarm_res = await run_analytical_swarm(chunks_to_swarm)
             
@@ -459,6 +471,7 @@ class ChatOrchestrator:
             compiled_rag_context += f"ДАННЫЕ ИЗ БАЗЫ ЗНАНИЙ:\n{chr(10).join(rag_texts[:3])}\n\n"
 
         try:
+            yield json.dumps({"type": "status", "content": "Синтезирую финальный ответ..."}) + "\n"
             if intent == "chat" or intent not in ["roadmap", "finance", "search", "legal", "presentation", "tree"]:
                 yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
                 start_time = time.time()
