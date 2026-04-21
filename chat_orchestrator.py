@@ -591,7 +591,6 @@ class ChatOrchestrator:
                     yield json_chunk
                     
         finally:
-        finally:
             # Rescue save: if message wasn't saved (e.g. stream aborted), save the partial response
             if not message_saved and (reply_full.strip() or thoughts_full.strip()):
                 # use create_task for fire-and-forget saving
