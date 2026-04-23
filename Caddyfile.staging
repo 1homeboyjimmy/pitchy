@@ -8,8 +8,8 @@ dev.pitchy.pro {
     }
     
     basic_auth @require_auth {
-        egor.figurnyak $2a$14$2H9mYqp9dvpXmNXhrMAu0OZH3.DRovejva3VsLpgQXq/go6VHG7FW
-        alex.nikolenko $2a$14$J1XhNAM1.CWdLnS0.SShz.x98gwDyzAf5ikVPklzDcDT/v4gNAllC
+        egor.figurnyak {$STAGING_HASH_EGOR}
+        alex.nikolenko {$STAGING_HASH_ALEX}
     }
 
     # Ограничение доступа к метрикам (только для локальных запросов)
