@@ -1,0 +1,67 @@
+# Staging: dev.pitchy.pro
+# HTTP Basic Auth закрывает весь сайт от публичного доступа
+
+dev.pitchy.pro {
+    # Basic Auth — закрываем весь сайт
+    # Логин: team
+    # Хэш пароля генерируется через: docker run --rm caddy caddy hash-password --plaintext "PASSWORD"
+    basicauth * {
+        team $2a$14$REPLACE_WITH_BCRYPT_HASH
+    }
+
+    # Ограничение доступа к метрикам (только для локальных запросов)
+    handle /metrics {
+        @external not remote_ip private_ranges 127.0.0.1/8 ::1
+        respond @external 403
+        reverse_proxy backend:8000
+    }
+
+    # API - Маршруты для бэкенда (Python/FastAPI)
+    @api {
+        path /auth* /analysis* /chat* /admin* /health /dev/emails /analyze-startup /me /tree* /api/* /billing*
+        not path /api/graph/*
+    }
+    handle @api {
+        reverse_proxy backend:8000 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_ip}
+            header_up X-Forwarded-For {remote_ip}
+            header_up X-Forwarded-Proto {scheme}
+            transport http {
+                # Увеличиваем таймаут для генерации ответов ИИ (до 10 минут)
+                read_timeout 600s
+            }
+        }
+    }
+
+    # Настройки безопасности и заголовков
+    header {
+        # HSTS
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+
+        # Защита от кликджекинга
+        X-Frame-Options "SAMEORIGIN"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "strict-origin-when-cross-origin"
+
+        # Content Security Policy
+        Content-Security-Policy "default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval'; connect-src 'self' https: wss: dev.pitchy.pro *.pitchy.pro;"
+    }
+
+    # Сжатие контента для ускорения загрузки
+    encode gzip zstd
+
+    # Все остальные запросы направляем на Frontend (Next.js)
+    handle {
+        reverse_proxy frontend:3000 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_ip}
+            header_up X-Forwarded-For {remote_ip}
+            header_up X-Forwarded-Proto {scheme}
+
+            # Поддержка WebSocket
+            header_up Upgrade {>Upgrade}
+            header_up Connection {>Connection}
+        }
+    }
+}

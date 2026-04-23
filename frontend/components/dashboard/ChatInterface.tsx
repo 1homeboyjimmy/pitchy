@@ -1,6 +1,6 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { User, Cpu, Loader, Star, Zap, Users, Grid, HelpCircle, ThumbsUp, ThumbsDown, ChevronDown, ChevronUp, Activity, Globe, Link2, FileText } from "react-feather";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -38,6 +38,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
     const [messages, setMessages] = useState<ExtendedChatMessage[]>(session.messages || []);
     const [inputValue, setInputValue] = useState("");
     const [isLoading, setIsLoading] = useState(false);
+    const [streamingStatus, setStreamingStatus] = useState<string | null>(null);
     const [useDeepSearch, setUseDeepSearch] = useState(false);
     const [isResearchMode, setIsResearchMode] = useState(false);
     const [isPresentationMode, setIsPresentationMode] = useState(false);
@@ -284,6 +285,8 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                             const duration = Math.round((Date.now() - startTime) / 1000);
                             thoughtUpdate = { thoughtTime: duration };
                         }
+                        // Clear streaming status on first content chunk (triggers fade-out)
+                        if (!assistantContent) setStreamingStatus(null);
                         assistantContent += chunk.content;
                         setMessages((prev) =>
                             prev.map(m => m.client_id === assistantClientId ? { ...m, content: assistantContent, isResearch: isResearchMode || useDeepSearch, ...thoughtUpdate } : m)
@@ -297,6 +300,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                         setIsGeneratingSlides(false);
                         // Drawer is already open from handleSendMessage
                     } else if (chunk.type === "status") {
+                        setStreamingStatus(chunk.content);
                         setGenerationStatus(chunk.content);
                     } else if (chunk.type === "metadata") {
                         setMessages((prev) =>
@@ -345,6 +349,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
             });
         } finally {
             setIsLoading(false);
+            setStreamingStatus(null);
             setIsGeneratingSlides(false);
             setIsResearchMode(false); // Reset research mode after send
             if (isPresentationRequest && !isPresentationOpen) {
@@ -380,10 +385,21 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
 
                 {messages.map((msg, idx) => {
             const messageKey = msg.client_id || msg.id;
-            const hasThoughts = msg.thoughts !== undefined && msg.thoughts !== null && msg.thoughts.length > 0;
+
+            let derivedThoughts = msg.thoughts;
+            const rawContentText = msg.content || "";
+            if (!derivedThoughts && rawContentText.includes("<think>")) {
+                const match = rawContentText.match(/<think>([\s\S]*?)(?:<\/think>|$)/);
+                if (match) derivedThoughts = match[1];
+            }
+
+            const cleanContent = stripThoughts(rawContentText);
+            const hasThoughts = derivedThoughts !== undefined && derivedThoughts !== null && derivedThoughts.length > 0;
+            
             const userMessagesBefore = messages.slice(0, idx).filter(m => m.role === "user").length;
-            const showThoughts = hasThoughts;
-            const hasContent = msg.content && msg.content.length > 0;
+            const showThoughts = hasThoughts && userMessagesBefore > 1;
+            
+            const hasContent = cleanContent.trim().length > 0;
             const isLastAssistant = msg.role === "assistant" && idx === messages.length - 1;
             const shouldRenderMainBubble = msg.role === "user" || hasContent;
 
@@ -420,21 +436,39 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                                             className="overflow-hidden"
                                         >
                                             <div className="mt-1 mb-3 p-3 bg-white/5 rounded-xl border border-white/10 text-[13px] leading-relaxed text-white/50 italic whitespace-pre-wrap">
-                                                {msg.thoughts}
+                                                {derivedThoughts}
                                             </div>
                                         </motion.div>
                                     </div>
                                 )}
 
-                                {/* Loading state placeholder */}
-                                {msg.role === "assistant" && !hasContent && !showThoughts && isLoading && isLastAssistant && (
-                                    <div className="flex items-center gap-3 p-4 bg-white/5 rounded-2xl border border-white/10 text-white/60">
-                                        <Loader className="animate-spin h-5 w-5 text-pitchy-violet" />
-                                        <span className="text-sm font-medium animate-pulse">
-                                            Pitchy анализирует данные и ищет информацию...
-                                        </span>
-                                    </div>
-                                )}
+                                {/* Loading state placeholder with smooth fade */}
+                                <AnimatePresence mode="wait">
+                                    {msg.role === "assistant" && !hasContent && !showThoughts && isLoading && isLastAssistant && (
+                                        <motion.div
+                                            key="status-pill"
+                                            initial={{ opacity: 0, y: 6 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            exit={{ opacity: 0, y: -4, filter: "blur(6px)", scale: 0.97 }}
+                                            transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
+                                            className="flex items-center gap-3 p-4 bg-white/5 rounded-2xl border border-white/10 text-white/60 backdrop-blur-sm"
+                                        >
+                                            <Loader className="animate-spin h-5 w-5 text-pitchy-violet flex-shrink-0" />
+                                            <AnimatePresence mode="wait">
+                                                <motion.span
+                                                    key={streamingStatus || "default"}
+                                                    initial={{ opacity: 0, x: 8 }}
+                                                    animate={{ opacity: 1, x: 0 }}
+                                                    exit={{ opacity: 0, x: -8 }}
+                                                    transition={{ duration: 0.2 }}
+                                                    className="text-sm font-medium"
+                                                >
+                                                    {streamingStatus || "Pitchy анализирует данные и ищет информацию..."}
+                                                </motion.span>
+                                            </AnimatePresence>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
 
                                 {shouldRenderMainBubble && (
                                     msg.role === "user" ? (

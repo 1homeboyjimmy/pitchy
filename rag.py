@@ -95,7 +95,11 @@ class GeminiEmbeddingFunction(EmbeddingFunction):
 
 def _chunk_text(text: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> List[str]:
     # Strip HTML tags to prevent XSS/injection into RAG
-    text = re.sub(r'<[^>]+>', ' ', text)
+    from bs4 import BeautifulSoup
+    try:
+        text = BeautifulSoup(text, "html.parser").get_text(separator=' ')
+    except Exception:
+        pass
     # Convert multiple spaces to single
     text = re.sub(r'\s+', ' ', text).strip()
     
@@ -207,13 +211,13 @@ def _should_reindex() -> bool:
     return os.getenv("CHROMA_REINDEX", "false").lower() == "true"
 
 
-def _smart_ingest_batch(rag_instance: "StartupRAG", chunks: List[str], source: str):
+async def _smart_ingest_batch(rag_instance: "StartupRAG", chunks: List[str], source: str):
     """Classifies and distributes a batch of chunks into the correct RAG collections."""
     if not chunks:
         return
 
     # 1. SLM Classification
-    categories = asyncio.run(slm_dispatcher.classify_chunks_batch(chunks))
+    categories = await slm_dispatcher.classify_chunks_batch(chunks)
     
     # 2. Distribute based on classification
     for chunk, cat in zip(chunks, categories):
@@ -322,7 +326,7 @@ class StartupRAG:
     embedding_fn: GeminiEmbeddingFunction
 
     @classmethod
-    def build(cls) -> "StartupRAG":
+    async def build_async(cls) -> "StartupRAG":
         raw_docs = _load_raw_documents()
         embedding_fn = GeminiEmbeddingFunction()
         client = _build_client()
@@ -359,7 +363,7 @@ class StartupRAG:
                 batch_size = 10
                 for i in range(0, len(chunks), batch_size):
                     batch = chunks[i:i+batch_size]
-                    _smart_ingest_batch(instance, batch, source=doc_entry["source"])
+                    await _smart_ingest_batch(instance, batch, source=doc_entry["source"])
             logger.info("SMART INGESTION complete.")
 
         return instance
@@ -417,9 +421,9 @@ class StartupRAG:
 _RAG_INSTANCE: StartupRAG | None = None
 
 
-def init_rag() -> None:
+async def init_rag() -> None:
     global _RAG_INSTANCE
-    _RAG_INSTANCE = StartupRAG.build()
+    _RAG_INSTANCE = await StartupRAG.build_async()
 
 
 @observe(name="rag_retrieval")

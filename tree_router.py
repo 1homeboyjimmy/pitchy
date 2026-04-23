@@ -20,11 +20,12 @@ import logging
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
+from sqlalchemy import select
 
-from auth import get_current_user
-from db import get_db, SessionLocal
+from auth import get_async_current_user
+from db_async import get_async_db, AsyncSessionLocal
 from models import User, ProjectTree
 from schemas import TreeCreateRequest, TreeResponse, TreeNodeUpdateRequest, TreeChatRequest, TreeChatResponse, TreeEvaluateRequest
 from tree_orchestrator import generate_tree_from_text, generate_tree_from_pdf
@@ -40,8 +41,8 @@ router = APIRouter(prefix="/tree", tags=["Smart Roadmap"])
 @router.post("/create", response_model=TreeResponse)
 async def create_tree(
     payload: TreeCreateRequest,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ) -> TreeResponse:
     """Create a Smart Roadmap starting with Universal Base Nodes."""
     if user.subscription_tier == "tester":
@@ -72,8 +73,8 @@ async def create_tree(
         readiness_index=0
     )
     db.add(tree)
-    db.commit()
-    db.refresh(tree)
+    await db.commit()
+    await db.refresh(tree)
 
     return TreeResponse.model_validate(tree)
 
@@ -81,8 +82,8 @@ async def create_tree(
 @router.post("/upload-pdf", response_model=TreeResponse)
 async def upload_pdf(
     file: UploadFile = File(...),
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ) -> TreeResponse:
     """Upload a PDF and generate a decision tree from its contents."""
     if user.subscription_tier == "tester":
@@ -135,8 +136,8 @@ async def upload_pdf(
         status="generating",
     )
     db.add(tree)
-    db.commit()
-    db.refresh(tree)
+    await db.commit()
+    await db.refresh(tree)
 
     # Generate tree structure
     try:
@@ -150,59 +151,60 @@ async def upload_pdf(
         tree.status = "error"
 
     tree.updated_at = datetime.utcnow()
-    db.commit()
-    db.refresh(tree)
+    flag_modified(tree, "tree_data")
+    await db.commit()
+    await db.refresh(tree)
 
     return TreeResponse.model_validate(tree)
 
 
 @router.get("/list", response_model=list[TreeResponse])
-def list_trees(
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+async def list_trees(
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ) -> list[TreeResponse]:
     """List all trees for the authenticated user."""
-    trees = (
-        db.query(ProjectTree)
-        .filter(ProjectTree.user_id == user.id)
+    res = await db.execute(
+        select(ProjectTree)
+        .where(ProjectTree.user_id == user.id)
         .order_by(ProjectTree.created_at.desc())
         .limit(50)
-        .all()
     )
+    trees = res.scalars().all()
     return [TreeResponse.model_validate(t) for t in trees]
 
 
 @router.get("/{tree_id}", response_model=TreeResponse)
-def get_tree(
+async def get_tree(
     tree_id: int,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ) -> TreeResponse:
     """Get a single tree by ID."""
-    tree = (
-        db.query(ProjectTree)
-        .filter(ProjectTree.id == tree_id, ProjectTree.user_id == user.id)
-        .first()
+    res = await db.execute(
+        select(ProjectTree)
+        .where(ProjectTree.id == tree_id, ProjectTree.user_id == user.id)
     )
+    tree = res.scalar_one_or_none()
     if not tree:
         raise HTTPException(status_code=404, detail="Древо не найдено")
     return TreeResponse.model_validate(tree)
 
 
 @router.patch("/{tree_id}/nodes/{node_id}")
-def update_tree_node(
+async def update_tree_node(
     tree_id: int,
     node_id: str,
     payload: TreeNodeUpdateRequest,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ) -> dict:
     """Update a specific node in the tree."""
-    tree = (
-        db.query(ProjectTree)
-        .filter(ProjectTree.id == tree_id, ProjectTree.user_id == user.id)
-        .first()
+    res = await db.execute(
+        select(ProjectTree)
+        .where(ProjectTree.id == tree_id, ProjectTree.user_id == user.id)
     )
+    tree = res.scalar_one_or_none()
     if not tree:
         raise HTTPException(status_code=404, detail="Древо не найдено")
 
@@ -234,7 +236,8 @@ def update_tree_node(
     completed = sum(1 for n in nodes if n.get("status") == "completed")
     tree.readiness_index = int((completed / max(total, 1)) * 100)
 
-    db.commit()
+    flag_modified(tree, "tree_data")
+    await db.commit()
 
     return {"status": "ok", "readiness_index": tree.readiness_index}
 
@@ -243,8 +246,8 @@ def update_tree_node(
 async def tree_chat(
     tree_id: int,
     payload: TreeChatRequest,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Intelligent chat orchestration for the decision tree (Streaming)."""
     from fastapi.responses import StreamingResponse
@@ -259,8 +262,8 @@ async def tree_chat(
 async def get_tree_chat_history(
     tree_id: int,
     node_id: str | None = None,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Retrieve chat history for a specific tree or node from Redis/DB."""
     orchestrator = ChatOrchestrator(tree_id, user.id, db)
@@ -268,7 +271,8 @@ async def get_tree_chat_history(
     
     if not history and node_id:
         # Create an automated greeting if history is empty
-        tree = db.query(ProjectTree).filter(ProjectTree.id == tree_id).first()
+        res = await db.execute(select(ProjectTree).where(ProjectTree.id == tree_id))
+        tree = res.scalar_one_or_none()
         node_label = "этого блока"
         if tree and tree.tree_data:
             nodes = tree.tree_data.get("nodes", [])
@@ -288,14 +292,15 @@ async def get_tree_chat_history(
 async def evaluate_node(
     tree_id: int,
     payload: TreeEvaluateRequest,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Evaluate a node using form data and dynamic branching."""
     from makura_client import call_makura
     import copy
 
-    tree = db.query(ProjectTree).filter(ProjectTree.id == tree_id, ProjectTree.user_id == user.id).first()
+    res = await db.execute(select(ProjectTree).where(ProjectTree.id == tree_id, ProjectTree.user_id == user.id))
+    tree = res.scalar_one_or_none()
     if not tree:
         raise HTTPException(status_code=404, detail="Tree not found")
 
@@ -394,28 +399,28 @@ async def evaluate_node(
     flag_modified(tree, "tree_data")
     
     tree.updated_at = datetime.utcnow()
-    db.commit()
+    await db.commit()
 
     return TreeResponse.model_validate(tree)
 
 
 @router.delete("/{tree_id}")
-def delete_tree(
+async def delete_tree(
     tree_id: int,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ) -> dict:
     """Delete a tree."""
-    tree = (
-        db.query(ProjectTree)
-        .filter(ProjectTree.id == tree_id, ProjectTree.user_id == user.id)
-        .first()
+    res = await db.execute(
+        select(ProjectTree)
+        .where(ProjectTree.id == tree_id, ProjectTree.user_id == user.id)
     )
+    tree = res.scalar_one_or_none()
     if not tree:
         raise HTTPException(status_code=404, detail="Древо не найдено")
 
-    db.delete(tree)
-    db.commit()
+    await db.delete(tree)
+    await db.commit()
     return {"status": "deleted"}
 
 
@@ -435,8 +440,9 @@ async def tree_websocket(
     try:
         # Verify access
         # In production, authenticate via token in query params
-        with SessionLocal() as db:
-            tree = db.query(ProjectTree).filter(ProjectTree.id == tree_id).first()
+        async with AsyncSessionLocal() as db:
+            res = await db.execute(select(ProjectTree).where(ProjectTree.id == tree_id))
+            tree = res.scalar_one_or_none()
             if not tree:
                 await websocket.send_json({"type": "error", "data": {"message": "Tree not found"}})
                 await websocket.close()
@@ -461,8 +467,9 @@ async def tree_websocket(
                 if data.get("type") == "ping":
                     await websocket.send_json({"type": "pong"})
                 elif data.get("type") == "refresh":
-                    with SessionLocal() as db:
-                        tree = db.query(ProjectTree).filter(ProjectTree.id == tree_id).first()
+                    async with AsyncSessionLocal() as db:
+                        res = await db.execute(select(ProjectTree).where(ProjectTree.id == tree_id))
+                        tree = res.scalar_one_or_none()
                         if tree:
                             await websocket.send_json({
                                 "type": "update",

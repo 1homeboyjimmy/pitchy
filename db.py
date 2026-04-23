@@ -21,12 +21,14 @@ class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=convention)
 
 
-connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
-engine = create_engine(
-    DATABASE_URL,
-    connect_args=connect_args,
-    pool_pre_ping=True,
-)
+engine_kwargs = {"pool_pre_ping": True}
+if not DATABASE_URL.startswith("sqlite"):
+    engine_kwargs["pool_size"] = 20
+    engine_kwargs["max_overflow"] = 40
+else:
+    engine_kwargs["connect_args"] = {"check_same_thread": False}
+
+engine = create_engine(DATABASE_URL, **engine_kwargs)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 

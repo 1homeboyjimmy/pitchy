@@ -120,7 +120,9 @@ class ChatOrchestrator:
                 return json.loads(cached)
 
         # Fallback to DB
-        tree = self.db.query(ProjectTree).filter(ProjectTree.id == self.tree_id).first()
+        from sqlalchemy import select
+        res = await self.db.execute(select(ProjectTree).where(ProjectTree.id == self.tree_id))
+        tree = res.scalar_one_or_none()
         if not tree:
             return {"nodes": [], "readiness_index": 0}
 
@@ -153,13 +155,15 @@ class ChatOrchestrator:
         # PostgreSQL Fallback
         if self.db:
             from models import TreeChatHistory
-            query = self.db.query(TreeChatHistory).filter(TreeChatHistory.project_id == self.tree_id)
+            from sqlalchemy import select
+            query = select(TreeChatHistory).where(TreeChatHistory.project_id == self.tree_id)
             if node_id:
-                query = query.filter(TreeChatHistory.node_id == node_id)
+                query = query.where(TreeChatHistory.node_id == node_id)
             else:
-                query = query.filter(TreeChatHistory.node_id == None)
+                query = query.where(TreeChatHistory.node_id == None)
             
-            history_msgs = query.order_by(TreeChatHistory.timestamp.desc()).limit(limit).all()
+            res = await self.db.execute(query.order_by(TreeChatHistory.timestamp.desc()).limit(limit))
+            history_msgs = res.scalars().all()
             return [
                 {
                     "role": m.role,
@@ -207,10 +211,10 @@ class ChatOrchestrator:
                     sources=sources
                 )
                 self.db.add(db_msg)
-                self.db.commit()
+                await self.db.commit()
             except Exception as e:
                 logger.error(f"Failed to save TreeChatHistory to SQL: {e}")
-                self.db.rollback()
+                await self.db.rollback()
 
     async def _stream_chat(self, user_message: str, history: list, state: dict, active_node_id: str | None, rag_context: str = ""):
         """Core streaming logic for chat with thoughts."""
@@ -450,7 +454,11 @@ class ChatOrchestrator:
         if (intent in ["chat", "finance", "search", "presentation"]) and chunks_to_swarm:
             yield json.dumps({"type": "status", "content": "Запускаю рой агентов для валидации цифр..."}) + "\n"
             yield json.dumps({"type": "thought", "content": "Анализирую данные роем агентов (Qwen 2.5)...\n"}) + "\n"
-            swarm_res = await run_analytical_swarm(chunks_to_swarm)
+            try:
+                swarm_res = await asyncio.wait_for(run_analytical_swarm(chunks_to_swarm), timeout=5.0)
+            except asyncio.TimeoutError:
+                logger.warning("Swarm analysis timed out after 5s — falling back to raw RAG chunks")
+                swarm_res = []
             
             facts = []
             for item in swarm_res:
@@ -493,7 +501,9 @@ class ChatOrchestrator:
                     yield json_chunk
             
             elif intent in ["roadmap", "tree"]:
-                user_obj = self.db.query(User).filter(User.id == self.user_id).first()
+                from sqlalchemy import select
+                res = await self.db.execute(select(User).where(User.id == self.user_id))
+                user_obj = res.scalar_one_or_none()
                 if user_obj and user_obj.subscription_tier == "tester":
                     msg = "Функция работы с интерактивной дорожной картой недоступна в тарифе Tester."
                     yield json.dumps({"type": "chunk", "content": msg}) + "\n"
@@ -567,7 +577,9 @@ class ChatOrchestrator:
                     reply_full += str(chunk)
             
             elif intent == "presentation":
-                user_obj = self.db.query(User).filter(User.id == self.user_id).first()
+                from sqlalchemy import select
+                res = await self.db.execute(select(User).where(User.id == self.user_id))
+                user_obj = res.scalar_one_or_none()
                 if user_obj and user_obj.subscription_tier == "tester":
                     msg = "Генерация презентаций недоступна в тарифе Tester."
                     yield json.dumps({"type": "chunk", "content": msg}) + "\n"
@@ -603,19 +615,25 @@ class ChatOrchestrator:
                         thoughts_full += data["content"]
                     yield json_chunk
                     
+        except Exception as e:
+            logger.error(f"Orchestrator streaming failed: {e}")
+            yield json.dumps({"type": "error", "content": str(e)}) + "\n"
         finally:
             # Rescue save: if message wasn't saved (e.g. stream aborted), save the partial response
             if not message_saved and (reply_full.strip() or thoughts_full.strip()):
-                # use create_task for fire-and-forget saving
-                asyncio.create_task(self.add_chat_message(
-                    "assistant", 
-                    reply_full, 
-                    thoughts=thoughts_full.strip() if thoughts_full else None, 
-                    node_id=active_node_id, 
-                    model_used=model_used, 
-                    client_id=assistant_client_id, 
-                    sources=sources_list
-                ))
+                try:
+                    await self.add_chat_message(
+                        "assistant", 
+                        reply_full, 
+                        thoughts=thoughts_full.strip() if thoughts_full else None, 
+                        node_id=active_node_id, 
+                        model_used=model_used, 
+                        client_id=assistant_client_id, 
+                        sources=sources_list
+                    )
+                except Exception as save_err:
+                    logger.error(f"Rescue save failed: {save_err}")
+                return  # Exit early — don't run the happy-path logic below
 
             if langfuse_context and (reply_full or thoughts_full):
                 try:
@@ -653,10 +671,10 @@ class ChatOrchestrator:
             await self.save_state(state)
             yield json.dumps({"type": "tree_update", "data": state}) + "\n"
 
-        # 4. Finalize
-        message_saved = True # Prevent double-saving in finally block
+        # 4. Finalize (happy path — stream completed successfully)
         await self.add_chat_message("user", user_message, node_id=active_node_id, client_id=client_id)
         await self.add_chat_message("assistant", reply_full, thoughts=thoughts_full.strip() if thoughts_full else None, node_id=active_node_id, model_used=model_used, client_id=assistant_client_id, sources=sources_list)
+        message_saved = True # Mark AFTER successful save to prevent duplicate in finally
 
         # Step 3: Background Cache Save
         # Only cache general chat responses that are successful and not tool-based
