@@ -122,6 +122,7 @@ from auth import (
     verify_password,
     verify_token,
     get_async_current_user,
+    require_async_admin,
 )
 
 def extract_json_zai(text: str) -> dict:
