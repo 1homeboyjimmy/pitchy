@@ -2,9 +2,13 @@
 # HTTP Basic Auth закрывает весь сайт от публичного доступа
 
 dev.pitchy.pro {
-    # Basic Auth — закрываем весь сайт
-    # Хэш пароля генерируется через: docker run --rm caddy caddy hash-password --plaintext "PASSWORD"
-    basic_auth * {
+    # Basic Auth — закрываем весь сайт, кроме запросов с Bearer токеном
+    # (чтобы не конфликтовать с авторизацией самого приложения)
+    @noauth {
+        header Authorization Bearer*
+    }
+    
+    basic_auth not @noauth {
         egor.figurnyak $2a$14$2H9mYqp9dvpXmNXhrMAu0OZH3.DRovejva3VsLpgQXq/go6VHG7FW
         alex.nikolenko $2a$14$J1XhNAM1.CWdLnS0.SShz.x98gwDyzAf5ikVPklzDcDT/v4gNAllC
     }
