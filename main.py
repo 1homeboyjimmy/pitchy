@@ -55,6 +55,7 @@ from makura_client import call_makura, stream_makura
 from search_agent import execute_search_agent, execute_deep_research, async_search_with_sources
 from db import SessionLocal, get_db
 from db_async import get_async_db
+from swarm_agent import run_analytical_swarm
 from sqlalchemy.ext.asyncio import AsyncSession
 from models import (
     Analysis, ChatMessage as DbChatMessage, ChatSession, ErrorLog, 
@@ -589,17 +590,18 @@ def _format_chat_history(messages: list[ChatMessage], limit: int = 10) -> str:
     return "\n".join(lines)
 
 
-def _build_chat_prompt(messages: list[ChatMessage], context_chunks: list[dict]) -> str:
-    context_block = "\n".join(
-        [f"{idx + 1}. {chunk['text'] if isinstance(chunk, dict) else chunk}" for idx, chunk in enumerate(context_chunks)]
-    )
+def _build_chat_prompt(messages: list[ChatMessage], context_chunks: list[str]) -> str:
     history = _format_chat_history(messages)
+    
+    # Фильтруем пустые элементы и склеиваем
+    valid_chunks = [c for c in context_chunks if c.strip()]
+    context_block = "\n\n".join(valid_chunks)
+
     return (
-        "Контекст:\n"
         f"{context_block}\n\n"
-        "Диалог:\n"
+        "[ИСТОРИЯ ДИАЛОГА]:\n"
         f"{history}\n\n"
-        "Продолжи диалог и ответь на последнюю реплику пользователя."
+        "Опираясь на предоставленный контекст и факты, продолжи диалог и ответь на последнюю реплику."
     )
 
 
@@ -1494,65 +1496,111 @@ async def list_analyses(
 
 
 async def parse_thought_generator(generator):
-    """Parses <thought>...</thought> tags and yields JSON chunks."""
-    inside_thought = False
+    """
+    Enhanced model output stream processor.
+    Extracts <think>...</think> or <thought>...</thought> tags and yields them as metadata types.
+    Preserves \n for Markdown tables and strips technical debris (<tool_call>, etc).
+    """
+    active_start_tag = None
     buffer = ""
+    # We also want to strip debris like <tool_call>, <tool_thought>, and technical artifacts like 'IMIZE'
+    tags = [("<thought>", "</thought>"), ("<think>", "</think>"), ("<tool_call>", "</tool_call>"), ("<tool_thought>", "</tool_thought>")]
+    debris_patterns = ["<tool_call>", "</tool_call>", "<tool_thought>", "</tool_thought>", "IMIZE"]
+
     async for chunk in generator:
-        if not chunk: continue
-        
-        # Handle native GLM-5 thinking chunks from makura_client
-        if isinstance(chunk, dict) and "__thinking__" in chunk:
-            yield json.dumps({"type": "thought", "content": chunk["__thinking__"]}) + "\n"
+        if chunk is None:
             continue
             
-        # Pass through usage sentinel dicts 
         if isinstance(chunk, dict):
-            yield chunk
-            continue
+            # Flush buffer before handling metadata/dict chunks
+            if buffer:
+                if active_start_tag in ["<think>", "<thought>"]:
+                    yield json.dumps({"type": "thought", "content": buffer}) + "\n"
+                else:
+                    yield json.dumps({"type": "chunk", "content": buffer}) + "\n"
+                buffer = ""
+
+            # Handle native reasoning_content 
+            if "__thinking__" in chunk:
+                yield json.dumps({"type": "thought", "content": chunk["__thinking__"]}) + "\n"
+                continue
+            elif "__usage__" in chunk:
+                # Pass usage directly as a wrapped JSON line
+                yield json.dumps({"type": "metadata", "usage": chunk["__usage__"]}) + "\n"
+                continue
+            else:
+                # Pass through other dict objects (like TTFT signals)
+                yield json.dumps(chunk) + "\n"
+                continue
+
+        # Handle text-based tags in the main content stream
         buffer += chunk
         
+        # Strip technical trash from buffer if not inside a protected tag
+        if not active_start_tag:
+            for debris in debris_patterns:
+                if debris in buffer:
+                    buffer = buffer.replace(debris, "")
+
         while True:
-            if not inside_thought:
-                start_idx = buffer.find("<thought>")
-                thought_len = 9
-                if start_idx == -1:
-                    start_idx = buffer.find("<think>")
-                    thought_len = 7
-                    
-                if start_idx != -1:
-                    pre = buffer[:start_idx]
-                    post = buffer[start_idx + thought_len:]
-                    if pre:
-                        yield json.dumps({"type": "chunk", "content": pre}) + "\n"
-                    inside_thought = True
-                    buffer = post
+            found_tag = False
+            for start_tag, end_tag in tags:
+                if not active_start_tag:
+                    s_idx = buffer.find(start_tag)
+                    if s_idx != -1:
+                        # Content before the tag is a normal chunk
+                        pre = buffer[:s_idx]
+                        if pre:
+                            yield json.dumps({"type": "chunk", "content": pre}) + "\n"
+                        
+                        buffer = buffer[s_idx + len(start_tag):]
+                        active_start_tag = start_tag
+                        found_tag = True
+                        break
                 else:
-                    if len(buffer) > 10:
-                        to_yield = buffer[:-9]
-                        buffer = buffer[-9:]
+                    # Only look for the end_tag corresponding to the current active_start_tag
+                    if start_tag == active_start_tag:
+                        e_idx = buffer.find(end_tag)
+                        if e_idx != -1:
+                            # Content inside tags is a thought (or soon-to-be-ignored tool call)
+                            content = buffer[:e_idx]
+                            is_thought = active_start_tag in ["<think>", "<thought>"]
+                            
+                            if is_thought and content:
+                                yield json.dumps({"type": "thought", "content": content}) + "\n"
+                            
+                            buffer = buffer[e_idx + len(end_tag):]
+                            active_start_tag = None
+                            found_tag = True
+                            break
+            
+            if not found_tag:
+                # If no complete tag found, yield what we can but keep a buffer
+                # to avoid splitting a tag that might be coming in the next chunk.
+                max_tag_len = 15 
+                if not active_start_tag:
+                    if len(buffer) > max_tag_len:
+                        to_yield = buffer[:-max_tag_len]
+                        buffer = buffer[-max_tag_len:]
                         yield json.dumps({"type": "chunk", "content": to_yield}) + "\n"
-                    break
-            else:
-                end_idx = buffer.find("</thought>")
-                end_len = 10
-                if end_idx == -1:
-                    end_idx = buffer.find("</think>")
-                    end_len = 8
-                    
-                if end_idx != -1:
-                    content = buffer[:end_idx]
-                    post = buffer[end_idx + end_len:]
-                    yield json.dumps({"type": "thought", "content": content}) + "\n"
-                    inside_thought = False
-                    buffer = post
                 else:
-                    if len(buffer) > 11:
-                        to_yield = buffer[:-10]
-                        buffer = buffer[-10:]
-                        yield json.dumps({"type": "thought", "content": to_yield}) + "\n"
-                    break
+                    # If we are inside thoughts, we can yield them parts
+                    if len(buffer) > max_tag_len:
+                        to_yield = buffer[:-max_tag_len]
+                        buffer = buffer[-max_tag_len:]
+                        if active_start_tag in ["<think>", "<thought>"]:
+                            yield json.dumps({"type": "thought", "content": to_yield}) + "\n"
+                break
+                    
     if buffer:
-        yield json.dumps({"type": "thought" if inside_thought else "chunk", "content": buffer}) + "\n"
+        # Final cleanup
+        final_content = buffer
+        for start_tag, end_tag in tags:
+            final_content = final_content.replace(start_tag, "").replace(end_tag, "")
+        
+        if final_content:
+            is_thought = active_start_tag in ["<think>", "<thought>"]
+            yield json.dumps({"type": "thought" if is_thought else "chunk", "content": final_content}) + "\n"
 
 def save_assistant_message(session_id: int, content: str, thoughts: str | None = None, client_id: str | None = None, sources: list[dict] | None = None):
     from db import SessionLocal
@@ -1773,19 +1821,92 @@ async def create_chat_message(
                 }
             )
 
-        # Parallel RAG for normal chat
-        ch_task = asyncio.to_thread(rag.get_relevant_chunks, payload.content, top_k=3)
-        si_task = analyze_search_intent_zai(payload.content)
-        context_chunks, search_decision = await asyncio.gather(ch_task, si_task)
+        # --- Synchronized Architecture Transformation ---
+        # Instrumentation: Pre-processing Span
+        prep_span = None
+        if langfuse_context:
+            prep_span = langfuse_context.span(name="base_chat_preprocessing")
+
+        # 1. Parallel Execution (Intent classification + RAG retrieval)
+        si_task = asyncio.create_task(slm_dispatcher.classify_query_intent(payload.content))
         
-        if search_decision.get("needs_search") and search_decision.get("search_query"):
-            query = search_decision.get("search_query")
-            logger.info(f"Agent triggered web search for query: {query}")
-            web_context = await asyncio.to_thread(execute_search_agent, query)
-            if web_context:
-                context_chunks.insert(0, f"--- АКТУАЛЬНЫЕ ДАННЫЕ ИЗ ИНТЕРНЕТА (ПОИСК: {query}) ---\n{web_context}\n--- КОНЕЦ ДАННЫХ ИЗ ИНТЕРНЕТА ---")
+        # Graceful Degradation: проверяем, прогрета ли база
+        if rag.healthcheck():
+            ch_task = asyncio.to_thread(rag.get_relevant_chunks, payload.content, top_k=10)
+        else:
+            async def _skip_rag():
+                logger.warning("RAG is warming up. Skipping vector retrieval.")
+                return []
+            ch_task = asyncio.create_task(_skip_rag())
+        
+        results = await asyncio.gather(si_task, ch_task, return_exceptions=True)
+        if prep_span: prep_span.end()
+        
+        slm_res = results[0] if not isinstance(results[0], Exception) else {}
+        rag_chunks = results[1] if not isinstance(results[1], Exception) else []
+        
+        is_deep_search = slm_res.get("is_deep_search", False)
+        is_finance = slm_res.get("is_finance", False)
+        
+        # 2. Dynamic Web Search (Exa AI)
+        search_context = ""
+        sources_list = []
+        if is_deep_search:
+            search_span = None
+            if langfuse_context:
+                search_span = langfuse_context.span(name="web_search_exa")
+                
+            # Using high-level async search with sources
+            search_sources, exa_context = await async_search_with_sources(payload.content, use_deep_search=False)
+            sources_list = search_sources
+            search_context = exa_context
+            
+            if search_span:
+                search_span.end(metadata={"sources_count": len(sources_list)})
+
+        # 3. Analytical Swarm (Map-Reduce)
+        swarm_facts = ""
+        rag_texts = [c["text"] if isinstance(c, dict) else c for c in rag_chunks]
+        chunks_to_swarm = rag_texts[:10]
+        if search_context:
+            chunks_to_swarm.append(search_context)
+            
+        if chunks_to_swarm:
+            swarm_span = None
+            if langfuse_context:
+                swarm_span = langfuse_context.span(name="swarm_analysis", metadata={"chunks_count": len(chunks_to_swarm)})
+            
+            try:
+                # Analytical Swarm with 5s safety timeout
+                swarm_res = await asyncio.wait_for(run_analytical_swarm(chunks_to_swarm), timeout=5.0)
+                facts = []
+                for item in swarm_res:
+                    if getattr(item, 'competitors', []):
+                        facts.append("Конкуренты: " + ", ".join(item.competitors))
+                    if getattr(item, 'metrics', []):
+                        facts.append("Метрики: " + "; ".join(item.metrics))
+                
+                if facts:
+                    swarm_facts = "\n- ".join(set(facts))
+            except Exception as swarm_err:
+                logger.warning(f"Swarm analysis bypassed: {swarm_err}")
+            
+            if swarm_span:
+                swarm_span.end(metadata={"facts_extracted": len(facts) if 'facts' in locals() else 0})
+
+        # Assemble Context
+        context_chunks = []
+        if search_context:
+            context_chunks.append(f"[ДАННЫЕ ИЗ ИНТЕРНЕТА]:\n{search_context}")
+        
+        if swarm_facts:
+            context_chunks.append(f"[ПРОВЕРЕННЫЕ ФАКТЫ ОТ РОЯ АНАЛИТИКОВ]:\n{swarm_facts}")
+        elif rag_texts:
+            # Fallback: если рой не нашел фактов или упал по таймауту
+            context_chunks.append(f"[ДАННЫЕ ИЗ БАЗЫ ЗНАНИЙ]:\n{chr(10).join(rag_texts[:3])}")
+        
     except Exception as e:
-        logger.error(f"Failed RAG / Research in session message: {e}")
+        logger.error(f"Synchronized preprocessing failed: {e}")
     # -----------------------------------
 
     user_prompt = _build_chat_prompt(chat_messages, context_chunks)
@@ -1794,7 +1915,16 @@ async def create_chat_message(
     async def session_chat_generator():
         full_text = ""
         full_thoughts = ""
+        ttft = None
+        start_time = time.time()
+        usage_data = {}
+        
         try:
+            # Yield initial metadata
+            yield json.dumps({"type": "metadata", "model": provider}) + "\n"
+            if sources_list:
+                yield json.dumps({"type": "sources", "data": sources_list}) + "\n"
+
             if provider == "makura":
                 raw_gen = stream_makura(SYSTEM_CHAT_PROMPT, user_prompt)
             else:
@@ -1802,35 +1932,58 @@ async def create_chat_message(
                 
             async for json_chunk in parse_thought_generator(raw_gen):
                 if isinstance(json_chunk, dict):
-                    if "__usage__" in json_chunk:
-                        usage_data = json_chunk["__usage__"]
+                    # Internal metadata from parse_thought_generator
+                    if json_chunk.get("type") == "metadata":
+                        usage_data = json_chunk.get("usage", {})
                     continue
 
+                if ttft is None:
+                    ttft = time.time() - start_time
+                
                 data = json.loads(json_chunk.strip())
                 if data["type"] == "chunk":
                     full_text += data["content"]
                 elif data["type"] == "thought":
                     full_thoughts += data["content"]
                 yield json_chunk
+
         except Exception as e:
             logger.error(f"Streaming failed: {e}")
             yield json.dumps({"type": "error", "content": str(e)}) + "\n"
         finally:
-            if full_text.strip():
-                logger.info(f"Stream finished. Collected {len(full_text)} chars.")
-                # ИСПОЛЬЗУЕМ asyncio ВМЕСТО background_tasks для StreamingResponse
+            if full_text.strip() or full_thoughts.strip():
+                # Rescue save logic
                 async def _save_bg():
                     try:
                         await async_save_assistant_message( 
                             session_id=session.id, 
                             content=full_text.strip(),
                             thoughts=full_thoughts.strip() if full_thoughts.strip() else None,
-                            client_id=payload.assistant_client_id
+                            client_id=payload.assistant_client_id,
+                            sources=sources_list if sources_list else None
                         )
                     except Exception as bg_err:
                         logger.error(f"Background async_save_assistant_message failed: {bg_err}")
 
                 asyncio.create_task(_save_bg())
+
+            # Final Langfuse update
+            if langfuse_context and (full_text or full_thoughts):
+                try:
+                    update_params = {
+                        "input": payload.content,
+                        "output": f"<thought>{full_thoughts}</thought>\n\n{full_text}" if full_thoughts else full_text,
+                        "metadata": {"ttft": ttft} if ttft else {}
+                    }
+                    if usage_data:
+                        update_params["usage"] = {
+                            "input": usage_data.get("prompt_tokens", 0),
+                            "output": usage_data.get("completion_tokens", 0),
+                            "total": usage_data.get("total_tokens", 0)
+                        }
+                    langfuse_context.update_current_observation(**update_params)
+                except Exception as lf_err:
+                    logger.error(f"Langfuse update failed: {lf_err}")
 
     return StreamingResponse(session_chat_generator(), media_type="text/event-stream")
 
