@@ -6,6 +6,13 @@ from pydantic import BaseModel, Field
 import instructor
 from openai import AsyncOpenAI
 
+try:
+    from langfuse.decorators import observe, langfuse_context
+except ImportError:
+    def observe(*args, **kwargs):
+        return lambda f: f
+    langfuse_context = None
+
 logger = logging.getLogger("app")
 
 class ChunkAnalysis(BaseModel):
@@ -21,6 +28,7 @@ def get_patched_client():
     )
     return instructor.from_openai(client)
 
+@observe(name="swarm_node")
 async def _process_single_chunk(client, chunk: str) -> ChunkAnalysis:
     """Анализ одного чанка одним микро-агентом."""
     try:
@@ -39,6 +47,7 @@ async def _process_single_chunk(client, chunk: str) -> ChunkAnalysis:
         logger.error(f"Swarm chunk error: {e}", exc_info=True)
         return ChunkAnalysis(is_relevant=False, confidence=0.0)
 
+@observe(name="run_analytical_swarm")
 async def run_analytical_swarm(chunks: List[str]) -> List[ChunkAnalysis]:
     """Параллельный запуск роя на N чанков."""
     client = get_patched_client()

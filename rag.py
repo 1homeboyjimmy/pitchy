@@ -212,6 +212,7 @@ def _should_reindex() -> bool:
     return os.getenv("CHROMA_REINDEX", "false").lower() == "true"
 
 
+@observe(name="smart_ingest_batch")
 async def _smart_ingest_batch(rag_instance: "StartupRAG", chunks: List[str], source: str):
     """Classifies and distributes a batch of chunks into the correct RAG collections."""
     if not chunks:
@@ -342,6 +343,7 @@ class StartupRAG:
     embedding_fn: GeminiEmbeddingFunction
 
     @classmethod
+    @observe(name="init_rag_pipeline")
     async def build_async(cls) -> "StartupRAG":
         raw_docs = _load_raw_documents()
         embedding_fn = GeminiEmbeddingFunction()
@@ -365,6 +367,19 @@ class StartupRAG:
                     embedding_function=embedding_fn,
                     metadata={"hnsw:space": "cosine", MODEL_META_KEY: EMBEDDING_MODEL_NAME}
                 )
+                
+                # Critical check: verify model match to avoid Dimension Mismatch crashes
+                if col.count() > 0:
+                    peek = col.peek(limit=1)
+                    if peek['metadatas'] and peek['metadatas'][0].get(MODEL_META_KEY) != EMBEDDING_MODEL_NAME:
+                        logger.warning(f"Collection '{cat}' has incompatible model embeddings. Wiping for safety.")
+                        client.delete_collection(name=cat)
+                        col = client.get_or_create_collection(
+                            name=cat,
+                            embedding_function=embedding_fn,
+                            metadata={"hnsw:space": "cosine", MODEL_META_KEY: EMBEDDING_MODEL_NAME}
+                        )
+                
                 collections[cat] = col
             except Exception as e:
                 logger.error(f"Failed to load collection '{cat}': {e}")
@@ -471,13 +486,20 @@ def healthcheck() -> bool:
     if _RAG_INSTANCE is None:
         return False
     try:
-        # Verify at least one collection is accessible
         if not _RAG_INSTANCE.collections:
             return False
-        for coll in _RAG_INSTANCE.collections.values():
-            coll.count()
+        total_docs = 0
+        for cat, coll in _RAG_INSTANCE.collections.items():
+            count = coll.count()
+            total_docs += count
+            # logger.info(f"RAG Health: {cat} collection has {count} records.")
+        
+        if total_docs == 0:
+            logger.warning("RAG Health: All collections are empty.")
+            
         return True
-    except Exception:
+    except Exception as e:
+        logger.warning(f"RAG healthcheck failed: {e}")
         return False
 
 def index_successful_chat_interaction(user_query: str, ai_response: str, message_id: int):

@@ -7,15 +7,15 @@ from typing import Optional, Tuple, Dict, Any
 
 logger = logging.getLogger("app")
 
-async def call_makura(system_prompt: str, user_message: str, model: str = None) -> Tuple[Optional[str], Optional[str]]:
+async def call_makura(system_prompt: str, user_message: str, model: str = None) -> Tuple[Optional[str], Optional[str], Dict[str, Any]]:
     """
     Calls Makura.ai API (OpenAI compatible).
-    Returns (reply, metrics_json_string) or (None, None) on failure.
+    Returns (reply, metrics_json_string, usage_dict) or (None, None, {}) on failure.
     """
     api_key = os.getenv("MAKURA_API_KEY")
     if not api_key:
         logger.warning("MAKURA_API_KEY not set")
-        return None, None
+        return None, None, {}
 
     # Use model from env if not provided
     if not model:

@@ -1822,28 +1822,36 @@ async def create_chat_message(
             )
 
         # --- Synchronized Architecture Transformation ---
-        # Instrumentation: Pre-processing Span
+        # Instrumentation: Pre-processing Span (using context manager for better propagation)
         prep_span = None
         if langfuse_context:
             prep_span = langfuse_context.span(name="base_chat_preprocessing")
 
-        # 1. Parallel Execution (Intent classification + RAG retrieval)
-        si_task = asyncio.create_task(slm_dispatcher.classify_query_intent(payload.content))
-        
-        # Graceful Degradation: проверяем, прогрета ли база
-        if rag.healthcheck():
-            ch_task = asyncio.to_thread(rag.get_relevant_chunks, payload.content, top_k=10)
-        else:
-            async def _skip_rag():
-                logger.warning("RAG is warming up. Skipping vector retrieval.")
-                return []
-            ch_task = asyncio.create_task(_skip_rag())
-        
-        results = await asyncio.gather(si_task, ch_task, return_exceptions=True)
-        if prep_span: prep_span.end()
-        
-        slm_res = results[0] if not isinstance(results[0], Exception) else {}
-        rag_chunks = results[1] if not isinstance(results[1], Exception) else []
+        try:
+            # 1. Parallel Execution (Intent classification + RAG retrieval)
+            si_task = asyncio.create_task(slm_dispatcher.classify_query_intent(payload.content))
+            
+            # Graceful Degradation: проверяем, прогрета ли база
+            if rag.healthcheck():
+                ch_task = asyncio.to_thread(rag.get_relevant_chunks, payload.content, top_k=10)
+            else:
+                async def _skip_rag():
+                    logger.warning("RAG is warming up. Skipping vector retrieval.")
+                    return []
+                ch_task = asyncio.create_task(_skip_rag())
+            
+            # Wait for parallel tasks to finish
+            results = await asyncio.gather(si_task, ch_task, return_exceptions=True)
+            
+            slm_res = results[0] if not isinstance(results[0], Exception) else {}
+            rag_chunks = results[1] if not isinstance(results[1], Exception) else []
+            
+            if prep_span:
+                prep_span.end(metadata={"rag_hits": len(rag_chunks)})
+        except Exception as e:
+            if prep_span: prep_span.end(level="ERROR", status_message=str(e))
+            logger.error(f"Preprocessing error: {e}")
+            slm_res, rag_chunks = {}, []
         
         is_deep_search = slm_res.get("is_deep_search", False)
         is_finance = slm_res.get("is_finance", False)
