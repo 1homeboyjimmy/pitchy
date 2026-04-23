@@ -6,6 +6,13 @@ import json
 import numpy as np
 from typing import Optional
 
+try:
+    from langfuse.decorators import observe, langfuse_context
+except ImportError:
+    def observe(*args, **kwargs):
+        return lambda f: f
+    langfuse_context = None
+
 import redis
 from redis.commands.search.field import TextField, VectorField, TagField
 from redis.commands.search.index_definition import IndexDefinition, IndexType
@@ -54,6 +61,7 @@ class SemanticCache:
         except Exception as e:
             logger.error(f"Failed to setup SemanticCache index: {e}")
 
+    @observe(name="semantic_cache_check")
     async def get(self, query: str, project_id: str, threshold: float = 0.95) -> Optional[str]:
         """
         Проверяет наличие похожего запроса в кэше для данного проекта.
