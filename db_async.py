@@ -12,11 +12,16 @@ from db import Base
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./app.db")
 
-# Convert postgresql:// to postgresql+asyncpg://
-if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
-elif DATABASE_URL.startswith("postgresql://"):
-    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+# Ensure we use the async driver
+if "postgresql+asyncpg://" not in DATABASE_URL:
+    if DATABASE_URL.startswith("postgres://"):
+        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
+    elif DATABASE_URL.startswith("postgresql://"):
+        DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+    elif "postgresql+" in DATABASE_URL:
+        # Handle cases like postgresql+psycopg2:// -> postgresql+asyncpg://
+        import re
+        DATABASE_URL = re.sub(r"postgresql\+[^:]+://", "postgresql+asyncpg://", DATABASE_URL, count=1)
 
 # Async engine setup with connection pooling for PostgreSQL
 engine_kwargs = {"pool_pre_ping": True}
