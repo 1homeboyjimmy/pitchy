@@ -11,7 +11,7 @@ env:
 
 jobs:
   build-backend:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
@@ -40,7 +40,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=dev-backend
 
   build-frontend:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
@@ -71,7 +71,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=dev-frontend
 
   deploy:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     needs: [build-backend, build-frontend]
     steps:
       - name: Deploy to staging over SSH
