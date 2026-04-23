@@ -374,6 +374,8 @@ class StartupRAG:
                     if peek['metadatas'] and peek['metadatas'][0].get(MODEL_META_KEY) != EMBEDDING_MODEL_NAME:
                         logger.warning(f"Collection '{cat}' has incompatible model embeddings. Wiping for safety.")
                         client.delete_collection(name=cat)
+                        import time
+                        time.sleep(0.5) # Give OS time to release file descriptors
                         col = client.get_or_create_collection(
                             name=cat,
                             embedding_function=embedding_fn,
