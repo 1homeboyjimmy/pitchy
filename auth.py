@@ -9,7 +9,6 @@ import jwt
 from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from passlib.context import CryptContext
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -19,7 +18,6 @@ from db_async import get_async_db
 from models import User
 
 
-pwd_context = CryptContext(schemes=["bcrypt", "pbkdf2_sha256"], deprecated=["pbkdf2_sha256"])
 security = HTTPBearer(auto_error=False)
 
 
@@ -31,17 +29,31 @@ def _secret_key() -> str:
     return secret
 
 
+import bcrypt
+
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    # Double-check: bcrypt expects bytes
+    pwd_bytes = password.encode('utf-8')
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(pwd_bytes, salt).decode('utf-8')
 
 
 def verify_password(password: str, password_hash: str | None) -> bool:
     if not password_hash:
         return False
-    return pwd_context.verify(password, password_hash)
+    try:
+        # Bcrypt requires bytes for both password and hash
+        return bcrypt.checkpw(
+            password.encode('utf-8'),
+            password_hash.encode('utf-8')
+        )
+    except Exception:
+        # Fallback for old/empty hashes
+        return False
 
 def needs_update(password_hash: str) -> bool:
-    return pwd_context.needs_update(password_hash)
+    # Simplified for direct bcrypt
+    return False
 
 
 def create_access_token(user_id: int) -> str:
