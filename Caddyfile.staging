@@ -6,6 +6,7 @@ dev.pitchy.pro {
     # Хэш пароля генерируется через: docker run --rm caddy caddy hash-password --plaintext "PASSWORD"
     basic_auth * {
         egor.figurnyak $2a$14$2H9mYqp9dvpXmNXhrMAu0OZH3.DRovejva3VsLpgQXq/go6VHG7FW
+        alex.nikolenko $2a$14$WI6gSXbWlPLAM/86TaZ0EepCrp81RZQ.tYF5TyqqQJO0.3H0Zp0Ha
     }
 
     # Ограничение доступа к метрикам (только для локальных запросов)
