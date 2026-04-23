@@ -240,10 +240,7 @@ async def sync_redis_to_pg():
                         tree.readiness_index = state.get("readiness_index", 0)
                         # Updated timestamp handled by SQLAlchemy onupdate
                         db.commit()
-             logger.info(f"Background Sync: Synchronized {len(keys)} trees from Redis to PG.")
-        except Exception as e:
-             logger.error(f"Error in background sync loop: {e}")
-
+            logger.info(f"Background Sync: Synchronized {len(keys)} trees from Redis to PG.")
         except Exception as e:
             logger.error(f"Background Sync Error: {e}")
 
