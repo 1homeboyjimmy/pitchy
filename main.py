@@ -608,6 +608,36 @@ def index() -> dict:
     return {"status": "ok"}
 
 
+from auth import get_access_token_cookie_name, get_user_id_from_token
+
+@app.middleware("http")
+async def langfuse_observability_middleware(request: Request, call_next):
+    # Try to get user_id for Langfuse tracing
+    user_id = None
+    token = request.cookies.get(get_access_token_cookie_name())
+    if not token:
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+    
+    if token:
+        user_id = get_user_id_from_token(token)
+    
+    # Process request
+    response = await call_next(request)
+    
+    # If we have a user_id and langfuse context is active, update trace
+    if user_id and langfuse_context:
+        try:
+            langfuse_context.update_current_trace(
+                user_id=str(user_id),
+                tags=[os.getenv("APP_ENV", "production")]
+            )
+        except Exception:
+             pass # Don't break request if Langfuse fails
+             
+    return response
+
 @app.get("/health")
 def health() -> dict:
     db_ok = _db_healthcheck()

@@ -383,7 +383,15 @@ class ChatOrchestrator:
         """Main entry point for chat orchestration. Yields JSON chunks."""
         
         # Step 0: Fast Path (Semantic Cache)
+        cache_span = None
+        if langfuse_context:
+            cache_span = langfuse_context.span(name="semantic_cache_check")
+            
         cached_response = await semantic_cache.get(query=user_message, project_id=str(self.tree_id))
+        
+        if cache_span:
+            cache_span.end(metadata={"hit": bool(cached_response)})
+
         if cached_response and not use_deep_search and not use_research:
             yield json.dumps({"type": "chunk", "content": cached_response}) + "\n"
             yield json.dumps({"type": "metadata", "model": "Semantic Cache (Hit)"}) + "\n"
@@ -392,6 +400,12 @@ class ChatOrchestrator:
 
         # Step 1: Parallel Execution (asyncio.gather)
         yield json.dumps({"type": "status", "content": "Анализирую профиль стартапа и интент..."}) + "\n"
+        
+        # Instrumentation: Pre-processing Span
+        prep_span = None
+        if langfuse_context:
+            prep_span = langfuse_context.span(name="parallel_preprocessing")
+
         intent_task = asyncio.create_task(dispatch_intent(user_message))
         from slm_dispatcher import slm_dispatcher
         slm_intent_task = asyncio.create_task(slm_dispatcher.classify_query_intent(user_message))
@@ -399,6 +413,9 @@ class ChatOrchestrator:
         state_task = asyncio.create_task(self.load_state())
         
         results = await asyncio.gather(intent_task, slm_intent_task, rag_task, state_task, return_exceptions=True)
+        
+        if prep_span:
+            prep_span.end()
         
         intent_data = results[0] if not isinstance(results[0], Exception) else IntentClassification(intent="chat", reasoning="Fallback due to error", confidence=0.0)
         slm_res = results[1] if not isinstance(results[1], Exception) else {}
@@ -436,11 +453,20 @@ class ChatOrchestrator:
         if intent == "search" or is_deep_search or use_deep_search or use_research:
             yield json.dumps({"type": "status", "content": "Ищу бенчмарки в интернете (Exa AI)..."}) + "\n"
             yield json.dumps({"type": "thought", "content": "Выполняю поиск по интернету (Exa AI)...\n"}) + "\n"
+            
+            # Instrumentation: Web Search Span
+            search_span = None
+            if langfuse_context:
+                search_span = langfuse_context.span(name="web_search_exa")
+                
             from search_agent import async_search_with_sources
             search_sources, search_context = await async_search_with_sources(user_message, use_deep_search=True)
             sources_list = search_sources
             if search_context:
                 search_texts = [search_context]
+            
+            if search_span:
+                search_span.end(metadata={"sources_count": len(sources_list)})
                 
         # Step 1.6: Dynamic Mini-Graph
         mini_graph = self._extract_mini_graph(state)
@@ -454,6 +480,15 @@ class ChatOrchestrator:
         if (intent in ["chat", "finance", "search", "presentation"]) and chunks_to_swarm:
             yield json.dumps({"type": "status", "content": "Запускаю рой агентов для валидации цифр..."}) + "\n"
             yield json.dumps({"type": "thought", "content": "Анализирую данные роем агентов (Qwen 2.5)...\n"}) + "\n"
+            
+            # Instrumentation: Swarm Span
+            swarm_span = None
+            if langfuse_context:
+                 swarm_span = langfuse_context.span(
+                     name="swarm_analysis",
+                     metadata={"chunks_count": len(chunks_to_swarm)}
+                 )
+            
             try:
                 swarm_res = await asyncio.wait_for(run_analytical_swarm(chunks_to_swarm), timeout=5.0)
             except asyncio.TimeoutError:
@@ -469,6 +504,9 @@ class ChatOrchestrator:
             
             if facts:
                 swarm_facts = "\n- ".join(set(facts))
+            
+            if swarm_span:
+                swarm_span.end(metadata={"facts_extracted": len(facts)})
             
         compiled_rag_context = ""
         if mini_graph and "карта пуста" not in mini_graph:

@@ -19,7 +19,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter  # noqa: E40
 from slm_dispatcher import slm_dispatcher  # noqa: E402
 
 try:  # noqa: E402
-    from langfuse.decorators import observe
+    from langfuse.decorators import observe, langfuse_context
 except Exception as _lf_err:
     import logging as _lf_logging
     _lf_logging.getLogger("langfuse").warning("Langfuse decorators unavailable: %s", _lf_err)
@@ -27,6 +27,7 @@ except Exception as _lf_err:
         def _wrap(fn):
             return fn
         return _wrap
+    langfuse_context = None
 
 logger = logging.getLogger("rag")
 
@@ -271,6 +272,17 @@ def _rerank_chunks(query: str, entries: List[dict], distances: List[float]) -> L
 
     jina_api_key = os.getenv("JINA_API_KEY")
     if jina_api_key:
+        # Create a nested span for reranking
+        rerank_span = None
+        if langfuse_context:
+            rerank_span = langfuse_context.span(
+                name="jina_reranker",
+                metadata={
+                    "model": "jina-reranker-v2-base-multilingual",
+                    "chunk_count": len(filtered_entries)
+                }
+            )
+            
         try:
             import requests
             url = "https://api.jina.ai/v1/rerank"
@@ -299,10 +311,14 @@ def _rerank_chunks(query: str, entries: List[dict], distances: List[float]) -> L
                 reranked.append(filtered_entries[idx])
             
             logger.info(f"Successfully reranked {len(reranked)} chunks using Jina AI.")
+            if rerank_span:
+                rerank_span.end(metadata={"top_score": res_results[0]["relevance_score"] if res_results else 0})
             return reranked
             
         except Exception as e:
             logger.error(f"Jina reranker API failed, falling back to base sorting: {e}")
+            if rerank_span:
+                rerank_span.end(level="ERROR", status_message=str(e))
 
     # Fallback to local cosine + lexical overlap scoring
     scored = []
@@ -382,6 +398,14 @@ class StartupRAG:
         all_docs = []
         all_distances = []
         
+        # Create a span for vector search
+        v_search_span = None
+        if langfuse_context:
+             v_search_span = langfuse_context.span(
+                 name="vector_search",
+                 metadata={"categories": categories, "top_k": top_k}
+             )
+
         def query_cat(cat):
             if cat in self.collections:
                 if self.collections[cat].count() == 0:
@@ -407,6 +431,9 @@ class StartupRAG:
             for docs, dists in results:
                 all_docs.extend(docs)
                 all_distances.extend(dists)
+
+        if v_search_span:
+             v_search_span.end(metadata={"total_hits": len(all_docs)})
 
         reranked = _rerank_chunks(text, all_docs, all_distances)
         return reranked[:top_k]
