@@ -3,10 +3,9 @@
 
 dev.pitchy.pro {
     # Basic Auth — закрываем весь сайт
-    # Логин: team
     # Хэш пароля генерируется через: docker run --rm caddy caddy hash-password --plaintext "PASSWORD"
-    basicauth * {
-        team $2a$14$REPLACE_WITH_BCRYPT_HASH
+    basic_auth * {
+        egor.figurnyak $2a$14$2H9mYqp9dvpXmNXhrMAu0OZH3.DRovejva3VsLpgQXq/go6VHG7FW
     }
 
     # Ограничение доступа к метрикам (только для локальных запросов)
