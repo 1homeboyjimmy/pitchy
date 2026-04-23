@@ -4,6 +4,12 @@ import logging
 from exa_py import Exa
 from dotenv import load_dotenv
 
+try:
+    from langfuse.decorators import observe
+except ImportError:
+    def observe(*args, **kwargs):
+        return lambda f: f
+
 logger = logging.getLogger(__name__)
 
 def _get_exa_client() -> Exa | None:
@@ -15,6 +21,7 @@ def _get_exa_client() -> Exa | None:
     logger.info(f"Exa client initialized with key starting with {api_key[:5]}...")
     return Exa(api_key)
 
+@observe(name="web_search_exa")
 async def async_search_with_sources(query: str, use_deep_search: bool = False) -> tuple[list[dict], str]:
     """
     Асинхронная функция поиска через Exa AI.

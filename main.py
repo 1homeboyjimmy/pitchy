@@ -1822,11 +1822,7 @@ async def create_chat_message(
             )
 
         # --- Synchronized Architecture Transformation ---
-        # Instrumentation: Pre-processing Span (using context manager for better propagation)
-        prep_span = None
-        if langfuse_context:
-            prep_span = langfuse_context.span(name="base_chat_preprocessing")
-
+        # Instrumentation: Pre-processing (Trace propagation handled by @observe on sub-functions)
         try:
             # 1. Parallel Execution (Intent classification + RAG retrieval)
             si_task = asyncio.create_task(slm_dispatcher.classify_query_intent(payload.content))
@@ -1845,11 +1841,7 @@ async def create_chat_message(
             
             slm_res = results[0] if not isinstance(results[0], Exception) else {}
             rag_chunks = results[1] if not isinstance(results[1], Exception) else []
-            
-            if prep_span:
-                prep_span.end(metadata={"rag_hits": len(rag_chunks)})
         except Exception as e:
-            if prep_span: prep_span.end(level="ERROR", status_message=str(e))
             logger.error(f"Preprocessing error: {e}")
             slm_res, rag_chunks = {}, []
         
@@ -1860,18 +1852,11 @@ async def create_chat_message(
         search_context = ""
         sources_list = []
         if is_deep_search:
-            search_span = None
-            if langfuse_context:
-                search_span = langfuse_context.span(name="web_search_exa")
-                
-            # Using high-level async search with sources
+            # Using high-level async search with sources (decorated with @observe)
             search_sources, exa_context = await async_search_with_sources(payload.content, use_deep_search=False)
             sources_list = search_sources
             search_context = exa_context
             
-            if search_span:
-                search_span.end(metadata={"sources_count": len(sources_list)})
-
         # 3. Analytical Swarm (Map-Reduce)
         swarm_facts = ""
         rag_texts = [c["text"] if isinstance(c, dict) else c for c in rag_chunks]
@@ -1880,12 +1865,8 @@ async def create_chat_message(
             chunks_to_swarm.append(search_context)
             
         if chunks_to_swarm:
-            swarm_span = None
-            if langfuse_context:
-                swarm_span = langfuse_context.span(name="swarm_analysis", metadata={"chunks_count": len(chunks_to_swarm)})
-            
             try:
-                # Analytical Swarm with 5s safety timeout
+                # Analytical Swarm with 5s safety timeout (decorated with @observe)
                 swarm_res = await asyncio.wait_for(run_analytical_swarm(chunks_to_swarm), timeout=5.0)
                 facts = []
                 for item in swarm_res:
@@ -1898,9 +1879,6 @@ async def create_chat_message(
                     swarm_facts = "\n- ".join(set(facts))
             except Exception as swarm_err:
                 logger.warning(f"Swarm analysis bypassed: {swarm_err}")
-            
-            if swarm_span:
-                swarm_span.end(metadata={"facts_extracted": len(facts) if 'facts' in locals() else 0})
 
         # Assemble Context
         context_chunks = []

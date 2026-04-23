@@ -273,55 +273,40 @@ def _rerank_chunks(query: str, entries: List[dict], distances: List[float]) -> L
 
     jina_api_key = os.getenv("JINA_API_KEY")
     if jina_api_key:
-        # Create a nested span for reranking
-        rerank_span = None
-        if langfuse_context:
-            rerank_span = langfuse_context.span(
-                name="jina_reranker",
-                metadata={
-                    "model": "jina-reranker-v2-base-multilingual",
-                    "chunk_count": len(filtered_entries)
-                }
-            )
-            
-        try:
-            import requests
-            url = "https://api.jina.ai/v1/rerank"
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {jina_api_key}"
-            }
-            payload = {
-                "model": "jina-reranker-v2-base-multilingual",
-                "query": query,
-                "documents": [e["text"] for e in filtered_entries],
-                "top_n": len(filtered_entries)
-            }
-            
-            # Using timeout to fail fast and fallback
-            response = requests.post(url, json=payload, headers=headers, timeout=5.0)
-            response.raise_for_status()
-            result = response.json()
-            
-            res_results = result.get("results", [])
-            
-            # Reorder based on Jina scores
-            reranked = []
-            for r in res_results:
-                idx = r["index"]
-                reranked.append(filtered_entries[idx])
-            
-            logger.info(f"Successfully reranked {len(reranked)} chunks using Jina AI.")
-            if rerank_span:
-                rerank_span.end(metadata={"top_score": res_results[0]["relevance_score"] if res_results else 0})
-            return reranked
-            
-        except Exception as e:
-            logger.error(f"Jina reranker API failed, falling back to base sorting: {e}")
-            if rerank_span:
-                rerank_span.end(level="ERROR", status_message=str(e))
+        return _jina_rerank_internal(query, filtered_entries, jina_api_key)
+    
+    return _fallback_rerank(query, filtered_entries, filtered_distances)
 
-    # Fallback to local cosine + lexical overlap scoring
+@observe(name="jina_reranker")
+def _jina_rerank_internal(query: str, filtered_entries: List[dict], api_key: str) -> List[dict]:
+    try:
+        import requests
+        url = "https://api.jina.ai/v1/rerank"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}"
+        }
+        payload = {
+            "model": "jina-reranker-v2-base-multilingual",
+            "query": query,
+            "documents": [e["text"] for e in filtered_entries],
+            "top_n": len(filtered_entries)
+        }
+        
+        response = requests.post(url, json=payload, headers=headers, timeout=5.0)
+        response.raise_for_status()
+        result = response.json()
+        
+        res_results = result.get("results", [])
+        reranked = [filtered_entries[r["index"]] for r in res_results]
+        
+        logger.info(f"Successfully reranked {len(reranked)} chunks using Jina AI.")
+        return reranked
+    except Exception as e:
+        logger.error(f"Jina reranker API failed: {e}")
+        return []
+
+def _fallback_rerank(query, entries, distances):
     scored = []
     query_words = set(re.findall(r'\w{3,}', query.lower()))
     for entry, dist in zip(filtered_entries, filtered_distances):
@@ -410,19 +395,16 @@ class StartupRAG:
         fetch_k = min(top_k * 3, 15)
         query_embedding = self.embedding_fn.encode_query(text)
         
-        from concurrent.futures import ThreadPoolExecutor
-        
+        # Delegating to decorated function for tracing
+        return self._perform_vector_query(query_embedding, categories, fetch_k, text, top_k)
+
+    @observe(name="vector_search")
+    def _perform_vector_query(self, query_embedding, categories, fetch_k, text, top_k):
         all_docs = []
         all_distances = []
         
-        # Create a span for vector search
-        v_search_span = None
-        if langfuse_context:
-             v_search_span = langfuse_context.span(
-                 name="vector_search",
-                 metadata={"categories": categories, "top_k": top_k}
-             )
-
+        from concurrent.futures import ThreadPoolExecutor
+        
         def query_cat(cat):
             if cat in self.collections:
                 if self.collections[cat].count() == 0:
@@ -437,7 +419,6 @@ class StartupRAG:
                     dists = res.get("distances", [[]])[0]
                     metas = res.get("metadatas", [[]])[0]
                     
-                    # Store as tuples to preserve metadata during reranking
                     return [{"text": d, "metadata": m or {}} for d, m in zip(docs, metas)], dists
                 except Exception:
                     return [], []
