@@ -31,6 +31,10 @@ def get_patched_client():
 @observe(name="swarm_node")
 async def _process_single_chunk(client, chunk: str) -> ChunkAnalysis:
     """Анализ одного чанка одним микро-агентом."""
+    if langfuse_context:
+        # Help Langfuse link parallel tasks if context propagation is flaky
+        langfuse_context.update(metadata={"chunk_len": len(chunk)})
+        
     try:
         response = await client.chat.completions.create(
             model="qwen/qwen-2.5-7b-instruct", 
@@ -50,6 +54,9 @@ async def _process_single_chunk(client, chunk: str) -> ChunkAnalysis:
 @observe(name="run_analytical_swarm")
 async def run_analytical_swarm(chunks: List[str]) -> List[ChunkAnalysis]:
     """Параллельный запуск роя на N чанков."""
+    if langfuse_context:
+        langfuse_context.update(metadata={"total_chunks": len(chunks)})
+        
     client = get_patched_client()
     tasks = [_process_single_chunk(client, chunk) for chunk in chunks]
     results = await asyncio.gather(*tasks, return_exceptions=True)

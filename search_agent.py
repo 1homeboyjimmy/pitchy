@@ -21,7 +21,7 @@ def _get_exa_client() -> Exa | None:
     logger.info(f"Exa client initialized with key starting with {api_key[:5]}...")
     return Exa(api_key)
 
-@observe(name="web_search_exa")
+@observe(name="Deep Search (Exa AI)")
 async def async_search_with_sources(query: str, use_deep_search: bool = False) -> tuple[list[dict], str]:
     """
     Асинхронная функция поиска через Exa AI.

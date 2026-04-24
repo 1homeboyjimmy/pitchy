@@ -398,6 +398,7 @@ class ChatOrchestrator:
 
         # Step 1: Parallel Execution (asyncio.gather)
         yield json.dumps({"type": "status", "content": "Анализирую профиль стартапа и интент..."}) + "\n"
+        await asyncio.sleep(0)
         
         from slm_dispatcher import slm_dispatcher
         intent_task = asyncio.create_task(dispatch_intent(user_message))
@@ -423,6 +424,7 @@ class ChatOrchestrator:
         # --- Stability Fix: Force Web Search for future dates (>= 2026) ---
         import re
         future_years = re.findall(r"\b(202[6-9]|20[3-9]\d)\b", user_message)
+        logger.info(f"Orchestrator: Regex check: user_message='{user_message}', matches={future_years}")
         if future_years:
             logger.info(f"Orchestrator: Future year detected ({future_years[0]}). Forcing web search.")
             is_deep_search = True
@@ -440,6 +442,20 @@ class ChatOrchestrator:
             is_deep_search = True
 
         logger.info(f"Orchestrator: User intent classified as '{intent}', deep_search: {is_deep_search} (max_rag_score: {max_rag_score:.2f})")
+
+        # --- Early Thought Streaming (Plan) ---
+        plan_thoughts = f"Интент определен как '{intent}'. "
+        if is_deep_search:
+            plan_thoughts += "Для ответа на этот вопрос требуются актуальные данные из сети (детектирован запрос на будущее или низкая релевантность локальной базы). Активирую глубокий поиск Exa AI. "
+        elif max_rag_score > 0:
+            plan_thoughts += f"В базе знаний найдены релевантные документы (score: {max_rag_score:.2f}). Планирую использовать их для анализа. "
+        
+        if intent == "finance":
+            plan_thoughts += "Будет произведен расчет финансовой модели на основе ваших данных. "
+            
+        thoughts_full += plan_thoughts + "\n"
+        yield json.dumps({"type": "thought", "content": plan_thoughts + "\n"}) + "\n"
+        await asyncio.sleep(0)
 
         reply_full = ""
         thoughts_full = ""
@@ -460,8 +476,10 @@ class ChatOrchestrator:
         # Step 1.5: Web Search if needed - Traced by @observe on async_search_with_sources
         search_texts = []
         if intent == "search" or is_deep_search or use_deep_search or use_research:
-            yield json.dumps({"type": "status", "content": "Ищу бенчмарки в интернете (Exa AI)..."}) + "\n"
-            yield json.dumps({"type": "thought", "content": "Выполняю поиск по интернету (Exa AI)...\n"}) + "\n"
+            status_msg = "Активирую Deep Search для поиска данных за 2026 год..." if future_years else "Ищу бенчмарки в интернете (Exa AI)..."
+            yield json.dumps({"type": "status", "content": status_msg}) + "\n"
+            yield json.dumps({"type": "thought", "content": f"Выполняю поиск по интернету (Exa AI)...\n"}) + "\n"
+            await asyncio.sleep(0)
             
             from search_agent import async_search_with_sources
             search_sources, search_context = await async_search_with_sources(user_message, use_deep_search=True)
@@ -480,7 +498,10 @@ class ChatOrchestrator:
         
         if (intent in ["chat", "finance", "search", "presentation"]) and chunks_to_swarm:
             yield json.dumps({"type": "status", "content": "Запускаю рой агентов для валидации цифр..."}) + "\n"
-            yield json.dumps({"type": "thought", "content": "Анализирую данные роем агентов (Qwen 2.5)...\n"}) + "\n"
+            swarm_thought = f"Запускаю параллельный анализ {len(chunks_to_swarm)} фрагментов данных роем агентов Qwen...\n"
+            thoughts_full += swarm_thought
+            yield json.dumps({"type": "thought", "content": swarm_thought}) + "\n"
+            await asyncio.sleep(0)
             
             try:
                 # Analytical Swarm with 5s safety timeout - Traced by @observe on run_analytical_swarm
@@ -509,6 +530,7 @@ class ChatOrchestrator:
 
         try:
             yield json.dumps({"type": "status", "content": "Синтезирую финальный ответ..."}) + "\n"
+            await asyncio.sleep(0)
             if intent == "chat" or intent not in ["roadmap", "finance", "search", "legal", "presentation", "tree"]:
                 yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
                 start_time = time.time()

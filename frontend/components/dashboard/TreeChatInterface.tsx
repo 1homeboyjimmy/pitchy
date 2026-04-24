@@ -39,6 +39,7 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
   const [isLoading, setIsLoading] = useState(false);
   const [useDeepSearch, setUseDeepSearch] = useState(false);
   const [isEvaluating, setIsEvaluating] = useState(false);
+  const [streamingStatus, setStreamingStatus] = useState<string | null>(null);
   const [formData, setFormData] = useState<Record<string, string>>({});
   
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -188,6 +189,9 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
           setMessages((prev) => prev.map(m => m.client_id === assistantClientId ? { ...m, sources: chunk.data } : m));
         } else if (chunk.type === "metadata") {
           setMessages((prev) => prev.map(m => m.client_id === assistantClientId ? { ...m, model_used: chunk.model } : m));
+        } else if (chunk.type === "status") {
+          console.log("Tree Status received:", chunk.content);
+          setStreamingStatus(chunk.content);
         } else if (chunk.type === "tree_update") {
           onUpdateTree(chunk.data.nodes, chunk.data.readiness_index, chunk.data.edges);
         } else if (chunk.type === "final") {
@@ -413,7 +417,7 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
                         {msg.role === "assistant" && !hasContent && !showThoughts && isLoading && isLastAssistant && (
                           <div className="flex items-center gap-3 p-3 bg-white/5 rounded-2xl border border-white/10 text-white/50 italic animate-pulse">
                             <Loader className="animate-spin h-3.5 w-3.5 text-pitchy-violet" />
-                            <span className="text-[12px]">Я анализирую ситуацию...</span>
+                            <span className="text-[12px]">{streamingStatus || "Я анализирую ситуацию..."}</span>
                           </div>
                         )}
                         {shouldRenderMainBubble && (

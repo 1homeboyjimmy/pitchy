@@ -304,6 +304,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                         setIsGeneratingSlides(false);
                         // Drawer is already open from handleSendMessage
                     } else if (chunk.type === "status") {
+                        console.log("Status received:", chunk.content);
                         setStreamingStatus(chunk.content);
                         setGenerationStatus(chunk.content);
                     } else if (chunk.type === "metadata") {
