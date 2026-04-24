@@ -490,7 +490,7 @@ class ChatOrchestrator:
 
         reply_full = ""
         thoughts_full = ""
-        model_used = "Makura (GLM-5)"
+        model_used = "Makura (GLM-5)" # Default for intent/RAG
         enriched_data = {}
         sources_list = []
         usage_data = None
@@ -752,6 +752,8 @@ class ChatOrchestrator:
                     reply_full += "\nНе удалось сгенерировать."
             
             else:
+                model_used = "RouterAI (Kimi-k2.6)"
+                yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
                 async for json_chunk in self._parse_thought_generator(self._stream_chat(user_message, history, state, active_node_id)):
                     if isinstance(json_chunk, dict):
                         if "__usage__" in json_chunk:
