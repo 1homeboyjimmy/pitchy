@@ -247,6 +247,7 @@ async def _smart_ingest_batch(rag_instance: "StartupRAG", chunks: List[str], sou
             )
 
 
+@observe(name="Reranker")
 def _rerank_chunks(query: str, entries: List[dict], distances: List[float]) -> List[dict]:
     """Reranking using Jina AI Reranker API with fallback to distance score."""
     if not entries:
@@ -270,6 +271,14 @@ def _rerank_chunks(query: str, entries: List[dict], distances: List[float]) -> L
         
     if not filtered_entries:
         return []
+
+    if langfuse_context:
+        langfuse_context.update_current_observation(
+            metadata={
+                "total_chunks_before": len(entries),
+                "total_chunks_after": len(filtered_entries)
+            }
+        )
 
     jina_api_key = os.getenv("JINA_API_KEY")
     if jina_api_key:
@@ -309,7 +318,7 @@ def _jina_rerank_internal(query: str, filtered_entries: List[dict], api_key: str
 def _fallback_rerank(query, entries, distances):
     scored = []
     query_words = set(re.findall(r'\w{3,}', query.lower()))
-    for entry, dist in zip(filtered_entries, filtered_distances):
+    for entry, dist in zip(entries, distances):
         doc = entry["text"]
         doc_words = set(re.findall(r'\w{3,}', doc.lower()))
         overlap = len(query_words & doc_words) / max(len(query_words), 1)
@@ -386,20 +395,16 @@ class StartupRAG:
 
         return instance
 
-    def query(self, text: str, categories: List[str] = None, top_k: int = 3) -> List[dict]:
+    @observe(name="RAG Search")
+    def search(self, text: str, categories: List[str] = None, top_k: int = 3) -> List[dict]:
         """Query specific collections and rerank across all of them."""
         if not categories:
             categories = resolve_routing_intent(text)
             logger.info(f"Routed intent to collections: {categories}")
             
-        fetch_k = min(top_k * 3, 15)
+        fetch_k = min(top_k * 4, 20) # Get more candidates for reranking
         query_embedding = self.embedding_fn.encode_query(text)
         
-        # Delegating to decorated function for tracing
-        return self._perform_vector_query(query_embedding, categories, fetch_k, text, top_k)
-
-    @observe(name="vector_search")
-    def _perform_vector_query(self, query_embedding, categories, fetch_k, text, top_k):
         all_docs = []
         all_distances = []
         
@@ -430,11 +435,17 @@ class StartupRAG:
                 all_docs.extend(docs)
                 all_distances.extend(dists)
 
-        if v_search_span:
-             v_search_span.end(metadata={"total_hits": len(all_docs)})
+        if langfuse_context:
+            langfuse_context.update_current_observation(
+                metadata={"total_hits": len(all_docs), "categories": categories}
+            )
 
         reranked = _rerank_chunks(text, all_docs, all_distances)
         return reranked[:top_k]
+
+    def query(self, text: str, categories: List[str] = None, top_k: int = 3) -> List[dict]:
+        """Backward compatibility for query()."""
+        return self.search(text, categories, top_k)
 
     def add_documents(self, documents: List[str], category: str = "platform_manual"):
         if not documents or category not in self.collections:

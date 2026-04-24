@@ -386,8 +386,7 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
                   const cleanContent = stripThoughts(rawContentText);
                   const hasThoughts = derivedThoughts !== undefined && derivedThoughts !== null && derivedThoughts.length > 0;
                   
-                  const userMessagesBefore = messages.slice(0, idx).filter(m => m.role === "user").length;
-                  const showThoughts = hasThoughts && userMessagesBefore > 1;
+                  const showThoughts = hasThoughts;
                   
                   const hasContent = cleanContent.trim().length > 0;
                   const isLastAssistant = msg.role === "assistant" && idx === messages.length - 1;

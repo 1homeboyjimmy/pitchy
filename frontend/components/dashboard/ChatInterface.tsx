@@ -188,7 +188,11 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
         const rawContent = getSafeKey(msg) === typingMessageId?.toString()
             ? msg.content.slice(0, displayedLength)
             : msg.content;
-        return stripThoughts(rawContent);
+        
+        // Table safety: prevent rendering incomplete table delimiters like |---| during streaming
+        const safeContent = rawContent.replace(/\n\|[ \-|]*$/g, "\n");
+        
+        return stripThoughts(safeContent);
     }, [typingMessageId, displayedLength, getSafeKey]);
 
     const handleSendMessage = async (text?: string, forceIntent?: string, silent: boolean = false) => {
@@ -397,7 +401,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
             const hasThoughts = derivedThoughts !== undefined && derivedThoughts !== null && derivedThoughts.length > 0;
             
             const userMessagesBefore = messages.slice(0, idx).filter(m => m.role === "user").length;
-            const showThoughts = hasThoughts && userMessagesBefore > 1;
+            const showThoughts = hasThoughts;
             
             const hasContent = cleanContent.trim().length > 0;
             const isLastAssistant = msg.role === "assistant" && idx === messages.length - 1;

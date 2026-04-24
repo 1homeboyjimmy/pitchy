@@ -31,6 +31,23 @@ from schemas import TreeCreateRequest, TreeResponse, TreeNodeUpdateRequest, Tree
 from tree_orchestrator import generate_tree_from_text, generate_tree_from_pdf
 from chat_orchestrator import ChatOrchestrator
 
+try:
+    from langfuse.decorators import observe, langfuse_context
+except ImportError:
+    def observe(*args, **kwargs):
+        return lambda f: f
+    langfuse_context = None
+
+class NullSpan:
+    def update(self, *args, **kwargs): pass
+    def __enter__(self): return self
+    def __exit__(self, *args): pass
+
+def get_span(name: str):
+    if langfuse_context:
+        return langfuse_context.span(name=name)
+    return NullSpan()
+
 logger = logging.getLogger("app")
 
 router = APIRouter(prefix="/tree", tags=["Smart Roadmap"])
@@ -39,6 +56,7 @@ router = APIRouter(prefix="/tree", tags=["Smart Roadmap"])
 # ——— REST Endpoints ———
 
 @router.post("/create", response_model=TreeResponse)
+@observe(name="Smart Roadmap Quick Create")
 async def create_tree(
     payload: TreeCreateRequest,
     user: User = Depends(get_async_current_user),
@@ -80,6 +98,7 @@ async def create_tree(
 
 
 @router.post("/upload-pdf", response_model=TreeResponse)
+@observe(name="Smart Roadmap PDF Upload")
 async def upload_pdf(
     file: UploadFile = File(...),
     user: User = Depends(get_async_current_user),
@@ -289,6 +308,7 @@ async def get_tree_chat_history(
 
 
 @router.post("/{tree_id}/evaluate-node")
+@observe(name="Smart Roadmap Evaluation")
 async def evaluate_node(
     tree_id: int,
     payload: TreeEvaluateRequest,
@@ -324,18 +344,20 @@ async def evaluate_node(
 Верни СТРОГО JSON:
 {{ "summary": {{ "Ключ1": "Значение1", "Ключ2": "Значение2" }}, "feedback": "Твой развернутый комментарий" }}"""
 
-    try:
-        raw_ai, _, _ = await call_makura("Ты — бизнес-аналитик. Отвечай СТРОГО в формате JSON.", prompt)
-        # Parse JSON from AI
-        start = raw_ai.find("{")
-        end = raw_ai.rfind("}") + 1
-        ai_res = json.loads(raw_ai[start:end])
-    except Exception as e:
-        logger.error(f"Analysis failed: {e}")
-        ai_res = {
-            "summary": {"Status": "Ошибка анализа"},
-            "feedback": "Не удалось проанализировать данные. Попробуйте еще раз."
-        }
+    with get_span(name="LLM Analysis") as span:
+        try:
+            raw_ai, _, _ = await call_makura("Ты — бизнес-аналитик. Отвечай СТРОГО в формате JSON.", prompt)
+            # Parse JSON from AI
+            start = raw_ai.find("{")
+            end = raw_ai.rfind("}") + 1
+            ai_res = json.loads(raw_ai[start:end])
+        except Exception as e:
+            logger.error(f"Analysis failed: {e}")
+            ai_res = {
+                "summary": {"Status": "Ошибка анализа"},
+                "feedback": "Не удалось проанализировать данные. Попробуйте еще раз."
+            }
+        span.update(metadata={"node_id": payload.node_id})
 
     # Update Node
     target_node["status"] = "completed"
@@ -345,49 +367,53 @@ async def evaluate_node(
 
     # Dynamic Branching Logic
     new_nodes = []
-    if payload.node_id == "audience":
-        # Add Channels and Competitors
-        if not any(n["id"] == "channels" for n in nodes):
-            new_nodes.append({
-                "id": "channels", "type": "customAnalysis", "status": "active", "label": "Каналы продаж", "level": 2, "parent_id": "audience",
-                "data": {"label": "Каналы продаж", "form_schema": [
-                    {"id": "primary", "label": "Основной канал", "type": "textarea", "placeholder": "SEO, Ads..."},
-                    {"id": "budget", "label": "Тестовый бюджет", "type": "textarea", "placeholder": "100к руб..."}
-                ]}
-            })
-        if not any(n["id"] == "competitors" for n in nodes):
-            new_nodes.append({
-                "id": "competitors", "type": "customAnalysis", "status": "active", "label": "Конкуренты", "level": 2, "parent_id": "audience",
-                "data": {"label": "Конкуренты", "form_schema": [
-                    {"id": "list", "label": "Кто конкуренты?", "type": "textarea", "placeholder": "Google, Yandex..."},
-                    {"id": "advantage", "label": "Ваше преимущество", "type": "textarea", "placeholder": "В 10 раз быстрее..."}
-                ]}
-            })
-    elif payload.node_id == "solution":
-        if not any(n["id"] == "monetization" for n in nodes):
-            new_nodes.append({
-                "id": "monetization", "type": "customAnalysis", "status": "active", "label": "Монетизация", "level": 2, "parent_id": "solution",
-                "data": {"label": "Монетизация", "form_schema": [
-                    {"id": "model", "label": "Модель дохода", "type": "textarea", "placeholder": "SaaS, Реклама..."},
-                    {"id": "price", "label": "Средний чек", "type": "textarea", "placeholder": "500 руб/мес..."}
-                ]}
-            })
+    with get_span(name="Branch Generation") as span:
+        if payload.node_id == "audience":
+            # Add Channels and Competitors
+            if not any(n["id"] == "channels" for n in nodes):
+                new_nodes.append({
+                    "id": "channels", "type": "customAnalysis", "status": "active", "label": "Каналы продаж", "level": 2, "parent_id": "audience",
+                    "data": {"label": "Каналы продаж", "form_schema": [
+                        {"id": "primary", "label": "Основной канал", "type": "textarea", "placeholder": "SEO, Ads..."},
+                        {"id": "budget", "label": "Тестовый бюджет", "type": "textarea", "placeholder": "100к руб..."}
+                    ]}
+                })
+            if not any(n["id"] == "competitors" for n in nodes):
+                new_nodes.append({
+                    "id": "competitors", "type": "customAnalysis", "status": "active", "label": "Конкуренты", "level": 2, "parent_id": "audience",
+                    "data": {"label": "Конкуренты", "form_schema": [
+                        {"id": "list", "label": "Кто конкуренты?", "type": "textarea", "placeholder": "Google, Yandex..."},
+                        {"id": "advantage", "label": "Ваше преимущество", "type": "textarea", "placeholder": "В 10 раз быстрее..."}
+                    ]}
+                })
+        elif payload.node_id == "solution":
+            if not any(n["id"] == "monetization" for n in nodes):
+                new_nodes.append({
+                    "id": "monetization", "type": "customAnalysis", "status": "active", "label": "Монетизация", "level": 2, "parent_id": "solution",
+                    "data": {"label": "Монетизация", "form_schema": [
+                        {"id": "model", "label": "Модель дохода", "type": "textarea", "placeholder": "SaaS, Реклама..."},
+                        {"id": "price", "label": "Средний чек", "type": "textarea", "placeholder": "500 руб/мес..."}
+                    ]}
+                })
+        span.update(metadata={"new_nodes_count": len(new_nodes)})
 
     # Recalculate node positions for new_nodes
     if new_nodes:
-        # Get parent position
-        parent_x = target_node.get("position", {}).get("x", 0)
-        parent_y = target_node.get("position", {}).get("y", 0)
-        
-        y_offset = 250
-        x_spacing = 350
-        num_new = len(new_nodes)
-        
-        for i, nn in enumerate(new_nodes):
-            calc_x = parent_x + (i - (num_new - 1) / 2) * x_spacing
-            nn["position"] = {"x": calc_x, "y": parent_y + y_offset}
-            nodes.append(nn)
-            edges.append({"id": f"e-{nn['parent_id']}-{nn['id']}", "source": nn["parent_id"], "target": nn["id"]})
+        with get_span(name="Node Layout & Relation Mapping") as span:
+            # Get parent position
+            parent_x = target_node.get("position", {}).get("x", 0)
+            parent_y = target_node.get("position", {}).get("y", 0)
+            
+            y_offset = 250
+            x_spacing = 350
+            num_new = len(new_nodes)
+            
+            for i, nn in enumerate(new_nodes):
+                calc_x = parent_x + (i - (num_new - 1) / 2) * x_spacing
+                nn["position"] = {"x": calc_x, "y": parent_y + y_offset}
+                nodes.append(nn)
+                edges.append({"id": f"e-{nn['parent_id']}-{nn['id']}", "source": nn["parent_id"], "target": nn["id"]})
+            span.update(metadata={"edges_created": len(new_nodes)})
 
     # Recalculate Index
     total = len(nodes)

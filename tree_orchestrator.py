@@ -16,6 +16,23 @@ import httpx
 from makura_client import call_makura
 from core_tree import CORE_SKELETON
 
+try:
+    from langfuse.decorators import observe, langfuse_context
+except ImportError:
+    def observe(*args, **kwargs):
+        return lambda f: f
+    langfuse_context = None
+
+class NullSpan:
+    def update(self, *args, **kwargs): pass
+    def __enter__(self): return self
+    def __exit__(self, *args): pass
+
+def get_span(name: str):
+    if langfuse_context:
+        return langfuse_context.span(name=name)
+    return NullSpan()
+
 logger = logging.getLogger("app")
 
 # ——— Prompts ———
@@ -82,6 +99,7 @@ ENRICH_NODE_PROMPT = """Ты — бизнес-эксперт по российс
 
 # ——— Main orchestrator functions ———
 
+@observe(name="Smart Roadmap Generation")
 async def generate_tree_from_text(description: str) -> dict[str, Any]:
     """
     Generate a Smart Roadmap structure from text description.
@@ -94,31 +112,41 @@ async def generate_tree_from_text(description: str) -> dict[str, Any]:
     provider = os.getenv("PRIMARY_PROVIDER", "makura")
     logger.info(f"Using {provider} for Smart Roadmap structure generation")
     
-    if provider == "makura":
-        raw, _, _ = await call_makura("Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON.", prompt)
-    else:
-        raw, _, _ = await call_makura("Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON.", prompt)
+    extracted = {}
+    with get_span(name="Structure Extraction") as span:
+        if provider == "makura":
+            raw, _, _ = await call_makura("Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON.", prompt)
+        else:
+            raw, _, _ = await call_makura("Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON.", prompt)
 
-    if not raw:
-        logger.error("Makura extraction failed")
-        return _generate_fallback_tree(description)
-
-    # Parse JSON
-    try:
-        extracted = json.loads(raw) if raw else {}
-    except Exception:
-        try:
-            start = raw.find("{")
-            end = raw.rfind("}") + 1
-            if start >= 0 and end > start:
-                extracted = json.loads(raw[start:end])
-            else:
-                return _generate_fallback_tree(description)
-        except Exception:
+        if not raw:
+            logger.error("Makura extraction failed")
             return _generate_fallback_tree(description)
 
+        # Parse JSON
+        try:
+            extracted = json.loads(raw) if raw else {}
+        except Exception:
+            try:
+                start = raw.find("{")
+                end = raw.rfind("}") + 1
+                if start >= 0 and end > start:
+                    extracted = json.loads(raw[start:end])
+                else:
+                    return _generate_fallback_tree(description)
+            except Exception:
+                return _generate_fallback_tree(description)
+        
+        span.update(metadata={"provider": provider, "raw_length": len(raw) if raw else 0})
+
     # Validate and normalize
-    return _normalize_tree_data(extracted, description)
+    with get_span(name="Normalization & Mapping") as span:
+        result = _normalize_tree_data(extracted, description)
+        span.update(metadata={
+            "nodes_count": len(result.get("tree_data", {}).get("nodes", [])),
+            "readiness": result.get("readiness_index")
+        })
+        return result
 
 def _normalize_tree_data(raw: dict, description: str) -> dict[str, Any]:
     """Normalize and map extracted flat data to the 13-node CORE_SKELETON."""
