@@ -225,6 +225,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
 
             // PUSH ONLY ONCE: Both user and assistant placeholder
             if (!silent) {
+                setStreamingStatus("Pitchy планирует поиск...");
                 setMessages((prev) => [
                     ...prev,
                     {

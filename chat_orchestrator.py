@@ -383,9 +383,26 @@ class ChatOrchestrator:
         
         return "\n".join(lines) if lines else "Связи пока не сформированы (карта пуста)."
 
-    @observe(name="orchestrator_process_message")
+    # NOTE: Do NOT use @observe here — it wraps async generators and buffers all yields,
+    # completely breaking SSE streaming. Langfuse tracing is done manually inside.
     async def process_message(self, user_message: str, active_node_id: str = None, client_id: str = None, assistant_client_id: str = None, use_deep_search: bool = False, use_research: bool = False):
         """Main entry point for chat orchestration. Yields JSON chunks."""
+        
+        # Manual Langfuse trace creation (replaces @observe which kills generators)
+        trace = None
+        if langfuse_context:
+            try:
+                from langfuse import Langfuse
+                lf_client = Langfuse()
+                trace = lf_client.trace(
+                    name="orchestrator_process_message",
+                    user_id=str(self.user_id),
+                    session_id=str(self.tree_id),
+                    input=user_message,
+                    metadata={"active_node_id": active_node_id, "use_deep_search": use_deep_search}
+                )
+            except Exception as e:
+                logger.warning(f"Langfuse trace creation failed: {e}")
         
         # Step 0: Fast Path (Semantic Cache) - Traced by @observe on semantic_cache.get
         cached_response = await semantic_cache.get(query=user_message, project_id=str(self.tree_id))
@@ -406,12 +423,31 @@ class ChatOrchestrator:
         rag_task = asyncio.to_thread(rag.get_relevant_chunks, user_message, top_k=10) # Ask for 10 for Swarm
         state_task = asyncio.create_task(self.load_state())
         
-        results = await asyncio.gather(intent_task, slm_intent_task, rag_task, state_task, return_exceptions=True)
-        
-        intent_data = results[0] if not isinstance(results[0], Exception) else IntentClassification(intent="chat", reasoning="Fallback due to error", confidence=0.0)
-        slm_res = results[1] if not isinstance(results[1], Exception) else {}
-        initial_rag_chunks = results[2] if not isinstance(results[2], Exception) else []
-        state = results[3] if not isinstance(results[3], Exception) else {"nodes": [], "readiness_index": 0}
+        # Parallel Execution (tasks already started via create_task/to_thread)
+        try:
+            intent_data = await intent_task
+            yield json.dumps({"type": "status", "content": "Интент определен..."}) + "\n"
+            
+            slm_res = await slm_intent_task
+            yield json.dumps({"type": "status", "content": "Глубокий анализ параметров..."}) + "\n"
+            
+            initial_rag_chunks = await rag_task
+            yield json.dumps({"type": "status", "content": "Поиск по базе знаний завершен..."}) + "\n"
+            
+            state = await state_task
+            
+            # Use defaults if any task failed (though we should handle exceptions properly)
+            if isinstance(intent_data, Exception): intent_data = IntentClassification(intent="chat", reasoning="Fallback", confidence=0.0)
+            if isinstance(slm_res, Exception): slm_res = {}
+            if isinstance(initial_rag_chunks, Exception): initial_rag_chunks = []
+            if isinstance(state, Exception): state = {"nodes": [], "readiness_index": 0}
+        except Exception as e:
+            logger.error(f"Error in parallel tasks: {e}")
+            # Fallbacks
+            intent_data = IntentClassification(intent="chat", reasoning="Fallback", confidence=0.0)
+            slm_res = {}
+            initial_rag_chunks = []
+            state = {"nodes": [], "readiness_index": 0}
         
         history = await self.get_chat_history(node_id=active_node_id)
         
@@ -466,11 +502,9 @@ class ChatOrchestrator:
         yield json.dumps({"type": "thought", "content": plan_thoughts + "\n"}) + "\n"
         await asyncio.sleep(0.01) # Flush buffer
 
-        if langfuse_context:
-            langfuse_context.update_current_observation(
+        if trace:
+            trace.update(
                 name=f"chat_orchestrator_{intent}",
-                user_id=str(self.user_id),
-                session_id=str(self.tree_id),
                 tags=[intent, "deep_search" if use_deep_search else "basic_search"]
             )
 
@@ -494,6 +528,13 @@ class ChatOrchestrator:
                 await asyncio.sleep(2.0)
             
             search_sources, search_context = await search_task
+            
+            if trace:
+                try:
+                    lf_client.flush()
+                except:
+                    pass
+                    
             sources_list = search_sources
             if search_context:
                 search_texts = [search_context]
@@ -517,8 +558,8 @@ class ChatOrchestrator:
             await asyncio.sleep(0)
             
             try:
-                # Analytical Swarm with 5s safety timeout - Traced by @observe on run_analytical_swarm
-                current_tid = langfuse_context.get_current_trace_id() if langfuse_context else None
+                # Analytical Swarm with safety timeout - Traced by @observe on run_analytical_swarm
+                current_tid = trace.id if trace else None
                 swarm_task = asyncio.create_task(run_analytical_swarm(chunks_to_swarm, trace_id=current_tid))
                 
                 # Non-blocking wait for swarm
@@ -532,6 +573,12 @@ class ChatOrchestrator:
                     await asyncio.sleep(1.5)
                 
                 swarm_res = await swarm_task if not swarm_task.cancelled() else []
+                
+                if trace:
+                    try:
+                        lf_client.flush()
+                    except:
+                        pass
             except (asyncio.TimeoutError, asyncio.CancelledError):
                 logger.warning("Swarm analysis timed out after 5s — falling back to raw RAG chunks")
                 swarm_res = []
@@ -576,10 +623,6 @@ class ChatOrchestrator:
                             ttft = time.time() - start_time
                         thoughts_full += data["content"]
                     
-                    # Update Langfuse real-time (every chunk) so the trace isn't empty if it hangs
-                    if langfuse_context:
-                        langfuse_context.update_current_observation(output=reply_full + "\n" + thoughts_full)
-                        
                     print(f"DEBUG: Yielding chat chunk/thought: {data['type']}")
                     yield json_chunk
             
@@ -627,9 +670,6 @@ class ChatOrchestrator:
                             ttft = time.time() - start_time
                         thoughts_full += data.get("content", "")
                     
-                    if langfuse_context:
-                        langfuse_context.update_current_observation(output=reply_full + "\n" + thoughts_full)
-                        
                     print(f"DEBUG: Yielding search chunk/thought: {data['type']}")
                     yield json_chunk
 
@@ -723,7 +763,7 @@ class ChatOrchestrator:
                     logger.error(f"Rescue save failed: {save_err}")
                 return  # Exit early — don't run the happy-path logic below
 
-            if langfuse_context and (reply_full or thoughts_full):
+            if trace and (reply_full or thoughts_full):
                 try:
                     # Build usage dict for Langfuse
                     lf_usage = {}
@@ -749,7 +789,7 @@ class ChatOrchestrator:
                     if ttft is not None:
                         update_params["metadata"] = {"ttft": ttft}
                     
-                    langfuse_context.update_current_observation(**update_params)
+                    trace.update(**update_params)
                 except Exception as e:
                     logger.error(f"Langfuse generation tracking failed: {e}")
 
