@@ -420,7 +420,26 @@ class ChatOrchestrator:
         if is_finance:
             intent = "finance"
             
-        logger.info(f"Orchestrator: User intent classified as '{intent}', deep_search: {is_deep_search}")
+        # --- Stability Fix: Force Web Search for future dates (>= 2026) ---
+        import re
+        future_years = re.findall(r"\b(202[6-9]|20[3-9]\d)\b", user_message)
+        if future_years:
+            logger.info(f"Orchestrator: Future year detected ({future_years[0]}). Forcing web search.")
+            is_deep_search = True
+
+        # --- Stability Fix: Threshold-based Web Search ---
+        # If RAG score is low, we don't trust local docs alone
+        max_rag_score = 0.0
+        if initial_rag_chunks:
+            scores = [c.get("score", 0.0) for c in initial_rag_chunks if isinstance(c, dict)]
+            if scores:
+                max_rag_score = max(scores)
+        
+        if max_rag_score < 0.5 and intent in ["chat", "search", "finance"]:
+            logger.info(f"Orchestrator: Low RAG relevance ({max_rag_score:.2f}). Triggering web search fallback.")
+            is_deep_search = True
+
+        logger.info(f"Orchestrator: User intent classified as '{intent}', deep_search: {is_deep_search} (max_rag_score: {max_rag_score:.2f})")
 
         reply_full = ""
         thoughts_full = ""

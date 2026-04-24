@@ -253,6 +253,8 @@ def _rerank_chunks(query: str, entries: List[dict], distances: List[float]) -> L
     if not entries:
         return []
 
+    logger.info(f"Starting rerank for {len(entries)} chunks")
+
     # Dedup and filter
     seen = set()
     filtered_entries = []
@@ -304,10 +306,14 @@ def _jina_rerank_internal(query: str, filtered_entries: List[dict], api_key: str
         
         response = requests.post(url, json=payload, headers=headers, timeout=5.0)
         response.raise_for_status()
-        result = response.json()
+        res_results = response.json().get("results", [])
+        res_results.sort(key=lambda x: x["relevance_score"], reverse=True)
         
-        res_results = result.get("results", [])
-        reranked = [filtered_entries[r["index"]] for r in res_results]
+        reranked = []
+        for r in res_results:
+            entry = filtered_entries[r["index"]]
+            entry["score"] = r["relevance_score"]
+            reranked.append(entry)
         
         logger.info(f"Successfully reranked {len(reranked)} chunks using Jina AI.")
         return reranked
@@ -327,6 +333,10 @@ def _fallback_rerank(query, entries, distances):
         scored.append((entry, combined))
 
     scored.sort(key=lambda x: x[1], reverse=True)
+    
+    for entry, score in scored:
+        entry["score"] = score
+        
     return [entry for entry, _ in scored]
 
 
