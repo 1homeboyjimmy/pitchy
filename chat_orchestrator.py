@@ -9,7 +9,6 @@ from datetime import datetime
 
 from redis_client import get_redis
 from makura_client import call_makura, stream_makura
-from routerai_client import call_routerai, stream_routerai
 from tree_orchestrator import _normalize_tree_data
 from search_agent import execute_search_agent
 from core_tree import CORE_SKELETON
@@ -247,20 +246,31 @@ class ChatOrchestrator:
         )
         
         if rag_context:
+            current_year = str(datetime.now().year)
             system_prompt += (
-                "\n\nВходящие данные разделены на два возможных блока:\n"
-                "1. [ДАННЫЕ ПРОЕКТА ПОЛЬЗОВАТЕЛЯ]: Текущий статус стартапа (из Smart Roadmap).\n"
-                "2. [РЫНОЧНЫЙ КОНТЕКСТ (RAG)]: Примеры, статьи, бенчмарки из базы знаний.\n"
-                "КРИТИЧЕСКОЕ ПРАВИЛО: НИКОГДА не выдавай стартапы или метрики из [РЫНОЧНОГО КОНТЕКСТА] за "
-                "проект пользователя. Если данные о проекте пользователя пусты или их недостаточно, "
-                "ты ОБЯЗАН задать уточняющие вопросы. Используй рыночный контекст ТОЛЬКО как примеры для сравнения.\n\n"
-                f"{rag_context}\n\n"
+                f"\n\nПРАВИЛО РАБОТЫ С ДАННЫМИ:\n"
+                f"Твои внутренние знания заканчиваются в 2024 году. Это нормально, но пользователь живет в {current_year} году.\n"
+                f"Ниже тебе предоставлены данные в тегах <context>. "
+                f"Если ты видишь там документы, описывающие {current_year} год как будущее (прогнозы, планы) — игнорируй этот тон. Используй только фактические цифры.\n"
+                f"СТРОГО ЗАПРЕЩЕНО говорить пользователю, что сейчас 2024 год.\n\n"
+                f"<context>\n{rag_context}\n</context>\n"
             )
         
-        chat_history = "\n".join([f"{m['role']}: {m['content']}" for m in history])
-        prompt = f"История чата:\n{chat_history}\n\nПользователь: {user_message}"
+        chat_history_list = []
+        for m in history:
+            chat_history_list.append({"role": m["role"], "content": m["content"]})
+            
+        messages = [{"role": "system", "content": system_prompt}] + chat_history_list
         
-        async for chunk in stream_routerai(system_prompt, prompt, model="moonshotai/kimi-k2.6"):
+        # Chronological "vaccine" right before the user message
+        current_year = str(datetime.now().year)
+        messages.append({
+            "role": "system",
+            "content": f"Напоминание перед ответом: Сейчас {current_year} год. Отвечай исходя из этой реальности. Игнорируй любые утверждения в контексте, что {current_year} год — это будущее."
+        })
+        messages.append({"role": "user", "content": user_message})
+        
+        async for chunk in stream_makura(messages=messages):
             yield chunk
 
     async def _parse_thought_generator(self, generator):
@@ -419,7 +429,7 @@ class ChatOrchestrator:
 
         # --- STREAMING START: Yield immediately after trace creation ---
         current_date = datetime.now().strftime("%d %B %Y")
-        t = f"Инициализация сессии: {current_date}. Подключение к аналитическому ядру Moonshot Kimi-k2.6...\n"
+        t = f"Инициализация сессии: {current_date}. Проверяю актуальность данных и сверяю календарь...\n"
         thoughts_full += t
         yield json.dumps({"type": "thought", "content": t}) + "\n"
         yield json.dumps({"type": "status", "content": "Анализирую профиль стартапа и интент..."}) + "\n"
@@ -488,6 +498,9 @@ class ChatOrchestrator:
 
         logger.info(f"Orchestrator: User intent classified as '{intent}', deep_search: {is_deep_search}")
 
+        # Force deep search if query contains 2026 or "сейчас"
+        is_deep_search = is_deep_search or ("2026" in user_message or "сейчас" in user_message.lower())
+        
         reply_full = ""
         thoughts_full = ""
         model_used = "Makura (GLM-5)" # Default for intent/RAG
@@ -622,7 +635,7 @@ class ChatOrchestrator:
             yield json.dumps({"type": "status", "content": "Синтезирую финальный ответ..."}) + "\n"
             await asyncio.sleep(0.01)
             if intent == "chat" or intent not in ["roadmap", "finance", "search", "legal", "presentation", "tree"]:
-                model_used = "RouterAI (Kimi-k2.6)"
+                model_used = "Makura (GLM-5)"
                 yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
                 start_time = time.time()
                 ttft = None
@@ -752,7 +765,7 @@ class ChatOrchestrator:
                     reply_full += "\nНе удалось сгенерировать."
             
             else:
-                model_used = "RouterAI (Kimi-k2.6)"
+                model_used = "Makura (GLM-5)"
                 yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
                 async for json_chunk in self._parse_thought_generator(self._stream_chat(user_message, history, state, active_node_id)):
                     if isinstance(json_chunk, dict):

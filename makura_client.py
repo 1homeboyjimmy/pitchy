@@ -83,7 +83,7 @@ async def call_makura(system_prompt: str, user_message: str, model: str = None) 
         return None, None, {}
 
 
-async def stream_makura(system_prompt: str, user_message: str, model: str = None):
+async def stream_makura(system_prompt: str = None, user_message: str = None, messages: list = None, model: str = None):
     """
     Streams response from Makura.ai API.
     Yields chunks of text.
@@ -104,12 +104,17 @@ async def stream_makura(system_prompt: str, user_message: str, model: str = None
         "X-Accel-Buffering": "no"
     }
 
+    if messages:
+        payload_messages = messages
+    else:
+        payload_messages = [
+            {"role": "system", "content": "ОТВЕЧАЙ СТРОГО НА РУССКОМ ЯЗЫКЕ. ИСПОЛЬЗОВАНИЕ КИТАЙСКИХ ИЕРОГЛИФОВ КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО.\n\n" + (system_prompt or "") + "\n\nВНИМАНИЕ: ОТВЕЧАЙ ТОЛЬКО НА РУССКОМ. НИКАКИХ КИТАЙСКИХ СИМВОЛОВ."},
+            {"role": "user", "content": user_message or ""}
+        ]
+
     payload = {
         "model": model,
-        "messages": [
-            {"role": "system", "content": "ОТВЕЧАЙ СТРОГО НА РУССКОМ ЯЗЫКЕ. ИСПОЛЬЗОВАНИЕ КИТАЙСКИХ ИЕРОГЛИФОВ КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО.\n\n" + system_prompt + "\n\nВНИМАНИЕ: ОТВЕЧАЙ ТОЛЬКО НА РУССКОМ. НИКАКИХ КИТАЙСКИХ СИМВОЛОВ."},
-            {"role": "user", "content": user_message}
-        ],
+        "messages": payload_messages,
         "temperature": 0.4,
         "max_tokens": 4000,
         "stream": True,
