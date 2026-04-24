@@ -479,6 +479,7 @@ class ChatOrchestrator:
         if intent == "search" or is_deep_search or use_deep_search or use_research:
             status_msg = "Активирую Deep Search для поиска данных за 2026 год..." if future_years else "Ищу бенчмарки в интернете (Exa AI)..."
             yield json.dumps({"type": "status", "content": status_msg}) + "\n"
+            await asyncio.sleep(0.01)
             print(f"DEBUG: Yielding status: {status_msg}")
             yield json.dumps({"type": "thought", "content": f"Выполняю поиск по интернету (Exa AI)...\n"}) + "\n"
             await asyncio.sleep(0)
@@ -500,6 +501,7 @@ class ChatOrchestrator:
         
         if (intent in ["chat", "finance", "search", "presentation"]) and chunks_to_swarm:
             yield json.dumps({"type": "status", "content": "Запускаю рой агентов для валидации цифр..."}) + "\n"
+            await asyncio.sleep(0.01)
             swarm_thought = f"Запускаю параллельный анализ {len(chunks_to_swarm)} фрагментов данных роем агентов Qwen...\n"
             thoughts_full += swarm_thought
             print(f"DEBUG: Yielding swarm thought: {swarm_thought[:50]}...")
@@ -534,7 +536,7 @@ class ChatOrchestrator:
 
         try:
             yield json.dumps({"type": "status", "content": "Синтезирую финальный ответ..."}) + "\n"
-            await asyncio.sleep(0)
+            await asyncio.sleep(0.01)
             if intent == "chat" or intent not in ["roadmap", "finance", "search", "legal", "presentation", "tree"]:
                 yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
                 start_time = time.time()

@@ -53,8 +53,12 @@ dev.pitchy.pro {
         Content-Security-Policy "default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval'; connect-src 'self' https: wss: dev.pitchy.pro *.pitchy.pro;"
     }
 
-    # Сжатие контента для ускорения загрузки
-    encode gzip zstd
+    # Сжатие контента для ускорения загрузки (исключая SSE для предотвращения буферизации)
+    encode gzip zstd {
+        match {
+            not header Content-Type text/event-stream
+        }
+    }
 
     # Все остальные запросы направляем на Frontend (Next.js)
     handle {
