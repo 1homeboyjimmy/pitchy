@@ -485,7 +485,15 @@ class ChatOrchestrator:
             await asyncio.sleep(0)
             
             from search_agent import async_search_with_sources
-            search_sources, search_context = await async_search_with_sources(user_message, use_deep_search=True)
+            search_task = asyncio.create_task(async_search_with_sources(user_message, use_deep_search=True))
+            
+            # Non-blocking wait with keep-alive
+            while not search_task.done():
+                # Yield a tiny status or thought to keep the connection alive and show activity
+                yield json.dumps({"type": "status", "content": "Выполняю поиск по интернету (Exa AI)..."}) + "\n"
+                await asyncio.sleep(2.0)
+            
+            search_sources, search_context = await search_task
             sources_list = search_sources
             if search_context:
                 search_texts = [search_context]
@@ -511,8 +519,20 @@ class ChatOrchestrator:
             try:
                 # Analytical Swarm with 5s safety timeout - Traced by @observe on run_analytical_swarm
                 current_tid = langfuse_context.get_current_trace_id() if langfuse_context else None
-                swarm_res = await asyncio.wait_for(run_analytical_swarm(chunks_to_swarm, trace_id=current_tid), timeout=5.0)
-            except asyncio.TimeoutError:
+                swarm_task = asyncio.create_task(run_analytical_swarm(chunks_to_swarm, trace_id=current_tid))
+                
+                # Non-blocking wait for swarm
+                start_swarm = time.time()
+                while not swarm_task.done():
+                    elapsed = time.time() - start_swarm
+                    if elapsed > 10.0: # Hard safety break
+                        swarm_task.cancel()
+                        break
+                    yield json.dumps({"type": "status", "content": f"Рой агентов анализирует данные ({int(elapsed)}с)..."}) + "\n"
+                    await asyncio.sleep(1.5)
+                
+                swarm_res = await swarm_task if not swarm_task.cancelled() else []
+            except (asyncio.TimeoutError, asyncio.CancelledError):
                 logger.warning("Swarm analysis timed out after 5s — falling back to raw RAG chunks")
                 swarm_res = []
             
@@ -555,6 +575,11 @@ class ChatOrchestrator:
                         if ttft is None:
                             ttft = time.time() - start_time
                         thoughts_full += data["content"]
+                    
+                    # Update Langfuse real-time (every chunk) so the trace isn't empty if it hangs
+                    if langfuse_context:
+                        langfuse_context.update_current_observation(output=reply_full + "\n" + thoughts_full)
+                        
                     print(f"DEBUG: Yielding chat chunk/thought: {data['type']}")
                     yield json_chunk
             
@@ -601,6 +626,10 @@ class ChatOrchestrator:
                         if ttft is None:
                             ttft = time.time() - start_time
                         thoughts_full += data.get("content", "")
+                    
+                    if langfuse_context:
+                        langfuse_context.update_current_observation(output=reply_full + "\n" + thoughts_full)
+                        
                     print(f"DEBUG: Yielding search chunk/thought: {data['type']}")
                     yield json_chunk
 
