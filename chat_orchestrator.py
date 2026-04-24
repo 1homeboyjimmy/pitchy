@@ -763,7 +763,7 @@ class ChatOrchestrator:
                     )
                 except Exception as save_err:
                     logger.error(f"Rescue save failed: {save_err}")
-                return  # Exit early — don't run the happy-path logic below
+                # No return in finally to avoid suppressing exceptions and premature exit
 
             if trace and (reply_full or thoughts_full):
                 try:

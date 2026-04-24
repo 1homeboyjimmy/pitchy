@@ -5,10 +5,11 @@ from exa_py import Exa
 from dotenv import load_dotenv
 
 try:
-    from langfuse.decorators import observe
+    from langfuse.decorators import observe, langfuse_context
 except ImportError:
     def observe(*args, **kwargs):
         return lambda f: f
+    langfuse_context = None
 
 logger = logging.getLogger(__name__)
 
