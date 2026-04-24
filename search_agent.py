@@ -22,12 +22,18 @@ def _get_exa_client() -> Exa | None:
     return Exa(api_key)
 
 @observe(name="Deep Search (Exa AI)")
-async def async_search_with_sources(query: str, use_deep_search: bool = False) -> tuple[list[dict], str]:
+async def async_search_with_sources(query: str, use_deep_search: bool = False, trace_id: str = None, parent_observation_id: str = None) -> tuple[list[dict], str]:
     """
     Асинхронная функция поиска через Exa AI.
     Возвращает (sources_list, context_string).
     Обеспечивает мягкую деградацию при недоступности API.
     """
+    if langfuse_context:
+        if trace_id:
+            langfuse_context.update(trace_id=trace_id)
+        if parent_observation_id:
+            langfuse_context.update(parent_observation_id=parent_observation_id)
+        
     logger.info(f"Executing async API search using Exa for query: {query}, deep_search: {use_deep_search}")
     
     # Init client

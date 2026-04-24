@@ -518,8 +518,9 @@ class ChatOrchestrator:
             yield json.dumps({"type": "thought", "content": f"Выполняю поиск по интернету (Exa AI)...\n"}) + "\n"
             await asyncio.sleep(0)
             
-            from search_agent import async_search_with_sources
-            search_task = asyncio.create_task(async_search_with_sources(user_message, use_deep_search=True))
+            # Pass trace.id and parent_id for Langfuse propagation
+            current_id = trace.id if trace else None
+            search_task = asyncio.create_task(async_search_with_sources(user_message, use_deep_search=True, trace_id=current_id, parent_observation_id=current_id))
             
             # Non-blocking wait with keep-alive
             while not search_task.done():
@@ -558,29 +559,33 @@ class ChatOrchestrator:
             await asyncio.sleep(0)
             
             try:
-                # Analytical Swarm with safety timeout - Traced by @observe on run_analytical_swarm
-                current_tid = trace.id if trace else None
-                swarm_task = asyncio.create_task(run_analytical_swarm(chunks_to_swarm, trace_id=current_tid))
+                from swarm_agent import stream_analytical_swarm
+                current_id = trace.id if trace else None
                 
-                # Non-blocking wait for swarm
+                swarm_res = []
                 start_swarm = time.time()
-                while not swarm_task.done():
-                    elapsed = time.time() - start_swarm
-                    if elapsed > 10.0: # Hard safety break
-                        swarm_task.cancel()
-                        break
-                    yield json.dumps({"type": "status", "content": f"Рой агентов анализирует данные ({int(elapsed)}с)..."}) + "\n"
-                    await asyncio.sleep(1.5)
                 
-                swarm_res = await swarm_task if not swarm_task.cancelled() else []
+                # Use the new generator for per-agent progress
+                async for res in stream_analytical_swarm(chunks_to_swarm, trace_id=current_id, parent_observation_id=current_id):
+                    swarm_res.append(res)
+                    elapsed = int(time.time() - start_swarm)
+                    
+                    # Real-time status yield for each agent
+                    status_text = f"Анализ данных: агент {len(swarm_res)}/{len(chunks_to_swarm)} завершил работу ({elapsed}с)..."
+                    yield json.dumps({"type": "status", "content": status_text}) + "\n"
+                    await asyncio.sleep(0.01) # Flush socket buffer
+                    
+                    if time.time() - start_swarm > 40.0: # Hard safety break
+                        logger.warning("Swarm streaming timed out — moving forward with partial results")
+                        break
                 
                 if trace:
                     try:
                         lf_client.flush()
                     except:
                         pass
-            except (asyncio.TimeoutError, asyncio.CancelledError):
-                logger.warning("Swarm analysis timed out after 5s — falling back to raw RAG chunks")
+            except Exception as swarm_err:
+                logger.error(f"Swarm streaming error: {swarm_err}")
                 swarm_res = []
             
             facts = []
