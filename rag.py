@@ -212,7 +212,7 @@ def _should_reindex() -> bool:
     return os.getenv("CHROMA_REINDEX", "false").lower() == "true"
 
 
-@observe(name="smart_ingest_batch")
+@observe(name="smart_ingest_batch", capture_input=False)
 async def _smart_ingest_batch(rag_instance: "StartupRAG", chunks: List[str], source: str):
     """Classifies and distributes a batch of chunks into the correct RAG collections."""
     if not chunks:

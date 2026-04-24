@@ -437,8 +437,8 @@ class ChatOrchestrator:
             if scores:
                 max_rag_score = max(scores)
         
-        if max_rag_score < 0.99 and intent in ["chat", "search", "finance"]:
-            logger.info(f"Orchestrator: Low RAG relevance ({max_rag_score:.2f} < 0.99). Triggering web search/swarm fallback.")
+        if True: # ВСЕГДА запускать веб-поиск и рой для теста
+            logger.info(f"Orchestrator: Forcing deep search/swarm fallback (max_rag_score: {max_rag_score:.2f})")
             is_deep_search = True
 
         logger.info(f"Orchestrator: User intent classified as '{intent}', deep_search: {is_deep_search} (max_rag_score: {max_rag_score:.2f})")

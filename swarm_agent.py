@@ -29,9 +29,11 @@ def get_patched_client():
     return instructor.from_openai(client)
 
 @observe(name="swarm_node")
-async def _process_single_chunk(client, chunk: str) -> ChunkAnalysis:
+async def _process_single_chunk(client, chunk: str, trace_id: str = None) -> ChunkAnalysis:
     """Анализ одного чанка одним микро-агентом."""
     if langfuse_context:
+        if trace_id:
+            langfuse_context.update(trace_id=trace_id)
         # Help Langfuse link parallel tasks if context propagation is flaky
         langfuse_context.update(metadata={"chunk_len": len(chunk)})
         
@@ -60,7 +62,7 @@ async def run_analytical_swarm(chunks: List[str], trace_id: str = None) -> List[
         langfuse_context.update(metadata={"total_chunks": len(chunks)})
         
     client = get_patched_client()
-    tasks = [_process_single_chunk(client, chunk) for chunk in chunks]
+    tasks = [_process_single_chunk(client, chunk, trace_id=trace_id) for chunk in chunks]
     results = await asyncio.gather(*tasks, return_exceptions=True)
     
     valid_results = [

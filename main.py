@@ -1682,7 +1682,12 @@ async def chat(payload: ChatRequest):
             # However, for consistency with other endpoints:
             pass
 
-    return StreamingResponse(chat_generator(), media_type="text/event-stream")
+    headers = {
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no"
+    }
+    return StreamingResponse(chat_generator(), media_type="text/event-stream", headers=headers)
 
 
 @app.patch("/chat/sessions/{session_id}", response_model=ChatSessionResponse)
@@ -1971,7 +1976,12 @@ async def create_chat_message(
                 except Exception as lf_err:
                     logger.error(f"Langfuse update failed: {lf_err}")
 
-    return StreamingResponse(session_chat_generator(), media_type="text/event-stream")
+    headers = {
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no"
+    }
+    return StreamingResponse(session_chat_generator(), media_type="text/event-stream", headers=headers)
 
 
 @app.get("/chat/messages/search")

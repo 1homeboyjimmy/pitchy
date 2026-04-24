@@ -51,7 +51,8 @@ async def async_search_with_sources(query: str, use_deep_search: bool = False) -
                 type="auto",
                 use_autoprompt=True,
                 num_results=num_results,
-                highlights=True
+                highlights=True,
+                include_domains=["ru", "su", "рф"]
             )
             
         response = await asyncio.to_thread(_do_search)
