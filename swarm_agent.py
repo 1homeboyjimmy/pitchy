@@ -52,9 +52,11 @@ async def _process_single_chunk(client, chunk: str) -> ChunkAnalysis:
         return ChunkAnalysis(is_relevant=False, confidence=0.0)
 
 @observe(name="run_analytical_swarm")
-async def run_analytical_swarm(chunks: List[str]) -> List[ChunkAnalysis]:
+async def run_analytical_swarm(chunks: List[str], trace_id: str = None) -> List[ChunkAnalysis]:
     """Параллельный запуск роя на N чанков."""
     if langfuse_context:
+        if trace_id:
+            langfuse_context.update(trace_id=trace_id)
         langfuse_context.update(metadata={"total_chunks": len(chunks)})
         
     client = get_patched_client()

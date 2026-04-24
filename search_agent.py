@@ -45,8 +45,9 @@ async def async_search_with_sources(query: str, use_deep_search: bool = False) -
         
         # exa_py operations are synchronous
         def _do_search():
+            localized_query = query if "росси" in query.lower() else f"{query} в россии"
             return exa_client.search_and_contents(
-                query,
+                localized_query,
                 type="auto",
                 use_autoprompt=True,
                 num_results=num_results,

@@ -272,9 +272,15 @@ async def tree_chat(
     from fastapi.responses import StreamingResponse
     orchestrator = ChatOrchestrator(tree_id, user.id, db)
     
+    headers = {
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no"
+    }
     return StreamingResponse(
         orchestrator.process_message(payload.message, payload.active_node_id, client_id=payload.client_id, assistant_client_id=payload.assistant_client_id),
-        media_type="text/event-stream"
+        media_type="text/event-stream",
+        headers=headers
     )
 
 @router.get("/{tree_id}/history")

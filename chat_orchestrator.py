@@ -437,8 +437,8 @@ class ChatOrchestrator:
             if scores:
                 max_rag_score = max(scores)
         
-        if max_rag_score < 0.7 and intent in ["chat", "search", "finance"]:
-            logger.info(f"Orchestrator: Low RAG relevance ({max_rag_score:.2f} < 0.7). Triggering web search fallback.")
+        if max_rag_score < 0.99 and intent in ["chat", "search", "finance"]:
+            logger.info(f"Orchestrator: Low RAG relevance ({max_rag_score:.2f} < 0.99). Triggering web search/swarm fallback.")
             is_deep_search = True
 
         logger.info(f"Orchestrator: User intent classified as '{intent}', deep_search: {is_deep_search} (max_rag_score: {max_rag_score:.2f})")
@@ -505,7 +505,8 @@ class ChatOrchestrator:
             
             try:
                 # Analytical Swarm with 5s safety timeout - Traced by @observe on run_analytical_swarm
-                swarm_res = await asyncio.wait_for(run_analytical_swarm(chunks_to_swarm), timeout=5.0)
+                current_tid = langfuse_context.get_current_trace_id() if langfuse_context else None
+                swarm_res = await asyncio.wait_for(run_analytical_swarm(chunks_to_swarm, trace_id=current_tid), timeout=5.0)
             except asyncio.TimeoutError:
                 logger.warning("Swarm analysis timed out after 5s — falling back to raw RAG chunks")
                 swarm_res = []
