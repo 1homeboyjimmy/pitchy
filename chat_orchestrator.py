@@ -457,27 +457,21 @@ class ChatOrchestrator:
         if is_finance:
             intent = "finance"
             
-        # --- Stability Fix: Force Web Search for future dates (>= 2026) ---
-        import re
-        future_years = re.findall(r"\b(202[6-9]|20[3-9]\d)\b", user_message)
-        logger.info(f"Orchestrator: Regex check: user_message='{user_message}', matches={future_years}")
-        if future_years:
-            logger.info(f"Orchestrator: Future year detected ({future_years[0]}). Forcing web search.")
-            is_deep_search = True
-
         # --- Stability Fix: Threshold-based Web Search ---
         # If RAG score is low, we don't trust local docs alone
         max_rag_score = 0.0
         if initial_rag_chunks:
-            scores = [c.get("score", 0.0) for c in initial_rag_chunks if isinstance(c, dict)]
+            scores = [c.get("score", 0.0) if isinstance(c, dict) else 0.0 for c in initial_rag_chunks]
             if scores:
                 max_rag_score = max(scores)
-        
-        if True: # ВСЕГДА запускать веб-поиск и рой для теста
-            logger.info(f"Orchestrator: Forcing deep search/swarm fallback (max_rag_score: {max_rag_score:.2f})")
+
+        # --- Stability Fix: Force Web Search for future dates or statistics ---
+        force_web_search = any(word in user_message.lower() for word in ["статистика", "росстат", "2026", "прогноз", "мсп"])
+        if force_web_search or max_rag_score < 0.95:
+            logger.info(f"Orchestrator: Forcing deep search (force_web_search: {force_web_search}, max_rag_score: {max_rag_score:.2f})")
             is_deep_search = True
 
-        logger.info(f"Orchestrator: User intent classified as '{intent}', deep_search: {is_deep_search} (max_rag_score: {max_rag_score:.2f})")
+        logger.info(f"Orchestrator: User intent classified as '{intent}', deep_search: {is_deep_search}")
 
         reply_full = ""
         thoughts_full = ""
@@ -511,12 +505,15 @@ class ChatOrchestrator:
         # Step 1.5: Web Search if needed - Traced by @observe on async_search_with_sources
         search_texts = []
         if intent == "search" or is_deep_search or use_deep_search or use_research:
-            status_msg = "Активирую Deep Search для поиска данных за 2026 год..." if future_years else "Ищу бенчмарки в интернете (Exa AI)..."
+            status_msg = "Активирую Deep Search для поиска данных за 2026 год..." if "2026" in user_message else "Ищу бенчмарки в интернете (Exa AI)..."
             yield json.dumps({"type": "status", "content": status_msg}) + "\n"
             await asyncio.sleep(0.01)
             print(f"DEBUG: Yielding status: {status_msg}")
-            yield json.dumps({"type": "thought", "content": f"Выполняю поиск по интернету (Exa AI)...\n"}) + "\n"
-            await asyncio.sleep(0)
+            
+            search_thought = f"Выполняю поиск по интернету (Exa AI)...\n"
+            thoughts_full += search_thought
+            yield json.dumps({"type": "thought", "content": search_thought}) + "\n"
+            await asyncio.sleep(0.01)
             
             # Pass trace.id and parent_id for Langfuse propagation
             current_id = trace.id if trace else None

@@ -52,12 +52,25 @@ async def async_search_with_sources(query: str, use_deep_search: bool = False, t
         # exa_py operations are synchronous
         def _do_search():
             localized_query = query if "росси" in query.lower() else f"{query} в россии"
+            
+            # Boost Rosstat for statistical queries
+            search_kwargs = {
+                "type": "auto",
+                "use_autoprompt": True,
+                "num_results": num_results,
+                "highlights": True
+            }
+            
+            if any(w in query.lower() for w in ["статистика", "росстат", "цифр", "мвд", "мсп"]):
+                # We don't use include_domains strictly to avoid empty results if site is down,
+                # but we can adjust the query to favor it. 
+                # Or better: use include_domains and fallback if needed.
+                logger.info("Prioritizing rosstat.gov.ru in search query")
+                localized_query = f"site:rosstat.gov.ru {localized_query}"
+
             return exa_client.search_and_contents(
                 localized_query,
-                type="auto",
-                use_autoprompt=True,
-                num_results=num_results,
-                highlights=True
+                **search_kwargs
             )
             
         response = await asyncio.to_thread(_do_search)
