@@ -54,11 +54,10 @@ dev.pitchy.pro {
     }
 
     # Сжатие контента для ускорения загрузки (исключая SSE для предотвращения буферизации)
-    encode gzip zstd {
-        match {
-            not header Content-Type text/event-stream
-        }
+    @not-sse {
+        not header Content-Type *text/event-stream*
     }
+    encode @not-sse gzip zstd
 
     # Все остальные запросы направляем на Frontend (Next.js)
     handle {
