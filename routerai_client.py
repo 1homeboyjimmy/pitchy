@@ -28,7 +28,8 @@ async def call_routerai(system_prompt: str, user_message: str, model: str = "z-a
         logger.warning("ROUTERAI_API_KEY not set")
         return None, None, {}
 
-    url = "https://routerai.ru/api/v1/chat/completions"
+    base_url = os.getenv("ROUTERAI_BASE_URL", "https://routerai.ru/api/v1")
+    url = f"{base_url.rstrip('/')}/chat/completions"
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
@@ -93,7 +94,8 @@ async def stream_routerai(system_prompt: str, user_message: str, model: str = "z
         yield "Error: ROUTERAI_API_KEY not set"
         return
 
-    url = "https://routerai.ru/api/v1/chat/completions"
+    base_url = os.getenv("ROUTERAI_BASE_URL", "https://routerai.ru/api/v1")
+    url = f"{base_url.rstrip('/')}/chat/completions"
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"

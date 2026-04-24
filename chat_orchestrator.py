@@ -9,6 +9,7 @@ from datetime import datetime
 
 from redis_client import get_redis
 from makura_client import call_makura, stream_makura
+from routerai_client import call_routerai, stream_routerai
 from tree_orchestrator import _normalize_tree_data
 from search_agent import execute_search_agent
 from core_tree import CORE_SKELETON
@@ -91,7 +92,7 @@ FINANCE_PROMPT = """Ты — финансовый эксперт.
 
 Всегда закрывай таблицы символом |. Не используй сложные форматирования внутри ячеек. Если данных нет, пиши 'н/д' вместо пустой строки.
 
-ВНИМАНИЕ: Сегодня 24 апреля 2026 года. Любые документы из контекста, описывающие 2026 год в будущем времени (прогнозы, планы), являются УСТАРЕВШИМИ. Ты обязан подтверждать текущую дату в первой же 'мысли' (thought) и использовать Web Search для верификации любых цифр.
+ВНИМАНИЕ: Сегодня {current_date} года. Любые документы из контекста, описывающие {current_year} год в будущем времени (прогнозы, планы), являются ИСТОРИЧЕСКИМИ данными. Ты обязан подтверждать текущую дату в первой же 'мысли' (thought) и использовать Web Search для верификации любых цифр.
 
 Контекст блока: {node_context}
 Текущие метрики дорожной карты: {tree_metrics}
@@ -235,12 +236,14 @@ class ChatOrchestrator:
         system_prompt = f"{base_prompt} {node_context}"
         
         # Force strict language and thought process instructions
+        current_date = datetime.now().strftime("%d %B %Y")
         system_prompt += (
-            "\n\nОТВЕЧАЙ СТРОГО НА РУССКОМ ЯЗЫКЕ. Использование китайских иероглифов или любых других языков КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО.\n"
-            "ВНИМАНИЕ: Сегодня 24 апреля 2026 года. Любые документы из контекста, описывающие 2026 год в будущем времени (прогнозы, планы), являются УСТАРЕВШИМИ.\n"
-            "Ты обязан подтверждать текущую дату в первой же 'мысли' (thought) и использовать Web Search для верификации любых цифр.\n"
-            "Перед генерацией ответа ты ОБЯЗАН написать свои рассуждения. Начни свой ответ СТРОГО с тега <think>.\n"
-            "Сначала ОБЯЗАТЕЛЬНО запиши свои мысли о запросе внутри тегов <think>...</think>, а затем дай итоговый ответ пользователю."
+            f"\n\nОТВЕЧАЙ СТРОГО НА РУССКОМ ЯЗЫКЕ. Использование китайских иероглифов или любых других языков КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО.\n"
+            f"ВНИМАНИЕ: Сегодня {current_date} года. Любые документы из контекста, описывающие {datetime.now().year} год в будущем времени (прогнозы, планы), являются ИСТОРИЧЕСКИМИ данными.\n"
+            f"Ты обязан подтверждать текущую дату в первой же 'мысли' (thought) и использовать Web Search для верификации любых цифр.\n"
+            f"При ответе на вопросы о статистике или состоянии рынка {datetime.now().year} года опирайся ИСКЛЮЧИТЕЛЬНО на актуальные данные веб-поиска.\n"
+            f"Перед генерацией ответа ты ОБЯЗАН написать свои рассуждения. Начни свой ответ СТРОГО с тега <think>.\n"
+            f"Сначала ОБЯЗАТЕЛЬНО запиши свои мысли о запросе внутри тегов <think>...</think>, а затем дай итоговый ответ пользователю."
         )
         
         if rag_context:
@@ -257,7 +260,7 @@ class ChatOrchestrator:
         chat_history = "\n".join([f"{m['role']}: {m['content']}" for m in history])
         prompt = f"История чата:\n{chat_history}\n\nПользователь: {user_message}"
         
-        async for chunk in stream_makura(system_prompt, prompt):
+        async for chunk in stream_routerai(system_prompt, prompt, model="moonshotai/kimi-k2.6"):
             yield chunk
 
     async def _parse_thought_generator(self, generator):
@@ -415,7 +418,8 @@ class ChatOrchestrator:
             return
 
         # --- STREAMING START: Yield immediately after trace creation ---
-        t = "Начинаю анализ. Сегодня 24 апреля 2026 года. Проверяю актуальность данных...\n"
+        current_date = datetime.now().strftime("%d %B %Y")
+        t = f"Инициализация сессии: {current_date}. Подключение к аналитическому ядру Moonshot Kimi-k2.6...\n"
         thoughts_full += t
         yield json.dumps({"type": "thought", "content": t}) + "\n"
         yield json.dumps({"type": "status", "content": "Анализирую профиль стартапа и интент..."}) + "\n"
@@ -618,6 +622,7 @@ class ChatOrchestrator:
             yield json.dumps({"type": "status", "content": "Синтезирую финальный ответ..."}) + "\n"
             await asyncio.sleep(0.01)
             if intent == "chat" or intent not in ["roadmap", "finance", "search", "legal", "presentation", "tree"]:
+                model_used = "RouterAI (Kimi-k2.6)"
                 yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
                 start_time = time.time()
                 ttft = None
@@ -663,7 +668,8 @@ class ChatOrchestrator:
                           f"{compiled_rag_context}\n\n"
                           f"Вопрос: {user_message}\n\n"
                           "Дай развернутый ответ, опираясь на факты. Всегда закрывай таблицы символом |. Не используй сложные форматирования внутри ячеек. Если данных нет, пиши 'н/д' вместо пустой строки.")
-                system = "ВНИМАНИЕ: Сегодня 24 апреля 2026 года. Ты — эксперт по поиску и сводке информации. Сначала напиши свои мысли в <thought>...</thought>, а затем ответ."
+                current_date = datetime.now().strftime("%d %B %Y")
+                system = f"ВНИМАНИЕ: Сегодня {current_date} года. Ты — эксперт по поиску и сводке информации. Сначала напиши свои мысли в <thought>...</thought>, а затем ответ."
                 
                 if sources_list:
                     yield json.dumps({"type": "sources", "data": sources_list}) + "\n"
@@ -705,7 +711,9 @@ class ChatOrchestrator:
                 prompt = FINANCE_PROMPT.format(
                     node_context=json.dumps(node_info),
                     tree_metrics=json.dumps(tree_metrics),
-                    user_message=user_message
+                    user_message=user_message,
+                    current_date=datetime.now().strftime("%d %B %Y"),
+                    current_year=datetime.now().year
                 )
                 system_prompt = f"Ты финансовый эксперт Pitchy. На основе контекста ответь пользователю:\n{compiled_rag_context}"
                 
@@ -881,7 +889,9 @@ class ChatOrchestrator:
         prompt = FINANCE_PROMPT.format(
             node_context=json.dumps(node_info),
             tree_metrics=json.dumps(tree_metrics),
-            user_message=user_message
+            user_message=user_message,
+            current_date=datetime.now().strftime("%d %B %Y"),
+            current_year=datetime.now().year
         )
         system_prompt = f"Ты финансовый эксперт Pitchy. На основе предоставленного контекста ответь пользователю:\n{full_context}"
         
