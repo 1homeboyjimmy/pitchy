@@ -66,8 +66,9 @@ async def async_search_with_sources(query: str, use_deep_search: bool = False, t
                 # We don't use include_domains strictly to avoid empty results if site is down,
                 # but we can adjust the query to favor it. 
                 # Or better: use include_domains and fallback if needed.
-                logger.info("Prioritizing rosstat.gov.ru in search query")
-                localized_query = f"site:rosstat.gov.ru {localized_query}"
+                logger.info("Prioritizing rosstat.gov.ru and factual markers in search query")
+                factual_markers = "фактические данные 2026 официальная статистика реестр"
+                localized_query = f"site:rosstat.gov.ru {localized_query} {factual_markers}"
 
             return exa_client.search_and_contents(
                 localized_query,

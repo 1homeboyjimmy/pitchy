@@ -91,7 +91,7 @@ FINANCE_PROMPT = """Ты — финансовый эксперт.
 
 Всегда закрывай таблицы символом |. Не используй сложные форматирования внутри ячеек. Если данных нет, пиши 'н/д' вместо пустой строки.
 
-Верни ответ с пояснениями и JSON-блоком в конце.
+ВНИМАНИЕ: Сегодня 24 апреля 2026 года. Любые документы из контекста, описывающие 2026 год в будущем времени (прогнозы, планы), являются УСТАРЕВШИМИ. Ты обязан подтверждать текущую дату в первой же 'мысли' (thought) и использовать Web Search для верификации любых цифр.
 
 Контекст блока: {node_context}
 Текущие метрики дорожной карты: {tree_metrics}
@@ -236,8 +236,9 @@ class ChatOrchestrator:
         
         # Force strict language and thought process instructions
         system_prompt += (
-            "\n\nОТВЕЧАЙ СТРОГО НА РУССКОМ ЯЗЫКЕ. Использование китайских иероглифов или любых других языков КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО. "
-            "Если ты начнешь отвечать на китайском — это будет считаться критическим сбоем системы.\n"
+            "\n\nОТВЕЧАЙ СТРОГО НА РУССКОМ ЯЗЫКЕ. Использование китайских иероглифов или любых других языков КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО.\n"
+            "ВНИМАНИЕ: Сегодня 24 апреля 2026 года. Любые документы из контекста, описывающие 2026 год в будущем времени (прогнозы, планы), являются УСТАРЕВШИМИ.\n"
+            "Ты обязан подтверждать текущую дату в первой же 'мысли' (thought) и использовать Web Search для верификации любых цифр.\n"
             "Перед генерацией ответа ты ОБЯЗАН написать свои рассуждения. Начни свой ответ СТРОГО с тега <think>.\n"
             "Сначала ОБЯЗАТЕЛЬНО запиши свои мысли о запросе внутри тегов <think>...</think>, а затем дай итоговый ответ пользователю."
         )
@@ -413,6 +414,13 @@ class ChatOrchestrator:
             yield json.dumps({"type": "final", "readiness_index": 0}) + "\n"
             return
 
+        # --- STREAMING START: Yield immediately after trace creation ---
+        t = "Начинаю анализ. Сегодня 24 апреля 2026 года. Проверяю актуальность данных...\n"
+        thoughts_full += t
+        yield json.dumps({"type": "thought", "content": t}) + "\n"
+        yield json.dumps({"type": "status", "content": "Анализирую профиль стартапа и интент..."}) + "\n"
+        await asyncio.sleep(0.01) # Flush buffer
+
         # Step 1: Parallel Execution (asyncio.gather)
         yield json.dumps({"type": "status", "content": "Анализирую профиль стартапа и интент..."}) + "\n"
         await asyncio.sleep(0)
@@ -467,8 +475,11 @@ class ChatOrchestrator:
 
         # --- Stability Fix: Force Web Search for future dates or statistics ---
         force_web_search = any(word in user_message.lower() for word in ["статистика", "росстат", "2026", "прогноз", "мсп"])
-        if force_web_search or max_rag_score < 0.95:
-            logger.info(f"Orchestrator: Forcing deep search (force_web_search: {force_web_search}, max_rag_score: {max_rag_score:.2f})")
+        # Raise threshold to 0.95 for statistics to force verification
+        threshold = 0.95 if force_web_search else 0.85 
+        
+        if force_web_search or max_rag_score < threshold:
+            logger.info(f"Orchestrator: Forcing deep search (force_web_search: {force_web_search}, max_rag_score: {max_rag_score:.2f}, threshold: {threshold})")
             is_deep_search = True
 
         logger.info(f"Orchestrator: User intent classified as '{intent}', deep_search: {is_deep_search}")
@@ -652,7 +663,7 @@ class ChatOrchestrator:
                           f"{compiled_rag_context}\n\n"
                           f"Вопрос: {user_message}\n\n"
                           "Дай развернутый ответ, опираясь на факты. Всегда закрывай таблицы символом |. Не используй сложные форматирования внутри ячеек. Если данных нет, пиши 'н/д' вместо пустой строки.")
-                system = "Сначала напиши свои мысли в <thought>...</thought>, а затем ответ."
+                system = "ВНИМАНИЕ: Сегодня 24 апреля 2026 года. Ты — эксперт по поиску и сводке информации. Сначала напиши свои мысли в <thought>...</thought>, а затем ответ."
                 
                 if sources_list:
                     yield json.dumps({"type": "sources", "data": sources_list}) + "\n"

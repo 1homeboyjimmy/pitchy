@@ -275,7 +275,9 @@ async def tree_chat(
     headers = {
         "Cache-Control": "no-cache",
         "Connection": "keep-alive",
-        "X-Accel-Buffering": "no"
+        "X-Accel-Buffering": "no",
+        "Content-Encoding": "identity",
+        "X-Content-Type-Options": "nosniff"
     }
     return StreamingResponse(
         orchestrator.process_message(payload.message, payload.active_node_id, client_id=payload.client_id, assistant_client_id=payload.assistant_client_id),
