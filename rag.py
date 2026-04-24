@@ -347,8 +347,22 @@ class StartupRAG:
     embedding_fn: GeminiEmbeddingFunction
 
     @classmethod
-    @observe(name="init_rag_pipeline")
     async def build_async(cls) -> "StartupRAG":
+        """
+        Initializes the RAG system.
+        """
+        instance = await cls._actually_build()
+        # Log success separately to avoid serialization error of StartupRAG object
+        cls._log_init_success(len(instance.collections))
+        return instance
+
+    @staticmethod
+    @observe(name="init_rag_pipeline")
+    def _log_init_success(count: int) -> str:
+        return f"RAG Pipeline Initialized with {count} collections"
+
+    @classmethod
+    async def _actually_build(cls) -> "StartupRAG":
         raw_docs = _load_raw_documents()
         embedding_fn = GeminiEmbeddingFunction()
         client = _build_client()

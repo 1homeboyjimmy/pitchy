@@ -278,6 +278,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                     isResearchMode,
                     isPresentationRequest ? 'presentation' : (forceIntent || undefined)
                 )) {
+                    console.warn("Raw chunk:", chunk);
                     if (chunk.type === "thought") {
                         fullThoughtContent += chunk.content;
                         setMessages(prev => prev.map(m =>

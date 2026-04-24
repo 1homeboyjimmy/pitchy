@@ -437,11 +437,19 @@ class ChatOrchestrator:
             if scores:
                 max_rag_score = max(scores)
         
-        if max_rag_score < 0.5 and intent in ["chat", "search", "finance"]:
-            logger.info(f"Orchestrator: Low RAG relevance ({max_rag_score:.2f}). Triggering web search fallback.")
+        if max_rag_score < 0.7 and intent in ["chat", "search", "finance"]:
+            logger.info(f"Orchestrator: Low RAG relevance ({max_rag_score:.2f} < 0.7). Triggering web search fallback.")
             is_deep_search = True
 
         logger.info(f"Orchestrator: User intent classified as '{intent}', deep_search: {is_deep_search} (max_rag_score: {max_rag_score:.2f})")
+
+        reply_full = ""
+        thoughts_full = ""
+        model_used = "Makura (GLM-5)"
+        enriched_data = {}
+        sources_list = []
+        usage_data = None
+        message_saved = False
 
         # --- Early Thought Streaming (Plan) ---
         plan_thoughts = f"Интент определен как '{intent}'. "
@@ -455,15 +463,7 @@ class ChatOrchestrator:
             
         thoughts_full += plan_thoughts + "\n"
         yield json.dumps({"type": "thought", "content": plan_thoughts + "\n"}) + "\n"
-        await asyncio.sleep(0)
-
-        reply_full = ""
-        thoughts_full = ""
-        model_used = "Makura (GLM-5)"
-        enriched_data = {}
-        sources_list = []
-        usage_data = None
-        message_saved = False
+        await asyncio.sleep(0.01) # Flush buffer
 
         if langfuse_context:
             langfuse_context.update_current_observation(
