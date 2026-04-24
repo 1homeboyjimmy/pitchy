@@ -462,6 +462,7 @@ class ChatOrchestrator:
             plan_thoughts += "Будет произведен расчет финансовой модели на основе ваших данных. "
             
         thoughts_full += plan_thoughts + "\n"
+        print(f"DEBUG: Yielding initial thought: {plan_thoughts[:50]}...")
         yield json.dumps({"type": "thought", "content": plan_thoughts + "\n"}) + "\n"
         await asyncio.sleep(0.01) # Flush buffer
 
@@ -478,6 +479,7 @@ class ChatOrchestrator:
         if intent == "search" or is_deep_search or use_deep_search or use_research:
             status_msg = "Активирую Deep Search для поиска данных за 2026 год..." if future_years else "Ищу бенчмарки в интернете (Exa AI)..."
             yield json.dumps({"type": "status", "content": status_msg}) + "\n"
+            print(f"DEBUG: Yielding status: {status_msg}")
             yield json.dumps({"type": "thought", "content": f"Выполняю поиск по интернету (Exa AI)...\n"}) + "\n"
             await asyncio.sleep(0)
             
@@ -500,6 +502,7 @@ class ChatOrchestrator:
             yield json.dumps({"type": "status", "content": "Запускаю рой агентов для валидации цифр..."}) + "\n"
             swarm_thought = f"Запускаю параллельный анализ {len(chunks_to_swarm)} фрагментов данных роем агентов Qwen...\n"
             thoughts_full += swarm_thought
+            print(f"DEBUG: Yielding swarm thought: {swarm_thought[:50]}...")
             yield json.dumps({"type": "thought", "content": swarm_thought}) + "\n"
             await asyncio.sleep(0)
             
@@ -550,6 +553,7 @@ class ChatOrchestrator:
                         if ttft is None:
                             ttft = time.time() - start_time
                         thoughts_full += data["content"]
+                    print(f"DEBUG: Yielding chat chunk/thought: {data['type']}")
                     yield json_chunk
             
             elif intent in ["roadmap", "tree"]:
@@ -595,6 +599,7 @@ class ChatOrchestrator:
                         if ttft is None:
                             ttft = time.time() - start_time
                         thoughts_full += data.get("content", "")
+                    print(f"DEBUG: Yielding search chunk/thought: {data['type']}")
                     yield json_chunk
 
             elif intent == "legal":

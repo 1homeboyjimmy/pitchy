@@ -31,6 +31,8 @@ pitchy.pro {
             header_up X-Real-IP {remote_ip}
             header_up X-Forwarded-For {remote_ip}
             header_up X-Forwarded-Proto {scheme}
+            header_up X-Accel-Buffering no
+            flush_interval -1
             transport http {
                 # Увеличиваем таймаут для генерации ответов ИИ и тяжелой обработки PDF (до 10 минут)
                 read_timeout 600s
