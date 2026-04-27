@@ -480,10 +480,14 @@ class ChatOrchestrator:
             intent = "finance"
             
         # Deep Search Override (SLM Intercept)
-        trigger_words = ["2026", "сейчас", "текущ"]
-        if any(word in user_message.lower() for word in trigger_words):
+        msg_lower = user_message.lower()
+        strict_triggers = ["2026", "2025", "статистика", "мсп", "росстат"]
+        context_triggers = ["рынок", "тренды", "данные", "аналитика"]
+        
+        if any(w in msg_lower for w in strict_triggers) or \
+           ("сейчас" in msg_lower and any(w in msg_lower for w in context_triggers)):
             is_deep_search = True
-            logger.info("Deep Search FORCED: Chronological trigger override applied.")
+            logger.info("Deep Search FORCED: Chronological/Analytical trigger override applied.")
             
         # --- Stability Fix: Threshold-based Web Search ---
         # If RAG score is low, we don't trust local docs alone

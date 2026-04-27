@@ -3627,7 +3627,7 @@ async def _generate_interviewer_response(session: ChatSession, db: AsyncSession)
         try:
             # Parallel Phase 1: Intent, History RAG, Search Intent
             intent_task = classify_intent(last_user_text)
-            history_rag_task = asyncio.to_thread(rag.search_successful_chats, last_user_text, top_k=1)
+            history_rag_task = asyncio.create_task(rag.asearch_successful_chats(last_user_text, top_k=1))
             search_intent_task = slm_dispatcher.detect_search_intent(last_user_text)
             
             categories, successful_chats, search_decision = await asyncio.gather(

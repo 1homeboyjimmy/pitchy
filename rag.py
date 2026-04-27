@@ -648,3 +648,43 @@ def search_successful_chats(query: str, top_k: int = 1) -> List[dict]:
             relevant.append({"text": doc, "metadata": meta or {}})
             
     return relevant
+
+async def asearch_successful_chats(query: str, top_k: int = 1) -> List[dict]:
+    """Finds a previously highly-rated similar interaction asynchronously."""
+    client = _build_client()
+    embedding_fn = GeminiEmbeddingFunction()
+    try:
+        collection = client.get_collection(
+            name="successful_chats",
+            embedding_function=embedding_fn
+        )
+    except Exception:
+        return []
+    
+    if collection.count() == 0:
+        return []
+        
+    query_embedding = await asyncio.to_thread(embedding_fn.encode_query, query)
+    
+    try:
+        result = await asyncio.to_thread(
+            collection.query,
+            query_embeddings=[query_embedding],
+            n_results=top_k,
+            include=["documents", "distances", "metadatas"]
+        )
+    except Exception as e:
+        logger.error(f"Error querying successful_chats: {e}")
+        return []
+    
+    docs = result.get("documents", [[]])[0]
+    distances = result.get("distances", [[]])[0]
+    metas = result.get("metadatas", [[]])[0]
+    
+    # Simple distance threshold for highly similar matches
+    relevant = []
+    for doc, dist, meta in zip(docs, distances, metas):
+        if dist < 0.35:
+            relevant.append({"text": doc, "metadata": meta or {}})
+            
+    return relevant
