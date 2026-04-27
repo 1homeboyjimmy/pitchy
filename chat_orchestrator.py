@@ -104,8 +104,8 @@ FINANCE_PROMPT = """Ты — финансовый эксперт.
 """
 
 class ChatOrchestrator:
-    def _format_sse(self, data_dict: dict) -> str:
-        return f"data: {json.dumps(data_dict, ensure_ascii=False)}\n\n"
+    def _format_sse(self, data_dict: dict) -> dict:
+        return {"event": data_dict.get("type", "message"), "data": json.dumps(data_dict, ensure_ascii=False)}
 
     def __init__(self, tree_id: int, user_id: int, db_session: Any):
         self.tree_id = tree_id

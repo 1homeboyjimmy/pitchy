@@ -12,6 +12,13 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response, UploadFi
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.responses import StreamingResponse, FileResponse
+from sse_starlette.sse import EventSourceResponse
+
+def format_sse(data) -> dict:
+    if isinstance(data, dict):
+        return {"event": data.get("type", "message"), "data": json.dumps(data, ensure_ascii=False)}
+    return {"event": "message", "data": json.dumps(data, ensure_ascii=False)}
+
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from starlette.concurrency import run_in_threadpool
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
@@ -1515,22 +1522,22 @@ async def parse_thought_generator(generator):
             # Flush buffer before handling metadata/dict chunks
             if buffer:
                 if active_start_tag in ["<think>", "<thought>"]:
-                    yield json.dumps({"type": "thought", "content": buffer}) + "\n"
+                    yield format_sse({"type": "thought", "content": buffer})
                 else:
-                    yield json.dumps({"type": "chunk", "content": buffer}) + "\n"
+                    yield format_sse({"type": "chunk", "content": buffer})
                 buffer = ""
 
             # Handle native reasoning_content 
             if "__thinking__" in chunk:
-                yield json.dumps({"type": "thought", "content": chunk["__thinking__"]}) + "\n"
+                yield format_sse({"type": "thought", "content": chunk["__thinking__"]})
                 continue
             elif "__usage__" in chunk:
                 # Pass usage directly as a wrapped JSON line
-                yield json.dumps({"type": "metadata", "usage": chunk["__usage__"]}) + "\n"
+                yield format_sse({"type": "metadata", "usage": chunk["__usage__"]})
                 continue
             else:
                 # Pass through other dict objects (like TTFT signals)
-                yield json.dumps(chunk) + "\n"
+                yield format_sse(chunk)
                 continue
 
         # Handle text-based tags in the main content stream
@@ -1551,7 +1558,7 @@ async def parse_thought_generator(generator):
                         # Content before the tag is a normal chunk
                         pre = buffer[:s_idx]
                         if pre:
-                            yield json.dumps({"type": "chunk", "content": pre}) + "\n"
+                            yield format_sse({"type": "chunk", "content": pre})
                         
                         buffer = buffer[s_idx + len(start_tag):]
                         active_start_tag = start_tag
@@ -1567,7 +1574,7 @@ async def parse_thought_generator(generator):
                             is_thought = active_start_tag in ["<think>", "<thought>"]
                             
                             if is_thought and content:
-                                yield json.dumps({"type": "thought", "content": content}) + "\n"
+                                yield format_sse({"type": "thought", "content": content})
                             
                             buffer = buffer[e_idx + len(end_tag):]
                             active_start_tag = None
@@ -1582,14 +1589,14 @@ async def parse_thought_generator(generator):
                     if len(buffer) > max_tag_len:
                         to_yield = buffer[:-max_tag_len]
                         buffer = buffer[-max_tag_len:]
-                        yield json.dumps({"type": "chunk", "content": to_yield}) + "\n"
+                        yield format_sse({"type": "chunk", "content": to_yield})
                 else:
                     # If we are inside thoughts, we can yield them parts
                     if len(buffer) > max_tag_len:
                         to_yield = buffer[:-max_tag_len]
                         buffer = buffer[-max_tag_len:]
                         if active_start_tag in ["<think>", "<thought>"]:
-                            yield json.dumps({"type": "thought", "content": to_yield}) + "\n"
+                            yield format_sse({"type": "thought", "content": to_yield})
                 break
                     
     if buffer:
@@ -1600,7 +1607,7 @@ async def parse_thought_generator(generator):
         
         if final_content:
             is_thought = active_start_tag in ["<think>", "<thought>"]
-            yield json.dumps({"type": "thought" if is_thought else "chunk", "content": final_content}) + "\n"
+            yield format_sse({"type": "thought" if is_thought else "chunk", "content": final_content})
 
 def save_assistant_message(session_id: int, content: str, thoughts: str | None = None, client_id: str | None = None, sources: list[dict] | None = None):
     from db import SessionLocal
@@ -1673,7 +1680,7 @@ async def chat(payload: ChatRequest):
                 yield json_chunk
         except Exception as e:
             logger.error(f"Streaming failed: {e}")
-            yield json.dumps({"type": "error", "content": str(e)}) + "\n"
+            yield format_sse({"type": "error", "content": str(e)})
         finally:
             # We don't have a session_id here for anonymous /chat, 
             # but if this endpoint is ever used with a session, we should save it.
@@ -1687,7 +1694,7 @@ async def chat(payload: ChatRequest):
         "Connection": "keep-alive",
         "X-Accel-Buffering": "no"
     }
-    return StreamingResponse(chat_generator(), media_type="text/event-stream", headers=headers)
+    return EventSourceResponse(chat_generator(), headers=headers)
 
 
 @app.patch("/chat/sessions/{session_id}", response_model=ChatSessionResponse)
@@ -1793,7 +1800,7 @@ async def create_chat_message(
                     async for chunk in stream_deep_research(payload.content):
                         if chunk["type"] == "chunk":
                             full_content += chunk["content"]
-                        yield json.dumps(chunk) + "\n"
+                        yield format_sse(chunk)
                 finally:
                     # Save assistant message
                     if full_content.strip():
@@ -1912,9 +1919,9 @@ async def create_chat_message(
         
         try:
             # Yield initial metadata
-            yield json.dumps({"type": "metadata", "model": provider}) + "\n"
+            yield format_sse({"type": "metadata", "model": provider})
             if sources_list:
-                yield json.dumps({"type": "sources", "data": sources_list}) + "\n"
+                yield format_sse({"type": "sources", "data": sources_list})
 
             if provider == "makura":
                 raw_gen = stream_makura(SYSTEM_CHAT_PROMPT, user_prompt)
@@ -1940,7 +1947,7 @@ async def create_chat_message(
 
         except Exception as e:
             logger.error(f"Streaming failed: {e}")
-            yield json.dumps({"type": "error", "content": str(e)}) + "\n"
+            yield format_sse({"type": "error", "content": str(e)})
         finally:
             if full_text.strip() or full_thoughts.strip():
                 # Rescue save logic
@@ -1981,7 +1988,7 @@ async def create_chat_message(
         "Connection": "keep-alive",
         "X-Accel-Buffering": "no"
     }
-    return StreamingResponse(session_chat_generator(), media_type="text/event-stream", headers=headers)
+    return EventSourceResponse(session_chat_generator(), headers=headers)
 
 
 @app.get("/chat/messages/search")
@@ -3392,7 +3399,7 @@ async def send_chat_message(
 
             # 3.1 MODE: PRESENTATION GENERATION
             if is_pres_request:
-                yield json.dumps({"type": "chunk", "content": "Начинаю сборку вашей презентации...\n\n"}) + "\n"
+                yield format_sse({"type": "chunk", "content": "Начинаю сборку вашей презентации...\n\n"})
                 full_response += "Начинаю сборку вашей презентации...\n\n"
                 
                 # Use history and context to build slides
@@ -3403,21 +3410,21 @@ async def send_chat_message(
                 async for item in _handle_presentation_in_chat(payload.content, history_text, context_text):
                     if item["type"] == "thought":
                         full_thoughts += item["content"]
-                        yield json.dumps(item) + "\n"
+                        yield format_sse(item)
                     elif item["type"] == "presentation":
                         final_slides = item["data"]
-                        yield json.dumps(item) + "\n"
+                        yield format_sse(item)
                     elif item["type"] == "chunk":
                         full_response += item["content"]
-                        yield json.dumps(item) + "\n"
+                        yield format_sse(item)
                 
                 if final_slides:
                     msg = "Презентация успешно сгенерирована! Открываю панель просмотра."
-                    yield json.dumps({"type": "chunk", "content": msg}) + "\n"
+                    yield format_sse({"type": "chunk", "content": msg})
                     full_response += msg
                 else:
                     msg = "К сожалению, не удалось сгенерировать правильный формат презентации. Попробуйте еще раз или уточните запрос."
-                    yield json.dumps({"type": "chunk", "content": msg}) + "\n"
+                    yield format_sse({"type": "chunk", "content": msg})
                     full_response += msg
 
             # 4. MODE: DEEP RESEARCH
@@ -3431,7 +3438,7 @@ async def send_chat_message(
                         full_thoughts += chunk["content"]
                     elif chunk["type"] == "sources":
                         sources = chunk.get("data", [])
-                    yield json.dumps(chunk) + "\n"
+                    yield format_sse(chunk)
             
             # 4. MODE: QUICK SEARCH OR REGULAR CHAT
             else:
@@ -3444,7 +3451,7 @@ async def send_chat_message(
                     if search_ctx:
                         user_prompt = f"ДАННЫЕ ИЗ БАЗЫ:\n\n{context_chunks}\n\nДАННЫЕ ИЗ ИНТЕРНЕТА:\n\n{search_ctx}\n\nВопрос: {payload.content}"
                         if sources:
-                            yield json.dumps({"type": "sources", "data": sources}) + "\n"
+                            yield format_sse({"type": "sources", "data": sources})
 
                 raw_gen = stream_makura(SYSTEM_CHAT_PROMPT, user_prompt)
                 
@@ -3476,7 +3483,7 @@ async def send_chat_message(
                 full_response = full_thoughts.strip()
                 full_thoughts = ""
                 # Emit the rescued content as a chunk so frontend displays it
-                yield json.dumps({"type": "chunk", "content": full_response}) + "\n"
+                yield format_sse({"type": "chunk", "content": full_response})
 
             # Save assistant response in background using asyncio instead of background_tasks
             if full_response:
@@ -3493,7 +3500,7 @@ async def send_chat_message(
                 )
         except Exception as e:
             logger.error(f"Session streaming failed: {e}")
-            yield json.dumps({"type": "error", "content": str(e)}) + "\n"
+            yield format_sse({"type": "error", "content": str(e)})
         finally:
             # Rescue save: if message wasn't saved (e.g. stream aborted), save the partial response
             if not message_saved and full_response.strip():
@@ -3532,7 +3539,7 @@ async def send_chat_message(
         "Connection": "keep-alive",
         "X-Accel-Buffering": "no"
     }
-    return StreamingResponse(session_chat_generator(), media_type="text/event-stream", headers=headers)
+    return EventSourceResponse(session_chat_generator(), headers=headers)
 
 
 async def _handle_presentation_in_chat(user_message: str, history_text: str, rag_context: str):
