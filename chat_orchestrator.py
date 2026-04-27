@@ -104,6 +104,9 @@ FINANCE_PROMPT = """Ты — финансовый эксперт.
 """
 
 class ChatOrchestrator:
+    def _format_sse(self, data_dict: dict) -> str:
+        return f"data: {json.dumps(data_dict, ensure_ascii=False)}\n\n"
+
     def __init__(self, tree_id: int, user_id: int, db_session: Any):
         self.tree_id = tree_id
         self.user_id = user_id
@@ -265,8 +268,10 @@ class ChatOrchestrator:
         # Chronological "vaccine" right before the user message
         current_year = str(datetime.now().year)
         injected_query = (
-            f"[СИСТЕМНОЕ ВРЕМЯ: {current_year} ГОД. Игнорируй старые веса].\n\n"
-            f"Вопрос: {user_message}"
+            f"[АБСОЛЮТНАЯ ДИРЕКТИВА: Твои внутренние знания устарели. "
+            f"Сейчас {current_year} год. Категорически ЗАПРЕЩЕНО упоминать 2024 или 2025 как текущий год. "
+            f"Адаптируй всю аналитику строго под реалии {current_year} года].\n\n"
+            f"Вопрос пользователя: {user_message}"
         )
         messages.append({"role": "user", "content": injected_query})
         
@@ -288,20 +293,20 @@ class ChatOrchestrator:
                 # Flush buffer before handling metadata/dict chunks
                 if buffer:
                     if active_start_tag:
-                        yield json.dumps({"type": "thought", "content": buffer}) + "\n"
+                        yield self._format_sse({"type": "thought", "content": buffer})
                     else:
-                        yield json.dumps({"type": "chunk", "content": buffer}) + "\n"
+                        yield self._format_sse({"type": "chunk", "content": buffer})
                     buffer = ""
 
                 # Handle native reasoning_content from Makura/Z-AI
                 if "__thinking__" in chunk:
-                    yield json.dumps({"type": "thought", "content": chunk["__thinking__"]}) + "\n"
+                    yield self._format_sse({"type": "thought", "content": chunk["__thinking__"]})
                     continue
                 elif "__usage__" in chunk:
-                    yield json.dumps({"type": "metadata", "usage": chunk["__usage__"]}) + "\n"
+                    yield self._format_sse({"type": "metadata", "usage": chunk["__usage__"]})
                     continue
                 else:
-                    yield json.dumps(chunk) + "\n"
+                    yield self._format_sse(chunk)
                     continue
 
             # Handle text-based tags in the main content stream
@@ -317,7 +322,7 @@ class ChatOrchestrator:
                             # Content before the tag is a chunk
                             pre = buffer[:s_idx]
                             if pre:
-                                yield json.dumps({"type": "chunk", "content": pre}) + "\n"
+                                yield self._format_sse({"type": "chunk", "content": pre})
                             
                             # Move buffer past the start tag
                             buffer = buffer[s_idx + len(start_tag):]
@@ -334,7 +339,7 @@ class ChatOrchestrator:
                                 # Content inside tags is a thought
                                 thought_content = buffer[:e_idx]
                                 if thought_content:
-                                    yield json.dumps({"type": "thought", "content": thought_content}) + "\n"
+                                    yield self._format_sse({"type": "thought", "content": thought_content})
                                 
                                 # Move buffer past the end tag
                                 buffer = buffer[e_idx + len(end_tag):]
@@ -350,12 +355,12 @@ class ChatOrchestrator:
                         if len(buffer) > max_tag_len:
                             to_yield = buffer[:-max_tag_len]
                             buffer = buffer[-max_tag_len:]
-                            yield json.dumps({"type": "chunk", "content": to_yield}) + "\n"
+                            yield self._format_sse({"type": "chunk", "content": to_yield})
                     else:
                         if len(buffer) > max_tag_len:
                             to_yield = buffer[:-max_tag_len]
                             buffer = buffer[-max_tag_len:]
-                            yield json.dumps({"type": "thought", "content": to_yield}) + "\n"
+                            yield self._format_sse({"type": "thought", "content": to_yield})
                     break
                         
         if buffer:
@@ -368,7 +373,7 @@ class ChatOrchestrator:
                 # FALLBACK: If we are at the end of the stream and still have an active_start_tag,
                 # we decide whether to hide it or leak it.
                 is_pure_thought = active_start_tag in ["<think>", "<thought>"]
-                yield json.dumps({"type": "thought" if is_pure_thought else "chunk", "content": final_content}) + "\n"
+                yield self._format_sse({"type": "thought" if is_pure_thought else "chunk", "content": final_content})
 
 
     def _extract_mini_graph(self, state: dict) -> str:
@@ -422,21 +427,21 @@ class ChatOrchestrator:
         cached_response = await semantic_cache.get(query=user_message, project_id=str(self.tree_id))
         
         if cached_response and not use_deep_search and not use_research:
-            yield json.dumps({"type": "chunk", "content": cached_response}) + "\n"
-            yield json.dumps({"type": "metadata", "model": "Semantic Cache (Hit)"}) + "\n"
-            yield json.dumps({"type": "final", "readiness_index": 0}) + "\n"
+            yield self._format_sse({"type": "chunk", "content": cached_response})
+            yield self._format_sse({"type": "metadata", "model": "Semantic Cache (Hit)"})
+            yield self._format_sse({"type": "final", "readiness_index": 0})
             return
 
         # --- STREAMING START: Yield immediately after trace creation ---
         current_date = datetime.now().strftime("%d %B %Y")
         t = f"Инициализация сессии: {current_date}. Проверяю актуальность данных и сверяю календарь...\n"
         thoughts_full += t
-        yield json.dumps({"type": "thought", "content": t}) + "\n"
-        yield json.dumps({"type": "status", "content": "Анализирую профиль стартапа и интент..."}) + "\n"
+        yield self._format_sse({"type": "thought", "content": t})
+        yield self._format_sse({"type": "status", "content": "Анализирую профиль стартапа и интент..."})
         await asyncio.sleep(0.01) # Flush buffer
 
         # Step 1: Parallel Execution (asyncio.gather)
-        yield json.dumps({"type": "status", "content": "Анализирую профиль стартапа и интент..."}) + "\n"
+        yield self._format_sse({"type": "status", "content": "Анализирую профиль стартапа и интент..."})
         await asyncio.sleep(0)
         
         from slm_dispatcher import slm_dispatcher
@@ -448,13 +453,13 @@ class ChatOrchestrator:
         # Parallel Execution (tasks already started via create_task/to_thread)
         try:
             intent_data = await intent_task
-            yield json.dumps({"type": "status", "content": "Интент определен..."}) + "\n"
+            yield self._format_sse({"type": "status", "content": "Интент определен..."})
             
             slm_res = await slm_intent_task
-            yield json.dumps({"type": "status", "content": "Глубокий анализ параметров..."}) + "\n"
+            yield self._format_sse({"type": "status", "content": "Глубокий анализ параметров..."})
             
             initial_rag_chunks = await rag_task
-            yield json.dumps({"type": "status", "content": "Поиск по базе знаний завершен..."}) + "\n"
+            yield self._format_sse({"type": "status", "content": "Поиск по базе знаний завершен..."})
             
             state = await state_task
             
@@ -531,7 +536,7 @@ class ChatOrchestrator:
             
         thoughts_full += plan_thoughts + "\n"
         print(f"DEBUG: Yielding initial thought: {plan_thoughts[:50]}...")
-        yield json.dumps({"type": "thought", "content": plan_thoughts + "\n"}) + "\n"
+        yield self._format_sse({"type": "thought", "content": plan_thoughts + "\n"})
         await asyncio.sleep(0.01) # Flush buffer
 
         if trace:
@@ -544,13 +549,13 @@ class ChatOrchestrator:
         search_texts = []
         if intent == "search" or is_deep_search or use_deep_search or use_research:
             status_msg = "Активирую Deep Search для поиска данных за 2026 год..." if "2026" in user_message else "Ищу бенчмарки в интернете (Exa AI)..."
-            yield json.dumps({"type": "status", "content": status_msg}) + "\n"
+            yield self._format_sse({"type": "status", "content": status_msg})
             await asyncio.sleep(0.01)
             print(f"DEBUG: Yielding status: {status_msg}")
             
             search_thought = f"Выполняю поиск по интернету (Exa AI)...\n"
             thoughts_full += search_thought
-            yield json.dumps({"type": "thought", "content": search_thought}) + "\n"
+            yield self._format_sse({"type": "thought", "content": search_thought})
             await asyncio.sleep(0.01)
             
             # Pass trace.id and parent_id for Langfuse propagation
@@ -560,7 +565,7 @@ class ChatOrchestrator:
             # Non-blocking wait with keep-alive
             while not search_task.done():
                 # Yield a tiny status or thought to keep the connection alive and show activity
-                yield json.dumps({"type": "status", "content": "Выполняю поиск по интернету (Exa AI)..."}) + "\n"
+                yield self._format_sse({"type": "status", "content": "Выполняю поиск по интернету (Exa AI)..."})
                 await asyncio.sleep(2.0)
             
             search_sources, search_context = await search_task
@@ -585,12 +590,12 @@ class ChatOrchestrator:
         swarm_facts = ""
         
         if (intent in ["chat", "finance", "search", "presentation"]) and chunks_to_swarm:
-            yield json.dumps({"type": "status", "content": "Запускаю рой агентов для валидации цифр..."}) + "\n"
+            yield self._format_sse({"type": "status", "content": "Запускаю рой агентов для валидации цифр..."})
             await asyncio.sleep(0.01)
             swarm_thought = f"Запускаю параллельный анализ {len(chunks_to_swarm)} фрагментов данных роем агентов Qwen...\n"
             thoughts_full += swarm_thought
             print(f"DEBUG: Yielding swarm thought: {swarm_thought[:50]}...")
-            yield json.dumps({"type": "thought", "content": swarm_thought}) + "\n"
+            yield self._format_sse({"type": "thought", "content": swarm_thought})
             await asyncio.sleep(0)
             
             try:
@@ -607,7 +612,7 @@ class ChatOrchestrator:
                     
                     # Real-time status yield for each agent
                     status_text = f"Анализ данных: агент {len(swarm_res)}/{len(chunks_to_swarm)} завершил работу ({elapsed}с)..."
-                    yield json.dumps({"type": "status", "content": status_text}) + "\n"
+                    yield self._format_sse({"type": "status", "content": status_text})
                     await asyncio.sleep(0.01) # Flush socket buffer
                     
                     if time.time() - start_swarm > 40.0: # Hard safety break
@@ -642,11 +647,11 @@ class ChatOrchestrator:
             compiled_rag_context += f"ДАННЫЕ ИЗ БАЗЫ ЗНАНИЙ:\n{chr(10).join(rag_texts[:3])}\n\n"
 
         try:
-            yield json.dumps({"type": "status", "content": "Синтезирую финальный ответ..."}) + "\n"
+            yield self._format_sse({"type": "status", "content": "Синтезирую финальный ответ..."})
             await asyncio.sleep(0.01)
             if intent == "chat" or intent not in ["roadmap", "finance", "search", "legal", "presentation", "tree"]:
                 model_used = "Makura (GLM-5)"
-                yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
+                yield self._format_sse({"type": "metadata", "model": model_used})
                 start_time = time.time()
                 ttft = None
                 async for json_chunk in self._parse_thought_generator(self._stream_chat(user_message, history, state, active_node_id, rag_context=compiled_rag_context)):
@@ -673,16 +678,16 @@ class ChatOrchestrator:
                 user_obj = res.scalar_one_or_none()
                 if user_obj and user_obj.subscription_tier == "tester":
                     msg = "Функция работы с интерактивной дорожной картой недоступна в тарифе Tester."
-                    yield json.dumps({"type": "chunk", "content": msg}) + "\n"
+                    yield self._format_sse({"type": "chunk", "content": msg})
                     return
                 
                 reply_full, enriched_data = await self._handle_roadmap_edit(user_message, state, active_node_id)
-                yield json.dumps({"type": "chunk", "content": reply_full}) + "\n"
-                yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
+                yield self._format_sse({"type": "chunk", "content": reply_full})
+                yield self._format_sse({"type": "metadata", "model": model_used})
             
             elif intent == "search" or use_research:
                 model_used = "Exa/Agent"
-                yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
+                yield self._format_sse({"type": "metadata", "model": model_used})
                 
                 start_time = time.time()
                 ttft = None
@@ -695,7 +700,7 @@ class ChatOrchestrator:
                 system = f"ВНИМАНИЕ: Сегодня {current_date} года. Ты — эксперт по поиску и сводке информации. Сначала напиши свои мысли в <thought>...</thought>, а затем ответ."
                 
                 if sources_list:
-                    yield json.dumps({"type": "sources", "data": sources_list}) + "\n"
+                    yield self._format_sse({"type": "sources", "data": sources_list})
                     
                 async for json_chunk in self._parse_thought_generator(stream_makura(system, prompt)):
                     if isinstance(json_chunk, dict):
@@ -717,12 +722,12 @@ class ChatOrchestrator:
 
             elif intent == "legal":
                 reply_full = await self._handle_legal(user_message, rag_context=compiled_rag_context)
-                yield json.dumps({"type": "chunk", "content": reply_full}) + "\n"
-                yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
+                yield self._format_sse({"type": "chunk", "content": reply_full})
+                yield self._format_sse({"type": "metadata", "model": model_used})
             
             elif intent == "finance":
                 model_used = "Makura (Finance Expert)"
-                yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
+                yield self._format_sse({"type": "metadata", "model": model_used})
                 
                 node_info = next((n for n in state["nodes"] if n["id"] == active_node_id), {})
                 tree_metrics = {}
@@ -745,7 +750,7 @@ class ChatOrchestrator:
                         if "__usage__" in chunk:
                             usage_data = chunk["__usage__"]
                         continue
-                    yield json.dumps({"type": "chunk", "content": chunk}) + "\n"
+                    yield self._format_sse({"type": "chunk", "content": chunk})
                     reply_full += str(chunk)
             
             elif intent == "presentation":
@@ -754,29 +759,29 @@ class ChatOrchestrator:
                 user_obj = res.scalar_one_or_none()
                 if user_obj and user_obj.subscription_tier == "tester":
                     msg = "Генерация презентаций недоступна в тарифе Tester."
-                    yield json.dumps({"type": "chunk", "content": msg}) + "\n"
+                    yield self._format_sse({"type": "chunk", "content": msg})
                     return
                     
                 model_used = "Makura (Presentation Builder)"
-                yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
+                yield self._format_sse({"type": "metadata", "model": model_used})
                 
-                yield json.dumps({"type": "chunk", "content": "Начинаю сборку вашей презентации... Пожалуйста, подождите.\n\n"}) + "\n"
+                yield self._format_sse({"type": "chunk", "content": "Начинаю сборку вашей презентации... Пожалуйста, подождите.\n\n"})
                 reply_full += "Начинаю сборку вашей презентации..."
                 
                 slides, raw_reply, usage_ret = await self._handle_presentation(user_message, state, compiled_rag_context)
                 if usage_ret:
                     usage_data = usage_ret
                 if slides:
-                    yield json.dumps({"type": "presentation", "data": slides}) + "\n"
-                    yield json.dumps({"type": "chunk", "content": "\nУспешно готово!"}) + "\n"
+                    yield self._format_sse({"type": "presentation", "data": slides})
+                    yield self._format_sse({"type": "chunk", "content": "\nУспешно готово!"})
                     reply_full += "\nУспешно готово!"
                 else:
-                    yield json.dumps({"type": "chunk", "content": "\nНе удалось сгенерировать."}) + "\n"
+                    yield self._format_sse({"type": "chunk", "content": "\nНе удалось сгенерировать."})
                     reply_full += "\nНе удалось сгенерировать."
             
             else:
                 model_used = "Makura (GLM-5)"
-                yield json.dumps({"type": "metadata", "model": model_used}) + "\n"
+                yield self._format_sse({"type": "metadata", "model": model_used})
                 async for json_chunk in self._parse_thought_generator(self._stream_chat(user_message, history, state, active_node_id)):
                     if isinstance(json_chunk, dict):
                         if "__usage__" in json_chunk:
@@ -791,7 +796,7 @@ class ChatOrchestrator:
                     
         except Exception as e:
             logger.error(f"Orchestrator streaming failed: {e}")
-            yield json.dumps({"type": "error", "content": str(e)}) + "\n"
+            yield self._format_sse({"type": "error", "content": str(e)})
         finally:
             # Rescue save: if message wasn't saved (e.g. stream aborted), save the partial response
             if not message_saved and (reply_full.strip() or thoughts_full.strip()):
@@ -843,7 +848,7 @@ class ChatOrchestrator:
         if enriched_data:
             state = self._merge_ai_data_to_state(state, enriched_data)
             await self.save_state(state)
-            yield json.dumps({"type": "tree_update", "data": state}) + "\n"
+            yield self._format_sse({"type": "tree_update", "data": state})
 
         # 4. Finalize (happy path — stream completed successfully)
         await self.add_chat_message("user", user_message, node_id=active_node_id, client_id=client_id)
@@ -856,12 +861,12 @@ class ChatOrchestrator:
             asyncio.create_task(semantic_cache.set(query=user_message, response=reply_full, project_id=str(self.tree_id)))
 
         # Final metadata
-        yield json.dumps({
+        yield self._format_sse({
             "type": "final",
             "readiness_index": state.get("readiness_index", 0),
             "hints": self._get_hints(state, active_node_id),
             "assistant_client_id": assistant_client_id
-        }) + "\n"
+        })
 
     def _get_hints(self, state: dict, active_node_id: str | None) -> list[str]:
         """Generate contextual suggestions based on node focus."""
@@ -924,25 +929,25 @@ class ChatOrchestrator:
         async for chunk in stream_makura(prompt, system_prompt=system_prompt):
             if isinstance(chunk, dict):
                 continue  # Skip usage sentinel
-            yield json.dumps({"type": "chunk", "content": chunk}) + "\n"
+            yield self._format_sse({"type": "chunk", "content": chunk})
 
     async def _handle_search(self, user_message: str, use_deep_search: bool = False, use_research: bool = False):
         """Handle internet search intent by calling Tavily streaming research or basic search."""
         if use_research:
             from search_agent import stream_deep_research
             async for chunk in stream_deep_research(user_message):
-                yield json.dumps(chunk) + "\n"
+                yield self._format_sse(chunk)
             return
 
         from search_agent import async_search_with_sources
         
         # 1. Inform client that we are starting basic/deep search (non-agentic)
-        yield json.dumps({"type": "thought", "content": "Ищу информацию в интернете..."}) + "\n"
+        yield self._format_sse({"type": "thought", "content": "Ищу информацию в интернете..."})
         
         sources, search_context = await async_search_with_sources(user_message, use_deep_search)
         
         if sources:
-            yield json.dumps({"type": "sources", "data": sources}) + "\n"
+            yield self._format_sse({"type": "sources", "data": sources})
         
         prompt = (
             "Ты — бизнес-аналитик. Пользователь задал вопрос, требующий поиска в интернете.\n\n"
