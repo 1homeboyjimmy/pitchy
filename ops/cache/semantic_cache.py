@@ -42,7 +42,7 @@ class SemanticCache:
                 logger.info(f"RediSearch index {self.index_name} already exists.")
             except ResponseError as e:
                 # Often raised if index doesn't exist
-                if "Unknown Index name" in str(e):
+                if "unknown index name" in str(e).lower():
                     schema = [
                         TagField("project_id"),
                         TextField("query"),

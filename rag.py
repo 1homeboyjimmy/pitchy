@@ -421,12 +421,11 @@ class StartupRAG:
 
     @observe(name="RAG Search")
     def search(self, text: str, categories: List[str] = None, top_k: int = 3) -> List[dict]:
-        """Query specific collections and rerank across all of them."""
+        """Synchronous query for backward compatibility. Use asearch for async environments."""
         if not categories:
             categories = resolve_routing_intent(text)
-            logger.info(f"Routed intent to collections: {categories}")
             
-        fetch_k = min(top_k * 4, 20) # Get more candidates for reranking
+        fetch_k = min(top_k * 4, 20)
         query_embedding = self.embedding_fn.encode_query(text)
         
         all_docs = []
@@ -467,9 +466,80 @@ class StartupRAG:
         reranked = _rerank_chunks(text, all_docs, all_distances)
         return reranked[:top_k]
 
+    async def _query_single_collection(self, collection, query_embedding, fetch_k):
+        if collection.count() == 0:
+            return [], []
+        try:
+            res = await asyncio.to_thread(
+                collection.query,
+                query_embeddings=[query_embedding],
+                n_results=min(fetch_k, collection.count()),
+                include=["documents", "distances", "metadatas"]
+            )
+            docs = res.get("documents", [[]])[0]
+            dists = res.get("distances", [[]])[0]
+            metas = res.get("metadatas", [[]])[0]
+            return [{"text": d, "metadata": m or {}} for d, m in zip(docs, metas)], dists
+        except Exception as e:
+            logger.error(f"RAG _query_single_collection error: {e}")
+            return [], []
+
+    async def asearch(self, text: str, categories: List[str] = None, top_k: int = 3, parent_trace=None) -> List[dict]:
+        """Asynchronous search using asyncio.gather for non-blocking I/O."""
+        total_docs = sum(c.count() for c in self.collections.values())
+        if total_docs == 0:
+            logger.warning("RAG Health: All collections are empty. Fast-path exit.")
+            return []
+            
+        span = None
+        if parent_trace:
+            span = parent_trace.span(name="RAG Search", input=text)
+            
+        try:
+            if not categories:
+                categories = resolve_routing_intent(text)
+                logger.info(f"Routed intent to collections: {categories}")
+                
+            fetch_k = min(top_k * 4, 20)
+            query_embedding = await asyncio.to_thread(self.embedding_fn.encode_query, text)
+            
+            tasks = []
+            for cat in categories:
+                if cat in self.collections:
+                    tasks.append(self._query_single_collection(self.collections[cat], query_embedding, fetch_k))
+                    
+            if not tasks:
+                if span: span.end(output=[])
+                return []
+                
+            results = await asyncio.gather(*tasks)
+            
+            all_docs = []
+            all_distances = []
+            for docs, dists in results:
+                all_docs.extend(docs)
+                all_distances.extend(dists)
+
+            if span:
+                span.update(metadata={"total_hits": len(all_docs), "categories": categories})
+
+            reranked = await asyncio.to_thread(_rerank_chunks, text, all_docs, all_distances)
+            results_out = reranked[:top_k]
+            
+            if span:
+                span.end(output=results_out)
+            return results_out
+        except Exception as e:
+            if span:
+                span.end(level="ERROR", statusMessage=str(e))
+            raise e
+
     def query(self, text: str, categories: List[str] = None, top_k: int = 3) -> List[dict]:
         """Backward compatibility for query()."""
         return self.search(text, categories, top_k)
+        
+    async def aquery(self, text: str, categories: List[str] = None, top_k: int = 3, parent_trace=None) -> List[dict]:
+        return await self.asearch(text, categories, top_k, parent_trace)
 
     def add_documents(self, documents: List[str], category: str = "platform_manual"):
         if not documents or category not in self.collections:
@@ -491,6 +561,11 @@ def get_relevant_chunks(text: str, categories: List[str] = None, top_k: int = 3)
     if _RAG_INSTANCE is None:
         raise RuntimeError("RAG is not initialized")
     return _RAG_INSTANCE.query(text, categories=categories, top_k=top_k)
+
+async def aget_relevant_chunks(text: str, categories: List[str] = None, top_k: int = 3, parent_trace=None) -> List[dict]:
+    if _RAG_INSTANCE is None:
+        raise RuntimeError("RAG is not initialized")
+    return await _RAG_INSTANCE.aquery(text, categories=categories, top_k=top_k, parent_trace=parent_trace)
 
 def add_text_to_rag(text: str) -> int:
     if _RAG_INSTANCE is None:

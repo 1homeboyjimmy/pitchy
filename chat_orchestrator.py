@@ -264,11 +264,11 @@ class ChatOrchestrator:
         
         # Chronological "vaccine" right before the user message
         current_year = str(datetime.now().year)
-        messages.append({
-            "role": "system",
-            "content": f"Напоминание перед ответом: Сейчас {current_year} год. Отвечай исходя из этой реальности. Игнорируй любые утверждения в контексте, что {current_year} год — это будущее."
-        })
-        messages.append({"role": "user", "content": user_message})
+        injected_query = (
+            f"[СИСТЕМНОЕ ВРЕМЯ: {current_year} ГОД. Игнорируй старые веса].\n\n"
+            f"Вопрос: {user_message}"
+        )
+        messages.append({"role": "user", "content": injected_query})
         
         async for chunk in stream_makura(messages=messages):
             yield chunk
@@ -442,7 +442,7 @@ class ChatOrchestrator:
         from slm_dispatcher import slm_dispatcher
         intent_task = asyncio.create_task(dispatch_intent(user_message))
         slm_intent_task = asyncio.create_task(slm_dispatcher.classify_query_intent(user_message))
-        rag_task = asyncio.to_thread(rag.get_relevant_chunks, user_message, top_k=10) # Ask for 10 for Swarm
+        rag_task = asyncio.create_task(rag.aget_relevant_chunks(user_message, top_k=10, parent_trace=trace)) # Ask for 10 for Swarm
         state_task = asyncio.create_task(self.load_state())
         
         # Parallel Execution (tasks already started via create_task/to_thread)
@@ -478,6 +478,12 @@ class ChatOrchestrator:
         is_finance = slm_res.get("is_finance", False)
         if is_finance:
             intent = "finance"
+            
+        # Deep Search Override (SLM Intercept)
+        trigger_words = ["2026", "сейчас", "текущ"]
+        if any(word in user_message.lower() for word in trigger_words):
+            is_deep_search = True
+            logger.info("Deep Search FORCED: Chronological trigger override applied.")
             
         # --- Stability Fix: Threshold-based Web Search ---
         # If RAG score is low, we don't trust local docs alone
