@@ -323,12 +323,23 @@ export async function* sendChatMessageStream(
     const lines = buffer.split("\n");
     buffer = lines.pop() || "";
     for (const line of lines) {
-      if (line.trim()) {
+      const trimmedLine = line.trim();
+      if (!trimmedLine || trimmedLine.startsWith(':')) {
+        continue;
+      }
+      if (trimmedLine.startsWith('data: ')) {
+        const jsonStr = trimmedLine.substring(6);
+        if (jsonStr === '[DONE]') return;
         try {
-          yield JSON.parse(line);
+          yield JSON.parse(jsonStr);
         } catch (e) {
-          console.error("Error parsing stream line", e, line);
+          console.error("Error parsing stream line", e, jsonStr);
         }
+      } else {
+        // Fallback for raw JSON chunks if any
+        try {
+          yield JSON.parse(trimmedLine);
+        } catch (e) {}
       }
     }
   }
@@ -552,12 +563,23 @@ export async function* postTreeChatStream(
     const lines = buffer.split("\n");
     buffer = lines.pop() || "";
     for (const line of lines) {
-      if (line.trim()) {
+      const trimmedLine = line.trim();
+      if (!trimmedLine || trimmedLine.startsWith(':')) {
+        continue;
+      }
+      if (trimmedLine.startsWith('data: ')) {
+        const jsonStr = trimmedLine.substring(6);
+        if (jsonStr === '[DONE]') return;
         try {
-          yield JSON.parse(line);
+          yield JSON.parse(jsonStr);
         } catch (e) {
-          console.error("Error parsing stream line", e, line);
+          console.error("Error parsing stream line", e, jsonStr);
         }
+      } else {
+        // Fallback for raw JSON chunks if any
+        try {
+          yield JSON.parse(trimmedLine);
+        } catch (e) {}
       }
     }
   }
