@@ -33,7 +33,7 @@ export function TopNavBar() {
               <Link
                 key={link.href}
                 href={link.href}
-                className={`font-mono text-[11px] uppercase tracking-widest transition-colors duration-200 cursor-crosshair active:opacity-70 ${
+                className={`font-mono-label text-[10px] uppercase tracking-widest transition-colors duration-200 cursor-crosshair active:opacity-70 ${
                   isActive
                     ? "text-white border-b border-white/40 pb-1"
                     : "text-neutral-500 hover:text-white"
@@ -49,12 +49,12 @@ export function TopNavBar() {
         <div className="flex items-center gap-4">
           <Link
             href="/account"
-            className="px-4 py-1.5 border border-white text-white font-mono text-[11px] uppercase tracking-widest hover:bg-white hover:text-black transition-colors duration-200 cursor-crosshair font-bold"
+            className="px-4 py-1.5 border border-white text-white font-mono-label text-[10px] uppercase tracking-widest hover:bg-white hover:text-black transition-colors duration-200 cursor-crosshair"
           >
             АККАУНТ
           </Link>
           <button
-            className="text-neutral-500 font-mono text-[11px] uppercase tracking-widest hover:text-white transition-colors duration-200 cursor-crosshair"
+            className="text-neutral-500 font-mono-label text-[10px] uppercase tracking-widest hover:text-white transition-colors duration-200 cursor-crosshair"
           >
             ВЫЙТИ
           </button>

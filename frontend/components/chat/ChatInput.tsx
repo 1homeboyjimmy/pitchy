@@ -151,9 +151,6 @@ export function ChatInput({
                 rows={1}
             ></textarea>
             <div className="flex items-center gap-1 mb-1.5 mr-1.5">
-                <button className="p-2 text-neutral-500 hover:text-white transition-colors rounded-lg">
-                <Mic className="w-[18px] h-[18px]" />
-                </button>
                 {isLoading ? (
                     <button 
                     onClick={onStop}
@@ -175,17 +172,6 @@ export function ChatInput({
                     </button>
                 )}
             </div>
-            </div>
-        </div>
-
-        <div className="mt-4 flex justify-between items-center px-2">
-            <div className="flex items-center gap-4">
-            <span className="font-code text-[9px] text-neutral-600 uppercase tracking-widest">Model: Analyst-Ultra-v4</span>
-            <span className="font-code text-[9px] text-neutral-600 uppercase tracking-widest">Tokens: 4.2k/128k</span>
-            </div>
-            <div className="flex items-center gap-2">
-            <span className="w-1 h-1 bg-green-500 rounded-full"></span>
-            <span className="font-code text-[9px] text-neutral-600 uppercase tracking-widest">Online</span>
             </div>
         </div>
       </div>

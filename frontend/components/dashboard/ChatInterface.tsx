@@ -391,12 +391,11 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                     ) : (
                         <div className="mb-12 flex flex-col items-start w-full">
                             <div className="w-full">
-                                {/* AI Header */}
                                 <div className="flex items-center gap-3 mb-4 px-1">
-                                    <div className="w-5 h-5 bg-white flex items-center justify-center rounded-sm">
-                                        <Cpu className="text-black w-3.5 h-3.5" />
+                                    <div className="w-5 h-5 flex items-center justify-center">
+                                        <img src="/icons/logotip.png" alt="Pitchy" className="w-full h-full object-contain" />
                                     </div>
-                                    <span className="font-mono-label uppercase tracking-widest text-[11px] text-white">AI Analyst Core v4.2</span>
+                                    <span className="font-mono-label uppercase tracking-widest text-[11px] text-white">pitchy</span>
                                     <span className="text-[10px] text-white/30 ml-auto mr-1 font-code">
                                         {dayjs(msg.created_at).format("HH:mm")}
                                     </span>

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { LayoutDashboard, MessageSquare, GitBranch, Users, Shield, Settings, HelpCircle } from "lucide-react";
+import { LayoutDashboard, MessageSquare, GitBranch, Users, Shield, HelpCircle, Star } from "lucide-react";
 
 export function SideNavBar({ activeTab, setActiveTab, isAdmin }: { activeTab: string, setActiveTab: (t: string) => void, isAdmin?: boolean }) {
   const topNavItems = [
@@ -16,7 +16,6 @@ export function SideNavBar({ activeTab, setActiveTab, isAdmin }: { activeTab: st
   }
 
   const bottomNavItems = [
-    { id: "settings", label: "Настройки", icon: Settings },
     { id: "support", label: "Поддержка", icon: HelpCircle },
   ];
 
@@ -64,6 +63,18 @@ export function SideNavBar({ activeTab, setActiveTab, isAdmin }: { activeTab: st
           );
         })}
       </nav>
+
+      <div className="px-3 mb-4">
+        <div className="border border-white/10 bg-[#111111] p-4 flex flex-col gap-2">
+          <div className="flex items-center gap-2 text-white">
+            <Star size={14} strokeWidth={1.5} />
+            <span className="font-mono-label text-[10px] uppercase tracking-widest font-bold">PRO СОВЕТ</span>
+          </div>
+          <p className="font-code text-[11px] text-neutral-500 leading-relaxed">
+            Чем подробнее вы опишете проект в начале, тем точнее будет анализ.
+          </p>
+        </div>
+      </div>
 
       <div className="px-3 border-t border-white/10 pt-4 space-y-1">
         {bottomNavItems.map((item) => (

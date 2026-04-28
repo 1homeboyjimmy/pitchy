@@ -83,7 +83,7 @@ export function Header() {
                                 <>
                                     <Link
                                         href="/account"
-                                        className="px-4 py-1.5 border border-white text-white font-mono-label text-[10px] uppercase tracking-widest hover:bg-white hover:text-black transition-colors font-bold"
+                                        className="px-4 py-1.5 border border-white text-white font-mono-label text-[10px] uppercase tracking-widest hover:bg-white hover:text-black transition-colors"
                                     >
                                         АККАУНТ
                                     </Link>
@@ -99,7 +99,7 @@ export function Header() {
                                     <Link href="/login" className="font-mono-label text-[10px] uppercase tracking-widest text-neutral-500 hover:text-white transition-colors">
                                         ВОЙТИ
                                     </Link>
-                                    <Link href="/signup" className="bg-white text-black px-4 py-1.5 font-mono-label text-[10px] uppercase tracking-widest font-bold hover:opacity-90 transition-opacity">
+                                    <Link href="/signup" className="bg-white text-black px-4 py-1.5 font-mono-label text-[10px] uppercase tracking-widest hover:opacity-90 transition-opacity">
                                         РЕГИСТРАЦИЯ
                                     </Link>
                                 </>
@@ -160,7 +160,7 @@ export function Header() {
                                         <Link
                                             href="/account"
                                             onClick={() => setIsMobileMenuOpen(false)}
-                                            className="block w-full px-4 text-center py-3 border border-white text-white font-mono-label text-[12px] uppercase tracking-widest hover:bg-white hover:text-black transition-colors font-bold mb-2 rounded-lg"
+                                            className="block w-full px-4 text-center py-3 border border-white text-white font-mono-label text-[12px] uppercase tracking-widest hover:bg-white hover:text-black transition-colors mb-2"
                                         >
                                             АККАУНТ
                                         </Link>
@@ -184,7 +184,7 @@ export function Header() {
                                             ВОЙТИ
                                         </Link>
                                         <Link href="/signup" onClick={() => setIsMobileMenuOpen(false)} className="block">
-                                            <div className="w-full text-center bg-white text-black px-4 py-3 font-mono-label text-[12px] uppercase tracking-widest font-bold hover:opacity-90 transition-opacity">
+                                            <div className="w-full text-center bg-white text-black px-4 py-3 font-mono-label text-[12px] uppercase tracking-widest hover:opacity-90 transition-opacity">
                                                 РЕГИСТРАЦИЯ
                                             </div>
                                         </Link>

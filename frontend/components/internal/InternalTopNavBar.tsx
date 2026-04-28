@@ -34,12 +34,12 @@ export function InternalTopNavBar({ activeTab }: { activeTab: string }) {
         </span>
       </div>
 
-      <nav className="absolute left-1/2 -translate-x-1/2 hidden md:flex items-center gap-6">
+      <nav className="fixed left-1/2 top-0 h-14 -translate-x-1/2 hidden md:flex items-center gap-6 z-50">
         {navLinks.map((link) => (
           <Link
             key={link.href}
             href={link.href}
-            className="font-mono text-[10px] text-neutral-500 uppercase tracking-widest hover:text-white transition-colors"
+            className="font-mono-label text-[10px] text-neutral-500 uppercase tracking-widest hover:text-white transition-colors"
           >
             {link.label}
           </Link>
@@ -49,11 +49,11 @@ export function InternalTopNavBar({ activeTab }: { activeTab: string }) {
       <div className="flex items-center gap-4">
         <Link
           href="/account"
-          className="px-4 py-1.5 border border-white text-white font-mono text-[10px] uppercase tracking-widest hover:bg-white hover:text-black transition-colors cursor-crosshair font-bold"
+          className="px-4 py-1.5 border border-white text-white font-mono-label text-[10px] uppercase tracking-widest hover:bg-white hover:text-black transition-colors cursor-crosshair"
         >
           АККАУНТ
         </Link>
-        <button className="text-neutral-500 font-mono text-[10px] uppercase tracking-widest hover:text-white transition-colors cursor-crosshair">
+        <button className="text-neutral-500 font-mono-label text-[10px] uppercase tracking-widest hover:text-white transition-colors cursor-crosshair">
           ВЫЙТИ
         </button>
       </div>
