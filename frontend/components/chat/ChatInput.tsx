@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useRef, useEffect, useState } from "react";
-import { Send, Square, Maximize2, Minimize2, Globe, Sliders, Activity, ChevronUp, DownloadCloud, FileText, X } from "react-feather";
+import { Send, Square, Globe, Activity, FileText, DownloadCloud, Paperclip, Database, Mic, ArrowUp, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface ChatInputProps {
@@ -28,7 +28,7 @@ export function ChatInput({
   onSend,
   isLoading,
   onStop,
-  placeholder = "Введите сообщение...",
+  placeholder = "Задайте вопрос Pitchy...",
   disabled = false,
   useDeepSearch = false,
   onToggleDeepSearch,
@@ -40,37 +40,15 @@ export function ChatInput({
   onCancelPresentationMode,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [isToolsOpen, setIsToolsOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
 
-  // Close menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setIsToolsOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  // Auto-expand logic based on content ONLY if not fullscreen
   useEffect(() => {
     if (textareaRef.current) {
-      if (isFullscreen) {
-        // In expanded mode, we fix the height to a large value
-        textareaRef.current.style.height = '300px';
-      } else {
-        // Auto adjust based on scrollHeight
-        textareaRef.current.style.height = 'auto';
-        textareaRef.current.style.height = `${Math.min(Math.max(textareaRef.current.scrollHeight, 40), 200)}px`;
-      }
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${Math.min(Math.max(textareaRef.current.scrollHeight, 56), 192)}px`;
     }
-  }, [value, isFullscreen]);
+  }, [value]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // Submit on Enter (without shift)
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       if (!disabled && value.trim() && !isLoading) {
@@ -80,7 +58,7 @@ export function ChatInput({
   };
 
   return (
-    <div className="relative w-full max-w-4xl mx-auto">
+    <div className="relative w-full max-w-3xl mx-auto">
       {/* Agent Mode Banner */}
       <AnimatePresence>
         {isPresentationMode && (
@@ -89,23 +67,21 @@ export function ChatInput({
             animate={{ opacity: 1, y: 0, height: 'auto' }}
             exit={{ opacity: 0, y: 10, height: 0 }}
             transition={{ duration: 0.3, ease: 'easeOut' }}
-            className="mb-3 overflow-hidden"
+            className="mb-3 overflow-hidden px-6"
           >
-            <div className="relative rounded-2xl border border-pitchy-cyan/30 bg-gradient-to-r from-pitchy-violet/10 via-[#111118] to-pitchy-cyan/10 p-4 backdrop-blur-xl">
-              {/* Animated gradient top line */}
-              <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-pitchy-violet via-pitchy-cyan to-pitchy-violet bg-[length:200%_100%] animate-[shimmer_3s_ease-in-out_infinite]" />
-              
-              <div className="flex items-start justify-between gap-3">
+            <div className="relative rounded-2xl border border-white/10 bg-[#111111] p-4 backdrop-blur-xl group">
+              <div className="absolute inset-0 bg-gradient-to-br from-white/[0.04] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+              <div className="flex items-start justify-between gap-3 relative z-10">
                 <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pitchy-violet to-pitchy-cyan flex items-center justify-center flex-shrink-0 shadow-[0_0_20px_rgba(139,92,246,0.3)]">
+                  <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center flex-shrink-0">
                     <FileText className="w-5 h-5 text-white" />
                   </div>
                   <div>
-                    <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                    <h4 className="text-[14px] font-bold text-white flex items-center gap-2 font-display">
                       Режим генерации презентации
-                      <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-pitchy-cyan/20 text-pitchy-cyan uppercase tracking-wider">Agent</span>
+                      <span className="text-[9px] font-mono-label px-1.5 py-0.5 rounded bg-white/10 text-white uppercase tracking-wider">Agent</span>
                     </h4>
-                    <p className="text-xs text-white/50 mt-1 leading-relaxed">
+                    <p className="text-[13px] text-neutral-400 mt-1 leading-relaxed font-code">
                       Опишите тему, ключевые тезисы и стиль вашей презентации.
                       <br />
                       Pitchy создаст питч-дек на 6–10 слайдов.
@@ -125,169 +101,92 @@ export function ChatInput({
         )}
       </AnimatePresence>
 
-      <div 
-        className={`relative w-full flex flex-col rounded-[20px] bg-[#111118] transition-all duration-300 shadow-lg overflow-hidden group ${
-          isPresentationMode 
-            ? 'border-2 border-pitchy-cyan/40 shadow-[0_0_30px_rgba(0,200,255,0.1)]' 
-            : 'border border-white/10 focus-within:border-white/20 focus-within:shadow-[0_0_20px_rgba(255,255,255,0.05)]'
-        } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-      >
-        <div className="absolute top-0 left-0 right-0 h-6 bg-gradient-to-b from-[#111118] to-transparent z-10 pointer-events-none opacity-0 transition-opacity duration-300 group-focus-within:opacity-100" />
-        <textarea
-          ref={textareaRef}
-          value={value}
-          onChange={onChange}
-          onKeyDown={handleKeyDown}
-          placeholder={isPresentationMode ? "Опишите идею для вашей презентации..." : placeholder}
-          disabled={disabled}
-          rows={1}
-          className="w-full bg-transparent text-white placeholder-white/30 text-[15px] resize-none overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 focus:outline-none focus:ring-0 border-none !outline-none disabled:cursor-not-allowed px-5 py-4 pb-2 z-0 relative"
-          style={{ minHeight: '56px' }}
-        />
-
-        {/* Action Buttons - safely placed inside the container at the bottom */}
-        <div className="flex justify-between items-center w-full px-3 pb-2 pt-1 mt-auto">
-          <div className="flex items-center gap-1 ml-1">
-            <motion.button
-              onClick={() => setIsFullscreen(!isFullscreen)}
-              whileTap={{ scale: 0.9 }}
-              type="button"
-              className="w-9 h-9 rounded-full bg-transparent hover:bg-white/10 flex items-center justify-center text-white/40 hover:text-white transition-colors"
-              title={isFullscreen ? "Свернуть" : "Во весь экран"}
+      <div className="px-6">
+        <div className="flex flex-wrap gap-2 mb-3 ml-2">
+            <button 
+            onClick={onOpenImportModal}
+            className="bg-[#111111] border border-white/10 px-2.5 py-1 rounded-md text-[9px] font-mono-label text-neutral-500 hover:text-white hover:border-white/20 transition-all flex items-center gap-1.5 uppercase tracking-wider"
             >
-              {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-            </motion.button>
-
-            {onToggleDeepSearch && (
-              <motion.button
-                onClick={onToggleDeepSearch}
-                whileTap={{ scale: 0.9 }}
-                type="button"
-                className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors ${
-                  useDeepSearch 
-                    ? "bg-blue-500/20 text-blue-400" 
-                    : "bg-transparent text-white/40 hover:bg-white/10 hover:text-white"
-                }`}
-                title={useDeepSearch ? "Быстрый поиск включен" : "Включить быстрый поиск"}
-              >
-                <Globe className="w-4 h-4" />
-              </motion.button>
+            <Paperclip className="w-3.5 h-3.5" /> Контекст
+            </button>
+            <button 
+            onClick={onToggleDeepSearch}
+            className={`bg-[#111111] border border-white/10 px-2.5 py-1 rounded-md text-[9px] font-mono-label transition-all flex items-center gap-1.5 uppercase tracking-wider ${
+                useDeepSearch ? "text-white border-white/30" : "text-neutral-500 hover:text-white hover:border-white/20"
+            }`}
+            >
+            <Database className="w-3.5 h-3.5" /> Web-поиск
+            </button>
+            <button 
+            onClick={onToggleResearchMode}
+            className={`bg-[#111111] border border-white/10 px-2.5 py-1 rounded-md text-[9px] font-mono-label transition-all flex items-center gap-1.5 uppercase tracking-wider ${
+                isResearchMode ? "text-white border-white/30" : "text-neutral-500 hover:text-white hover:border-white/20"
+            }`}
+            >
+            <Activity className="w-3.5 h-3.5" /> Deep Research
+            </button>
+            {!isPresentationMode && (
+                <button 
+                    onClick={onTogglePresentationMode}
+                    className="bg-[#111111] border border-white/10 px-2.5 py-1 rounded-md text-[9px] font-mono-label text-neutral-500 hover:text-white hover:border-white/20 transition-all flex items-center gap-1.5 uppercase tracking-wider"
+                >
+                    <FileText className="w-3.5 h-3.5" /> Слайды
+                </button>
             )}
+        </div>
 
-            <div className="relative" ref={menuRef}>
-              <motion.button
-                onClick={() => setIsToolsOpen(!isToolsOpen)}
-                whileTap={{ scale: 0.95 }}
-                type="button"
-                className={`flex items-center gap-2 px-3 h-9 rounded-full transition-all ${
-                  isResearchMode || isPresentationMode
-                    ? "bg-pitchy-violet text-white shadow-[0_0_15px_rgba(139,92,246,0.3)]"
-                    : "bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white"
-                }`}
-              >
-                <Sliders className="w-4 h-4" />
-                <span className="text-xs font-medium">Инструменты</span>
-                <ChevronUp className={`w-3 h-3 transition-transform duration-200 ${isToolsOpen ? 'rotate-180' : ''}`} />
-              </motion.button>
-
-              <AnimatePresence>
-                {isToolsOpen && (
-                    <motion.div
-                      initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                      animate={{ opacity: 1, scale: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                      className="absolute bottom-full left-0 mb-3 w-64 bg-[#1A1A24] border border-white/20 rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.5)] z-50 backdrop-blur-2xl"
+        <div className="relative group">
+            <div className="absolute -inset-0.5 bg-white/5 rounded-2xl blur opacity-0 group-focus-within:opacity-100 transition duration-500 pointer-events-none"></div>
+            <div className={`relative bg-[#111111] border rounded-2xl p-2 flex items-end gap-2 transition-colors ${
+                isPresentationMode ? "border-white/30" : "border-white/10 focus-within:border-white/30"
+            } ${disabled ? "opacity-50" : ""}`}>
+            <textarea
+                ref={textareaRef}
+                value={value}
+                onChange={onChange}
+                onKeyDown={handleKeyDown}
+                placeholder={isPresentationMode ? "Опишите идею для презентации..." : placeholder}
+                disabled={disabled}
+                className="flex-1 bg-transparent border-none py-3 px-4 text-white focus:outline-none focus:ring-0 resize-none font-body-sm text-[14px] min-h-[56px] max-h-48 placeholder:text-[#444444]"
+                rows={1}
+            ></textarea>
+            <div className="flex items-center gap-1 mb-1.5 mr-1.5">
+                <button className="p-2 text-neutral-500 hover:text-white transition-colors rounded-lg">
+                <Mic className="w-[18px] h-[18px]" />
+                </button>
+                {isLoading ? (
+                    <button 
+                    onClick={onStop}
+                    className="bg-white/10 text-white border border-white/20 h-10 w-10 flex items-center justify-center rounded-xl hover:bg-white/20 active:scale-95 transition-all"
                     >
-                      <div className="p-3 border-b border-white/10 bg-white/5">
-                        <span className="text-[11px] font-bold text-pitchy-violet uppercase tracking-widest px-2">ДОСТУПНЫЕ ИНСТРУМЕНТЫ</span>
-                      </div>
-                    <div className="p-1">
-                      <button
-                        onClick={() => {
-                          onToggleResearchMode?.();
-                          setIsToolsOpen(false);
-                        }}
-                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors ${
-                          isResearchMode 
-                            ? "bg-pitchy-violet/20 text-pitchy-violet" 
-                            : "text-white/70 hover:bg-white/5 hover:text-white"
-                        }`}
-                      >
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isResearchMode ? 'bg-pitchy-violet text-white' : 'bg-white/5'}`}>
-                          <Activity className="w-4 h-4" />
-                        </div>
-                        <div className="flex flex-col items-start">
-                          <span className="text-sm font-medium">Deep Research</span>
-                          <span className="text-[10px] text-white/30">Глубокое агентное исследование</span>
-                        </div>
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          setIsToolsOpen(false);
-                          onOpenImportModal?.();
-                        }}
-                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-white/70 hover:bg-white/5 hover:text-white mt-1"
-                      >
-                        <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-white/5">
-                          <DownloadCloud className="w-4 h-4" />
-                        </div>
-                        <div className="flex flex-col items-start">
-                          <span className="text-sm font-medium">Импорт из других ИИ</span>
-                          <span className="text-[10px] text-white/30">Перенести контекст стартапа</span>
-                        </div>
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          setIsToolsOpen(false);
-                          onTogglePresentationMode?.();
-                        }}
-                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors mt-1 ${
-                          isPresentationMode 
-                            ? "bg-pitchy-cyan/20 text-pitchy-cyan" 
-                            : "text-white/70 hover:bg-white/5 hover:text-white"
-                        }`}
-                      >
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isPresentationMode ? 'bg-pitchy-cyan text-black' : 'bg-white/5'}`}>
-                          <FileText className={`w-4 h-4 ${isPresentationMode ? 'text-black' : 'text-pitchy-cyan'}`} />
-                        </div>
-                        <div className="flex flex-col items-start">
-                          <span className="text-sm font-medium">Слайды проекта</span>
-                          <span className="text-[10px] text-white/30">Агентный режим — питч-дек</span>
-                        </div>
-                      </button>
-                    </div>
-                  </motion.div>
+                    <Square className="w-4 h-4 fill-white" />
+                    </button>
+                ) : (
+                    <button 
+                    onClick={onSend}
+                    disabled={disabled || !value.trim()}
+                    className={`h-10 w-10 flex items-center justify-center rounded-xl transition-all ${
+                        value.trim() && !disabled
+                        ? "bg-white text-black hover:bg-neutral-200 active:scale-95"
+                        : "bg-white/10 text-white/30 cursor-not-allowed"
+                    }`}
+                    >
+                    <ArrowUp className="w-5 h-5" />
+                    </button>
                 )}
-              </AnimatePresence>
             </div>
-          </div>
-          
-          <div className="flex items-center">
-            {isLoading ? (
-              <motion.button
-                whileTap={{ scale: 0.9 }}
-                onClick={onStop}
-                className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors mr-1"
-              >
-                <Square className="w-4 h-4 fill-white" />
-              </motion.button>
-            ) : (
-              <motion.button
-                whileTap={{ scale: 0.9 }}
-                onClick={onSend}
-                disabled={disabled || !value.trim()}
-                className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors mr-1 ${
-                  value.trim() && !disabled 
-                    ? 'bg-white text-black hover:bg-white/90 shadow-md' 
-                    : 'bg-white/5 text-white/30 cursor-not-allowed'
-                }`}
-              >
-                <Send className="w-4 h-4 ml-[2px]" />
-              </motion.button>
-            )}
-          </div>
+            </div>
+        </div>
+
+        <div className="mt-4 flex justify-between items-center px-2">
+            <div className="flex items-center gap-4">
+            <span className="font-code text-[9px] text-neutral-600 uppercase tracking-widest">Model: Analyst-Ultra-v4</span>
+            <span className="font-code text-[9px] text-neutral-600 uppercase tracking-widest">Tokens: 4.2k/128k</span>
+            </div>
+            <div className="flex items-center gap-2">
+            <span className="w-1 h-1 bg-green-500 rounded-full"></span>
+            <span className="font-code text-[9px] text-neutral-600 uppercase tracking-widest">Online</span>
+            </div>
         </div>
       </div>
     </div>

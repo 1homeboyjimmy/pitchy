@@ -41,7 +41,7 @@ export const viewport: Viewport = {
 
 import { ScrollToTop } from "@/components/shared/ScrollToTop";
 import { BreadcrumbsSchema } from "@/components/shared/BreadcrumbsSchema";
-import { LightRaysWrapper } from "@/components/effects/LightRaysWrapper";
+
 
 export default function RootLayout({
   children,
@@ -54,7 +54,7 @@ export default function RootLayout({
         <ScrollToTop />
         <BreadcrumbsSchema />
         <Providers>
-          <LightRaysWrapper />
+
           {children}
         </Providers>
       </body>

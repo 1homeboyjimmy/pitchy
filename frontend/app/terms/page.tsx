@@ -1,14 +1,21 @@
-import Layout from "@/components/Layout";
+import { TopNavBar } from "@/components/shared/TopNavBar";
+import { SiteFooter } from "@/components/shared/SiteFooter";
 
 export default function TermsPage() {
     return (
-        <Layout>
-            <div className="min-h-screen pt-24 pb-16 px-4 flex justify-center">
-                <div className="max-w-4xl w-full text-white prose prose-invert">
-                    <h1 className="text-3xl font-bold mb-8">Пользовательское соглашение и Оферта</h1>
-                    <p className="text-white/70 mb-4">
+        <div className="bg-background text-on-background antialiased min-h-screen flex flex-col">
+            <TopNavBar />
+            <main className="flex-grow pt-24 pb-16 px-6 md:px-12 max-w-[1440px] mx-auto w-full">
+                <header className="mb-12 mt-8 md:mt-16">
+                    <div className="inline-block bg-white/5 border border-white/[0.08] rounded px-3 py-1 mb-6">
+                        <span className="font-mono-label text-[11px] text-neutral-400 uppercase tracking-widest">PITCHY.PRO / LEGAL</span>
+                    </div>
+                    <h1 className="font-display text-[40px] leading-none tracking-tight text-primary mb-6 max-w-3xl">Пользовательское соглашение</h1>
+                    <p className="font-body-lg text-body-lg text-neutral-400 max-w-2xl">
                         Настоящий документ определяет условия использования сервиса Pitchy.pro и предоставления цифровых услуг.
                     </p>
+                </header>
+                <div className="max-w-3xl text-neutral-300 prose prose-invert prose-neutral prose-headings:text-white">
 
                     <h2 className="text-2xl font-semibold mt-8 mb-4">1. Предмет соглашения</h2>
                     <p className="text-white/70 mb-4">
@@ -66,7 +73,8 @@ export default function TermsPage() {
                         Дата последнего обновления: 20 февраля 2026 года.
                     </p>
                 </div>
-            </div>
-        </Layout>
+            </main>
+            <SiteFooter />
+        </div>
     );
 }

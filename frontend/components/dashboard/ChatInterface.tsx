@@ -1,10 +1,8 @@
-
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { User, Cpu, Loader, Star, Zap, Users, Grid, HelpCircle, ThumbsUp, ThumbsDown, ChevronDown, ChevronUp, Activity, Globe, Link2, FileText } from "react-feather";
+import { Cpu, Loader, Star, Zap, Users, Grid, HelpCircle, ThumbsUp, ThumbsDown, ChevronDown, ChevronUp, Activity, Globe, Link2, FileText } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-// Button unused
 import { ChatMessageResponse, ChatSessionDetailResponse, sendChatMessageFeedback } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import { AnalysisCard } from "@/components/dashboard/AnalysisCard";
@@ -66,7 +64,6 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
     const typingSpeed = 12; // ms per character
 
     const handleFeedback = async (messageId: number, feedbackValue: number) => {
-        // Optimistic UI update
         setMessages((prev) => prev.map((m) =>
             m.id === messageId ? { ...m, feedback: feedbackValue } : m
         ));
@@ -80,22 +77,18 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
         }
     };
 
-    // Unified key getter to prevent mismatches
     const getSafeKey = useCallback((m: ExtendedChatMessage) => {
         return (m.client_id || m.id)?.toString();
     }, []);
 
-    // Shared merge logic to prevent duplicates and data loss
     const mergeMessages = useCallback((current: ExtendedChatMessage[], incoming: ExtendedChatMessage[]) => {
         const map = new Map();
 
-        // 1. Сначала берем всё, что прислал сервер
         incoming.forEach(inc => {
             const key = getSafeKey(inc);
             if (key) map.set(key, inc);
         });
 
-        // 2. Накладываем локальные сообщения сверху
         current.forEach(loc => {
             const key = getSafeKey(loc);
             if (!key) return;
@@ -103,14 +96,11 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
             const serverMatch = map.get(key);
             
             if (serverMatch) {
-                // Если сервер уже знает об этом сообщении, берем серверное,
-                // НО сохраняем локальный текст, если он длиннее (защита от пустой базы)
                 map.set(key, {
                     ...serverMatch,
                     content: (loc.content?.length || 0) > (serverMatch.content?.length || 0) 
                         ? loc.content 
                         : serverMatch.content,
-                    // Always pick the longer/non-null thoughts to prevent loss
                     thoughts: (loc.thoughts?.length || 0) >= (serverMatch.thoughts?.length || 0)
                         ? loc.thoughts
                         : serverMatch.thoughts,
@@ -120,8 +110,6 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                     sources: (loc.sources?.length || 0) > (serverMatch.sources?.length || 0) ? loc.sources : serverMatch.sources,
                 });
             } else {
-                // КЛЮЧЕВОЙ МОМЕНТ: если сообщения НЕТ на сервере, но оно есть локально —
-                // НЕ УДАЛЯЕМ его, пока идет загрузка (isLoading)
                 if (isLoading || (loc.content && loc.content.length > 0)) {
                     map.set(key, loc);
                 }
@@ -134,7 +122,6 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
     }, [getSafeKey, isLoading]);
 
     useEffect(() => {
-        // Use merge instead of direct replacement to protect streaming state
         if (session.messages) {
             setMessages(prev => mergeMessages(prev, session.messages));
         }
@@ -155,7 +142,6 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
     };
 
     useEffect(() => {
-        // Force scroll on initial load or when loading starts (new message)
         if (messages.length > 0 && isLoading && displayedLength === 0) {
             scrollToBottom(true);
         } else {
@@ -163,7 +149,6 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
         }
     }, [messages.length, isLoading, session.analysis, displayedLength]);
 
-    // Typewriter effect: reveal characters progressively
     useEffect(() => {
         if (typingMessageId === null) return;
         const msg = messages.find((m) => getSafeKey(m) === typingMessageId.toString());
@@ -173,11 +158,9 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
             setTypingMessageId(null);
             return;
         }
-        // Reveal faster for markdown formatting chars
         const nextChar = msg.content[displayedLength];
         const speed = /[|\-#*\n\r]/.test(nextChar) ? 2 : typingSpeed;
         const timer = setTimeout(() => {
-            // Reveal in small chunks (3-5 chars) for smoother feel
             const chunk = Math.min(3, fullLen - displayedLength);
             setDisplayedLength((prev) => prev + chunk);
         }, speed);
@@ -188,10 +171,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
         const rawContent = getSafeKey(msg) === typingMessageId?.toString()
             ? msg.content.slice(0, displayedLength)
             : msg.content;
-        
-        // Table safety: prevent rendering incomplete table delimiters like |---| during streaming
         const safeContent = rawContent.replace(/\n\|[ \-|]*$/g, "\n");
-        
         return stripThoughts(safeContent);
     }, [typingMessageId, displayedLength, getSafeKey]);
 
@@ -202,11 +182,10 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
         if (typeof text !== 'string') setInputValue("");
         setIsLoading(true);
 
-        // Check for presentation request to trigger Agent Mode UX
         const isPresentationRequest = forceIntent === 'presentation' || isPresentationMode;
 
         if (isPresentationRequest) {
-            setPresentationSlides(null); // Clear old slides
+            setPresentationSlides(null); 
             setGenerationStatus(null);
             setIsGeneratingSlides(true);
             setIsPresentationOpen(true);
@@ -223,7 +202,6 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
             const userClientId = crypto.randomUUID();
             const assistantClientId = crypto.randomUUID();
 
-            // PUSH ONLY ONCE: Both user and assistant placeholder
             if (!silent) {
                 setStreamingStatus("Pitchy планирует поиск...");
                 setMessages((prev) => [
@@ -245,7 +223,6 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                     },
                 ]);
             } else {
-                // If silent, only push the assistant placeholder
                 setMessages((prev) => [
                     ...prev,
                     {
@@ -279,7 +256,6 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                     isResearchMode,
                     isPresentationRequest ? 'presentation' : (forceIntent || undefined)
                 )) {
-                    console.warn("Raw chunk:", chunk);
                     if (chunk.type === "thought") {
                         fullThoughtContent += chunk.content;
                         setMessages(prev => prev.map(m =>
@@ -291,7 +267,6 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                             const duration = Math.round((Date.now() - startTime) / 1000);
                             thoughtUpdate = { thoughtTime: duration };
                         }
-                        // Clear streaming status on first content chunk (triggers fade-out)
                         if (!assistantContent) setStreamingStatus(null);
                         assistantContent += chunk.content;
                         setMessages((prev) =>
@@ -304,9 +279,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                     } else if (chunk.type === "presentation") {
                         setPresentationSlides(chunk.data);
                         setIsGeneratingSlides(false);
-                        // Drawer is already open from handleSendMessage
                     } else if (chunk.type === "status") {
-                        console.log("Status received:", chunk.content);
                         setStreamingStatus(chunk.content);
                         setGenerationStatus(chunk.content);
                     } else if (chunk.type === "metadata") {
@@ -324,19 +297,15 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                 }
             }
 
-            // Fetch updated session after a small delay to ensure background tasks finished
             await new Promise(resolve => setTimeout(resolve, 400));
             const updatedSession = await getChatSession(session.id, token);
             onUpdate(updatedSession);
-
-            // Reconcile using our shared merge logic
             setMessages((prev) => mergeMessages(prev, updatedSession.messages || []));
 
         } catch (error) {
             console.error(error);
             if (error instanceof Error && error.message.includes("API_ERROR:")) {
                 const detail = error.message.split("API_ERROR:")[1] || "";
-                // Detect limit exhaustion errors → show upgrade modal
                 if (detail.includes("Лимит") || detail.includes("лимит") || detail.includes("исчерпан")) {
                     setUpgradeModalMessage(detail);
                     setIsUpgradeModalOpen(true);
@@ -347,7 +316,6 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                 alert("Ошибка отправки сообщения");
             }
             setMessages((prev) => {
-                // Remove the placeholder user+assistant messages that failed to send
                 const last = prev.length;
                 if (last >= 2 && prev[last - 1].role === "assistant" && prev[last - 1].content === "") {
                     return prev.slice(0, -2);
@@ -358,10 +326,9 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
             setIsLoading(false);
             setStreamingStatus(null);
             setIsGeneratingSlides(false);
-            setIsResearchMode(false); // Reset research mode after send
+            setIsResearchMode(false); 
             if (isPresentationRequest && !isPresentationOpen) {
-                // Keep presentation open if it generated
-                setIsPresentationMode(false); // Turn off after successful generation
+                setIsPresentationMode(false); 
             }
             abortControllerRef.current = null;
             setTimeout(() => textareaRef.current?.focus(), 100);
@@ -377,16 +344,14 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
     };
 
     return (
-        <div className="flex flex-col flex-1 h-full min-h-0 bg-[#131313] rounded-2xl border border-white/10 overflow-hidden relative">
-            <div className="absolute inset-0 bg-noise opacity-30 pointer-events-none" />
-
+        <div className="flex flex-col flex-1 h-full min-h-0 bg-[#0A0A0A] relative overflow-hidden">
             {/* Messages Area */}
-            <div ref={scrollViewportRef} className="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+            <div ref={scrollViewportRef} className="flex-1 overflow-y-auto px-6 lg:px-10 pt-6 pb-64 thin-scrollbar">
                 <div className="max-w-4xl mx-auto w-full space-y-6">
                 {messages.length === 0 && (
-                    <div className="flex flex-col items-center justify-center h-full text-white/30 text-center p-8">
+                    <div className="flex flex-col items-center justify-center h-[50vh] text-white/30 text-center p-8">
                         <Star className="w-12 h-12 mb-4 opacity-50" />
-                        <p>Начните диалог с описания вашего стартапа.</p>
+                        <p className="font-body-lg">Начните диалог с описания вашего стартапа.</p>
                     </div>
                 )}
 
@@ -402,8 +367,6 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
 
             const cleanContent = stripThoughts(rawContentText);
             const hasThoughts = derivedThoughts !== undefined && derivedThoughts !== null && derivedThoughts.length > 0;
-            
-            const userMessagesBefore = messages.slice(0, idx).filter(m => m.role === "user").length;
             const showThoughts = hasThoughts;
             
             const hasContent = cleanContent.trim().length > 0;
@@ -411,56 +374,76 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
             const shouldRenderMainBubble = msg.role === "user" || hasContent;
 
             return (
-                <motion.div
-                    key={msg.client_id || msg.id.toString()}
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            className={`flex gap-4 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}
-                        >
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${msg.role === "user" ? "bg-white/10" : "bg-pitchy-violet"}`}>
-                                {msg.role === "user" ? <User className="w-5 h-5 text-white" /> : <Cpu className="w-5 h-5 text-white" />}
+                <div key={msg.client_id || msg.id.toString()}>
+                    {msg.role === "user" ? (
+                        <div className="mb-10 flex flex-col items-end">
+                            <div className="max-w-[85%]">
+                                <div className="flex items-center justify-end gap-3 mb-2 px-1">
+                                    <span className="font-code text-[10px] text-neutral-500 uppercase tracking-widest">User</span>
+                                </div>
+                                <div className="bg-white/[0.03] border border-white/10 p-5 rounded-2xl rounded-tr-none">
+                                    <div className="text-on-surface font-body-lg leading-relaxed whitespace-pre-wrap">
+                                        {getDisplayContent(msg)}
+                                    </div>
+                                </div>
                             </div>
+                        </div>
+                    ) : (
+                        <div className="mb-12 flex flex-col items-start w-full">
+                            <div className="w-full">
+                                {/* AI Header */}
+                                <div className="flex items-center gap-3 mb-4 px-1">
+                                    <div className="w-5 h-5 bg-white flex items-center justify-center rounded-sm">
+                                        <Cpu className="text-black w-3.5 h-3.5" />
+                                    </div>
+                                    <span className="font-mono-label uppercase tracking-widest text-[11px] text-white">AI Analyst Core v4.2</span>
+                                    <span className="text-[10px] text-white/30 ml-auto mr-1 font-code">
+                                        {dayjs(msg.created_at).format("HH:mm")}
+                                    </span>
+                                </div>
 
-                            <div className={`flex-1 min-w-0 flex flex-col gap-2 ${msg.role === "user" ? "items-end" : "items-start"}`}>
-                                {msg.role === "assistant" && showThoughts && (
-                                    <div className="w-full max-w-[600px] bg-transparent overflow-hidden self-start">
-                                        <button 
-                                            onClick={() => {
-                                                setMessages(prev => prev.map(m => (m.client_id || m.id) === messageKey ? { ...m, thoughtExpanded: !m.thoughtExpanded } : m));
-                                            }}
-                                            className="flex items-center gap-2 px-1 py-1 text-[12px] text-white/40 hover:text-white/60 transition-colors"
-                                        >
-                                            <Activity className={`w-4 h-4 ${isLoading && isLastAssistant && !msg.thoughtTime ? "animate-spin" : "text-pitchy-violet"}`} />
-                                            <span className="font-medium">
-                                                {msg.thoughtTime ? `Размышления (${msg.thoughtTime} сек)` : "Pitchy рассуждает..."}
-                                            </span>
-                                            {msg.thoughtExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                                        </button>
-                                        
-                                        <motion.div
-                                            initial={false}
-                                            animate={{ height: msg.thoughtExpanded ? "auto" : 0, opacity: msg.thoughtExpanded ? 1 : 0 }}
-                                            className="overflow-hidden"
-                                        >
-                                            <div className="mt-1 mb-3 p-3 bg-white/5 rounded-xl border border-white/10 text-[13px] leading-relaxed text-white/50 italic whitespace-pre-wrap">
-                                                {derivedThoughts}
-                                            </div>
-                                        </motion.div>
+                                {/* Thought Process */}
+                                {showThoughts && (
+                                    <div className="mb-6 ml-1">
+                                        <details className="group" open={msg.thoughtExpanded}>
+                                            <summary 
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    setMessages(prev => prev.map(m => (m.client_id || m.id) === messageKey ? { ...m, thoughtExpanded: !m.thoughtExpanded } : m));
+                                                }}
+                                                className="list-none cursor-pointer flex items-center gap-2 text-neutral-500 hover:text-white transition-colors py-1 px-2 hover:bg-white/5 rounded w-fit"
+                                            >
+                                                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${msg.thoughtExpanded ? '' : '-rotate-90'}`} />
+                                                <span className="font-code text-[10px] uppercase tracking-wider flex items-center gap-2">
+                                                    {isLoading && isLastAssistant && !msg.thoughtTime ? <Activity className="w-3 h-3 animate-pulse" /> : null}
+                                                    {msg.thoughtTime ? `Логи анализа (${msg.thoughtTime} сек)` : "Логи анализа..."}
+                                                </span>
+                                            </summary>
+                                            <motion.div
+                                                initial={false}
+                                                animate={{ height: msg.thoughtExpanded ? "auto" : 0, opacity: msg.thoughtExpanded ? 1 : 0 }}
+                                                className="overflow-hidden"
+                                            >
+                                                <div className="mt-2 ml-2 pl-4 border-l border-white/10 space-y-1 font-code text-[11px] text-neutral-600 whitespace-pre-wrap leading-relaxed py-2">
+                                                    {derivedThoughts}
+                                                </div>
+                                            </motion.div>
+                                        </details>
                                     </div>
                                 )}
 
                                 {/* Loading state placeholder with smooth fade */}
                                 <AnimatePresence mode="wait">
-                                    {msg.role === "assistant" && !hasContent && !showThoughts && isLoading && isLastAssistant && (
+                                    {!hasContent && !showThoughts && isLoading && isLastAssistant && (
                                         <motion.div
                                             key="status-pill"
                                             initial={{ opacity: 0, y: 6 }}
                                             animate={{ opacity: 1, y: 0 }}
                                             exit={{ opacity: 0, y: -4, filter: "blur(6px)", scale: 0.97 }}
                                             transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
-                                            className="flex items-center gap-3 p-4 bg-white/5 rounded-2xl border border-white/10 text-white/60 backdrop-blur-sm"
+                                            className="flex items-center gap-3 py-2 px-1 text-white/60"
                                         >
-                                            <Loader className="animate-spin h-5 w-5 text-pitchy-violet flex-shrink-0" />
+                                            <Loader className="animate-spin h-4 w-4 flex-shrink-0" />
                                             <AnimatePresence mode="wait">
                                                 <motion.span
                                                     key={streamingStatus || "default"}
@@ -468,7 +451,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                                                     animate={{ opacity: 1, x: 0 }}
                                                     exit={{ opacity: 0, x: -8 }}
                                                     transition={{ duration: 0.2 }}
-                                                    className="text-sm font-medium"
+                                                    className="font-code text-[12px]"
                                                 >
                                                     {streamingStatus || "Pitchy анализирует данные и ищет информацию..."}
                                                 </motion.span>
@@ -477,103 +460,100 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                                     )}
                                 </AnimatePresence>
 
+                                {/* Main Analysis Content */}
                                 {shouldRenderMainBubble && (
-                                    msg.role === "user" ? (
-                                        <CollapsibleUserMessage content={getDisplayContent(msg)} />
-                                    ) : (
-                                        <div className="p-4 rounded-2xl bg-pitchy-violet/10 border border-pitchy-violet/20 text-white rounded-tl-sm">
-                                            <div className="text-sm sm:text-base leading-[1.7] md:leading-[1.8] text-white/90 [&_p]:mb-4 [&_p:last-child]:mb-0 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:mb-4 [&_ul>li]:mb-2 [&_ul>li]:pl-1 [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:mb-4 [&_ol>li]:mb-2 [&_ol>li]:pl-1 [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-pitchy-cyan-light [&_h2]:mt-8 [&_h2]:mb-4 [&_h3]:text-lg [&_h3]:font-bold [&_h3]:text-white [&_h3]:mt-6 [&_h3]:mb-3 [&_strong]:text-white [&_strong]:font-semibold break-words">
-                                                <ReactMarkdown 
-                                                    remarkPlugins={[remarkGfm]}
-                                                    components={{
-                                                        table: ({...props}) => (
-                                                            <div className="my-4 overflow-x-auto rounded-xl border border-white/10 bg-white/5">
-                                                                <table className="w-full text-left border-collapse" {...props} />
-                                                            </div>
-                                                        ),
-                                                        thead: ({...props}) => <thead className="bg-white/10" {...props} />,
-                                                        th: ({...props}) => <th className="p-3 text-sm font-bold text-pitchy-cyan-light border-b border-white/10" {...props} />,
-                                                        td: ({...props}) => <td className="p-3 text-sm text-white/80 border-b border-white/5 last:border-0" {...props} />,
-                                                    }}
-                                                >
-                                                    {getDisplayContent(msg)}
-                                                </ReactMarkdown>
-                                                {msg.id === typingMessageId && (
-                                                    <span className="inline-block w-0.5 h-4 bg-pitchy-cyan animate-pulse ml-0.5 align-text-bottom" />
-                                                )}
-                                            </div>
-                                            <div className="flex items-center gap-2 mt-2 w-full">
-                                            {msg.role === "assistant" && (
-                                                <div className="flex items-center gap-1 pl-1">
-                                                    <button
-                                                        onClick={() => handleFeedback(msg.id, msg.feedback === 1 ? 0 : 1)}
-                                                        className={`p-1.5 rounded-md transition-colors ${msg.feedback === 1 ? 'text-pitchy-cyan bg-pitchy-cyan/10' : 'text-white/30 hover:text-white/60 hover:bg-white/5'}`}
-                                                        title="Хороший ответ"
-                                                    >
-                                                        <ThumbsUp className="w-4 h-4" />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleFeedback(msg.id, msg.feedback === -1 ? 0 : -1)}
-                                                        className={`p-1.5 rounded-md transition-colors ${msg.feedback === -1 ? 'text-red-400 bg-red-400/10' : 'text-white/30 hover:text-white/60 hover:bg-white/5'}`}
-                                                        title="Плохой ответ"
-                                                    >
-                                                        <ThumbsDown className="w-4 h-4" />
-                                                    </button>
-                                                </div>
+                                <div className="space-y-8 pl-1">
+                                    <div className="bg-white/[0.03] border border-white/10 p-6 rounded-2xl rounded-tl-none space-y-6">
+                                        <div className="text-on-surface font-body-lg leading-[1.7] md:leading-[1.8] [&_p]:mb-4 [&_p:last-child]:mb-0 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:mb-4 [&_ul>li]:mb-2 [&_ul>li]:pl-1 [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:mb-4 [&_ol>li]:mb-2 [&_ol>li]:pl-1 [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-white [&_h2]:mt-8 [&_h2]:mb-4 [&_h3]:text-lg [&_h3]:font-bold [&_h3]:text-white [&_h3]:mt-6 [&_h3]:mb-3 [&_strong]:text-white [&_strong]:font-semibold break-words">
+                                            <ReactMarkdown 
+                                                remarkPlugins={[remarkGfm]}
+                                                components={{
+                                                    table: ({...props}) => (
+                                                        <div className="my-4 overflow-x-auto rounded-xl border border-white/10 bg-white/5">
+                                                            <table className="w-full text-left border-collapse font-code text-[13px]" {...props} />
+                                                        </div>
+                                                    ),
+                                                    thead: ({...props}) => <thead className="bg-white/10" {...props} />,
+                                                    th: ({...props}) => <th className="p-3 font-bold text-white border-b border-white/10" {...props} />,
+                                                    td: ({...props}) => <td className="p-3 text-neutral-400 border-b border-white/5 last:border-0" {...props} />,
+                                                }}
+                                            >
+                                                {getDisplayContent(msg)}
+                                            </ReactMarkdown>
+                                            {msg.id === typingMessageId && (
+                                                <span className="inline-block w-0.5 h-4 bg-white animate-pulse ml-0.5 align-text-bottom" />
                                             )}
-                                            <span className="text-[10px] text-white/30 ml-auto mr-1">
-                                                {dayjs(msg.created_at).format("HH:mm")}
-                                            </span>
+                                        </div>
+
+                                        <div className="flex items-center gap-2 mt-4 pt-4 border-t border-white/10 w-full">
+                                            <div className="flex items-center gap-1">
+                                                <button
+                                                    onClick={() => handleFeedback(msg.id, msg.feedback === 1 ? 0 : 1)}
+                                                    className={`p-1.5 rounded-md transition-colors ${msg.feedback === 1 ? 'text-white bg-white/10' : 'text-neutral-500 hover:text-white hover:bg-white/5'}`}
+                                                    title="Хороший ответ"
+                                                >
+                                                    <ThumbsUp className="w-4 h-4" />
+                                                </button>
+                                                <button
+                                                    onClick={() => handleFeedback(msg.id, msg.feedback === -1 ? 0 : -1)}
+                                                    className={`p-1.5 rounded-md transition-colors ${msg.feedback === -1 ? 'text-red-400 bg-red-400/10' : 'text-neutral-500 hover:text-white hover:bg-white/5'}`}
+                                                    title="Плохой ответ"
+                                                >
+                                                    <ThumbsDown className="w-4 h-4" />
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
-                                    )
-                                )}
 
-                                {/* Qwen-Style Sources Rendering */}
-                                {msg.role === "assistant" && msg.sources && msg.sources.length > 0 && (
-                                  <div className="w-full mt-2">
-                                    <button
-                                      onClick={() => setMessages(prev => prev.map(m => (m.client_id || m.id) === messageKey ? { ...m, sourcesExpanded: !m.sourcesExpanded } : m))}
-                                      className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 text-[11px] text-white/60 hover:text-white transition-all w-fit"
-                                    >
-                                      <Globe className="w-3.5 h-3.5 text-pitchy-violet" />
-                                      <span className="font-semibold">{msg.sources.length} ИСТОЧНИКОВ</span>
-                                      {msg.sourcesExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                                    </button>
-                                    
-                                    {msg.sourcesExpanded && (
-                                        <motion.div
-                                          initial={{ height: 0, opacity: 0 }}
-                                          animate={{ height: "auto", opacity: 1 }}
-                                          className="overflow-hidden mt-2"
+                                    {/* Qwen-Style Sources Rendering */}
+                                    {msg.sources && msg.sources.length > 0 && (
+                                    <div className="w-full mt-2">
+                                        <button
+                                        onClick={() => setMessages(prev => prev.map(m => (m.client_id || m.id) === messageKey ? { ...m, sourcesExpanded: !m.sourcesExpanded } : m))}
+                                        className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 text-[11px] font-mono-label uppercase text-white/60 hover:text-white transition-all w-fit"
                                         >
-                                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-2 bg-white/5 border border-white/10 rounded-xl">
-                                            {msg.sources.map((s, i) => (
-                                              <a
-                                                key={i}
-                                                href={s.url}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="flex flex-col p-3 rounded-lg bg-black/20 hover:bg-white/5 border border-transparent hover:border-white/10 transition-all group"
-                                              >
-                                                <div className="flex items-center gap-2 mb-1">
-                                                  <div className="w-5 h-5 rounded bg-white/10 flex items-center justify-center shrink-0">
-                                                    <Link2 className="w-3 h-3 text-white/50 group-hover:text-white" />
-                                                  </div>
-                                                  <span className="text-[12px] text-white/80 font-medium line-clamp-1">{s.title || "Источник"}</span>
-                                                </div>
-                                                <span className="text-[10px] text-white/40 line-clamp-1 truncate block ml-7">{s.url}</span>
-                                              </a>
-                                            ))}
-                                          </div>
-                                        </motion.div>
+                                        <Globe className="w-3.5 h-3.5 text-white" />
+                                        <span className="font-semibold">{msg.sources.length} ИСТОЧНИКОВ</span>
+                                        {msg.sourcesExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                                        </button>
+                                        
+                                        {msg.sourcesExpanded && (
+                                            <motion.div
+                                            initial={{ height: 0, opacity: 0 }}
+                                            animate={{ height: "auto", opacity: 1 }}
+                                            className="overflow-hidden mt-2"
+                                            >
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-2 bg-[#111111] border border-white/10 rounded-xl">
+                                                {msg.sources.map((s, i) => (
+                                                <a
+                                                    key={i}
+                                                    href={s.url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="flex flex-col p-3 rounded-lg bg-black/20 hover:bg-white/5 border border-transparent hover:border-white/10 transition-all group"
+                                                >
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                    <div className="w-5 h-5 rounded bg-white/10 flex items-center justify-center shrink-0">
+                                                        <Link2 className="w-3 h-3 text-white/50 group-hover:text-white" />
+                                                    </div>
+                                                    <span className="text-[12px] text-white/80 font-medium line-clamp-1">{s.title || "Источник"}</span>
+                                                    </div>
+                                                    <span className="text-[10px] text-neutral-500 line-clamp-1 truncate block ml-7 font-code">{s.url}</span>
+                                                </a>
+                                                ))}
+                                            </div>
+                                            </motion.div>
+                                        )}
+                                    </div>
                                     )}
-                                  </div>
+                                </div>
                                 )}
                             </div>
-                        </motion.div>
-                    );
-                })}
+                        </div>
+                    )}
+                </div>
+            );
+        })}
 
                 {
                     messages.length <= 2 && !session.analysis && !isLoading && (
@@ -582,60 +562,47 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                             animate={{ opacity: 1, y: 0 }}
                             className="flex flex-col gap-3 mt-4"
                         >
-                            <p className="text-white/50 text-sm text-center mb-2">Выберите тему для продолжения:</p>
+                            <p className="font-mono-label text-[11px] uppercase tracking-widest text-neutral-500 text-center mb-2">Выберите тему для продолжения:</p>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl mx-auto w-full">
-                                <button onClick={() => handleSendMessage("Анализ идеи")} className="flex items-center gap-3 p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-colors text-left group">
-                                    <div className="w-10 h-10 rounded-lg bg-pitchy-violet/20 flex items-center justify-center text-pitchy-violet group-hover:scale-110 transition-transform">
+                                <button onClick={() => handleSendMessage("Анализ идеи")} className="flex items-center gap-4 p-5 rounded-2xl bg-[#111111] hover:bg-white/5 border border-white/10 transition-all text-left group hover:border-white/20">
+                                    <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center text-white group-hover:scale-110 transition-transform">
                                         <Zap className="w-5 h-5" />
                                     </div>
                                     <div>
-                                        <div className="text-white font-medium">Анализ идеи</div>
-                                        <div className="text-white/40 text-xs mt-0.5">Получить оценку 0-100</div>
+                                        <div className="text-white font-medium text-[14px]">Анализ идеи</div>
+                                        <div className="text-neutral-500 text-[12px] mt-0.5">Получить оценку 0-100</div>
                                     </div>
                                 </button>
 
-                                <button onClick={() => handleSendMessage("Анализ ЦА")} className="flex items-center gap-3 p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-colors text-left group">
-                                    <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center text-blue-400 group-hover:scale-110 transition-transform">
+                                <button onClick={() => handleSendMessage("Анализ ЦА")} className="flex items-center gap-4 p-5 rounded-2xl bg-[#111111] hover:bg-white/5 border border-white/10 transition-all text-left group hover:border-white/20">
+                                    <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center text-white group-hover:scale-110 transition-transform">
                                         <Users className="w-5 h-5" />
                                     </div>
                                     <div>
-                                        <div className="text-white font-medium">Анализ ЦА</div>
-                                        <div className="text-white/40 text-xs mt-0.5">Сегментация аудитории</div>
+                                        <div className="text-white font-medium text-[14px]">Анализ ЦА</div>
+                                        <div className="text-neutral-500 text-[12px] mt-0.5">Сегментация аудитории</div>
                                     </div>
                                 </button>
 
-                                <button onClick={() => handleSendMessage("Посчитать экономику проекта")} className="flex items-center gap-3 p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-colors text-left group">
-                                    <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:scale-110 transition-transform">
+                                <button onClick={() => handleSendMessage("Посчитать экономику проекта")} className="flex items-center gap-4 p-5 rounded-2xl bg-[#111111] hover:bg-white/5 border border-white/10 transition-all text-left group hover:border-white/20">
+                                    <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center text-white group-hover:scale-110 transition-transform">
                                         <Grid className="w-5 h-5" />
                                     </div>
                                     <div>
-                                        <div className="text-white font-medium">Юнит-экономика</div>
-                                        <div className="text-white/40 text-xs mt-0.5">САР, LTV, метрики</div>
+                                        <div className="text-white font-medium text-[14px]">Юнит-экономика</div>
+                                        <div className="text-neutral-500 text-[12px] mt-0.5">САР, LTV, метрики</div>
                                     </div>
                                 </button>
 
-                                <button onClick={() => handleSendMessage("Другой вопрос")} className="flex items-center gap-3 p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-colors text-left group">
-                                    <div className="w-10 h-10 rounded-lg bg-orange-500/20 flex items-center justify-center text-orange-400 group-hover:scale-110 transition-transform">
+                                <button onClick={() => handleSendMessage("Другой вопрос")} className="flex items-center gap-4 p-5 rounded-2xl bg-[#111111] hover:bg-white/5 border border-white/10 transition-all text-left group hover:border-white/20">
+                                    <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center text-white group-hover:scale-110 transition-transform">
                                         <HelpCircle className="w-5 h-5" />
                                     </div>
                                     <div>
-                                        <div className="text-white font-medium">Другой вопрос</div>
-                                        <div className="text-white/40 text-xs mt-0.5">Свободный диалог</div>
+                                        <div className="text-white font-medium text-[14px]">Другой вопрос</div>
+                                        <div className="text-neutral-500 text-[12px] mt-0.5">Свободный диалог</div>
                                     </div>
                                 </button>
-                            </div>
-                        </motion.div>
-                    )
-                }
-
-                {
-                    isLoading && messages.length <= 1 && (
-                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-4">
-                            <div className="w-8 h-8 rounded-full bg-pitchy-violet flex items-center justify-center flex-shrink-0">
-                                <Loader className="w-5 h-5 text-white animate-spin" />
-                            </div>
-                            <div className="bg-pitchy-violet/10 border border-pitchy-violet/20 text-white rounded-2xl rounded-tl-sm p-4 flex items-center">
-                                <span className="animate-pulse">Анализирую...</span>
                             </div>
                         </motion.div>
                     )
@@ -649,11 +616,11 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                             className="mt-8 border-t border-white/10 pt-8 pb-4"
                         >
                             <div className="text-center mb-6">
-                                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-sm font-medium mb-2">
-                                    <Star className="w-4 h-4" />
+                                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[11px] font-mono-label uppercase tracking-widest mb-4">
+                                    <Star className="w-3 h-3" />
                                     <span>Анализ готов</span>
                                 </div>
-                                <h3 className="text-xl font-bold text-white">Результаты оценки</h3>
+                                <h3 className="font-display text-[24px] font-medium text-white">Результаты оценки</h3>
                             </div>
 
                             <div className="max-w-md mx-auto">
@@ -676,8 +643,8 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                 </div>
             </div >
 
-            {/* Input Area */}
-            <div className="p-4 bg-[#131313] pb-6 z-10 relative">
+            {/* Input Area (Fixed Bottom) */}
+            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-[#0A0A0A] via-[#0A0A0A] to-transparent pt-12 pb-8 z-40">
                 <ChatInput
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
@@ -693,14 +660,14 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                   onCancelPresentationMode={() => setIsPresentationMode(false)}
                   onOpenImportModal={() => setIsImportModalOpen(true)}
                   disabled={!!session.analysis}
-                  placeholder={isPresentationMode ? "Опишите идею для вашей презентации..." : (session.analysis ? "Диалог завершен" : "Спросите Pitchy...")}
+                  placeholder={isPresentationMode ? "Опишите идею для вашей презентации..." : (session.analysis ? "Диалог завершен" : "Задайте вопрос Pitchy...")}
                 />
                 
                 {presentationSlides && presentationSlides.length > 0 && (
                     <div className="mt-4 flex justify-center">
                         <button
                             onClick={() => setIsPresentationOpen(true)}
-                            className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-pitchy-violet to-pitchy-cyan text-white text-sm font-bold rounded-xl shadow-[0_0_15px_rgba(168,85,247,0.3)] hover:shadow-[0_0_25px_rgba(168,85,247,0.5)] transition-all"
+                            className="flex items-center gap-2 px-6 py-2.5 bg-white text-black text-[12px] font-mono-label uppercase tracking-widest rounded hover:opacity-90 transition-opacity"
                         >
                             <FileText className="w-4 h-4" />
                             Открыть презентацию
