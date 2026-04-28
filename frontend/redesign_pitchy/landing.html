@@ -1,0 +1,628 @@
+<html class="dark" lang="en"><head></head><body class="antialiased font-body-lg text-body-lg min-h-screen flex flex-col selection:bg-primary selection:text-on-primary">```html
+
+
+
+
+
+
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Pitchy.pro - Deterministic AI Routing</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&amp;family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-bright": "#3a3939",
+                        "error-container": "#93000a",
+                        "surface-variant": "#353434",
+                        "surface-container-high": "#2a2a2a",
+                        "on-tertiary-container": "#636565",
+                        "on-secondary-container": "#bab8b7",
+                        "surface-tint": "#c6c6c7",
+                        "tertiary": "#ffffff",
+                        "secondary-container": "#4a4949",
+                        "tertiary-fixed-dim": "#c6c6c7",
+                        "secondary-fixed-dim": "#c9c6c5",
+                        "surface-container-lowest": "#0e0e0e",
+                        "on-surface-variant": "#c4c7c8",
+                        "tertiary-container": "#e2e2e2",
+                        "primary-fixed-dim": "#c6c6c7",
+                        "on-primary": "#2f3131",
+                        "on-error-container": "#ffdad6",
+                        "surface-container-highest": "#353434",
+                        "primary": "#ffffff",
+                        "on-primary-container": "#636565",
+                        "on-surface": "#e5e2e1",
+                        "inverse-primary": "#5d5f5f",
+                        "background": "#141313",
+                        "surface": "#141313",
+                        "inverse-on-surface": "#313030",
+                        "secondary-fixed": "#e5e2e1",
+                        "primary-container": "#e2e2e2",
+                        "primary-fixed": "#e2e2e2",
+                        "on-error": "#690005",
+                        "outline-variant": "#444748",
+                        "inverse-surface": "#e5e2e1",
+                        "on-tertiary-fixed": "#1a1c1c",
+                        "error": "#ffb4ab",
+                        "surface-container": "#201f1f",
+                        "on-background": "#e5e2e1",
+                        "outline": "#8e9192",
+                        "on-primary-fixed": "#1a1c1c",
+                        "surface-dim": "#141313",
+                        "surface-container-low": "#1c1b1b",
+                        "on-tertiary-fixed-variant": "#454747",
+                        "on-secondary-fixed-variant": "#474646",
+                        "on-secondary": "#313030",
+                        "on-primary-fixed-variant": "#454747",
+                        "tertiary-fixed": "#e2e2e2",
+                        "on-tertiary": "#2f3131",
+                        "on-secondary-fixed": "#1c1b1b",
+                        "secondary": "#c9c6c5"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "unit": "4px",
+                        "md": "16px",
+                        "gutter": "16px",
+                        "xs": "4px",
+                        "sm": "8px",
+                        "container-max": "1440px",
+                        "xl": "48px",
+                        "lg": "24px"
+                    },
+                    "fontFamily": {
+                        "code": ["Space Grotesk"],
+                        "mono-label": ["Space Grotesk"],
+                        "h1": ["Inter"],
+                        "body-sm": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "h2": ["Inter"],
+                        "display": ["Inter"]
+                    },
+                    "fontSize": {
+                        "code": ["13px", { "lineHeight": "1.6", "letterSpacing": "0", "fontWeight": "400" }],
+                        "mono-label": ["12px", { "lineHeight": "1", "letterSpacing": "0.05em", "fontWeight": "500" }],
+                        "h1": ["32px", { "lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+                        "body-sm": ["14px", { "lineHeight": "1.5", "letterSpacing": "0", "fontWeight": "400" }],
+                        "body-lg": ["16px", { "lineHeight": "1.6", "letterSpacing": "0", "fontWeight": "400" }],
+                        "h2": ["24px", { "lineHeight": "1.3", "letterSpacing": "-0.01em", "fontWeight": "500" }],
+                        "display": ["48px", { "lineHeight": "1.1", "letterSpacing": "-0.02em", "fontWeight": "600" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body { background-color: #0A0A0A; color: #ffffff; overflow-x: hidden; }
+        .border-hairline { border: 1px solid rgba(255, 255, 255, 0.08); }
+        .glass-panel { background: rgba(17, 17, 17, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); }
+        .flashlight-card:hover { background: radial-gradient(circle at center, rgba(255, 255, 255, 0.05) 0%, transparent 70%); border-color: rgba(255, 255, 255, 0.2); }
+        .mask-vertical-fade { mask-image: linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,0) 100%); -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,0) 100%); }
+        
+        details > summary { list-style: none; }
+        details > summary::-webkit-details-marker { display: none; }
+        details[open] summary ~ * { animation: sweep .5s ease-in-out; }
+        @keyframes sweep {
+            0%    {opacity: 0; margin-top: -10px}
+            100%  {opacity: 1; margin-top: 0px}
+        }
+
+        @keyframes radar-sweep {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .grid-perspective {
+            transform: rotateX(60deg) scale(2);
+            transform-origin: center center;
+        }
+        .radar-beam {
+            background: conic-gradient(from 0deg at 50% 50%, transparent 0deg, transparent 270deg, rgba(255, 255, 255, 0.1) 360deg);
+            animation: radar-sweep 4s linear infinite;
+        }
+        .node-pulse {
+            animation: pulse-node 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse-node {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.2); }
+        }
+    </style>
+<!-- TopNavBar -->
+<header class="bg-[#0A0A0A]/80 backdrop-blur-md docked full-width top-0 sticky z-50">
+<div class="flex justify-between items-center w-full px-6 h-14 max-w-[1440px] mx-auto border-b border-white/10">
+<div class="text-xl font-bold tracking-widest text-white" style="">PITCHY.PRO</div>
+<nav class="hidden md:flex gap-8">
+<a class="font-mono uppercase tracking-tighter text-xs text-neutral-500 hover:text-white transition-colors duration-200" href="#" style="">Docs</a>
+<a class="font-mono uppercase tracking-tighter text-xs text-neutral-500 hover:text-white transition-colors duration-200" href="#" style="">API</a>
+<a class="font-mono uppercase tracking-tighter text-xs text-neutral-500 hover:text-white transition-colors duration-200" href="#" style="">Pricing</a>
+</nav>
+<button class="bg-primary text-on-primary font-mono-label text-mono-label px-4 py-2 hover:bg-opacity-90 transition-opacity scale-95 active:opacity-80 rounded" style="">Login</button>
+</div>
+</header>
+<main class="flex-grow w-full max-w-[1440px] mx-auto px-gutter md:px-xl py-xl space-y-32">
+<!-- Hero Section -->
+<section class="relative w-full min-h-[80vh] flex flex-col pt-16 mb-32 justify-center">
+<!-- Visualization Background/Element -->
+<div class="absolute inset-0 z-0 flex items-center justify-center overflow-hidden pointer-events-none [mask-image:radial-gradient(circle,white_20%,transparent_80%)]">
+<img alt="AI Point Cloud Visualization" class="w-full h-full object-cover object-center opacity-60 mix-blend-screen" src="https://lh3.googleusercontent.com/aida/ADBb0ugz33rXftnCLjTsUMl8LieoiTQdeMLUCU7M5GpeuBGF4JPwBrcGMtexVFKxgb-uElgA-nqWYey3hZxWtJBEff6klejL4atIxifq0FBMNXuM74eZDMmQqzgu4j42peoITX-t5l9ITR5mfn3ICLRW5205DA5nZJBKUqr66UKWvM2gvw5qETUi-BJPcBOmw7tUOVinekEq3e01cgMNe56vni6BSl4Ze0qjvn7cEYz3F1u_2ofdZe2H2lIsvKg" style=""/>
+<div class="absolute left-[30%] top-[30%] border border-white/20 text-white/70 px-4 py-1 rounded text-xs font-mono tracking-widest bg-black/50 backdrop-blur-sm z-10" style="">RAG_INDEX</div>
+<div class="absolute right-[30%] top-[35%] border border-white/20 text-white/70 px-4 py-1 rounded text-xs font-mono tracking-widest bg-black/50 backdrop-blur-sm z-10" style="">ROUTING</div>
+</div>
+<!-- Content -->
+<div class="relative z-10 flex flex-col items-center justify-center text-center mt-8 md:mt-16 bg-black/40 backdrop-blur-[2px] p-8 rounded-2xl">
+<h1 class="font-display text-[48px] md:text-[80px] leading-tight mb-6 tracking-tight text-white font-semibold drop-shadow-lg" style="">Экосистема для бизнеса</h1>
+<p class="font-body-lg text-lg md:text-xl text-neutral-300 max-w-2xl mb-12 drop-shadow-md" style="">Поможем с Юнит-экономикой, анализом ЦА, проведением Custdev-интервью и получением грантов</p>
+<div class="flex items-center gap-4">
+<button class="bg-white text-black font-mono-label text-sm px-8 py-3 rounded-full hover:bg-gray-200 transition-colors shadow-lg" style="">Get started</button>
+<button class="bg-black/50 backdrop-blur-md border border-white/20 text-white font-mono-label text-sm px-8 py-3 rounded-full hover:bg-white/10 transition-colors shadow-lg" style="">Read the docs</button>
+</div>
+</div>
+</section>
+<!-- Section 1: User Journey -->
+<section class="py-24 border-t border-hairline relative overflow-hidden bg-[#0A0A0A]">
+<div class="max-w-4xl mx-auto text-center mb-16">
+<h2 class="text-[40px] md:text-[56px] leading-tight font-semibold tracking-tight text-white mb-6" style="">Путь пользователя.</h2>
+<p class="text-neutral-400 text-lg mb-8" style="">Ускоряй процесс, повышай качество, реализуй идею.</p>
+</div>
+<div class="relative w-full max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-16 px-8 font-mono">
+<!-- Left Branch -->
+<div class="flex flex-col items-center">
+<h3 class="text-white text-lg mb-12 tracking-[0.2em] uppercase font-semibold" style="">С Pitchy</h3>
+<div class="relative w-full flex flex-col items-center h-full justify-between gap-8 py-2">
+<div class="absolute top-6 bottom-6 w-0.5 bg-white shadow-[0_0_15px_rgba(255,255,255,0.8)] z-0"></div>
+<div class="relative z-10 bg-[#111111] border border-white/80 px-8 py-4 rounded-full text-white text-center shadow-[0_0_15px_rgba(255,255,255,0.1)] font-semibold w-64 text-sm" style="">Идея</div>
+<div class="relative z-10 bg-[#111111] border border-white/80 px-8 py-4 rounded-full text-white text-center shadow-[0_0_15px_rgba(255,255,255,0.1)] font-semibold w-64 text-sm" style="">Скоринг</div>
+<div class="relative z-10 bg-[#111111] border border-white/80 px-8 py-4 rounded-full text-white text-center shadow-[0_0_15px_rgba(255,255,255,0.1)] font-semibold w-64 text-sm" style="">Анализ</div>
+<div class="relative z-10 bg-white text-black px-8 py-4 rounded-full text-center shadow-[0_0_20px_rgba(255,255,255,0.3)] font-bold w-64 text-sm uppercase tracking-wider" style="">Получение гранта</div>
+</div>
+</div>
+<!-- Right Branch -->
+<div class="flex flex-col items-center">
+<h3 class="text-neutral-500 text-lg mb-12 tracking-[0.2em] uppercase font-semibold" style="">Без Pitchy</h3>
+<div class="relative w-full flex flex-col items-center gap-6 py-2">
+<div class="absolute top-6 bottom-6 w-px border-l-2 border-dotted border-white/20 z-0"></div>
+<div class="relative z-10 bg-[#0A0A0A] border border-white/20 px-6 py-3 rounded-full text-neutral-400 text-center text-xs w-72" style="">Идея</div>
+<div class="relative z-10 bg-[#0A0A0A] border border-white/20 px-6 py-3 rounded-full text-neutral-400 text-center text-xs w-72" style="">Долгая проверка гипотез</div>
+<div class="relative z-10 bg-[#0A0A0A] border border-white/20 px-6 py-3 rounded-full text-neutral-400 text-center text-xs w-72" style="">Проблемы с недостатком информации</div>
+<div class="relative z-10 bg-[#0A0A0A] border border-white/20 px-6 py-3 rounded-full text-neutral-400 text-center text-xs w-72" style="">Неверно посчитанная юнит-экономика</div>
+<div class="relative z-10 bg-[#0A0A0A] border border-white/20 px-6 py-3 rounded-full text-neutral-400 text-center text-xs w-72" style="">Ошибки в анализе ЦА</div>
+<div class="relative z-10 bg-[#0A0A0A] border border-white/20 px-6 py-3 rounded-full text-neutral-400 text-center text-xs w-72" style="">Затрудненная подача на грант</div>
+<div class="relative z-10 bg-[#0A0A0A] border border-white/10 px-6 py-3 rounded-full text-neutral-500 text-center text-xs w-72 opacity-70" style="">Маловероятное получение финансирования</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Section 3: Core Chat Features -->
+<section class="py-24 border-t border-hairline bg-[#0A0A0A]">
+<div class="max-w-6xl mx-auto px-8 grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
+<!-- Left: Modern Chat App -->
+<div class="bg-[#111111] border border-white/10 rounded-lg overflow-hidden shadow-2xl flex flex-col h-[400px]">
+<div class="bg-[#1A1A1A] px-6 py-4 border-b border-white/5 flex items-center gap-4">
+<div class="w-10 h-10 rounded-full bg-neutral-800 flex items-center justify-center">
+<span class="material-symbols-outlined text-white" style="">smart_toy</span>
+</div>
+<div>
+<h3 class="text-white font-semibold text-sm" style="">Умный ассистент</h3>
+<p class="text-neutral-500 text-xs" style="">Online</p>
+</div>
+</div>
+<div class="p-6 flex-1 overflow-y-auto space-y-6 bg-[#0A0A0A]">
+<!-- User Message -->
+<div class="flex justify-end">
+<div class="bg-white text-black rounded-2xl rounded-tr-sm px-4 py-3 max-w-[80%] text-sm" style="">
+                        Сделай расчет юнит-экономики для B2B SaaS продукта при CAC=5000р и ARPU=1500р/мес.
+                    </div>
+</div>
+<!-- Assistant Message -->
+<div class="flex justify-start">
+<div class="bg-[#1A1A1A] border border-white/10 text-white rounded-2xl rounded-tl-sm px-4 py-3 max-w-[85%] text-sm space-y-2">
+<p class="text-neutral-300" style="">Результат анализа:</p>
+<ul class="list-disc pl-4 space-y-1 text-neutral-400">
+<li class="" style="">Payback period: ~3.3 месяца</li>
+<li class="" style="">При Lifetime 12 мес: LTV = 18,000р</li>
+<li class="" style="">LTV/CAC Ratio = 3.6 (Оптимально &gt; 3)</li>
+</ul>
+<p class="text-white font-medium mt-2" style="">Вывод: Экономика сходится. Рекомендую масштабировать каналы привлечения.</p>
+</div>
+</div>
+<!-- Typing indicator -->
+<div class="flex justify-start opacity-50">
+<div class="bg-[#1A1A1A] border border-white/10 rounded-2xl rounded-tl-sm px-4 py-3 flex gap-1">
+<div class="w-1.5 h-1.5 bg-white rounded-full animate-bounce"></div>
+<div class="w-1.5 h-1.5 bg-white rounded-full animate-bounce" style="animation-delay: 0.1s"></div>
+<div class="w-1.5 h-1.5 bg-white rounded-full animate-bounce" style="animation-delay: 0.2s"></div>
+</div>
+</div>
+</div>
+</div>
+<!-- Right: Feature List -->
+<div>
+<h2 class="text-[32px] md:text-[40px] leading-tight font-semibold tracking-tight text-white mb-12" style="">Умный ассистент 24/7</h2>
+<div class="space-y-8">
+<div class="flex gap-4 items-start">
+<div class="mt-1 bg-white/10 p-2 rounded">
+<span class="material-symbols-outlined text-white text-xl" style="">calculate</span>
+</div>
+<div>
+<h3 class="font-bold text-white text-lg mb-1" style="">Мгновенный расчет Unit-экономики</h3>
+<p class="text-neutral-400 text-sm leading-relaxed" style="">Получайте точные расчеты окупаемости, CAC, LTV и других метрик в реальном времени, основываясь на данных рынка.</p>
+</div>
+</div>
+<div class="flex gap-4 items-start">
+<div class="mt-1 bg-white/10 p-2 rounded">
+<span class="material-symbols-outlined text-white text-xl" style="">group</span>
+</div>
+<div>
+<h3 class="font-bold text-white text-lg mb-1" style="">Анализ ЦА</h3>
+<p class="text-neutral-400 text-sm leading-relaxed" style="">Сегментируйте аудиторию, выявляйте боли и потребности с помощью алгоритмов семантического анализа.</p>
+</div>
+</div>
+<div class="flex gap-4 items-start">
+<div class="mt-1 bg-white/10 p-2 rounded">
+<span class="material-symbols-outlined text-white text-xl" style="">gavel</span>
+</div>
+<div>
+<h3 class="font-bold text-white text-lg mb-1" style="">Юридические консультации</h3>
+<p class="text-neutral-400 text-sm leading-relaxed" style="">Базовый аудит документов, помощь в регистрации и ответы на правовые вопросы стартапов.</p>
+</div>
+</div>
+<div class="flex gap-4 items-start">
+<div class="mt-1 bg-white/10 p-2 rounded">
+<span class="material-symbols-outlined text-white text-xl" style="">memory</span>
+</div>
+<div>
+<h3 class="font-bold text-white text-lg mb-1" style="">Интеграция RAG</h3>
+<p class="text-neutral-400 text-sm leading-relaxed" style="">Ассистент опирается на вашу документацию и базу знаний проекта для предоставления релевантных ответов.</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Section: Автоматизация грантового цикла (Scanning Radar) -->
+<section class="py-24 border-t border-hairline bg-[#0A0A0A] relative overflow-hidden flex flex-col items-center justify-center min-h-[800px]">
+<div class="max-w-6xl mx-auto px-8 relative z-20 w-full text-center mb-16">
+<h2 class="text-[32px] md:text-[40px] leading-tight font-semibold tracking-tight text-white mb-6" style="">Автоматизация грантового цикла</h2>
+<p class="text-neutral-400 text-lg font-mono text-sm" style="">SCAN_FUNDS // DYNAMIC_TRACK_ENGAGED</p>
+</div>
+<!-- 3D Radar Grid Background -->
+<div class="absolute inset-0 top-[20%] flex items-center justify-center z-0 pointer-events-none perspective-[1000px] overflow-hidden mask-vertical-fade">
+<div class="w-[200vw] h-[200vh] grid-perspective absolute border border-white/5 bg-[linear-gradient(rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.05)_1px,transparent_1px)] bg-[size:50px_50px]">
+<!-- Radar Sweep -->
+<div class="absolute inset-0 radar-beam rounded-full"></div>
+<!-- Nodes on grid -->
+<div class="absolute top-[30%] left-[40%] w-2 h-2 bg-white rounded-full node-pulse shadow-[0_0_10px_#fff]"></div>
+<div class="absolute top-[60%] left-[60%] w-2 h-2 bg-white rounded-full node-pulse shadow-[0_0_10px_#fff]" style="animation-delay: 0.5s"></div>
+<div class="absolute top-[45%] left-[70%] w-2 h-2 bg-white rounded-full node-pulse shadow-[0_0_10px_#fff]" style="animation-delay: 1s"></div>
+<div class="absolute top-[70%] left-[30%] w-2 h-2 bg-white rounded-full node-pulse shadow-[0_0_10px_#fff]" style="animation-delay: 1.5s"></div>
+</div>
+</div>
+<!-- Foreground: Dynamic Track & Checkpoints -->
+<div class="relative z-10 w-full max-w-5xl mx-auto px-8 mt-32">
+<!-- Connecting Line -->
+<div class="absolute top-1/2 left-8 right-8 h-px bg-gradient-to-r from-transparent via-white/50 to-transparent -translate-y-1/2"></div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-8 relative">
+<!-- Checkpoint 1 -->
+<div class="flashlight-card group border border-white/10 bg-[#0e0e0e]/80 backdrop-blur-sm p-6 rounded-lg transition-all duration-300 hover:-translate-y-2 cursor-crosshair">
+<div class="w-4 h-4 bg-white rounded-full mx-auto mb-6 relative">
+<div class="absolute inset-0 bg-white rounded-full animate-ping opacity-50"></div>
+<div class="absolute -top-10 left-1/2 -translate-x-1/2 w-px h-10 bg-white/20 group-hover:bg-white/50 transition-colors"></div>
+</div>
+<div class="text-center">
+<h3 class="text-white font-mono text-lg mb-2 tracking-wider" style="">ПОДАЧА</h3>
+<div class="h-0 overflow-hidden opacity-0 group-hover:h-24 group-hover:opacity-100 group-hover:mt-4 transition-all duration-500 ease-in-out border-t border-white/10 pt-4">
+<p class="text-neutral-500 text-xs font-mono text-left mb-1" style="">&gt; STATUS: PREPARING</p>
+<p class="text-neutral-500 text-xs font-mono text-left mb-1" style="">&gt; DOCS_GENERATED: 12/12</p>
+<p class="text-white/70 text-xs font-mono text-left" style="">&gt; READY_FOR_SUBMIT: TRUE</p>
+</div>
+</div>
+</div>
+<!-- Checkpoint 2 -->
+<div class="flashlight-card group border border-white/10 bg-[#0e0e0e]/80 backdrop-blur-sm p-6 rounded-lg transition-all duration-300 hover:-translate-y-2 cursor-crosshair">
+<div class="w-4 h-4 bg-white rounded-full mx-auto mb-6 relative">
+<div class="absolute inset-0 bg-white rounded-full animate-ping opacity-50" style="animation-delay: 0.3s"></div>
+<div class="absolute -top-10 left-1/2 -translate-x-1/2 w-px h-10 bg-white/20 group-hover:bg-white/50 transition-colors"></div>
+</div>
+<div class="text-center">
+<h3 class="text-white font-mono text-lg mb-2 tracking-wider" style="">ТРЕКШН</h3>
+<div class="h-0 overflow-hidden opacity-0 group-hover:h-24 group-hover:opacity-100 group-hover:mt-4 transition-all duration-500 ease-in-out border-t border-white/10 pt-4">
+<p class="text-neutral-500 text-xs font-mono text-left mb-1" style="">&gt; KPI_METRICS: TRACKING</p>
+<p class="text-neutral-500 text-xs font-mono text-left mb-1" style="">&gt; MILESTONE: 2/5</p>
+<p class="text-white/70 text-xs font-mono text-left" style="">&gt; DEVIATION: 0.00%</p>
+</div>
+</div>
+</div>
+<!-- Checkpoint 3 -->
+<div class="flashlight-card group border border-white/10 bg-[#0e0e0e]/80 backdrop-blur-sm p-6 rounded-lg transition-all duration-300 hover:-translate-y-2 cursor-crosshair">
+<div class="w-4 h-4 bg-white rounded-full mx-auto mb-6 relative">
+<div class="absolute inset-0 bg-white rounded-full animate-ping opacity-50" style="animation-delay: 0.6s"></div>
+<div class="absolute -top-10 left-1/2 -translate-x-1/2 w-px h-10 bg-white/20 group-hover:bg-white/50 transition-colors"></div>
+</div>
+<div class="text-center">
+<h3 class="text-white font-mono text-lg mb-2 tracking-wider" style="">ОТЧЕТНОСТЬ</h3>
+<div class="h-0 overflow-hidden opacity-0 group-hover:h-24 group-hover:opacity-100 group-hover:mt-4 transition-all duration-500 ease-in-out border-t border-white/10 pt-4">
+<p class="text-neutral-500 text-xs font-mono text-left mb-1" style="">&gt; GENERATING_REPORT...</p>
+<p class="text-neutral-500 text-xs font-mono text-left mb-1" style="">&gt; FIN_DATA: VALIDATED</p>
+<p class="text-white/70 text-xs font-mono text-left" style="">&gt; EST_COMPLETION: 2m</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Section 2: Deep CustDev -->
+<section class="py-24 border-t border-hairline bg-[#0A0A0A]">
+<div class="max-w-4xl mx-auto text-center mb-24">
+<h2 class="text-[40px] md:text-[56px] leading-tight font-semibold tracking-tight text-white mb-6" style="">Deep CustDev: Синтетические интервью</h2>
+<p class="text-neutral-400 text-lg" style="">Множество ИИ-агентов в реальном времени дают обратную связь по вашему проекту. Каждому агенту заданы личные характеристики.</p>
+</div>
+<div class="relative w-full max-w-6xl mx-auto bg-[#111111] border border-white/10 rounded-lg p-8">
+<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+<!-- Agent Card 1 -->
+<div class="bg-[#1A1A1A] border border-white/10 p-4 rounded-lg shadow-xl hover:border-white/40 transition-colors flex flex-col h-full">
+<div class="flex items-center gap-2 mb-3 border-b border-white/10 pb-2">
+<span class="w-2 h-2 rounded-full bg-blue-500"></span>
+<span class="text-white font-mono text-xs" style="">Инвестор</span>
+</div>
+<div class="flex-grow flex items-center justify-center">
+<p class="text-neutral-400 text-xs italic text-center font-mono" style="">"Не вижу четкой стратегии монетизации..."</p>
+</div>
+</div>
+<!-- Agent Card 2 -->
+<div class="bg-[#1A1A1A] border border-white/10 p-4 rounded-lg shadow-xl hover:border-white/40 transition-colors flex flex-col h-full">
+<div class="flex items-center gap-2 mb-3 border-b border-white/10 pb-2">
+<span class="w-2 h-2 rounded-full bg-green-500"></span>
+<span class="text-white font-mono text-xs" style="">Студент</span>
+</div>
+<div class="flex-grow flex items-center justify-center">
+<p class="text-neutral-400 text-xs italic text-center font-mono" style="">"Выглядит круто, но 500р/мес дороговато."</p>
+</div>
+</div>
+<!-- Agent Card 3 -->
+<div class="bg-[#1A1A1A] border border-white/10 p-4 rounded-lg shadow-xl hover:border-white/40 transition-colors flex flex-col h-full">
+<div class="flex items-center gap-2 mb-3 border-b border-white/10 pb-2">
+<span class="w-2 h-2 rounded-full bg-purple-500"></span>
+<span class="text-white font-mono text-xs" style="">Маркетолог</span>
+</div>
+<div class="flex-grow flex items-center justify-center">
+<p class="text-neutral-400 text-xs italic text-center font-mono" style="">"Нужно доработать онбординг, есть отвал."</p>
+</div>
+</div>
+<!-- Agent Card 4 -->
+<div class="bg-[#1A1A1A] border border-white/10 p-4 rounded-lg shadow-xl hover:border-white/40 transition-colors flex flex-col h-full">
+<div class="flex items-center gap-2 mb-3 border-b border-white/10 pb-2">
+<span class="w-2 h-2 rounded-full bg-yellow-500"></span>
+<span class="text-white font-mono text-xs" style="">Предприниматель</span>
+</div>
+<div class="flex-grow flex items-center justify-center">
+<p class="text-neutral-400 text-xs italic text-center font-mono" style="">"Слишком сложно, нужен быстрый старт."</p>
+</div>
+</div>
+<!-- Agent Card 5 -->
+<div class="bg-[#1A1A1A] border border-white/10 p-4 rounded-lg shadow-xl hover:border-white/40 transition-colors flex flex-col h-full">
+<div class="flex items-center gap-2 mb-3 border-b border-white/10 pb-2">
+<span class="w-2 h-2 rounded-full bg-red-500"></span>
+<span class="text-white font-mono text-xs" style="">Дизайнер</span>
+</div>
+<div class="flex-grow flex items-center justify-center">
+<p class="text-neutral-400 text-xs italic text-center font-mono" style="">"Интерфейс перегружен."</p>
+</div>
+</div>
+<!-- Agent Card 6 -->
+<div class="bg-[#1A1A1A] border border-white/10 p-4 rounded-lg shadow-xl hover:border-white/40 transition-colors flex flex-col h-full">
+<div class="flex items-center gap-2 mb-3 border-b border-white/10 pb-2">
+<span class="w-2 h-2 rounded-full bg-cyan-500"></span>
+<span class="text-white font-mono text-xs" style="">Разработчик</span>
+</div>
+<div class="flex-grow flex items-center justify-center">
+<p class="text-neutral-400 text-xs italic text-center font-mono" style="">"Где API документация?"</p>
+</div>
+</div>
+<!-- Agent Card 7 -->
+<div class="bg-[#1A1A1A] border border-white/10 p-4 rounded-lg shadow-xl hover:border-white/40 transition-colors flex flex-col h-full">
+<div class="flex items-center gap-2 mb-3 border-b border-white/10 pb-2">
+<span class="w-2 h-2 rounded-full bg-pink-500"></span>
+<span class="text-white font-mono text-xs" style="">HR</span>
+</div>
+<div class="flex-grow flex items-center justify-center">
+<p class="text-neutral-400 text-xs italic text-center font-mono" style="">"Непонятно позиционирование команды."</p>
+</div>
+</div>
+<!-- Agent Card 8 -->
+<div class="bg-[#1A1A1A] border border-white/10 p-4 rounded-lg shadow-xl hover:border-white/40 transition-colors flex flex-col h-full">
+<div class="flex items-center gap-2 mb-3 border-b border-white/10 pb-2">
+<span class="w-2 h-2 rounded-full bg-orange-500"></span>
+<span class="text-white font-mono text-xs" style="">Менеджер</span>
+</div>
+<div class="flex-grow flex items-center justify-center">
+<p class="text-neutral-400 text-xs italic text-center font-mono" style="">"Не хватает интеграции с таск-трекерами."</p>
+</div>
+</div>
+<!-- Agent Card 9 -->
+<div class="bg-[#1A1A1A] border border-white/10 p-4 rounded-lg shadow-xl hover:border-white/40 transition-colors flex flex-col h-full">
+<div class="flex items-center gap-2 mb-3 border-b border-white/10 pb-2">
+<span class="w-2 h-2 rounded-full bg-teal-500"></span>
+<span class="text-white font-mono text-xs" style="">Юрист</span>
+</div>
+<div class="flex-grow flex items-center justify-center">
+<p class="text-neutral-400 text-xs italic text-center font-mono" style="">"Проверьте пользовательское соглашение."</p>
+</div>
+</div>
+<!-- Agent Card 10 -->
+<div class="bg-[#1A1A1A] border border-white/10 p-4 rounded-lg shadow-xl hover:border-white/40 transition-colors flex flex-col h-full">
+<div class="flex items-center gap-2 mb-3 border-b border-white/10 pb-2">
+<span class="w-2 h-2 rounded-full bg-indigo-500"></span>
+<span class="text-white font-mono text-xs" style="">Аналитик</span>
+</div>
+<div class="flex-grow flex items-center justify-center">
+<p class="text-neutral-400 text-xs italic text-center font-mono" style="">"Дашборды неинформативны."</p>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Dynamic Track Section -->
+<section class="py-24 border-t border-hairline bg-[#0A0A0A]">
+<div class="max-w-4xl mx-auto text-center mb-24">
+<h2 class="text-[40px] md:text-[56px] leading-tight font-semibold tracking-tight text-white mb-6" style="">Структурированная дорожная карта проекта.</h2>
+</div>
+<div class="relative w-full max-w-5xl mx-auto h-[400px] border border-white/5 rounded-lg bg-[#0A0A0A] p-8 overflow-hidden">
+<div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCI+PHBhdGggZD0iTSA0MCAwIEwgMCAwIDAgNDAiIGZpbGw9Im5vbmUiIHN0cm9rZT0icmdiYSgyNTUsIDI1NSwgMjU1LCAwLjA1KSIgc3Ryb2tlLXdpZHRoPSIxIi8+PC9zdmc+')]"></div>
+<div class="absolute left-8 right-8 top-1/2 h-px bg-white/20"></div>
+<div class="relative h-full font-mono text-xs text-neutral-400">
+<div class="absolute left-[10%] top-1/2 -mt-4 bg-white text-black px-3 py-1.5 rounded-full flex items-center gap-2 z-10 font-medium" style="">
+<span class="material-symbols-outlined text-[14px]" style="">database</span> production
+            </div>
+<svg class="absolute left-[18%] top-[30%] w-[150px] h-[80px] z-0" fill="none" stroke="rgba(255,255,255,0.4)" stroke-dasharray="4 4" viewbox="0 0 150 80">
+<path d="M0,80 C0,40 50,0 150,0"></path>
+</svg>
+<div class="absolute left-[28%] top-[25%] bg-[#1A1A1A] border border-white/20 text-white px-3 py-1.5 rounded-full flex items-center gap-2 z-10" style="">
+<span class="material-symbols-outlined text-[14px]" style="">database</span> preview-branch
+            </div>
+<svg class="absolute left-[45%] top-[50%] w-[150px] h-[120px] z-0" fill="none" stroke="rgba(255,255,255,0.4)" stroke-dasharray="4 4" viewbox="0 0 150 120">
+<path d="M0,0 C0,60 50,120 150,120"></path>
+</svg>
+<div class="absolute left-[55%] top-[75%] bg-[#1A1A1A] border border-white/20 text-white px-3 py-1.5 rounded-full flex items-center gap-2 z-10" style="">
+<span class="material-symbols-outlined text-[14px]" style="">database</span> test-branch
+            </div>
+<div class="absolute left-[70%] top-[30%] bg-white text-black px-3 py-1.5 rounded-full flex items-center gap-2 z-10 font-medium" style="">
+<span class="material-symbols-outlined text-[14px]" style="">database</span> dev-branch
+            </div>
+</div>
+</div>
+</section>
+<!-- Feature Grid Section -->
+<section class="py-24 border-t border-hairline bg-[#0A0A0A]">
+<div class="max-w-6xl mx-auto px-8">
+<h2 class="text-[40px] md:text-[56px] leading-tight font-semibold tracking-tight text-white mb-16 text-center max-w-4xl mx-auto" style="">Сокращение рутины стартапера - наша главная задача.</h2>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
+<!-- Feature 1 -->
+<div class="bg-[#111111] border border-white/10 p-8 rounded-xl hover:border-white/20 transition-colors">
+<span class="material-symbols-outlined text-white mb-6 block" style="">calculate</span>
+<h3 class="text-white font-semibold mb-3" style="">Расчет Юнит-экономики.</h3>
+<p class="text-neutral-400 text-sm" style="">Часто проекты рушатся именно из-за ошибок на этом этапе.</p>
+</div>
+<!-- Feature 2 -->
+<div class="bg-[#111111] border border-white/10 p-8 rounded-xl hover:border-white/20 transition-colors">
+<span class="material-symbols-outlined text-white mb-6 block" style="">pie_chart</span>
+<h3 class="text-white font-semibold mb-3" style="">Расчет ЦА.</h3>
+<p class="text-neutral-400 text-sm" style="">Помогаем проанализировать ЦА вашего продукта.</p>
+</div>
+<!-- Feature 3 -->
+<div class="bg-[#111111] border border-white/10 p-8 rounded-xl hover:border-white/20 transition-colors">
+<span class="material-symbols-outlined text-white mb-6 block" style="">forum</span>
+<h3 class="text-white font-semibold mb-3" style="">Deep-Custdev.</h3>
+<p class="text-neutral-400 text-sm" style="">Проводите десятки синтетических CustDev-интервью одновременно.</p>
+</div>
+<!-- Feature 4 -->
+<div class="bg-[#111111] border border-white/10 p-8 rounded-xl hover:border-white/20 transition-colors">
+<span class="material-symbols-outlined text-white mb-6 block" style="">route</span>
+<h3 class="text-white font-semibold mb-3" style="">Динамический трек проекта.</h3>
+<p class="text-neutral-400 text-sm" style="">Структурируйте ваш проект, чтобы ничего не забыть.</p>
+</div>
+<!-- Feature 5 -->
+<div class="bg-[#111111] border border-white/10 p-8 rounded-xl hover:border-white/20 transition-colors">
+<span class="material-symbols-outlined text-white mb-6 block" style="">inventory_2</span>
+<h3 class="text-white font-semibold mb-3" style="">Упаковка под гранты.</h3>
+<p class="text-neutral-400 text-sm" style="">Узнайте, какие меры господдержки вы можете получить уже сейчас.</p>
+</div>
+<!-- Feature 6 -->
+<div class="bg-[#111111] border border-white/10 p-8 rounded-xl hover:border-white/20 transition-colors">
+<span class="material-symbols-outlined text-white mb-6 block" style="">handshake</span>
+<h3 class="text-white font-semibold mb-3" style="">MatchMaking-система.</h3>
+<p class="text-neutral-400 text-sm" style="">Найдите себе специалистов в команду, которые реально заинтересованы в вашем продукта.</p>
+</div></div></div></section>
+<!-- Section 4: SEO FAQ -->
+<section class="py-24 border-t border-hairline bg-[#0A0A0A]">
+<div class="max-w-3xl mx-auto px-8">
+<h2 class="text-[32px] md:text-[40px] leading-tight font-semibold tracking-tight text-white mb-12 text-center">Частые вопросы</h2>
+<div class="space-y-4">
+<!-- FAQ Item 1 -->
+<details class="bg-[#111111] border border-white/10 rounded-lg group" name="faq">
+<summary class="cursor-pointer p-6 flex justify-between items-center font-semibold text-white">
+                Что такое синтетический CustDev?
+                <span class="material-symbols-outlined text-neutral-500 group-open:rotate-45 transition-transform duration-200">add</span>
+</summary>
+<div class="px-6 pb-6 text-neutral-400 text-sm leading-relaxed">
+                Это метод тестирования идей, при котором вместо реальных людей используются специализированные ИИ-агенты, настроенные на профили вашей целевой аудитории. Они симулируют поведение пользователей, позволяя получить обратную связь за минуты, а не недели, экономя бюджет на проведение классических интервью.
+            </div>
+</details>
+<!-- FAQ Item 2 -->
+<details class="bg-[#111111] border border-white/10 rounded-lg group" name="faq">
+<summary class="cursor-pointer p-6 flex justify-between items-center font-semibold text-white">
+                Какие фонды поддерживаются для получения грантов?
+                <span class="material-symbols-outlined text-neutral-500 group-open:rotate-45 transition-transform duration-200">add</span>
+</summary>
+<div class="px-6 pb-6 text-neutral-400 text-sm leading-relaxed">
+                Мы анализируем требования крупнейших государственных и частных фондов (ФСИ, Сколково, РФРИТ и др.) и помогаем адаптировать вашу заявку под их специфические критерии, увеличивая шансы на успешное прохождение экспертизы.
+            </div>
+</details>
+<!-- FAQ Item 3 -->
+<details class="bg-[#111111] border border-white/10 rounded-lg group" name="faq">
+<summary class="cursor-pointer p-6 flex justify-between items-center font-semibold text-white">
+                Как работает скоринг идеи?
+                <span class="material-symbols-outlined text-neutral-500 group-open:rotate-45 transition-transform duration-200">add</span>
+</summary>
+<div class="px-6 pb-6 text-neutral-400 text-sm leading-relaxed">
+                Система анализирует вашу идею по десяткам параметров: объем рынка (TAM/SAM/SOM), наличие конкурентов, сложность реализации и тренды. На основе этих данных формируется объективная оценка жизнеспособности продукта и рекомендации по пивоту.
+            </div>
+</details>
+<!-- FAQ Item 4 -->
+<details class="bg-[#111111] border border-white/10 rounded-lg group" name="faq">
+<summary class="cursor-pointer p-6 flex justify-between items-center font-semibold text-white">
+                Безопасны ли мои данные?
+                <span class="material-symbols-outlined text-neutral-500 group-open:rotate-45 transition-transform duration-200">add</span>
+</summary>
+<div class="px-6 pb-6 text-neutral-400 text-sm leading-relaxed">
+                Все данные шифруются по стандарту AES-256. Мы не используем ваши идеи для обучения общих моделей ИИ и гарантируем полную конфиденциальность в рамках NDA (которое вы можете сгенерировать в нашем сервисе).
+            </div>
+</details>
+</div>
+</div>
+</section>
+</main>
+<footer class="bg-[#0A0A0A] border-t border-hairline pt-24 pb-12">
+<div class="max-w-[1440px] mx-auto px-gutter md:px-xl">
+<div class="grid grid-cols-2 md:grid-cols-4 gap-12 mb-20">
+<div class="space-y-6">
+<h4 class="text-white font-bold text-sm uppercase tracking-wider">Продукт</h4>
+<ul class="space-y-4">
+<li><a class="text-neutral-500 hover:text-white transition-colors text-sm" href="#">Главная</a></li>
+<li><a class="text-neutral-500 hover:text-white transition-colors text-sm" href="#">Тарифы</a></li>
+<li><a class="text-neutral-500 hover:text-white transition-colors text-sm" href="#">FAQ</a></li>
+</ul>
+</div>
+<div class="space-y-6">
+<h4 class="text-white font-bold text-sm uppercase tracking-wider">Компания</h4>
+<ul class="space-y-4">
+<li><a class="text-neutral-500 hover:text-white transition-colors text-sm" href="#">О нас</a></li>
+<li><a class="text-neutral-500 hover:text-white transition-colors text-sm" href="#">Контакты</a></li>
+</ul>
+</div>
+<div class="space-y-6">
+<h4 class="text-white font-bold text-sm uppercase tracking-wider">Ресурсы</h4>
+<ul class="space-y-4">
+<li><a class="text-neutral-500 hover:text-white transition-colors text-sm" href="#">Дашборд</a></li>
+</ul>
+</div>
+<div class="space-y-6">
+<h4 class="text-white font-bold text-sm uppercase tracking-wider">Правовая информация</h4>
+<ul class="space-y-4">
+<li><a class="text-neutral-500 hover:text-white transition-colors text-sm" href="#">Конфиденциальность</a></li>
+<li><a class="text-neutral-500 hover:text-white transition-colors text-sm" href="#">Условия</a></li>
+<li><a class="text-neutral-500 hover:text-white transition-colors text-sm" href="#">Безопасность</a></li>
+</ul>
+</div>
+</div>
+</div></footer></body></html>

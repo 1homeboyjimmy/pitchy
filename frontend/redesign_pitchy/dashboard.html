@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="ru"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Space+Grotesk:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+            font-size: 18px;
+        }
+        body {
+            background-color: #0A0A0A;
+            color: #e5e2e1;
+            font-family: 'Inter', sans-serif;
+        }
+        .mono-data {
+            font-family: 'Space Grotesk', monospace;
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "inverse-primary": "#5d5f5f",
+                        "on-tertiary": "#2f3131",
+                        "surface-container-highest": "#353434",
+                        "surface-bright": "#3a3939",
+                        "tertiary-fixed-dim": "#c6c6c7",
+                        "primary-container": "#e2e2e2",
+                        "on-tertiary-container": "#636565",
+                        "on-primary-fixed": "#1a1c1c",
+                        "outline-variant": "#444748",
+                        "on-surface": "#e5e2e1",
+                        "inverse-on-surface": "#313030",
+                        "on-secondary-fixed": "#1c1b1b",
+                        "error-container": "#93000a",
+                        "inverse-surface": "#e5e2e1",
+                        "secondary-fixed-dim": "#c9c6c5",
+                        "on-primary-fixed-variant": "#454747",
+                        "on-error-container": "#ffdad6",
+                        "background": "#0A0A0A",
+                        "surface": "#141313",
+                        "secondary-container": "#4a4949",
+                        "on-surface-variant": "#c4c7c8",
+                        "surface-container-lowest": "#0e0e0e",
+                        "primary-fixed": "#e2e2e2",
+                        "primary": "#ffffff",
+                        "on-tertiary-fixed-variant": "#454747",
+                        "tertiary": "#ffffff",
+                        "surface-container": "#201f1f",
+                        "primary-fixed-dim": "#c6c6c7",
+                        "on-tertiary-fixed": "#1a1c1c",
+                        "secondary-fixed": "#e5e2e1",
+                        "on-secondary": "#313030",
+                        "on-primary-container": "#636565",
+                        "secondary": "#c9c6c5",
+                        "on-secondary-container": "#bab8b7",
+                        "on-background": "#e5e2e1",
+                        "surface-dim": "#141313",
+                        "outline": "#8e9192",
+                        "on-error": "#690005",
+                        "surface-variant": "#353434",
+                        "error": "#ffb4ab",
+                        "surface-container-low": "#1c1b1b",
+                        "tertiary-container": "#e2e2e2",
+                        "surface-container-high": "#2a2a2a",
+                        "on-secondary-fixed-variant": "#474646",
+                        "on-primary": "#2f3131",
+                        "tertiary-fixed": "#e2e2e2",
+                        "surface-tint": "#c6c6c7"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "xl": "48px",
+                        "gutter": "16px",
+                        "md": "16px",
+                        "sm": "8px",
+                        "xs": "4px",
+                        "lg": "24px",
+                        "unit": "4px",
+                        "container-max": "1440px"
+                    },
+                    "fontFamily": {
+                        "body-sm": ["Inter"],
+                        "mono-label": ["Space Grotesk"],
+                        "h1": ["Inter"],
+                        "display": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "h2": ["Inter"],
+                        "code": ["Space Grotesk"]
+                    },
+                    "fontSize": {
+                        "body-sm": ["14px", {"lineHeight": "1.5", "letterSpacing": "0", "fontWeight": "400"}],
+                        "mono-label": ["12px", {"lineHeight": "1", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                        "h1": ["32px", {"lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "600"}],
+                        "display": ["48px", {"lineHeight": "1.1", "letterSpacing": "-0.02em", "fontWeight": "600"}],
+                        "body-lg": ["16px", {"lineHeight": "1.6", "letterSpacing": "0", "fontWeight": "400"}],
+                        "h2": ["24px", {"lineHeight": "1.3", "letterSpacing": "-0.01em", "fontWeight": "500"}],
+                        "code": ["13px", {"lineHeight": "1.6", "letterSpacing": "0", "fontWeight": "400"}]
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-background text-on-background min-h-screen">
+<!-- SideNavBar Shell -->
+<aside class="h-screen w-64 fixed left-0 top-0 border-r border-white/10 bg-[#0A0A0A] flex flex-col py-6 z-50">
+<div class="px-6 mb-10">
+<h1 class="text-white font-bold tracking-tighter text-lg">Pitchy.pro</h1>
+<p class="font-mono uppercase tracking-widest text-[11px] text-neutral-500 mt-1">Внутреннее пространство</p>
+</div>
+<nav class="flex-1 px-3 space-y-1">
+<a class="flex items-center gap-3 px-3 py-2 bg-white/10 text-white border-l-2 border-white transition-colors duration-150 active:scale-[0.98]" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="font-mono uppercase tracking-widest text-[11px]">Обзор</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-neutral-500 hover:bg-white/5 hover:text-white transition-colors duration-150 active:scale-[0.98]" href="#">
+<span class="material-symbols-outlined">chat</span>
+<span class="font-mono uppercase tracking-widest text-[11px]">Чат</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-neutral-500 hover:bg-white/5 hover:text-white transition-colors duration-150 active:scale-[0.98]" href="#">
+<span class="material-symbols-outlined">account_tree</span>
+<span class="font-mono uppercase tracking-widest text-[11px]">Древо принятия решений</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-neutral-500 hover:bg-white/5 hover:text-white transition-colors duration-150 active:scale-[0.98]" href="#">
+<span class="material-symbols-outlined">groups</span>
+<span class="font-mono uppercase tracking-widest text-[11px]">CustDev</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-neutral-500 hover:bg-white/5 hover:text-white transition-colors duration-150 active:scale-[0.98]" href="#">
+<span class="material-symbols-outlined">admin_panel_settings</span>
+<span class="font-mono uppercase tracking-widest text-[11px]">Админ</span>
+</a>
+</nav>
+<div class="px-3 border-t border-white/10 pt-4 space-y-1">
+<a class="flex items-center gap-3 px-3 py-2 text-neutral-500 hover:bg-white/5 hover:text-white transition-colors duration-150 active:scale-[0.98]" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="font-mono uppercase tracking-widest text-[11px]">Настройки</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-neutral-500 hover:bg-white/5 hover:text-white transition-colors duration-150 active:scale-[0.98]" href="#">
+<span class="material-symbols-outlined">help_outline</span>
+<span class="font-mono uppercase tracking-widest text-[11px]">Поддержка</span>
+</a>
+</div>
+</aside>
+<!-- TopNavBar Shell -->
+<header class="fixed top-0 right-0 left-64 h-14 border-b border-white/10 bg-[#0A0A0A] z-40 flex items-center justify-between px-6">
+<div class="flex items-center gap-2">
+<span class="font-mono text-xs text-neutral-500 uppercase tracking-widest hover:text-white cursor-pointer transition-colors">Обзор</span>
+<span class="font-mono text-xs text-neutral-600">/</span>
+<span class="font-mono text-xs text-white uppercase tracking-widest">Проект</span>
+</div>
+<nav class="absolute left-1/2 -translate-x-1/2 flex items-center gap-6">
+<a class="font-mono text-[10px] text-neutral-500 uppercase tracking-widest hover:text-white transition-colors" href="#">Главная</a>
+<a class="font-mono text-[10px] text-neutral-500 uppercase tracking-widest hover:text-white transition-colors" href="#">Дашборд</a>
+<a class="font-mono text-[10px] text-neutral-500 uppercase tracking-widest hover:text-white transition-colors" href="#">FAQ</a>
+<a class="font-mono text-[10px] text-neutral-500 uppercase tracking-widest hover:text-white transition-colors" href="#">О нас</a>
+<a class="font-mono text-[10px] text-neutral-500 uppercase tracking-widest hover:text-white transition-colors" href="#">Тарифы</a>
+<a class="font-mono text-[10px] text-neutral-500 uppercase tracking-widest hover:text-white transition-colors" href="#">Контакты</a>
+</nav>
+<div class="flex items-center gap-4">
+<button class="px-4 py-1.5 border border-white/10 text-white font-mono text-[10px] uppercase tracking-widest hover:bg-white hover:text-black transition-all">
+    АККАУНТ
+  </button>
+<button class="px-4 py-1.5 border border-white/10 text-neutral-500 font-mono text-[10px] uppercase tracking-widest hover:text-white transition-all">
+    ВЫЙТИ
+  </button>
+</div>
+</header>
+<!-- Main Content Canvas -->
+<main class="pl-64 pt-14 min-h-screen">
+<div class="p-8 max-w-7xl mx-auto">
+<!-- Header Section -->
+<div class="flex justify-between items-end mb-12">
+<div>
+<h2 class="font-h1 text-white mb-2 uppercase tracking-tight">Обзор проекта</h2>
+<div class="flex gap-4 items-center">
+<div class="flex items-center gap-2 px-2 py-1 bg-white/5 border border-white/10 rounded">
+<span class="material-symbols-outlined text-[14px]">sensors</span>
+<span class="font-mono text-xs text-neutral-400">Сессии: <span class="text-white">12</span></span>
+</div>
+<div class="flex items-center gap-2 px-2 py-1 bg-white/5 border border-white/10 rounded">
+<span class="material-symbols-outlined text-[14px]">sync</span>
+<span class="font-mono text-xs text-neutral-400">Синхронизация: <span class="text-white">2 мин назад</span></span>
+</div>
+</div>
+</div>
+<button class="bg-white text-black px-6 py-2 font-mono text-xs uppercase tracking-widest font-bold hover:bg-white/90 transition-all active:scale-[0.98]">
+                Экспорт данных
+            </button>
+</div>
+<!-- Stats Row (Bento Grid Style) -->
+<div class="grid grid-cols-12 gap-4 mb-12">
+<!-- Progress Card -->
+<div class="col-span-12 md:col-span-5 bg-[#111111] border border-white/10 p-6 flex flex-col justify-between group hover:border-white/20 transition-all">
+<div class="flex justify-between items-start mb-8">
+<span class="font-mono-label text-neutral-500">ПРОГРЕСС СИСТЕМЫ</span>
+<span class="material-symbols-outlined text-neutral-500">trending_up</span>
+</div>
+<div>
+<div class="flex justify-between items-end mb-2">
+<span class="font-display text-white mono-data">84.2%</span>
+<span class="font-mono text-[10px] text-neutral-600 mb-1">ОПТИМИЗИРОВАНО</span>
+</div>
+<div class="w-full h-1 bg-white/5 rounded-full overflow-hidden">
+<div class="h-full bg-white w-[84.2%] transition-all duration-1000"></div>
+</div>
+</div>
+</div>
+<!-- Market Readiness Card -->
+<div class="col-span-12 md:col-span-3 bg-[#111111] border border-white/10 p-6 flex flex-col justify-between hover:border-white/20 transition-all">
+<div class="flex justify-between items-start">
+<span class="font-mono-label text-neutral-500">ГОТОВНОСТЬ РЫНКА</span>
+<span class="material-symbols-outlined text-neutral-500">analytics</span>
+</div>
+<div class="mt-8">
+<span class="font-display text-white mono-data">9.4<span class="text-neutral-600 text-2xl">/10</span></span>
+</div>
+</div>
+<!-- Total Branches Card -->
+<div class="col-span-12 md:col-span-4 bg-[#111111] border border-white/10 p-6 flex flex-col justify-between hover:border-white/20 transition-all">
+<div class="flex justify-between items-start">
+<span class="font-mono-label text-neutral-500">ВСЕГО ВЕТОК</span>
+<div class="flex items-center gap-1 text-emerald-500">
+<span class="material-symbols-outlined text-xs">arrow_upward</span>
+<span class="font-mono text-[10px]">12%</span>
+</div>
+</div>
+<div class="mt-8">
+<span class="font-display text-white mono-data">1,248</span>
+<p class="font-mono text-[10px] text-neutral-600 mt-1 uppercase tracking-wider">по сравнению с прошлой неделей</p>
+</div>
+</div>
+</div>
+<!-- Recent Sessions Grid Header -->
+<div class="mt-xl pt-8">
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+<!-- Card 1 -->
+<div class="bg-[#111111] border border-white/10 p-6 flex flex-col justify-between hover:border-white/20 transition-all min-h-[160px] group cursor-pointer">
+<div class="flex justify-between items-start mb-6">
+<div class="w-8 h-8 bg-white/5 flex items-center justify-center rounded-sm">
+<span class="material-symbols-outlined text-neutral-400 text-[18px]">chat</span>
+</div>
+<span class="font-mono text-[9px] uppercase tracking-widest px-2 py-1 border border-white/10 text-neutral-500 rounded-sm">В ПРОЦЕССЕ</span>
+</div>
+<div>
+<h3 class="font-mono text-[13px] text-white uppercase tracking-wider mb-4">ЧАТ С АНАЛИТИКОМ</h3>
+<div class="flex justify-between items-end">
+<span class="font-mono text-[10px] text-neutral-600">11 апреля 2026</span>
+<span class="material-symbols-outlined text-neutral-600 group-hover:text-white transition-colors text-[14px]">arrow_outward</span>
+</div>
+</div>
+</div>
+<!-- Card 2 -->
+<div class="bg-[#111111] border border-white/10 p-6 flex flex-col justify-between hover:border-white/20 transition-all min-h-[160px] group cursor-pointer">
+<div class="flex justify-between items-start mb-6">
+<div class="w-8 h-8 bg-white/5 flex items-center justify-center rounded-sm">
+<span class="material-symbols-outlined text-neutral-400 text-[18px]">troubleshoot</span>
+</div>
+<span class="font-mono text-[9px] uppercase tracking-widest px-2 py-1 border border-emerald-500/30 text-emerald-500 rounded-sm">ЗАВЕРШЕНО</span>
+</div>
+<div>
+<h3 class="font-mono text-[13px] text-white uppercase tracking-wider mb-4">АНАЛИЗ РЫНОЧНЫХ ДАННЫХ</h3>
+<div class="flex justify-between items-end">
+<span class="font-mono text-[10px] text-neutral-600">11 апреля 2026</span>
+<span class="material-symbols-outlined text-neutral-600 group-hover:text-white transition-colors text-[14px]">arrow_outward</span>
+</div>
+</div>
+</div>
+<!-- Card 3 -->
+<div class="bg-[#111111] border border-white/10 p-6 flex flex-col justify-between hover:border-white/20 transition-all min-h-[160px] group cursor-pointer">
+<div class="flex justify-between items-start mb-6">
+<div class="w-8 h-8 bg-white/5 flex items-center justify-center rounded-sm">
+<span class="material-symbols-outlined text-neutral-400 text-[18px]">account_tree</span>
+</div>
+<span class="font-mono text-[9px] uppercase tracking-widest px-2 py-1 border border-white/10 text-neutral-500 rounded-sm">В ПРОЦЕССЕ</span>
+</div>
+<div>
+<h3 class="font-mono text-[13px] text-white uppercase tracking-wider mb-4">ГЕНЕРАЦИЯ JSON-СХЕМЫ</h3>
+<div class="flex justify-between items-end">
+<span class="font-mono text-[10px] text-neutral-600">10 апреля 2026</span>
+<span class="material-symbols-outlined text-neutral-600 group-hover:text-white transition-colors text-[14px]">arrow_outward</span>
+</div>
+</div>
+</div>
+<!-- Card 4 -->
+<div class="bg-[#111111] border border-white/10 p-6 flex flex-col justify-between hover:border-white/20 transition-all min-h-[160px] group cursor-pointer">
+<div class="flex justify-between items-start mb-6">
+<div class="w-8 h-8 bg-white/5 flex items-center justify-center rounded-sm">
+<span class="material-symbols-outlined text-neutral-400 text-[18px]">terminal</span>
+</div>
+<span class="font-mono text-[9px] uppercase tracking-widest px-2 py-1 border border-emerald-500/30 text-emerald-500 rounded-sm">ЗАВЕРШЕНО</span>
+</div>
+<div>
+<h3 class="font-mono text-[13px] text-white uppercase tracking-wider mb-4">СЕССИЯ ОТЛАДКИ 04</h3>
+<div class="flex justify-between items-end">
+<span class="font-mono text-[10px] text-neutral-600">09 апреля 2026</span>
+<span class="material-symbols-outlined text-neutral-600 group-hover:text-white transition-colors text-[14px]">arrow_outward</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Row 2 -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+<!-- Card 1 -->
+<div class="bg-[#111111] border border-white/10 p-6 flex flex-col justify-between hover:border-white/20 transition-all min-h-[160px] group cursor-pointer">
+<div class="flex justify-between items-start mb-6">
+<div class="w-8 h-8 bg-white/5 flex items-center justify-center rounded-sm">
+<span class="material-symbols-outlined text-neutral-400 text-[18px]">chat</span>
+</div>
+<span class="font-mono text-[9px] uppercase tracking-widest px-2 py-1 border border-white/10 text-neutral-500 rounded-sm">В ПРОЦЕССЕ</span>
+</div>
+<div>
+<h3 class="font-mono text-[13px] text-white uppercase tracking-wider mb-4">ЧАТ С АНАЛИТИКОМ</h3>
+<div class="flex justify-between items-end">
+<span class="font-mono text-[10px] text-neutral-600">08 апреля 2026</span>
+<span class="material-symbols-outlined text-neutral-600 group-hover:text-white transition-colors text-[14px]">arrow_outward</span>
+</div>
+</div>
+</div>
+<!-- Card 2 -->
+<div class="bg-[#111111] border border-white/10 p-6 flex flex-col justify-between hover:border-white/20 transition-all min-h-[160px] group cursor-pointer">
+<div class="flex justify-between items-start mb-6">
+<div class="w-8 h-8 bg-white/5 flex items-center justify-center rounded-sm">
+<span class="material-symbols-outlined text-neutral-400 text-[18px]">troubleshoot</span>
+</div>
+<span class="font-mono text-[9px] uppercase tracking-widest px-2 py-1 border border-emerald-500/30 text-emerald-500 rounded-sm">ЗАВЕРШЕНО</span>
+</div>
+<div>
+<h3 class="font-mono text-[13px] text-white uppercase tracking-wider mb-4">АНАЛИЗ РЫНОЧНЫХ ДАННЫХ</h3>
+<div class="flex justify-between items-end">
+<span class="font-mono text-[10px] text-neutral-600">08 апреля 2026</span>
+<span class="material-symbols-outlined text-neutral-600 group-hover:text-white transition-colors text-[14px]">arrow_outward</span>
+</div>
+</div>
+</div>
+<!-- Card 3 -->
+<div class="bg-[#111111] border border-white/10 p-6 flex flex-col justify-between hover:border-white/20 transition-all min-h-[160px] group cursor-pointer">
+<div class="flex justify-between items-start mb-6">
+<div class="w-8 h-8 bg-white/5 flex items-center justify-center rounded-sm">
+<span class="material-symbols-outlined text-neutral-400 text-[18px]">account_tree</span>
+</div>
+<span class="font-mono text-[9px] uppercase tracking-widest px-2 py-1 border border-white/10 text-neutral-500 rounded-sm">В ПРОЦЕССЕ</span>
+</div>
+<div>
+<h3 class="font-mono text-[13px] text-white uppercase tracking-wider mb-4">ГЕНЕРАЦИЯ JSON-СХЕМЫ</h3>
+<div class="flex justify-between items-end">
+<span class="font-mono text-[10px] text-neutral-600">07 апреля 2026</span>
+<span class="material-symbols-outlined text-neutral-600 group-hover:text-white transition-colors text-[14px]">arrow_outward</span>
+</div>
+</div>
+</div>
+<!-- Card 4 -->
+<div class="bg-[#111111] border border-white/10 p-6 flex flex-col justify-between hover:border-white/20 transition-all min-h-[160px] group cursor-pointer">
+<div class="flex justify-between items-start mb-6">
+<div class="w-8 h-8 bg-white/5 flex items-center justify-center rounded-sm">
+<span class="material-symbols-outlined text-neutral-400 text-[18px]">terminal</span>
+</div>
+<span class="font-mono text-[9px] uppercase tracking-widest px-2 py-1 border border-emerald-500/30 text-emerald-500 rounded-sm">ЗАВЕРШЕНО</span>
+</div>
+<div>
+<h3 class="font-mono text-[13px] text-white uppercase tracking-wider mb-4">СЕССИЯ ОТЛАДКИ 03</h3>
+<div class="flex justify-between items-end">
+<span class="font-mono text-[10px] text-neutral-600">06 апреля 2026</span>
+<span class="material-symbols-outlined text-neutral-600 group-hover:text-white transition-colors text-[14px]">arrow_outward</span>
+</div>
+</div>
+</div>
+</div><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+<!-- Card 1 -->
+<div class="bg-[#111111] border border-white/10 p-6 flex flex-col justify-between hover:border-white/20 transition-all min-h-[160px] group cursor-pointer">
+<div class="flex justify-between items-start mb-6">
+<div class="w-8 h-8 bg-white/5 flex items-center justify-center rounded-sm">
+<span class="material-symbols-outlined text-neutral-400 text-[18px]">chat</span>
+</div>
+<span class="font-mono text-[9px] uppercase tracking-widest px-2 py-1 border border-white/10 text-neutral-500 rounded-sm">В ПРОЦЕССЕ</span>
+</div>
+<div>
+<h3 class="font-mono text-[13px] text-white uppercase tracking-wider mb-4">ЧАТ С АНАЛИТИКОМ</h3>
+<div class="flex justify-between items-end">
+<span class="font-mono text-[10px] text-neutral-600">05 апреля 2026</span>
+<span class="material-symbols-outlined text-neutral-600 group-hover:text-white transition-colors text-[14px]">arrow_outward</span>
+</div>
+</div>
+</div>
+<!-- Card 2 -->
+<div class="bg-[#111111] border border-white/10 p-6 flex flex-col justify-between hover:border-white/20 transition-all min-h-[160px] group cursor-pointer">
+<div class="flex justify-between items-start mb-6">
+<div class="w-8 h-8 bg-white/5 flex items-center justify-center rounded-sm">
+<span class="material-symbols-outlined text-neutral-400 text-[18px]">troubleshoot</span>
+</div>
+<span class="font-mono text-[9px] uppercase tracking-widest px-2 py-1 border border-emerald-500/30 text-emerald-500 rounded-sm">ЗАВЕРШЕНО</span>
+</div>
+<div>
+<h3 class="font-mono text-[13px] text-white uppercase tracking-wider mb-4">АНАЛИЗ РЫНОЧНЫХ ДАННЫХ</h3>
+<div class="flex justify-between items-end">
+<span class="font-mono text-[10px] text-neutral-600">05 апреля 2026</span>
+<span class="material-symbols-outlined text-neutral-600 group-hover:text-white transition-colors text-[14px]">arrow_outward</span>
+</div>
+</div>
+</div>
+<!-- Card 3 -->
+<div class="bg-[#111111] border border-white/10 p-6 flex flex-col justify-between hover:border-white/20 transition-all min-h-[160px] group cursor-pointer">
+<div class="flex justify-between items-start mb-6">
+<div class="w-8 h-8 bg-white/5 flex items-center justify-center rounded-sm">
+<span class="material-symbols-outlined text-neutral-400 text-[18px]">account_tree</span>
+</div>
+<span class="font-mono text-[9px] uppercase tracking-widest px-2 py-1 border border-white/10 text-neutral-500 rounded-sm">В ПРОЦЕССЕ</span>
+</div>
+<div>
+<h3 class="font-mono text-[13px] text-white uppercase tracking-wider mb-4">ГЕНЕРАЦИЯ JSON-СХЕМЫ</h3>
+<div class="flex justify-between items-end">
+<span class="font-mono text-[10px] text-neutral-600">04 апреля 2026</span>
+<span class="material-symbols-outlined text-neutral-600 group-hover:text-white transition-colors text-[14px]">arrow_outward</span>
+</div>
+</div>
+</div>
+<!-- Card 4 -->
+<div class="bg-[#111111] border border-white/10 p-6 flex flex-col justify-between hover:border-white/20 transition-all min-h-[160px] group cursor-pointer">
+<div class="flex justify-between items-start mb-6">
+<div class="w-8 h-8 bg-white/5 flex items-center justify-center rounded-sm">
+<span class="material-symbols-outlined text-neutral-400 text-[18px]">terminal</span>
+</div>
+<span class="font-mono text-[9px] uppercase tracking-widest px-2 py-1 border border-emerald-500/30 text-emerald-500 rounded-sm">ЗАВЕРШЕНО</span>
+</div>
+<div>
+<h3 class="font-mono text-[13px] text-white uppercase tracking-wider mb-4">СЕССИЯ ОТЛАДКИ 02</h3>
+<div class="flex justify-between items-end">
+<span class="font-mono text-[10px] text-neutral-600">03 апреля 2026</span>
+<span class="material-symbols-outlined text-neutral-600 group-hover:text-white transition-colors text-[14px]">arrow_outward</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</body></html>
