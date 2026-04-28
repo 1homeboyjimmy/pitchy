@@ -168,7 +168,7 @@ function DashboardContent() {
       <InternalTopNavBar activeTab={activeTab} />
       
       <main className="flex-1 ml-64 pt-14 h-screen overflow-y-auto">
-        <div className="p-8 max-w-7xl mx-auto min-h-full">
+        <div className={`mx-auto ${activeTab === 'chat' || activeTab === 'tree' ? 'px-8 pt-8 h-[calc(100vh-3.5rem)]' : 'p-8 max-w-7xl min-h-full'}`}>
           
           {activeTab === "overview" && (
             <>
@@ -289,7 +289,7 @@ function DashboardContent() {
           )}
 
           {activeTab === "chat" && (
-            <div className="h-full w-full flex flex-col">
+            <div className="h-full w-full flex flex-col pb-8 max-w-7xl mx-auto">
               {activeSession ? (
                 <ChatInterface session={activeSession} onUpdate={setActiveSession} />
               ) : (
@@ -313,7 +313,7 @@ function DashboardContent() {
           )}
 
           {activeTab === "tree" && (
-            <div className="h-full">
+            <div className="h-full max-w-7xl mx-auto pb-8">
                <TreeView onSwitchToChat={(ctx) => { if(ctx) handleCreateEmptySession(); setActiveTab("chat"); }} />
             </div>
           )}

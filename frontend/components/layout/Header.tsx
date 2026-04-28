@@ -11,9 +11,12 @@ import { useAuth } from "@/lib/hooks/useAuth";
 import { postJson } from "@/lib/api";
 
 const navLinks = [
-    { label: "Главная", href: "/" },
-    { label: "Панель управления", href: "/dashboard" },
+    { label: "ГЛАВНАЯ", href: "/" },
+    { label: "ДАШБОРД", href: "/dashboard" },
     { label: "FAQ", href: "/faq" },
+    { label: "О НАС", href: "/about" },
+    { label: "ТАРИФЫ", href: "/pricing" },
+    { label: "КОНТАКТЫ", href: "/contact" },
 ];
 
 export function Header() {
@@ -53,69 +56,51 @@ export function Header() {
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex items-center justify-between h-20">
                         {/* Logo */}
-                        <Link href="/" className="flex items-center gap-2 group">
-                            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center transition-transform group-hover:scale-105">
-                                <Zap className="w-5 h-5 text-white" />
-                            </div>
-                            <span className="text-xl font-bold text-white tracking-tight">pitchy</span>
-                            <span className="text-violet-400 font-medium">.pro</span>
+                        <Link href="/" className="flex items-center gap-1 group">
+                            <span className="text-[15px] font-black tracking-widest text-white uppercase group-hover:opacity-80 transition-opacity">
+                                PITCHY.PRO
+                            </span>
                         </Link>
 
                         {/* Desktop Nav */}
-                        <nav className="hidden md:flex items-center gap-1">
+                        <nav className="hidden md:flex items-center gap-6">
                             {navLinks.map((link) => (
                                 <Link
                                     key={link.href}
                                     href={link.href}
-                                    className={`relative px-4 py-2 text-sm font-medium transition-colors duration-200
-                    ${pathname === link.href ? "text-white" : "text-zinc-400 hover:text-white"}
+                                    className={`font-mono-label text-[10px] tracking-widest uppercase transition-colors duration-200
+                    ${pathname === link.href ? "text-white" : "text-neutral-500 hover:text-white"}
                   `}
                                 >
-                                    {pathname === link.href && (
-                                        <motion.div
-                                            layoutId="nav-pill"
-                                            className="absolute inset-0 bg-zinc-800/50 rounded-lg"
-                                            transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                                        />
-                                    )}
-                                    <span className="relative z-10">{link.label}</span>
+                                    {link.label}
                                 </Link>
                             ))}
-                            {isAuthed && (
-                                <Link
-                                    href="/account"
-                                    className={`relative px-4 py-2 text-sm font-medium transition-colors duration-200
-                    ${pathname === "/account" ? "text-white" : "text-zinc-400 hover:text-white"}
-                  `}
-                                >
-                                    {pathname === "/account" && (
-                                        <motion.div
-                                            layoutId="nav-pill"
-                                            className="absolute inset-0 bg-zinc-800/50 rounded-lg"
-                                            transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                                        />
-                                    )}
-                                    <span className="relative z-10">Аккаунт</span>
-                                </Link>
-                            )}
                         </nav>
 
                         {/* Desktop Actions */}
                         <div className="hidden md:flex items-center gap-4">
                             {isAuthed ? (
-                                <button
-                                    onClick={handleLogout}
-                                    className="px-4 py-2 text-sm font-medium text-zinc-400 hover:text-white transition-colors"
-                                >
-                                    Выйти
-                                </button>
+                                <>
+                                    <Link
+                                        href="/account"
+                                        className="font-mono-label text-[10px] uppercase tracking-widest text-neutral-500 hover:text-white transition-colors"
+                                    >
+                                        АККАУНТ
+                                    </Link>
+                                    <button
+                                        onClick={handleLogout}
+                                        className="bg-white text-black px-4 py-1.5 font-mono-label text-[10px] uppercase tracking-widest font-bold hover:opacity-90 transition-opacity"
+                                    >
+                                        ВЫЙТИ
+                                    </button>
+                                </>
                             ) : (
                                 <>
-                                    <Link href="/login" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">
-                                        Войти
+                                    <Link href="/login" className="font-mono-label text-[10px] uppercase tracking-widest text-neutral-500 hover:text-white transition-colors">
+                                        ВОЙТИ
                                     </Link>
-                                    <Link href="/login">
-                                        <AnimatedButton size="sm">Начать</AnimatedButton>
+                                    <Link href="/signup" className="bg-white text-black px-4 py-1.5 font-mono-label text-[10px] uppercase tracking-widest font-bold hover:opacity-90 transition-opacity">
+                                        РЕГИСТРАЦИЯ
                                     </Link>
                                 </>
                             )}
@@ -171,26 +156,37 @@ export function Header() {
 
                             <div className="pt-4 border-t border-zinc-800">
                                 {isAuthed ? (
-                                    <button
-                                        onClick={() => {
-                                            handleLogout();
-                                            setIsMobileMenuOpen(false);
-                                        }}
-                                        className="w-full px-4 py-3 rounded-lg text-base font-medium text-left text-red-400 hover:bg-zinc-800/50 transition-colors"
-                                    >
-                                        Выйти
-                                    </button>
+                                    <>
+                                        <Link
+                                            href="/account"
+                                            onClick={() => setIsMobileMenuOpen(false)}
+                                            className="block w-full px-4 text-center py-3 rounded-lg font-mono-label text-[12px] uppercase tracking-widest text-neutral-500 hover:text-white hover:bg-zinc-800/50 transition-colors"
+                                        >
+                                            АККАУНТ
+                                        </Link>
+                                        <button
+                                            onClick={() => {
+                                                handleLogout();
+                                                setIsMobileMenuOpen(false);
+                                            }}
+                                            className="w-full mt-2 bg-white text-black px-4 py-3 font-mono-label text-[12px] uppercase tracking-widest font-bold hover:opacity-90 transition-opacity"
+                                        >
+                                            ВЫЙТИ
+                                        </button>
+                                    </>
                                 ) : (
                                     <div className="space-y-3">
                                         <Link
                                             href="/login"
                                             onClick={() => setIsMobileMenuOpen(false)}
-                                            className="block w-full px-4 text-center py-3 rounded-lg text-base font-medium text-zinc-300 hover:text-white hover:bg-zinc-800/50 transition-colors"
+                                            className="block w-full px-4 text-center py-3 rounded-lg font-mono-label text-[12px] uppercase tracking-widest text-neutral-500 hover:text-white hover:bg-zinc-800/50 transition-colors"
                                         >
-                                            Войти
+                                            ВОЙТИ
                                         </Link>
-                                        <Link href="/login" onClick={() => setIsMobileMenuOpen(false)} className="block">
-                                            <AnimatedButton className="w-full">Начать</AnimatedButton>
+                                        <Link href="/signup" onClick={() => setIsMobileMenuOpen(false)} className="block">
+                                            <div className="w-full text-center bg-white text-black px-4 py-3 font-mono-label text-[12px] uppercase tracking-widest font-bold hover:opacity-90 transition-opacity">
+                                                РЕГИСТРАЦИЯ
+                                            </div>
                                         </Link>
                                     </div>
                                 )}
