@@ -405,47 +405,47 @@ export function AdminView() {
 
     return (
         <div className="space-y-6">
-            <div className="flex gap-4 border-b border-white/10 pb-4 overflow-x-auto">
+            <div className="flex gap-2 border-b border-white/10 pb-4 overflow-x-auto thin-scrollbar">
                 <button
                     onClick={() => setActiveTab("users")}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${activeTab === "users" ? "bg-pitchy-violet text-white" : "text-white/50 hover:text-white"
+                    className={`flex items-center gap-2 px-4 py-2 font-mono-label text-[10px] uppercase font-bold tracking-widest transition-all whitespace-nowrap ${activeTab === "users" ? "bg-white text-black" : "border border-white/10 text-white/50 hover:text-white bg-[#111111]"
                         }`}
                 >
-                    <Users className="w-4 h-4" /> Пользователи
+                    <Users className="w-3.5 h-3.5" /> Пользователи
                 </button>
                 <button
                     onClick={() => setActiveTab("promocodes")}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${activeTab === "promocodes" ? "bg-pitchy-violet text-white" : "text-white/50 hover:text-white"
+                    className={`flex items-center gap-2 px-4 py-2 font-mono-label text-[10px] uppercase font-bold tracking-widest transition-all whitespace-nowrap ${activeTab === "promocodes" ? "bg-white text-black" : "border border-white/10 text-white/50 hover:text-white bg-[#111111]"
                         }`}
                 >
-                    <Tag className="w-4 h-4" /> Промокоды
+                    <Tag className="w-3.5 h-3.5" /> Промокоды
                 </button>
                 <button
                     onClick={() => setActiveTab("analytics")}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${activeTab === "analytics" ? "bg-pitchy-violet text-white" : "text-white/50 hover:text-white"
+                    className={`flex items-center gap-2 px-4 py-2 font-mono-label text-[10px] uppercase font-bold tracking-widest transition-all whitespace-nowrap ${activeTab === "analytics" ? "bg-white text-black" : "border border-white/10 text-white/50 hover:text-white bg-[#111111]"
                         }`}
                 >
-                    <BarChart2 className="w-4 h-4" /> Аналитика платформы
+                    <BarChart2 className="w-3.5 h-3.5" /> Аналитика
                 </button>
                 <button
                     onClick={() => setActiveTab("subscriptions")}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${activeTab === "subscriptions" ? "bg-pitchy-violet text-white" : "text-white/50 hover:text-white"
+                    className={`flex items-center gap-2 px-4 py-2 font-mono-label text-[10px] uppercase font-bold tracking-widest transition-all whitespace-nowrap ${activeTab === "subscriptions" ? "bg-white text-black" : "border border-white/10 text-white/50 hover:text-white bg-[#111111]"
                         }`}
                 >
-                    <CreditCard className="w-4 h-4" /> Подписки
+                    <CreditCard className="w-3.5 h-3.5" /> Подписки
                 </button>
                 <button
                     onClick={() => setActiveTab("rag")}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${activeTab === "rag" ? "bg-pitchy-violet text-white" : "text-white/50 hover:text-white"
+                    className={`flex items-center gap-2 px-4 py-2 font-mono-label text-[10px] uppercase font-bold tracking-widest transition-all whitespace-nowrap ${activeTab === "rag" ? "bg-white text-black" : "border border-white/10 text-white/50 hover:text-white bg-[#111111]"
                         }`}
                 >
-                    <Shield className="w-4 h-4" /> База Знаний (RAG)
+                    <Shield className="w-3.5 h-3.5" /> RAG База
                 </button>
             </div>
 
             {loading ? (
                 <div className="py-12 flex justify-center">
-                    <Loader className="w-8 h-8 text-pitchy-violet animate-spin" />
+                    <Loader className="w-8 h-8 text-white animate-spin" />
                 </div>
             ) : (
                 <motion.div
@@ -455,15 +455,15 @@ export function AdminView() {
                     {activeTab === "promocodes" && (
                         <div className="space-y-6">
                             {/* Create new promo form */}
-                            <GlassCard hover={false} className="p-6 border border-pitchy-violet/30">
-                                <h3 className="text-lg font-bold text-white mb-4">Создать промокод</h3>
+                            <div className="p-6 bg-[#111111] border border-white/10">
+                                <h3 className="text-xl font-display font-bold text-white mb-6 uppercase tracking-tight">Создать промокод</h3>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
                                     <input
                                         type="text"
                                         placeholder="Код (например TITLE20)"
                                         value={newPromo.code}
                                         onChange={(e) => setNewPromo({ ...newPromo, code: e.target.value })}
-                                        className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white outline-none focus:border-pitchy-violet"
+                                        className="bg-black border border-white/10 px-4 py-2 text-white outline-none focus:border-white/30 font-code text-[13px]"
                                     />
                                     <input
                                         type="number"
@@ -471,59 +471,59 @@ export function AdminView() {
                                         min="0" max="100"
                                         value={newPromo.discount_percent}
                                         onChange={(e) => setNewPromo({ ...newPromo, discount_percent: parseInt(e.target.value) || 0 })}
-                                        className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white outline-none focus:border-pitchy-violet"
+                                        className="bg-black border border-white/10 px-4 py-2 text-white outline-none focus:border-white/30 font-code text-[13px]"
                                     />
                                     <input
                                         type="number"
                                         placeholder="Кол-во использований (не обяз.)"
                                         value={newPromo.max_uses}
                                         onChange={(e) => setNewPromo({ ...newPromo, max_uses: e.target.value })}
-                                        className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white outline-none focus:border-pitchy-violet w-full"
+                                        className="bg-black border border-white/10 px-4 py-2 text-white outline-none focus:border-white/30 w-full font-code text-[13px]"
                                     />
                                     <input
                                         type="text"
                                         placeholder="Тариф (напр. tester)"
                                         value={newPromo.target_tier}
                                         onChange={(e) => setNewPromo({ ...newPromo, target_tier: e.target.value })}
-                                        className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white outline-none focus:border-pitchy-violet"
+                                        className="bg-black border border-white/10 px-4 py-2 text-white outline-none focus:border-white/30 font-code text-[13px]"
                                     />
                                     <input
                                         type="number"
                                         placeholder="Фикс. цена в ₽ (напр. 1)"
                                         value={newPromo.fixed_price}
                                         onChange={(e) => setNewPromo({ ...newPromo, fixed_price: e.target.value })}
-                                        className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white outline-none focus:border-pitchy-violet"
+                                        className="bg-black border border-white/10 px-4 py-2 text-white outline-none focus:border-white/30 font-code text-[13px]"
                                     />
-                                    <Button
-                                        variant="primary"
+                                    <button
                                         onClick={handleCreatePromo}
                                         disabled={!newPromo.code.trim()}
+                                        className="flex items-center justify-center gap-2 px-4 py-2 bg-white text-black font-mono-label text-[10px] uppercase font-bold hover:opacity-90 transition-opacity disabled:opacity-50"
                                     >
-                                        <Plus className="w-4 h-4 mr-2" /> Добавить
-                                    </Button>
+                                        <Plus className="w-3.5 h-3.5" /> Добавить
+                                    </button>
                                 </div>
-                            </GlassCard>
+                            </div>
 
                             {/* Promo codes list */}
-                            <div className="bg-[#131313] border border-white/10 rounded-2xl overflow-hidden">
-                                <table className="w-full text-left text-sm text-white">
-                                    <thead className="bg-white/5 text-white/50 border-b border-white/10">
+                            <div className="bg-[#111111] border border-white/10">
+                                <table className="w-full text-left text-sm text-white font-code">
+                                    <thead className="bg-[#0A0A0A] text-white/50 border-b border-white/10 font-mono-label uppercase text-[10px] tracking-widest">
                                         <tr>
-                                            <th className="px-6 py-4 font-medium">КОД</th>
-                                            <th className="px-6 py-4 font-medium text-center">СКИДКА %</th>
-                                            <th className="px-6 py-4 font-medium text-center">ТАРИФ/ЦЕНА</th>
-                                            <th className="px-6 py-4 font-medium text-center">ИСПОЛЬЗОВАНО</th>
-                                            <th className="px-6 py-4 font-medium text-right">ДЕЙСТВИЕ</th>
+                                            <th className="px-6 py-4 font-bold">КОД</th>
+                                            <th className="px-6 py-4 font-bold text-center">СКИДКА %</th>
+                                            <th className="px-6 py-4 font-bold text-center">ТАРИФ/ЦЕНА</th>
+                                            <th className="px-6 py-4 font-bold text-center">ИСПОЛЬЗОВАНО</th>
+                                            <th className="px-6 py-4 font-bold text-right">ДЕЙСТВИЕ</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {promocodes.map(promo => (
-                                            <tr key={promo.id} className="border-b border-white/5">
-                                                <td className="px-6 py-4 font-bold text-pitchy-cyan">{promo.code}</td>
+                                            <tr key={promo.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
+                                                <td className="px-6 py-4 font-bold tracking-wider">{promo.code}</td>
                                                 <td className="px-6 py-4 text-center">{promo.discount_percent}%</td>
                                                 <td className="px-6 py-4 text-center text-white/70">
                                                     {promo.target_tier ? (
-                                                        <span className="bg-pitchy-violet/20 text-pitchy-violet px-2 py-0.5 rounded-full text-xs">{promo.target_tier}</span>
+                                                        <span className="bg-white/10 text-white px-2 py-0.5 border border-white/20 text-xs font-mono-label uppercase">{promo.target_tier}</span>
                                                     ) : "—"}
                                                     {promo.fixed_price && <span className="ml-2 text-xs">{promo.fixed_price} ₽</span>}
                                                 </td>
@@ -531,7 +531,7 @@ export function AdminView() {
                                                     {promo.current_uses} / {promo.max_uses ? promo.max_uses : '∞'}
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
-                                                    <button onClick={() => handleDeletePromo(promo.id)} className="text-red-400 hover:text-red-300 p-2">
+                                                    <button onClick={() => handleDeletePromo(promo.id)} className="text-red-400 hover:text-red-300 p-2 transition-colors">
                                                         <Trash2 className="w-4 h-4" />
                                                     </button>
                                                 </td>
@@ -551,8 +551,8 @@ export function AdminView() {
                     {activeTab === "analytics" && analytics && (
                         <div className="space-y-6 mt-6">
                             <div className="flex items-center justify-between">
-                                <h3 className="text-xl font-bold text-white">Аналитика платформы</h3>
-                                <div className="flex bg-[#131313] border border-white/10 rounded-xl p-1">
+                                <h3 className="text-xl font-display font-bold text-white uppercase tracking-tight">Аналитика платформы</h3>
+                                <div className="flex bg-[#111111] border border-white/10 p-1">
                                     {[
                                         { label: "24 часа", value: "24h" },
                                         { label: "3 дня", value: "3d" },
@@ -564,9 +564,9 @@ export function AdminView() {
                                         <button
                                             key={opt.value}
                                             onClick={() => setAnalyticsTimeFilter(opt.value as "24h" | "3d" | "1w" | "1m" | "6m" | "1y")}
-                                            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${analyticsTimeFilter === opt.value
-                                                ? "bg-pitchy-violet text-white"
-                                                : "text-white/50 hover:text-white"
+                                            className={`px-3 py-1.5 font-mono-label text-[10px] uppercase font-bold tracking-widest transition-colors ${analyticsTimeFilter === opt.value
+                                                ? "bg-white text-black"
+                                                : "text-white/50 hover:text-white bg-transparent"
                                                 }`}
                                         >
                                             {opt.label}
@@ -576,33 +576,33 @@ export function AdminView() {
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                                <GlassCard hover={false} className="p-6">
-                                    <p className="text-white/50 text-sm mb-1">Всего пользователей</p>
-                                    <p className="text-3xl font-bold text-white">{analytics.totals.users}</p>
-                                </GlassCard>
-                                <GlassCard hover={false} className="p-6">
-                                    <p className="text-white/50 text-sm mb-1">Чат-сессий</p>
-                                    <p className="text-3xl font-bold text-white flex items-end gap-2">
+                                <div className="bg-[#111111] border border-white/10 p-6">
+                                    <p className="text-white/50 font-mono-label text-[10px] uppercase tracking-widest mb-2">Всего пользователей</p>
+                                    <p className="text-3xl font-mono text-white font-bold">{analytics.totals.users}</p>
+                                </div>
+                                <div className="bg-[#111111] border border-white/10 p-6">
+                                    <p className="text-white/50 font-mono-label text-[10px] uppercase tracking-widest mb-2">Чат-сессий</p>
+                                    <p className="text-3xl font-mono text-white font-bold flex items-end gap-2">
                                         {analytics.totals.chat_sessions}
-                                        <span className="text-xs text-pitchy-violet mb-1">(анон: {analytics.totals.chat_sessions_anon})</span>
+                                        <span className="text-xs text-white/40 mb-1 font-code">(анон: {analytics.totals.chat_sessions_anon})</span>
                                     </p>
-                                </GlassCard>
-                                <GlassCard hover={false} className="p-6">
-                                    <p className="text-white/50 text-sm mb-1">Количество подписок</p>
-                                    <p className="text-3xl font-bold text-white flex items-end gap-2">
+                                </div>
+                                <div className="bg-[#111111] border border-white/10 p-6">
+                                    <p className="text-white/50 font-mono-label text-[10px] uppercase tracking-widest mb-2">Количество подписок</p>
+                                    <p className="text-3xl font-mono text-white font-bold flex items-end gap-2">
                                         {analytics.totals.subscriptions}
                                     </p>
-                                </GlassCard>
-                                <GlassCard hover={false} className="p-6">
-                                    <p className="text-white/50 text-sm mb-1">Конверсия (%)</p>
-                                    <p className="text-3xl font-bold text-white flex items-end gap-2">
+                                </div>
+                                <div className="bg-[#111111] border border-white/10 p-6">
+                                    <p className="text-white/50 font-mono-label text-[10px] uppercase tracking-widest mb-2">Конверсия (%)</p>
+                                    <p className="text-3xl font-mono text-white font-bold flex items-end gap-2">
                                         {analytics.totals.users > 0 ? ((analytics.totals.subscriptions / analytics.totals.users) * 100).toFixed(2) : "0.00"}%
                                     </p>
-                                </GlassCard>
+                                </div>
                             </div>
 
-                            <GlassCard hover={false} className="p-6">
-                                <h4 className="text-white font-medium mb-4">Динамика регистраций (Всего пользователей)</h4>
+                            <div className="bg-[#111111] border border-white/10 p-6">
+                                <h4 className="text-white font-mono-label text-[12px] uppercase tracking-widest mb-6">Динамика регистраций (Всего пользователей)</h4>
                                 <AreaChart
                                     h={280}
                                     data={analytics.series.map(s => ({
@@ -611,7 +611,7 @@ export function AdminView() {
                                     }))}
                                     dataKey="date"
                                     curveType="linear"
-                                    series={[{ name: "users", color: "blue.5", label: "Пользователи" }]}
+                                    series={[{ name: "users", color: "gray.5", label: "Пользователи" }]}
                                     withGradient
                                     gridAxis="xy"
                                     textColor="rgba(255, 255, 255, 0.5)"
@@ -619,10 +619,10 @@ export function AdminView() {
                                     yAxisProps={{ ticks: [0, 20, 40, 60, 80], domain: [0, 80] }}
                                     xAxisProps={{ interval: "preserveStartEnd" }}
                                 />
-                            </GlassCard>
+                            </div>
 
-                            <GlassCard hover={false} className="p-6">
-                                <h4 className="text-white font-medium mb-4">Активность (Чат-сессии)</h4>
+                            <div className="bg-[#111111] border border-white/10 p-6">
+                                <h4 className="text-white font-mono-label text-[12px] uppercase tracking-widest mb-6">Активность (Чат-сессии)</h4>
                                 <AreaChart
                                     h={280}
                                     data={analytics.series.map(s => ({
@@ -631,7 +631,7 @@ export function AdminView() {
                                     }))}
                                     dataKey="date"
                                     curveType="linear"
-                                    series={[{ name: "chat_sessions", color: "violet.5", label: "Сессии" }]}
+                                    series={[{ name: "chat_sessions", color: "gray.5", label: "Сессии" }]}
                                     withGradient
                                     gridAxis="xy"
                                     textColor="rgba(255, 255, 255, 0.5)"
@@ -639,10 +639,10 @@ export function AdminView() {
                                     yAxisProps={{ ticks: [0, 50, 100, 150, 200], domain: [0, 200] }}
                                     xAxisProps={{ interval: "preserveStartEnd" }}
                                 />
-                            </GlassCard>
+                            </div>
 
-                            <GlassCard hover={false} className="p-6">
-                                <h4 className="text-white font-medium mb-4">Рост платных подписок</h4>
+                            <div className="bg-[#111111] border border-white/10 p-6">
+                                <h4 className="text-white font-mono-label text-[12px] uppercase tracking-widest mb-6">Рост платных подписок</h4>
                                 <AreaChart
                                     h={280}
                                     data={analytics.series.map(s => ({
@@ -651,7 +651,7 @@ export function AdminView() {
                                     }))}
                                     dataKey="date"
                                     curveType="linear"
-                                    series={[{ name: "subscriptions", color: "cyan.5", label: "Подписки" }]}
+                                    series={[{ name: "subscriptions", color: "gray.3", label: "Подписки" }]}
                                     withGradient
                                     gridAxis="xy"
                                     textColor="rgba(255, 255, 255, 0.5)"
@@ -659,10 +659,10 @@ export function AdminView() {
                                     yAxisProps={{ ticks: [0, 10, 20, 30, 40], domain: [0, 40] }}
                                     xAxisProps={{ interval: "preserveStartEnd" }}
                                 />
-                            </GlassCard>
+                            </div>
 
-                            <GlassCard hover={false} className="p-6">
-                                <h4 className="text-white font-medium mb-4">Изменение конверсии (%)</h4>
+                            <div className="bg-[#111111] border border-white/10 p-6">
+                                <h4 className="text-white font-mono-label text-[12px] uppercase tracking-widest mb-6">Изменение конверсии (%)</h4>
                                 <AreaChart
                                     h={280}
                                     data={analytics.series.map(s => ({
@@ -671,73 +671,73 @@ export function AdminView() {
                                     }))}
                                     dataKey="date"
                                     curveType="linear"
-                                    series={[{ name: "conversion", color: "pink.5", label: "Конверсия (%)" }]}
+                                    series={[{ name: "conversion", color: "gray.7", label: "Конверсия (%)" }]}
                                     withGradient
                                     gridAxis="xy"
                                     textColor="rgba(255, 255, 255, 0.5)"
                                     withDots={false}
                                     xAxisProps={{ interval: "preserveStartEnd" }}
                                 />
-                            </GlassCard>
+                            </div>
                         </div>
                     )}
 
                     {activeTab === "users" && (
                         <div className="space-y-6">
-                            <div className="bg-[#131313] border border-white/10 rounded-2xl overflow-hidden overflow-x-auto">
-                                <table className="w-full text-left text-sm text-white min-w-[800px]">
-                                    <thead className="bg-white/5 text-white/50 border-b border-white/10">
+                            <div className="bg-[#111111] border border-white/10 overflow-hidden overflow-x-auto">
+                                <table className="w-full text-left text-sm text-white min-w-[800px] font-code">
+                                    <thead className="bg-[#0A0A0A] text-white/50 border-b border-white/10 font-mono-label uppercase text-[10px] tracking-widest">
                                         <tr>
-                                            <th className="px-6 py-4 font-medium">ПОЛЬЗОВАТЕЛЬ</th>
-                                            <th className="px-6 py-4 font-medium">СТАТУС & РОЛЬ</th>
-                                            <th className="px-6 py-4 font-medium">ДАТА РЕГИСТРАЦИИ</th>
-                                            <th className="px-6 py-4 font-medium text-center">ТАРИФ</th>
-                                            <th className="px-6 py-4 font-medium text-right">ДЕЙСТВИЕ</th>
+                                            <th className="px-6 py-4 font-bold">ПОЛЬЗОВАТЕЛЬ</th>
+                                            <th className="px-6 py-4 font-bold">СТАТУС & РОЛЬ</th>
+                                            <th className="px-6 py-4 font-bold">ДАТА РЕГИСТРАЦИИ</th>
+                                            <th className="px-6 py-4 font-bold text-center">ТАРИФ</th>
+                                            <th className="px-6 py-4 font-bold text-right">ДЕЙСТВИЕ</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {users.map(u => (
-                                            <tr key={u.id} className={`border-b border-white/5 ${!u.is_active ? 'opacity-50' : ''}`}>
+                                            <tr key={u.id} className={`border-b border-white/5 hover:bg-white/5 transition-colors ${!u.is_active ? 'opacity-50' : ''}`}>
                                                 <td className="px-6 py-4">
-                                                    <div className="font-bold">{u.name || "Без имени"}</div>
-                                                    <div className="text-white/50 text-xs">{u.email}</div>
+                                                    <div className="font-bold tracking-tight">{u.name || "Без имени"}</div>
+                                                    <div className="text-white/50 text-[11px] font-mono mt-1">{u.email}</div>
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     <div className="flex flex-col items-start gap-1">
                                                         {u.is_admin ? (
-                                                            <span className="text-xs bg-pitchy-cyan/10 text-pitchy-cyan px-2 py-0.5 rounded-full border border-pitchy-cyan/20">Админ</span>
+                                                            <span className="text-[10px] font-mono-label uppercase tracking-widest bg-white/10 text-white px-2 py-0.5 border border-white/20">Админ</span>
                                                         ) : (
-                                                            <span className="text-xs bg-white/10 text-white/70 px-2 py-0.5 rounded-full">Юзер</span>
+                                                            <span className="text-[10px] font-mono-label uppercase tracking-widest bg-[#0A0A0A] border border-white/10 text-white/50 px-2 py-0.5">Юзер</span>
                                                         )}
                                                         {!u.is_active && (
-                                                            <span className="text-xs bg-red-500/10 text-red-400 px-2 py-0.5 rounded-full border border-red-500/20">Заблокирован</span>
+                                                            <span className="text-[10px] font-mono-label uppercase tracking-widest bg-red-500/10 text-red-400 px-2 py-0.5 border border-red-500/20 mt-1">Заблокирован</span>
                                                         )}
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-4 text-white/70">
+                                                <td className="px-6 py-4 text-white/70 text-[13px]">
                                                     {u.created_at ? new Date(u.created_at).toLocaleDateString("ru-RU", { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : "—"}
                                                 </td>
-                                                <td className="px-6 py-4 text-center text-white/70 capitalize">
+                                                <td className="px-6 py-4 text-center text-white/70 font-mono-label uppercase text-[11px]">
                                                     {u.subscription_tier}
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
                                                     <div className="flex justify-end gap-2">
                                                         {u.is_active ? (
-                                                            <button onClick={() => handleUserAction(u.id, "block")} className="text-amber-400 hover:text-amber-300 text-xs px-2 py-1 rounded border border-amber-500/20 bg-amber-500/10 transition-colors">Блок</button>
+                                                            <button onClick={() => handleUserAction(u.id, "block")} className="text-amber-400 hover:text-amber-300 font-mono-label uppercase text-[10px] tracking-widest px-2 py-1 border border-amber-500/20 bg-amber-500/10 transition-colors">Блок</button>
                                                         ) : (
-                                                            <button onClick={() => handleUserAction(u.id, "unblock")} className="text-emerald-400 hover:text-emerald-300 text-xs px-2 py-1 rounded border border-emerald-500/20 bg-emerald-500/10 transition-colors">Разблок</button>
+                                                            <button onClick={() => handleUserAction(u.id, "unblock")} className="text-emerald-400 hover:text-emerald-300 font-mono-label uppercase text-[10px] tracking-widest px-2 py-1 border border-emerald-500/20 bg-emerald-500/10 transition-colors">Разблок</button>
                                                         )}
                                                         {!u.is_admin && (
-                                                            <button onClick={() => handleUserAction(u.id, "make-admin")} className="text-pitchy-cyan hover:text-pitchy-cyan/80 text-xs px-2 py-1 rounded border border-pitchy-cyan/20 bg-pitchy-cyan/10 transition-colors" title="Сделать админом"><Shield className="w-3 h-3" /></button>
+                                                            <button onClick={() => handleUserAction(u.id, "make-admin")} className="text-white hover:text-black hover:bg-white font-mono-label uppercase text-[10px] tracking-widest px-2 py-1 border border-white/20 bg-white/5 transition-colors" title="Сделать админом">Админ</button>
                                                         )}
-                                                        <button onClick={() => handleUserAction(u.id, "delete")} className="text-red-400 hover:text-red-300 text-xs px-2 py-1 rounded border border-red-500/20 bg-red-500/10 transition-colors" title="Удалить"><Trash2 className="w-3 h-3" /></button>
+                                                        <button onClick={() => handleUserAction(u.id, "delete")} className="text-red-400 hover:text-red-300 font-mono-label uppercase text-[10px] tracking-widest px-2 py-1 border border-red-500/20 bg-red-500/10 transition-colors" title="Удалить"><Trash2 className="w-3 h-3" /></button>
                                                     </div>
                                                 </td>
                                             </tr>
                                         ))}
                                         {users.length === 0 && (
                                             <tr>
-                                                <td colSpan={4} className="px-6 py-8 text-center text-white/30">Нет пользователей</td>
+                                                <td colSpan={4} className="px-6 py-8 text-center text-white/30 font-code">Нет пользователей</td>
                                             </tr>
                                         )}
                                     </tbody>
@@ -748,79 +748,79 @@ export function AdminView() {
 
                     {activeTab === "subscriptions" && (
                         <div className="space-y-4">
-                            <GlassCard hover={false} className="p-6">
-                                <div className="flex items-center justify-between mb-4">
-                                    <h3 className="text-lg font-bold text-white">Платные пользователи</h3>
-                                    <span className="text-sm text-white/40">{subscriptions.length} подписок</span>
+                            <div className="bg-[#111111] border border-white/10 p-6">
+                                <div className="flex items-center justify-between mb-6 border-b border-white/10 pb-4">
+                                    <h3 className="text-xl font-display font-bold text-white uppercase tracking-tight">Платные пользователи</h3>
+                                    <span className="font-mono-label text-[10px] uppercase tracking-widest text-white/40">{subscriptions.length} подписок</span>
                                 </div>
                                 <div className="overflow-x-auto">
-                                    <table className="w-full text-sm">
+                                    <table className="w-full text-sm font-code">
                                         <thead>
-                                            <tr className="text-white/40 border-b border-white/10">
-                                                <th className="text-left px-4 py-3">Email</th>
-                                                <th className="text-left px-4 py-3">Имя</th>
-                                                <th className="text-left px-4 py-3">Тариф</th>
-                                                <th className="text-left px-4 py-3">Статус</th>
-                                                <th className="text-left px-4 py-3">Окончание</th>
-                                                <th className="text-left px-4 py-3">Платежи</th>
-                                                <th className="text-left px-4 py-3">Сумма</th>
-                                                <th className="text-left px-4 py-3">Промокод</th>
+                                            <tr className="text-white/50 border-b border-white/10 font-mono-label uppercase text-[10px] tracking-widest">
+                                                <th className="text-left px-4 py-3 font-bold">Email</th>
+                                                <th className="text-left px-4 py-3 font-bold">Имя</th>
+                                                <th className="text-left px-4 py-3 font-bold">Тариф</th>
+                                                <th className="text-left px-4 py-3 font-bold">Статус</th>
+                                                <th className="text-left px-4 py-3 font-bold">Окончание</th>
+                                                <th className="text-left px-4 py-3 font-bold">Платежи</th>
+                                                <th className="text-left px-4 py-3 font-bold">Сумма</th>
+                                                <th className="text-left px-4 py-3 font-bold">Промокод</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {subscriptions.map((sub) => (
-                                                <tr key={sub.user_id} className="border-b border-white/5 hover:bg-white/5">
-                                                    <td className="px-4 py-3 text-white/80">{sub.email}</td>
-                                                    <td className="px-4 py-3 text-white/60">{sub.name}</td>
-                                                    <td className="px-4 py-3">
-                                                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${sub.subscription_tier === "premium"
-                                                            ? "bg-amber-500/20 text-amber-400"
-                                                            : "bg-pitchy-violet/20 text-pitchy-violet"
+                                                <tr key={sub.user_id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
+                                                    <td className="px-4 py-4 text-white/80 text-[13px]">{sub.email}</td>
+                                                    <td className="px-4 py-4 text-white/60 text-[13px]">{sub.name}</td>
+                                                    <td className="px-4 py-4">
+                                                        <span className={`px-2 py-0.5 border text-[10px] font-mono-label uppercase tracking-widest ${sub.subscription_tier === "premium"
+                                                            ? "bg-white text-black border-white"
+                                                            : "bg-[#0A0A0A] text-white/70 border-white/20"
                                                             }`}>
-                                                            {sub.subscription_tier.toUpperCase()}
+                                                            {sub.subscription_tier}
                                                         </span>
                                                     </td>
-                                                    <td className="px-4 py-3">
-                                                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${sub.is_active
-                                                            ? "bg-green-500/20 text-green-400"
-                                                            : "bg-red-500/20 text-red-400"
+                                                    <td className="px-4 py-4">
+                                                        <span className={`px-2 py-0.5 border text-[10px] font-mono-label uppercase tracking-widest ${sub.is_active
+                                                            ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                                            : "bg-red-500/10 text-red-400 border-red-500/20"
                                                             }`}>
                                                             {sub.is_active ? "Активна" : "Истекла"}
                                                         </span>
                                                     </td>
-                                                    <td className="px-4 py-3 text-white/60">
+                                                    <td className="px-4 py-4 text-white/60 text-[13px]">
                                                         {sub.subscription_expires_at
                                                             ? new Date(sub.subscription_expires_at).toLocaleDateString("ru-RU")
                                                             : "—"}
                                                     </td>
-                                                    <td className="px-4 py-3 text-white/60">{sub.total_payments}</td>
-                                                    <td className="px-4 py-3 text-white/80">{sub.total_spent.toFixed(0)} ₽</td>
-                                                    <td className="px-4 py-3">
+                                                    <td className="px-4 py-4 text-white/60 text-[13px]">{sub.total_payments}</td>
+                                                    <td className="px-4 py-4 text-white/80 font-bold tracking-wider">{sub.total_spent.toFixed(0)} ₽</td>
+                                                    <td className="px-4 py-4">
                                                         {sub.promo_code_used ? (
-                                                            <span className="px-2 py-0.5 rounded-full text-xs bg-blue-500/20 text-blue-400">{sub.promo_code_used}</span>
+                                                            <span className="px-2 py-0.5 border border-white/20 text-[10px] font-mono-label uppercase tracking-widest bg-white/5 text-white">{sub.promo_code_used}</span>
                                                         ) : (
-                                                            <span className="text-white/20">—</span>
+                                                            <span className="text-white/20 text-[10px]">—</span>
                                                         )}
                                                     </td>
                                                 </tr>
                                             ))}
                                             {subscriptions.length === 0 && (
                                                 <tr>
-                                                    <td colSpan={8} className="px-6 py-8 text-center text-white/30">Нет платных пользователей</td>
+                                                    <td colSpan={8} className="px-6 py-8 text-center text-white/30 font-code">Нет платных пользователей</td>
                                                 </tr>
                                             )}
                                         </tbody>
                                     </table>
                                 </div>
-                            </GlassCard>
+                            </div>
                         </div>
                     )}
 
                     {activeTab === "rag" && (
                         <div className="space-y-6 max-w-2xl">
-                            <GlassCard hover={false} className="p-6 border border-pitchy-violet/30">
-                                <h3 className="text-xl font-bold text-white mb-2">Обновление базы знаний (RAG)</h3>
-                                <p className="text-white/60 mb-6 text-sm">
+                            <div className="bg-[#111111] border border-white/10 p-6">
+                                <h3 className="text-xl font-display font-bold text-white mb-2 uppercase tracking-tight">Обновление базы знаний (RAG)</h3>
+                                <p className="text-white/60 mb-6 font-code text-[13px] leading-relaxed">
                                     Вставьте ссылку на любую статью, регламент или документацию. Система скачает страницу, удалит лишний мусор (HTML/рекламу), нарежет текст на куски и добавит в векторную базу данных. ИИ мгновенно научится отвечать с учётом этой новой информации.
                                 </p>
 
@@ -830,26 +830,25 @@ export function AdminView() {
                                         placeholder="https://example.com/company-policy"
                                         value={ragUrl}
                                         onChange={(e) => setRagUrl(e.target.value)}
-                                        className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white outline-none focus:border-pitchy-violet transition-colors"
+                                        className="flex-1 bg-black border border-white/10 px-4 py-3 text-white outline-none focus:border-white/30 transition-colors font-code text-[13px]"
                                         disabled={isScraping}
                                     />
-                                    <Button
-                                        variant="primary"
+                                    <button
                                         onClick={handleScrapeRAG}
                                         disabled={!ragUrl.trim() || isScraping}
-                                        className="px-6"
+                                        className="flex items-center justify-center gap-2 px-6 py-2 bg-white text-black font-mono-label text-[10px] uppercase font-bold hover:opacity-90 transition-opacity disabled:opacity-50"
                                     >
                                         {isScraping ? (
                                             <Loader className="w-4 h-4 animate-spin" />
                                         ) : (
                                             "Отправить URL"
                                         )}
-                                    </Button>
+                                    </button>
                                 </div>
 
                                 <div className="my-6 border-b border-white/10"></div>
 
-                                <h4 className="text-white font-medium mb-3">Или загрузите PDF-файл:</h4>
+                                <h4 className="text-white font-mono-label text-[12px] uppercase tracking-widest mb-3">Или загрузите PDF-файл:</h4>
                                 <div className="flex gap-4 items-center">
                                     <input
                                         type="file"
@@ -861,27 +860,26 @@ export function AdminView() {
                                                 setRagFile(null);
                                             }
                                         }}
-                                        className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white/70 file:border-0 file:bg-pitchy-violet/20 file:text-pitchy-violet file:px-4 file:py-1 file:rounded-lg file:mr-4 hover:file:bg-pitchy-violet/30 transition-colors cursor-pointer"
+                                        className="flex-1 bg-black border border-white/10 px-4 py-2 text-white/70 file:border border-white/20 file:bg-white/10 file:text-white file:font-mono-label file:text-[10px] file:uppercase file:px-4 file:py-1 file:mr-4 hover:file:bg-white/20 transition-colors cursor-pointer font-code text-[13px]"
                                         disabled={isScraping}
                                     />
-                                    <Button
-                                        variant="primary"
+                                    <button
                                         onClick={handleUploadPDF}
                                         disabled={!ragFile || isScraping}
-                                        className="px-6"
+                                        className="flex items-center justify-center gap-2 px-6 py-2 bg-white text-black font-mono-label text-[10px] uppercase font-bold hover:opacity-90 transition-opacity disabled:opacity-50"
                                     >
                                         {isScraping ? (
                                             <Loader className="w-4 h-4 animate-spin" />
                                         ) : (
                                             "Загрузить PDF"
                                         )}
-                                    </Button>
+                                    </button>
                                 </div>
 
                                 <div className="my-6 border-b border-white/10"></div>
 
-                                <h4 className="text-white font-medium mb-1">Глубокое сканирование (Crawler)</h4>
-                                <p className="text-white/50 mb-4 text-xs">
+                                <h4 className="text-white font-mono-label text-[12px] uppercase tracking-widest mb-1">Глубокое сканирование (Crawler)</h4>
+                                <p className="text-white/50 mb-4 font-code text-[11px]">
                                     Автоматически найдёт и скачает все страницы сайта (или карту сайта sitemap.xml), добавив их в RAG. Работает в фоновом режиме.
                                 </p>
 
@@ -891,44 +889,43 @@ export function AdminView() {
                                         placeholder="https://productradar.ru"
                                         value={crawlUrl}
                                         onChange={(e) => setCrawlUrl(e.target.value)}
-                                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white outline-none focus:border-pitchy-violet transition-colors"
+                                        className="w-full bg-black border border-white/10 px-4 py-3 text-white outline-none focus:border-white/30 transition-colors font-code text-[13px]"
                                         disabled={isScraping}
                                     />
                                     <div className="flex gap-4 items-center">
-                                        <label className="flex items-center gap-2 text-white/70 text-sm cursor-pointer">
+                                        <label className="flex items-center gap-2 text-white/70 font-code text-[13px] cursor-pointer">
                                             <input
                                                 type="checkbox"
                                                 checked={crawlIsSitemap}
                                                 onChange={(e) => setCrawlIsSitemap(e.target.checked)}
-                                                className="rounded bg-white/10 border-white/20 text-pitchy-violet focus:ring-pitchy-violet"
+                                                className="rounded-none bg-black border-white/20 text-white focus:ring-white"
                                             />
                                             Это Sitemap.xml
                                         </label>
 
                                         <div className="flex items-center gap-2">
-                                            <span className="text-white/70 text-sm">Макс. страниц:</span>
+                                            <span className="text-white/70 font-code text-[13px]">Макс. страниц:</span>
                                             <input
                                                 type="number"
                                                 min="1" max="500"
                                                 value={crawlMaxPages}
                                                 onChange={(e) => setCrawlMaxPages(parseInt(e.target.value) || 50)}
-                                                className="bg-white/5 border border-white/10 rounded-lg px-3 py-1 text-white w-20 outline-none"
+                                                className="bg-black border border-white/10 px-3 py-1 text-white w-20 outline-none font-code text-[13px]"
                                             />
                                         </div>
 
                                         <div className="flex-1"></div>
-                                        <Button
-                                            variant="secondary"
+                                        <button
                                             onClick={handleCrawlRAG}
                                             disabled={!crawlUrl.trim() || isScraping}
-                                            className="px-6"
+                                            className="flex items-center justify-center gap-2 px-6 py-2 border border-white/20 bg-transparent text-white font-mono-label text-[10px] uppercase font-bold hover:bg-white/10 transition-colors disabled:opacity-50"
                                         >
                                             {isScraping ? (
                                                 <Loader className="w-4 h-4 animate-spin" />
                                             ) : (
                                                 "Запустить паука"
                                             )}
-                                        </Button>
+                                        </button>
                                     </div>
                                 </div>
 
@@ -936,38 +933,37 @@ export function AdminView() {
                                     <motion.div
                                         initial={{ opacity: 0, y: -5 }}
                                         animate={{ opacity: 1, y: 0 }}
-                                        className={`mt-4 p-4 rounded-xl border ${ragResult.success ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-red-500/10 border-red-500/20 text-red-400'}`}
+                                        className={`mt-4 p-4 border font-code text-[13px] ${ragResult.success ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-red-500/10 border-red-500/20 text-red-400'}`}
                                     >
-                                        <p className="font-medium text-sm">{ragResult.message}</p>
+                                        <p className="font-bold">{ragResult.message}</p>
                                     </motion.div>
                                 )}
 
                                 <div className="mt-8 border-t border-white/10 pt-6">
-                                    <h4 className="text-white font-medium mb-2">Визуализация базы (Semantic Map)</h4>
-                                    <p className="text-white/50 mb-4 text-xs">
+                                    <h4 className="text-white font-mono-label text-[12px] uppercase tracking-widest mb-2">Визуализация базы (Semantic Map)</h4>
+                                    <p className="text-white/50 mb-4 font-code text-[11px]">
                                         Постройте 3D-карту всех знаний системы. Это помогает увидеть, как ИИ группирует информацию по темам. 
                                         Сборка карты может занять 1-2 минуты.
                                     </p>
                                     <div className="flex items-center gap-4">
-                                        <div className="flex-1 flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-4 py-2">
-                                            <div className={`w-2 h-2 rounded-full ${vizStatus === 'processing' ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`}></div>
-                                            <span className="text-sm text-white/70">
+                                        <div className="flex-1 flex items-center gap-3 bg-black border border-white/10 px-4 py-2">
+                                            <div className={`w-2 h-2 rounded-none ${vizStatus === 'processing' ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`}></div>
+                                            <span className="font-code text-[13px] text-white/70">
                                                 Статус: {vizStatus === 'processing' ? 'Сборка карты...' : 'Карта готова'}
                                             </span>
                                         </div>
-                                        <Button
-                                            variant="secondary"
+                                        <button
                                             onClick={handleRebuildViz}
                                             disabled={vizStatus === 'processing'}
-                                            className="px-6"
+                                            className="flex items-center justify-center gap-2 px-6 py-2 border border-white/20 bg-transparent text-white font-mono-label text-[10px] uppercase font-bold hover:bg-white/10 transition-colors disabled:opacity-50"
                                         >
                                             {vizStatus === 'processing' ? <Loader className="w-4 h-4 animate-spin" /> : "Обновить карту"}
-                                        </Button>
+                                        </button>
                                         <a 
                                             href="/admin/rag/viz" 
                                             target="_blank" 
                                             rel="noopener noreferrer"
-                                            className="px-6 py-2 bg-pitchy-violet/20 hover:bg-pitchy-violet/30 text-pitchy-violet rounded-xl text-sm font-medium transition-colors flex items-center gap-2"
+                                            className="px-6 py-2 border border-white/20 bg-white/10 hover:bg-white/20 text-white font-mono-label text-[10px] uppercase tracking-widest transition-colors flex items-center gap-2 font-bold"
                                         >
                                             Открыть карту
                                         </a>
@@ -976,60 +972,60 @@ export function AdminView() {
 
                                 <div className="mt-8 border-t border-white/10 pt-6">
                                     <div className="flex items-center justify-between mb-4">
-                                        <h4 className="text-white font-medium">История загрузок</h4>
-                                        <span className="text-sm text-white/40">{ragLogsTotal} записей</span>
+                                        <h4 className="text-white font-mono-label text-[12px] uppercase tracking-widest">История загрузок</h4>
+                                        <span className="font-mono-label text-[10px] uppercase tracking-widest text-white/40">{ragLogsTotal} записей</span>
                                     </div>
                                     <div className="overflow-x-auto">
-                                        <table className="w-full text-sm">
+                                        <table className="w-full text-sm font-code">
                                             <thead>
-                                                <tr className="text-white/40 border-b border-white/10">
-                                                    <th className="text-left py-3 pr-4 w-32">Дата</th>
-                                                    <th className="text-left py-3 px-4">Источник</th>
-                                                    <th className="text-left py-3 px-4 w-20">Тип</th>
-                                                    <th className="text-left py-3 px-4 w-28">Статус</th>
-                                                    <th className="text-right py-3 pl-4 w-24">Чанки</th>
+                                                <tr className="text-white/50 border-b border-white/10 font-mono-label uppercase text-[10px] tracking-widest">
+                                                    <th className="text-left py-3 pr-4 w-32 font-bold">Дата</th>
+                                                    <th className="text-left py-3 px-4 font-bold">Источник</th>
+                                                    <th className="text-left py-3 px-4 w-20 font-bold">Тип</th>
+                                                    <th className="text-left py-3 px-4 w-28 font-bold">Статус</th>
+                                                    <th className="text-right py-3 pl-4 w-24 font-bold">Чанки</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 {ragLogs.map((log) => (
-                                                    <tr key={log.id} className="border-b border-white/5 hover:bg-white/5 group">
-                                                        <td className="py-3 pr-4 text-white/50 text-xs whitespace-nowrap">
+                                                    <tr key={log.id} className="border-b border-white/5 hover:bg-white/5 transition-colors group">
+                                                        <td className="py-4 pr-4 text-white/50 text-[11px] font-mono whitespace-nowrap">
                                                             {new Date(log.created_at).toLocaleString("ru-RU", {
                                                                 day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
                                                             })}
                                                         </td>
-                                                        <td className="py-3 px-4 text-white/80 max-w-[200px] truncate" title={log.source_url}>
+                                                        <td className="py-4 px-4 text-white/80 text-[13px] max-w-[200px] truncate" title={log.source_url}>
                                                             {log.source_url}
                                                         </td>
-                                                        <td className="py-3 px-4 text-white/60 text-xs">
-                                                            <span className="bg-white/10 px-2 py-1 rounded">{log.source_type}</span>
+                                                        <td className="py-4 px-4 text-white/60">
+                                                            <span className="bg-[#0A0A0A] border border-white/10 px-2 py-0.5 text-[10px] font-mono-label uppercase tracking-widest text-white/70">{log.source_type}</span>
                                                         </td>
-                                                        <td className="py-3 px-4">
-                                                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${log.status === "SUCCESS"
-                                                                ? "bg-emerald-500/20 text-emerald-400"
-                                                                : "bg-red-500/20 text-red-400"
+                                                        <td className="py-4 px-4">
+                                                            <span className={`px-2 py-0.5 border text-[10px] font-mono-label uppercase tracking-widest ${log.status === "SUCCESS"
+                                                                ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                                                                : "bg-red-500/10 border-red-500/20 text-red-400"
                                                                 }`}>
                                                                 {log.status}
                                                             </span>
                                                             {log.error_message && (
-                                                                <p className="text-xs text-red-400 mt-1 truncate max-w-[120px]" title={log.error_message}>{log.error_message}</p>
+                                                                <p className="text-[11px] font-mono text-red-400 mt-2 truncate max-w-[120px]" title={log.error_message}>{log.error_message}</p>
                                                             )}
                                                         </td>
-                                                        <td className="py-3 pl-4 text-right text-white/80 font-mono">
+                                                        <td className="py-4 pl-4 text-right text-white/80 font-mono font-bold">
                                                             +{log.chunks_added}
                                                         </td>
                                                     </tr>
                                                 ))}
                                                 {ragLogs.length === 0 && (
                                                     <tr>
-                                                        <td colSpan={5} className="py-8 text-center text-white/30">История загрузок пуста</td>
+                                                        <td colSpan={5} className="py-8 text-center text-white/30 font-code">История загрузок пуста</td>
                                                     </tr>
                                                 )}
                                             </tbody>
                                         </table>
                                     </div>
                                 </div>
-                            </GlassCard>
+                            </div>
                         </div>
                     )}
                 </motion.div>

@@ -181,7 +181,7 @@ export default function PricingPage() {
         <div className="mt-6 max-w-3xl mx-auto border-t border-white/[0.08] pt-4 text-center">
           <p className="font-body-sm text-body-sm text-[#888888]">
             Нужно индивидуальное решение?{" "}
-            <Link className="text-white hover:underline underline-offset-4 decoration-white/30" href="/contacts">
+            <Link className="text-white hover:underline underline-offset-4 decoration-white/30" href="/contact">
               Свяжитесь с нами
             </Link>.
           </p>

@@ -4,12 +4,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const navLinks = [
-  { href: "/", label: "Home" },
-  { href: "/dashboard", label: "Dashboard" },
+  { href: "/", label: "Главная" },
+  { href: "/dashboard", label: "Дашборд" },
   { href: "/faq", label: "FAQ" },
-  { href: "/about", label: "About" },
-  { href: "/pricing", label: "Pricing" },
-  { href: "/contacts", label: "Contacts" },
+  { href: "/about", label: "О нас" },
+  { href: "/pricing", label: "Тарифы" },
+  { href: "/contact", label: "Контакты" },
 ];
 
 export function TopNavBar() {
@@ -49,14 +49,14 @@ export function TopNavBar() {
         <div className="flex items-center gap-4">
           <Link
             href="/account"
-            className="text-neutral-500 font-mono text-[11px] uppercase tracking-widest hover:text-white transition-colors duration-200 cursor-crosshair active:opacity-70"
+            className="px-4 py-1.5 border border-white text-white font-mono text-[11px] uppercase tracking-widest hover:bg-white hover:text-black transition-colors duration-200 cursor-crosshair font-bold"
           >
-            Account
+            АККАУНТ
           </Link>
           <button
-            className="text-neutral-500 font-mono text-[11px] uppercase tracking-widest hover:text-white transition-colors duration-200 cursor-crosshair active:opacity-70"
+            className="text-neutral-500 font-mono text-[11px] uppercase tracking-widest hover:text-white transition-colors duration-200 cursor-crosshair"
           >
-            Logout
+            ВЫЙТИ
           </button>
         </div>
       </div>

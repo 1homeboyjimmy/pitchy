@@ -83,13 +83,13 @@ export function Header() {
                                 <>
                                     <Link
                                         href="/account"
-                                        className="font-mono-label text-[10px] uppercase tracking-widest text-neutral-500 hover:text-white transition-colors"
+                                        className="px-4 py-1.5 border border-white text-white font-mono-label text-[10px] uppercase tracking-widest hover:bg-white hover:text-black transition-colors font-bold"
                                     >
                                         АККАУНТ
                                     </Link>
                                     <button
                                         onClick={handleLogout}
-                                        className="bg-white text-black px-4 py-1.5 font-mono-label text-[10px] uppercase tracking-widest font-bold hover:opacity-90 transition-opacity"
+                                        className="font-mono-label text-[10px] uppercase tracking-widest text-neutral-500 hover:text-white transition-colors"
                                     >
                                         ВЫЙТИ
                                     </button>
@@ -160,7 +160,7 @@ export function Header() {
                                         <Link
                                             href="/account"
                                             onClick={() => setIsMobileMenuOpen(false)}
-                                            className="block w-full px-4 text-center py-3 rounded-lg font-mono-label text-[12px] uppercase tracking-widest text-neutral-500 hover:text-white hover:bg-zinc-800/50 transition-colors"
+                                            className="block w-full px-4 text-center py-3 border border-white text-white font-mono-label text-[12px] uppercase tracking-widest hover:bg-white hover:text-black transition-colors font-bold mb-2 rounded-lg"
                                         >
                                             АККАУНТ
                                         </Link>
@@ -169,7 +169,7 @@ export function Header() {
                                                 handleLogout();
                                                 setIsMobileMenuOpen(false);
                                             }}
-                                            className="w-full mt-2 bg-white text-black px-4 py-3 font-mono-label text-[12px] uppercase tracking-widest font-bold hover:opacity-90 transition-opacity"
+                                            className="w-full text-center py-2 font-mono-label text-[12px] uppercase tracking-widest text-neutral-500 hover:text-white transition-colors"
                                         >
                                             ВЫЙТИ
                                         </button>

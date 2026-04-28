@@ -8,7 +8,7 @@ const navLinks = [
   { href: "/faq", label: "FAQ" },
   { href: "/about", label: "О нас" },
   { href: "/pricing", label: "Тарифы" },
-  { href: "/contacts", label: "Контакты" },
+  { href: "/contact", label: "Контакты" },
 ];
 
 export function InternalTopNavBar({ activeTab }: { activeTab: string }) {
@@ -47,11 +47,14 @@ export function InternalTopNavBar({ activeTab }: { activeTab: string }) {
       </nav>
 
       <div className="flex items-center gap-4">
-        <button className="px-4 py-1.5 border border-white/10 text-white font-mono text-[10px] uppercase tracking-widest hover:bg-white hover:text-black transition-all rounded-sm">
-          Аккаунт
-        </button>
-        <button className="px-4 py-1.5 border border-white/10 text-neutral-500 font-mono text-[10px] uppercase tracking-widest hover:text-white transition-all rounded-sm">
-          Выйти
+        <Link
+          href="/account"
+          className="px-4 py-1.5 border border-white text-white font-mono text-[10px] uppercase tracking-widest hover:bg-white hover:text-black transition-colors cursor-crosshair font-bold"
+        >
+          АККАУНТ
+        </Link>
+        <button className="text-neutral-500 font-mono text-[10px] uppercase tracking-widest hover:text-white transition-colors cursor-crosshair">
+          ВЫЙТИ
         </button>
       </div>
     </header>

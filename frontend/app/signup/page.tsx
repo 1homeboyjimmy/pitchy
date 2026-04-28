@@ -259,7 +259,7 @@ function SignUpContent() {
               href="/auth/yandex/login"
               className="w-full bg-transparent hairline-border text-primary font-body-sm text-body-sm py-sm hover:bg-white/[0.05] transition-colors flex items-center justify-center gap-sm cursor-pointer"
             >
-              <LogIn size={18} strokeWidth={1.5} />
+              <img src="/icons/yandex_icon.png" alt="Yandex" className="w-[18px] h-[18px] object-contain" />
               Продолжить с Яндекс
             </a>
             {/* Google */}
@@ -267,7 +267,7 @@ function SignUpContent() {
               href="/auth/google/login"
               className="w-full bg-transparent hairline-border text-primary font-body-sm text-body-sm py-sm hover:bg-white/[0.05] transition-colors flex items-center justify-center gap-sm cursor-pointer"
             >
-              <CircleUser size={18} strokeWidth={1.5} />
+              <img src="/icons/google_icon.png" alt="Google" className="w-[18px] h-[18px] object-contain" />
               Продолжить с Google
             </a>
             {/* GitHub */}
@@ -275,7 +275,7 @@ function SignUpContent() {
               href="/auth/github/login"
               className="w-full bg-transparent hairline-border text-primary font-body-sm text-body-sm py-sm hover:bg-white/[0.05] transition-colors flex items-center justify-center gap-sm cursor-pointer"
             >
-              <TerminalSquare size={18} strokeWidth={1.5} />
+              <img src="/icons/github_icon.png" alt="GitHub" className="w-[18px] h-[18px] object-contain" />
               Продолжить с GitHub
             </a>
           </div>

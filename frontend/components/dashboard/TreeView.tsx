@@ -196,14 +196,14 @@ export function TreeView({ }: Props) {
           )}
         </AnimatePresence>
 
-        <div className="flex-1 flex flex-col items-center justify-center px-4">
+        <div className="flex-1 flex flex-col items-center justify-center w-full px-4">
           <div className="w-16 h-16 rounded-none bg-[#111111] border border-white/10 flex items-center justify-center mb-6">
             <GitBranch className="w-8 h-8 text-white" />
           </div>
           <h3 className="text-2xl font-display font-bold text-white mb-2 text-center tracking-tight">
             Древо принятия решений
           </h3>
-          <p className="text-[13px] font-code text-neutral-500 mb-8 max-w-md text-center">
+          <p className="w-full text-[13px] font-code text-neutral-500 mb-8 max-w-md text-center">
             Загрузите PDF-документ или опишите идею стартапа — ИИ построит интерактивное древо анализа.
           </p>
 

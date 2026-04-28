@@ -4,12 +4,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const navLinks = [
-  { href: "/", label: "Home" },
-  { href: "/dashboard", label: "Dashboard" },
+  { href: "/", label: "Главная" },
+  { href: "/dashboard", label: "Дашборд" },
   { href: "/faq", label: "FAQ" },
-  { href: "/about", label: "About" },
-  { href: "/pricing", label: "Pricing" },
-  { href: "/contacts", label: "Contacts" },
+  { href: "/about", label: "О нас" },
+  { href: "/pricing", label: "Тарифы" },
+  { href: "/contact", label: "Контакты" },
 ];
 
 export function LandingNavBar() {
@@ -49,13 +49,13 @@ export function LandingNavBar() {
             href="/login"
             className="text-neutral-500 font-mono text-[11px] uppercase tracking-widest hover:text-white transition-colors duration-200 cursor-crosshair"
           >
-            Login
+            Войти
           </Link>
           <Link 
             href="/signup" 
             className="bg-white text-black font-mono text-[11px] uppercase tracking-widest px-4 py-2 hover:bg-neutral-200 transition-colors duration-200 cursor-crosshair font-bold"
           >
-            Sign Up
+            Регистрация
           </Link>
         </div>
       </div>
