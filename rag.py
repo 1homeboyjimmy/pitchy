@@ -19,7 +19,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter  # noqa: E40
 from slm_dispatcher import slm_dispatcher  # noqa: E402
 
 try:  # noqa: E402
-    from langfuse.decorators import observe
+    from langfuse.decorators import observe, langfuse_context
 except Exception as _lf_err:
     import logging as _lf_logging
     _lf_logging.getLogger("langfuse").warning("Langfuse decorators unavailable: %s", _lf_err)
@@ -27,6 +27,7 @@ except Exception as _lf_err:
         def _wrap(fn):
             return fn
         return _wrap
+    langfuse_context = None
 
 logger = logging.getLogger("rag")
 
@@ -95,7 +96,11 @@ class GeminiEmbeddingFunction(EmbeddingFunction):
 
 def _chunk_text(text: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> List[str]:
     # Strip HTML tags to prevent XSS/injection into RAG
-    text = re.sub(r'<[^>]+>', ' ', text)
+    from bs4 import BeautifulSoup
+    try:
+        text = BeautifulSoup(text, "html.parser").get_text(separator=' ')
+    except Exception:
+        pass
     # Convert multiple spaces to single
     text = re.sub(r'\s+', ' ', text).strip()
     
@@ -207,13 +212,14 @@ def _should_reindex() -> bool:
     return os.getenv("CHROMA_REINDEX", "false").lower() == "true"
 
 
-def _smart_ingest_batch(rag_instance: "StartupRAG", chunks: List[str], source: str):
+@observe(name="smart_ingest_batch", capture_input=False)
+async def _smart_ingest_batch(rag_instance: "StartupRAG", chunks: List[str], source: str):
     """Classifies and distributes a batch of chunks into the correct RAG collections."""
     if not chunks:
         return
 
     # 1. SLM Classification
-    categories = asyncio.run(slm_dispatcher.classify_chunks_batch(chunks))
+    categories = await slm_dispatcher.classify_chunks_batch(chunks)
     
     # 2. Distribute based on classification
     for chunk, cat in zip(chunks, categories):
@@ -241,10 +247,13 @@ def _smart_ingest_batch(rag_instance: "StartupRAG", chunks: List[str], source: s
             )
 
 
+@observe(name="Reranker")
 def _rerank_chunks(query: str, entries: List[dict], distances: List[float]) -> List[dict]:
     """Reranking using Jina AI Reranker API with fallback to distance score."""
     if not entries:
         return []
+
+    logger.info(f"Starting rerank for {len(entries)} chunks")
 
     # Dedup and filter
     seen = set()
@@ -265,45 +274,57 @@ def _rerank_chunks(query: str, entries: List[dict], distances: List[float]) -> L
     if not filtered_entries:
         return []
 
+    if langfuse_context:
+        langfuse_context.update_current_observation(
+            metadata={
+                "total_chunks_before": len(entries),
+                "total_chunks_after": len(filtered_entries)
+            }
+        )
+
     jina_api_key = os.getenv("JINA_API_KEY")
     if jina_api_key:
-        try:
-            import requests
-            url = "https://api.jina.ai/v1/rerank"
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {jina_api_key}"
-            }
-            payload = {
-                "model": "jina-reranker-v2-base-multilingual",
-                "query": query,
-                "documents": [e["text"] for e in filtered_entries],
-                "top_n": len(filtered_entries)
-            }
-            
-            # Using timeout to fail fast and fallback
-            response = requests.post(url, json=payload, headers=headers, timeout=5.0)
-            response.raise_for_status()
-            result = response.json()
-            
-            res_results = result.get("results", [])
-            
-            # Reorder based on Jina scores
-            reranked = []
-            for r in res_results:
-                idx = r["index"]
-                reranked.append(filtered_entries[idx])
-            
-            logger.info(f"Successfully reranked {len(reranked)} chunks using Jina AI.")
-            return reranked
-            
-        except Exception as e:
-            logger.error(f"Jina reranker API failed, falling back to base sorting: {e}")
+        return _jina_rerank_internal(query, filtered_entries, jina_api_key)
+    
+    return _fallback_rerank(query, filtered_entries, filtered_distances)
 
-    # Fallback to local cosine + lexical overlap scoring
+@observe(name="jina_reranker")
+def _jina_rerank_internal(query: str, filtered_entries: List[dict], api_key: str) -> List[dict]:
+    try:
+        import requests
+        url = "https://api.jina.ai/v1/rerank"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}"
+        }
+        payload = {
+            "model": "jina-reranker-v2-base-multilingual",
+            "query": query,
+            "documents": [e["text"] for e in filtered_entries],
+            "top_n": len(filtered_entries)
+        }
+        
+        response = requests.post(url, json=payload, headers=headers, timeout=5.0)
+        response.raise_for_status()
+        res_results = response.json().get("results", [])
+        res_results.sort(key=lambda x: x["relevance_score"], reverse=True)
+        
+        reranked = []
+        for r in res_results:
+            entry = filtered_entries[r["index"]]
+            entry["score"] = r["relevance_score"]
+            reranked.append(entry)
+        
+        logger.info(f"Successfully reranked {len(reranked)} chunks using Jina AI.")
+        return reranked
+    except Exception as e:
+        logger.error(f"Jina reranker API failed: {e}")
+        return []
+
+def _fallback_rerank(query, entries, distances):
     scored = []
     query_words = set(re.findall(r'\w{3,}', query.lower()))
-    for entry, dist in zip(filtered_entries, filtered_distances):
+    for entry, dist in zip(entries, distances):
         doc = entry["text"]
         doc_words = set(re.findall(r'\w{3,}', doc.lower()))
         overlap = len(query_words & doc_words) / max(len(query_words), 1)
@@ -312,6 +333,10 @@ def _rerank_chunks(query: str, entries: List[dict], distances: List[float]) -> L
         scored.append((entry, combined))
 
     scored.sort(key=lambda x: x[1], reverse=True)
+    
+    for entry, score in scored:
+        entry["score"] = score
+        
     return [entry for entry, _ in scored]
 
 
@@ -322,7 +347,22 @@ class StartupRAG:
     embedding_fn: GeminiEmbeddingFunction
 
     @classmethod
-    def build(cls) -> "StartupRAG":
+    async def build_async(cls) -> "StartupRAG":
+        """
+        Initializes the RAG system.
+        """
+        instance = await cls._actually_build()
+        # Log success separately to avoid serialization error of StartupRAG object
+        cls._log_init_success(len(instance.collections))
+        return instance
+
+    @staticmethod
+    @observe(name="init_rag_pipeline")
+    def _log_init_success(count: int) -> str:
+        return f"RAG Pipeline Initialized with {count} collections"
+
+    @classmethod
+    async def _actually_build(cls) -> "StartupRAG":
         raw_docs = _load_raw_documents()
         embedding_fn = GeminiEmbeddingFunction()
         client = _build_client()
@@ -345,6 +385,21 @@ class StartupRAG:
                     embedding_function=embedding_fn,
                     metadata={"hnsw:space": "cosine", MODEL_META_KEY: EMBEDDING_MODEL_NAME}
                 )
+                
+                # Critical check: verify model match to avoid Dimension Mismatch crashes
+                if col.count() > 0:
+                    peek = col.peek(limit=1)
+                    if peek['metadatas'] and peek['metadatas'][0].get(MODEL_META_KEY) != EMBEDDING_MODEL_NAME:
+                        logger.warning(f"Collection '{cat}' has incompatible model embeddings. Wiping for safety.")
+                        client.delete_collection(name=cat)
+                        import time
+                        time.sleep(0.5) # Give OS time to release file descriptors
+                        col = client.get_or_create_collection(
+                            name=cat,
+                            embedding_function=embedding_fn,
+                            metadata={"hnsw:space": "cosine", MODEL_META_KEY: EMBEDDING_MODEL_NAME}
+                        )
+                
                 collections[cat] = col
             except Exception as e:
                 logger.error(f"Failed to load collection '{cat}': {e}")
@@ -359,24 +414,24 @@ class StartupRAG:
                 batch_size = 10
                 for i in range(0, len(chunks), batch_size):
                     batch = chunks[i:i+batch_size]
-                    _smart_ingest_batch(instance, batch, source=doc_entry["source"])
+                    await _smart_ingest_batch(instance, batch, source=doc_entry["source"])
             logger.info("SMART INGESTION complete.")
 
         return instance
 
-    def query(self, text: str, categories: List[str] = None, top_k: int = 3) -> List[dict]:
-        """Query specific collections and rerank across all of them."""
+    @observe(name="RAG Search")
+    def search(self, text: str, categories: List[str] = None, top_k: int = 3) -> List[dict]:
+        """Synchronous query for backward compatibility. Use asearch for async environments."""
         if not categories:
             categories = resolve_routing_intent(text)
-            logger.info(f"Routed intent to collections: {categories}")
             
-        fetch_k = min(top_k * 3, 15)
+        fetch_k = min(top_k * 4, 20)
         query_embedding = self.embedding_fn.encode_query(text)
-        
-        from concurrent.futures import ThreadPoolExecutor
         
         all_docs = []
         all_distances = []
+        
+        from concurrent.futures import ThreadPoolExecutor
         
         def query_cat(cat):
             if cat in self.collections:
@@ -392,7 +447,6 @@ class StartupRAG:
                     dists = res.get("distances", [[]])[0]
                     metas = res.get("metadatas", [[]])[0]
                     
-                    # Store as tuples to preserve metadata during reranking
                     return [{"text": d, "metadata": m or {}} for d, m in zip(docs, metas)], dists
                 except Exception:
                     return [], []
@@ -404,8 +458,88 @@ class StartupRAG:
                 all_docs.extend(docs)
                 all_distances.extend(dists)
 
+        if langfuse_context:
+            langfuse_context.update_current_observation(
+                metadata={"total_hits": len(all_docs), "categories": categories}
+            )
+
         reranked = _rerank_chunks(text, all_docs, all_distances)
         return reranked[:top_k]
+
+    async def _query_single_collection(self, collection, query_embedding, fetch_k):
+        if collection.count() == 0:
+            return [], []
+        try:
+            res = await asyncio.to_thread(
+                collection.query,
+                query_embeddings=[query_embedding],
+                n_results=min(fetch_k, collection.count()),
+                include=["documents", "distances", "metadatas"]
+            )
+            docs = res.get("documents", [[]])[0]
+            dists = res.get("distances", [[]])[0]
+            metas = res.get("metadatas", [[]])[0]
+            return [{"text": d, "metadata": m or {}} for d, m in zip(docs, metas)], dists
+        except Exception as e:
+            logger.error(f"RAG _query_single_collection error: {e}")
+            return [], []
+
+    async def asearch(self, text: str, categories: List[str] = None, top_k: int = 3, parent_trace=None) -> List[dict]:
+        """Asynchronous search using asyncio.gather for non-blocking I/O."""
+        total_docs = sum(c.count() for c in self.collections.values())
+        if total_docs == 0:
+            logger.warning("RAG Health: All collections are empty. Fast-path exit.")
+            return []
+            
+        span = None
+        if parent_trace:
+            span = parent_trace.span(name="RAG Search", input=text)
+            
+        try:
+            if not categories:
+                categories = resolve_routing_intent(text)
+                logger.info(f"Routed intent to collections: {categories}")
+                
+            fetch_k = min(top_k * 4, 20)
+            query_embedding = await asyncio.to_thread(self.embedding_fn.encode_query, text)
+            
+            tasks = []
+            for cat in categories:
+                if cat in self.collections:
+                    tasks.append(self._query_single_collection(self.collections[cat], query_embedding, fetch_k))
+                    
+            if not tasks:
+                if span: span.end(output=[])
+                return []
+                
+            results = await asyncio.gather(*tasks)
+            
+            all_docs = []
+            all_distances = []
+            for docs, dists in results:
+                all_docs.extend(docs)
+                all_distances.extend(dists)
+
+            if span:
+                span.update(metadata={"total_hits": len(all_docs), "categories": categories})
+
+            reranked = await asyncio.to_thread(_rerank_chunks, text, all_docs, all_distances)
+            results_out = reranked[:top_k]
+            
+            if span:
+                span.end(output=results_out)
+            return results_out
+        except Exception as e:
+            if span:
+                span.end(level="ERROR", statusMessage=str(e))
+            raise e
+
+    def query(self, text: str, categories: List[str] = None, top_k: int = 3) -> List[dict]:
+        """Backward compatibility for query()."""
+        return self.search(text, categories, top_k)
+        
+    async def aquery(self, text: str, categories: List[str] = None, top_k: int = 3, parent_trace=None) -> List[dict]:
+        return await self.asearch(text, categories, top_k, parent_trace)
 
     def add_documents(self, documents: List[str], category: str = "platform_manual"):
         if not documents or category not in self.collections:
@@ -417,9 +551,9 @@ class StartupRAG:
 _RAG_INSTANCE: StartupRAG | None = None
 
 
-def init_rag() -> None:
+async def init_rag() -> None:
     global _RAG_INSTANCE
-    _RAG_INSTANCE = StartupRAG.build()
+    _RAG_INSTANCE = await StartupRAG.build_async()
 
 
 @observe(name="rag_retrieval")
@@ -427,6 +561,11 @@ def get_relevant_chunks(text: str, categories: List[str] = None, top_k: int = 3)
     if _RAG_INSTANCE is None:
         raise RuntimeError("RAG is not initialized")
     return _RAG_INSTANCE.query(text, categories=categories, top_k=top_k)
+
+async def aget_relevant_chunks(text: str, categories: List[str] = None, top_k: int = 3, parent_trace=None) -> List[dict]:
+    if _RAG_INSTANCE is None:
+        raise RuntimeError("RAG is not initialized")
+    return await _RAG_INSTANCE.aquery(text, categories=categories, top_k=top_k, parent_trace=parent_trace)
 
 def add_text_to_rag(text: str) -> int:
     if _RAG_INSTANCE is None:
@@ -440,13 +579,20 @@ def healthcheck() -> bool:
     if _RAG_INSTANCE is None:
         return False
     try:
-        # Verify at least one collection is accessible
         if not _RAG_INSTANCE.collections:
             return False
-        for coll in _RAG_INSTANCE.collections.values():
-            coll.count()
+        total_docs = 0
+        for cat, coll in _RAG_INSTANCE.collections.items():
+            count = coll.count()
+            total_docs += count
+            # logger.info(f"RAG Health: {cat} collection has {count} records.")
+        
+        if total_docs == 0:
+            logger.warning("RAG Health: All collections are empty.")
+            
         return True
-    except Exception:
+    except Exception as e:
+        logger.warning(f"RAG healthcheck failed: {e}")
         return False
 
 def index_successful_chat_interaction(user_query: str, ai_response: str, message_id: int):
@@ -490,6 +636,46 @@ def search_successful_chats(query: str, top_k: int = 1) -> List[dict]:
         n_results=top_k,
         include=["documents", "distances", "metadatas"]
     )
+    
+    docs = result.get("documents", [[]])[0]
+    distances = result.get("distances", [[]])[0]
+    metas = result.get("metadatas", [[]])[0]
+    
+    # Simple distance threshold for highly similar matches
+    relevant = []
+    for doc, dist, meta in zip(docs, distances, metas):
+        if dist < 0.35:
+            relevant.append({"text": doc, "metadata": meta or {}})
+            
+    return relevant
+
+async def asearch_successful_chats(query: str, top_k: int = 1) -> List[dict]:
+    """Finds a previously highly-rated similar interaction asynchronously."""
+    client = _build_client()
+    embedding_fn = GeminiEmbeddingFunction()
+    try:
+        collection = client.get_collection(
+            name="successful_chats",
+            embedding_function=embedding_fn
+        )
+    except Exception:
+        return []
+    
+    if collection.count() == 0:
+        return []
+        
+    query_embedding = await asyncio.to_thread(embedding_fn.encode_query, query)
+    
+    try:
+        result = await asyncio.to_thread(
+            collection.query,
+            query_embeddings=[query_embedding],
+            n_results=top_k,
+            include=["documents", "distances", "metadatas"]
+        )
+    except Exception as e:
+        logger.error(f"Error querying successful_chats: {e}")
+        return []
     
     docs = result.get("documents", [[]])[0]
     distances = result.get("distances", [[]])[0]

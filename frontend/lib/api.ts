@@ -320,14 +320,28 @@ export async function* sendChatMessageStream(
     const { done, value } = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() || "";
-    for (const line of lines) {
-      if (line.trim()) {
-        try {
-          yield JSON.parse(line);
-        } catch (e) {
-          console.error("Error parsing stream line", e, line);
+    const events = buffer.split("\n\n");
+    buffer = events.pop() || "";
+    for (const event of events) {
+      const lines = event.split("\n");
+      for (const line of lines) {
+        const trimmedLine = line.trim();
+        if (!trimmedLine || trimmedLine.startsWith(':')) {
+          continue;
+        }
+        if (trimmedLine.startsWith('data:')) {
+          const dataStr = trimmedLine.substring(5).trim();
+          if (!dataStr || dataStr === '[DONE]') continue;
+          try {
+            yield JSON.parse(dataStr);
+          } catch (e) {
+            console.error("Error parsing stream line", e, dataStr);
+          }
+        } else if (trimmedLine.startsWith('{')) {
+          // Fallback for raw JSON chunks if any
+          try {
+            yield JSON.parse(trimmedLine);
+          } catch (e) {}
         }
       }
     }
@@ -549,14 +563,28 @@ export async function* postTreeChatStream(
     const { done, value } = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() || "";
-    for (const line of lines) {
-      if (line.trim()) {
-        try {
-          yield JSON.parse(line);
-        } catch (e) {
-          console.error("Error parsing stream line", e, line);
+    const events = buffer.split("\n\n");
+    buffer = events.pop() || "";
+    for (const event of events) {
+      const lines = event.split("\n");
+      for (const line of lines) {
+        const trimmedLine = line.trim();
+        if (!trimmedLine || trimmedLine.startsWith(':')) {
+          continue;
+        }
+        if (trimmedLine.startsWith('data:')) {
+          const dataStr = trimmedLine.substring(5).trim();
+          if (!dataStr || dataStr === '[DONE]') continue;
+          try {
+            yield JSON.parse(dataStr);
+          } catch (e) {
+            console.error("Error parsing stream line", e, dataStr);
+          }
+        } else if (trimmedLine.startsWith('{')) {
+          // Fallback for raw JSON chunks if any
+          try {
+            yield JSON.parse(trimmedLine);
+          } catch (e) {}
         }
       }
     }

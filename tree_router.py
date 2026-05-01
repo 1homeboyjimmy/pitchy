@@ -20,15 +20,33 @@ import logging
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
+from sqlalchemy import select
 
-from auth import get_current_user
-from db import get_db, SessionLocal
+from auth import get_async_current_user
+from db_async import get_async_db, AsyncSessionLocal
 from models import User, ProjectTree
 from schemas import TreeCreateRequest, TreeResponse, TreeNodeUpdateRequest, TreeChatRequest, TreeChatResponse, TreeEvaluateRequest
 from tree_orchestrator import generate_tree_from_text, generate_tree_from_pdf
 from chat_orchestrator import ChatOrchestrator
+
+try:
+    from langfuse.decorators import observe, langfuse_context
+except ImportError:
+    def observe(*args, **kwargs):
+        return lambda f: f
+    langfuse_context = None
+
+class NullSpan:
+    def update(self, *args, **kwargs): pass
+    def __enter__(self): return self
+    def __exit__(self, *args): pass
+
+def get_span(name: str):
+    if langfuse_context:
+        return langfuse_context.span(name=name)
+    return NullSpan()
 
 logger = logging.getLogger("app")
 
@@ -38,10 +56,11 @@ router = APIRouter(prefix="/tree", tags=["Smart Roadmap"])
 # ——— REST Endpoints ———
 
 @router.post("/create", response_model=TreeResponse)
+@observe(name="Smart Roadmap Quick Create")
 async def create_tree(
     payload: TreeCreateRequest,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ) -> TreeResponse:
     """Create a Smart Roadmap starting with Universal Base Nodes."""
     if user.subscription_tier == "tester":
@@ -72,17 +91,18 @@ async def create_tree(
         readiness_index=0
     )
     db.add(tree)
-    db.commit()
-    db.refresh(tree)
+    await db.commit()
+    await db.refresh(tree)
 
     return TreeResponse.model_validate(tree)
 
 
 @router.post("/upload-pdf", response_model=TreeResponse)
+@observe(name="Smart Roadmap PDF Upload")
 async def upload_pdf(
     file: UploadFile = File(...),
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ) -> TreeResponse:
     """Upload a PDF and generate a decision tree from its contents."""
     if user.subscription_tier == "tester":
@@ -135,8 +155,8 @@ async def upload_pdf(
         status="generating",
     )
     db.add(tree)
-    db.commit()
-    db.refresh(tree)
+    await db.commit()
+    await db.refresh(tree)
 
     # Generate tree structure
     try:
@@ -150,59 +170,60 @@ async def upload_pdf(
         tree.status = "error"
 
     tree.updated_at = datetime.utcnow()
-    db.commit()
-    db.refresh(tree)
+    flag_modified(tree, "tree_data")
+    await db.commit()
+    await db.refresh(tree)
 
     return TreeResponse.model_validate(tree)
 
 
 @router.get("/list", response_model=list[TreeResponse])
-def list_trees(
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+async def list_trees(
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ) -> list[TreeResponse]:
     """List all trees for the authenticated user."""
-    trees = (
-        db.query(ProjectTree)
-        .filter(ProjectTree.user_id == user.id)
+    res = await db.execute(
+        select(ProjectTree)
+        .where(ProjectTree.user_id == user.id)
         .order_by(ProjectTree.created_at.desc())
         .limit(50)
-        .all()
     )
+    trees = res.scalars().all()
     return [TreeResponse.model_validate(t) for t in trees]
 
 
 @router.get("/{tree_id}", response_model=TreeResponse)
-def get_tree(
+async def get_tree(
     tree_id: int,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ) -> TreeResponse:
     """Get a single tree by ID."""
-    tree = (
-        db.query(ProjectTree)
-        .filter(ProjectTree.id == tree_id, ProjectTree.user_id == user.id)
-        .first()
+    res = await db.execute(
+        select(ProjectTree)
+        .where(ProjectTree.id == tree_id, ProjectTree.user_id == user.id)
     )
+    tree = res.scalar_one_or_none()
     if not tree:
         raise HTTPException(status_code=404, detail="Древо не найдено")
     return TreeResponse.model_validate(tree)
 
 
 @router.patch("/{tree_id}/nodes/{node_id}")
-def update_tree_node(
+async def update_tree_node(
     tree_id: int,
     node_id: str,
     payload: TreeNodeUpdateRequest,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ) -> dict:
     """Update a specific node in the tree."""
-    tree = (
-        db.query(ProjectTree)
-        .filter(ProjectTree.id == tree_id, ProjectTree.user_id == user.id)
-        .first()
+    res = await db.execute(
+        select(ProjectTree)
+        .where(ProjectTree.id == tree_id, ProjectTree.user_id == user.id)
     )
+    tree = res.scalar_one_or_none()
     if not tree:
         raise HTTPException(status_code=404, detail="Древо не найдено")
 
@@ -234,7 +255,8 @@ def update_tree_node(
     completed = sum(1 for n in nodes if n.get("status") == "completed")
     tree.readiness_index = int((completed / max(total, 1)) * 100)
 
-    db.commit()
+    flag_modified(tree, "tree_data")
+    await db.commit()
 
     return {"status": "ok", "readiness_index": tree.readiness_index}
 
@@ -243,24 +265,32 @@ def update_tree_node(
 async def tree_chat(
     tree_id: int,
     payload: TreeChatRequest,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Intelligent chat orchestration for the decision tree (Streaming)."""
     from fastapi.responses import StreamingResponse
     orchestrator = ChatOrchestrator(tree_id, user.id, db)
     
+    headers = {
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+        "Content-Encoding": "identity",
+        "X-Content-Type-Options": "nosniff"
+    }
     return StreamingResponse(
         orchestrator.process_message(payload.message, payload.active_node_id, client_id=payload.client_id, assistant_client_id=payload.assistant_client_id),
-        media_type="text/event-stream"
+        media_type="text/event-stream",
+        headers=headers
     )
 
 @router.get("/{tree_id}/history")
 async def get_tree_chat_history(
     tree_id: int,
     node_id: str | None = None,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Retrieve chat history for a specific tree or node from Redis/DB."""
     orchestrator = ChatOrchestrator(tree_id, user.id, db)
@@ -268,7 +298,8 @@ async def get_tree_chat_history(
     
     if not history and node_id:
         # Create an automated greeting if history is empty
-        tree = db.query(ProjectTree).filter(ProjectTree.id == tree_id).first()
+        res = await db.execute(select(ProjectTree).where(ProjectTree.id == tree_id))
+        tree = res.scalar_one_or_none()
         node_label = "этого блока"
         if tree and tree.tree_data:
             nodes = tree.tree_data.get("nodes", [])
@@ -285,17 +316,19 @@ async def get_tree_chat_history(
 
 
 @router.post("/{tree_id}/evaluate-node")
+@observe(name="Smart Roadmap Evaluation")
 async def evaluate_node(
     tree_id: int,
     payload: TreeEvaluateRequest,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Evaluate a node using form data and dynamic branching."""
     from makura_client import call_makura
     import copy
 
-    tree = db.query(ProjectTree).filter(ProjectTree.id == tree_id, ProjectTree.user_id == user.id).first()
+    res = await db.execute(select(ProjectTree).where(ProjectTree.id == tree_id, ProjectTree.user_id == user.id))
+    tree = res.scalar_one_or_none()
     if not tree:
         raise HTTPException(status_code=404, detail="Tree not found")
 
@@ -319,18 +352,20 @@ async def evaluate_node(
 Верни СТРОГО JSON:
 {{ "summary": {{ "Ключ1": "Значение1", "Ключ2": "Значение2" }}, "feedback": "Твой развернутый комментарий" }}"""
 
-    try:
-        raw_ai, _, _ = await call_makura("Ты — бизнес-аналитик. Отвечай СТРОГО в формате JSON.", prompt)
-        # Parse JSON from AI
-        start = raw_ai.find("{")
-        end = raw_ai.rfind("}") + 1
-        ai_res = json.loads(raw_ai[start:end])
-    except Exception as e:
-        logger.error(f"Analysis failed: {e}")
-        ai_res = {
-            "summary": {"Status": "Ошибка анализа"},
-            "feedback": "Не удалось проанализировать данные. Попробуйте еще раз."
-        }
+    with get_span(name="LLM Analysis") as span:
+        try:
+            raw_ai, _, _ = await call_makura("Ты — бизнес-аналитик. Отвечай СТРОГО в формате JSON.", prompt)
+            # Parse JSON from AI
+            start = raw_ai.find("{")
+            end = raw_ai.rfind("}") + 1
+            ai_res = json.loads(raw_ai[start:end])
+        except Exception as e:
+            logger.error(f"Analysis failed: {e}")
+            ai_res = {
+                "summary": {"Status": "Ошибка анализа"},
+                "feedback": "Не удалось проанализировать данные. Попробуйте еще раз."
+            }
+        span.update(metadata={"node_id": payload.node_id})
 
     # Update Node
     target_node["status"] = "completed"
@@ -340,49 +375,53 @@ async def evaluate_node(
 
     # Dynamic Branching Logic
     new_nodes = []
-    if payload.node_id == "audience":
-        # Add Channels and Competitors
-        if not any(n["id"] == "channels" for n in nodes):
-            new_nodes.append({
-                "id": "channels", "type": "customAnalysis", "status": "active", "label": "Каналы продаж", "level": 2, "parent_id": "audience",
-                "data": {"label": "Каналы продаж", "form_schema": [
-                    {"id": "primary", "label": "Основной канал", "type": "textarea", "placeholder": "SEO, Ads..."},
-                    {"id": "budget", "label": "Тестовый бюджет", "type": "textarea", "placeholder": "100к руб..."}
-                ]}
-            })
-        if not any(n["id"] == "competitors" for n in nodes):
-            new_nodes.append({
-                "id": "competitors", "type": "customAnalysis", "status": "active", "label": "Конкуренты", "level": 2, "parent_id": "audience",
-                "data": {"label": "Конкуренты", "form_schema": [
-                    {"id": "list", "label": "Кто конкуренты?", "type": "textarea", "placeholder": "Google, Yandex..."},
-                    {"id": "advantage", "label": "Ваше преимущество", "type": "textarea", "placeholder": "В 10 раз быстрее..."}
-                ]}
-            })
-    elif payload.node_id == "solution":
-        if not any(n["id"] == "monetization" for n in nodes):
-            new_nodes.append({
-                "id": "monetization", "type": "customAnalysis", "status": "active", "label": "Монетизация", "level": 2, "parent_id": "solution",
-                "data": {"label": "Монетизация", "form_schema": [
-                    {"id": "model", "label": "Модель дохода", "type": "textarea", "placeholder": "SaaS, Реклама..."},
-                    {"id": "price", "label": "Средний чек", "type": "textarea", "placeholder": "500 руб/мес..."}
-                ]}
-            })
+    with get_span(name="Branch Generation") as span:
+        if payload.node_id == "audience":
+            # Add Channels and Competitors
+            if not any(n["id"] == "channels" for n in nodes):
+                new_nodes.append({
+                    "id": "channels", "type": "customAnalysis", "status": "active", "label": "Каналы продаж", "level": 2, "parent_id": "audience",
+                    "data": {"label": "Каналы продаж", "form_schema": [
+                        {"id": "primary", "label": "Основной канал", "type": "textarea", "placeholder": "SEO, Ads..."},
+                        {"id": "budget", "label": "Тестовый бюджет", "type": "textarea", "placeholder": "100к руб..."}
+                    ]}
+                })
+            if not any(n["id"] == "competitors" for n in nodes):
+                new_nodes.append({
+                    "id": "competitors", "type": "customAnalysis", "status": "active", "label": "Конкуренты", "level": 2, "parent_id": "audience",
+                    "data": {"label": "Конкуренты", "form_schema": [
+                        {"id": "list", "label": "Кто конкуренты?", "type": "textarea", "placeholder": "Google, Yandex..."},
+                        {"id": "advantage", "label": "Ваше преимущество", "type": "textarea", "placeholder": "В 10 раз быстрее..."}
+                    ]}
+                })
+        elif payload.node_id == "solution":
+            if not any(n["id"] == "monetization" for n in nodes):
+                new_nodes.append({
+                    "id": "monetization", "type": "customAnalysis", "status": "active", "label": "Монетизация", "level": 2, "parent_id": "solution",
+                    "data": {"label": "Монетизация", "form_schema": [
+                        {"id": "model", "label": "Модель дохода", "type": "textarea", "placeholder": "SaaS, Реклама..."},
+                        {"id": "price", "label": "Средний чек", "type": "textarea", "placeholder": "500 руб/мес..."}
+                    ]}
+                })
+        span.update(metadata={"new_nodes_count": len(new_nodes)})
 
     # Recalculate node positions for new_nodes
     if new_nodes:
-        # Get parent position
-        parent_x = target_node.get("position", {}).get("x", 0)
-        parent_y = target_node.get("position", {}).get("y", 0)
-        
-        y_offset = 250
-        x_spacing = 350
-        num_new = len(new_nodes)
-        
-        for i, nn in enumerate(new_nodes):
-            calc_x = parent_x + (i - (num_new - 1) / 2) * x_spacing
-            nn["position"] = {"x": calc_x, "y": parent_y + y_offset}
-            nodes.append(nn)
-            edges.append({"id": f"e-{nn['parent_id']}-{nn['id']}", "source": nn["parent_id"], "target": nn["id"]})
+        with get_span(name="Node Layout & Relation Mapping") as span:
+            # Get parent position
+            parent_x = target_node.get("position", {}).get("x", 0)
+            parent_y = target_node.get("position", {}).get("y", 0)
+            
+            y_offset = 250
+            x_spacing = 350
+            num_new = len(new_nodes)
+            
+            for i, nn in enumerate(new_nodes):
+                calc_x = parent_x + (i - (num_new - 1) / 2) * x_spacing
+                nn["position"] = {"x": calc_x, "y": parent_y + y_offset}
+                nodes.append(nn)
+                edges.append({"id": f"e-{nn['parent_id']}-{nn['id']}", "source": nn["parent_id"], "target": nn["id"]})
+            span.update(metadata={"edges_created": len(new_nodes)})
 
     # Recalculate Index
     total = len(nodes)
@@ -394,28 +433,28 @@ async def evaluate_node(
     flag_modified(tree, "tree_data")
     
     tree.updated_at = datetime.utcnow()
-    db.commit()
+    await db.commit()
 
     return TreeResponse.model_validate(tree)
 
 
 @router.delete("/{tree_id}")
-def delete_tree(
+async def delete_tree(
     tree_id: int,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ) -> dict:
     """Delete a tree."""
-    tree = (
-        db.query(ProjectTree)
-        .filter(ProjectTree.id == tree_id, ProjectTree.user_id == user.id)
-        .first()
+    res = await db.execute(
+        select(ProjectTree)
+        .where(ProjectTree.id == tree_id, ProjectTree.user_id == user.id)
     )
+    tree = res.scalar_one_or_none()
     if not tree:
         raise HTTPException(status_code=404, detail="Древо не найдено")
 
-    db.delete(tree)
-    db.commit()
+    await db.delete(tree)
+    await db.commit()
     return {"status": "deleted"}
 
 
@@ -435,8 +474,9 @@ async def tree_websocket(
     try:
         # Verify access
         # In production, authenticate via token in query params
-        with SessionLocal() as db:
-            tree = db.query(ProjectTree).filter(ProjectTree.id == tree_id).first()
+        async with AsyncSessionLocal() as db:
+            res = await db.execute(select(ProjectTree).where(ProjectTree.id == tree_id))
+            tree = res.scalar_one_or_none()
             if not tree:
                 await websocket.send_json({"type": "error", "data": {"message": "Tree not found"}})
                 await websocket.close()
@@ -461,8 +501,9 @@ async def tree_websocket(
                 if data.get("type") == "ping":
                     await websocket.send_json({"type": "pong"})
                 elif data.get("type") == "refresh":
-                    with SessionLocal() as db:
-                        tree = db.query(ProjectTree).filter(ProjectTree.id == tree_id).first()
+                    async with AsyncSessionLocal() as db:
+                        res = await db.execute(select(ProjectTree).where(ProjectTree.id == tree_id))
+                        tree = res.scalar_one_or_none()
                         if tree:
                             await websocket.send_json({
                                 "type": "update",

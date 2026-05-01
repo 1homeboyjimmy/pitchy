@@ -4,6 +4,13 @@ import logging
 from exa_py import Exa
 from dotenv import load_dotenv
 
+try:
+    from langfuse.decorators import observe, langfuse_context
+except ImportError:
+    def observe(*args, **kwargs):
+        return lambda f: f
+    langfuse_context = None
+
 logger = logging.getLogger(__name__)
 
 def _get_exa_client() -> Exa | None:
@@ -15,12 +22,19 @@ def _get_exa_client() -> Exa | None:
     logger.info(f"Exa client initialized with key starting with {api_key[:5]}...")
     return Exa(api_key)
 
-async def async_search_with_sources(query: str, use_deep_search: bool = False) -> tuple[list[dict], str]:
+@observe(name="Deep Search (Exa AI)")
+async def async_search_with_sources(query: str, use_deep_search: bool = False, trace_id: str = None, parent_observation_id: str = None) -> tuple[list[dict], str]:
     """
     Асинхронная функция поиска через Exa AI.
     Возвращает (sources_list, context_string).
     Обеспечивает мягкую деградацию при недоступности API.
     """
+    if langfuse_context:
+        if trace_id:
+            langfuse_context.update(trace_id=trace_id)
+        if parent_observation_id:
+            langfuse_context.update(parent_observation_id=parent_observation_id)
+        
     logger.info(f"Executing async API search using Exa for query: {query}, deep_search: {use_deep_search}")
     
     # Init client
@@ -38,12 +52,27 @@ async def async_search_with_sources(query: str, use_deep_search: bool = False) -
         
         # exa_py operations are synchronous
         def _do_search():
+            localized_query = query if "росси" in query.lower() else f"{query} в россии"
+            
+            # Boost Rosstat for statistical queries
+            search_kwargs = {
+                "type": "auto",
+                "use_autoprompt": True,
+                "num_results": num_results,
+                "highlights": True
+            }
+            
+            if any(w in query.lower() for w in ["статистика", "росстат", "цифр", "мвд", "мсп"]):
+                # We don't use include_domains strictly to avoid empty results if site is down,
+                # but we can adjust the query to favor it. 
+                # Or better: use include_domains and fallback if needed.
+                logger.info("Prioritizing rosstat.gov.ru and factual markers in search query")
+                factual_markers = "фактические данные 2026 официальная статистика реестр"
+                localized_query = f"site:rosstat.gov.ru {localized_query} {factual_markers}"
+
             return exa_client.search_and_contents(
-                query,
-                type="auto",
-                use_autoprompt=True,
-                num_results=num_results,
-                highlights=True
+                localized_query,
+                **search_kwargs
             )
             
         response = await asyncio.to_thread(_do_search)

@@ -1,8 +1,9 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Shield } from "react-feather";
-import Layout from "@/components/Layout";
+import { Shield } from "lucide-react";
+import { TopNavBar } from "@/components/shared/TopNavBar";
+import { SiteFooter } from "@/components/shared/SiteFooter";
 
 const sections = [
     {
@@ -39,8 +40,9 @@ const sections = [
 
 export default function PrivacyPage() {
     return (
-        <Layout>
-            <div className="min-h-screen pt-24 pb-16 px-4 sm:px-6 lg:px-8">
+        <div className="bg-background text-on-background antialiased min-h-screen flex flex-col">
+            <TopNavBar />
+            <main className="flex-grow pt-24 pb-16 px-6 md:px-12 max-w-[1440px] mx-auto w-full">
                 <div className="max-w-3xl mx-auto">
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
@@ -116,7 +118,8 @@ export default function PrivacyPage() {
                         <p className="mb-4">6.1. Оператор имеет право вносить изменения в настоящую Политику. Новая редакция Политики вступает в силу с момента ее размещения на Сайте.</p>
                     </motion.div>
                 </div>
-            </div>
-        </Layout>
+            </main>
+            <SiteFooter />
+        </div>
     );
 }

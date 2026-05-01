@@ -31,6 +31,8 @@ pitchy.pro {
             header_up X-Real-IP {remote_ip}
             header_up X-Forwarded-For {remote_ip}
             header_up X-Forwarded-Proto {scheme}
+            header_up X-Accel-Buffering no
+            flush_interval -1
             transport http {
                 # Увеличиваем таймаут для генерации ответов ИИ и тяжелой обработки PDF (до 10 минут)
                 read_timeout 600s
@@ -53,8 +55,11 @@ pitchy.pro {
         Content-Security-Policy "default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval'; connect-src 'self' https: wss: pitchy.pro *.pitchy.pro;"
     }
 
-    # Сжатие контента для ускорения загрузки
-    encode gzip zstd
+    # Сжатие контента для ускорения загрузки (исключая SSE для предотвращения буферизации)
+    @not-sse {
+        not header Content-Type *text/event-stream*
+    }
+    encode @not-sse gzip zstd
 
     # Все остальные запросы направляем на Frontend (Next.js)
     handle {

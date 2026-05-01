@@ -1,0 +1,140 @@
+name: Deploy Dev (Staging)
+
+on:
+  push:
+    branches: [ dev ]
+
+env:
+  REGISTRY: ghcr.io
+  BACKEND_IMAGE: ghcr.io/${{ github.repository }}/backend
+  FRONTEND_IMAGE: ghcr.io/${{ github.repository }}/frontend
+
+jobs:
+  build-backend:
+    runs-on: self-hosted
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push backend (dev)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ env.BACKEND_IMAGE }}:dev,${{ env.BACKEND_IMAGE }}:dev-${{ github.sha }}
+          cache-from: type=gha,scope=dev-backend
+          cache-to: type=gha,mode=max,scope=dev-backend
+
+  build-frontend:
+    runs-on: self-hosted
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push frontend (dev)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: true
+          tags: ${{ env.FRONTEND_IMAGE }}:dev,${{ env.FRONTEND_IMAGE }}:dev-${{ github.sha }}
+          build-args: |
+            NEXT_PUBLIC_API_BASE_URL=https://dev.pitchy.pro
+            BACKEND_INTERNAL_URL=http://backend:8000
+          cache-from: type=gha,scope=dev-frontend
+          cache-to: type=gha,mode=max,scope=dev-frontend
+
+  deploy:
+    runs-on: self-hosted
+    needs: [build-backend, build-frontend]
+    steps:
+      - name: Deploy to staging over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEV_HOST }}
+          username: ${{ secrets.DEV_USERNAME }}
+          key: ${{ secrets.DEV_SSH_KEY }}
+          command_timeout: 30m
+          script: |
+            export GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
+            export GITHUB_ACTOR=${{ github.actor }}
+
+            cd /opt/ai-startup
+
+            # Login to GHCR
+            echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+            # Pull latest code
+            git fetch origin
+            git reset --hard origin/dev
+
+            # Pull new images
+            docker compose -f docker-compose.staging.yml pull -q || echo "WARNING: Some images failed to pull"
+
+            # Restart services
+            docker compose -f docker-compose.staging.yml down --timeout 10 --remove-orphans || true
+            docker compose -f docker-compose.staging.yml up -d --force-recreate --remove-orphans
+
+            # Wait for postgres
+            for i in $(seq 1 10); do
+              if docker compose -f docker-compose.staging.yml exec -T postgres pg_isready -U app_user -d app; then
+                echo "Postgres is ready."
+                break
+              fi
+              echo "Waiting for postgres... ($i/10)"
+              sleep 2
+            done
+
+            # Run migrations
+            timeout 60 docker compose -f docker-compose.staging.yml exec -T backend python -m alembic upgrade head || {
+              echo "WARNING: Migrations failed or timed out, continuing..."
+            }
+
+            # Healthcheck
+            health_ok="false"
+            for i in $(seq 1 30); do
+              body="$(docker compose -f docker-compose.staging.yml exec -T backend curl -s http://127.0.0.1:8000/health || true)"
+              if echo "$body" | grep -q '"status":"ok"'; then
+                health_ok="true"
+                echo "Healthcheck passed on attempt $i!"
+                break
+              fi
+              echo "Healthcheck attempt $i: ${body:-<empty>}"
+              sleep 5
+            done
+
+            if [ "$health_ok" != "true" ]; then
+              echo "DEPLOY FAILED: healthcheck timeout"
+              docker compose -f docker-compose.staging.yml logs backend --tail=50
+              exit 1
+            fi
+
+            # Cleanup
+            docker image prune -af 2>/dev/null || true
+            echo "Staging deploy successful!"

@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="ru"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Контакты - PITCHY.PRO</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-background": "#e5e2e1",
+                        "tertiary": "#ffffff",
+                        "on-surface": "#e5e2e1",
+                        "primary": "#ffffff",
+                        "on-primary": "#2f3131",
+                        "on-error-container": "#ffdad6",
+                        "primary-fixed-dim": "#c6c6c7",
+                        "on-primary-fixed-variant": "#454747",
+                        "on-secondary": "#313030",
+                        "inverse-on-surface": "#313030",
+                        "tertiary-fixed": "#e2e2e2",
+                        "inverse-surface": "#e5e2e1",
+                        "on-secondary-fixed-variant": "#474646",
+                        "on-primary-fixed": "#1a1c1c",
+                        "on-tertiary-fixed": "#1a1c1c",
+                        "outline": "#8e9192",
+                        "on-tertiary-container": "#636565",
+                        "surface-tint": "#c6c6c7",
+                        "error": "#ffb4ab",
+                        "on-primary-container": "#636565",
+                        "surface-container-low": "#1c1b1b",
+                        "surface": "#141313",
+                        "outline-variant": "#444748",
+                        "surface-container": "#201f1f",
+                        "on-surface-variant": "#c4c7c8",
+                        "secondary-fixed": "#e5e2e1",
+                        "tertiary-fixed-dim": "#c6c6c7",
+                        "primary-fixed": "#e2e2e2",
+                        "secondary-container": "#4a4949",
+                        "surface-dim": "#141313",
+                        "surface-container-highest": "#353434",
+                        "surface-bright": "#3a3939",
+                        "error-container": "#93000a",
+                        "inverse-primary": "#5d5f5f",
+                        "background": "#141313",
+                        "on-secondary-fixed": "#1c1b1b",
+                        "surface-container-high": "#2a2a2a",
+                        "primary-container": "#e2e2e2",
+                        "surface-container-lowest": "#0e0e0e",
+                        "on-tertiary-fixed-variant": "#454747",
+                        "on-secondary-container": "#bab8b7",
+                        "on-tertiary": "#2f3131",
+                        "on-error": "#690005",
+                        "tertiary-container": "#e2e2e2",
+                        "secondary-fixed-dim": "#c9c6c5",
+                        "surface-variant": "#353434",
+                        "secondary": "#c9c6c5"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "sm": "8px",
+                        "container-max": "1440px",
+                        "md": "16px",
+                        "xl": "48px",
+                        "xs": "4px",
+                        "lg": "24px",
+                        "gutter": "16px",
+                        "unit": "4px"
+                    },
+                    "fontFamily": {
+                        "h1": ["Inter", "sans-serif"],
+                        "display": ["Inter", "sans-serif"],
+                        "code": ["Inter", "sans-serif"],
+                        "h2": ["Inter", "sans-serif"],
+                        "body-lg": ["Inter", "sans-serif"],
+                        "mono-label": ["Inter", "sans-serif"],
+                        "body-sm": ["Inter", "sans-serif"]
+                    },
+                    "fontSize": {
+                        "h1": ["32px", { "lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+                        "display": ["48px", { "lineHeight": "1.1", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+                        "code": ["13px", { "lineHeight": "1.6", "letterSpacing": "0", "fontWeight": "400" }],
+                        "h2": ["24px", { "lineHeight": "1.3", "letterSpacing": "-0.01em", "fontWeight": "500" }],
+                        "body-lg": ["16px", { "lineHeight": "1.6", "letterSpacing": "0", "fontWeight": "400" }],
+                        "mono-label": ["12px", { "lineHeight": "1", "letterSpacing": "0.05em", "fontWeight": "500" }],
+                        "body-sm": ["14px", { "lineHeight": "1.5", "letterSpacing": "0", "fontWeight": "400" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .fill-icon {
+            font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body {
+            background-color: #0A0A0A;
+            color: #ffffff;
+        }
+        .hairline-border {
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .input-field {
+            background-color: #111111;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            color: #ffffff;
+            transition: border-color 0.2s ease;
+        }
+        .input-field:focus {
+            outline: none;
+            border-color: rgba(255, 255, 255, 0.4);
+            box-shadow: none;
+        }
+        .input-field::placeholder {
+            color: #444444;
+            font-family: 'Inter', sans-serif;
+        }
+        
+        .flashlight-card {
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .flashlight-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: radial-gradient(circle 800px at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(255,255,255,0.06), transparent 40%);
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+            z-index: 1;
+        }
+        
+        .flashlight-card:hover::before {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body class="antialiased min-h-screen flex flex-col font-body-lg">
+<!-- TopNavBar -->
+<nav class="fixed top-0 w-full z-50 bg-[#0A0A0A]/80 backdrop-blur-xl border-b border-white/[0.08]">
+<div class="flex items-center justify-between px-6 h-14 w-full max-w-screen-2xl mx-auto relative">
+<div class="text-lg font-bold tracking-tighter text-white font-display">
+                PITCHY.PRO
+            </div>
+<div class="hidden md:flex items-center gap-6 absolute left-1/2 -translate-x-1/2">
+<a class="text-[11px] uppercase tracking-widest text-neutral-500 hover:text-white transition-colors duration-200 cursor-crosshair active:opacity-70" href="#">Home</a>
+<a class="text-[11px] uppercase tracking-widest text-neutral-500 hover:text-white transition-colors duration-200 cursor-crosshair active:opacity-70" href="#">Dashboard</a>
+<a class="text-[11px] uppercase tracking-widest text-neutral-500 hover:text-white transition-colors duration-200 cursor-crosshair active:opacity-70" href="#">FAQ</a>
+<a class="text-[11px] uppercase tracking-widest text-neutral-500 hover:text-white transition-colors duration-200 cursor-crosshair active:opacity-70" href="#">About</a>
+<a class="text-[11px] uppercase tracking-widest text-neutral-500 hover:text-white transition-colors duration-200 cursor-crosshair active:opacity-70" href="#">Pricing</a>
+<a class="text-[11px] uppercase tracking-widest text-white border-b border-white/40 pb-1 hover:text-white transition-colors duration-200 cursor-crosshair active:opacity-70" href="#">Contacts</a>
+</div>
+<div class="flex items-center gap-4">
+<a class="hidden md:block text-[11px] text-white hover:text-white transition-colors duration-200 cursor-crosshair active:opacity-70 uppercase tracking-widest" href="#">
+                    Account
+                </a>
+<button class="hidden md:block bg-white text-black font-mono-label px-4 py-2 rounded hover:opacity-90 transition-opacity">
+                    Logout
+                </button>
+<button class="md:hidden text-white">
+<span class="material-symbols-outlined">menu</span>
+</button>
+</div>
+</div>
+</nav>
+<!-- Main Content Canvas -->
+<main class="flex-grow pt-24 pb-xl px-6 md:px-lg max-w-container-max mx-auto w-full flex flex-col gap-xl">
+<!-- Header Section -->
+<div class="flex flex-col gap-sm max-w-3xl">
+<h1 class="font-display text-display text-primary">Связь с нами.</h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant max-w-xl">
+                Используйте форму ниже для технических запросов, вопросов по интеграции или поддержки. Мы стремимся к максимальной эффективности коммуникации.
+            </p>
+</div>
+<!-- Content Grid -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-gutter items-start">
+<!-- Contact Info Panel (Left) -->
+<div class="lg:col-span-4 flex flex-col gap-md">
+<!-- Info Card -->
+<div class="bg-[#111111] p-lg hairline-border rounded flashlight-card flex flex-col gap-lg">
+<div class="flex flex-col gap-xs">
+<span class="font-mono-label text-mono-label text-[#444444] uppercase tracking-widest">Email</span>
+<a class="font-h2 text-h2 text-primary hover:text-white/80 transition-colors cursor-crosshair" href="mailto:auth@pitchy.pro">auth@pitchy.pro</a>
+</div>
+<div class="w-full h-px bg-white/[0.08]"></div>
+<div class="flex flex-col gap-xs">
+<span class="font-mono-label text-mono-label text-[#444444] uppercase tracking-widest">Локация</span>
+<div class="flex items-start gap-sm">
+<span class="material-symbols-outlined text-on-surface-variant text-[20px] mt-1">location_on</span>
+<span class="font-body-lg text-body-lg text-on-surface">Москва,<br/>Россия</span>
+</div>
+</div>
+<div class="w-full h-px bg-white/[0.08]"></div>
+<div class="flex flex-col gap-xs">
+<span class="font-mono-label text-mono-label text-[#444444] uppercase tracking-widest">SLA Поддержки</span>
+<div class="flex items-center gap-sm">
+<span class="material-symbols-outlined text-on-surface-variant text-[20px]">schedule</span>
+<span class="font-code text-code text-on-surface">Время ответа: <span class="text-primary font-medium">~24 часа</span></span>
+</div>
+</div>
+</div>
+</div>
+<!-- Form Container (Right) -->
+<div class="lg:col-span-8 bg-[#111111] p-lg md:p-xl hairline-border rounded flashlight-card">
+<form class="flex flex-col gap-md">
+<div class="grid grid-cols-1 md:grid-cols-2 gap-md">
+<div class="flex flex-col gap-sm">
+<label class="font-mono-label text-mono-label text-[#444444] uppercase tracking-widest" for="name">Имя</label>
+<input class="input-field rounded p-sm font-code text-code w-full h-10" id="name" name="name" placeholder="Введите ваше имя" type="text"/>
+</div>
+<div class="flex flex-col gap-sm">
+<label class="font-mono-label text-mono-label text-[#444444] uppercase tracking-widest" for="email">Email</label>
+<input class="input-field rounded p-sm font-code text-code w-full h-10" id="email" name="email" placeholder="example@domain.com" type="email"/>
+</div>
+<div class="flex flex-col gap-sm md:col-span-2">
+<label class="font-mono-label text-mono-label text-[#444444] uppercase tracking-widest" for="user_id">User ID</label>
+<input class="input-field rounded p-sm font-code text-code w-full h-10" id="user_id" name="user_id" placeholder="Введите ваш User ID" type="text"/>
+</div>
+</div>
+<div class="flex flex-col gap-sm">
+<label class="font-mono-label text-mono-label text-[#444444] uppercase tracking-widest" for="subject">Тема</label>
+<select class="input-field rounded p-sm font-code text-code w-full h-10 appearance-none cursor-pointer" id="subject" name="subject">
+<option disabled="" selected="" value="">Выберите тему обращения</option>
+<option value="tech">Техническая поддержка</option>
+<option value="billing">Вопросы оплаты</option>
+<option value="api">Интеграция API</option>
+<option value="other">Другое</option>
+</select>
+</div>
+<div class="flex flex-col gap-sm">
+<label class="font-mono-label text-mono-label text-[#444444] uppercase tracking-widest" for="message">Сообщение</label>
+<textarea class="input-field rounded p-sm font-code text-code w-full resize-y min-h-[120px]" id="message" name="message" placeholder="Опишите ваш запрос детально..." rows="6"></textarea>
+</div>
+<div class="pt-sm flex justify-end">
+<button class="bg-primary text-[#000000] font-mono-label text-mono-label px-lg py-sm rounded hover:opacity-90 transition-opacity flex items-center gap-2 cursor-crosshair" type="submit">
+<span>ОТПРАВИТЬ</span>
+<span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+</button>
+</div>
+</form>
+</div>
+</div>
+</main>
+<!-- Footer -->
+<footer class="w-full border-t border-white/[0.08] py-8 bg-[#0A0A0A] mt-auto">
+<div class="max-w-screen-2xl mx-auto flex flex-col md:flex-row justify-between items-center px-8 gap-4">
+<div class="text-white font-black font-mono-label text-[10px] uppercase tracking-tight">
+                © 2024 PITCHY.PRO SYSTEM v1.0.4. STABLE BUILD.
+            </div>
+<div class="flex gap-6">
+<a class="text-[10px] uppercase tracking-tight text-neutral-600 hover:text-white underline decoration-neutral-700 transition-all duration-200" href="#">Legal</a>
+<a class="text-[10px] uppercase tracking-tight text-neutral-600 hover:text-white underline decoration-neutral-700 transition-all duration-200" href="#">Privacy</a>
+<a class="text-[10px] uppercase tracking-tight text-neutral-600 hover:text-white underline decoration-neutral-700 transition-all duration-200" href="#">Security</a>
+<a class="text-[10px] uppercase tracking-tight text-neutral-600 hover:text-white underline decoration-neutral-700 transition-all duration-200" href="#">Status</a>
+</div>
+</div>
+</footer>
+</body></html>

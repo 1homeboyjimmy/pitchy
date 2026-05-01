@@ -7,15 +7,15 @@ from typing import Optional, Tuple, Dict, Any
 
 logger = logging.getLogger("app")
 
-async def call_makura(system_prompt: str, user_message: str, model: str = None) -> Tuple[Optional[str], Optional[str]]:
+async def call_makura(system_prompt: str, user_message: str, model: str = None) -> Tuple[Optional[str], Optional[str], Dict[str, Any]]:
     """
     Calls Makura.ai API (OpenAI compatible).
-    Returns (reply, metrics_json_string) or (None, None) on failure.
+    Returns (reply, metrics_json_string, usage_dict) or (None, None, {}) on failure.
     """
     api_key = os.getenv("MAKURA_API_KEY")
     if not api_key:
         logger.warning("MAKURA_API_KEY not set")
-        return None, None
+        return None, None, {}
 
     # Use model from env if not provided
     if not model:
@@ -83,7 +83,7 @@ async def call_makura(system_prompt: str, user_message: str, model: str = None) 
         return None, None, {}
 
 
-async def stream_makura(system_prompt: str, user_message: str, model: str = None):
+async def stream_makura(system_prompt: str = None, user_message: str = None, messages: list = None, model: str = None):
     """
     Streams response from Makura.ai API.
     Yields chunks of text.
@@ -104,12 +104,17 @@ async def stream_makura(system_prompt: str, user_message: str, model: str = None
         "X-Accel-Buffering": "no"
     }
 
+    if messages:
+        payload_messages = messages
+    else:
+        payload_messages = [
+            {"role": "system", "content": "ОТВЕЧАЙ СТРОГО НА РУССКОМ ЯЗЫКЕ. ИСПОЛЬЗОВАНИЕ КИТАЙСКИХ ИЕРОГЛИФОВ КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО.\n\n" + (system_prompt or "") + "\n\nВНИМАНИЕ: ОТВЕЧАЙ ТОЛЬКО НА РУССКОМ. НИКАКИХ КИТАЙСКИХ СИМВОЛОВ."},
+            {"role": "user", "content": user_message or ""}
+        ]
+
     payload = {
         "model": model,
-        "messages": [
-            {"role": "system", "content": "ОТВЕЧАЙ СТРОГО НА РУССКОМ ЯЗЫКЕ. ИСПОЛЬЗОВАНИЕ КИТАЙСКИХ ИЕРОГЛИФОВ КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО.\n\n" + system_prompt + "\n\nВНИМАНИЕ: ОТВЕЧАЙ ТОЛЬКО НА РУССКОМ. НИКАКИХ КИТАЙСКИХ СИМВОЛОВ."},
-            {"role": "user", "content": user_message}
-        ],
+        "messages": payload_messages,
         "temperature": 0.4,
         "max_tokens": 4000,
         "stream": True,

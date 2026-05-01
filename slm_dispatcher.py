@@ -5,6 +5,13 @@ from typing import List, Dict, Any, Optional
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 
+try:
+    from langfuse.decorators import observe, langfuse_context
+except ImportError:
+    def observe(*args, **kwargs):
+        return lambda f: f
+    langfuse_context = None
+
 load_dotenv()
 
 logger = logging.getLogger("slm_dispatcher")
@@ -30,6 +37,7 @@ class SLMClient:
             base_url=base_url
         )
 
+    @observe(name="slm_call")
     async def _call_json(self, system_prompt: str, user_prompt: str) -> Dict[str, Any]:
         """Calls the SLM and enforces JSON response format."""
         content = None
@@ -61,6 +69,7 @@ class SLMClient:
             logger.error(f"SLM call failed: {e}. Raw content: {content}")
             return {}
 
+    @observe(name="classify_query_intent")
     async def classify_query_intent(self, query: str) -> Dict[str, Any]:
         """Determines RAG categories, web search requirement, and finance context."""
         system_prompt = (
@@ -77,6 +86,7 @@ class SLMClient:
             "is_finance": data.get("is_finance", False)
         }
 
+    @observe(name="generate_chat_title")
     async def generate_chat_title(self, first_message: str) -> str:
         """Generates a concise 2-4 word title for the chat."""
         system_prompt = (
@@ -86,6 +96,7 @@ class SLMClient:
         data = await self._call_json(system_prompt, f"Message: {first_message}")
         return data.get("title", "Новый диалог")
 
+    @observe(name="classify_chunks_batch")
     async def classify_chunks_batch(self, chunks: List[str]) -> List[str]:
         """Classifies a batch of document chunks for Smart Ingestion."""
         if not chunks:

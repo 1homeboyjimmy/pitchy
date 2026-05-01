@@ -39,6 +39,7 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
   const [isLoading, setIsLoading] = useState(false);
   const [useDeepSearch, setUseDeepSearch] = useState(false);
   const [isEvaluating, setIsEvaluating] = useState(false);
+  const [streamingStatus, setStreamingStatus] = useState<string | null>(null);
   const [formData, setFormData] = useState<Record<string, string>>({});
   
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -188,6 +189,9 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
           setMessages((prev) => prev.map(m => m.client_id === assistantClientId ? { ...m, sources: chunk.data } : m));
         } else if (chunk.type === "metadata") {
           setMessages((prev) => prev.map(m => m.client_id === assistantClientId ? { ...m, model_used: chunk.model } : m));
+        } else if (chunk.type === "status") {
+          console.log("Tree Status received:", chunk.content);
+          setStreamingStatus(chunk.content);
         } else if (chunk.type === "tree_update") {
           onUpdateTree(chunk.data.nodes, chunk.data.readiness_index, chunk.data.edges);
         } else if (chunk.type === "final") {
@@ -376,10 +380,19 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
             >
               <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-white/10">
                 {messages.map((msg, idx) => {
-                  const hasThoughts = msg.thoughts !== undefined && msg.thoughts !== null;
-                  const userMessagesBefore = messages.slice(0, idx).filter(m => m.role === "user").length;
-                  const showThoughts = hasThoughts && userMessagesBefore > 1;
-                  const hasContent = msg.content && msg.content.length > 0;
+                  let derivedThoughts = msg.thoughts;
+                  const rawContentText = msg.content || "";
+                  if (!derivedThoughts && rawContentText.includes("<think>")) {
+                      const match = rawContentText.match(/<think>([\s\S]*?)(?:<\/think>|$)/);
+                      if (match) derivedThoughts = match[1];
+                  }
+
+                  const cleanContent = stripThoughts(rawContentText);
+                  const hasThoughts = derivedThoughts !== undefined && derivedThoughts !== null && derivedThoughts.length > 0;
+                  
+                  const showThoughts = hasThoughts;
+                  
+                  const hasContent = cleanContent.trim().length > 0;
                   const isLastAssistant = msg.role === "assistant" && idx === messages.length - 1;
                   const shouldRenderMainBubble = msg.role === "user" || hasContent;
 
@@ -397,14 +410,14 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
                                 {msg.thoughtExpanded ? <ChevronUp className="w-3.5 h-3.5 ml-auto text-white/20" /> : <ChevronDown className="w-3.5 h-3.5 ml-auto text-white/20" />}
                             </button>
                             <motion.div initial={false} animate={{ height: msg.thoughtExpanded ? "auto" : 0, opacity: msg.thoughtExpanded ? 1 : 0 }} className="overflow-hidden">
-                                <div className="mt-1 mb-2 p-3 bg-white/5 rounded-xl border border-white/10 text-[12px] leading-relaxed text-white/50 italic whitespace-pre-wrap">{msg.thoughts}</div>
+                                <div className="mt-1 mb-2 p-3 bg-white/5 rounded-xl border border-white/10 text-[12px] leading-relaxed text-white/50 italic whitespace-pre-wrap">{derivedThoughts}</div>
                             </motion.div>
                           </div>
                         )}
                         {msg.role === "assistant" && !hasContent && !showThoughts && isLoading && isLastAssistant && (
                           <div className="flex items-center gap-3 p-3 bg-white/5 rounded-2xl border border-white/10 text-white/50 italic animate-pulse">
                             <Loader className="animate-spin h-3.5 w-3.5 text-pitchy-violet" />
-                            <span className="text-[12px]">Я анализирую ситуацию...</span>
+                            <span className="text-[12px]">{streamingStatus || "Я анализирую ситуацию..."}</span>
                           </div>
                         )}
                         {shouldRenderMainBubble && (

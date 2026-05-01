@@ -143,8 +143,8 @@ function buildFlowElements(
       target: e.target,
       type: "smoothstep",
       animated: true,
-      style: { stroke: "rgba(168,85,247,0.3)", strokeWidth: 2 },
-      markerEnd: { type: MarkerType.ArrowClosed, color: "rgba(168,85,247,0.4)", width: 12, height: 12 },
+      style: { stroke: "rgba(255,255,255,0.2)", strokeWidth: 1 },
+      markerEnd: { type: MarkerType.ArrowClosed, color: "rgba(255,255,255,0.4)", width: 12, height: 12 },
     }));
 
   return { nodes, edges };
@@ -234,7 +234,7 @@ export function TreeCanvas({
   );
 
   return (
-    <div className="relative w-full h-full rounded-2xl overflow-hidden border border-white/10 bg-[#0a0818]">
+    <div className="relative w-full h-full border border-white/10 bg-[#0A0A0A]">
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -249,19 +249,19 @@ export function TreeCanvas({
         proOptions={{ hideAttribution: true }}
         className="tree-canvas"
       >
-        <Background color="rgba(168,85,247,0.05)" gap={25} size={1} />
+        <Background color="rgba(255,255,255,0.05)" gap={32} size={1} />
         <Controls
-          className="!bg-white/5 !border-white/10 !rounded-xl [&>button]:!bg-white/5 [&>button]:!border-white/10 [&>button]:!text-white/50 [&>button:hover]:!bg-white/10"
+          className="!bg-[#111111] !border-white/10 !rounded-none [&>button]:!bg-[#111111] [&>button]:!border-white/10 [&>button]:!text-white/50 [&>button:hover]:!bg-white/5"
           showInteractive={false}
         />
         <MiniMap
           nodeColor={(n) => {
-            if (n.type === "readinessNode") return "#a855f7";
-            if (n.type === "categoryNode") return "#8b5cf6";
-            return "#6366f1";
+            if (n.type === "readinessNode") return "#ffffff";
+            if (n.type === "categoryNode") return "#444444";
+            return "#222222";
           }}
-          maskColor="rgba(10,8,24,0.8)"
-          className="!bg-white/5 !border-white/10 !rounded-xl"
+          maskColor="rgba(10,10,10,0.8)"
+          className="!bg-[#111111] !border-white/10 !rounded-none"
         />
       </ReactFlow>
     </div>

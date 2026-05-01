@@ -1,390 +1,311 @@
 "use client";
 
 import { useState, Suspense } from "react";
-import { motion } from "framer-motion";
-import { User, Mail, Lock, Eye, EyeOff, ArrowRight, Check, GitHub } from "react-feather";
+import { UserRound, Mail, KeyRound, LogIn, CircleUser, TerminalSquare } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import Layout from "@/components/Layout";
 import { postJson } from "@/lib/api";
 import { setToken } from "@/lib/auth";
 
 function SignUpContent() {
-    const searchParams = useSearchParams();
-    const router = useRouter();
-    const [formData, setFormData] = useState({
-        name: "",
-        email: "",
-        password: "",
-        confirmPassword: "",
-    });
-    const [showPassword, setShowPassword] = useState(false);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState("");
-    const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const [formData, setFormData] = useState({
+    name: "",
+    email: "",
+    password: "",
+    confirmPassword: "",
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-    // New state for verification
-    const [verificationStep, setVerificationStep] = useState<"signup" | "verify">("signup");
-    const [verificationCode, setVerificationCode] = useState("");
+  // Verification step state
+  const [verificationStep, setVerificationStep] = useState<"signup" | "verify">("signup");
+  const [verificationCode, setVerificationCode] = useState("");
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (formData.password !== formData.confirmPassword) {
-            setError("Пароли не совпадают");
-            return;
-        }
-        if (!agreedToTerms) {
-            setError("Необходимо принять условия использования");
-            return;
-        }
-
-        setLoading(true);
-        setError("");
-
-        try {
-            const data = await postJson<{ status?: string; token?: string; email?: string }>(
-                "/auth/register",
-                {
-                    name: formData.name,
-                    email: formData.email,
-                    password: formData.password,
-                }
-            );
-
-            if (data.status === "verification_required") {
-                setVerificationStep("verify");
-            } else if (data.token) {
-                setToken(data.token);
-                const next = searchParams.get("next") || "/dashboard";
-                router.push(next);
-            }
-        } catch (err) {
-            setError(
-                err instanceof Error ? err.message : "Ошибка регистрации. Попробуйте ещё раз."
-            );
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleVerify = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setLoading(true);
-        setError("");
-
-        try {
-            const data = await postJson<{ access_token: string }>("/auth/verify-email", {
-                email: formData.email,
-                code: verificationCode,
-            });
-            setToken(data.access_token);
-            const next = searchParams.get("next") || "/dashboard";
-            router.push(next);
-        } catch (err) {
-            setError(
-                err instanceof Error ? err.message : "Неверный код подтверждения"
-            );
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    if (verificationStep === "verify") {
-        return (
-            <div className="min-h-[calc(100vh-5rem)] flex items-center justify-center px-4 py-12">
-                <motion.div
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="w-full max-w-md"
-                >
-                    <div className="glass-panel rounded-3xl p-8 text-center">
-                        <div className="w-16 h-16 rounded-full bg-pitchy-violet/20 flex items-center justify-center mx-auto mb-6">
-                            <Mail className="w-8 h-8 text-pitchy-violet" />
-                        </div>
-                        <h2 className="text-2xl font-bold text-white mb-2">
-                            Подтвердите Email
-                        </h2>
-                        <p className="text-white/60 mb-8">
-                            Мы отправили код подтверждения на{" "}
-                            <span className="text-white">{formData.email}</span>
-                        </p>
-
-                        <form onSubmit={handleVerify} className="space-y-6">
-                            {error && (
-                                <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-sm text-red-400">
-                                    {error}
-                                </div>
-                            )}
-                            <input
-                                type="text"
-                                value={verificationCode}
-                                onChange={(e) => setVerificationCode(e.target.value)}
-                                className="pitchy-input text-center text-3xl tracking-[0.5em] font-mono"
-                                placeholder="000000"
-                                maxLength={6}
-                                required
-                                autoFocus
-                            />
-                            <motion.button
-                                type="submit"
-                                disabled={loading}
-                                whileHover={{ scale: 1.02 }}
-                                whileTap={{ scale: 0.98 }}
-                                className="w-full btn-primary py-3 rounded-xl disabled:opacity-50"
-                            >
-                                {loading ? "Проверка..." : "Подтвердить"}
-                            </motion.button>
-                        </form>
-                    </div>
-                </motion.div>
-            </div>
-        );
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (formData.password !== formData.confirmPassword) {
+      setError("Пароли не совпадают");
+      return;
     }
 
+    setLoading(true);
+    setError("");
+
+    try {
+      const data = await postJson<{ status?: string; token?: string; email?: string }>(
+        "/auth/register",
+        {
+          name: formData.name,
+          email: formData.email,
+          password: formData.password,
+        }
+      );
+
+      if (data.status === "verification_required") {
+        setVerificationStep("verify");
+      } else if (data.token) {
+        setToken(data.token);
+        const next = searchParams.get("next") || "/dashboard";
+        router.push(next);
+      }
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Ошибка регистрации. Попробуйте ещё раз."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+
+    try {
+      const data = await postJson<{ access_token: string }>("/auth/verify-email", {
+        email: formData.email,
+        code: verificationCode,
+      });
+      setToken(data.access_token);
+      const next = searchParams.get("next") || "/dashboard";
+      router.push(next);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Неверный код подтверждения"
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ── Verification Step ──
+  if (verificationStep === "verify") {
     return (
-        <div className="min-h-[calc(100vh-5rem)] flex items-center justify-center px-4 py-12">
-            <motion.div
-                initial={{ opacity: 0, y: 20, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-                className="w-full max-w-md"
-            >
-                <div className="text-center mb-8">
-                    <h1 className="text-3xl font-bold text-white mb-2">
-                        Создать аккаунт
-                    </h1>
-                    <p className="text-white/50">
-                        Начните анализировать стартапы с Pitchy.pro
-                    </p>
-                </div>
+      <div className="text-on-background min-h-screen flex items-center justify-center p-md relative">
+        <div className="w-full max-w-[400px] relative z-10">
+          <div className="text-center mb-xl">
+            <h1 className="font-display text-display text-primary tracking-tighter mb-sm">PITCHY.PRO</h1>
+            <p className="font-code text-code text-[#888888] uppercase">Подтверждение Email</p>
+          </div>
+          <div className="bg-[#111111] hairline-border p-lg text-center">
+            <p className="font-body-sm text-body-sm text-[#888888] mb-lg">
+              Мы отправили код подтверждения на{" "}
+              <span className="text-primary">{formData.email}</span>
+            </p>
 
-                <div className="glass-panel rounded-3xl p-8">
-                    <form onSubmit={handleSubmit} className="space-y-5">
-                        {error && (
-                            <motion.div
-                                initial={{ opacity: 0, y: -10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-sm text-red-400"
-                            >
-                                {error}
-                            </motion.div>
-                        )}
+            {error && (
+              <div className="p-sm mb-lg border border-error/20 bg-error/5 text-error text-body-sm font-body-sm">
+                {error}
+              </div>
+            )}
 
-                        <div>
-                            <label className="block text-sm font-medium text-white/70 mb-2">
-                                Имя
-                            </label>
-                            <div className="relative">
-                                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
-                                <input
-                                    type="text"
-                                    value={formData.name}
-                                    onChange={(e) =>
-                                        setFormData({ ...formData, name: e.target.value })
-                                    }
-                                    className="pitchy-input !pl-12"
-                                    placeholder="Ваше имя"
-                                    required
-                                />
-                            </div>
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-white/70 mb-2">
-                                Email
-                            </label>
-                            <div className="relative">
-                                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
-                                <input
-                                    type="email"
-                                    value={formData.email}
-                                    onChange={(e) =>
-                                        setFormData({ ...formData, email: e.target.value })
-                                    }
-                                    className="pitchy-input !pl-12"
-                                    placeholder="you@example.com"
-                                    required
-                                />
-                            </div>
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-white/70 mb-2">
-                                Пароль
-                            </label>
-                            <div className="relative">
-                                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
-                                <input
-                                    type={showPassword ? "text" : "password"}
-                                    value={formData.password}
-                                    onChange={(e) =>
-                                        setFormData({ ...formData, password: e.target.value })
-                                    }
-                                    className="pitchy-input !pl-12 pr-11"
-                                    placeholder="Минимум 8 символов"
-                                    required
-                                    minLength={8}
-                                />
-                                <button
-                                    type="button"
-                                    onClick={() => setShowPassword(!showPassword)}
-                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors"
-                                >
-                                    {showPassword ? (
-                                        <EyeOff className="w-4 h-4" />
-                                    ) : (
-                                        <Eye className="w-4 h-4" />
-                                    )}
-                                </button>
-                            </div>
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-white/70 mb-2">
-                                Подтвердите пароль
-                            </label>
-                            <div className="relative">
-                                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
-                                <input
-                                    type={showPassword ? "text" : "password"}
-                                    value={formData.confirmPassword}
-                                    onChange={(e) =>
-                                        setFormData({
-                                            ...formData,
-                                            confirmPassword: e.target.value,
-                                        })
-                                    }
-                                    className="pitchy-input !pl-12"
-                                    placeholder="Повторите пароль"
-                                    required
-                                />
-                            </div>
-                        </div>
-
-                        <div className="flex items-start gap-3">
-                            <button
-                                type="button"
-                                onClick={() => setAgreedToTerms(!agreedToTerms)}
-                                className={`w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 mt-0.5 transition-all cursor-pointer ${agreedToTerms
-                                    ? "bg-pitchy-violet border-pitchy-violet"
-                                    : "border-white/20 hover:border-white/40"
-                                    }`}
-                            >
-                                {agreedToTerms && <Check className="w-3 h-3 text-white" />}
-                            </button>
-                            <span className="text-sm text-white/50">
-                                Я согласен с{" "}
-                                <Link
-                                    href="/terms"
-                                    className="text-pitchy-violet hover:underline"
-                                >
-                                    условиями использования
-                                </Link>{" "}
-                                и{" "}
-                                <Link
-                                    href="/privacy"
-                                    className="text-pitchy-violet hover:underline"
-                                >
-                                    политикой конфиденциальности
-                                </Link>
-                            </span>
-                        </div>
-
-                        <motion.button
-                            type="submit"
-                            disabled={loading}
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
-                            className="w-full btn-primary py-3 rounded-xl disabled:opacity-50 cursor-pointer"
-                        >
-                            {loading ? (
-                                <span className="flex items-center justify-center gap-2">
-                                    <motion.div
-                                        animate={{ rotate: 360 }}
-                                        transition={{
-                                            duration: 1,
-                                            repeat: Infinity,
-                                            ease: "linear",
-                                        }}
-                                        className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full"
-                                    />
-                                    Регистрация...
-                                </span>
-                            ) : (
-                                <span className="flex items-center justify-center gap-2">
-                                    Создать аккаунт
-                                    <ArrowRight className="w-4 h-4" />
-                                </span>
-                            )}
-                        </motion.button>
-
-
-                        <div className="relative my-6">
-                            <div className="absolute inset-0 flex items-center">
-                                <div className="w-full border-t border-white/10"></div>
-                            </div>
-                            <div className="relative flex justify-center text-sm">
-                                <span className="px-2 bg-[#0A0A0A] text-white/40">
-                                    Или зарегистрируйтесь через
-                                </span>
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-3 gap-4">
-                            <a
-                                href="/auth/yandex/login"
-                                className="flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[#FC3F1D]/10 hover:bg-[#FC3F1D]/20 border border-[#FC3F1D]/20 text-[#FC3F1D] transition-all hover:scale-[1.02]"
-                            >
-                                <span className="font-bold font-sans">Ya</span>
-                                <span className="hidden sm:inline text-sm font-medium text-white/80">Yandex</span>
-                            </a>
-                            <a
-                                href="/auth/google/login"
-                                className="flex items-center justify-center gap-2 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-all hover:scale-[1.02]"
-                            >
-                                <span className="font-bold font-serif">G</span>
-                                <span className="hidden sm:inline text-sm font-medium text-white/80">Google</span>
-                            </a>
-                            <a
-                                href="/auth/github/login"
-                                className="flex items-center justify-center gap-2 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-all hover:scale-[1.02]"
-                            >
-                                <GitHub className="w-4 h-4" />
-                                <span className="hidden sm:inline text-sm font-medium pb-0.5">GitHub</span>
-                            </a>
-                        </div>
-                    </form>
-                </div>
-
-                <p className="text-center text-sm text-white/40 mt-6">
-                    Уже есть аккаунт?{" "}
-                    <Link
-                        href={searchParams?.get("next") ? `/login?next=${encodeURIComponent(searchParams.get("next")!)}` : "/login"}
-                        className="text-pitchy-violet hover:text-pitchy-violet-light transition-colors"
-                    >
-                        Войдите
-                    </Link>
-                </p>
-                <div className="mt-8 text-center text-sm">
-                    <Link href="/" className="text-white/30 hover:text-white/60 transition-colors">
-                        Вернуться на главную
-                    </Link>
-                </div>
-            </motion.div>
+            <form onSubmit={handleVerify} className="space-y-lg">
+              <input
+                type="text"
+                value={verificationCode}
+                onChange={(e) => setVerificationCode(e.target.value)}
+                className="w-full bg-[#111111] hairline-border text-primary text-center text-[24px] tracking-[0.5em] font-code py-sm input-focus placeholder-[#444444]"
+                placeholder="000000"
+                maxLength={6}
+                required
+                autoFocus
+              />
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-primary text-on-primary font-body-sm text-body-sm font-medium py-sm hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50"
+              >
+                {loading ? "Проверка..." : "Подтвердить"}
+              </button>
+            </form>
+          </div>
         </div>
+      </div>
     );
+  }
+
+  // ── Registration Form ──
+  return (
+    <div className="text-on-background min-h-screen flex items-center justify-center p-md relative">
+
+      <div className="w-full max-w-[400px] relative z-10">
+        {/* Brand / Header */}
+        <div className="text-center mb-xl">
+          <h1 className="font-display text-display text-primary tracking-tighter mb-sm">PITCHY.PRO</h1>
+          <p className="font-code text-code text-[#888888] uppercase">Создание аккаунта системы</p>
+        </div>
+
+        {/* Registration Form Card */}
+        <div className="bg-[#111111] hairline-border p-lg">
+          {/* Error message */}
+          {error && (
+            <div className="p-sm mb-lg border border-error/20 bg-error/5 text-error text-body-sm font-body-sm">
+              {error}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-lg">
+            {/* Name Field */}
+            <div>
+              <label className="block font-mono-label text-mono-label text-[#888888] uppercase mb-sm" htmlFor="name">
+                Имя
+              </label>
+              <div className="relative">
+                <UserRound className="absolute left-sm top-1/2 -translate-y-1/2 text-[#444444]" size={18} strokeWidth={1.5} />
+                <input
+                  className="w-full bg-[#111111] hairline-border text-primary font-body-sm text-body-sm pl-xl py-sm input-focus placeholder-[#444444]"
+                  id="name"
+                  name="name"
+                  placeholder="Иван Иванов"
+                  required
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                />
+              </div>
+            </div>
+
+            {/* Email Field */}
+            <div>
+              <label className="block font-mono-label text-mono-label text-[#888888] uppercase mb-sm" htmlFor="email">
+                Email адрес
+              </label>
+              <div className="relative">
+                <Mail className="absolute left-sm top-1/2 -translate-y-1/2 text-[#444444]" size={18} strokeWidth={1.5} />
+                <input
+                  className="w-full bg-[#111111] hairline-border text-primary font-body-sm text-body-sm pl-xl py-sm input-focus placeholder-[#444444]"
+                  id="email"
+                  name="email"
+                  placeholder="user@domain.com"
+                  required
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                />
+              </div>
+            </div>
+
+            {/* Password Field */}
+            <div>
+              <label className="block font-mono-label text-mono-label text-[#888888] uppercase mb-sm" htmlFor="password">
+                Пароль
+              </label>
+              <div className="relative">
+                <KeyRound className="absolute left-sm top-1/2 -translate-y-1/2 text-[#444444]" size={18} strokeWidth={1.5} />
+                <input
+                  className="w-full bg-[#111111] hairline-border text-primary font-body-sm text-body-sm pl-xl py-sm input-focus placeholder-[#444444]"
+                  id="password"
+                  name="password"
+                  placeholder="••••••••"
+                  required
+                  type="password"
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                />
+              </div>
+            </div>
+
+            {/* Confirm Password Field */}
+            <div>
+              <label className="block font-mono-label text-mono-label text-[#888888] uppercase mb-sm" htmlFor="password_confirm">
+                Подтверждение пароля
+              </label>
+              <div className="relative">
+                <KeyRound className="absolute left-sm top-1/2 -translate-y-1/2 text-[#444444]" size={18} strokeWidth={1.5} />
+                <input
+                  className="w-full bg-[#111111] hairline-border text-primary font-body-sm text-body-sm pl-xl py-sm input-focus placeholder-[#444444]"
+                  id="password_confirm"
+                  name="password_confirm"
+                  placeholder="••••••••"
+                  required
+                  type="password"
+                  value={formData.confirmPassword}
+                  onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                />
+              </div>
+            </div>
+
+            {/* Submit Button */}
+            <button
+              className="w-full bg-primary text-on-primary font-body-sm text-body-sm font-medium py-sm hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 flex justify-center items-center gap-sm"
+              type="submit"
+              disabled={loading}
+            >
+              {loading ? (
+                <span className="flex items-center justify-center gap-sm">
+                  <div className="w-4 h-4 border-2 border-on-primary/30 border-t-on-primary rounded-full animate-spin" />
+                  Регистрация...
+                </span>
+              ) : (
+                "Зарегистрироваться"
+              )}
+            </button>
+          </form>
+
+          {/* Divider */}
+          <div className="flex items-center my-lg">
+            <div className="flex-grow border-t border-white/[0.08]"></div>
+            <span className="mx-md font-mono-label text-mono-label text-[#444444]">ИЛИ</span>
+            <div className="flex-grow border-t border-white/[0.08]"></div>
+          </div>
+
+          {/* SSO Options */}
+          <div className="space-y-sm">
+            {/* Yandex */}
+            <a
+              href="/auth/yandex/login"
+              className="w-full bg-transparent hairline-border text-primary font-body-sm text-body-sm py-sm hover:bg-white/[0.05] transition-colors flex items-center justify-center gap-sm cursor-pointer"
+            >
+              <img src="/icons/yandex_icon.png" alt="Yandex" className="w-[18px] h-[18px] object-contain" />
+              Продолжить с Яндекс
+            </a>
+            {/* Google */}
+            <a
+              href="/auth/google/login"
+              className="w-full bg-transparent hairline-border text-primary font-body-sm text-body-sm py-sm hover:bg-white/[0.05] transition-colors flex items-center justify-center gap-sm cursor-pointer"
+            >
+              <img src="/icons/google_icon.png" alt="Google" className="w-[18px] h-[18px] object-contain" />
+              Продолжить с Google
+            </a>
+            {/* GitHub */}
+            <a
+              href="/auth/github/login"
+              className="w-full bg-transparent hairline-border text-primary font-body-sm text-body-sm py-sm hover:bg-white/[0.05] transition-colors flex items-center justify-center gap-sm cursor-pointer"
+            >
+              <img src="/icons/github_icon.png" alt="GitHub" className="w-[18px] h-[18px] object-contain" />
+              Продолжить с GitHub
+            </a>
+          </div>
+        </div>
+
+        {/* Footer / Helper */}
+        <div className="text-center mt-lg">
+          <p className="font-code text-code text-[#888888]">
+            Уже есть аккаунт?{" "}
+            <Link
+              className="text-primary hover:underline underline-offset-4 decoration-white/30"
+              href={searchParams?.get("next") ? `/login?next=${encodeURIComponent(searchParams.get("next")!)}` : "/login"}
+            >
+              Войти
+            </Link>
+          </p>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function SignUpPage() {
-    return (
-        <Layout>
-            <Suspense fallback={
-                <div className="min-h-[calc(100vh-5rem)] flex flex-col items-center justify-center">
-                    <div className="w-8 h-8 rounded-full border-2 border-white/20 border-t-white animate-spin"></div>
-                </div>
-            }>
-                <SignUpContent />
-            </Suspense>
-        </Layout>
-    );
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex flex-col items-center justify-center">
+        <div className="w-8 h-8 rounded-full border-2 border-white/20 border-t-white animate-spin"></div>
+      </div>
+    }>
+      <SignUpContent />
+    </Suspense>
+  );
 }

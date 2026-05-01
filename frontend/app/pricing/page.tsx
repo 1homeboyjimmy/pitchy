@@ -1,336 +1,194 @@
 "use client";
 
 import { useState } from "react";
-import { motion } from "framer-motion";
-import { Check, Star, Zap, Award } from "react-feather";
+import { Check, X } from "lucide-react";
 import Link from "next/link";
-import Layout from "@/components/Layout";
+import { TopNavBar } from "@/components/shared/TopNavBar";
+import { SiteFooter } from "@/components/shared/SiteFooter";
 
-const plans = [
-    {
-        name: "Бесплатный",
-        price: { monthly: "0", yearly: "0" },
-        description: "Для знакомства с платформой",
-        icon: Star,
-        features: [
-            "Базовый ИИ чат до 10 запросов в месяц"
-        ],
-        cta: "Начать бесплатно",
-        popular: false,
-        color: "white",
-    },
-    {
-        name: "Starter",
-        price: { monthly: "1 490", yearly: "14 900" },
-        description: "Для соло-фаундеров и ангелов",
-        icon: Zap,
-        features: [
-            "Улучшенная модель Pitchy",
-            "Рабочие места: 1",
-            "Продвинутый CustDev",
-            "До 100 запросов в месяц"
-        ],
-        cta: "Оформить подписку",
-        popular: true,
-        color: "violet",
-    },
-    {
-        name: "Pro",
-        price: { monthly: "3 490", yearly: "34 900" },
-        description: "Для фондов и B2B",
-        icon: Award,
-        features: [
-            "Лучшая модель Pitchy (DeepSearch)",
-            "Рабочие места: 1",
-            "До 500 запросов в месяц",
-            "Совместные проекты"
-        ],
-        cta: "Оформить подписку",
-        popular: false,
-        color: "cyan",
-    },
-];
-
-const testerPlan = {
-    name: "Tester",
-    price: { monthly: "1", yearly: "1" },
-    description: "Промо-режим для участников интенсива",
-    icon: Star,
-    features: [
-        "20 базовых сообщений в чате",
-        "5 запросов с глубоким поиском",
-        "Ограничение сложных функций"
-    ],
-    cta: "Начать",
-    popular: true,
-    color: "pink",
-};
-
-import { createPayment } from "@/lib/api";
-import { useAuth } from "@/lib/hooks/useAuth";
-import { useRouter } from "next/navigation";
-
-export default function PricingPage() {
-    const [isYearly, setIsYearly] = useState(false);
-    const [isLoading, setIsLoading] = useState<string | null>(null);
-    const [promoCode, setPromoCode] = useState("");
-    const [appliedPromo, setAppliedPromo] = useState<{ code: string, discount: number, target_tier?: string | null, fixed_price?: number | null } | null>(null);
-    const [promoError, setPromoError] = useState("");
-    const [isCheckingPromo, setIsCheckingPromo] = useState(false);
-    const { isAuthenticated, token } = useAuth();
-    const router = useRouter();
-
-    const handleSubscribe = async (planName: string) => {
-        const tierMap: Record<string, string> = {
-            "Бесплатный": "free",
-            "Starter": "starter",
-            "Pro": "pro",
-            "Tester": "tester"
-        };
-        const tier = tierMap[planName];
-
-        if (tier === "free") {
-            router.push(isAuthenticated ? "/dashboard" : "/signup");
-            return;
-        }
-
-        if (!isAuthenticated || !token) {
-            router.push('/login?redirect=/pricing');
-            return;
-        }
-
-        try {
-            setIsLoading(planName);
-            const res = await createPayment(tier, isYearly, appliedPromo?.code || null, token);
-            if (res.confirmation_url) {
-                window.location.href = res.confirmation_url;
-            }
-        } catch (e) {
-            console.error("Payment error", e);
-            alert("Ошибка при создании платежа. Попробуйте еще раз.");
-        } finally {
-            setIsLoading(null);
-        }
-    };
-
-    const handleApplyPromo = async () => {
-        if (!promoCode.trim()) return;
-
-        setIsCheckingPromo(true);
-        setPromoError("");
-        setAppliedPromo(null);
-
-        try {
-            // Use explicit fetch since it might not require auth yet (we'll authorize on subscribe)
-            const res = await fetch(`/billing/promo/validate`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ code: promoCode.trim() })
-            });
-            const data = await res.json();
-
-            if (data.valid) {
-                setAppliedPromo({ 
-                    code: promoCode.trim(), 
-                    discount: data.discount_percent,
-                    target_tier: data.target_tier,
-                    fixed_price: data.fixed_price
-                });
-                setPromoCode("");
-            } else {
-                setPromoError(data.detail || "Неверный промокод");
-            }
-        } catch (err) {
-            console.error(err);
-            setPromoError("Ошибка проверки кода");
-        } finally {
-            setIsCheckingPromo(false);
-        }
-    };
-
-    const displayedPlans = appliedPromo?.target_tier === "tester" ? [testerPlan] : plans;
-
-    return (
-        <Layout>
-            <div className="min-h-screen pt-24 pb-16 px-4 sm:px-6 lg:px-8">
-                <div className="max-w-6xl mx-auto">
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="text-center mb-12"
-                    >
-                        <h1 className="text-3xl sm:text-4xl font-bold text-white mb-3">
-                            Тарифы
-                        </h1>
-                        <p className="text-white/50 text-lg mb-8">
-                            Выберите план, который подходит именно вам
-                        </p>
-
-                        {/* Toggle */}
-                        <div className="flex items-center justify-center gap-3">
-                            <span
-                                className={`text-sm font-medium ${!isYearly ? "text-white" : "text-white/40"}`}
-                            >
-                                Месяц
-                            </span>
-                            <button
-                                onClick={() => setIsYearly(!isYearly)}
-                                className={`relative w-14 h-7 rounded-full transition-colors cursor-pointer ${isYearly ? "bg-pitchy-violet" : "bg-white/20"
-                                    }`}
-                            >
-                                <motion.div
-                                    animate={{ x: isYearly ? 28 : 4 }}
-                                    transition={{ duration: 0.2 }}
-                                    className="absolute top-1 w-5 h-5 rounded-full bg-white"
-                                />
-                            </button>
-                            <span
-                                className={`text-sm font-medium ${isYearly ? "text-white" : "text-white/40"}`}
-                            >
-                                Год{" "}
-                                <span className="text-xs text-emerald-400 ml-1">-17%</span>
-                            </span>
-                        </div>
-
-                        {/* Promo Code Input */}
-                        <div className="max-w-md mx-auto mt-8 mb-12">
-                            <div className="flex items-center gap-2">
-                                <input
-                                    type="text"
-                                    placeholder="У меня есть промокод"
-                                    value={promoCode}
-                                    onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
-                                    className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-pitchy-violet"
-                                    disabled={isCheckingPromo}
-                                />
-                                <button
-                                    onClick={handleApplyPromo}
-                                    disabled={!promoCode.trim() || isCheckingPromo}
-                                    className={`px-6 py-2.5 rounded-xl font-medium transition-colors disabled:opacity-50 ${!promoCode.trim() || isCheckingPromo
-                                        ? "bg-white/10 text-white"
-                                        : "bg-pitchy-violet hover:bg-pitchy-violet-light text-white"
-                                        }`}
-                                >
-                                    {isCheckingPromo ? "..." : "Применить"}
-                                </button>
-                            </div>
-                            {promoError && (
-                                <p className="text-red-400 text-sm mt-2 text-left">{promoError}</p>
-                            )}
-                            {appliedPromo && (
-                                <p className="text-emerald-400 text-sm mt-2 text-left">
-                                    Промокод {appliedPromo.code} применен! Скидка {appliedPromo.discount}%
-                                </p>
-                            )}
-                        </div>
-                    </motion.div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        {displayedPlans.map((plan, i) => {
-                            const isSelected = appliedPromo?.target_tier === "tester" ? true : plan.popular;
-                            return (
-                            <motion.div
-                                key={plan.name}
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: i * 0.1 }}
-                                whileHover={{ scale: 1.02, y: -4 }}
-                                className={`relative glass-card-hover p-6 sm:p-8 ${isSelected
-                                    ? "border-pitchy-violet/30 shadow-glow-primary/20"
-                                    : ""
-                                    }`}
-                            >
-                                {plan.popular && (
-                                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full bg-pitchy-violet text-white text-xs font-medium">
-                                        Популярный
-                                    </div>
-                                )}
-
-                                <div className="mb-6">
-                                    <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center mb-4">
-                                        <plan.icon
-                                            className={`w-6 h-6 ${plan.color === "violet"
-                                                ? "text-pitchy-violet"
-                                                : plan.color === "cyan"
-                                                    ? "text-pitchy-cyan"
-                                                    : "text-white/60"
-                                                }`}
-                                        />
-                                    </div>
-                                    <h3 className="text-xl font-bold text-white">{plan.name}</h3>
-                                    <p className="text-sm text-white/40 mt-1">
-                                        {plan.description}
-                                    </p>
-                                </div>
-
-                                <div className="mb-6">
-                                    {appliedPromo && plan.name !== "Бесплатный" ? (
-                                        <div className="flex flex-col">
-                                            <span className="text-xl font-bold text-white/40 line-through font-mono-numbers">
-                                                ₽{isYearly ? plan.price.yearly : plan.price.monthly}
-                                            </span>
-                                            <div className="flex items-baseline">
-                                                <span className="text-4xl font-bold text-emerald-400 font-mono-numbers">
-                                                    ₽{Math.round(parseInt((isYearly ? plan.price.yearly : plan.price.monthly).replace(/\s/g, '')) * (100 - appliedPromo.discount) / 100)}
-                                                </span>
-                                                <span className="text-white/40 ml-1">
-                                                    /{isYearly ? "год" : "мес"}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <>
-                                            <span className="text-4xl font-bold text-white font-mono-numbers">
-                                                ₽{isYearly ? plan.price.yearly : plan.price.monthly}
-                                            </span>
-                                            <span className="text-white/40 ml-1">
-                                                /{isYearly ? "год" : "мес"}
-                                            </span>
-                                        </>
-                                    )}
-                                </div>
-
-                                <ul className="space-y-3 mb-8">
-                                    {plan.features.map((feature) => (
-                                        <li
-                                            key={feature}
-                                            className="flex items-start gap-2 text-sm text-white/70"
-                                        >
-                                            <Check className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
-                                            {feature}
-                                        </li>
-                                    ))}
-                                </ul>
-
-                                <button
-                                    onClick={() => handleSubscribe(plan.name)}
-                                    disabled={isLoading === plan.name}
-                                    className={`block w-full text-center py-3 rounded-xl font-medium transition-all bg-white/5 text-white border border-white/10 hover:bg-white/10 disabled:opacity-50`}
-                                >
-                                    {isLoading === plan.name ? "Загрузка..." : plan.cta}
-                                </button>
-                            </motion.div>
-                            );
-                        })}
-                    </div>
-
-                    <div className="mt-16 text-center max-w-2xl mx-auto space-y-4">
-                        <div className="p-6 rounded-2xl bg-white/5 border border-white/10">
-                            <h4 className="text-lg font-semibold text-white mb-2">Получение заказа и доставка</h4>
-                            <p className="text-sm text-white/70 mb-4">
-                                Все услуги предоставляются в цифровом виде. После успешной оплаты доступ к выбранному тарифу активируется в личном кабинете автоматически. Физическая доставка не предусмотрена.
-                            </p>
-                            <p className="text-xs text-white/40">
-                                Оплачивая подписку, вы соглашаетесь с{" "}
-                                <Link href="/terms" className="text-pitchy-cyan hover:underline">
-                                    Пользовательским соглашением и Офертой
-                                </Link>.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </Layout>
-    );
+interface PlanFeature {
+  text: string;
+  included: boolean;
 }
 
+interface Plan {
+  name: string;
+  nameDisplay: string;
+  priceMonthly: string;
+  priceYearly: string;
+  description: string;
+  features: PlanFeature[];
+  popular?: boolean;
+  buttonStyle: "outline" | "filled";
+}
+
+const plans: Plan[] = [
+  {
+    name: "Free",
+    nameDisplay: "Бесплатный",
+    priceMonthly: "0₽",
+    priceYearly: "0₽",
+    description: "Базовые функции для начала работы.",
+    features: [
+      { text: "1 проект", included: true },
+      { text: "Базовые шаблоны", included: true },
+      { text: "Экспорт в PDF (с водяным знаком)", included: true },
+      { text: "Командная работа", included: false },
+      { text: "Аналитика просмотров", included: false },
+    ],
+    buttonStyle: "outline",
+  },
+  {
+    name: "Starter",
+    nameDisplay: "Starter",
+    priceMonthly: "1 490₽",
+    priceYearly: "1 192₽",
+    description: "Оптимально для фрилансеров и небольших команд.",
+    features: [
+      { text: "До 10 проектов", included: true },
+      { text: "Все премиум шаблоны", included: true },
+      { text: "Экспорт без водяных знаков", included: true },
+      { text: "Базовая аналитика", included: true },
+      { text: "Приоритетная поддержка", included: false },
+    ],
+    popular: true,
+    buttonStyle: "filled",
+  },
+  {
+    name: "Pro",
+    nameDisplay: "Pro",
+    priceMonthly: "3 490₽",
+    priceYearly: "2 792₽",
+    description: "Максимальные возможности для агентств и корпораций.",
+    features: [
+      { text: "Безлимитные проекты", included: true },
+      { text: "Пользовательские шаблоны", included: true },
+      { text: "Командная работа (до 10 чел)", included: true },
+      { text: "Продвинутая аналитика", included: true },
+      { text: "Приоритетная поддержка 24/7", included: true },
+    ],
+    buttonStyle: "outline",
+  },
+];
+
+export default function PricingPage() {
+  const [isYearly, setIsYearly] = useState(false);
+
+  return (
+    <div className="bg-background text-on-background min-h-screen flex flex-col font-body-sm">
+      <TopNavBar />
+
+      <main className="flex-grow flex flex-col justify-center pt-16 pb-4 px-4 md:px-8 max-w-[1440px] mx-auto w-full">
+        {/* Header */}
+        <div className="text-center mb-6">
+          <h1 className="font-display text-display text-primary mb-2 tracking-tighter">Выберите свой план</h1>
+          <p className="font-body-lg text-body-lg text-on-surface-variant max-w-2xl mx-auto">
+            Инструменты для создания профессиональных питчей. Выберите тариф, который подходит именно вам.
+          </p>
+
+          {/* Billing Toggle */}
+          <div className="mt-6 flex items-center justify-center gap-4">
+            <span className={`font-mono-label text-mono-label ${!isYearly ? "text-primary" : "text-on-surface-variant"}`}>
+              Месяц
+            </span>
+            <button
+              aria-label="Toggle billing period"
+              className="relative w-12 h-6 rounded-full border border-white/20 bg-[#111111] cursor-pointer"
+              onClick={() => setIsYearly(!isYearly)}
+            >
+              <div
+                className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform duration-200 ${
+                  isYearly ? "left-1 translate-x-6" : "left-1 translate-x-0"
+                }`}
+              />
+            </button>
+            <span className={`font-mono-label text-mono-label ${isYearly ? "text-primary" : "text-on-surface-variant"}`}>
+              Год <span className="text-[#888888] ml-1">(Скидка 20%)</span>
+            </span>
+          </div>
+        </div>
+
+        {/* Pricing Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto w-full">
+          {plans.map((plan) => (
+            <div
+              key={plan.name}
+              className={`bg-[#111111] rounded p-5 flex flex-col relative group transition-colors ${
+                plan.popular
+                  ? "border border-white/[0.2] shadow-[0_0_0_1px_rgba(255,255,255,0.1)]"
+                  : "border border-white/[0.08] hover:border-white/20"
+              }`}
+            >
+              {/* Popular Badge */}
+              {plan.popular && (
+                <div className="absolute top-0 right-5 -translate-y-1/2 bg-white text-black font-mono-label text-[10px] uppercase tracking-widest px-3 py-1 rounded">
+                  Популярный
+                </div>
+              )}
+
+              {/* Plan Header */}
+              <div className="mb-4">
+                <h2 className={`font-code text-code uppercase mb-1 tracking-widest ${
+                  plan.popular ? "text-white" : "text-on-surface-variant"
+                }`}>
+                  {plan.nameDisplay}
+                </h2>
+                <div className="flex items-baseline gap-2">
+                  <span className="font-display text-h1 text-primary">
+                    {isYearly ? plan.priceYearly : plan.priceMonthly}
+                  </span>
+                  <span className="font-body-sm text-body-sm text-on-surface-variant">/ мес</span>
+                </div>
+                <p className="font-body-sm text-body-sm text-[#888888] mt-2">{plan.description}</p>
+              </div>
+
+              {/* Features List */}
+              <ul className="flex flex-col gap-2 mb-6 flex-grow">
+                {plan.features.map((feature) => (
+                  <li
+                    key={feature.text}
+                    className={`flex items-start gap-3 ${!feature.included ? "opacity-50" : ""}`}
+                  >
+                    {feature.included ? (
+                      <Check size={16} strokeWidth={2} className="text-white mt-0.5 shrink-0" />
+                    ) : (
+                      <X size={16} strokeWidth={2} className="text-on-surface-variant mt-0.5 shrink-0" />
+                    )}
+                    <span className={`font-body-sm text-body-sm ${
+                      feature.included ? "text-on-surface" : "text-on-surface-variant"
+                    }`}>
+                      {feature.text}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+
+              {/* CTA Button */}
+              {plan.buttonStyle === "filled" ? (
+                <button className="w-full bg-white text-black font-mono-label text-mono-label py-2 px-4 rounded hover:opacity-90 transition-opacity cursor-pointer">
+                  Выбрать {plan.name}
+                </button>
+              ) : (
+                <button className="w-full bg-transparent border border-white/[0.1] text-white font-mono-label text-mono-label py-2 px-4 rounded hover:bg-white/[0.05] transition-colors cursor-pointer">
+                  Выбрать {plan.name}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Custom Solution */}
+        <div className="mt-6 max-w-3xl mx-auto border-t border-white/[0.08] pt-4 text-center">
+          <p className="font-body-sm text-body-sm text-[#888888]">
+            Нужно индивидуальное решение?{" "}
+            <Link className="text-white hover:underline underline-offset-4 decoration-white/30" href="/contact">
+              Свяжитесь с нами
+            </Link>.
+          </p>
+        </div>
+      </main>
+
+      <SiteFooter />
+    </div>
+  );
+}

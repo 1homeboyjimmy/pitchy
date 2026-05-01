@@ -5,124 +5,93 @@ import json
 import traceback
 from typing import Optional, Tuple, Dict, Any
 
+try:
+    from langfuse.openai import AsyncOpenAI
+    from langfuse.decorators import observe, langfuse_context
+except ImportError:
+    from openai import AsyncOpenAI
+    def observe(*args, **kwargs):
+        return lambda f: f
+    langfuse_context = None
+
 logger = logging.getLogger("app")
-print("ROUTERAI_CLIENT_LOADED")
 
-__all__ = ["call_routerai", "stream_routerai"]
+# Unified client for RouterAI
+_router_client = None
 
-async def call_routerai(system_prompt: str, user_message: str, model: str = "z-ai/glm-5") -> Tuple[Optional[str], Optional[str]]:
+def get_routerai_client():
+    global _router_client
+    if _router_client is None:
+        api_key = os.getenv("ROUTERAI_API_KEY")
+        base_url = os.getenv("ROUTERAI_BASE_URL", "https://routerai.ru/api/v1")
+        _router_client = AsyncOpenAI(
+            api_key=api_key,
+            base_url=base_url
+        )
+    return _router_client
+
+@observe(name="routerai_call")
+async def call_routerai(system_prompt: str, user_message: str, model: str = "moonshotai/kimi-k2.6") -> Tuple[Optional[str], Optional[str], Dict[str, Any]]:
     """
-    Calls RouterAI API (OpenAI compatible).
-    Returns (reply, metrics_json_string) or (None, None) on failure.
+    Calls RouterAI API via Langfuse-instrumented OpenAI client.
     """
-    api_key = os.getenv("ROUTERAI_API_KEY")
-    if not api_key:
-        logger.warning("ROUTERAI_API_KEY not set")
-        return None, None
-
-    url = "https://routerai.ru/api/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
-
-    payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message}
-        ],
-        "temperature": 0.3,
-        "max_tokens": 4096
-    }
-
+    client = get_routerai_client()
     try:
-        async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.post(url, headers=headers, json=payload)
+        response = await client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message}
+            ],
+            temperature=0.2,
+            max_tokens=4096
+        )
+        content = response.choices[0].message.content or ""
+        usage = response.usage.model_dump() if hasattr(response, 'usage') else {}
+        
+        metrics = None
+        if content and "---JSON_START---" in content:
+            try:
+                metrics = content.split("---JSON_START---")[1].split("---JSON_END---")[0].strip()
+            except: pass
             
-            if resp.status_code != 200:
-                logger.error(f"RouterAI error: {resp.status_code} - {resp.text}")
-                return None, None
+        return content, metrics, usage
+    except Exception as e:
+        logger.error(f"RouterAI call failed: {e}")
+        return None, None, {}
+
+@observe(name="routerai_stream")
+async def stream_routerai(system_prompt: str, user_message: str, model: str = "moonshotai/kimi-k2.6"):
+    """
+    Streams from RouterAI API via Langfuse-instrumented OpenAI client.
+    """
+    client = get_routerai_client()
+    try:
+        stream = await client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message}
+            ],
+            temperature=0.2,
+            stream=True
+        )
+        
+        usage_data = {}
+        async for chunk in stream:
+            if hasattr(chunk, 'usage') and chunk.usage:
+                usage_data = chunk.usage.model_dump()
                 
-            data = resp.json()
+            if not chunk.choices:
+                continue
+                
+            delta = chunk.choices[0].delta
+            if delta.content:
+                yield delta.content
+                
+        if usage_data:
+            yield {"__usage__": usage_data}
             
-            # Extract content
-            message = data["choices"][0]["message"]
-            content = message.get("content", "")
-            
-            # RouterAI usually returns content directly, but we keep the check for robustness
-            if not content or not content.strip():
-                logger.warning(f"RouterAI returned empty content for model {model}. Full response: {json.dumps(data, ensure_ascii=False)}")
-                return None, None
-            else:
-                logger.info(f"RouterAI response received ({len(content)} chars)")
-
-            # Simple heuristic to extract JSON if present (keeping compatibility with existing code)
-            metrics = None
-            if content and "---JSON_START---" in content:
-                try:
-                    metrics = content.split("---JSON_START---")[1].split("---JSON_END---")[0].strip()
-                except:
-                    pass
-            
-            return content, metrics
-
     except Exception as e:
-        logger.error(f"RouterAI call failed: {str(e)}")
-        logger.error(traceback.format_exc())
-        return None, None
-
-
-async def stream_routerai(system_prompt: str, user_message: str, model: str = "z-ai/glm-5"):
-    """
-    Streams response from RouterAI API.
-    Yields chunks of text.
-    """
-    api_key = os.getenv("ROUTERAI_API_KEY")
-    if not api_key:
-        yield "Error: ROUTERAI_API_KEY not set"
-        return
-
-    url = "https://routerai.ru/api/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
-
-    payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message}
-        ],
-        "temperature": 0.3,
-        "stream": True
-    }
-
-    try:
-        async with httpx.AsyncClient(timeout=60) as client:
-            async with client.stream("POST", url, headers=headers, json=payload) as response:
-                if response.status_code != 200:
-                    err_body = await response.aread()
-                    logger.error(f"RouterAI streaming error: {response.status_code} - {err_body.decode()}")
-                    yield f"Error: {response.status_code}"
-                    return
-
-                async for line in response.aiter_lines():
-                    if not line.strip():
-                        continue
-                    if line.startswith("data: "):
-                        data_str = line[6:].strip()
-                        if data_str == "[DONE]":
-                            break
-                        try:
-                            chunk = json.loads(data_str)
-                            delta = chunk["choices"][0].get("delta", {})
-                            if "content" in delta:
-                                yield delta["content"]
-                        except Exception as e:
-                            logger.error(f"Error parsing RouterAI stream chunk: {e}")
-                            continue
-    except Exception as e:
-        logger.error(f"RouterAI streaming failed: {str(e)}")
+        logger.error(f"RouterAI streaming failed: {e}")
         yield f"\n[Ошибка соединения: {str(e)}]"

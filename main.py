@@ -12,6 +12,13 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response, UploadFi
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.responses import StreamingResponse, FileResponse
+from sse_starlette.sse import EventSourceResponse
+
+def format_sse(data) -> dict:
+    if isinstance(data, dict):
+        return {"event": data.get("type", "message"), "data": json.dumps(data, ensure_ascii=False)}
+    return {"event": "message", "data": json.dumps(data, ensure_ascii=False)}
+
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from starlette.concurrency import run_in_threadpool
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
@@ -54,11 +61,14 @@ from slm_dispatcher import slm_dispatcher
 from makura_client import call_makura, stream_makura
 from search_agent import execute_search_agent, execute_deep_research, async_search_with_sources
 from db import SessionLocal, get_db
+from db_async import get_async_db
+from swarm_agent import run_analytical_swarm
+from sqlalchemy.ext.asyncio import AsyncSession
 from models import (
     Analysis, ChatMessage as DbChatMessage, ChatSession, ErrorLog, 
     User, PromoCode, Payment, RagLog, ToolResult, SocialAccount, ProjectTree
 )
-from sqlalchemy import func as sa_func
+from sqlalchemy import select, func as sa_func
 from schemas import (
     AnalysisCreateRequest,
     AnalysisResponse,
@@ -119,6 +129,8 @@ from auth import (
     require_admin,
     verify_password,
     verify_token,
+    get_async_current_user,
+    require_async_admin,
 )
 
 def extract_json_zai(text: str) -> dict:
@@ -246,25 +258,22 @@ async def lifespan(app: FastAPI):
     # Start background sync
     asyncio.create_task(sync_redis_to_pg())
     
-    # Start RAG initialization in background thread so server starts immediately
-    # and can respond to healthchecks while model loads.
-    # Model weights are pre-cached in Docker image, so load is fast (~10-30s).
-    import threading
-    def _init_rag_bg():
-        import time
+    # Start RAG initialization in background task so server starts immediately
+    async def _init_rag_bg():
+        import asyncio
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                rag.init_rag()
+                await rag.init_rag()
                 logger.info("RAG initialized successfully in background.")
                 return
             except Exception as e:
                 logger.warning(f"RAG init failed (attempt {attempt+1}/{max_retries}): {e}")
                 if attempt < max_retries - 1:
-                    time.sleep(5)
+                    await asyncio.sleep(5)
         logger.error("RAG init failed permanently after retries.")
-    t = threading.Thread(target=_init_rag_bg, daemon=True)
-    t.start()
+    
+    asyncio.create_task(_init_rag_bg())
     yield
     # Shutdown logic
     try:
@@ -451,9 +460,10 @@ def _check_registration_rate_limit(ip: str) -> None:
             raise
         except Exception:
             pass
-    # Fallback in-memory (not persistent across restarts but better than nothing)
+    # Fallback in-memory rate limit using TTLCache to prevent memory leak
     if not hasattr(_check_registration_rate_limit, "_limits"):
-        _check_registration_rate_limit._limits = {}
+        from cachetools import TTLCache
+        _check_registration_rate_limit._limits = TTLCache(maxsize=1000, ttl=window)
     
     limits = _check_registration_rate_limit._limits
     timestamps = [t for t in limits.get(ip, []) if now - t < window]
@@ -587,17 +597,18 @@ def _format_chat_history(messages: list[ChatMessage], limit: int = 10) -> str:
     return "\n".join(lines)
 
 
-def _build_chat_prompt(messages: list[ChatMessage], context_chunks: list[dict]) -> str:
-    context_block = "\n".join(
-        [f"{idx + 1}. {chunk['text'] if isinstance(chunk, dict) else chunk}" for idx, chunk in enumerate(context_chunks)]
-    )
+def _build_chat_prompt(messages: list[ChatMessage], context_chunks: list[str]) -> str:
     history = _format_chat_history(messages)
+    
+    # Фильтруем пустые элементы и склеиваем
+    valid_chunks = [c for c in context_chunks if c.strip()]
+    context_block = "\n\n".join(valid_chunks)
+
     return (
-        "Контекст:\n"
         f"{context_block}\n\n"
-        "Диалог:\n"
+        "[ИСТОРИЯ ДИАЛОГА]:\n"
         f"{history}\n\n"
-        "Продолжи диалог и ответь на последнюю реплику пользователя."
+        "Опираясь на предоставленный контекст и факты, продолжи диалог и ответь на последнюю реплику."
     )
 
 
@@ -605,6 +616,36 @@ def _build_chat_prompt(messages: list[ChatMessage], context_chunks: list[dict]) 
 def index() -> dict:
     return {"status": "ok"}
 
+
+from auth import get_access_token_cookie_name, get_user_id_from_token
+
+@app.middleware("http")
+async def langfuse_observability_middleware(request: Request, call_next):
+    # Try to get user_id for Langfuse tracing
+    user_id = None
+    token = request.cookies.get(get_access_token_cookie_name())
+    if not token:
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+    
+    if token:
+        user_id = get_user_id_from_token(token)
+    
+    # Process request
+    response = await call_next(request)
+    
+    # If we have a user_id and langfuse context is active, update trace
+    if user_id and langfuse_context:
+        try:
+            langfuse_context.update_current_trace(
+                user_id=str(user_id),
+                tags=[os.getenv("APP_ENV", "production")]
+            )
+        except Exception:
+             pass # Don't break request if Langfuse fails
+             
+    return response
 
 @app.get("/health")
 def health() -> dict:
@@ -635,21 +676,24 @@ def dev_emails() -> list[dict]:
 
 
 @app.post("/auth/register")
-def register(
+async def register(
     payload: RegisterRequest,
     request: Request,
     response: Response,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ) -> dict:
     ip = request.client.host if request.client else "unknown"
     _check_rate_limit(ip)
     _check_registration_rate_limit(ip)
-    exists = db.query(User).filter(User.email == payload.email).first()
+    
+    result = await db.execute(select(User).where(User.email == payload.email))
+    exists = result.scalar_one_or_none()
+    
     if exists:
         if not exists.email_verified:
             # Overwrite an abandoned unverified registration
-            db.delete(exists)
-            db.commit()
+            await db.delete(exists)
+            await db.commit()
         else:
             raise HTTPException(status_code=400, detail="Email already registered")
 
@@ -667,40 +711,43 @@ def register(
         email=payload.email,
         name=payload.name,
         password_hash=hash_password(payload.password),
-        email_verify_token_hash=verify_token_hash, # Link token
-        email_verify_code_hash=verify_hash,       # 6-digit code (I'll add this to models)
+        email_verify_token_hash=verify_token_hash,
+        email_verify_code_hash=verify_hash,
         email_verify_expires_at=verify_expires,
         email_verified=False,
         is_active=True,
     )
     db.add(user)
     try:
-        db.commit()
+        await db.commit()
     except Exception as exc:
-        db.rollback()
+        await db.rollback()
         raise HTTPException(status_code=500, detail="Registration failed") from exc
-    db.refresh(user)
+    await db.refresh(user)
 
     try:
-        send_email(
+        await run_in_threadpool(
+            send_email,
             payload.email,
             "Verify your email",
             f"Your verification code is: {verify_code}\n\nEnter this code to complete registration.",
         )
     except Exception:
-        # Log error but don't fail registration
         logger.error(f"Failed to send verification email to {payload.email}")
 
     return {"status": "verification_required", "email": payload.email}
 
 
+
 @app.post("/auth/verify-email", response_model=TokenResponse)
-def verify_email_code(
+async def verify_email_code(
     payload: EmailCodeVerifyRequest,
     response: Response,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ) -> TokenResponse:
-    user = db.query(User).filter(User.email == payload.email).first()
+    result = await db.execute(select(User).where(User.email == payload.email))
+    user = result.scalar_one_or_none()
+    
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -721,7 +768,7 @@ def verify_email_code(
         user.email_verify_token_hash = None
         user.email_verify_code_hash = None
         user.email_verify_expires_at = None
-        db.commit()
+        await db.commit()
 
     # Create session/token
     token = create_access_token(user.id)
@@ -739,15 +786,18 @@ def verify_email_code(
 
 
 @app.post("/auth/login", response_model=TokenResponse)
-def login(
+async def login(
     payload: LoginRequest,
     request: Request,
     response: Response,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ) -> TokenResponse:
     ip = request.client.host if request.client else "unknown"
     _check_rate_limit(ip)
-    user = db.query(User).filter(User.email == payload.email).first()
+    
+    result = await db.execute(select(User).where(User.email == payload.email))
+    user = result.scalar_one_or_none()
+    
     if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if not user.is_active:
@@ -761,11 +811,16 @@ def login(
         if user.failed_login_attempts >= 5:
             user.locked_until = datetime.utcnow() + timedelta(minutes=15)
             user.failed_login_attempts = 0
-        db.commit()
+        await db.commit()
         raise HTTPException(status_code=401, detail="Invalid credentials")
+    
+    from auth import needs_update, hash_password
+    if needs_update(user.password_hash):
+        user.password_hash = hash_password(payload.password)
+
     user.failed_login_attempts = 0
     user.locked_until = None
-    db.commit()
+    await db.commit()
     token = create_access_token(user.id)
     response.set_cookie(
         key=get_access_token_cookie_name(),
@@ -806,7 +861,7 @@ async def auth_callback(
     provider: str,
     request: Request,
     response: Response,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     if provider == "yandex":
         sso = yandex_sso
@@ -835,20 +890,22 @@ async def auth_callback(
     # Check if social account exists
     from models import SocialAccount
 
-    social_acc = (
-        db.query(SocialAccount)
-        .filter(
+    res_social = await db.execute(
+        select(SocialAccount)
+        .where(
             SocialAccount.provider == provider,
             SocialAccount.provider_id == str(openid_user.id),
         )
-        .first()
     )
+    social_acc = res_social.scalar_one_or_none()
 
     if social_acc:
-        user = db.query(User).filter(User.id == social_acc.user_id).first()
+        res_user = await db.execute(select(User).where(User.id == social_acc.user_id))
+        user = res_user.scalar_one_or_none()
     else:
         # Check if user with this email exists
-        user = db.query(User).filter(User.email == openid_user.email).first()
+        res_user = await db.execute(select(User).where(User.email == openid_user.email))
+        user = res_user.scalar_one_or_none()
 
         if not user:
             # Create new user
@@ -860,7 +917,7 @@ async def auth_callback(
                 email_verified=True,  # Trusted from OAuth
             )
             db.add(user)
-            db.flush()
+            await db.flush()
 
         # Link social account
         social_acc = SocialAccount(
@@ -870,7 +927,7 @@ async def auth_callback(
             email=openid_user.email,
         )
         db.add(social_acc)
-        db.commit()
+        await db.commit()
 
     if not user.is_active:
         raise HTTPException(status_code=403, detail="User is blocked")
@@ -894,7 +951,7 @@ async def auth_callback(
 
 
 @app.api_route("/me", methods=["GET", "POST"], response_model=UserResponse)
-def me(user: User = Depends(get_current_user)) -> UserResponse:
+async def me(user: User = Depends(get_async_current_user)) -> UserResponse:
     # Check if user has social accounts
     is_social = len(user.social_accounts) > 0
 
@@ -914,10 +971,10 @@ def me(user: User = Depends(get_current_user)) -> UserResponse:
 
 
 @app.patch("/me", response_model=UserResponse)
-def update_me(
+async def update_me(
     payload: UserUpdateRequest,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ) -> UserResponse:
     if payload.name:
         user.name = payload.name
@@ -926,7 +983,8 @@ def update_me(
         user.cookie_consent = payload.cookie_consent
 
     if payload.email and payload.email != user.email:
-        exists = db.query(User).filter(User.email == payload.email).first()
+        result = await db.execute(select(User).where(User.email == payload.email))
+        exists = result.scalar_one_or_none()
         if exists:
             raise HTTPException(status_code=400, detail="Email already registered")
 
@@ -942,7 +1000,8 @@ def update_me(
         user.email_verify_expires_at = verify_expires
 
         try:
-            send_email(
+            await run_in_threadpool(
+                send_email,
                 payload.email,
                 "Verify your new email",
                 f"Your verification code is: {verify_code}\n\nEnter this code to convert your email.",
@@ -950,8 +1009,8 @@ def update_me(
         except Exception:
             logger.error("Failed to send verification email during update")
 
-    db.commit()
-    db.refresh(user)
+    await db.commit()
+    await db.refresh(user)
 
     # Check if user has social accounts
     is_social = len(user.social_accounts) > 0
@@ -972,10 +1031,10 @@ def update_me(
 
 
 @app.post("/auth/change-password/initiate")
-def initiate_change_password(
+async def initiate_change_password(
     payload: PasswordChangeInitRequest,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ) -> dict:
     if not user.password_hash:
         raise HTTPException(status_code=400, detail="User has no password set (social login?)")
@@ -991,7 +1050,7 @@ def initiate_change_password(
     # Reuse password_reset fields for this verification
     user.password_reset_token_hash = code_hash
     user.password_reset_expires_at = expires
-    db.commit()
+    await db.commit()
 
     try:
         send_email(
@@ -1006,10 +1065,10 @@ def initiate_change_password(
 
 
 @app.post("/auth/change-password/confirm")
-def confirm_change_password(
+async def confirm_change_password(
     payload: PasswordChangeConfirmRequest,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ) -> dict:
     if not user.password_reset_token_hash or not user.password_reset_expires_at:
         raise HTTPException(status_code=400, detail="No pending password change request")
@@ -1024,7 +1083,7 @@ def confirm_change_password(
     # Clear tokens
     user.password_reset_token_hash = None
     user.password_reset_expires_at = None
-    db.commit()
+    await db.commit()
 
     try:
         send_email(
@@ -1039,9 +1098,9 @@ def confirm_change_password(
 
 
 @app.post("/auth/resend-verification")
-def resend_verification(
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+async def resend_verification(
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ) -> dict:
     if user.email_verified:
         return {"status": "ok", "message": "Already verified"}
@@ -1055,7 +1114,7 @@ def resend_verification(
 
     user.email_verify_token_hash = verify_hash
     user.email_verify_expires_at = verify_expires
-    db.commit()
+    await db.commit()
 
     try:
         send_email(
@@ -1070,20 +1129,21 @@ def resend_verification(
 
 
 @app.post("/auth/request-password-reset")
-def request_password_reset(
+async def request_password_reset(
     payload: PasswordResetRequest,
     request: Request,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ) -> dict:
     ip = request.client.host if request.client else "unknown"
     _check_rate_limit(ip)
-    user = db.query(User).filter(User.email == payload.email).first()
+    res = await db.execute(select(User).where(User.email == payload.email))
+    user = res.scalar_one_or_none()
     if not user:
         return {"status": "ok"}
     token = generate_token()
     user.password_reset_token_hash = hash_token(token)
     user.password_reset_expires_at = datetime.utcnow() + timedelta(hours=1)
-    db.commit()
+    await db.commit()
     try:
         base_url = os.getenv("APP_PUBLIC_URL", "http://localhost:3000")
         reset_link = f"{base_url}/account?reset={token}"
@@ -1098,16 +1158,14 @@ def request_password_reset(
 
 
 @app.post("/auth/reset-password")
-def reset_password(
+async def reset_password(
     payload: PasswordResetConfirm,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ) -> dict:
     token_hash = hash_token(payload.token)
-    user = (
-        db.query(User)
-        .filter(User.password_reset_token_hash == token_hash)
-        .first()
-    )
+    res = await db.execute(select(User).where(User.password_reset_token_hash == token_hash))
+    user = res.scalar_one_or_none()
+    
     if (
         not user
         or not user.password_reset_expires_at
@@ -1117,17 +1175,18 @@ def reset_password(
     user.password_hash = hash_password(payload.new_password)
     user.password_reset_token_hash = None
     user.password_reset_expires_at = None
-    db.commit()
+    await db.commit()
     return {"status": "ok"}
 
 
 @app.post("/auth/verify-email")
-def verify_email(
+async def verify_email(
     payload: EmailVerifyRequest,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ) -> dict:
     token_hash = hash_token(payload.token)
-    user = db.query(User).filter(User.email_verify_token_hash == token_hash).first()
+    res = await db.execute(select(User).where(User.email_verify_token_hash == token_hash))
+    user = res.scalar_one_or_none()
     if (
         not user
         or not user.email_verify_expires_at
@@ -1137,7 +1196,7 @@ def verify_email(
     user.email_verified = True
     user.email_verify_token_hash = None
     user.email_verify_expires_at = None
-    db.commit()
+    await db.commit()
     return {"status": "ok"}
 
 
@@ -1269,13 +1328,56 @@ def _check_subscription_limits(user: User, db: Session, resource_type: str, sess
             if msg_count >= 10:
                 raise HTTPException(status_code=403, detail="Free tier limit: maximum 10 messages per chat session. Please upgrade your subscription.")
 
+async def async_check_subscription_limits(user: User, db: AsyncSession, resource_type: str, session_id: int = None, feature: str = None, is_search: bool = False):
+    if user.is_admin:
+        return
+    tier = "free"
+    if user.subscription_tier in ("pro", "premium", "starter", "tester"):
+        if not user.subscription_expires_at or user.subscription_expires_at > datetime.utcnow():
+            tier = user.subscription_tier
+    if tier == "tester":
+        if feature in ("custdev", "presentation", "deep_research", "import", "tree"):
+             raise HTTPException(status_code=403, detail="Эта функция недоступна в тарифе Tester.")
+    if tier == "premium":
+        return
+    if resource_type == "project":
+        if tier == "tester":
+             return
+        analyses_count = (await db.execute(select(sa_func.count()).select_from(Analysis).where(Analysis.user_id == user.id))).scalar()
+        chat_sessions_count = (await db.execute(select(sa_func.count()).select_from(ChatSession).where(ChatSession.user_id == user.id, ChatSession.analysis_id == None))).scalar()
+        total_projects = analyses_count + chat_sessions_count
+        if tier == "free":
+            if feature == "custdev" and analyses_count >= 1:
+                raise HTTPException(status_code=403, detail="Free tier limit: maximum 1 analysis project.")
+        elif tier == "pro" and total_projects >= 5:
+            raise HTTPException(status_code=403, detail="Pro tier limit: maximum 5 projects.")
+    elif resource_type == "message":
+        if tier == "tester":
+            redis = get_redis()
+            if redis:
+                key = f"tester_limit_{user.id}_{'search' if is_search else 'normal'}"
+                count = redis.get(key)
+                count = int(count) if count else 0
+                max_allowed = 5 if is_search else 20
+                if count >= max_allowed:
+                    raise HTTPException(status_code=403, detail="Лимит сообщений тарифа Tester исчерпан.")
+                redis.incr(key)
+            else:
+                total_messages_count = (await db.execute(select(sa_func.count()).select_from(DbChatMessage).join(ChatSession).where(ChatSession.user_id == user.id, DbChatMessage.role == "user"))).scalar()
+                if total_messages_count >= 25:
+                    raise HTTPException(status_code=403, detail="Лимит сообщений тарифа Tester исчерпан (25).")
+        elif tier == "free" and session_id:
+            msg_count = (await db.execute(select(sa_func.count()).select_from(DbChatMessage).where(DbChatMessage.session_id == session_id, DbChatMessage.role == "user"))).scalar()
+            if msg_count >= 10:
+                raise HTTPException(status_code=403, detail="Free tier limit: maximum 10 messages per chat session.")
+
 
 @app.post("/analysis", response_model=AnalysisResponse)
 @observe(name="create_analysis")
 async def create_analysis(
     payload: AnalysisCreateRequest,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ) -> AnalysisResponse:
     if langfuse_context:
         langfuse_context.update_current_trace(
@@ -1283,7 +1385,7 @@ async def create_analysis(
             tags=["analysis", user.subscription_tier or "free"]
         )
 
-    _check_subscription_limits(user, db, "project", feature="custdev")
+    await async_check_subscription_limits(user, db, "project", feature="custdev")
 
     description_parts = [
         f"Название: {payload.name}",
@@ -1331,8 +1433,8 @@ async def create_analysis(
         market_summary=normalized["market_summary"],
     )
     db.add(analysis)
-    db.commit()
-    db.refresh(analysis)
+    await db.commit()
+    await db.refresh(analysis)
 
     return AnalysisResponse(
         id=analysis.id,
@@ -1348,17 +1450,16 @@ async def create_analysis(
 
 
 @app.get("/analysis", response_model=list[AnalysisResponse])
-@app.get("/analysis", response_model=list[AnalysisResponse])
-def list_analyses(
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+async def list_analyses(
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ) -> list[AnalysisResponse]:
-    analyses = (
-        db.query(Analysis)
-        .filter(Analysis.user_id == user.id)
+    res = await db.execute(
+        select(Analysis)
+        .where(Analysis.user_id == user.id)
         .order_by(Analysis.created_at.desc())
-        .all()
     )
+    analyses = res.scalars().all()
 
     results = []
     for item in analyses:
@@ -1402,65 +1503,111 @@ def list_analyses(
 
 
 async def parse_thought_generator(generator):
-    """Parses <thought>...</thought> tags and yields JSON chunks."""
-    inside_thought = False
+    """
+    Enhanced model output stream processor.
+    Extracts <think>...</think> or <thought>...</thought> tags and yields them as metadata types.
+    Preserves \n for Markdown tables and strips technical debris (<tool_call>, etc).
+    """
+    active_start_tag = None
     buffer = ""
+    # We also want to strip debris like <tool_call>, <tool_thought>, and technical artifacts like 'IMIZE'
+    tags = [("<thought>", "</thought>"), ("<think>", "</think>"), ("<tool_call>", "</tool_call>"), ("<tool_thought>", "</tool_thought>")]
+    debris_patterns = ["<tool_call>", "</tool_call>", "<tool_thought>", "</tool_thought>", "IMIZE"]
+
     async for chunk in generator:
-        if not chunk: continue
-        
-        # Handle native GLM-5 thinking chunks from makura_client
-        if isinstance(chunk, dict) and "__thinking__" in chunk:
-            yield json.dumps({"type": "thought", "content": chunk["__thinking__"]}) + "\n"
+        if chunk is None:
             continue
             
-        # Pass through usage sentinel dicts 
         if isinstance(chunk, dict):
-            yield chunk
-            continue
+            # Flush buffer before handling metadata/dict chunks
+            if buffer:
+                if active_start_tag in ["<think>", "<thought>"]:
+                    yield format_sse({"type": "thought", "content": buffer})
+                else:
+                    yield format_sse({"type": "chunk", "content": buffer})
+                buffer = ""
+
+            # Handle native reasoning_content 
+            if "__thinking__" in chunk:
+                yield format_sse({"type": "thought", "content": chunk["__thinking__"]})
+                continue
+            elif "__usage__" in chunk:
+                # Pass usage directly as a wrapped JSON line
+                yield format_sse({"type": "metadata", "usage": chunk["__usage__"]})
+                continue
+            else:
+                # Pass through other dict objects (like TTFT signals)
+                yield format_sse(chunk)
+                continue
+
+        # Handle text-based tags in the main content stream
         buffer += chunk
         
+        # Strip technical trash from buffer if not inside a protected tag
+        if not active_start_tag:
+            for debris in debris_patterns:
+                if debris in buffer:
+                    buffer = buffer.replace(debris, "")
+
         while True:
-            if not inside_thought:
-                start_idx = buffer.find("<thought>")
-                thought_len = 9
-                if start_idx == -1:
-                    start_idx = buffer.find("<think>")
-                    thought_len = 7
-                    
-                if start_idx != -1:
-                    pre = buffer[:start_idx]
-                    post = buffer[start_idx + thought_len:]
-                    if pre:
-                        yield json.dumps({"type": "chunk", "content": pre}) + "\n"
-                    inside_thought = True
-                    buffer = post
+            found_tag = False
+            for start_tag, end_tag in tags:
+                if not active_start_tag:
+                    s_idx = buffer.find(start_tag)
+                    if s_idx != -1:
+                        # Content before the tag is a normal chunk
+                        pre = buffer[:s_idx]
+                        if pre:
+                            yield format_sse({"type": "chunk", "content": pre})
+                        
+                        buffer = buffer[s_idx + len(start_tag):]
+                        active_start_tag = start_tag
+                        found_tag = True
+                        break
                 else:
-                    if len(buffer) > 10:
-                        to_yield = buffer[:-9]
-                        buffer = buffer[-9:]
-                        yield json.dumps({"type": "chunk", "content": to_yield}) + "\n"
-                    break
-            else:
-                end_idx = buffer.find("</thought>")
-                end_len = 10
-                if end_idx == -1:
-                    end_idx = buffer.find("</think>")
-                    end_len = 8
-                    
-                if end_idx != -1:
-                    content = buffer[:end_idx]
-                    post = buffer[end_idx + end_len:]
-                    yield json.dumps({"type": "thought", "content": content}) + "\n"
-                    inside_thought = False
-                    buffer = post
+                    # Only look for the end_tag corresponding to the current active_start_tag
+                    if start_tag == active_start_tag:
+                        e_idx = buffer.find(end_tag)
+                        if e_idx != -1:
+                            # Content inside tags is a thought (or soon-to-be-ignored tool call)
+                            content = buffer[:e_idx]
+                            is_thought = active_start_tag in ["<think>", "<thought>"]
+                            
+                            if is_thought and content:
+                                yield format_sse({"type": "thought", "content": content})
+                            
+                            buffer = buffer[e_idx + len(end_tag):]
+                            active_start_tag = None
+                            found_tag = True
+                            break
+            
+            if not found_tag:
+                # If no complete tag found, yield what we can but keep a buffer
+                # to avoid splitting a tag that might be coming in the next chunk.
+                max_tag_len = 15 
+                if not active_start_tag:
+                    if len(buffer) > max_tag_len:
+                        to_yield = buffer[:-max_tag_len]
+                        buffer = buffer[-max_tag_len:]
+                        yield format_sse({"type": "chunk", "content": to_yield})
                 else:
-                    if len(buffer) > 11:
-                        to_yield = buffer[:-10]
-                        buffer = buffer[-10:]
-                        yield json.dumps({"type": "thought", "content": to_yield}) + "\n"
-                    break
+                    # If we are inside thoughts, we can yield them parts
+                    if len(buffer) > max_tag_len:
+                        to_yield = buffer[:-max_tag_len]
+                        buffer = buffer[-max_tag_len:]
+                        if active_start_tag in ["<think>", "<thought>"]:
+                            yield format_sse({"type": "thought", "content": to_yield})
+                break
+                    
     if buffer:
-        yield json.dumps({"type": "thought" if inside_thought else "chunk", "content": buffer}) + "\n"
+        # Final cleanup
+        final_content = buffer
+        for start_tag, end_tag in tags:
+            final_content = final_content.replace(start_tag, "").replace(end_tag, "")
+        
+        if final_content:
+            is_thought = active_start_tag in ["<think>", "<thought>"]
+            yield format_sse({"type": "thought" if is_thought else "chunk", "content": final_content})
 
 def save_assistant_message(session_id: int, content: str, thoughts: str | None = None, client_id: str | None = None, sources: list[dict] | None = None):
     from db import SessionLocal
@@ -1480,6 +1627,22 @@ def save_assistant_message(session_id: int, content: str, thoughts: str | None =
         db.refresh(msg)
     finally:
         db.close()
+
+
+async def async_save_assistant_message(session_id: int, content: str, thoughts: str | None = None, client_id: str | None = None, sources: list[dict] | None = None):
+    from db_async import AsyncSessionLocal
+    from models import ChatMessage as DbChatMessage
+    async with AsyncSessionLocal() as db:
+        msg = DbChatMessage(
+            session_id=session_id, 
+            role="assistant", 
+            content=content,
+            thoughts=thoughts,
+            client_id=client_id,
+            sources=sources
+        )
+        db.add(msg)
+        await db.commit()
 
 
 @app.post("/chat")
@@ -1517,7 +1680,7 @@ async def chat(payload: ChatRequest):
                 yield json_chunk
         except Exception as e:
             logger.error(f"Streaming failed: {e}")
-            yield json.dumps({"type": "error", "content": str(e)}) + "\n"
+            yield format_sse({"type": "error", "content": str(e)})
         finally:
             # We don't have a session_id here for anonymous /chat, 
             # but if this endpoint is ever used with a session, we should save it.
@@ -1526,26 +1689,28 @@ async def chat(payload: ChatRequest):
             # However, for consistency with other endpoints:
             pass
 
-    return StreamingResponse(chat_generator(), media_type="text/event-stream")
+    headers = {
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no"
+    }
+    return EventSourceResponse(chat_generator(), headers=headers)
 
 
 @app.patch("/chat/sessions/{session_id}", response_model=ChatSessionResponse)
-def rename_chat_session(
+async def rename_chat_session(
     session_id: int,
     payload: ChatSessionCreateRequest,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ) -> ChatSessionResponse:
-    session = (
-        db.query(ChatSession)
-        .filter(ChatSession.id == session_id, ChatSession.user_id == user.id)
-        .first()
-    )
+    result = await db.execute(select(ChatSession).where(ChatSession.id == session_id, ChatSession.user_id == user.id))
+    session = result.scalar_one_or_none()
     if not session:
         raise HTTPException(status_code=404, detail="Chat session not found")
     session.title = payload.title
-    db.commit()
-    db.refresh(session)
+    await db.commit()
+    await db.refresh(session)
     return ChatSessionResponse(
         id=session.id,
         title=session.title,
@@ -1554,43 +1719,38 @@ def rename_chat_session(
 
 
 @app.delete("/chat/sessions/{session_id}")
-def delete_chat_session(
+async def delete_chat_session(
     session_id: int,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ) -> dict:
-    session = (
-        db.query(ChatSession)
-        .filter(ChatSession.id == session_id, ChatSession.user_id == user.id)
-        .first()
-    )
+    result = await db.execute(select(ChatSession).where(ChatSession.id == session_id, ChatSession.user_id == user.id))
+    session = result.scalar_one_or_none()
     if not session:
         raise HTTPException(status_code=404, detail="Chat session not found")
-    db.query(DbChatMessage).filter(DbChatMessage.session_id == session.id).delete()
-    db.delete(session)
-    db.commit()
+    from sqlalchemy import delete
+    await db.execute(delete(DbChatMessage).where(DbChatMessage.session_id == session.id))
+    await db.delete(session)
+    await db.commit()
     return {"status": "ok"}
 
 
 @app.get("/chat/sessions/{session_id}/messages", response_model=list[ChatMessageResponse])
-def list_chat_messages(
+async def list_chat_messages(
     session_id: int,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ) -> list[ChatMessageResponse]:
-    session = (
-        db.query(ChatSession)
-        .filter(ChatSession.id == session_id, ChatSession.user_id == user.id)
-        .first()
-    )
+    result = await db.execute(select(ChatSession).where(ChatSession.id == session_id, ChatSession.user_id == user.id))
+    session = result.scalar_one_or_none()
     if not session:
         raise HTTPException(status_code=404, detail="Chat session not found")
-    messages = (
-        db.query(DbChatMessage)
-        .filter(DbChatMessage.session_id == session.id)
+    msg_result = await db.execute(
+        select(DbChatMessage)
+        .where(DbChatMessage.session_id == session.id)
         .order_by(DbChatMessage.created_at.asc())
-        .all()
     )
+    messages = msg_result.scalars().all()
     return [ChatMessageResponse.model_validate(m) for m in messages]
 
 
@@ -1599,8 +1759,8 @@ def list_chat_messages(
 async def create_chat_message(
     payload: ChatMessageCreateRequest,
     background_tasks: BackgroundTasks,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ) -> StreamingResponse:
     if langfuse_context:
         langfuse_context.update_current_trace(
@@ -1608,11 +1768,8 @@ async def create_chat_message(
             session_id=str(payload.session_id)
         )
 
-    session = (
-        db.query(ChatSession)
-        .filter(ChatSession.id == payload.session_id, ChatSession.user_id == user.id)
-        .first()
-    )
+    result = await db.execute(select(ChatSession).where(ChatSession.id == payload.session_id, ChatSession.user_id == user.id))
+    session = result.scalar_one_or_none()
     if not session:
         raise HTTPException(status_code=404, detail="Chat session not found")
 
@@ -1620,15 +1777,15 @@ async def create_chat_message(
         session_id=session.id, role="user", content=payload.content, client_id=payload.client_id
     )
     db.add(user_message)
-    db.commit()
-    db.refresh(user_message)
+    await db.commit()
+    await db.refresh(user_message)
 
-    history = (
-        db.query(DbChatMessage)
-        .filter(DbChatMessage.session_id == session.id)
+    msg_result = await db.execute(
+        select(DbChatMessage)
+        .where(DbChatMessage.session_id == session.id)
         .order_by(DbChatMessage.created_at.asc())
-        .all()
     )
+    history = msg_result.scalars().all()
     chat_messages = [ChatMessage(role=m.role, content=m.content) for m in history]
 
     context_chunks = [] # Initialize context_chunks
@@ -1643,16 +1800,21 @@ async def create_chat_message(
                     async for chunk in stream_deep_research(payload.content):
                         if chunk["type"] == "chunk":
                             full_content += chunk["content"]
-                        yield json.dumps(chunk) + "\n"
+                        yield format_sse(chunk)
                 finally:
                     # Save assistant message
                     if full_content.strip():
-                        save_assistant_message(
-                            session_id=session.id,
-                            content=full_content.strip(),
-                            thoughts="Глубокое исследование завершено.",
-                            client_id=payload.assistant_client_id
-                        )
+                        async def _save_r_bg():
+                            try:
+                                await async_save_assistant_message(
+                                    session_id=session.id,
+                                    content=full_content.strip(),
+                                    thoughts="Глубокое исследование завершено.",
+                                    client_id=payload.assistant_client_id
+                                )
+                            except Exception as bg_err:
+                                logger.error(f"Background async_save_assistant_message failed: {bg_err}")
+                        asyncio.create_task(_save_r_bg())
                     # Report usage to Langfuse if available
                     if langfuse_context:
                         est_tokens = (len(payload.content) + len(full_content)) // 4
@@ -1671,19 +1833,78 @@ async def create_chat_message(
                 }
             )
 
-        # Parallel RAG for normal chat
-        ch_task = asyncio.to_thread(rag.get_relevant_chunks, payload.content, top_k=3)
-        si_task = analyze_search_intent_zai(payload.content)
-        context_chunks, search_decision = await asyncio.gather(ch_task, si_task)
+        # --- Synchronized Architecture Transformation ---
+        # Instrumentation: Pre-processing (Trace propagation handled by @observe on sub-functions)
+        try:
+            # 1. Parallel Execution (Intent classification + RAG retrieval)
+            si_task = asyncio.create_task(slm_dispatcher.classify_query_intent(payload.content))
+            
+            # Graceful Degradation: проверяем, прогрета ли база
+            if rag.healthcheck():
+                ch_task = asyncio.to_thread(rag.get_relevant_chunks, payload.content, top_k=10)
+            else:
+                async def _skip_rag():
+                    logger.warning("RAG is warming up. Skipping vector retrieval.")
+                    return []
+                ch_task = asyncio.create_task(_skip_rag())
+            
+            # Wait for parallel tasks to finish
+            results = await asyncio.gather(si_task, ch_task, return_exceptions=True)
+            
+            slm_res = results[0] if not isinstance(results[0], Exception) else {}
+            rag_chunks = results[1] if not isinstance(results[1], Exception) else []
+        except Exception as e:
+            logger.error(f"Preprocessing error: {e}")
+            slm_res, rag_chunks = {}, []
         
-        if search_decision.get("needs_search") and search_decision.get("search_query"):
-            query = search_decision.get("search_query")
-            logger.info(f"Agent triggered web search for query: {query}")
-            web_context = await asyncio.to_thread(execute_search_agent, query)
-            if web_context:
-                context_chunks.insert(0, f"--- АКТУАЛЬНЫЕ ДАННЫЕ ИЗ ИНТЕРНЕТА (ПОИСК: {query}) ---\n{web_context}\n--- КОНЕЦ ДАННЫХ ИЗ ИНТЕРНЕТА ---")
+        is_deep_search = slm_res.get("is_deep_search", False)
+        is_finance = slm_res.get("is_finance", False)
+        
+        # 2. Dynamic Web Search (Exa AI)
+        search_context = ""
+        sources_list = []
+        if is_deep_search:
+            # Using high-level async search with sources (decorated with @observe)
+            search_sources, exa_context = await async_search_with_sources(payload.content, use_deep_search=False)
+            sources_list = search_sources
+            search_context = exa_context
+            
+        # 3. Analytical Swarm (Map-Reduce)
+        swarm_facts = ""
+        rag_texts = [c["text"] if isinstance(c, dict) else c for c in rag_chunks]
+        chunks_to_swarm = rag_texts[:10]
+        if search_context:
+            chunks_to_swarm.append(search_context)
+            
+        if chunks_to_swarm:
+            try:
+                # Analytical Swarm with 5s safety timeout (decorated with @observe)
+                swarm_res = await asyncio.wait_for(run_analytical_swarm(chunks_to_swarm), timeout=5.0)
+                facts = []
+                for item in swarm_res:
+                    if getattr(item, 'competitors', []):
+                        facts.append("Конкуренты: " + ", ".join(item.competitors))
+                    if getattr(item, 'metrics', []):
+                        facts.append("Метрики: " + "; ".join(item.metrics))
+                
+                if facts:
+                    swarm_facts = "\n- ".join(set(facts))
+            except Exception as swarm_err:
+                logger.warning(f"Swarm analysis bypassed: {swarm_err}")
+
+        # Assemble Context
+        context_chunks = []
+        if search_context:
+            context_chunks.append(f"[ДАННЫЕ ИЗ ИНТЕРНЕТА]:\n{search_context}")
+        
+        if swarm_facts:
+            context_chunks.append(f"[ПРОВЕРЕННЫЕ ФАКТЫ ОТ РОЯ АНАЛИТИКОВ]:\n{swarm_facts}")
+        elif rag_texts:
+            # Fallback: если рой не нашел фактов или упал по таймауту
+            context_chunks.append(f"[ДАННЫЕ ИЗ БАЗЫ ЗНАНИЙ]:\n{chr(10).join(rag_texts[:3])}")
+        
     except Exception as e:
-        logger.error(f"Failed RAG / Research in session message: {e}")
+        logger.error(f"Synchronized preprocessing failed: {e}")
     # -----------------------------------
 
     user_prompt = _build_chat_prompt(chat_messages, context_chunks)
@@ -1692,7 +1913,16 @@ async def create_chat_message(
     async def session_chat_generator():
         full_text = ""
         full_thoughts = ""
+        ttft = None
+        start_time = time.time()
+        usage_data = {}
+        
         try:
+            # Yield initial metadata
+            yield format_sse({"type": "metadata", "model": provider})
+            if sources_list:
+                yield format_sse({"type": "sources", "data": sources_list})
+
             if provider == "makura":
                 raw_gen = stream_makura(SYSTEM_CHAT_PROMPT, user_prompt)
             else:
@@ -1700,57 +1930,84 @@ async def create_chat_message(
                 
             async for json_chunk in parse_thought_generator(raw_gen):
                 if isinstance(json_chunk, dict):
-                    if "__usage__" in json_chunk:
-                        usage_data = json_chunk["__usage__"]
+                    # Internal metadata from parse_thought_generator
+                    if json_chunk.get("type") == "metadata":
+                        usage_data = json_chunk.get("usage", {})
                     continue
 
+                if ttft is None:
+                    ttft = time.time() - start_time
+                
                 data = json.loads(json_chunk.strip())
                 if data["type"] == "chunk":
                     full_text += data["content"]
                 elif data["type"] == "thought":
                     full_thoughts += data["content"]
                 yield json_chunk
+
         except Exception as e:
             logger.error(f"Streaming failed: {e}")
-            yield json.dumps({"type": "error", "content": str(e)}) + "\n"
+            yield format_sse({"type": "error", "content": str(e)})
         finally:
-            if full_text.strip():
-                logger.info(f"Stream finished. Collected {len(full_text)} chars.")
-                # ИСПОЛЬЗУЕМ asyncio ВМЕСТО background_tasks для StreamingResponse
+            if full_text.strip() or full_thoughts.strip():
+                # Rescue save logic
                 async def _save_bg():
                     try:
-                        await asyncio.to_thread(
-                            save_assistant_message, 
+                        await async_save_assistant_message( 
                             session_id=session.id, 
                             content=full_text.strip(),
                             thoughts=full_thoughts.strip() if full_thoughts.strip() else None,
-                            client_id=payload.assistant_client_id
+                            client_id=payload.assistant_client_id,
+                            sources=sources_list if sources_list else None
                         )
                     except Exception as bg_err:
-                        logger.error(f"Background save_assistant_message failed: {bg_err}")
+                        logger.error(f"Background async_save_assistant_message failed: {bg_err}")
 
                 asyncio.create_task(_save_bg())
 
-    return StreamingResponse(session_chat_generator(), media_type="text/event-stream")
+            # Final Langfuse update
+            if langfuse_context and (full_text or full_thoughts):
+                try:
+                    update_params = {
+                        "input": payload.content,
+                        "output": f"<thought>{full_thoughts}</thought>\n\n{full_text}" if full_thoughts else full_text,
+                        "metadata": {"ttft": ttft} if ttft else {}
+                    }
+                    if usage_data:
+                        update_params["usage"] = {
+                            "input": usage_data.get("prompt_tokens", 0),
+                            "output": usage_data.get("completion_tokens", 0),
+                            "total": usage_data.get("total_tokens", 0)
+                        }
+                    langfuse_context.update_current_observation(**update_params)
+                except Exception as lf_err:
+                    logger.error(f"Langfuse update failed: {lf_err}")
+
+    headers = {
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no"
+    }
+    return EventSourceResponse(session_chat_generator(), headers=headers)
 
 
 @app.get("/chat/messages/search")
-def search_chat_messages(
+async def search_chat_messages(
     query: str,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ) -> list[dict]:
     if not query.strip():
         return []
-    messages = (
-        db.query(DbChatMessage, ChatSession)
+    result = await db.execute(
+        select(DbChatMessage, ChatSession)
         .join(ChatSession, ChatSession.id == DbChatMessage.session_id)
-        .filter(ChatSession.user_id == user.id)
-        .filter(DbChatMessage.content.ilike(f"%{query}%"))
+        .where(ChatSession.user_id == user.id)
+        .where(DbChatMessage.content.ilike(f"%{query}%"))
         .order_by(DbChatMessage.created_at.desc())
         .limit(50)
-        .all()
     )
+    messages = result.all()
     return [
         {
             "id": msg.id,
@@ -1767,61 +2024,54 @@ def search_chat_messages(
 # ——— Tools API (Search & Research) ———
 
 @app.get("/api/tools/history", response_model=list[ToolResultResponse])
-def get_tools_history(
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+async def get_tools_history(
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ) -> list[ToolResultResponse]:
     """Возвращает историю использования инструментов (поиск и исследования)."""
-    results = (
-        db.query(ToolResult)
-        .filter(ToolResult.user_id == user.id)
+    result = await db.execute(
+        select(ToolResult)
+        .where(ToolResult.user_id == user.id)
         .order_by(ToolResult.created_at.desc())
-        .all()
     )
-    return results
+    return result.scalars().all()
 
 
 @app.get("/api/tools/results/{result_id}", response_model=ToolResultResponse)
-def get_tool_result(
+async def get_tool_result(
     result_id: int,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ) -> ToolResultResponse:
     """Возвращает конкретный результат из истории."""
-    result = (
-        db.query(ToolResult)
-        .filter(ToolResult.id == result_id, ToolResult.user_id == user.id)
-        .first()
-    )
-    if not result:
+    result = await db.execute(select(ToolResult).where(ToolResult.id == result_id, ToolResult.user_id == user.id))
+    tool_res = result.scalar_one_or_none()
+    if not tool_res:
         raise HTTPException(status_code=404, detail="Result not found")
-    return result
+    return tool_res
 
 
 @app.delete("/api/tools/results/{result_id}")
-def delete_tool_result(
+async def delete_tool_result(
     result_id: int,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ) -> dict:
     """Удаляет результат из истории."""
-    result = (
-        db.query(ToolResult)
-        .filter(ToolResult.id == result_id, ToolResult.user_id == user.id)
-        .first()
-    )
-    if not result:
+    result = await db.execute(select(ToolResult).where(ToolResult.id == result_id, ToolResult.user_id == user.id))
+    tool_res = result.scalar_one_or_none()
+    if not tool_res:
         raise HTTPException(status_code=404, detail="Result not found")
-    db.delete(result)
-    db.commit()
+    await db.delete(tool_res)
+    await db.commit()
     return {"status": "ok"}
 
 
 @app.post("/api/tools/quick-search", response_model=ToolResultResponse)
 async def tool_quick_search(
     payload: ToolSearchRequest,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ) -> ToolResultResponse:
     """Запускает быстрый региональный поиск и сохраняет результат в историю."""
     sources, context = await async_search_with_sources(payload.query, use_deep_search=False)
@@ -1835,19 +2085,19 @@ async def tool_quick_search(
         sources=sources
     )
     db.add(result)
-    db.commit()
-    db.refresh(result)
+    await db.commit()
+    await db.refresh(result)
     return result
 
 
 @app.post("/api/tools/deep-research", response_model=ToolResultResponse)
 async def tool_deep_research(
     payload: ToolResearchRequest,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ) -> ToolResultResponse:
     """Запускает глубокое агентное исследование и сохраняет отчет в историю."""
-    _check_subscription_limits(user, db, "tool", feature="deep_research")
+    await async_check_subscription_limits(user, db, "tool", feature="deep_research")
     content, sources = await execute_deep_research(payload.query)
     
     # Store result
@@ -1859,30 +2109,32 @@ async def tool_deep_research(
         sources=sources
     )
     db.add(result)
-    db.commit()
-    db.refresh(result)
+    await db.commit()
+    await db.refresh(result)
     return result
 @app.post("/chat/import-context", response_model=ImportContextResponse)
 async def api_import_context(
     payload: ImportContextRequest,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ) -> ImportContextResponse:
     """Parses text/json from external LLMs and saves it to RAG & optionally ChatSession."""
-    _check_subscription_limits(user, db, "tool", feature="import")
+    await async_check_subscription_limits(user, db, "tool", feature="import")
     try:
         context, message = await ImportParser.parse(payload.text)
         
         # Save raw_text to RAG
         if context and context.raw_text:
-            rag.add_text_to_rag(context.raw_text)
+            import asyncio
+            await asyncio.to_thread(rag.add_text_to_rag, context.raw_text)
             
         # If session_id is provided, inject a system message
         if payload.session_id:
-            session = db.query(ChatSession).filter(
+            res = await db.execute(select(ChatSession).where(
                 ChatSession.id == payload.session_id,
                 ChatSession.user_id == user.id
-            ).first()
+            ))
+            session = res.scalar_one_or_none()
             if session:
                 context_str = context.model_dump_json() if context else "Не удалось структурировать."
                 sys_msg = DbChatMessage(
@@ -1891,7 +2143,7 @@ async def api_import_context(
                     content=f"Пользователь импортировал данные из внешней сессии. Основные тезисы: {context_str}",
                 )
                 db.add(sys_msg)
-                db.commit()
+                await db.commit()
 
         return ImportContextResponse(success=True, summary=context, message=message)
     except Exception as e:
@@ -1900,11 +2152,12 @@ async def api_import_context(
 
 
 @app.get("/admin/users", response_model=list[UserResponse])
-def admin_users(
-    _: User = Depends(require_admin),
-    db: Session = Depends(get_db),
+async def admin_users(
+    _: User = Depends(require_async_admin),
+    db: AsyncSession = Depends(get_async_db),
 ) -> list[UserResponse]:
-    users = db.query(User).order_by(User.created_at.desc()).all()
+    res = await db.execute(select(User).order_by(User.created_at.desc()))
+    users = res.scalars().all()
     return [
         UserResponse(
             id=u.id,
@@ -1922,72 +2175,82 @@ def admin_users(
 
 
 @app.post("/admin/users/{user_id}/block")
-def admin_block_user(
+async def admin_block_user(
     user_id: int,
-    _: User = Depends(require_admin),
-    db: Session = Depends(get_db),
+    _: User = Depends(require_async_admin),
+    db: AsyncSession = Depends(get_async_db),
 ) -> dict:
-    user = db.query(User).filter(User.id == user_id).first()
+    res = await db.execute(select(User).where(User.id == user_id))
+    user = res.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     user.is_active = False
-    db.commit()
+    await db.commit()
     return {"status": "ok"}
 
 
 @app.post("/admin/users/{user_id}/unblock")
-def admin_unblock_user(
+async def admin_unblock_user(
     user_id: int,
-    _: User = Depends(require_admin),
-    db: Session = Depends(get_db),
+    _: User = Depends(require_async_admin),
+    db: AsyncSession = Depends(get_async_db),
 ) -> dict:
-    user = db.query(User).filter(User.id == user_id).first()
+    res = await db.execute(select(User).where(User.id == user_id))
+    user = res.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     user.is_active = True
-    db.commit()
+    await db.commit()
     return {"status": "ok"}
 
 
 @app.post("/admin/users/{user_id}/make-admin")
-def admin_make_admin(
+async def admin_make_admin(
     user_id: int,
-    _: User = Depends(require_admin),
-    db: Session = Depends(get_db),
+    _: User = Depends(require_async_admin),
+    db: AsyncSession = Depends(get_async_db),
 ) -> dict:
-    user = db.query(User).filter(User.id == user_id).first()
+    res = await db.execute(select(User).where(User.id == user_id))
+    user = res.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     user.is_admin = True
-    db.commit()
+    await db.commit()
     return {"status": "ok"}
 
 
 @app.delete("/admin/users/{user_id}")
-def admin_delete_user(
+async def admin_delete_user(
     user_id: int,
-    _: User = Depends(require_admin),
-    db: Session = Depends(get_db),
+    _: User = Depends(require_async_admin),
+    db: AsyncSession = Depends(get_async_db),
 ) -> dict:
-    user = db.query(User).filter(User.id == user_id).first()
+    res = await db.execute(select(User).where(User.id == user_id))
+    user = res.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    sessions = db.query(ChatSession).filter(ChatSession.user_id == user.id).all()
-    for session in sessions:
-        db.query(DbChatMessage).filter(DbChatMessage.session_id == session.id).delete()
-    db.query(ChatSession).filter(ChatSession.user_id == user.id).delete()
-    db.query(Analysis).filter(Analysis.user_id == user.id).delete()
-    db.delete(user)
-    db.commit()
+    from sqlalchemy import delete
+    
+    session_res = await db.execute(select(ChatSession.id).where(ChatSession.user_id == user.id))
+    session_ids = session_res.scalars().all()
+    
+    if session_ids:
+        await db.execute(delete(DbChatMessage).where(DbChatMessage.session_id.in_(session_ids)))
+        
+    await db.execute(delete(ChatSession).where(ChatSession.user_id == user.id))
+    await db.execute(delete(Analysis).where(Analysis.user_id == user.id))
+    
+    await db.delete(user)
+    await db.commit()
     return {"status": "ok"}
 
 
 @app.get("/admin/analytics")
-def admin_analytics(
+async def admin_analytics(
     start: date | None = None,
     end: date | None = None,
-    _: User = Depends(require_admin),
-    db: Session = Depends(get_db),
+    _: User = Depends(require_async_admin),
+    db: AsyncSession = Depends(get_async_db),
 ) -> dict:
     today = datetime.utcnow().date()
     start_date = start or (today - timedelta(days=6))
@@ -1995,17 +2258,18 @@ def admin_analytics(
     start_dt = datetime.combine(start_date, datetime.min.time())
     end_dt = datetime.combine(end_date, datetime.max.time())
 
-    def _count_absolute(model):
-        return db.query(model).count()
+    async def _count_absolute(model):
+        res = await db.execute(select(sa_func.count()).select_from(model))
+        return res.scalar()
 
-    total_users = _count_absolute(User)
-    total_analyses = _count_absolute(Analysis)
-    total_analyses_anonymous = db.query(Analysis).filter(Analysis.user_id == None).count()
-    total_sessions = _count_absolute(ChatSession)
-    total_sessions_anonymous = db.query(ChatSession).filter(ChatSession.user_id == None).count()
-    total_messages = _count_absolute(DbChatMessage)
-    total_errors = _count_absolute(ErrorLog)
-    total_subscriptions = db.query(User).filter(User.subscription_tier != "free").count()
+    total_users = await _count_absolute(User)
+    total_analyses = await _count_absolute(Analysis)
+    total_analyses_anonymous = (await db.execute(select(sa_func.count()).select_from(Analysis).where(Analysis.user_id == None))).scalar()
+    total_sessions = await _count_absolute(ChatSession)
+    total_sessions_anonymous = (await db.execute(select(sa_func.count()).select_from(ChatSession).where(ChatSession.user_id == None))).scalar()
+    total_messages = await _count_absolute(DbChatMessage)
+    total_errors = await _count_absolute(ErrorLog)
+    total_subscriptions = (await db.execute(select(sa_func.count()).select_from(User).where(User.subscription_tier != "free"))).scalar()
 
     delta = end_date - start_date
     is_hourly = delta.days <= 3
@@ -2034,7 +2298,8 @@ def admin_analytics(
         if not dt: return None
         return dt.strftime("%Y-%m-%d %H:00") if is_hourly else dt.strftime("%Y-%m-%d")
 
-    users_q = db.query(User.created_at, User.subscription_tier).filter(User.created_at.between(start_dt, end_dt)).all()
+    res_users = await db.execute(select(User.created_at, User.subscription_tier).where(User.created_at.between(start_dt, end_dt)))
+    users_q = res_users.all()
     for (dt, tier) in users_q:
         k = _format_key(dt)
         if k in series_dict:
@@ -2042,25 +2307,29 @@ def admin_analytics(
             if tier != "free":
                 series_dict[k]["subscriptions"] += 1
 
-    analyses_q = db.query(Analysis.created_at).filter(Analysis.created_at.between(start_dt, end_dt)).all()
+    res_analyses = await db.execute(select(Analysis.created_at).where(Analysis.created_at.between(start_dt, end_dt)))
+    analyses_q = res_analyses.all()
     for (dt,) in analyses_q:
         k = _format_key(dt)
         if k in series_dict:
             series_dict[k]["analyses"] += 1
 
-    sessions_q = db.query(ChatSession.created_at).filter(ChatSession.created_at.between(start_dt, end_dt)).all()
+    res_sessions = await db.execute(select(ChatSession.created_at).where(ChatSession.created_at.between(start_dt, end_dt)))
+    sessions_q = res_sessions.all()
     for (dt,) in sessions_q:
         k = _format_key(dt)
         if k in series_dict:
             series_dict[k]["chat_sessions"] += 1
 
-    messages_q = db.query(DbChatMessage.created_at).filter(DbChatMessage.created_at.between(start_dt, end_dt)).all()
+    res_messages = await db.execute(select(DbChatMessage.created_at).where(DbChatMessage.created_at.between(start_dt, end_dt)))
+    messages_q = res_messages.all()
     for (dt,) in messages_q:
         k = _format_key(dt)
         if k in series_dict:
             series_dict[k]["chat_messages"] += 1
 
-    errors_q = db.query(ErrorLog.created_at).filter(ErrorLog.created_at.between(start_dt, end_dt)).all()
+    res_errors = await db.execute(select(ErrorLog.created_at).where(ErrorLog.created_at.between(start_dt, end_dt)))
+    errors_q = res_errors.all()
     for (dt,) in errors_q:
         k = _format_key(dt)
         if k in series_dict:
@@ -2085,12 +2354,12 @@ def admin_analytics(
 
 
 @app.get("/admin/top-users")
-def admin_top_users(
+async def admin_top_users(
     start: date | None = None,
     end: date | None = None,
     limit: int = 10,
-    _: User = Depends(require_admin),
-    db: Session = Depends(get_db),
+    _: User = Depends(require_async_admin),
+    db: AsyncSession = Depends(get_async_db),
 ) -> list[dict]:
     today = datetime.utcnow().date()
     start_date = start or (today - timedelta(days=6))
@@ -2098,17 +2367,17 @@ def admin_top_users(
     start_dt = datetime.combine(start_date, datetime.min.time())
     end_dt = datetime.combine(end_date, datetime.max.time())
 
-    analyses = (
-        db.query(Analysis.user_id, Analysis.id)
-        .filter(Analysis.created_at.between(start_dt, end_dt))
-        .all()
+    res_an = await db.execute(
+        select(Analysis.user_id, Analysis.id)
+        .where(Analysis.created_at.between(start_dt, end_dt))
     )
-    messages = (
-        db.query(ChatSession.user_id, DbChatMessage.id)
+    analyses = res_an.all()
+    res_msg = await db.execute(
+        select(ChatSession.user_id, DbChatMessage.id)
         .join(ChatSession, ChatSession.id == DbChatMessage.session_id)
-        .filter(DbChatMessage.created_at.between(start_dt, end_dt))
-        .all()
+        .where(DbChatMessage.created_at.between(start_dt, end_dt))
     )
+    messages = res_msg.all()
     analysis_counts: dict[int, int] = {}
     message_counts: dict[int, int] = {}
     for user_id, _ in analyses:
@@ -2117,7 +2386,10 @@ def admin_top_users(
         message_counts[user_id] = message_counts.get(user_id, 0) + 1
 
     user_ids = set(analysis_counts.keys()) | set(message_counts.keys())
-    users = db.query(User).filter(User.id.in_(user_ids)).all() if user_ids else []
+    users = []
+    if user_ids:
+        res_user = await db.execute(select(User).where(User.id.in_(user_ids)))
+        users = res_user.scalars().all()
     items = []
     for user in users:
         analyses_count = analysis_counts.get(user.id, 0)
@@ -2138,12 +2410,12 @@ def admin_top_users(
 
 
 @app.get("/admin/errors")
-def admin_errors(
+async def admin_errors(
     start: date | None = None,
     end: date | None = None,
     limit: int = 50,
-    _: User = Depends(require_admin),
-    db: Session = Depends(get_db),
+    _: User = Depends(require_async_admin),
+    db: AsyncSession = Depends(get_async_db),
 ) -> dict:
     today = datetime.utcnow().date()
     start_date = start or (today - timedelta(days=6))
@@ -2151,13 +2423,13 @@ def admin_errors(
     start_dt = datetime.combine(start_date, datetime.min.time())
     end_dt = datetime.combine(end_date, datetime.max.time())
 
-    errors = (
-        db.query(ErrorLog)
-        .filter(ErrorLog.created_at.between(start_dt, end_dt))
+    res = await db.execute(
+        select(ErrorLog)
+        .where(ErrorLog.created_at.between(start_dt, end_dt))
         .order_by(ErrorLog.created_at.desc())
         .limit(max(1, min(limit, 200)))
-        .all()
     )
+    errors = res.scalars().all()
     return {
         "count": len(errors),
         "items": [
@@ -2176,11 +2448,11 @@ def admin_errors(
 
 
 @app.get("/admin/errors/export")
-def admin_errors_export(
+async def admin_errors_export(
     start: date | None = None,
     end: date | None = None,
-    _: User = Depends(require_admin),
-    db: Session = Depends(get_db),
+    _: User = Depends(require_async_admin),
+    db: AsyncSession = Depends(get_async_db),
 ):
     today = datetime.utcnow().date()
     start_date = start or (today - timedelta(days=6))
@@ -2188,12 +2460,12 @@ def admin_errors_export(
     start_dt = datetime.combine(start_date, datetime.min.time())
     end_dt = datetime.combine(end_date, datetime.max.time())
 
-    errors = (
-        db.query(ErrorLog)
-        .filter(ErrorLog.created_at.between(start_dt, end_dt))
+    res = await db.execute(
+        select(ErrorLog)
+        .where(ErrorLog.created_at.between(start_dt, end_dt))
         .order_by(ErrorLog.created_at.desc())
-        .all()
     )
+    errors = res.scalars().all()
 
     def _iter():
         yield "id,created_at,status_code,method,path,user_id,detail\n"
@@ -2208,21 +2480,22 @@ def admin_errors_export(
 
 
 @app.get("/admin/promocodes", response_model=list[PromoCodeResponse])
-def get_promocodes(
-    _: User = Depends(require_admin),
-    db: Session = Depends(get_db),
+async def get_promocodes(
+    _: User = Depends(require_async_admin),
+    db: AsyncSession = Depends(get_async_db),
 ) -> list[PromoCodeResponse]:
-    promos = db.query(PromoCode).order_by(PromoCode.created_at.desc()).all()
-    return promos
+    res = await db.execute(select(PromoCode).order_by(PromoCode.created_at.desc()))
+    return res.scalars().all()
 
 
 @app.post("/admin/promocodes", response_model=PromoCodeResponse)
-def create_promocode(
+async def create_promocode(
     payload: PromoCodeCreate,
-    _: User = Depends(require_admin),
-    db: Session = Depends(get_db),
+    _: User = Depends(require_async_admin),
+    db: AsyncSession = Depends(get_async_db),
 ) -> PromoCodeResponse:
-    exists = db.query(PromoCode).filter(PromoCode.code == payload.code.upper()).first()
+    res = await db.execute(select(PromoCode).where(PromoCode.code == payload.code.upper()))
+    exists = res.scalar_one_or_none()
     if exists:
         raise HTTPException(status_code=400, detail="Promo code already exists")
         
@@ -2235,56 +2508,64 @@ def create_promocode(
         expires_at=payload.expires_at,
     )
     db.add(promo)
-    db.commit()
-    db.refresh(promo)
+    await db.commit()
+    await db.refresh(promo)
     return promo
 
 
 @app.delete("/admin/promocodes/{promo_id}")
-def delete_promocode(
+async def delete_promocode(
     promo_id: int,
-    _: User = Depends(require_admin),
-    db: Session = Depends(get_db),
+    _: User = Depends(require_async_admin),
+    db: AsyncSession = Depends(get_async_db),
 ) -> dict:
-    promo = db.query(PromoCode).filter(PromoCode.id == promo_id).first()
+    res = await db.execute(select(PromoCode).where(PromoCode.id == promo_id))
+    promo = res.scalar_one_or_none()
     if not promo:
         raise HTTPException(status_code=404, detail="Promo code not found")
         
-    db.delete(promo)
-    db.commit()
+    await db.delete(promo)
+    await db.commit()
     return {"status": "ok"}
 
 
 @app.get("/admin/subscriptions", response_model=list[SubscriptionResponse])
-def admin_subscriptions(
+async def admin_subscriptions(
     tier: str | None = None,
-    _: User = Depends(require_admin),
-    db: Session = Depends(get_db),
+    _: User = Depends(require_async_admin),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """List all users with active or expired subscriptions."""
-    query = db.query(User).filter(User.subscription_tier != "free")
+    query = select(User).where(User.subscription_tier != "free")
     if tier and tier != "all":
-        query = query.filter(User.subscription_tier == tier)
+        query = query.where(User.subscription_tier == tier)
 
-    users = query.order_by(User.subscription_expires_at.desc().nullslast()).all()
+    query = query.order_by(User.subscription_expires_at.desc().nullslast())
+    res_users = await db.execute(query)
+    users = res_users.scalars().all()
     result = []
+    
+    from sqlalchemy.orm import selectinload
     for u in users:
         # Get the latest succeeded payment
-        last_payment = (
-            db.query(Payment)
-            .filter(Payment.user_id == u.id, Payment.status == "succeeded")
+        last_payment_res = await db.execute(
+            select(Payment)
+            .options(selectinload(Payment.promo_code))
+            .where(Payment.user_id == u.id, Payment.status == "succeeded")
             .order_by(Payment.created_at.desc())
-            .first()
+            .limit(1)
         )
+        last_payment = last_payment_res.scalar_one_or_none()
+        
         # Count total payments and total amount spent
-        totals = (
-            db.query(
+        totals_res = await db.execute(
+            select(
                 sa_func.count(Payment.id).label("count"),
                 sa_func.coalesce(sa_func.sum(Payment.amount), 0).label("total"),
             )
-            .filter(Payment.user_id == u.id, Payment.status == "succeeded")
-            .first()
+            .where(Payment.user_id == u.id, Payment.status == "succeeded")
         )
+        totals = totals_res.first()
 
         promo_code_used = None
         if last_payment and last_payment.promo_code:
@@ -2314,29 +2595,30 @@ def admin_subscriptions(
 
 
 @app.post("/admin/rag/add-url", response_model=AdminRAGResponse)
-def admin_add_rag_url(
+async def admin_add_rag_url(
     req: AdminRAGRequest,
-    db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+    _: User = Depends(require_async_admin),
 ):
     """
     Scrapes a URL, saves the text, and injects it into the active RAG collection.
     """
     try:
         from urllib.parse import urlparse
+        import asyncio
         parsed = urlparse(req.url)
         if not parsed.scheme or not parsed.netloc:
             raise HTTPException(status_code=400, detail="Invalid URL format")
             
-        filepath, text = scrape_and_save(req.url)
+        filepath, text = await asyncio.to_thread(scrape_and_save, req.url)
         if not text or not filepath:
             raise HTTPException(status_code=400, detail="Could not extract text from the URL")
             
-        chunks_added = rag.add_text_to_rag(text)
+        chunks_added = await asyncio.to_thread(rag.add_text_to_rag, text)
         
         log_entry = RagLog(source_url=req.url, source_type="URL", status="SUCCESS", chunks_added=chunks_added)
         db.add(log_entry)
-        db.commit()
+        await db.commit()
         
         return AdminRAGResponse(
             success=True,
@@ -2353,16 +2635,17 @@ def admin_add_rag_url(
         try:
             log_entry = RagLog(source_url=req.url, source_type="URL", status="FAILED", chunks_added=0, error_message=str(e))
             db.add(log_entry)
-            db.commit()
-        except:
-            pass
+            await db.commit()
+        except Exception:
+            await db.rollback()
+
         raise HTTPException(status_code=500, detail=f"Failed to process URL: {e}")
 
 @app.post("/admin/rag/add-pdf", response_model=AdminRAGResponse)
 async def admin_add_rag_pdf(
     file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+    _: User = Depends(require_async_admin),
 ):
     """
     Saves an uploaded PDF, extracts text, and injects it into the active RAG collection.
@@ -2374,6 +2657,7 @@ async def admin_add_rag_pdf(
         from pathlib import Path
         import shutil
         import time
+        import asyncio
         
         DOCS_DIR = Path(os.getenv("ADMIN_DOCS_DIR", "admin_docs"))
         DOCS_DIR.mkdir(exist_ok=True)
@@ -2383,8 +2667,10 @@ async def admin_add_rag_pdf(
         ts = int(time.time())
         filepath = DOCS_DIR / f"{ts}_{safe_name}"
         
-        with open(filepath, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        def _save_file():
+            with open(filepath, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+        await asyncio.to_thread(_save_file)
             
         # Parse text - Execute in threadpool to avoid blocking event loop
         text = await run_in_threadpool(extract_text_from_pdf, filepath)
@@ -2393,16 +2679,18 @@ async def admin_add_rag_pdf(
             
         # Create corresponding .txt file for persistence next time server boots
         txt_filepath = DOCS_DIR / f"{ts}_{safe_name}.txt"
-        with open(txt_filepath, "w", encoding="utf-8") as f:
-            f.write(f"Source: Uploaded PDF {file.filename}\n\n")
-            f.write(text)
+        def _save_txt():
+            with open(txt_filepath, "w", encoding="utf-8") as f:
+                f.write(f"Source: Uploaded PDF {file.filename}\n\n")
+                f.write(text)
+        await asyncio.to_thread(_save_txt)
             
         # Load into active RAG - Execute in threadpool
         chunks_added = await run_in_threadpool(rag.add_text_to_rag, text)
         
         log_entry = RagLog(source_url=file.filename, source_type="PDF", status="SUCCESS", chunks_added=chunks_added)
         db.add(log_entry)
-        db.commit()
+        await db.commit()
         
         return AdminRAGResponse(
             success=True,
@@ -2417,9 +2705,10 @@ async def admin_add_rag_pdf(
         try:
             log_entry = RagLog(source_url=file.filename or "unknown.pdf", source_type="PDF", status="FAILED", chunks_added=0, error_message=str(e))
             db.add(log_entry)
-            db.commit()
-        except:
-            pass
+            await db.commit()
+        except Exception:
+            await db.rollback()
+
         raise HTTPException(status_code=500, detail=f"Failed to process PDF: {e}")
 
 class RagLogListResponse(BaseModel):
@@ -2427,22 +2716,23 @@ class RagLogListResponse(BaseModel):
     total: int
 
 @app.get("/admin/rag/logs", response_model=RagLogListResponse)
-def admin_rag_logs(
-    db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+async def admin_rag_logs(
+    db: AsyncSession = Depends(get_async_db),
+    _: User = Depends(require_async_admin),
 ):
     """
     Returns the latest 100 RAG ingestion logs and the total count.
     """
-    total = db.query(RagLog).count()
-    logs = db.query(RagLog).order_by(RagLog.created_at.desc()).limit(100).all()
+    total = (await db.execute(select(sa_func.count()).select_from(RagLog))).scalar()
+    res = await db.execute(select(RagLog).order_by(RagLog.created_at.desc()).limit(100))
+    logs = res.scalars().all()
     return RagLogListResponse(items=logs, total=total)
 
 @app.post("/admin/rag/crawl", response_model=AdminRAGResponse)
-def admin_rag_crawl(
+async def admin_rag_crawl(
     req: AdminRAGCrawlRequest,
     background_tasks: BackgroundTasks,
-    _: User = Depends(require_admin),
+    _: User = Depends(require_async_admin),
 ):
     """
     Spawns a background task to crawl a website or sitemap and inject it entirely into RAG.
@@ -2469,8 +2759,8 @@ def admin_rag_crawl(
 # --- RAG Visualization Admin Endpoints ---
 
 @app.get("/admin/rag/viz")
-def admin_get_rag_viz(
-    _: User = Depends(require_admin),
+async def admin_get_rag_viz(
+    _: User = Depends(require_async_admin),
 ):
     """
     Serves the pre-generated RAG visualization HTML map.
@@ -2482,8 +2772,8 @@ def admin_get_rag_viz(
     return FileResponse(path)
 
 @app.get("/admin/rag/viz/status")
-def admin_get_rag_viz_status(
-    _: User = Depends(require_admin),
+async def admin_get_rag_viz_status(
+    _: User = Depends(require_async_admin),
 ):
     """
     Checks if the visualization map is currently being rebuilt.
@@ -2492,9 +2782,9 @@ def admin_get_rag_viz_status(
     return {"status": "processing" if is_busy else "idling"}
 
 @app.post("/admin/rag/viz/rebuild")
-def admin_rebuild_rag_viz(
+async def admin_rebuild_rag_viz(
     background_tasks: BackgroundTasks,
-    _: User = Depends(require_admin),
+    _: User = Depends(require_async_admin),
 ):
     """
     Triggers a background task to rebuild the semantic RAG map.
@@ -2511,16 +2801,19 @@ def admin_rebuild_rag_viz(
     return {"status": "started", "message": "Rebuild task spawned in background."}
 
 @app.get("/admin/payments", response_model=list[PaymentResponse])
-def admin_payments(
+async def admin_payments(
     status: str | None = None,
-    _: User = Depends(require_admin),
-    db: Session = Depends(get_db),
+    _: User = Depends(require_async_admin),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Full list of all payments."""
-    query = db.query(Payment).order_by(Payment.created_at.desc())
+    from sqlalchemy.orm import selectinload
+    query = select(Payment).options(selectinload(Payment.user), selectinload(Payment.promo_code)).order_by(Payment.created_at.desc())
     if status:
-        query = query.filter(Payment.status == status)
-    payments = query.limit(200).all()
+        query = query.where(Payment.status == status)
+    query = query.limit(200)
+    res = await db.execute(query)
+    payments = res.scalars().all()
     result = []
     for p in payments:
         result.append(PaymentResponse(
@@ -2670,20 +2963,20 @@ SYSTEM_GENERAL_PROMPT = """
 
 
 @app.post("/chat/sessions", response_model=ChatSessionDetailResponse)
-def create_chat_session(
+async def create_chat_session(
     payload: ChatSessionCreateRequest,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ) -> ChatSessionDetailResponse:
-    _check_subscription_limits(user, db, "project")
+    await async_check_subscription_limits(user, db, "project")
 
     session = ChatSession(
         user_id=user.id,
         title=payload.title,
     )
     db.add(session)
-    db.commit()
-    db.refresh(session)
+    await db.commit()
+    await db.refresh(session)
 
     messages_response = []
 
@@ -2696,8 +2989,8 @@ def create_chat_session(
             client_id=payload.client_id
         )
         db.add(user_msg)
-        db.commit()
-        db.refresh(user_msg)  # Get ID
+        await db.commit()
+        await db.refresh(user_msg)  # Get ID
         messages_response.append(ChatMessageResponse.model_validate(user_msg))
 
     # Generate Assistant Greeting
@@ -2713,8 +3006,8 @@ def create_chat_session(
         content=assistant_text, client_id=payload.assistant_client_id
     )
     db.add(ai_msg)
-    db.commit()
-    db.refresh(ai_msg)
+    await db.commit()
+    await db.refresh(ai_msg)
     messages_response.append(ChatMessageResponse.model_validate(ai_msg))
 
     return ChatSessionDetailResponse(
@@ -2730,11 +3023,13 @@ async def rename_chat_session_background(session_id: int, initial_message: str):
         title = await slm_dispatcher.generate_chat_title(initial_message)
         logger.info(f"Generated title '{title}' for session {session_id}")
         
-        with SessionLocal() as db:
-            session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+        from db_async import AsyncSessionLocal
+        async with AsyncSessionLocal() as db:
+            res = await db.execute(select(ChatSession).where(ChatSession.id == session_id))
+            session = res.scalar_one_or_none()
             if session:
                 session.title = title
-                db.commit()
+                await db.commit()
     except Exception as e:
         logger.error(f"Error in background renaming: {e}")
 
@@ -2753,13 +3048,13 @@ def create_guest_intent(payload: IntentCreateRequest):
     return IntentResponse(intent_id=intent_id)
 
 @app.post("/chat/sessions/from-intent", response_model=ChatSessionDetailResponse)
-def create_chat_session_from_intent(
+async def create_chat_session_from_intent(
     payload: ChatSessionFromIntentRequest,
     background_tasks: BackgroundTasks,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ) -> ChatSessionDetailResponse:
-    _check_subscription_limits(user, db, "project")
+    await async_check_subscription_limits(user, db, "project")
     
     redis = get_redis()
     key = f"guest_intent:{payload.intent_id}"
@@ -2775,7 +3070,7 @@ def create_chat_session_from_intent(
         data = json.loads(raw_data)
         initial_message = data.get("initial_message")
         client_id = data.get("client_id")
-    except:
+    except Exception:
         initial_message = raw_data
         client_id = None
 
@@ -2784,8 +3079,8 @@ def create_chat_session_from_intent(
         title="Новый диалог",
     )
     db.add(session)
-    db.commit()
-    db.refresh(session)
+    await db.commit()
+    await db.refresh(session)
 
     messages_response = []
     
@@ -2804,8 +3099,8 @@ def create_chat_session_from_intent(
             client_id=client_id
         )
         db.add(user_msg)
-        db.commit()
-        db.refresh(user_msg)
+        await db.commit()
+        await db.refresh(user_msg)
         messages_response.append(ChatMessageResponse.model_validate(user_msg))
 
     # Generate Assistant Greeting
@@ -2822,8 +3117,8 @@ def create_chat_session_from_intent(
         content=assistant_text, client_id=payload.assistant_client_id
     )
     db.add(ai_msg)
-    db.commit()
-    db.refresh(ai_msg)
+    await db.commit()
+    await db.refresh(ai_msg)
     messages_response.append(ChatMessageResponse.model_validate(ai_msg))
 
     # Clean up intent
@@ -2841,21 +3136,21 @@ def create_chat_session_from_intent(
     )
 
 @app.post("/chat/sessions/auto", response_model=ChatSessionDetailResponse)
-def create_chat_session_auto(
+async def create_chat_session_auto(
     payload: ChatSessionAutoRequest,
     background_tasks: BackgroundTasks,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ) -> ChatSessionDetailResponse:
-    _check_subscription_limits(user, db, "project")
+    await async_check_subscription_limits(user, db, "project")
     
     session = ChatSession(
         user_id=user.id,
         title="Новый диалог",
     )
     db.add(session)
-    db.commit()
-    db.refresh(session)
+    await db.commit()
+    await db.refresh(session)
 
     messages_response = []
     
@@ -2867,8 +3162,8 @@ def create_chat_session_auto(
         client_id=payload.client_id
     )
     db.add(user_msg)
-    db.commit()
-    db.refresh(user_msg)
+    await db.commit()
+    await db.refresh(user_msg)
     messages_response.append(ChatMessageResponse.model_validate(user_msg))
 
     # Fire and forget background rename
@@ -2884,34 +3179,34 @@ def create_chat_session_auto(
 
 
 @app.get("/chat/sessions", response_model=list[ChatSessionResponse])
-def list_chat_sessions(
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+async def list_chat_sessions(
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ) -> list[ChatSessionResponse]:
-    sessions = (
-        db.query(ChatSession)
-        .filter(ChatSession.user_id == user.id)
+    res = await db.execute(
+        select(ChatSession)
+        .where(ChatSession.user_id == user.id)
         .order_by(ChatSession.created_at.desc())
-        .all()
     )
+    sessions = res.scalars().all()
     return sessions
 
 
 @app.get("/chat/sessions/{session_id}", response_model=ChatSessionDetailResponse)
-def get_chat_session(
+async def get_chat_session(
     session_id: int,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ) -> ChatSessionDetailResponse:
-    session = (
-        db.query(ChatSession)
-        .filter(ChatSession.id == session_id, ChatSession.user_id == user.id)
-        .first()
+    from sqlalchemy.orm import selectinload
+    res = await db.execute(
+        select(ChatSession)
+        .options(selectinload(ChatSession.messages), selectinload(ChatSession.analysis))
+        .where(ChatSession.id == session_id, ChatSession.user_id == user.id)
     )
+    session = res.scalar_one_or_none()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-
-    db.refresh(session)
 
     # Manually map messages to avoid N+1 if not careful, though ORM handles it
     msgs = sorted(session.messages, key=lambda m: m.created_at)
@@ -2943,61 +3238,62 @@ def get_chat_session(
 
 
 @app.delete("/chat/sessions/{session_id}")
-def delete_chat_session(
+async def delete_chat_session(
     session_id: int,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ) -> dict:
-    session = (
-        db.query(ChatSession)
-        .filter(ChatSession.id == session_id, ChatSession.user_id == user.id)
-        .first()
+    res = await db.execute(
+        select(ChatSession)
+        .where(ChatSession.id == session_id, ChatSession.user_id == user.id)
     )
+    session = res.scalar_one_or_none()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     
-    db.delete(session)
-    db.commit()
+    await db.delete(session)
+    await db.commit()
     return {"status": "ok", "deleted_id": session_id}
 class FeedbackRequest(BaseModel):
     feedback: int
 
 @app.post("/chat/sessions/{session_id}/messages/{message_id}/feedback")
-def set_chat_message_feedback(
+async def set_chat_message_feedback(
     session_id: int,
     message_id: int,
     payload: FeedbackRequest,
     background_tasks: BackgroundTasks,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ):
-    msg = (
-        db.query(DbChatMessage)
+    res = await db.execute(
+        select(DbChatMessage)
         .join(ChatSession)
-        .filter(
+        .where(
             DbChatMessage.id == message_id,
             DbChatMessage.session_id == session_id,
             ChatSession.user_id == user.id
         )
-        .first()
     )
+    msg = res.scalar_one_or_none()
     if not msg:
         raise HTTPException(status_code=404, detail="Message not found")
     
     msg.feedback = payload.feedback
-    db.commit()
+    await db.commit()
 
     if payload.feedback == 1 and msg.role == "assistant":
-        user_msg = (
-            db.query(DbChatMessage)
-            .filter(
+        res2 = await db.execute(
+            select(DbChatMessage)
+            .where(
                 DbChatMessage.session_id == session_id,
                 DbChatMessage.role == "user",
                 DbChatMessage.created_at < msg.created_at
             )
             .order_by(DbChatMessage.created_at.desc())
-            .first()
+            .limit(1)
         )
+        user_msg = res2.scalar_one_or_none()
         if user_msg:
             from rag import index_successful_chat_interaction
             background_tasks.add_task(index_successful_chat_interaction, user_msg.content, msg.content, message_id)
@@ -3009,18 +3305,20 @@ async def send_chat_message(
     session_id: int,
     payload: ChatMessageCreateRequest,
     background_tasks: BackgroundTasks,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
 ):
-    session = (
-        db.query(ChatSession)
-        .filter(ChatSession.id == session_id, ChatSession.user_id == user.id)
-        .first()
+    from sqlalchemy.orm import selectinload
+    res = await db.execute(
+        select(ChatSession)
+        .options(selectinload(ChatSession.messages))
+        .where(ChatSession.id == session_id, ChatSession.user_id == user.id)
     )
+    session = res.scalar_one_or_none()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    _check_subscription_limits(
+    await async_check_subscription_limits(
         user, 
         db, 
         "message", 
@@ -3037,8 +3335,8 @@ async def send_chat_message(
         client_id=payload.client_id
     )
     db.add(user_msg)
-    db.commit()
-    db.refresh(session)
+    await db.commit()
+    await db.refresh(session)
 
     if len(session.messages) == 1:
         background_tasks.add_task(rename_chat_session_background, session.id, payload.content)
@@ -3070,13 +3368,8 @@ async def send_chat_message(
         message_saved = False  # Track if the message was successfully queued for saving
         
         try:
-            # We need history for contextual responses
-            history = (
-                db.query(DbChatMessage)
-                .filter(DbChatMessage.session_id == session.id)
-                .order_by(DbChatMessage.created_at.asc())
-                .all()
-            )
+            # We need history for contextual responses — use pre-loaded messages
+            history = sorted(session.messages, key=lambda m: m.created_at)
             chat_history = [ChatMessage(role=m.role, content=m.content) for m in history]
             
             # Identify RAG contexts in parallel to reduce latency
@@ -3106,7 +3399,7 @@ async def send_chat_message(
 
             # 3.1 MODE: PRESENTATION GENERATION
             if is_pres_request:
-                yield json.dumps({"type": "chunk", "content": "Начинаю сборку вашей презентации...\n\n"}) + "\n"
+                yield format_sse({"type": "chunk", "content": "Начинаю сборку вашей презентации...\n\n"})
                 full_response += "Начинаю сборку вашей презентации...\n\n"
                 
                 # Use history and context to build slides
@@ -3117,21 +3410,21 @@ async def send_chat_message(
                 async for item in _handle_presentation_in_chat(payload.content, history_text, context_text):
                     if item["type"] == "thought":
                         full_thoughts += item["content"]
-                        yield json.dumps(item) + "\n"
+                        yield format_sse(item)
                     elif item["type"] == "presentation":
                         final_slides = item["data"]
-                        yield json.dumps(item) + "\n"
+                        yield format_sse(item)
                     elif item["type"] == "chunk":
                         full_response += item["content"]
-                        yield json.dumps(item) + "\n"
+                        yield format_sse(item)
                 
                 if final_slides:
                     msg = "Презентация успешно сгенерирована! Открываю панель просмотра."
-                    yield json.dumps({"type": "chunk", "content": msg}) + "\n"
+                    yield format_sse({"type": "chunk", "content": msg})
                     full_response += msg
                 else:
                     msg = "К сожалению, не удалось сгенерировать правильный формат презентации. Попробуйте еще раз или уточните запрос."
-                    yield json.dumps({"type": "chunk", "content": msg}) + "\n"
+                    yield format_sse({"type": "chunk", "content": msg})
                     full_response += msg
 
             # 4. MODE: DEEP RESEARCH
@@ -3145,7 +3438,7 @@ async def send_chat_message(
                         full_thoughts += chunk["content"]
                     elif chunk["type"] == "sources":
                         sources = chunk.get("data", [])
-                    yield json.dumps(chunk) + "\n"
+                    yield format_sse(chunk)
             
             # 4. MODE: QUICK SEARCH OR REGULAR CHAT
             else:
@@ -3158,7 +3451,7 @@ async def send_chat_message(
                     if search_ctx:
                         user_prompt = f"ДАННЫЕ ИЗ БАЗЫ:\n\n{context_chunks}\n\nДАННЫЕ ИЗ ИНТЕРНЕТА:\n\n{search_ctx}\n\nВопрос: {payload.content}"
                         if sources:
-                            yield json.dumps({"type": "sources", "data": sources}) + "\n"
+                            yield format_sse({"type": "sources", "data": sources})
 
                 raw_gen = stream_makura(SYSTEM_CHAT_PROMPT, user_prompt)
                 
@@ -3190,7 +3483,7 @@ async def send_chat_message(
                 full_response = full_thoughts.strip()
                 full_thoughts = ""
                 # Emit the rescued content as a chunk so frontend displays it
-                yield json.dumps({"type": "chunk", "content": full_response}) + "\n"
+                yield format_sse({"type": "chunk", "content": full_response})
 
             # Save assistant response in background using asyncio instead of background_tasks
             if full_response:
@@ -3207,7 +3500,7 @@ async def send_chat_message(
                 )
         except Exception as e:
             logger.error(f"Session streaming failed: {e}")
-            yield json.dumps({"type": "error", "content": str(e)}) + "\n"
+            yield format_sse({"type": "error", "content": str(e)})
         finally:
             # Rescue save: if message wasn't saved (e.g. stream aborted), save the partial response
             if not message_saved and full_response.strip():
@@ -3246,7 +3539,7 @@ async def send_chat_message(
         "Connection": "keep-alive",
         "X-Accel-Buffering": "no"
     }
-    return StreamingResponse(session_chat_generator(), media_type="text/event-stream", headers=headers)
+    return EventSourceResponse(session_chat_generator(), headers=headers)
 
 
 async def _handle_presentation_in_chat(user_message: str, history_text: str, rag_context: str):
@@ -3314,7 +3607,7 @@ async def _handle_presentation_in_chat(user_message: str, history_text: str, rag
         logger.error(f"Failed Slide Agent Flow: {e}")
         yield {"type": "chunk", "content": f"\nОшибка при сборке слайдов: {str(e)}"}
 
-async def _generate_interviewer_response(session: ChatSession, db: Session) -> str:
+async def _generate_interviewer_response(session: ChatSession, db: AsyncSession) -> str:
     # Fetch history
     history_msgs = sorted(session.messages, key=lambda m: m.created_at)
 
@@ -3341,7 +3634,7 @@ async def _generate_interviewer_response(session: ChatSession, db: Session) -> s
         try:
             # Parallel Phase 1: Intent, History RAG, Search Intent
             intent_task = classify_intent(last_user_text)
-            history_rag_task = asyncio.to_thread(rag.search_successful_chats, last_user_text, top_k=1)
+            history_rag_task = asyncio.create_task(rag.asearch_successful_chats(last_user_text, top_k=1))
             search_intent_task = slm_dispatcher.detect_search_intent(last_user_text)
             
             categories, successful_chats, search_decision = await asyncio.gather(
@@ -3445,7 +3738,7 @@ async def _generate_interviewer_response(session: ChatSession, db: Session) -> s
         if topic == "Анализ идеи" and "{" in clean_text and "}" in clean_text:
             # Try parse
             try:
-                data = extract_json(clean_text)
+                data = extract_json_zai(clean_text)
                 # It is analysis!
                 # Validate fields
                 if "investment_score" in data:
@@ -3463,13 +3756,13 @@ async def _generate_interviewer_response(session: ChatSession, db: Session) -> s
                         market_summary=normalized["market_summary"],
                     )
                     db.add(analysis)
-                    db.commit()
-                    db.refresh(analysis)
+                    await db.commit()
+                    await db.refresh(analysis)
 
                     # Link to Session
                     session.analysis_id = analysis.id
-                    db.commit()
-                    db.refresh(session)
+                    await db.commit()
+                    await db.refresh(session)
 
                     return (
                         f"Анализ готов! \n\n**Резюме:** {analysis.market_summary}\n\n"
@@ -3485,3 +3778,4 @@ async def _generate_interviewer_response(session: ChatSession, db: Session) -> s
     except Exception as e:
         logger.error(f"Interviewer Error: {e}")
         return "Извините, я задумался. Можете повторить?"
+

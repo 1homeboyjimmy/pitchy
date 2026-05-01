@@ -1,11 +1,18 @@
-import Layout from "@/components/Layout";
+import { TopNavBar } from "@/components/shared/TopNavBar";
+import { SiteFooter } from "@/components/shared/SiteFooter";
 
 export default function CookiesPage() {
     return (
-        <Layout>
-            <div className="min-h-screen pt-24 pb-16 px-4 flex justify-center">
-                <div className="max-w-4xl w-full text-white prose prose-invert">
-                    <h1 className="text-3xl font-bold mb-8">Политика использования файлов Cookie</h1>
+        <div className="bg-background text-on-background antialiased min-h-screen flex flex-col">
+            <TopNavBar />
+            <main className="flex-grow pt-24 pb-16 px-6 md:px-12 max-w-[1440px] mx-auto w-full">
+                <header className="mb-12 mt-8 md:mt-16">
+                    <div className="inline-block bg-white/5 border border-white/[0.08] rounded px-3 py-1 mb-6">
+                        <span className="font-mono-label text-[11px] text-neutral-400 uppercase tracking-widest">PITCHY.PRO / LEGAL</span>
+                    </div>
+                    <h1 className="font-display text-[40px] leading-none tracking-tight text-primary mb-6 max-w-3xl">Политика файлов Cookie</h1>
+                </header>
+                <div className="max-w-3xl text-neutral-300 prose prose-invert prose-neutral prose-headings:text-white">
 
                     <h2 className="text-2xl font-semibold mt-8 mb-4">1. Общие положения</h2>
                     <p className="text-white/70 mb-4">
@@ -70,7 +77,8 @@ export default function CookiesPage() {
                         Дата последнего обновления: 26 февраля 2026 года.
                     </p>
                 </div>
-            </div>
-        </Layout>
+            </main>
+            <SiteFooter />
+        </div>
     );
 }

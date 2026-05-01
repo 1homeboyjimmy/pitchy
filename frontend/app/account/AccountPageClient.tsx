@@ -3,11 +3,11 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useMounted } from "@mantine/hooks";
-import Layout from "@/components/Layout";
-import { GlassCard, Button } from "@/components/shared";
+import { TopNavBar } from "@/components/shared/TopNavBar";
+import { SiteFooter } from "@/components/shared/SiteFooter";
 import { clearToken, getToken } from "@/lib/auth";
 import { postAuthJson, patchAuthJson, UserProfile } from "@/lib/api";
-import { LogOut, User, Shield, ChevronLeft, Check } from "react-feather";
+import { LogOut, User, Shield, CheckCircle2, ChevronLeft, Check } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 export function AccountPageClient() {
@@ -55,8 +55,6 @@ export function AccountPageClient() {
     router.refresh();
   };
 
-  // ...
-
   const handleResendVerification = async () => {
     setIsResending(true);
     try {
@@ -80,7 +78,6 @@ export function AccountPageClient() {
         await patchAuthJson("/me", { email: emailInput }, token);
         setIsAddEmailOpen(false);
         setShowEmailSentModal(true);
-        // Refresh user data
         const data = await postAuthJson<UserProfile>("/me", {}, token);
         setUser(data);
       }
@@ -125,7 +122,6 @@ export function AccountPageClient() {
   };
 
   const handleInitiateChangeEmail = async () => {
-    // Basic validation
     if (!emailForm.new || !emailForm.confirm) {
       alert("Заполните все поля");
       return;
@@ -142,9 +138,6 @@ export function AccountPageClient() {
     try {
       const token = getToken();
       if (token) {
-        // This triggers the backend to send a code to the new email
-        // Note: The backend updates the email immediately but sets verified=False
-        // We are using the existing behavior but guiding the user through a code flow
         await patchAuthJson("/me", { email: emailForm.new }, token);
         setEmailStep("confirm");
       }
@@ -168,7 +161,6 @@ export function AccountPageClient() {
         setEmailForm({ new: "", confirm: "", code: "" });
         setEmailStep("init");
 
-        // Refresh user data
         const data = await postAuthJson<UserProfile>("/me", {}, token);
         setUser(data);
       }
@@ -182,223 +174,252 @@ export function AccountPageClient() {
 
   if (loading) {
     return (
-      <Layout>
-        <div className="min-h-[calc(100vh-5rem)] flex items-center justify-center">
-          <div className="w-8 h-8 border-2 border-white/20 border-t-pitchy-violet rounded-full animate-spin" />
-        </div>
-      </Layout>
+      <div className="bg-[#0A0A0A] min-h-screen flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+      </div>
     );
   }
 
+  const isEmailVerified = user?.email && (user?.email_verified || user?.is_social);
+  const isEmailUnverified = user?.email && !user?.email_verified && !user?.is_social;
+  const isEmailMissing = user?.is_social && !user?.email;
+
+  const subscriptionLabel = user?.subscription_tier === 'premium' ? 'Премиум' 
+    : user?.subscription_tier === 'pro' ? 'Pro' 
+    : user?.subscription_tier === 'starter' ? 'Starter' 
+    : user?.subscription_tier === 'tester' ? 'Tester' 
+    : 'Бесплатный';
+
   return (
-    <Layout>
-      <div className="min-h-[calc(100vh-5rem)] py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-3xl mx-auto">
-          <button
-            onClick={() => router.back()}
-            className="flex items-center text-white/50 hover:text-white mb-8 transition-colors"
-          >
-            <ChevronLeft className="w-4 h-4 mr-1" />
-            Назад
-          </button>
+    <div className="bg-[#0A0A0A] text-white antialiased min-h-screen flex flex-col font-sans">
+      <TopNavBar />
+      
+      <main className="flex-grow w-full max-w-[1024px] mx-auto px-6 py-12 flex flex-col gap-12 pt-24 pb-20">
+        
+        {/* Header */}
+        <header className="flex flex-col gap-2 relative">
+            <button
+                onClick={() => router.back()}
+                className="absolute -top-10 left-0 flex items-center text-neutral-500 hover:text-white transition-colors text-sm"
+            >
+                <ChevronLeft className="w-4 h-4 mr-1" />
+                Назад
+            </button>
+            <h1 className="font-display text-[32px] font-semibold text-white leading-tight tracking-tight">Аккаунт</h1>
+            <p className="font-mono-label text-[12px] uppercase tracking-widest text-neutral-400">Управление вашим профилем</p>
+        </header>
 
-          <header className="mb-8">
-            <h1 className="text-3xl font-bold text-white mb-2">Аккаунт</h1>
-            <p className="text-white/50">Управление вашим профилем</p>
-          </header>
-
-          <div className="space-y-6">
-            {/* Profile Card */}
-            <GlassCard hover={false} className="p-8">
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-start justify-between gap-6 sm:gap-0">
-                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                  <div className="w-16 h-16 rounded-full bg-pitchy-violet/20 flex items-center justify-center border border-pitchy-violet/30 shrink-0">
-                    <User className="w-8 h-8 text-pitchy-violet" />
-                  </div>
-                  <div>
-                    <div className="flex items-baseline gap-3 mb-1">
-                      <h2 className="text-xl font-bold text-white leading-none">{user?.name || "Пользователь"}</h2>
-                      <span className="text-xs text-white/40 font-medium tracking-wide">ID: {user?.id}</span>
-                    </div>
-                    <div className="flex flex-col md:flex-row items-start md:items-center gap-2">
-                      <p className="text-white/50 truncate max-w-full">{user?.email || "Email не указан"}</p>
-                      {user?.email && !(user?.email_verified || user?.is_social) && (
-                        <span className="text-xs bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full border border-amber-500/20 whitespace-nowrap">Не подтвержден</span>
-                      )}
-                      {user?.email && (user?.email_verified || user?.is_social) && (
-                        <span className="text-xs bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20 flex items-center gap-1 whitespace-nowrap">
-                          <Check className="w-3 h-3" />
-                          Подтвержден
-                        </span>
-                      )}
-                    </div>
-                    {/* Subscription Badge */}
-                    <div className="inline-flex items-center mt-1">
-                      <span className={`text-xs px-2.5 py-1 rounded-full border font-medium ${user?.subscription_tier === 'premium'
-                        ? 'bg-pitchy-cyan/10 text-pitchy-cyan border-pitchy-cyan/20'
-                        : user?.subscription_tier === 'pro' || user?.subscription_tier === 'starter'
-                          ? 'bg-pitchy-violet/10 text-pitchy-violet border-pitchy-violet/20'
-                          : user?.subscription_tier === 'tester'
-                            ? 'bg-pink-500/10 text-pink-400 border-pink-500/20'
-                            : 'bg-white/5 text-white/70 border-white/10'
-                        }`}>
-                        Тариф: {user?.subscription_tier === 'premium' ? 'Премиум' : user?.subscription_tier === 'pro' ? 'Pro' : user?.subscription_tier === 'starter' ? 'Starter' : user?.subscription_tier === 'tester' ? 'Tester' : 'Бесплатный'}
-                      </span>
-                      {user?.is_admin && (
-                        <span className="text-xs px-2.5 py-1 rounded-full border font-medium bg-amber-500/10 text-amber-500 border-amber-500/20 ml-2">
-                          Администратор
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                <Button
-                  variant="glass"
-                  className="w-full sm:w-auto text-red-400 hover:text-red-300 hover:bg-red-500/10 border-red-500/20 flex justify-center mt-2 sm:mt-0"
-                  onClick={handleLogout}
-                  icon={<LogOut className="w-4 h-4" />}
-                  iconPosition="left"
-                >
-                  Выйти
-                </Button>
+        {/* Profile Card */}
+        <section className="bg-[#111111] border border-white/10 rounded p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 relative overflow-hidden group">
+          <div className="absolute inset-0 bg-gradient-to-br from-white/[0.04] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"></div>
+          
+          <div className="flex items-center gap-6 relative z-10 w-full md:w-auto">
+            <div className="w-20 h-20 rounded-full border border-white/10 bg-white/5 flex items-center justify-center shrink-0">
+               <User className="w-8 h-8 text-neutral-400" />
+            </div>
+            
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-3">
+                <h2 className="font-display text-[24px] font-medium text-white">{user?.name || "Пользователь"}</h2>
+                {isEmailVerified && (
+                  <span className="bg-white/5 border border-white/10 text-white font-mono-label text-[12px] uppercase tracking-widest px-2 py-1 rounded flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Подтвержден
+                  </span>
+                )}
+                {isEmailUnverified && (
+                  <span className="bg-amber-500/10 border border-amber-500/20 text-amber-400 font-mono-label text-[12px] uppercase tracking-widest px-2 py-1 rounded">
+                    Не подтвержден
+                  </span>
+                )}
               </div>
-
-              {/* Email Actions */}
-              {((user?.is_social && !user?.email) || (user?.email && !user?.email_verified && !user?.is_social)) && (
-                <div className="mt-6 pt-6 border-t border-white/10 flex flex-wrap gap-3">
-                  {user?.is_social && !user?.email && (
-                    <Button size="sm" variant="secondary" onClick={() => setIsAddEmailOpen(true)}>
-                      Добавить Email
-                    </Button>
-                  )}
-                  {user?.email && !user?.email_verified && !user?.is_social && (
-                    <Button size="sm" variant="secondary" onClick={handleResendVerification} disabled={isResending}>
-                      {isResending ? "Отправка..." : "Подтвердить Email"}
-                    </Button>
-                  )}
-                </div>
-              )}
-            </GlassCard>
-
-            {/* Security Section */}
-            <GlassCard hover={false} className="p-8">
-              <div className="flex items-center gap-3 mb-6">
-                <Shield className="w-5 h-5 text-emerald-400" />
-                <h3 className="text-lg font-semibold text-white">Безопасность</h3>
+              
+              <div className="flex items-center gap-4 text-neutral-400 font-code text-[13px]">
+                <span>ID: {user?.id}</span>
+                <span className="w-[1px] h-3 bg-white/10"></span>
+                <span className="truncate max-w-[200px] sm:max-w-none">{user?.email || "Email не указан"}</span>
               </div>
-
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-xl bg-white/5 border border-white/10 mb-3">
-                <div>
-                  <p className="text-white font-medium">Email</p>
-                  <p className="text-xs text-white/40">{user?.email || "Не указан"}</p>
-                </div>
-                <Button variant="secondary" size="sm" onClick={() => setIsChangeEmailOpen(true)}>Изменить</Button>
+              
+              <div className="flex items-center gap-2 mt-2 flex-wrap">
+                <span className="bg-white/5 border border-white/10 text-neutral-300 font-mono-label text-[12px] uppercase tracking-widest px-2 py-1 rounded">Тариф: {subscriptionLabel}</span>
+                {user?.is_admin && (
+                  <span className="bg-amber-500/10 border border-amber-500/20 text-amber-500 font-mono-label text-[12px] uppercase tracking-widest px-2 py-1 rounded">Администратор</span>
+                )}
               </div>
-
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-xl bg-white/5 border border-white/10">
-                <div>
-                  <p className="text-white font-medium">Пароль</p>
-                  <p className="text-xs text-white/40">Последнее изменение: никогда</p>
-                </div>
-                <Button variant="secondary" size="sm" onClick={() => setIsChangePasswordOpen(true)}>Изменить</Button>
-              </div>
-            </GlassCard>
-
-
+            </div>
           </div>
-        </div>
-      </div>
+          
+          <button 
+            onClick={handleLogout}
+            className="relative z-10 w-full md:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-transparent border border-white/10 text-white font-mono-label text-[12px] uppercase tracking-widest rounded hover:bg-white/5 hover:text-red-400 transition-colors"
+          >
+            <LogOut className="w-4 h-4" />
+            Выйти
+          </button>
+        </section>
 
+        {/* Email Verification Actions */}
+        {(isEmailMissing || isEmailUnverified) && (
+          <section className="bg-amber-500/5 border border-amber-500/10 rounded p-6">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+              <p className="text-sm text-amber-200/70">
+                {isEmailMissing ? "Добавьте email, чтобы обезопасить аккаунт." : "Подтвердите email, чтобы получить полный доступ к функциям платформы."}
+              </p>
+              {isEmailMissing && (
+                <button 
+                  onClick={() => setIsAddEmailOpen(true)}
+                  className="bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 font-mono-label text-[12px] uppercase tracking-widest px-4 py-2 rounded transition-colors whitespace-nowrap"
+                >
+                  Добавить Email
+                </button>
+              )}
+              {isEmailUnverified && (
+                <button 
+                  onClick={handleResendVerification}
+                  disabled={isResending}
+                  className="bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 disabled:opacity-50 font-mono-label text-[12px] uppercase tracking-widest px-4 py-2 rounded transition-colors whitespace-nowrap"
+                >
+                  {isResending ? "Отправка..." : "Отправить код"}
+                </button>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* Security Section */}
+        <section className="flex flex-col gap-6">
+          <h3 className="font-display text-[24px] font-medium text-white flex items-center gap-3 border-b border-white/10 pb-4">
+            <Shield className="w-5 h-5 text-neutral-400" />
+            Безопасность
+          </h3>
+          
+          <div className="flex flex-col border border-white/10 rounded bg-[#111111] overflow-hidden group/list relative">
+            <div className="absolute inset-0 bg-gradient-to-br from-white/[0.02] to-transparent opacity-0 group-hover/list:opacity-100 transition-opacity duration-500 pointer-events-none"></div>
+            
+            {/* Email Row */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between p-6 border-b border-white/10 gap-4 hover:bg-white/[0.02] transition-colors relative z-10">
+              <div className="flex flex-col gap-1">
+                <span className="font-mono-label text-[12px] uppercase tracking-widest text-neutral-400">Email</span>
+                <span className="font-code text-[13px] text-white">{user?.email || "Не указан"}</span>
+              </div>
+              <button 
+                onClick={() => setIsChangeEmailOpen(true)}
+                className="self-start sm:self-center px-4 py-2 bg-transparent border border-white/10 text-white font-mono-label text-[12px] uppercase tracking-widest rounded hover:bg-white/5 transition-colors"
+              >
+                Изменить
+              </button>
+            </div>
+            
+            {/* Password Row */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between p-6 gap-4 hover:bg-white/[0.02] transition-colors relative z-10">
+              <div className="flex flex-col gap-1">
+                <span className="font-mono-label text-[12px] uppercase tracking-widest text-neutral-400">Пароль</span>
+                <span className="font-code text-[13px] text-neutral-500">Регулярно обновляйте для безопасности</span>
+              </div>
+              <button 
+                onClick={() => setIsChangePasswordOpen(true)}
+                className="self-start sm:self-center px-4 py-2 bg-transparent border border-white/10 text-white font-mono-label text-[12px] uppercase tracking-widest rounded hover:bg-white/5 transition-colors"
+              >
+                Изменить
+              </button>
+            </div>
+          </div>
+        </section>
+
+      </main>
+
+      {/* MODALS */}
+      
       {/* Add Email Modal */}
       {isAddEmailOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <GlassCard className="w-full max-w-md p-6" hover={false}>
-            <h3 className="text-xl font-bold text-white mb-4">Добавить Email</h3>
+          <div className="bg-[#111111] border border-white/10 rounded w-full max-w-md p-6">
+            <h3 className="text-xl font-display font-medium text-white mb-6">Добавить Email</h3>
             <input
               type="email"
               placeholder="user@example.com"
               value={emailInput}
               onChange={(e) => setEmailInput(e.target.value)}
-              className="pitchy-input w-full mb-4"
+              className="bg-[#0A0A0A] border border-white/[0.08] text-white rounded p-3 font-code text-[13px] w-full h-11 focus:outline-none focus:border-white/40 transition-colors mb-6"
             />
             <div className="flex justify-end gap-3">
-              <Button variant="ghost" onClick={() => setIsAddEmailOpen(false)}>Отмена</Button>
-              <Button variant="primary" onClick={handleAddEmail}>Сохранить</Button>
+              <button className="px-4 py-2 font-mono-label text-[12px] uppercase tracking-widest text-neutral-400 hover:text-white transition-colors" onClick={() => setIsAddEmailOpen(false)}>Отмена</button>
+              <button className="px-4 py-2 bg-white text-black font-mono-label text-[12px] uppercase tracking-widest rounded hover:opacity-90 transition-opacity" onClick={handleAddEmail}>Сохранить</button>
             </div>
-          </GlassCard>
+          </div>
         </div>
       )}
 
-      {/* Change Password Modal (2 Steps) */}
+      {/* Change Password Modal */}
       {isChangePasswordOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <GlassCard className="w-full max-w-md p-6" hover={false}>
-            <h3 className="text-xl font-bold text-white mb-4">Сменить пароль</h3>
+          <div className="bg-[#111111] border border-white/10 rounded w-full max-w-md p-6">
+            <h3 className="text-xl font-display font-medium text-white mb-6">Сменить пароль</h3>
 
             {passwordStep === "init" && (
               <>
                 <div className="space-y-4">
                   <div>
-                    <label className="text-xs text-white/50 mb-1 block">Текущий пароль</label>
+                    <label className="font-mono-label text-[11px] uppercase tracking-widest text-neutral-400 mb-2 block">Текущий пароль</label>
                     <input
                       type="password"
                       value={passwordForm.current}
                       onChange={(e) => setPasswordForm({ ...passwordForm, current: e.target.value })}
-                      className="pitchy-input w-full"
+                      className="bg-[#0A0A0A] border border-white/[0.08] text-white rounded p-3 font-code text-[13px] w-full h-11 focus:outline-none focus:border-white/40 transition-colors"
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-white/50 mb-1 block">Новый пароль</label>
+                    <label className="font-mono-label text-[11px] uppercase tracking-widest text-neutral-400 mb-2 block">Новый пароль</label>
                     <input
                       type="password"
                       value={passwordForm.new}
                       onChange={(e) => setPasswordForm({ ...passwordForm, new: e.target.value })}
-                      className="pitchy-input w-full"
+                      className="bg-[#0A0A0A] border border-white/[0.08] text-white rounded p-3 font-code text-[13px] w-full h-11 focus:outline-none focus:border-white/40 transition-colors"
                     />
-                    <p className="text-xs text-white/30 mt-1">Минимум 8 символов</p>
+                    <p className="text-[11px] text-white/30 mt-2 font-mono-label uppercase tracking-widest">Минимум 8 символов</p>
                   </div>
                 </div>
-                <div className="flex justify-end gap-3 mt-6">
-                  <Button variant="ghost" onClick={() => setIsChangePasswordOpen(false)}>Отмена</Button>
-                  <Button variant="primary" onClick={handleInitiateChangePassword}>Далее</Button>
+                <div className="flex justify-end gap-3 mt-8">
+                  <button className="px-4 py-2 font-mono-label text-[12px] uppercase tracking-widest text-neutral-400 hover:text-white transition-colors" onClick={() => setIsChangePasswordOpen(false)}>Отмена</button>
+                  <button className="px-4 py-2 bg-white text-black font-mono-label text-[12px] uppercase tracking-widest rounded hover:opacity-90 transition-opacity" onClick={handleInitiateChangePassword}>Далее</button>
                 </div>
               </>
             )}
 
             {passwordStep === "confirm" && (
               <>
-                <p className="text-white/70 text-sm mb-4">
+                <p className="text-neutral-400 text-sm mb-6 leading-relaxed">
                   Мы отправили код подтверждения на <b>{user?.email}</b>.
                   Введите его ниже для подтверждения смены пароля.
                 </p>
                 <div className="space-y-4">
                   <div>
-                    <label className="text-xs text-white/50 mb-1 block">Код из письма</label>
+                    <label className="font-mono-label text-[11px] uppercase tracking-widest text-neutral-400 mb-2 block">Код из письма</label>
                     <input
                       type="text"
                       placeholder="123456"
                       value={passwordForm.code}
                       onChange={(e) => setPasswordForm({ ...passwordForm, code: e.target.value })}
-                      className="pitchy-input w-full text-center tracking-widest text-lg"
+                      className="bg-[#0A0A0A] border border-white/[0.08] text-white rounded p-3 font-code text-[18px] w-full h-12 focus:outline-none focus:border-white/40 transition-colors text-center tracking-[0.5em]"
                     />
                   </div>
                 </div>
-                <div className="flex justify-end gap-3 mt-6">
-                  <Button variant="ghost" onClick={() => setPasswordStep("init")}>Назад</Button>
-                  <Button variant="primary" onClick={handleConfirmChangePassword}>Подтвердить</Button>
+                <div className="flex justify-end gap-3 mt-8">
+                  <button className="px-4 py-2 font-mono-label text-[12px] uppercase tracking-widest text-neutral-400 hover:text-white transition-colors" onClick={() => setPasswordStep("init")}>Назад</button>
+                  <button className="px-4 py-2 bg-white text-black font-mono-label text-[12px] uppercase tracking-widest rounded hover:opacity-90 transition-opacity" onClick={handleConfirmChangePassword}>Подтвердить</button>
                 </div>
               </>
             )}
-          </GlassCard>
+          </div>
         </div>
       )}
 
       {/* Change Email Modal */}
       {isChangeEmailOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <GlassCard className="w-full max-w-md overflow-hidden relative" hover={false}>
-            <motion.div layout className="p-6">
-              <motion.h3 layout="position" className="text-xl font-bold text-white mb-4">Сменить Email</motion.h3>
+          <div className="bg-[#111111] border border-white/10 rounded w-full max-w-md p-6 overflow-hidden relative">
+            <motion.div layout>
+              <motion.h3 layout="position" className="text-xl font-display font-medium text-white mb-6">Сменить Email</motion.h3>
 
               <AnimatePresence mode="wait">
                 {emailStep === "init" && (
@@ -411,29 +432,29 @@ export function AccountPageClient() {
                   >
                     <div className="space-y-4">
                       <div>
-                        <label className="text-xs text-white/50 mb-1 block">Новая почта</label>
+                        <label className="font-mono-label text-[11px] uppercase tracking-widest text-neutral-400 mb-2 block">Новая почта</label>
                         <input
                           type="email"
                           placeholder="new@example.com"
                           value={emailForm.new}
                           onChange={(e) => setEmailForm({ ...emailForm, new: e.target.value })}
-                          className="pitchy-input w-full"
+                          className="bg-[#0A0A0A] border border-white/[0.08] text-white rounded p-3 font-code text-[13px] w-full h-11 focus:outline-none focus:border-white/40 transition-colors"
                         />
                       </div>
                       <div>
-                        <label className="text-xs text-white/50 mb-1 block">Подтверждение почты</label>
+                        <label className="font-mono-label text-[11px] uppercase tracking-widest text-neutral-400 mb-2 block">Подтверждение почты</label>
                         <input
                           type="email"
                           placeholder="new@example.com"
                           value={emailForm.confirm}
                           onChange={(e) => setEmailForm({ ...emailForm, confirm: e.target.value })}
-                          className="pitchy-input w-full"
+                          className="bg-[#0A0A0A] border border-white/[0.08] text-white rounded p-3 font-code text-[13px] w-full h-11 focus:outline-none focus:border-white/40 transition-colors"
                         />
                       </div>
                     </div>
-                    <div className="flex justify-end gap-3 mt-6">
-                      <Button variant="ghost" onClick={() => { setIsChangeEmailOpen(false); setEmailForm({ new: "", confirm: "", code: "" }); }}>Отмена</Button>
-                      <Button variant="primary" onClick={handleInitiateChangeEmail}>Далее</Button>
+                    <div className="flex justify-end gap-3 mt-8">
+                      <button className="px-4 py-2 font-mono-label text-[12px] uppercase tracking-widest text-neutral-400 hover:text-white transition-colors" onClick={() => { setIsChangeEmailOpen(false); setEmailForm({ new: "", confirm: "", code: "" }); }}>Отмена</button>
+                      <button className="px-4 py-2 bg-white text-black font-mono-label text-[12px] uppercase tracking-widest rounded hover:opacity-90 transition-opacity" onClick={handleInitiateChangeEmail}>Далее</button>
                     </div>
                   </motion.div>
                 )}
@@ -446,57 +467,59 @@ export function AccountPageClient() {
                     exit={{ opacity: 0, x: 20 }}
                     transition={{ duration: 0.2 }}
                   >
-                    <p className="text-white/70 text-sm mb-4">
+                    <p className="text-neutral-400 text-sm mb-6 leading-relaxed">
                       Мы отправили код подтверждения на <b>{emailForm.new}</b>.
                       Введите его ниже для подтверждения смены почты.
                     </p>
                     <div className="space-y-4">
                       <div>
-                        <label className="text-xs text-white/50 mb-1 block">Код подтверждения</label>
+                        <label className="font-mono-label text-[11px] uppercase tracking-widest text-neutral-400 mb-2 block">Код подтверждения</label>
                         <input
                           type="text"
                           placeholder="123456"
                           value={emailForm.code}
                           onChange={(e) => setEmailForm({ ...emailForm, code: e.target.value })}
-                          className="pitchy-input w-full text-center tracking-widest text-lg"
+                          className="bg-[#0A0A0A] border border-white/[0.08] text-white rounded p-3 font-code text-[18px] w-full h-12 focus:outline-none focus:border-white/40 transition-colors text-center tracking-[0.5em]"
                         />
                       </div>
                     </div>
-                    <div className="flex justify-end gap-3 mt-6">
-                      <Button variant="ghost" onClick={() => setEmailStep("init")}>Назад</Button>
-                      <Button variant="primary" onClick={handleConfirmChangeEmail}>Подтвердить</Button>
+                    <div className="flex justify-end gap-3 mt-8">
+                      <button className="px-4 py-2 font-mono-label text-[12px] uppercase tracking-widest text-neutral-400 hover:text-white transition-colors" onClick={() => setEmailStep("init")}>Назад</button>
+                      <button className="px-4 py-2 bg-white text-black font-mono-label text-[12px] uppercase tracking-widest rounded hover:opacity-90 transition-opacity" onClick={handleConfirmChangeEmail}>Подтвердить</button>
                     </div>
                   </motion.div>
                 )}
               </AnimatePresence>
             </motion.div>
-          </GlassCard>
+          </div>
         </div>
       )}
 
       {/* Email Sent Confirmation Modal */}
       {showEmailSentModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <GlassCard className="w-full max-w-sm p-6 text-center" hover={false}>
-            <div className="flex justify-center mb-4">
-              <div className="w-12 h-12 rounded-full bg-emerald-500/20 flex items-center justify-center border border-emerald-500/30">
-                <Check className="w-6 h-6 text-emerald-400" />
+          <div className="bg-[#111111] border border-white/10 rounded w-full max-w-sm p-8 text-center">
+            <div className="flex justify-center mb-6">
+              <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center border border-white/10">
+                <Check className="w-8 h-8 text-white" />
               </div>
             </div>
-            <h3 className="text-lg font-bold text-white mb-2">Письмо отправлено!</h3>
-            <p className="text-white/60 text-sm mb-6">
+            <h3 className="text-xl font-display font-medium text-white mb-3">Письмо отправлено</h3>
+            <p className="text-neutral-400 text-sm mb-8 leading-relaxed">
               Мы отправили ссылку для подтверждения на вашу почту.
               <br /><br />
-              <span className="text-amber-400/80 text-xs">
-                ⚠ Если письма нет во входящих, обязательно проверьте папку <b>Спам</b>.
+              <span className="text-white/30 text-[11px] font-mono-label uppercase tracking-widest">
+                Если письма нет во входящих, проверьте папку Спам.
               </span>
             </p>
-            <Button variant="primary" className="w-full" onClick={() => setShowEmailSentModal(false)}>
-              Хорошо
-            </Button>
-          </GlassCard>
+            <button className="w-full px-4 py-3 bg-white text-black font-mono-label text-[12px] uppercase tracking-widest rounded hover:opacity-90 transition-opacity" onClick={() => setShowEmailSentModal(false)}>
+              Понятно
+            </button>
+          </div>
         </div>
       )}
-    </Layout>
+
+      <SiteFooter />
+    </div>
   );
 }

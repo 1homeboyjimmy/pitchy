@@ -6,12 +6,15 @@ from dateutil.relativedelta import relativedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from sqlalchemy.ext.asyncio import AsyncSession
 from yookassa import Configuration, Payment as YookassaPayment
 from yookassa.domain.notification import WebhookNotificationFactory, WebhookNotificationEventType
 
-from db import get_db
+from db_async import get_async_db
 from models import User, Payment, PromoCode
-from auth import get_current_user
+from auth import get_async_current_user
 from lockbox import lockbox
 
 logger = logging.getLogger(__name__)
@@ -58,9 +61,10 @@ class ValidatePromoResponse(BaseModel):
     detail: str | None = None
 
 @router.post("/promo/validate", response_model=ValidatePromoResponse)
-async def validate_promo(request: ValidatePromoRequest, db: Session = Depends(get_db)):
+async def validate_promo(request: ValidatePromoRequest, db: AsyncSession = Depends(get_async_db)):
     code = request.code.strip().upper()
-    promo = db.query(PromoCode).filter(PromoCode.code == code).first()
+    res = await db.execute(select(PromoCode).where(PromoCode.code == code))
+    promo = res.scalar_one_or_none()
     
     if not promo:
         return ValidatePromoResponse(valid=False, discount_percent=0, detail="Промокод не найден")
@@ -82,8 +86,8 @@ async def validate_promo(request: ValidatePromoRequest, db: Session = Depends(ge
 @router.post("/create-payment", response_model=CreatePaymentResponse)
 async def create_payment(
     request: CreatePaymentRequest,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+    user: User = Depends(get_async_current_user),
 ):
     if request.tier not in PRICING_PLANS:
         raise HTTPException(status_code=400, detail="Invalid subscription tier")
@@ -93,7 +97,8 @@ async def create_payment(
     promo_id = None
     if request.promo_code:
         code = request.promo_code.strip().upper()
-        promo = db.query(PromoCode).filter(PromoCode.code == code).first()
+        res = await db.execute(select(PromoCode).where(PromoCode.code == code))
+        promo = res.scalar_one_or_none()
         if promo and (not promo.expires_at or promo.expires_at > datetime.utcnow()) and (not promo.max_uses or promo.current_uses < promo.max_uses):
             if promo.fixed_price is not None:
                 amount = float(promo.fixed_price)
@@ -142,13 +147,13 @@ async def create_payment(
         promo_code_id=promo_id
     )
     db.add(payment_record)
-    db.commit()
+    await db.commit()
     
     return CreatePaymentResponse(confirmation_url=res.confirmation.confirmation_url)
 
 
 @router.post("/webhook")
-async def yookassa_webhook(request: Request, db: Session = Depends(get_db)):
+async def yookassa_webhook(request: Request, db: AsyncSession = Depends(get_async_db)):
     event_json = await request.json()
     
     try:
@@ -157,12 +162,14 @@ async def yookassa_webhook(request: Request, db: Session = Depends(get_db)):
         
         if notification_object.event == WebhookNotificationEventType.PAYMENT_SUCCEEDED:
             payment_id = response_object.id
-            db_payment = db.query(Payment).filter(Payment.yookassa_payment_id == payment_id).first()
+            res = await db.execute(select(Payment).options(selectinload(Payment.promo_code)).where(Payment.yookassa_payment_id == payment_id))
+            db_payment = res.scalar_one_or_none()
             
             if db_payment and db_payment.status != "succeeded":
                 db_payment.status = "succeeded"
                 
-                user = db.query(User).filter(User.id == db_payment.user_id).first()
+                res_user = await db.execute(select(User).where(User.id == db_payment.user_id))
+                user = res_user.scalar_one_or_none()
                 if user:
                     user.subscription_tier = db_payment.tier
                     
@@ -179,16 +186,18 @@ async def yookassa_webhook(request: Request, db: Session = Depends(get_db)):
                 if db_payment.promo_code:
                     db_payment.promo_code.current_uses += 1
                     
-                db.commit()
+                await db.commit()
                 
         elif notification_object.event == WebhookNotificationEventType.PAYMENT_CANCELED:
             payment_id = response_object.id
-            db_payment = db.query(Payment).filter(Payment.yookassa_payment_id == payment_id).first()
+            res = await db.execute(select(Payment).where(Payment.yookassa_payment_id == payment_id))
+            db_payment = res.scalar_one_or_none()
             if db_payment and db_payment.status != "canceled":
                 db_payment.status = "canceled"
-                db.commit()
+                await db.commit()
                 
     except Exception as e:
+        await db.rollback()
         logger.error(f"Yookassa Webhook error: {str(e)}")
         # We must return 200 OK to Yookassa to avoid webhook retries
         return {"status": "error", "detail": str(e)}

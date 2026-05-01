@@ -3,6 +3,13 @@ import instructor
 from openai import AsyncOpenAI
 from typing import Type, TypeVar, Any
 
+try:
+    from langfuse.decorators import observe, langfuse_context
+except ImportError:
+    def observe(*args, **kwargs):
+        return lambda f: f
+    langfuse_context = None
+
 T = TypeVar("T", bound="Any")
 
 def get_instructor_client(provider: str = "routerai"):
@@ -24,6 +31,7 @@ def get_instructor_client(provider: str = "routerai"):
         
     return instructor.from_openai(client)
 
+@observe(name="dispatch_intent")
 async def dispatch_intent(query: str, client = None) -> Any:
     """
     Классифицирует интент пользователя с помощью сверхбыстрой модели Qwen 2.5 7B.
@@ -45,6 +53,8 @@ async def dispatch_intent(query: str, client = None) -> Any:
         ],
         max_retries=2
     )
+
+@observe(name="request_roadmap_edit")
 async def request_roadmap_edit(query: str, project_context: str, client = None) -> Any:
     """
     Извлекает структурные изменения для дорожной карты (Smart Roadmap).

@@ -9,14 +9,15 @@ import jwt
 from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from passlib.context import CryptContext
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from db import get_db
+from db_async import get_async_db
 from models import User
 
 
-pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 security = HTTPBearer(auto_error=False)
 
 
@@ -28,14 +29,31 @@ def _secret_key() -> str:
     return secret
 
 
+import bcrypt
+
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    # Double-check: bcrypt expects bytes
+    pwd_bytes = password.encode('utf-8')
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(pwd_bytes, salt).decode('utf-8')
 
 
 def verify_password(password: str, password_hash: str | None) -> bool:
     if not password_hash:
         return False
-    return pwd_context.verify(password, password_hash)
+    try:
+        # Bcrypt requires bytes for both password and hash
+        return bcrypt.checkpw(
+            password.encode('utf-8'),
+            password_hash.encode('utf-8')
+        )
+    except Exception:
+        # Fallback for old/empty hashes
+        return False
+
+def needs_update(password_hash: str) -> bool:
+    # Simplified for direct bcrypt
+    return False
 
 
 def create_access_token(user_id: int) -> str:
@@ -100,6 +118,49 @@ def get_current_user(
 
 
 def require_admin(user: User = Depends(get_current_user)) -> User:
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
+
+async def get_async_current_user(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
+    db: AsyncSession = Depends(get_async_db),
+) -> User:
+    token: str | None = None
+    if credentials and credentials.credentials:
+        token = credentials.credentials
+    else:
+        token = request.cookies.get(get_access_token_cookie_name())
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        payload = jwt.decode(token, _secret_key(), algorithms=["HS256"])
+    except jwt.PyJWTError as exc:
+        raise HTTPException(status_code=401, detail="Invalid token") from exc
+
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    result = await db.execute(
+        select(User)
+        .options(selectinload(User.social_accounts))
+        .where(User.id == int(user_id))
+    )
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="User is blocked")
+    if user.locked_until and user.locked_until > datetime.utcnow():
+        raise HTTPException(status_code=403, detail="User is temporarily locked")
+    return user
+
+
+async def require_async_admin(user: User = Depends(get_async_current_user)) -> User:
     if not user.is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
     return user

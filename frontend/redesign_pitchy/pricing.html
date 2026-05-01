@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="ru"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Тарифы - PITCHY.PRO</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-background": "#e5e2e1",
+                        "tertiary": "#ffffff",
+                        "on-surface": "#e5e2e1",
+                        "primary": "#ffffff",
+                        "on-primary": "#2f3131",
+                        "on-error-container": "#ffdad6",
+                        "primary-fixed-dim": "#c6c6c7",
+                        "on-primary-fixed-variant": "#454747",
+                        "on-secondary": "#313030",
+                        "inverse-on-surface": "#313030",
+                        "tertiary-fixed": "#e2e2e2",
+                        "inverse-surface": "#e5e2e1",
+                        "on-secondary-fixed-variant": "#474646",
+                        "on-primary-fixed": "#1a1c1c",
+                        "on-tertiary-fixed": "#1a1c1c",
+                        "outline": "#8e9192",
+                        "on-tertiary-container": "#636565",
+                        "surface-tint": "#c6c6c7",
+                        "error": "#ffb4ab",
+                        "on-primary-container": "#636565",
+                        "surface-container-low": "#1c1b1b",
+                        "surface": "#141313",
+                        "outline-variant": "#444748",
+                        "surface-container": "#201f1f",
+                        "on-surface-variant": "#c4c7c8",
+                        "secondary-fixed": "#e5e2e1",
+                        "tertiary-fixed-dim": "#c6c6c7",
+                        "primary-fixed": "#e2e2e2",
+                        "secondary-container": "#4a4949",
+                        "surface-dim": "#141313",
+                        "surface-container-highest": "#353434",
+                        "surface-bright": "#3a3939",
+                        "error-container": "#93000a",
+                        "inverse-primary": "#5d5f5f",
+                        "background": "#141313",
+                        "on-secondary-fixed": "#1c1b1b",
+                        "surface-container-high": "#2a2a2a",
+                        "primary-container": "#e2e2e2",
+                        "surface-container-lowest": "#0e0e0e",
+                        "on-tertiary-fixed-variant": "#454747",
+                        "on-secondary-container": "#bab8b7",
+                        "on-tertiary": "#2f3131",
+                        "on-error": "#690005",
+                        "tertiary-container": "#e2e2e2",
+                        "secondary-fixed-dim": "#c9c6c5",
+                        "surface-variant": "#353434",
+                        "secondary": "#c9c6c5"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "sm": "8px",
+                        "container-max": "1440px",
+                        "md": "16px",
+                        "xl": "48px",
+                        "xs": "4px",
+                        "lg": "24px",
+                        "gutter": "16px",
+                        "unit": "4px"
+                    },
+                    "fontFamily": {
+                        "h1": ["Inter"],
+                        "display": ["Inter"],
+                        "code": ["Space Grotesk"],
+                        "h2": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "mono-label": ["Space Grotesk"],
+                        "body-sm": ["Inter"]
+                    },
+                    "fontSize": {
+                        "h1": ["32px", { "lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+                        "display": ["48px", { "lineHeight": "1.1", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+                        "code": ["13px", { "lineHeight": "1.6", "letterSpacing": "0", "fontWeight": "400" }],
+                        "h2": ["24px", { "lineHeight": "1.3", "letterSpacing": "-0.01em", "fontWeight": "500" }],
+                        "body-lg": ["16px", { "lineHeight": "1.6", "letterSpacing": "0", "fontWeight": "400" }],
+                        "mono-label": ["12px", { "lineHeight": "1", "letterSpacing": "0.05em", "fontWeight": "500" }],
+                        "body-sm": ["14px", { "lineHeight": "1.5", "letterSpacing": "0", "fontWeight": "400" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .material-symbols-outlined[data-weight="fill"] {
+            font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background h-screen overflow-hidden flex flex-col font-body-sm">
+<!-- TopNavBar Component -->
+<nav class="fixed top-0 w-full z-50 bg-[#0A0A0A]/80 backdrop-blur-xl border-b border-white/[0.08]">
+<div class="flex items-center justify-between px-6 h-14 w-full max-w-container-max mx-auto">
+<div class="flex items-center gap-8">
+<a class="text-lg font-bold tracking-tighter text-white font-display" href="#">PITCHY.PRO</a>
+<div class="hidden md:flex items-center gap-6">
+<a class="text-neutral-500 font-mono text-[11px] uppercase tracking-widest hover:text-white transition-colors duration-200 cursor-crosshair active:opacity-70" href="#">Home</a>
+<a class="text-neutral-500 font-mono text-[11px] uppercase tracking-widest hover:text-white transition-colors duration-200 cursor-crosshair active:opacity-70" href="#">Dashboard</a>
+<a class="text-neutral-500 font-mono text-[11px] uppercase tracking-widest hover:text-white transition-colors duration-200 cursor-crosshair active:opacity-70" href="#">FAQ</a>
+<a class="text-neutral-500 font-mono text-[11px] uppercase tracking-widest hover:text-white transition-colors duration-200 cursor-crosshair active:opacity-70" href="#">About</a>
+<a class="text-white border-b border-white/40 pb-1 font-mono text-[11px] uppercase tracking-widest cursor-crosshair active:opacity-70" href="#">Pricing</a>
+<a class="text-neutral-500 font-mono text-[11px] uppercase tracking-widest hover:text-white transition-colors duration-200 cursor-crosshair active:opacity-70" href="#">Contacts</a>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<a class="text-white font-mono text-[11px] uppercase tracking-widest hover:text-white transition-colors duration-200 cursor-crosshair active:opacity-70" href="#">Account</a>
+<button class="bg-white text-black font-mono-label px-4 py-2 rounded-DEFAULT hover:opacity-90 transition-opacity">Logout</button>
+</div>
+</div>
+</nav>
+<!-- Main Content -->
+<main class="flex-grow flex flex-col justify-center pt-16 pb-4 px-4 md:px-8 max-w-container-max mx-auto w-full">
+<!-- Header Section -->
+<div class="text-center mb-6">
+<h1 class="font-display text-display text-primary mb-2 tracking-tighter">Выберите свой план</h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant max-w-2xl mx-auto">Инструменты для создания профессиональных питчей. Выберите тариф, который подходит именно вам.</p>
+<!-- Billing Toggle -->
+<div class="mt-6 flex items-center justify-center gap-4">
+<span class="font-mono-label text-mono-label text-primary">Месяц</span>
+<button aria-label="Toggle billing period" class="relative w-12 h-6 rounded-full border border-white/20 bg-[#111111] cursor-pointer">
+<div class="absolute left-1 top-1 w-4 h-4 rounded-full bg-white transition-transform transform translate-x-6"></div>
+</button>
+<span class="font-mono-label text-mono-label text-on-surface-variant">Год <span class="text-[#888888] ml-1">(Скидка 20%)</span></span>
+</div>
+</div>
+<!-- Pricing Cards -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+<!-- Free Plan -->
+<div class="bg-[#111111] border border-white/[0.08] rounded-DEFAULT p-5 flex flex-col relative group hover:border-white/20 transition-colors">
+<div class="mb-4">
+<h2 class="font-code text-code text-on-surface-variant uppercase mb-1 tracking-widest">Бесплатный</h2>
+<div class="flex items-baseline gap-2">
+<span class="font-display text-h1 text-primary">0₽</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">/ мес</span>
+</div>
+<p class="font-body-sm text-body-sm text-[#888888] mt-2">Базовые функции для начала работы.</p>
+</div>
+<ul class="flex flex-col gap-2 mb-6 flex-grow">
+<li class="flex items-start gap-3">
+<span class="material-symbols-outlined text-[16px] text-white mt-0.5">check</span>
+<span class="font-body-sm text-body-sm text-on-surface">1 проект</span>
+</li>
+<li class="flex items-start gap-3">
+<span class="material-symbols-outlined text-[16px] text-white mt-0.5">check</span>
+<span class="font-body-sm text-body-sm text-on-surface">Базовые шаблоны</span>
+</li>
+<li class="flex items-start gap-3">
+<span class="material-symbols-outlined text-[16px] text-white mt-0.5">check</span>
+<span class="font-body-sm text-body-sm text-on-surface">Экспорт в PDF (с водяным знаком)</span>
+</li>
+<li class="flex items-start gap-3 opacity-50">
+<span class="material-symbols-outlined text-[16px] text-on-surface-variant mt-0.5">close</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Командная работа</span>
+</li>
+<li class="flex items-start gap-3 opacity-50">
+<span class="material-symbols-outlined text-[16px] text-on-surface-variant mt-0.5">close</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Аналитика просмотров</span>
+</li>
+</ul>
+<button class="w-full bg-transparent border border-white/[0.1] text-white font-mono-label text-mono-label py-2 px-4 rounded-DEFAULT hover:bg-white/[0.05] transition-colors">Выбрать Free</button>
+</div>
+<!-- Starter Plan (Popular) -->
+<div class="bg-[#111111] border border-white/[0.2] rounded-DEFAULT p-5 flex flex-col relative group shadow-[0_0_0_1px_rgba(255,255,255,0.1)]">
+<div class="absolute top-0 right-5 -translate-y-1/2 bg-white text-black font-mono-label text-[10px] uppercase tracking-widest px-3 py-1 rounded-DEFAULT">Популярный</div>
+<div class="mb-4">
+<h2 class="font-code text-code text-white uppercase mb-1 tracking-widest">Starter</h2>
+<div class="flex items-baseline gap-2">
+<span class="font-display text-h1 text-primary">1 490₽</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">/ мес</span>
+</div>
+<p class="font-body-sm text-body-sm text-[#888888] mt-2">Оптимально для фрилансеров и небольших команд.</p>
+</div>
+<ul class="flex flex-col gap-2 mb-6 flex-grow">
+<li class="flex items-start gap-3">
+<span class="material-symbols-outlined text-[16px] text-white mt-0.5">check</span>
+<span class="font-body-sm text-body-sm text-on-surface">До 10 проектов</span>
+</li>
+<li class="flex items-start gap-3">
+<span class="material-symbols-outlined text-[16px] text-white mt-0.5">check</span>
+<span class="font-body-sm text-body-sm text-on-surface">Все премиум шаблоны</span>
+</li>
+<li class="flex items-start gap-3">
+<span class="material-symbols-outlined text-[16px] text-white mt-0.5">check</span>
+<span class="font-body-sm text-body-sm text-on-surface">Экспорт без водяных знаков</span>
+</li>
+<li class="flex items-start gap-3">
+<span class="material-symbols-outlined text-[16px] text-white mt-0.5">check</span>
+<span class="font-body-sm text-body-sm text-on-surface">Базовая аналитика</span>
+</li>
+<li class="flex items-start gap-3 opacity-50">
+<span class="material-symbols-outlined text-[16px] text-on-surface-variant mt-0.5">close</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Приоритетная поддержка</span>
+</li>
+</ul>
+<button class="w-full bg-white text-black font-mono-label text-mono-label py-2 px-4 rounded-DEFAULT hover:opacity-90 transition-opacity">Выбрать Starter</button>
+</div>
+<!-- Pro Plan -->
+<div class="bg-[#111111] border border-white/[0.08] rounded-DEFAULT p-5 flex flex-col relative group hover:border-white/20 transition-colors">
+<div class="mb-4">
+<h2 class="font-code text-code text-on-surface-variant uppercase mb-1 tracking-widest">Pro</h2>
+<div class="flex items-baseline gap-2">
+<span class="font-display text-h1 text-primary">3 490₽</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">/ мес</span>
+</div>
+<p class="font-body-sm text-body-sm text-[#888888] mt-2">Максимальные возможности для агентств и корпораций.</p>
+</div>
+<ul class="flex flex-col gap-2 mb-6 flex-grow">
+<li class="flex items-start gap-3">
+<span class="material-symbols-outlined text-[16px] text-white mt-0.5">check</span>
+<span class="font-body-sm text-body-sm text-on-surface">Безлимитные проекты</span>
+</li>
+<li class="flex items-start gap-3">
+<span class="material-symbols-outlined text-[16px] text-white mt-0.5">check</span>
+<span class="font-body-sm text-body-sm text-on-surface">Пользовательские шаблоны</span>
+</li>
+<li class="flex items-start gap-3">
+<span class="material-symbols-outlined text-[16px] text-white mt-0.5">check</span>
+<span class="font-body-sm text-body-sm text-on-surface">Командная работа (до 10 чел)</span>
+</li>
+<li class="flex items-start gap-3">
+<span class="material-symbols-outlined text-[16px] text-white mt-0.5">check</span>
+<span class="font-body-sm text-body-sm text-on-surface">Продвинутая аналитика</span>
+</li>
+<li class="flex items-start gap-3">
+<span class="material-symbols-outlined text-[16px] text-white mt-0.5">check</span>
+<span class="font-body-sm text-body-sm text-on-surface">Приоритетная поддержка 24/7</span>
+</li>
+</ul>
+<button class="w-full bg-transparent border border-white/[0.1] text-white font-mono-label text-mono-label py-2 px-4 rounded-DEFAULT hover:bg-white/[0.05] transition-colors">Выбрать Pro</button>
+</div>
+</div>
+<!-- FAQ or Info Section Minimal -->
+<div class="mt-6 max-w-3xl mx-auto border-t border-white/[0.08] pt-4 text-center">
+<p class="font-body-sm text-body-sm text-[#888888]">Нужно индивидуальное решение? <a class="text-white hover:underline underline-offset-4 decoration-white/30" href="#">Свяжитесь с нами</a>.</p>
+</div>
+</main>
+<!-- Footer Component -->
+<footer class="w-full border-t border-white/[0.08] py-4 bg-[#0A0A0A] mt-auto">
+<div class="max-w-screen-2xl mx-auto flex flex-col md:flex-row justify-between items-center px-8 gap-4">
+<span class="text-neutral-500 font-mono text-[10px] uppercase tracking-tight">© 2024 PITCHY.PRO SYSTEM v1.0.4. STABLE BUILD.</span>
+<div class="flex gap-6">
+<a class="text-neutral-600 font-mono text-[10px] uppercase tracking-tight hover:text-white underline decoration-neutral-700 transition-all duration-200" href="#">Legal</a>
+<a class="text-neutral-600 font-mono text-[10px] uppercase tracking-tight hover:text-white underline decoration-neutral-700 transition-all duration-200" href="#">Privacy</a>
+<a class="text-neutral-600 font-mono text-[10px] uppercase tracking-tight hover:text-white underline decoration-neutral-700 transition-all duration-200" href="#">Security</a>
+<a class="text-neutral-600 font-mono text-[10px] uppercase tracking-tight hover:text-white underline decoration-neutral-700 transition-all duration-200" href="#">Status</a>
+</div>
+<span class="text-white font-black font-display text-sm tracking-tighter">PITCHY.PRO</span>
+</div>
+</footer>
+</body></html>

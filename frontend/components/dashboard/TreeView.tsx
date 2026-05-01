@@ -188,7 +188,7 @@ export function TreeView({ }: Props) {
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
-              className="mb-4 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-sm"
+              className="mb-4 flex items-center gap-2 px-4 py-2.5 rounded-none bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[13px] font-code"
             >
               <AlertCircle className="w-4 h-4 shrink-0" />
               {tree.error}
@@ -198,52 +198,52 @@ export function TreeView({ }: Props) {
 
         <div className="flex-1 flex flex-col items-center justify-center px-4 w-full">
           <div className="w-full max-w-lg flex flex-col items-center">
-          <div className="w-16 h-16 rounded-2xl bg-pitchy-violet/10 border border-pitchy-violet/20 flex items-center justify-center mb-6">
-            <GitBranch className="w-8 h-8 text-pitchy-violet" />
+          <div className="w-16 h-16 rounded-none bg-[#111111] border border-white/10 flex items-center justify-center mb-6">
+            <GitBranch className="w-8 h-8 text-white" />
           </div>
-          <h3 className="text-xl sm:text-2xl font-bold text-white mb-2 text-center">
+          <h3 className="text-2xl font-display font-bold text-white mb-2 text-center tracking-tight">
             Древо принятия решений
           </h3>
-          <p className="text-sm text-white/50 mb-8 w-full text-center">
+          <p className="w-full text-[13px] font-code text-neutral-500 mb-8 max-w-md text-center">
             Загрузите PDF-документ или опишите идею стартапа — ИИ построит интерактивное древо анализа.
           </p>
 
           <div className="w-full space-y-4">
             {/* Text input */}
-            <GlassCard hover={false} className="p-4">
+            <div className="bg-[#111111] border border-white/10 p-6">
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Опишите идею стартапа (минимум 10 символов)..."
-                className="w-full bg-transparent text-white text-sm placeholder-white/30 resize-none outline-none min-h-[100px]"
+                className="w-full bg-transparent text-white font-body-sm text-[14px] placeholder-neutral-600 resize-none outline-none min-h-[100px]"
               />
-              <div className="flex items-center justify-between mt-3">
-                <span className="text-xs text-white/30">{description.length} символов</span>
+              <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/10">
+                <span className="font-code text-[11px] text-neutral-500">{description.length} символов</span>
                 <button
                   onClick={handleCreateFromText}
                   disabled={description.trim().length < 10}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-pitchy-violet to-purple-600 text-white text-sm font-medium disabled:opacity-30 hover:opacity-90 transition-opacity cursor-pointer"
+                  className="flex items-center gap-2 px-4 py-2 bg-white text-black font-mono-label text-[10px] uppercase font-bold disabled:opacity-50 hover:opacity-90 transition-opacity cursor-pointer"
                 >
-                  <Star className="w-4 h-4" />
+                  <Star className="w-3.5 h-3.5" />
                   Построить древо
                 </button>
               </div>
-            </GlassCard>
+            </div>
 
             {/* Divider */}
             <div className="flex items-center gap-3">
               <div className="flex-1 h-px bg-white/10" />
-              <span className="text-xs text-white/30">или</span>
+              <span className="font-code text-[10px] uppercase tracking-widest text-neutral-500">или</span>
               <div className="flex-1 h-px bg-white/10" />
             </div>
 
             {/* PDF Upload */}
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="w-full flex items-center justify-center gap-3 px-6 py-4 rounded-2xl border border-dashed border-white/20 hover:border-pitchy-violet/40 hover:bg-pitchy-violet/5 transition-all group cursor-pointer"
+              className="w-full flex items-center justify-center gap-3 px-6 py-6 border border-dashed border-white/20 bg-[#111111] hover:border-white/40 transition-all group cursor-pointer"
             >
-              <Upload className="w-5 h-5 text-white/40 group-hover:text-pitchy-violet transition-colors" />
-              <span className="text-sm text-white/50 group-hover:text-white transition-colors">
+              <Upload className="w-5 h-5 text-neutral-500 group-hover:text-white transition-colors" />
+              <span className="font-mono-label text-[11px] uppercase tracking-widest text-neutral-500 group-hover:text-white transition-colors">
                 Загрузить PDF-документ
               </span>
             </button>
@@ -268,14 +268,14 @@ export function TreeView({ }: Props) {
         <motion.div
           animate={{ rotate: 360 }}
           transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-          className="w-16 h-16 rounded-2xl bg-pitchy-violet/10 border border-pitchy-violet/20 flex items-center justify-center mb-6"
+          className="w-16 h-16 bg-[#111111] border border-white/20 flex items-center justify-center mb-6"
         >
-          <Loader className="w-8 h-8 text-pitchy-violet" />
+          <Loader className="w-8 h-8 text-white" />
         </motion.div>
-        <h3 className="text-lg font-semibold text-white mb-2">
+        <h3 className="text-2xl font-display font-bold text-white mb-2 tracking-tight">
           {tree.status === "uploading" ? "Загрузка PDF..." : "ИИ строит древо..."}
         </h3>
-        <p className="text-sm text-white/40">Это может занять до 30 секунд</p>
+        <p className="font-code text-[13px] text-neutral-500">Это может занять до 30 секунд</p>
       </div>
     );
   }
@@ -287,48 +287,41 @@ export function TreeView({ }: Props) {
       animate={{ opacity: 1 }}
       className="flex flex-col flex-1 w-full min-h-0"
     >
-      {/* Error banner */}
+      {/* Header Info */}
+      <div className="p-8 pb-0 z-10">
+        <div className="flex justify-between items-start">
+            <div>
+            <h2 className="text-3xl font-display font-bold text-white tracking-tight">Древо принятия решений</h2>
+            <p className="font-mono-label text-[11px] text-neutral-500 mt-1 uppercase tracking-widest">AI-ВИЗУАЛИЗАЦИЯ ГОТОВНОСТИ ВАШЕГО СТАРТАПА</p>
+            </div>
+            <div className="flex space-x-2">
+            <button onClick={() => {
+                setTree({ nodes: [], edges: [], readinessIndex: 0, status: "idle" });
+                setDescription("");
+            }} className="border border-white/10 bg-[#111111] text-white px-4 py-2 font-mono-label text-[10px] uppercase font-bold hover:bg-white/5 transition-all flex items-center gap-2">
+                <FileText className="w-3.5 h-3.5" /> НОВОЕ ДРЕВО
+            </button>
+            <button onClick={() => fileInputRef.current?.click()} className="bg-white text-black px-4 py-2 font-mono-label text-[10px] uppercase font-bold hover:opacity-90 transition-opacity flex items-center gap-2">
+                <Upload className="w-3.5 h-3.5" /> ЗАГРУЗИТЬ PDF
+            </button>
+            </div>
+        </div>
+        <input ref={fileInputRef} type="file" accept=".pdf" className="hidden" onChange={handleFileChange} />
+      </div>
+
       <AnimatePresence>
         {tree.error && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
-            className="mb-3 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-sm"
+            className="mx-8 mt-4 flex items-center gap-2 px-4 py-2.5 rounded-none bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[13px] font-code"
           >
             <AlertCircle className="w-4 h-4 shrink-0" />
             {tree.error}
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Toolbar */}
-      <div className="flex items-center gap-3 mb-3 flex-wrap">
-        <button
-          onClick={() => {
-            setTree({ nodes: [], edges: [], readinessIndex: 0, status: "idle" });
-            setDescription("");
-          }}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white/60 hover:text-white hover:bg-white/10 transition-all cursor-pointer"
-        >
-          <FileText className="w-3.5 h-3.5" />
-          Новое древо
-        </button>
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white/60 hover:text-white hover:bg-white/10 transition-all cursor-pointer"
-        >
-          <Upload className="w-3.5 h-3.5" />
-          Загрузить PDF
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".pdf"
-          className="hidden"
-          onChange={handleFileChange}
-        />
-      </div>
 
       {/* Canvas */}
       <div className="flex-1 min-h-[300px] flex relative overflow-hidden">

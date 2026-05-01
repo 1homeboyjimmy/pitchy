@@ -8,10 +8,16 @@
  */
 export function stripThoughts(content: string): string {
     if (!content) return "";
-    return content
-        .replace(/<(think|thought|tool_call|tool_thought)>[\s\S]*?<\/\1>/gi, "")
-        // If a tag is unclosed towards the end, only strip it if it's a known pure-thought tag
-        .replace(/<(think|thought)>[\s\S]*$/gi, "") 
-        // DO NOT strip unclosed tool_call tags as they might contain the leaked answer
-        .trim();
+    
+    // Remove complete tags
+    let stripped = content.replace(/<(think|thought|tool_call|tool_thought)>[\s\S]*?<\/\1>/gi, "");
+    
+    // Remove unclosed pure-thought tags (at the end of string)
+    stripped = stripped.replace(/<(think|thought)>[\s\S]*$/gi, "");
+    
+    // Handle partially present tags at the end to prevent flickering during streaming
+    // Matches things like <t, <th, <think, but not <table>
+    stripped = stripped.replace(/<(t|th|thi|thin|think|tho|thou|thoug|thought)?$/gi, "");
+    
+    return stripped.trim();
 }

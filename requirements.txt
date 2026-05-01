@@ -38,3 +38,7 @@ sentry-sdk[fastapi]
 instructor
 pandas
 plotly
+asyncpg
+cachetools
+bcrypt
+sse-starlette>=2.0.0
