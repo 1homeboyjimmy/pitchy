@@ -101,20 +101,20 @@ export function Header() {
                         </nav>
 
                         {/* Desktop Actions */}
-                        <div className="hidden md:flex items-center gap-4">
+                        <div className="hidden md:flex items-center gap-1">
                             {isAuthed ? (
                                 <button
                                     onClick={handleLogout}
-                                    className="px-4 py-2 text-sm font-medium text-zinc-400 hover:text-white transition-colors"
+                                    className="relative px-4 py-2 text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800/50 rounded-lg transition-colors"
                                 >
                                     Выйти
                                 </button>
                             ) : (
                                 <>
-                                    <Link href="/login" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">
+                                    <Link href="/login" className="relative px-4 py-2 text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800/50 rounded-lg transition-colors">
                                         Войти
                                     </Link>
-                                    <Link href="/login">
+                                    <Link href="/login" className="ml-2">
                                         <AnimatedButton size="sm">Начать</AnimatedButton>
                                     </Link>
                                 </>
@@ -176,7 +176,7 @@ export function Header() {
                                             handleLogout();
                                             setIsMobileMenuOpen(false);
                                         }}
-                                        className="w-full px-4 py-3 rounded-lg text-base font-medium text-left text-red-400 hover:bg-zinc-800/50 transition-colors"
+                                        className="w-full px-4 py-3 rounded-lg text-base font-medium text-left text-zinc-400 hover:text-white hover:bg-zinc-800/50 transition-colors"
                                     >
                                         Выйти
                                     </button>

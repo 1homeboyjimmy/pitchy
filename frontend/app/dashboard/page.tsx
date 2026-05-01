@@ -225,7 +225,7 @@ function DashboardContent() {
 
   return (
     <div className="flex w-full flex-1 min-h-0 transition-all duration-300">
-      {/* Floating Menu Button for FullScreen Mode */}
+      {/* Floating Menu Button for FullScreen Mode — desktop only */}
       <AnimatePresence>
         {!isSidebarOpen && (
           <motion.button
@@ -233,20 +233,20 @@ function DashboardContent() {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
             onClick={() => toggleSidebar()}
-            className="fixed top-6 left-[max(1.5rem,calc(50vw-35rem))] z-[60] p-2.5 rounded-xl bg-pitchy-bg/80 hover:bg-white/10 backdrop-blur-xl border border-white/20 text-white shadow-lg shadow-black/20 transition-colors cursor-pointer"
+            className="hidden lg:flex fixed top-6 left-[max(1.5rem,calc(50vw-35rem))] z-[60] p-2.5 rounded-xl bg-pitchy-bg/80 hover:bg-white/10 backdrop-blur-xl border border-white/20 text-white shadow-lg shadow-black/20 transition-colors cursor-pointer"
             title="Открыть меню"
           >
             <Menu className="w-5 h-5" />
           </motion.button>
         )}
       </AnimatePresence>
-      {/* Sidebar (Desktop) */}
+      {/* Sidebar (Desktop only) */}
+      <div className="hidden lg:block shrink-0 sticky top-[4rem] h-[calc(100vh-4rem)]" style={{ borderRightWidth: isSidebarOpen ? '1px' : '0px', borderRightColor: 'rgba(255,255,255,0.1)', borderRightStyle: 'solid' }}>
       <motion.aside
         initial={false}
         animate={{ width: isSidebarOpen ? 256 : 0, opacity: isSidebarOpen ? 1 : 0 }}
         transition={{ duration: 0.3, ease: "easeInOut" }}
-        className="hidden lg:block shrink-0 overflow-hidden sticky top-[4rem] h-[calc(100vh-4rem)] border-white/10"
-        style={{ borderRightWidth: isSidebarOpen ? '1px' : '0px' }}
+        className="overflow-hidden h-full"
       >
         <div className="w-64 flex flex-col py-6 px-4 h-full">
         <div className="mb-8">
@@ -338,9 +338,10 @@ function DashboardContent() {
         </div>
         </div>
       </motion.aside>
+      </div>
 
       {/* content */}
-      <main className={`flex-1 px-4 sm:px-6 lg:px-8 overflow-hidden w-full flex flex-col transition-all duration-300 ${isSidebarOpen ? 'py-6' : 'pt-6 pb-0'}`}>
+      <main className={`flex-1 px-3 sm:px-4 lg:px-8 overflow-hidden w-full flex flex-col transition-all duration-300 ${isSidebarOpen ? 'py-4 lg:py-6' : 'pt-4 lg:pt-6 pb-0'}`}>
         {/* Mobile Navigation (Tabs) */}
         <div className="flex lg:hidden overflow-x-auto gap-2 mb-6 pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 [&::-webkit-scrollbar]:hidden">
           {[
@@ -478,7 +479,7 @@ function DashboardContent() {
               initial={{ opacity: 0, scale: 0.98 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.98 }}
-              className="h-full flex-1 flex flex-col min-h-0"
+              className="h-full flex-1 flex flex-col min-h-0 w-full"
             >
               {activeSession ? (
                 <ChatInterface
@@ -486,22 +487,23 @@ function DashboardContent() {
                   onUpdate={(updated) => setActiveSession(updated)}
                 />
               ) : (
-                <div className="flex flex-col flex-1 h-full bg-[#131313] rounded-2xl border border-white/10 overflow-hidden relative items-center justify-center px-4">
+                <div className="flex flex-col flex-1 h-full bg-[#131313] rounded-2xl border border-white/10 overflow-hidden relative justify-center px-4">
                   <div className="absolute inset-0 bg-noise opacity-30 pointer-events-none" />
-                  <Star className="w-16 h-16 text-pitchy-violet/30 mb-6" />
-                  <h3 className="text-xl sm:text-2xl font-bold text-white mb-2 text-center">Анализ проекта</h3>
-                  <p className="text-sm text-white/50 mb-8 max-w-sm text-center">
-                    Нажмите кнопку ниже, чтобы начать новый интерактивный анализ.
-                  </p>
-
-                  <button
-                    onClick={handleCreateEmptySession}
-                    disabled={isCreating}
-                    className="px-6 py-3 bg-gradient-to-r from-pitchy-violet to-purple-600 font-medium text-white rounded-xl shadow-[0_0_20px_rgba(168,85,247,0.4)] hover:shadow-[0_0_30px_rgba(168,85,247,0.6)] disabled:opacity-50 transition-all cursor-pointer flex items-center justify-center gap-2"
-                  >
-                    {isCreating ? <Loader className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
-                    Начать новый анализ
-                  </button>
+                  <div className="relative z-10 flex flex-col items-center w-full max-w-sm mx-auto text-center">
+                    <Star className="w-16 h-16 text-pitchy-violet/30 mb-6" />
+                    <h3 className="text-xl sm:text-2xl font-bold text-white mb-2">Анализ проекта</h3>
+                    <p className="text-sm text-white/50 mb-8 w-full">
+                      Нажмите кнопку ниже, чтобы начать новый интерактивный анализ.
+                    </p>
+                    <button
+                      onClick={handleCreateEmptySession}
+                      disabled={isCreating}
+                      className="px-6 py-3 bg-gradient-to-r from-pitchy-violet to-purple-600 font-medium text-white rounded-xl shadow-[0_0_20px_rgba(168,85,247,0.4)] hover:shadow-[0_0_30px_rgba(168,85,247,0.6)] disabled:opacity-50 transition-all cursor-pointer flex items-center justify-center gap-2"
+                    >
+                      {isCreating ? <Loader className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
+                      Начать новый анализ
+                    </button>
+                  </div>
                 </div>
               )}
             </motion.div>
@@ -513,7 +515,7 @@ function DashboardContent() {
               initial={{ opacity: 0, scale: 0.98 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.98 }}
-              className="h-full"
+              className="flex-1 flex flex-col min-h-0 w-full"
             >
               <TreeView
                 onSwitchToChat={(context) => {

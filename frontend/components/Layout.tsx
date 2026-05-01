@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X, LogOut, User, Mail, Send } from "react-feather";
+import { Menu, X, Mail, Send } from "react-feather";
 import { getToken, clearToken, authEvents } from "@/lib/auth";
 import { useLayoutStore } from "@/lib/store/layout";
 
@@ -67,17 +67,22 @@ function Header() {
   const [token, setTokenState] = useState<string | null>(null);
 
   const { isSidebarOpen, isDashboard } = useLayoutStore();
+  const [isLgScreen, setIsLgScreen] = useState(false);
 
   useEffect(() => {
-    // Initial check - wrap in setTimeout to avoid synchronous setState warning
+    const checkLg = () => setIsLgScreen(window.innerWidth >= 1024);
+    checkLg();
+    window.addEventListener("resize", checkLg, { passive: true });
+    return () => window.removeEventListener("resize", checkLg);
+  }, []);
+
+  useEffect(() => {
     const timer = setTimeout(() => {
       setTokenState(getToken());
     }, 0);
 
-    // Listen for auth changes
     const handleAuthChange = () => {
       setTokenState(getToken());
-      router.refresh(); // Refresh server components if needed
     };
 
     authEvents.addEventListener("auth-change", handleAuthChange);
@@ -85,7 +90,7 @@ function Header() {
       clearTimeout(timer);
       authEvents.removeEventListener("auth-change", handleAuthChange);
     };
-  }, [router]);
+  }, []);
 
   useEffect(() => {
     const onScroll = () => setIsScrolled(window.scrollY > 20);
@@ -98,7 +103,7 @@ function Header() {
     router.push("/");
   };
 
-  const isHeaderHidden = isDashboard && !isSidebarOpen;
+  const isHeaderHidden = isDashboard && !isSidebarOpen && isLgScreen;
 
   return (
     <>
@@ -137,21 +142,19 @@ function Header() {
           </nav>
 
           {/* Desktop Auth */}
-          <div className="hidden md:flex items-center gap-3 transition-all duration-300">
+          <div className="hidden md:flex items-center gap-1 transition-all duration-300">
             {token ? (
               <>
                 <Link
                   href="/account"
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white/70 hover:text-white rounded-lg hover:bg-white/5 transition-colors"
+                  className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${pathname === "/account" ? "text-white bg-white/10" : "text-white/60 hover:text-white hover:bg-white/5"}`}
                 >
-                  <User className="w-4 h-4" />
                   Аккаунт
                 </Link>
                 <button
                   onClick={handleLogout}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white/70 hover:text-red-400 rounded-lg hover:bg-white/5 transition-colors"
+                  className="px-3 py-2 text-sm font-medium text-white/60 hover:text-white rounded-lg hover:bg-white/5 transition-colors"
                 >
-                  <LogOut className="w-4 h-4" />
                   Выйти
                 </button>
               </>
@@ -159,13 +162,13 @@ function Header() {
               <>
                 <Link
                   href="/login"
-                  className="px-4 py-2 text-sm font-medium text-white/70 hover:text-white rounded-lg hover:bg-white/5 transition-colors"
+                  className="px-3 py-2 text-sm font-medium text-white/60 hover:text-white rounded-lg hover:bg-white/5 transition-colors"
                 >
                   Войти
                 </Link>
                 <Link
                   href="/signup"
-                  className="px-4 py-2 text-sm font-medium text-white bg-pitchy-violet hover:bg-pitchy-violet-dark rounded-xl transition-colors shadow-glow-primary"
+                  className="ml-2 px-4 py-2 text-sm font-medium text-white bg-pitchy-violet hover:bg-pitchy-violet-dark rounded-xl transition-colors shadow-glow-primary"
                 >
                   Регистрация
                 </Link>
@@ -189,81 +192,81 @@ function Header() {
         </div>
       </motion.header>
 
-      {/* Mobile Menu Overlay */}
+      {/* Mobile Menu Dropdown */}
       <AnimatePresence>
         {isMobileMenuOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-40 bg-pitchy-bg/95 backdrop-blur-xl md:hidden"
-          >
-            <div className="flex flex-col items-center justify-center h-full gap-2 pt-16">
-              {navItems.map((item, index) => (
-                <motion.div
-                  key={item.path}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 10 }}
-                  transition={{ delay: index * 0.05, duration: 0.3 }}
-                >
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="fixed inset-0 z-30 bg-black/50 md:hidden"
+            />
+            {/* Panel */}
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.2 }}
+              className="fixed top-[4rem] left-0 right-0 z-40 md:hidden bg-pitchy-bg/98 backdrop-blur-xl border-b border-white/10 shadow-xl"
+            >
+              <div className="px-4 py-4 space-y-1">
+                {navItems.map((item) => (
                   <Link
+                    key={item.path}
                     href={item.path}
                     onClick={() => setIsMobileMenuOpen(false)}
-                    className={`block px-8 py-3 text-lg font-medium rounded-xl transition-colors ${pathname === item.path
+                    className={`flex items-center px-4 py-3 rounded-xl text-base font-medium transition-colors ${pathname === item.path
                       ? "text-white bg-white/10"
-                      : "text-white/60 hover:text-white"
+                      : "text-white/60 hover:text-white hover:bg-white/5"
                       }`}
                   >
                     {item.label}
                   </Link>
-                </motion.div>
-              ))}
+                ))}
+              </div>
 
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: navItems.length * 0.05, duration: 0.3 }}
-                className="mt-6 pt-6 border-t border-white/10 flex flex-col items-center gap-3 w-64"
-              >
+              <div className="px-4 pb-4 pt-2 border-t border-white/10">
                 {token ? (
-                  <>
+                  <div className="flex gap-2">
                     <Link
                       href="/account"
                       onClick={() => setIsMobileMenuOpen(false)}
-                      className="w-full text-center px-6 py-3 text-sm font-medium text-white/70 hover:text-white rounded-xl hover:bg-white/5 transition-colors"
+                      className="flex-1 text-center px-4 py-3 rounded-xl text-sm font-medium text-white/60 hover:text-white hover:bg-white/5 transition-colors"
                     >
                       Аккаунт
                     </Link>
                     <button
-                      onClick={handleLogout}
-                      className="w-full px-6 py-3 text-sm font-medium text-white/70 hover:text-red-400 rounded-xl hover:bg-white/5 transition-colors"
+                      onClick={() => { handleLogout(); setIsMobileMenuOpen(false); }}
+                      className="flex-1 px-4 py-3 rounded-xl text-sm font-medium text-white/60 hover:text-white hover:bg-white/5 transition-colors"
                     >
                       Выйти
                     </button>
-                  </>
+                  </div>
                 ) : (
-                  <>
+                  <div className="flex gap-2">
                     <Link
                       href="/login"
                       onClick={() => setIsMobileMenuOpen(false)}
-                      className="w-full text-center px-6 py-3 text-sm font-medium text-white/70 hover:text-white rounded-xl border border-white/10 transition-colors"
+                      className="flex-1 text-center px-4 py-3 rounded-xl text-sm font-medium text-white/60 hover:text-white border border-white/10 transition-colors"
                     >
                       Войти
                     </Link>
                     <Link
                       href="/signup"
                       onClick={() => setIsMobileMenuOpen(false)}
-                      className="w-full text-center px-6 py-3 text-sm font-medium text-white bg-pitchy-violet hover:bg-pitchy-violet-dark rounded-xl transition-colors"
+                      className="flex-1 text-center px-4 py-3 rounded-xl text-sm font-medium text-white bg-pitchy-violet hover:bg-pitchy-violet-dark transition-colors"
                     >
                       Регистрация
                     </Link>
-                  </>
+                  </div>
                 )}
-              </motion.div>
-            </div>
-          </motion.div>
+              </div>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
     </>
@@ -359,7 +362,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className={`${lockScroll ? "h-[100dvh] overflow-hidden" : "min-h-[100dvh]"} flex flex-col bg-transparent`}>
       <Header />
-      <main className={`flex-1 flex flex-col min-h-0 transition-all duration-300 ${isHeaderHidden ? "pt-0" : "pt-16"}`}>
+      <main className={`flex-1 flex flex-col min-h-0 transition-all duration-300 pt-16 ${isHeaderHidden ? "lg:pt-0" : ""}`}>
         {children}
       </main>
       {!isDashboard && <Footer />}

@@ -179,7 +179,7 @@ export function TreeView({ }: Props) {
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex flex-col h-[calc(100vh-12rem)]"
+        className="flex flex-col w-full flex-1 min-h-0"
       >
         {/* Error banner */}
         <AnimatePresence>
@@ -196,18 +196,19 @@ export function TreeView({ }: Props) {
           )}
         </AnimatePresence>
 
-        <div className="flex-1 flex flex-col items-center justify-center px-4">
+        <div className="flex-1 flex flex-col items-center justify-center px-4 w-full">
+          <div className="w-full max-w-lg flex flex-col items-center">
           <div className="w-16 h-16 rounded-2xl bg-pitchy-violet/10 border border-pitchy-violet/20 flex items-center justify-center mb-6">
             <GitBranch className="w-8 h-8 text-pitchy-violet" />
           </div>
           <h3 className="text-xl sm:text-2xl font-bold text-white mb-2 text-center">
             Древо принятия решений
           </h3>
-          <p className="text-sm text-white/50 mb-8 max-w-md text-center">
+          <p className="text-sm text-white/50 mb-8 w-full text-center">
             Загрузите PDF-документ или опишите идею стартапа — ИИ построит интерактивное древо анализа.
           </p>
 
-          <div className="w-full max-w-lg space-y-4">
+          <div className="w-full space-y-4">
             {/* Text input */}
             <GlassCard hover={false} className="p-4">
               <textarea
@@ -254,6 +255,7 @@ export function TreeView({ }: Props) {
               onChange={handleFileChange}
             />
           </div>
+          </div>
         </div>
       </motion.div>
     );
@@ -262,7 +264,7 @@ export function TreeView({ }: Props) {
   // ——— Loading / Generating State ———
   if (tree.status === "uploading" || tree.status === "generating") {
     return (
-      <div className="flex flex-col h-[calc(100vh-12rem)] items-center justify-center">
+      <div className="flex flex-col flex-1 w-full min-h-0 items-center justify-center">
         <motion.div
           animate={{ rotate: 360 }}
           transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
@@ -283,7 +285,7 @@ export function TreeView({ }: Props) {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="flex flex-col h-[calc(100vh-12rem)]"
+      className="flex flex-col flex-1 w-full min-h-0"
     >
       {/* Error banner */}
       <AnimatePresence>
@@ -329,7 +331,7 @@ export function TreeView({ }: Props) {
       </div>
 
       {/* Canvas */}
-      <div className="flex-1 min-h-0 flex relative overflow-hidden">
+      <div className="flex-1 min-h-[300px] flex relative overflow-hidden">
         <div className="flex-1 relative">
            <TreeCanvas
              treeNodes={tree.nodes}

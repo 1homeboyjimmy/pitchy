@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, MessageCircle } from "react-feather";
+import Link from "next/link";
 import { FadeContent } from "../reactbits/FadeContent";
 import { AnimatedContent } from "../reactbits/AnimatedContent";
 import { AnimatedButton } from "../ui-custom/AnimatedButton";
@@ -155,9 +156,11 @@ export function FAQPage() {
             <p className="text-zinc-400 mb-6">
               Не нашли ответ? Наша команда готова помочь.
             </p>
-            <AnimatedButton variant="outline" icon={<MessageCircle className="w-4 h-4" />}>
-              Написать в поддержку
-            </AnimatedButton>
+            <Link href="/contact">
+              <AnimatedButton variant="outline" icon={<MessageCircle className="w-4 h-4" />}>
+                Написать в поддержку
+              </AnimatedButton>
+            </Link>
           </div>
         </FadeContent>
       </div>
