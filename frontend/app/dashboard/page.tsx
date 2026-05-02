@@ -65,6 +65,7 @@ function DashboardContent() {
   const [loading, setLoading] = useState(true);
   const [userProfile, setUserProfile] = useState<UserResponse | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   useEffect(() => {
     const tab = searchParams.get("tab");
@@ -164,11 +165,20 @@ function DashboardContent() {
 
   return (
     <div className="bg-[#0A0A0A] text-white min-h-screen font-sans flex overflow-hidden">
-      <SideNavBar activeTab={activeTab} setActiveTab={setActiveTab} isAdmin={userProfile?.is_admin} />
-      <InternalTopNavBar activeTab={activeTab} />
+      <SideNavBar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        isAdmin={userProfile?.is_admin}
+        isMobileOpen={isMobileSidebarOpen}
+        onMobileClose={() => setIsMobileSidebarOpen(false)}
+      />
+      <InternalTopNavBar
+        activeTab={activeTab}
+        onMenuClick={() => setIsMobileSidebarOpen(true)}
+      />
 
-      <main className="flex-1 ml-64 pt-14 h-screen overflow-y-auto">
-        <div className={`w-full mx-auto ${activeTab === 'chat' || activeTab === 'tree' ? 'px-8 pt-8 h-[calc(100vh-3.5rem)]' : 'p-8 max-w-7xl min-h-full'}`}>
+      <main className="flex-1 md:ml-64 pt-14 h-screen overflow-y-auto">
+        <div className={`w-full mx-auto ${activeTab === 'chat' || activeTab === 'tree' ? 'px-4 sm:px-8 pt-4 sm:pt-8 h-[calc(100vh-3.5rem)]' : 'p-4 sm:p-8 max-w-7xl min-h-full'}`}>
 
           {activeTab === "overview" && (
             <>
