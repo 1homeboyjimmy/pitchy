@@ -146,13 +146,13 @@ function Header() {
               <>
                 <Link
                   href="/account"
-                  className="font-mono-label text-[12px] uppercase tracking-widest text-neutral-500 hover:text-white transition-colors"
+                  className="px-4 py-1.5 border border-white text-white font-mono-label text-[12px] uppercase tracking-widest hover:bg-white hover:text-black transition-colors"
                 >
                   АККАУНТ
                 </Link>
                 <button
                   onClick={handleLogout}
-                  className="font-mono-label text-[12px] uppercase tracking-widest text-neutral-500 hover:text-white transition-colors"
+                  className="px-4 py-1.5 border border-white text-white font-mono-label text-[12px] uppercase tracking-widest hover:bg-white hover:text-black transition-colors"
                 >
                   ВЫЙТИ
                 </button>

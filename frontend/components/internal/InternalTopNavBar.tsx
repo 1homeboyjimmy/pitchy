@@ -72,16 +72,16 @@ export function InternalTopNavBar({ activeTab, onMenuClick }: Props) {
         ))}
       </nav>
 
-      <div className="flex items-center gap-5">
+      <div className="flex items-center gap-3 sm:gap-4">
         <Link
           href="/account"
-          className={`${linkBase} text-neutral-500 hover:text-white cursor-crosshair`}
+          className="px-4 py-1.5 border border-white text-white font-mono-label text-[12px] uppercase tracking-widest hover:bg-white hover:text-black transition-colors cursor-crosshair"
         >
           АККАУНТ
         </Link>
         <button
           onClick={handleLogout}
-          className={`${linkBase} text-neutral-500 hover:text-white cursor-crosshair`}
+          className="px-4 py-1.5 border border-white text-white font-mono-label text-[12px] uppercase tracking-widest hover:bg-white hover:text-black transition-colors cursor-crosshair"
         >
           ВЫЙТИ
         </button>

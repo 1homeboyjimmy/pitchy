@@ -66,10 +66,16 @@ export function LandingNavBar() {
         <div className="hidden md:flex items-center gap-5">
           {isAuthenticated ? (
             <>
-              <Link href="/account" className={`${linkBase} text-neutral-500 hover:text-white`}>
+              <Link
+                href="/account"
+                className="px-4 py-1.5 border border-white text-white font-mono-label text-[12px] uppercase tracking-widest hover:bg-white hover:text-black transition-colors duration-200 cursor-crosshair"
+              >
                 АККАУНТ
               </Link>
-              <button onClick={handleLogout} className={`${linkBase} text-neutral-500 hover:text-white`}>
+              <button
+                onClick={handleLogout}
+                className="px-4 py-1.5 border border-white text-white font-mono-label text-[12px] uppercase tracking-widest hover:bg-white hover:text-black transition-colors duration-200 cursor-crosshair"
+              >
                 ВЫЙТИ
               </button>
             </>
