@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { Menu, LogOut, User } from "lucide-react";
 import { clearToken } from "@/lib/auth";
+import { PitchyLogo } from "@/components/shared/PitchyLogo";
 
 const navLinks = [
   { href: "/", label: "Главная" },
