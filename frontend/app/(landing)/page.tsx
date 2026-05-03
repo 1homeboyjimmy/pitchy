@@ -106,17 +106,17 @@ export default function LandingPage() {
         <div className="aurora-orb right-[-6rem] top-[58rem] h-72 w-72 bg-[oklch(0.62_0.2_210_/_0.24)] animate-float-slow" />
 
         {/* Introduction Section */}
-        <section className="relative section-line px-5 pb-14 pt-10 sm:px-8 sm:pt-12 lg:px-12 lg:pt-16">
-          <div className="mx-auto flex w-full max-w-7xl justify-end">
+        <section className="relative section-line px-5 pb-14 pt-10 sm:px-8 sm:pt-12 lg:px-12 lg:pt-16 w-full">
+          <div className="mx-auto flex w-full max-w-7xl justify-center text-center">
             <motion.div
               initial={{ opacity: 0, y: 28 }}
               whileInView={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8, ease: "easeOut", delay: 0.1 }}
               viewport={{ once: true }}
-              className="lovable-glass lovable-liquid-outline max-w-xl rounded-[2rem] p-5 text-left md:p-7"
+              className="lovable-glass lovable-liquid-outline w-full max-w-5xl rounded-[2.5rem] p-8 md:p-16 relative z-10"
             >
-              <div className="mono-lovable text-white/60">NEXT SECTIONS</div>
-              <p className="mt-3 text-sm leading-7 text-white/70 md:text-base font-light">
+              <div className="mono-lovable text-white/60 tracking-[0.3em] text-xs uppercase">NEXT SECTIONS</div>
+              <p className="mt-8 text-lg leading-relaxed text-white/80 md:text-2xl font-light break-words max-w-4xl mx-auto">
                 Ниже — полностью новая подача: глубокий чёрный фон, живое стекло, мягкие свечения,
                 тонкие линии и кинематографичный ритм секций.
               </p>
