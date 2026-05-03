@@ -49,7 +49,7 @@ export function HeroSection() {
     ];
 
     return (
-        <section className="relative h-screen w-full bg-black overflow-hidden font-sans">
+        <section className="relative min-h-screen w-full bg-black overflow-hidden font-sans pb-20">
             {/* Background Video */}
             <video
                 autoPlay
@@ -100,12 +100,12 @@ export function HeroSection() {
                 </header>
 
                 {/* Top Text Section (Two Columns) */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-12 md:mt-20">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 mt-12 md:mt-20 w-full items-start">
                     <motion.p 
                         initial={{ opacity: 0, x: -20 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ duration: 0.8 }}
-                        className="text-white/80 text-sm md:text-base max-w-lg leading-relaxed"
+                        className="text-white/80 text-sm md:text-base max-w-2xl leading-relaxed text-left"
                     >
                         Мы создаем ИИ-экосистему, которая дает основателям стартапов глубокую экспертизу и видение, необходимые для масштабирования на глобальном рынке.
                     </motion.p>
@@ -122,7 +122,7 @@ export function HeroSection() {
                 </div>
 
                 {/* Main Hero Content (Center) */}
-                <div className="flex-1 flex flex-col items-center justify-center text-center -mt-20 md:-mt-32">
+                <div className="flex-1 flex flex-col items-center justify-center text-center py-24">
                     <motion.span 
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}

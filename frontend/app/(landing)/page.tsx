@@ -100,7 +100,7 @@ export default function LandingPage() {
       <HeroSection />
 
       {/* Cinematic Fade Top (Legacy Transition) */}
-      <div className="w-full h-32 bg-gradient-to-b from-transparent to-black pointer-events-none -mt-32 relative z-10" />
+      <div className="w-full h-32 bg-gradient-to-b from-transparent to-black pointer-events-none relative z-10" />
 
       <main className="relative min-h-screen overflow-hidden bg-background text-foreground">
         {/* Lovable Aurora Background Elements */}
