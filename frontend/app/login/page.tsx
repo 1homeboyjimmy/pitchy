@@ -53,7 +53,7 @@ function LoginContent() {
           </Link>
           <h2 className="text-6xl md:text-8xl text-white tracking-tighter leading-[0.9] mb-4 font-display">
             Авторизация <br />
-            <span className="text-white/30">системы</span>.
+            <span className="text-white/30 italic">системы</span>.
           </h2>
         </div>
 
