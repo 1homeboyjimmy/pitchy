@@ -81,23 +81,25 @@ export function HeroSection() {
             {/* Top Navigation */}
             <header className="relative z-20 w-full px-6 py-6 md:px-12 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                    <Zap className="w-5 h-5 text-white" />
-                    <span className="text-white font-medium text-lg tracking-wide">Pitchy.pro</span>
+                    <span className="text-white font-bold text-xl tracking-tight">Pitchy <span className="text-[#8B5CF6]">.pro</span></span>
                 </div>
 
-                <nav className="hidden md:flex items-center gap-8 text-sm text-white/70">
-                    <Link href="#" className="hover:text-white transition-colors">Platform</Link>
-                    <Link href="#" className="hover:text-white transition-colors">Solutions</Link>
-                    <Link href="#" className="hover:text-white transition-colors">Roadmap</Link>
+                <nav className="hidden md:flex items-center gap-6 text-[15px] font-medium text-white/70">
+                    <Link href="/" className="bg-white/10 text-white px-4 py-2 rounded-lg hover:bg-white/20 transition-colors">Главная</Link>
+                    <Link href="/dashboard" className="hover:text-white transition-colors">Дашборд</Link>
+                    <Link href="/faq" className="hover:text-white transition-colors">FAQ</Link>
+                    <Link href="/about" className="hover:text-white transition-colors">О нас</Link>
+                    <Link href="/pricing" className="hover:text-white transition-colors">Тарифы</Link>
+                    <Link href="/contact" className="hover:text-white transition-colors">Контакты</Link>
                 </nav>
 
                 <div className="flex items-center gap-6">
-                    <Link href="#" className="hidden md:block text-sm text-white/70 hover:text-white transition-colors">
-                        Login
+                    <Link href="/login" className="hidden md:block text-[15px] font-medium text-white/70 hover:text-white transition-colors">
+                        Войти
                     </Link>
-                    <button className="liquid-glass text-white text-sm font-medium px-5 py-2.5 rounded-full hover:bg-white/5 transition-colors">
-                        Get Started
-                    </button>
+                    <Link href="/signup" className="bg-[#8B5CF6] text-white text-[15px] font-medium px-5 py-2.5 rounded-xl hover:bg-[#7C3AED] transition-colors">
+                        Регистрация
+                    </Link>
                 </div>
             </header>
 
