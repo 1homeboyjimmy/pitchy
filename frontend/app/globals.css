@@ -1,11 +1,11 @@
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Barlow:ital,wght@0,300;0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;700;800&family=Plus+Jakarta+Sans:wght@400;700&family=Barlow:ital,wght@0,300;0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;700&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap');
 @import "tailwindcss";
 
 /* ─── Tailwind v4 Theme — Design Tokens from newdesign.md ─── */
 @theme {
   /* ── Colors: Full Material-style palette ── */
-  --color-background: #141313;
+  --color-background: #070b0a;
   --color-on-background: #e5e2e1;
   --color-surface: #141313;
   --color-surface-dim: #141313;
@@ -24,7 +24,7 @@
   --color-outline: #8e9192;
   --color-outline-variant: #444748;
 
-  --color-primary: #ffffff;
+  --color-primary: #5ed29c;
   --color-on-primary: #2f3131;
   --color-primary-container: #e2e2e2;
   --color-on-primary-container: #636565;
@@ -58,12 +58,12 @@
   --color-on-error-container: #ffdad6;
 
   /* ── Fonts ── */
-  --font-display: 'Barlow', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Inter', ui-sans-serif, system-ui, sans-serif;
   --font-h1: 'Instrument Serif', serif;
   --font-h2: 'Instrument Serif', serif;
-  --font-body-lg: 'Barlow', ui-sans-serif, system-ui, sans-serif;
-  --font-body-sm: 'Barlow', ui-sans-serif, system-ui, sans-serif;
-  --font-mono-label: 'Barlow', ui-sans-serif, system-ui, sans-serif;
+  --font-body-lg: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-body-sm: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono-label: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
   --font-code: 'JetBrains Mono', monospace;
 
   /* ── Font Sizes (with line-height / letter-spacing / weight) ── */
@@ -451,12 +451,12 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 
 /* ─── Lovable Design Integration Utilities ─── */
 :root {
-  --aurora-a: oklch(0.4 0.12 280);
-  --aurora-b: oklch(0.35 0.15 250);
-  --aurora-c: oklch(0.3 0.1 230);
+  --aurora-a: oklch(0.5 0.15 160);
+  --aurora-b: oklch(0.45 0.12 150);
+  --aurora-c: oklch(0.4 0.1 170);
   --gradient-aurora: linear-gradient(135deg, var(--aurora-a), var(--aurora-b) 50%, var(--aurora-c));
-  --gradient-text: linear-gradient(180deg, oklch(1 0 0) 0%, oklch(0.7 0.04 270) 100%);
-  --shadow-glow: 0 0 80px -10px oklch(0.6 0.22 290 / 40%);
+  --gradient-text: linear-gradient(180deg, oklch(1 0 0) 0%, oklch(0.8 0.15 160) 100%);
+  --shadow-glow: 0 0 80px -10px oklch(0.8 0.15 160 / 40%);
   --shadow-glass: 0 8px 32px 0 oklch(0 0 0 / 60%), inset 0 1px 0 0 oklch(1 0 0 / 8%);
 }
 
@@ -499,9 +499,9 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 
 .aurora-bg {
   background-image:
-    radial-gradient(ellipse at 20% 0%, oklch(0.3 0.15 280 / 20%), transparent 60%),
-    radial-gradient(ellipse at 80% 30%, oklch(0.25 0.12 250 / 15%), transparent 50%),
-    radial-gradient(ellipse at 50% 100%, oklch(0.2 0.08 230 / 10%), transparent 70%);
+    radial-gradient(ellipse at 20% 0%, oklch(0.5 0.15 160 / 20%), transparent 60%),
+    radial-gradient(ellipse at 80% 30%, oklch(0.45 0.12 150 / 15%), transparent 50%),
+    radial-gradient(ellipse at 50% 100%, oklch(0.4 0.1 170 / 10%), transparent 70%);
 }
 
 .section-line {

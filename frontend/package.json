@@ -22,6 +22,7 @@
     "dayjs": "^1.11.19",
     "dompurify": "^3.4.0",
     "framer-motion": "^12.33.0",
+    "hls.js": "^1.6.16",
     "isomorphic-dompurify": "^3.9.0",
     "lucide-react": "^0.473.0",
     "next": "16.2.3",

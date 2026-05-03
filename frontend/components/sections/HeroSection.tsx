@@ -1,152 +1,225 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { Zap, ArrowRight, Instagram, Twitter, Linkedin } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowRight, Menu, X, Zap } from "lucide-react";
 import Link from "next/link";
-
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
+import Hls from "hls.js";
 
 export function HeroSection() {
     const videoRef = useRef<HTMLVideoElement>(null);
-    const fadingOutRef = useRef(false);
+    const [isMenuOpen, setIsMenuOpen] = useState(false);
 
     useEffect(() => {
         const video = videoRef.current;
         if (!video) return;
 
-        let animationFrameId: number;
+        const hlsUrl = "https://stream.mux.com/tLkHO1qZoaaQOUeVWo8hEBeGQfySP02EPS02BmnNFyXys.m3u8";
 
-        const checkTime = () => {
-            if (!video.duration) {
-                animationFrameId = requestAnimationFrame(checkTime);
-                return;
-            }
+        if (Hls.isSupported()) {
+            const hls = new Hls({ enableWorker: false });
+            hls.loadSource(hlsUrl);
+            hls.attachMedia(video);
+            hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                video.play().catch(e => console.log("HLS play failed", e));
+            });
 
-            const timeLeft = video.duration - video.currentTime;
-
-            if (timeLeft <= 0.55 && !fadingOutRef.current) {
-                fadingOutRef.current = true;
-                video.style.opacity = '0';
-            }
-
-            animationFrameId = requestAnimationFrame(checkTime);
-        };
-
-        const handleEnded = () => {
-            video.style.opacity = '0';
-            setTimeout(() => {
-                video.currentTime = 0;
-                const playPromise = video.play();
-                if (playPromise !== undefined) {
-                    playPromise.catch((error: unknown) => console.log("Auto-play prevented", error));
-                }
-                setTimeout(() => {
-                    fadingOutRef.current = false;
-                    video.style.opacity = '1';
-                }, 50);
-            }, 100);
-        };
-
-        const handleLoadedData = () => {
-            video.style.opacity = '1';
-            animationFrameId = requestAnimationFrame(checkTime);
-        };
-
-        video.addEventListener('ended', handleEnded);
-        video.addEventListener('loadeddata', handleLoadedData);
-
-        if (!video.paused && video.readyState >= 2) {
-            handleLoadedData();
+            return () => {
+                hls.destroy();
+            };
+        } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+            video.src = hlsUrl;
+            video.addEventListener("loadedmetadata", () => {
+                video.play().catch(e => console.log("Native HLS play failed", e));
+            });
         }
-
-        return () => {
-            if (animationFrameId) {
-                cancelAnimationFrame(animationFrameId);
-            }
-            video.removeEventListener('ended', handleEnded);
-            video.removeEventListener('loadeddata', handleLoadedData);
-        };
     }, []);
 
+    const navLinks = [
+        { name: "ГЛАВНАЯ", href: "/" },
+        { name: "ДАШБОРД", href: "/dashboard" },
+        { name: "ТАРИФЫ", href: "/pricing" },
+        { name: "FAQ", href: "/faq" },
+        { name: "О НАС", href: "/about" },
+    ];
+
     return (
-        <section className="relative min-h-screen bg-black overflow-hidden flex flex-col justify-between selection:bg-white/20">
-            {/* Background Video Engine */}
-            <video
-                ref={videoRef}
-                autoPlay
-                muted
-                playsInline
-                className="absolute inset-0 w-full h-full object-cover translate-y-[17%] transition-opacity duration-500 opacity-0 pointer-events-none"
-                src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260328_115001_bcdaa3b4-03de-47e7-ad63-ae3e392c32d4.mp4"
-            />
-
-            {/* Top Navigation Wrapper */}
-            <div className="relative z-20 w-full px-6 pt-6 flex justify-center">
-                {/* Floating Pill Navbar */}
-                <header className="liquid-glass rounded-full w-full max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
-                    <div className="flex items-center gap-2 relative z-10">
-                        <span className="text-white font-medium text-2xl tracking-tighter" style={{ fontFamily: "'Instrument Serif', serif" }}>
-                            Pitchy
-                            <span className="text-white/40 font-light italic ml-1">.pro</span>
-                        </span>
-                    </div>
-
-                    <nav className="hidden md:flex items-center gap-6 text-[15px] font-medium text-white/70 relative z-10">
-                        <Link href="/" className="hover:text-white transition-colors">Главная</Link>
-                        <Link href="/dashboard" className="bg-white/10 text-white px-4 py-2.5 rounded-full hover:bg-white/20 transition-colors">Дашборд</Link>
-                        <Link href="/faq" className="hover:text-white transition-colors">FAQ</Link>
-                        <Link href="/about" className="hover:text-white transition-colors">О нас</Link>
-                        <Link href="/pricing" className="hover:text-white transition-colors">Тарифы</Link>
-                        <Link href="/contact" className="hover:text-white transition-colors">Контакты</Link>
-                    </nav>
-
-                    <div className="flex items-center gap-6 relative z-10">
-                        <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.95 }} transition={{ duration: 0.2, ease: "easeOut" }}>
-                            <Link href="/login" className="hidden md:block text-[15px] font-medium text-white/70 hover:text-white transition-all">
-                                Войти
-                            </Link>
-                        </motion.div>
-                        <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.95 }} transition={{ duration: 0.2, ease: "easeOut" }}>
-                            <Link href="/signup" className="liquid-glass-strong text-white text-[15px] font-medium px-6 py-2.5 rounded-full transition-all shadow-lg hover:shadow-white/10">
-                                <span className="relative z-10">Регистрация</span>
-                            </Link>
-                        </motion.div>
-                    </div>
-                </header>
+        <section className="relative min-h-screen bg-[#070b0a] overflow-hidden flex flex-col font-inter">
+            {/* Background HLS Video */}
+            <div className="absolute inset-0 z-0">
+                <video
+                    ref={videoRef}
+                    autoPlay
+                    muted
+                    loop
+                    playsInline
+                    className="w-full h-full object-cover opacity-60"
+                />
+                {/* Overlays */}
+                <div className="absolute inset-0 bg-gradient-to-r from-[#070b0a] via-[#070b0a]/40 to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#070b0a] via-transparent to-transparent" />
             </div>
 
-            {/* Hero Body */}
-            <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 w-full max-w-4xl mx-auto text-center pt-20 pb-12">
-                <h1 
-                    className="text-4xl md:text-5xl lg:text-6xl text-white mb-8 leading-[1.1] font-normal tracking-tight"
-                    style={{ fontFamily: "'Instrument Serif', serif" }}
+            {/* Vertical Grid Lines */}
+            <div className="absolute inset-0 z-1 pointer-events-none hidden lg:block">
+                <div className="absolute left-1/4 top-0 bottom-0 w-px bg-white/10" />
+                <div className="absolute left-1/2 top-0 bottom-0 w-px bg-white/10" />
+                <div className="absolute left-3/4 top-0 bottom-0 w-px bg-white/10" />
+            </div>
+
+            {/* Central Glow */}
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-4xl h-64 pointer-events-none z-1">
+                <svg className="w-full h-full opacity-40 filter blur-[25px]">
+                    <ellipse cx="50%" cy="0" rx="40%" ry="60%" fill="url(#glowGradient)" />
+                    <defs>
+                        <radialGradient id="glowGradient" cx="50%" cy="0" r="1">
+                            <stop offset="0%" stopColor="#5ed29c" stopOpacity="0.8" />
+                            <stop offset="100%" stopColor="#070b0a" stopOpacity="0" />
+                        </radialGradient>
+                    </defs>
+                </svg>
+            </div>
+
+            {/* Header */}
+            <header className="relative z-50 flex items-center justify-between px-6 py-8 md:px-12">
+                <Link href="/" className="flex items-center gap-2">
+                    <span className="text-white font-medium text-2xl tracking-tighter" style={{ fontFamily: "'Instrument Serif', serif" }}>
+                        Pitchy<span className="text-white/40 font-light italic ml-1">.pro</span>
+                    </span>
+                </Link>
+
+                {/* Desktop Nav */}
+                <nav className="hidden md:flex items-center gap-8">
+                    {navLinks.map((link) => (
+                        <Link 
+                            key={link.name} 
+                            href={link.href} 
+                            className="text-[14px] font-medium tracking-wide text-white/70 hover:text-[#5ed29c] transition-colors"
+                        >
+                            {link.name}
+                        </Link>
+                    ))}
+                    <Link href="/login" className="text-[14px] font-medium text-white/70 hover:text-white ml-4">Войти</Link>
+                    <Link href="/signup" className="bg-[#5ed29c] text-[#070b0a] px-6 py-2.5 rounded-full text-[14px] font-bold hover:scale-105 transition-transform">
+                        РЕГИСТРАЦИЯ
+                    </Link>
+                </nav>
+
+                {/* Mobile Hamburger */}
+                <button 
+                    className="md:hidden text-white"
+                    onClick={() => setIsMenuOpen(!isMenuOpen)}
                 >
-                    ИИ-экосистема для стартапов
-                </h1>
+                    {isMenuOpen ? <X size={32} /> : <Menu size={32} />}
+                </button>
+            </header>
 
-                <p className="text-white/70 text-lg md:text-2xl max-w-3xl mx-auto mb-12 font-light leading-relaxed">
-                    От анализа идеи и проведения синтетических CustDev интервью <br className="hidden md:block" /> до подбора и получения грантов.
-                </p>
+            {/* Hero Main Content */}
+            <div className="relative z-10 flex-1 flex flex-col items-start justify-center px-6 md:px-24 max-w-7xl mx-auto w-full pt-20">
+                
+                {/* Floating Liquid Glass Card */}
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: -50 }}
+                    transition={{ duration: 1, ease: "easeOut" }}
+                    className="relative w-[200px] h-[200px] p-6 rounded-[24px] flex flex-col justify-between mb-8 overflow-hidden"
+                    style={{
+                        background: "rgba(255, 255, 255, 0.01)",
+                        backgroundBlendMode: "luminosity",
+                        backdropFilter: "blur(4px)",
+                        WebkitBackdropFilter: "blur(4px)",
+                        boxShadow: "inset 0 1px 1px rgba(255, 255, 255, 0.1)",
+                    }}
+                >
+                    {/* High-end border effect */}
+                    <div className="absolute inset-0 rounded-[24px] pointer-events-none" style={{
+                        padding: "1.4px",
+                        background: "linear-gradient(180deg, rgba(255,255,255,0.4) 0%, rgba(255,255,255,0.1) 100%)",
+                        WebkitMask: "linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
+                        WebkitMaskComposite: "xor",
+                        maskComposite: "exclude"
+                    }} />
+                    
+                    <div>
+                        <div className="text-[#5ed29c] text-[12px] font-bold tracking-[0.2em]">[ 2025 ]</div>
+                        <h3 className="mt-2 text-white text-[18px] leading-tight font-medium">
+                            AI-Driven <span className="italic font-light" style={{ fontFamily: "'Instrument Serif', serif" }}>Strategic</span> Insights
+                        </h3>
+                    </div>
+                    <p className="text-white/40 text-[11px] leading-relaxed">
+                        Real-time unit-economics, CustDev signals, and grant tracking for high-growth startups.
+                    </p>
+                </motion.div>
 
-                <div className="flex justify-center w-full">
+                {/* Typography Content */}
+                <motion.div
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.8, delay: 0.2 }}
+                >
+                    <div className="font-plus-jakarta text-[#5ed29c] text-[11px] font-bold tracking-[0.3em] uppercase mb-4">
+                        Ecosystem for Visionaries
+                    </div>
+                    
+                    <h1 className="text-4xl md:text-7xl font-extrabold text-white tracking-tight leading-[0.95] mb-6">
+                        ИИ-ЭКОСИСТЕМА <br /> ДЛЯ СТАРТАПОВ<span className="text-[#5ed29c]">.</span>
+                    </h1>
+
+                    <p className="text-white/70 text-[14px] md:text-[16px] leading-relaxed max-w-[512px] mb-10 font-light">
+                        От анализа идеи и проведения синтетических CustDev интервью до подбора и получения грантов. Полная поддержка вашего пути к росту и инвестициям.
+                    </p>
+
                     <Link href="/signup">
-                        <button className="liquid-glass-strong text-white px-10 py-4 rounded-full text-lg font-medium hover:scale-105 transition-transform flex items-center gap-3">
-                            <span className="relative z-10">Попробовать</span>
-                            <Zap className="w-5 h-5 shrink-0 text-white fill-white relative z-10" />
+                        <button className="bg-[#5ed29c] text-[#070b0a] px-10 py-5 rounded-full text-[14px] font-black uppercase tracking-widest flex items-center gap-3 hover:scale-105 transition-transform shadow-[0_0_40px_-10px_#5ed29c]">
+                            ПОПРОБОВАТЬ <ArrowRight size={20} strokeWidth={3} />
                         </button>
                     </Link>
-                </div>
+                </motion.div>
             </div>
 
-            {/* Footer */}
-            <footer className="relative z-10 w-full px-6 py-8 flex justify-center md:justify-end">
-                <Link href="https://t.me/pitchy_pro" target="_blank" className="liquid-glass rounded-full p-4 transition-all hover:bg-white/10 text-white flex items-center gap-2">
-                    <svg className="w-5 h-5 relative z-10 fill-current" viewBox="0 0 24 24">
-                        <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12l-6.87 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.458c.537-.196 1.006.128.831.953z"/>
-                    </svg>
-                    <span className="text-sm font-medium pr-2 relative z-10">Telegram</span>
-                </Link>
-            </footer>
+            {/* Mobile Menu Overlay */}
+            <AnimatePresence>
+                {isMenuOpen && (
+                    <motion.div
+                        initial={{ opacity: 0, x: "100%" }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: "100%" }}
+                        transition={{ type: "spring", damping: 25, stiffness: 200 }}
+                        className="fixed inset-0 z-[60] bg-[#070b0a] flex flex-col p-8"
+                    >
+                        <div className="flex justify-end">
+                            <button onClick={() => setIsMenuOpen(false)} className="text-white">
+                                <X size={40} />
+                            </button>
+                        </div>
+                        <nav className="flex-1 flex flex-col justify-center gap-8">
+                            {navLinks.map((link) => (
+                                <Link 
+                                    key={link.name} 
+                                    href={link.href} 
+                                    onClick={() => setIsMenuOpen(false)}
+                                    className="text-3xl font-extrabold text-white hover:text-[#5ed29c] transition-colors"
+                                >
+                                    {link.name}
+                                </Link>
+                            ))}
+                            <Link 
+                                href="/signup" 
+                                onClick={() => setIsMenuOpen(false)}
+                                className="mt-4 text-[#5ed29c] text-2xl font-bold"
+                            >
+                                РЕГИСТРАЦИЯ
+                            </Link>
+                        </nav>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Global Styles for Fonts & Utilities */}
+            <style jsx global>{`
+                .font-plus-jakarta { font-family: 'Plus Jakarta Sans', sans-serif; }
+                .font-inter { font-family: 'Inter', sans-serif; }
+            `}</style>
         </section>
     );
 }
