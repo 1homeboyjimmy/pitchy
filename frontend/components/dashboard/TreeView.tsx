@@ -197,15 +197,15 @@ export function TreeView({ }: Props) {
         </AnimatePresence>
 
         <div className="flex-1 flex items-center justify-center px-4 w-full">
-          <div className="w-full max-w-lg mx-auto text-center">
+          <div className="w-full max-w-3xl mx-auto text-center">
           <div className="w-16 h-16 rounded-none bg-[#111111] border border-white/10 flex items-center justify-center mb-6 mx-auto">
             <GitBranch className="w-8 h-8 text-white" />
           </div>
-          <h3 className="text-2xl font-display font-bold text-white mb-2 tracking-tight">
-            Древо принятия решений
+          <h3 className="text-5xl font-display text-white mb-4 tracking-tight" style={{ fontFamily: "'Instrument Serif', serif" }}>
+            Дорожная карта
           </h3>
-          <p className="text-[13px] font-code text-neutral-500 mb-8">
-            Загрузите PDF-документ или опишите идею стартапа — ИИ построит интерактивное древо анализа.
+          <p className="text-[16px] font-light text-white/50 mb-12 max-w-xl mx-auto leading-relaxed">
+            Загрузите PDF-документ или опишите идею стартапа — ИИ построит интерактивную дорожную карту анализа.
           </p>
 
           <div className="w-full space-y-4 text-left">
@@ -272,10 +272,10 @@ export function TreeView({ }: Props) {
         >
           <Loader className="w-8 h-8 text-white" />
         </motion.div>
-        <h3 className="text-2xl font-display font-bold text-white mb-2 tracking-tight">
-          {tree.status === "uploading" ? "Загрузка PDF..." : "ИИ строит древо..."}
+        <h3 className="text-3xl text-white mb-4 tracking-tight" style={{ fontFamily: "'Instrument Serif', serif" }}>
+          {tree.status === "uploading" ? "Загрузка PDF..." : "ИИ строит карту..."}
         </h3>
-        <p className="font-code text-[13px] text-neutral-500">Это может занять до 30 секунд</p>
+        <p className="font-mono text-[11px] text-white/30 uppercase tracking-[0.2em] font-bold">Это может занять до 30 секунд</p>
       </div>
     );
   }
@@ -291,17 +291,17 @@ export function TreeView({ }: Props) {
       <div className="p-8 pb-0 z-10">
         <div className="flex justify-between items-start">
             <div>
-            <h2 className="text-3xl font-display font-bold text-white tracking-tight">Древо принятия решений</h2>
-            <p className="font-mono-label text-[11px] text-neutral-500 mt-1 uppercase tracking-widest">AI-ВИЗУАЛИЗАЦИЯ ГОТОВНОСТИ ВАШЕГО СТАРТАПА</p>
+            <h2 className="text-4xl text-white tracking-tight" style={{ fontFamily: "'Instrument Serif', serif" }}>Дорожная карта</h2>
+            <p className="font-mono text-[10px] text-white/30 mt-1 uppercase tracking-[0.2em] font-bold">AI-ВИЗУАЛИЗАЦИЯ ГОТОВНОСТИ ВАШЕГО СТАРТАПА</p>
             </div>
             <div className="flex space-x-2">
             <button onClick={() => {
                 setTree({ nodes: [], edges: [], readinessIndex: 0, status: "idle" });
                 setDescription("");
-            }} className="border border-white/10 bg-[#111111] text-white px-4 py-2 font-mono-label text-[10px] uppercase font-bold hover:bg-white/5 transition-all flex items-center gap-2">
-                <FileText className="w-3.5 h-3.5" /> НОВОЕ ДРЕВО
+            }} className="border border-white/10 bg-white/5 text-white/60 px-6 py-2.5 font-mono text-[10px] uppercase tracking-[0.2em] font-bold hover:bg-white hover:text-black hover:border-white transition-all rounded-full active:scale-[0.98] flex items-center gap-2">
+                <FileText className="w-3.5 h-3.5" /> НОВАЯ КАРТА
             </button>
-            <button onClick={() => fileInputRef.current?.click()} className="bg-white text-black px-4 py-2 font-mono-label text-[10px] uppercase font-bold hover:opacity-90 transition-opacity flex items-center gap-2">
+            <button onClick={() => fileInputRef.current?.click()} className="bg-white text-black px-6 py-2.5 font-mono text-[10px] uppercase tracking-[0.2em] font-bold hover:bg-neutral-200 transition-all rounded-full active:scale-[0.98] flex items-center gap-2 shadow-lg shadow-white/5">
                 <Upload className="w-3.5 h-3.5" /> ЗАГРУЗИТЬ PDF
             </button>
             </div>

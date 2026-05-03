@@ -59,11 +59,11 @@ export function ContextImportModal({ isOpen, onClose, onSubmit }: ContextImportM
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl bg-[#131313] border border-white/10 rounded-2xl shadow-2xl z-[101] overflow-hidden text-white"
+            className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl bg-black border border-white/5 rounded-[2.5rem] shadow-[0_0_100px_-20px_rgba(0,0,0,0.5)] z-[101] overflow-hidden text-white"
           >
             <div className="flex items-center justify-between p-5 border-b border-white/10">
-              <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                <DownloadCloud className="w-5 h-5 text-pitchy-violet" />
+              <h2 className="text-[32px] text-white flex items-center gap-4" style={{ fontFamily: "'Instrument Serif', serif" }}>
+                <DownloadCloud className="w-8 h-8 text-white/40" strokeWidth={1} />
                 Импорт контекста
               </h2>
               <button
@@ -86,11 +86,11 @@ export function ContextImportModal({ isOpen, onClose, onSubmit }: ContextImportM
                     <p className="text-xs text-white/50 mb-3">
                       Вставьте его в ChatGPT / Claude / Gemini в тот чат, где вы уже обсуждали свой стартап, чтобы он собрал выжимку данных.
                     </p>
-                    <div className="relative bg-white/5 p-4 rounded-xl border border-white/10 group">
-                      <p className="text-sm text-white/80 pr-10">{promptText}</p>
+                    <div className="relative bg-white/[0.03] p-6 rounded-2xl border border-white/5 group">
+                      <p className="text-[15px] text-white/80 pr-10 leading-relaxed font-light">{promptText}</p>
                       <button
                         onClick={handleCopy}
-                        className="absolute right-3 top-3 p-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors text-white"
+                        className="absolute right-4 top-4 p-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all text-white active:scale-95"
                         title="Копировать"
                       >
                         {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
@@ -112,7 +112,7 @@ export function ContextImportModal({ isOpen, onClose, onSubmit }: ContextImportM
                       onChange={(e) => setInputText(e.target.value)}
                       placeholder="Вставьте текст или JSON-отчет здесь..."
                       rows={6}
-                      className="w-full bg-[#1A1A24] border border-white/10 focus:border-pitchy-violet rounded-xl p-4 text-sm text-white placeholder-white/30 resize-none outline-none transition-colors"
+                      className="w-full bg-white/[0.02] border border-white/5 focus:border-white/20 rounded-2xl p-6 text-[15px] text-white placeholder-white/20 resize-none outline-none transition-all font-light"
                     />
                   </div>
 
@@ -120,9 +120,9 @@ export function ContextImportModal({ isOpen, onClose, onSubmit }: ContextImportM
                     <button
                       onClick={handleSubmit}
                       disabled={!inputText.trim() || isSubmitting}
-                      className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-pitchy-violet to-purple-600 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-sm font-bold transition-opacity"
+                      className="flex items-center gap-3 px-8 py-3.5 bg-white text-black font-mono text-[11px] uppercase tracking-[0.2em] font-bold rounded-full hover:bg-neutral-200 disabled:opacity-50 transition-all active:scale-[0.98] shadow-xl shadow-white/5"
                     >
-                      {isSubmitting ? "Обработка..." : "Импортировать"}
+                      {isSubmitting ? <Loader className="w-4 h-4 animate-spin" /> : "Импортировать"}
                       {!isSubmitting && <ArrowRight className="w-4 h-4" />}
                     </button>
                   </div>

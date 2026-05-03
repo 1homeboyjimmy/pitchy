@@ -30,9 +30,10 @@ interface ExtendedChatMessage extends ChatMessageResponse {
 interface ChatInterfaceProps {
     session: ChatSessionDetailResponse;
     onUpdate: (updatedSession: ChatSessionDetailResponse) => void;
+    isSidebarCollapsed?: boolean;
 }
 
-export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
+export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInterfaceProps) {
     const [messages, setMessages] = useState<ExtendedChatMessage[]>(session.messages || []);
     const [inputValue, setInputValue] = useState("");
     const [isLoading, setIsLoading] = useState(false);
@@ -346,8 +347,8 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
     return (
         <div className="flex flex-col flex-1 h-full min-h-0 bg-black relative overflow-hidden">
             {/* Messages Area */}
-            <div ref={scrollViewportRef} className="flex-1 overflow-y-auto px-6 lg:px-12 pt-10 pb-64 thin-scrollbar">
-                <div className="max-w-4xl mx-auto w-full space-y-12">
+            <div ref={scrollViewportRef} className="flex-1 overflow-y-auto scroll-smooth pt-24 pb-40 px-6 sm:px-12 scrollbar-hide">
+                <div className={`mx-auto w-full transition-all duration-500 ease-[0.16,1,0.3,1] ${isSidebarCollapsed ? 'max-w-6xl' : 'max-w-4xl'} space-y-12`}>
                 {messages.length === 0 && (
                     <motion.div 
                         initial={{ opacity: 0, y: 20 }}
@@ -682,7 +683,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
 
             {/* Input Area (Fixed Bottom) */}
             <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/95 to-transparent pt-20 pb-10 z-40 px-6 sm:px-12">
-                <div className="max-w-4xl mx-auto w-full">
+                <div className={`mx-auto w-full transition-all duration-500 ease-[0.16,1,0.3,1] ${isSidebarCollapsed ? 'max-w-6xl' : 'max-w-4xl'}`}>
                     <ChatInput
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}

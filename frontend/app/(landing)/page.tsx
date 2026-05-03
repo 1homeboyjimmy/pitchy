@@ -152,7 +152,7 @@ export default function LandingPage() {
               whileInView={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.8 }}
               viewport={{ once: true }}
-              className="lovable-glass-strong lovable-liquid-outline rounded-[2.5rem] p-8 md:p-10 shadow-[0_0_80px_-20px_rgba(255,255,255,0.1)] bg-black/40"
+              className="lovable-glass-strong lovable-liquid-outline rounded-[2.5rem] p-8 md:p-10 shadow-[0_0_100px_-10px_rgba(255,255,255,0.2)] bg-black/40"
             >
               <div className="space-y-4">
                 {[

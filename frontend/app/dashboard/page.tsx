@@ -73,6 +73,7 @@ function DashboardContent() {
   const [userProfile, setUserProfile] = useState<UserResponse | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   useEffect(() => {
     const tab = searchParams.get("tab");
@@ -178,13 +179,16 @@ function DashboardContent() {
         isAdmin={userProfile?.is_admin}
         isMobileOpen={isMobileSidebarOpen}
         onMobileClose={() => setIsMobileSidebarOpen(false)}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
       />
       <InternalTopNavBar
         activeTab={activeTab}
         onMenuClick={() => setIsMobileSidebarOpen(true)}
+        isSidebarCollapsed={isSidebarCollapsed}
       />
 
-      <main className="flex-1 md:ml-64 pt-16 h-screen overflow-y-auto">
+      <main className={`flex-1 transition-all duration-500 ease-[0.16,1,0.3,1] pt-16 h-screen overflow-y-auto ${isSidebarCollapsed ? 'md:ml-20' : 'md:ml-64'}`}>
         <div className={`w-full mx-auto ${activeTab === 'chat' || activeTab === 'tree' ? 'px-4 sm:px-8 pt-4 sm:pt-8 h-[calc(100vh-4rem)]' : 'p-6 sm:p-12 max-w-7xl min-h-full'}`}>
 
           {activeTab === "overview" && (
@@ -282,7 +286,7 @@ function DashboardContent() {
                       className="lovable-glass-strong border border-white/5 p-8 flex flex-col justify-between hover:border-white/20 transition-all duration-500 min-h-[200px] group cursor-pointer rounded-[2rem] bg-white/[0.02]"
                     >
                       <div className="flex justify-between items-start mb-8">
-                        <div className="w-10 h-10 bg-white/5 flex items-center justify-center rounded-2xl group-hover:bg-white/10 transition-colors">
+                        <div className="w-14 h-10 bg-white/5 flex items-center justify-center rounded-2xl group-hover:bg-white/10 transition-colors">
                           <MessageSquare className="text-white/40 group-hover:text-white transition-colors" size={20} strokeWidth={1.5} />
                         </div>
                         <span className="font-mono text-[9px] uppercase tracking-[0.2em] px-3 py-1 border border-emerald-500/20 text-emerald-400 rounded-full font-bold">
@@ -328,15 +332,19 @@ function DashboardContent() {
           {activeTab === "chat" && (
             <div className="h-full w-full flex flex-col pb-8 max-w-7xl mx-auto">
               {activeSession ? (
-                <ChatInterface session={activeSession} onUpdate={setActiveSession} />
+                <ChatInterface 
+                  session={activeSession} 
+                  onUpdate={setActiveSession} 
+                  isSidebarCollapsed={isSidebarCollapsed}
+                />
               ) : (
                 <div className="flex flex-col flex-1 h-full lovable-glass-strong rounded-[2.5rem] border border-white/5 items-center justify-center px-4 bg-gradient-to-br from-white/[0.02] to-transparent">
-                  <div className="w-full max-w-md flex flex-col items-center text-center">
+                  <div className="w-full max-w-2xl flex flex-col items-center text-center">
                     <div className="w-20 h-20 bg-white/5 flex items-center justify-center rounded-[2rem] mb-8">
                       <MessageSquare className="w-10 h-10 text-white/20" strokeWidth={1} />
                     </div>
-                    <h3 className="text-4xl font-display text-white mb-4">Начать анализ</h3>
-                    <p className="text-white/40 font-light mb-10 text-lg leading-relaxed">
+                    <h3 className="text-5xl font-display text-white mb-6" style={{ fontFamily: "'Instrument Serif', serif" }}>Начать анализ</h3>
+                    <p className="text-white/50 font-light mb-12 text-xl leading-relaxed max-w-lg mx-auto">
                       Pitchy готов помочь вам разобрать идею, рынок и финансовую модель.
                     </p>
                     <button
