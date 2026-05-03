@@ -9,7 +9,7 @@ export function LandingFooter() {
       <div className="max-w-7xl mx-auto px-6 md:px-12 relative z-10">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-x-8 gap-y-12">
           <div className="space-y-6">
-            <h4 className="text-white text-lg font-medium" style={{ fontFamily: "'Instrument Serif', serif" }}>Продукт</h4>
+            <h4 className="text-white text-sm font-bold uppercase tracking-widest">Продукт</h4>
             <ul className="space-y-3">
               <li><Link className="text-sm text-white/50 hover:text-white transition-colors" href="/">Главная</Link></li>
               <li><Link className="text-sm text-white/50 hover:text-white transition-colors" href="/pricing">Тарифы</Link></li>
@@ -17,20 +17,20 @@ export function LandingFooter() {
             </ul>
           </div>
           <div className="space-y-6">
-            <h4 className="text-white text-lg font-medium" style={{ fontFamily: "'Instrument Serif', serif" }}>Компания</h4>
+            <h4 className="text-white text-sm font-bold uppercase tracking-widest">Компания</h4>
             <ul className="space-y-3">
               <li><Link className="text-sm text-white/50 hover:text-white transition-colors" href="/about">О нас</Link></li>
               <li><Link className="text-sm text-white/50 hover:text-white transition-colors" href="/contact">Контакты</Link></li>
             </ul>
           </div>
           <div className="space-y-6">
-            <h4 className="text-white text-lg font-medium" style={{ fontFamily: "'Instrument Serif', serif" }}>Ресурсы</h4>
+            <h4 className="text-white text-sm font-bold uppercase tracking-widest">Ресурсы</h4>
             <ul className="space-y-3">
               <li><Link className="text-sm text-white/50 hover:text-white transition-colors" href="/dashboard">Дашборд</Link></li>
             </ul>
           </div>
           <div className="space-y-6">
-            <h4 className="text-white text-lg font-medium" style={{ fontFamily: "'Instrument Serif', serif" }}>Правовая информация</h4>
+            <h4 className="text-white text-sm font-bold uppercase tracking-widest">Юридические данные</h4>
             <ul className="space-y-3">
               <li><Link className="text-sm text-white/50 hover:text-white transition-colors" href="/privacy">Конфиденциальность</Link></li>
               <li><Link className="text-sm text-white/50 hover:text-white transition-colors" href="/terms">Условия</Link></li>

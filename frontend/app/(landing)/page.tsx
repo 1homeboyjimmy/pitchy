@@ -50,9 +50,11 @@ function SectionHeading({
 }) {
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col items-center text-center">
-      <div className="mono-lovable text-white/70">{eyebrow}</div>
-      <h2 className="mt-4 max-w-4xl text-4xl leading-none text-gradient md:text-6xl" style={{ fontFamily: "'Instrument Serif', serif" }}>{title}</h2>
-      <p className="mt-5 max-w-2xl text-sm leading-7 text-white/60 md:text-base font-light">{text}</p>
+      <div className="text-[#5ed29c] text-[11px] font-bold tracking-[0.3em] uppercase mb-4" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>{eyebrow}</div>
+      <h2 className="mt-4 max-w-4xl text-3xl md:text-5xl lg:text-6xl font-extrabold text-white tracking-tight leading-none uppercase">
+        {title}<span className="text-[#5ed29c]">.</span>
+      </h2>
+      <p className="mt-6 max-w-2xl text-sm leading-7 text-white/60 md:text-lg font-light">{text}</p>
     </div>
   );
 }
@@ -156,9 +158,9 @@ export default function LandingPage() {
               viewport={{ once: true, margin: "-120px" }}
               className="w-full flex-1"
             >
-              <div className="mono-lovable text-white/70">USER PATH REWIRED</div>
-              <h2 className="mt-4 w-full text-4xl leading-none text-gradient md:text-6xl break-words" style={{ fontFamily: "'Instrument Serif', serif" }}>
-                Путь продукта: от гипотезы до результата
+              <div className="text-[#5ed29c] text-[11px] font-bold tracking-[0.3em] uppercase mb-4" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>USER PATH REWIRED</div>
+              <h2 className="mt-4 w-full text-4xl leading-none text-white md:text-6xl font-extrabold uppercase tracking-tight">
+                Путь продукта: от гипотезы до результата<span className="text-[#5ed29c]">.</span>
               </h2>
               <p className="mt-6 w-full text-sm leading-7 text-white/60 md:text-lg font-light break-words">
                 Интерфейс адаптируется под текущий этап развития: сбор сигналов, проверка рынка, проведение CustDev и формирование дорожной карты.
@@ -248,9 +250,9 @@ export default function LandingPage() {
               viewport={{ once: true, margin: "-120px" }}
               className="w-full flex-1"
             >
-              <div className="mono-lovable text-white/70">AI LAYER</div>
-              <h2 className="mt-4 text-4xl leading-none text-gradient md:text-6xl break-words" style={{ fontFamily: "'Instrument Serif', serif" }}>
-                Интеллект в каждом действии.
+              <div className="text-[#5ed29c] text-[11px] font-bold tracking-[0.3em] uppercase mb-4" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>AI LAYER</div>
+              <h2 className="mt-4 text-4xl leading-none text-white md:text-6xl font-extrabold uppercase tracking-tight">
+                Интеллект в каждом действии<span className="text-[#5ed29c]">.</span>
               </h2>
               <p className="mt-6 text-sm leading-7 text-white/60 md:text-lg font-light break-words">
                 Слой живого ИИ не просто отвечает на вопросы, а анализирует контекст проекта, подбирает релевантные гранты и помогает структурировать юридические аспекты.
