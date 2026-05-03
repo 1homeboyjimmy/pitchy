@@ -60,7 +60,8 @@ export function AnimatedSection({
       viewport={{ once: true, amount }}
       variants={variants}
       whileHover={className?.includes("liquid-glass") ? { scale: 1.02 } : undefined}
-      transition={{ duration: 0.3 }}
+      whileTap={className?.includes("liquid-glass") ? { scale: 0.98 } : undefined}
+      transition={{ duration: 0.3, ease: "easeOut" }}
     >
       {children}
     </Component>
@@ -104,7 +105,8 @@ export function StaggerItem({ children, className }: { children: ReactNode; clas
       className={className} 
       variants={variants}
       whileHover={className?.includes("liquid-glass") ? { scale: 1.02 } : undefined}
-      transition={{ duration: 0.3 }}
+      whileTap={className?.includes("liquid-glass") ? { scale: 0.98 } : undefined}
+      transition={{ duration: 0.3, ease: "easeOut" }}
     >
       {children}
     </motion.div>

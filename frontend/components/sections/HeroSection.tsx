@@ -89,8 +89,8 @@ export function HeroSection() {
                     </div>
 
                     <nav className="hidden md:flex items-center gap-6 text-[15px] font-medium text-white/70">
-                        <Link href="/" className="bg-white/10 text-white px-4 py-2 rounded-full hover:bg-white/20 transition-colors">Главная</Link>
-                        <Link href="/dashboard" className="hover:text-white transition-colors">Дашборд</Link>
+                        <Link href="/" className="hover:text-white transition-colors">Главная</Link>
+                        <Link href="/dashboard" className="bg-white/10 text-white px-4 py-2.5 rounded-full hover:bg-white/20 transition-colors">Дашборд</Link>
                         <Link href="/faq" className="hover:text-white transition-colors">FAQ</Link>
                         <Link href="/about" className="hover:text-white transition-colors">О нас</Link>
                         <Link href="/pricing" className="hover:text-white transition-colors">Тарифы</Link>
@@ -98,12 +98,12 @@ export function HeroSection() {
                     </nav>
 
                     <div className="flex items-center gap-6">
-                        <motion.div whileHover={{ scale: 1.02 }} transition={{ duration: 0.3 }}>
+                        <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.95 }} transition={{ duration: 0.2, ease: "easeOut" }}>
                             <Link href="/login" className="hidden md:block text-[15px] font-medium text-white/70 hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.8)] transition-all">
                                 Войти
                             </Link>
                         </motion.div>
-                        <motion.div whileHover={{ scale: 1.02 }} transition={{ duration: 0.3 }}>
+                        <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.95 }} transition={{ duration: 0.2, ease: "easeOut" }}>
                             <Link href="/signup" className="liquid-glass-strong border border-white/20 text-white text-[15px] font-medium px-6 py-2.5 rounded-full hover:border-white/40 transition-colors shadow-lg">
                                 Регистрация
                             </Link>
