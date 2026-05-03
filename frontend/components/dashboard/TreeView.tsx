@@ -197,14 +197,14 @@ export function TreeView({ }: Props) {
         </AnimatePresence>
 
         <div className="flex-1 flex items-center justify-center px-4 w-full">
-          <div className="w-full max-w-3xl mx-auto text-center">
+          <div className="w-full max-w-5xl mx-auto text-center">
           <div className="w-16 h-16 rounded-none bg-[#111111] border border-white/10 flex items-center justify-center mb-6 mx-auto">
             <GitBranch className="w-8 h-8 text-white" />
           </div>
           <h3 className="text-5xl font-display text-white mb-4 tracking-tight" style={{ fontFamily: "'Instrument Serif', serif" }}>
             Дорожная карта
           </h3>
-          <p className="text-[16px] font-light text-white/50 mb-12 max-w-xl mx-auto leading-relaxed">
+          <p className="text-[18px] font-light text-white/50 mb-12 max-w-2xl mx-auto leading-relaxed">
             Загрузите PDF-документ или опишите идею стартапа — ИИ построит интерактивную дорожную карту анализа.
           </p>
 

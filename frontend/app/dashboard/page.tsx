@@ -172,7 +172,7 @@ function DashboardContent() {
   if (!isAuthenticated) return <UnauthDashboard />;
 
   return (
-    <div className="bg-black text-white min-h-screen font-sans flex overflow-hidden">
+    <div className="bg-black text-white h-screen font-sans flex overflow-hidden">
       <SideNavBar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -182,14 +182,16 @@ function DashboardContent() {
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
       />
-      <InternalTopNavBar
-        activeTab={activeTab}
-        onMenuClick={() => setIsMobileSidebarOpen(true)}
-        isSidebarCollapsed={isSidebarCollapsed}
-      />
+      
+      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden relative">
+        <InternalTopNavBar
+          activeTab={activeTab}
+          onMenuClick={() => setIsMobileSidebarOpen(true)}
+          isSidebarCollapsed={isSidebarCollapsed}
+        />
 
-      <main className={`flex-1 transition-all duration-500 ease-[0.16,1,0.3,1] pt-16 h-screen overflow-y-auto ${isSidebarCollapsed ? 'md:ml-20' : 'md:ml-64'}`}>
-        <div className={`w-full mx-auto ${activeTab === 'chat' || activeTab === 'tree' ? 'px-4 sm:px-8 pt-4 sm:pt-8 h-[calc(100vh-4rem)]' : 'p-6 sm:p-12 max-w-7xl min-h-full'}`}>
+        <main className="flex-1 overflow-y-auto overflow-x-hidden">
+          <div className={`w-full mx-auto ${activeTab === 'chat' || activeTab === 'tree' ? 'px-4 sm:px-8 pt-4 sm:pt-8 h-full' : 'p-6 sm:p-12 max-w-7xl min-h-full'}`}>
 
           {activeTab === "overview" && (
             <motion.div
@@ -214,9 +216,6 @@ function DashboardContent() {
                     </div>
                   </div>
                 </div>
-                <button className="bg-white text-black px-8 py-3.5 font-mono text-[11px] uppercase tracking-[0.2em] font-bold hover:bg-white/90 transition-all active:scale-[0.98] rounded-full shadow-lg shadow-white/5">
-                  Экспорт данных
-                </button>
               </div>
 
               {/* Stats Row (Bento Grid Style) */}
@@ -342,12 +341,12 @@ function DashboardContent() {
                 />
               ) : (
                 <div className="flex flex-col flex-1 h-full lovable-glass-strong rounded-[2.5rem] border border-white/5 items-center justify-center px-4 bg-gradient-to-br from-white/[0.02] to-transparent">
-                  <div className="w-full max-w-2xl flex flex-col items-center text-center">
+                  <div className="w-full max-w-4xl flex flex-col items-center text-center">
                     <div className="w-20 h-20 bg-white/5 flex items-center justify-center rounded-[2rem] mb-8">
                       <MessageSquare className="w-10 h-10 text-white/20" strokeWidth={1} />
                     </div>
                     <h3 className="text-5xl font-display text-white mb-6" style={{ fontFamily: "'Instrument Serif', serif" }}>Начать анализ</h3>
-                    <p className="text-white/50 font-light mb-12 text-xl leading-relaxed max-w-lg mx-auto">
+                    <p className="text-white/50 font-light mb-12 text-xl leading-relaxed max-w-2xl mx-auto">
                       Pitchy готов помочь вам разобрать идею, рынок и финансовую модель.
                     </p>
                     <button
@@ -379,7 +378,8 @@ function DashboardContent() {
         </div>
       </main>
     </div>
-  );
+  </div>
+);
 }
 
 export default function AuthDashboard() {

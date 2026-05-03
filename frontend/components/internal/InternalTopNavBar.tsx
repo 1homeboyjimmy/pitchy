@@ -43,7 +43,7 @@ export function InternalTopNavBar({ activeTab, onMenuClick, isSidebarCollapsed }
   const linkBase = "font-mono text-[10px] uppercase tracking-[0.2em] transition-all font-bold";
 
   return (
-    <header className={`fixed top-0 right-0 left-0 h-16 border-b border-white/5 bg-black/80 backdrop-blur-2xl z-40 flex items-center justify-between px-6 sm:px-8 transition-all duration-500 ease-[0.16,1,0.3,1] ${isSidebarCollapsed ? 'md:left-20' : 'md:left-64'}`}>
+    <header className="sticky top-0 w-full h-16 border-b border-white/5 bg-black/80 backdrop-blur-2xl z-40 flex items-center justify-between px-6 sm:px-8 transition-all duration-500 ease-[0.16,1,0.3,1]">
       <div className="flex items-center gap-4 min-w-0">
         <button
           onClick={onMenuClick}
@@ -63,17 +63,6 @@ export function InternalTopNavBar({ activeTab, onMenuClick, isSidebarCollapsed }
         </div>
       </div>
 
-      <nav className="hidden xl:flex absolute left-1/2 top-0 h-16 -translate-x-1/2 items-center gap-8 z-50">
-        {navLinks.map((link) => (
-          <Link
-            key={link.href}
-            href={link.href}
-            className={`${linkBase} ${activeTab === link.label.toLowerCase() ? "text-white" : "text-white/30 hover:text-white"}`}
-          >
-            {link.label}
-          </Link>
-        ))}
-      </nav>
 
       <div className="flex items-center gap-3 sm:gap-4">
         <Link

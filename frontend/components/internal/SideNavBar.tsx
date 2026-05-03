@@ -49,8 +49,8 @@ export function SideNavBar({
         />
       )}
       <aside
-        className={`h-screen fixed left-0 top-0 border-r border-white/5 bg-black flex flex-col py-8 z-50 transition-all duration-500 ease-[0.16,1,0.3,1] md:translate-x-0 ${
-          isMobileOpen ? "translate-x-0" : "-translate-x-full"
+        className={`h-screen border-r border-white/5 bg-black flex flex-col py-8 z-50 transition-all duration-500 ease-[0.16,1,0.3,1] ${
+          isMobileOpen ? "fixed inset-y-0 left-0 translate-x-0 w-64" : "hidden md:flex translate-x-0"
         } ${isCollapsed ? "w-20" : "w-64"}`}
       >
         <div className={`px-6 mb-12 flex items-center justify-between transition-all duration-500 ${isCollapsed ? "flex-col gap-8" : ""}`}>
