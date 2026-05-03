@@ -197,7 +197,7 @@ export function AccountPageClient() {
       <main className="flex-grow w-full max-w-[1024px] mx-auto px-6 py-12 flex flex-col gap-12 pt-24 pb-20">
         
         <header className="flex flex-col gap-4 relative">
-            <h1 className="text-[56px] md:text-[72px] text-white leading-none tracking-tight" style={{ fontFamily: "'Instrument Serif', serif" }}>Аккаунт</h1>
+            <h1 className="font-display text-[56px] md:text-[72px] text-white leading-none tracking-tight">Аккаунт</h1>
             <p className="font-mono text-[10px] text-white/30 uppercase tracking-[0.2em] font-bold">Управление вашим профилем и безопасностью</p>
         </header>
 
@@ -210,7 +210,7 @@ export function AccountPageClient() {
             
             <div className="flex flex-col gap-4">
               <div className="flex items-center gap-5 flex-wrap">
-                <h2 className="text-4xl text-white leading-none" style={{ fontFamily: "'Instrument Serif', serif" }}>{user?.name || "Пользователь"}</h2>
+                <h2 className="font-display text-4xl text-white leading-none">{user?.name || "Пользователь"}</h2>
                 {isEmailVerified && (
                   <span className="bg-white text-black font-mono text-[10px] font-bold uppercase tracking-[0.15em] px-4 py-1.5 rounded-full flex items-center gap-2 shadow-lg shadow-white/5">
                     <CheckCircle2 className="w-3.5 h-3.5" />
@@ -278,7 +278,7 @@ export function AccountPageClient() {
 
         {/* Security Section */}
         <section className="flex flex-col gap-8">
-          <h3 className="text-[28px] font-medium text-white flex items-center gap-3 border-b border-white/10 pb-6" style={{ fontFamily: "'Instrument Serif', serif" }}>
+          <h3 className="font-display text-[28px] font-medium text-white flex items-center gap-3 border-b border-white/10 pb-6">
             <Shield className="w-6 h-6 text-neutral-400" />
             Безопасность
           </h3>

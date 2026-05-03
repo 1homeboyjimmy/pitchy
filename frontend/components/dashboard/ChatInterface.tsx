@@ -347,7 +347,7 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
     return (
         <div className="flex flex-col flex-1 h-full min-h-0 bg-black relative overflow-hidden">
             {/* Messages Area */}
-            <div ref={scrollViewportRef} className="flex-1 overflow-y-auto scroll-smooth pt-24 pb-72 px-6 sm:px-12 scrollbar-hide">
+            <div ref={scrollViewportRef} className="flex-1 overflow-y-auto scroll-smooth pt-24 pb-[32rem] px-6 sm:px-12 scrollbar-hide">
                 <div className={`mx-auto w-full transition-all duration-500 ease-[0.16,1,0.3,1] ${isSidebarCollapsed ? 'max-w-6xl' : 'max-w-4xl'} space-y-12`}>
                 {messages.length === 0 && (
                     <motion.div 
@@ -485,8 +485,8 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
                                             <ReactMarkdown 
                                                 remarkPlugins={[remarkGfm]}
                                                 components={{
-                                                    h2: ({node, ...props}) => <h2 style={{ fontFamily: "'Instrument Serif', serif" }} {...props} />,
-                                                    h3: ({node, ...props}) => <h3 style={{ fontFamily: "'Instrument Serif', serif" }} {...props} />,
+                                                    h2: ({node, ...props}) => <h2 className="font-display text-3xl mb-4 mt-8" {...props} />,
+                                                    h3: ({node, ...props}) => <h3 className="font-display text-xl mb-3 mt-6" {...props} />,
                                                     table: ({...props}) => (
                                                         <div className="my-10 overflow-x-auto rounded-[1.5rem] border border-white/10 bg-white/[0.02] shadow-inner">
                                                             <table className="w-full text-left border-collapse font-sans text-[14px]" {...props} />
@@ -657,7 +657,7 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
                                     <Star className="w-4 h-4 shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
                                     <span>Анализ готов</span>
                                 </div>
-                                <h3 className="font-display text-4xl text-white tracking-tight" style={{ fontFamily: "'Instrument Serif', serif" }}>Результаты оценки</h3>
+                                <h3 className="font-display text-4xl text-white tracking-tight">Результаты оценки</h3>
                             </div>
 
                             <div className="max-w-md mx-auto relative group">

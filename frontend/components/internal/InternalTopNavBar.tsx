@@ -43,46 +43,66 @@ export function InternalTopNavBar({ activeTab, onMenuClick, isSidebarCollapsed }
   const linkBase = "font-mono text-[10px] uppercase tracking-[0.2em] transition-all font-bold";
 
   return (
-    <header className="sticky top-0 w-full h-16 border-b border-white/5 bg-black/80 backdrop-blur-2xl z-40 flex items-center justify-between px-6 sm:px-8 transition-all duration-500 ease-[0.16,1,0.3,1]">
-      <div className="flex items-center gap-4 min-w-0">
-        <button
-          onClick={onMenuClick}
-          className="md:hidden text-white/40 hover:text-white p-1 transition-colors"
-          aria-label="Меню"
-        >
-          <Menu size={20} />
-        </button>
-        <div className="flex items-center gap-3 min-w-0">
-          <span className="font-mono text-[10px] text-white/30 uppercase tracking-[0.2em] hover:text-white cursor-pointer transition-colors truncate font-bold">
-            {getTabName(activeTab)}
-          </span>
-          <span className="font-mono text-[10px] text-white/10 font-bold">/</span>
-          <span className="font-mono text-[10px] text-white uppercase tracking-[0.2em] truncate font-bold">
-            Проект
-          </span>
+    <header className="fixed top-0 left-0 right-0 z-[100] w-full bg-black/95 backdrop-blur-xl border-b border-white/5 transition-all duration-500 ease-[0.16,1,0.3,1]">
+      <div className="flex flex-row justify-between items-center py-4 px-8 w-full max-w-[1440px] mx-auto">
+        {/* Left: Logo & Menu Toggle */}
+        <div className="flex items-center gap-4 relative z-[110]">
+          <button
+            onClick={onMenuClick}
+            className="md:hidden text-white/40 hover:text-white p-1 transition-colors"
+            aria-label="Меню"
+          >
+            <Menu size={20} />
+          </button>
+          <Link href="/" className="flex items-center gap-2">
+            <PitchyLogo size="xl" />
+          </Link>
+          <div className="hidden sm:flex items-center gap-3 ml-4 border-l border-white/10 pl-4">
+            <span className="font-mono text-[9px] text-white/30 uppercase tracking-[0.2em] font-bold">
+              {getTabName(activeTab)}
+            </span>
+          </div>
         </div>
-      </div>
 
+        {/* Center Nav Links — Desktop */}
+        <nav className="hidden lg:flex items-center gap-8 absolute left-1/2 -translate-x-1/2">
+          {navLinks.map((link) => {
+            const isActive = pathname === link.href;
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                className={`flex items-center gap-1 transition-colors font-medium text-[12px] uppercase tracking-tighter font-sans ${
+                  isActive ? "text-white" : "text-foreground/70 hover:text-white"
+                }`}
+              >
+                {link.label}
+              </Link>
+            );
+          })}
+        </nav>
 
-      <div className="flex items-center gap-3 sm:gap-4">
-        <Link
-          href="/account"
-          className={`flex items-center gap-2 px-5 py-2 border font-mono text-[10px] font-bold uppercase tracking-[0.2em] transition-all rounded-full active:scale-[0.98] ${
-            isAccountPage 
-            ? "bg-white text-black border-white" 
-            : "border-white/10 text-white/60 hover:bg-white hover:text-black hover:border-white"
-          }`}
-        >
-          <User size={14} strokeWidth={2} />
-          <span className="hidden sm:inline">АККАУНТ</span>
-        </Link>
-        <button
-          onClick={handleLogout}
-          className={`flex items-center gap-2 px-5 py-2 border font-mono text-[10px] font-bold uppercase tracking-[0.2em] transition-all rounded-full active:scale-[0.98] border-white/10 text-white/60 hover:bg-white hover:text-black hover:border-white`}
-        >
-          <LogOut size={14} strokeWidth={2} />
-          <span className="hidden sm:inline">ВЫЙТИ</span>
-        </button>
+        {/* Right — Desktop */}
+        <div className="flex items-center gap-3 sm:gap-4 relative z-[110]">
+          <Link
+            href="/account"
+            className={`flex items-center gap-2 px-6 py-2 border font-sans text-[12px] font-bold uppercase tracking-tight transition-all rounded-full active:scale-[0.98] ${
+              isAccountPage 
+              ? "bg-white text-black border-white" 
+              : "border-white/10 text-white/60 hover:bg-white hover:text-black hover:border-white"
+            }`}
+          >
+            <User size={14} strokeWidth={2.5} />
+            <span className="hidden sm:inline tracking-tighter">АККАУНТ</span>
+          </Link>
+          <button
+            onClick={handleLogout}
+            className="hidden sm:flex items-center gap-2 px-6 py-2 border border-white/10 text-white/60 font-sans text-[12px] font-bold uppercase tracking-tight transition-all rounded-full hover:bg-white hover:text-black hover:border-white active:scale-[0.98]"
+          >
+            <LogOut size={14} strokeWidth={2.5} />
+            <span className="tracking-tighter">ВЫЙТИ</span>
+          </button>
+        </div>
       </div>
     </header>
   );

@@ -97,7 +97,7 @@ export default function PrivacyPage() {
                         className="lovable-glass-strong rounded-[40px] p-10 md:p-16"
                     >
                         <div className="prose prose-invert prose-neutral max-w-none prose-p:text-foreground/70 prose-headings:text-white prose-li:text-foreground/70">
-                            <h2 className="text-3xl font-display mb-10 tracking-tight">Полный текст Политики в отношении обработки персональных данных</h2>
+                        <h2 className="text-3xl font-display mb-10 tracking-tight">Полный текст Политики в отношении обработки персональных данных</h2>
                             
                             <h3 className="text-xl mt-12 mb-6 uppercase tracking-wider font-bold font-display">1. ОБЩИЕ ПОЛОЖЕНИЯ</h3>
                             <p>1.1. Настоящая политика Самозанятого Фигурняк Егора Сергеевича (ИНН 400700088347) (далее – «Оператор») в отношении обработки персональных данных (далее – «Политика») определяет порядок обработки персональных данных.</p>
@@ -120,7 +120,7 @@ export default function PrivacyPage() {
                             <p>5.1. По письменному запросу (на email: auth@pitchy.pro) субъект персональных данных вправе требовать от Оператора уточнения его персональных данных, их блокирования или уничтожения.</p>
 
                             <div className="mt-16 pt-8 border-t border-white/10">
-                                <p className="font-mono text-[11px] text-white/30 uppercase tracking-widest">
+                                <p className="font-sans text-[11px] text-white/30 uppercase tracking-widest italic">
                                     Дата последнего обновления: февраль 2026 года.
                                 </p>
                             </div>

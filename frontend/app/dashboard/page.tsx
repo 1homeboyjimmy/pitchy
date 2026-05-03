@@ -202,7 +202,7 @@ function DashboardContent() {
               {/* Header Section */}
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6 mb-16">
                 <div>
-                  <h2 className="text-5xl md:text-6xl text-white mb-6 leading-tight tracking-tight" style={{ fontFamily: "'Instrument Serif', serif" }}>
+                  <h2 className="font-display text-5xl md:text-6xl text-white mb-6 leading-tight tracking-tight">
                     Обзор проекта
                   </h2>
                   <div className="flex flex-wrap gap-3 items-center">
@@ -278,7 +278,7 @@ function DashboardContent() {
 
               {/* Recent Sessions Grid */}
               <div>
-                <h3 className="text-3xl text-white/40 mb-8 ml-2" style={{ fontFamily: "'Instrument Serif', serif" }}>Последние сессии</h3>
+                <h3 className="font-display text-3xl text-white/40 mb-8 ml-2">Последние сессии</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
                   {sessions.slice(0, 7).map(session => (
                     <motion.div
@@ -324,7 +324,7 @@ function DashboardContent() {
                         <Plus className="text-white/40 group-hover:text-white" size={28} strokeWidth={1.5} />
                       </div>
                     )}
-                    <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-white/20 font-bold group-hover:text-white transition-colors" style={{ fontFamily: "'Instrument Serif', serif", fontSize: "14px" }}>Новый анализ</span>
+                    <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-white/20 font-bold group-hover:text-white transition-colors" style={{ fontSize: "14px" }}>Новый анализ</span>
                   </motion.div>
                 </div>
               </div>
@@ -345,8 +345,8 @@ function DashboardContent() {
                     <div className="w-20 h-20 bg-white/5 flex items-center justify-center rounded-[2rem] mb-8">
                       <MessageSquare className="w-10 h-10 text-white/20" strokeWidth={1} />
                     </div>
-                    <h3 className="text-5xl font-display text-white mb-6" style={{ fontFamily: "'Instrument Serif', serif" }}>Начать анализ</h3>
-                    <p className="text-white/50 font-light mb-12 text-xl leading-relaxed max-w-2xl mx-auto">
+                    <h3 className="font-display text-5xl text-white mb-6">Начать анализ</h3>
+                    <p className="text-white/50 font-light mb-12 text-xl leading-relaxed max-w-4xl mx-auto">
                       Pitchy готов помочь вам разобрать идею, рынок и финансовую модель.
                     </p>
                     <button

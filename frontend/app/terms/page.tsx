@@ -79,7 +79,7 @@ export default function TermsPage() {
                             </p>
 
                             <div className="mt-16 pt-8 border-t border-white/10">
-                                <p className="font-mono text-[11px] text-white/30 uppercase tracking-widest">
+                                <p className="font-sans text-[11px] text-white/30 uppercase tracking-widest italic">
                                     Дата последнего обновления: 20 февраля 2026 года.
                                 </p>
                             </div>

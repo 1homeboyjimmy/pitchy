@@ -148,12 +148,13 @@ async def classify_intent(user_message: str) -> list[str]:
     """Router LLM: Determines which RAG collections to search based on the user's intent."""
     try:
         # Use SLM for fast routing
-        categories = await slm_dispatcher.classify_query_intent(user_message)
+        res = await slm_dispatcher.classify_query_intent(user_message)
+        categories = res.get("categories", ["platform_manual"])
         logger.info(f"SLM Router determined categories: {categories}")
         return categories
     except Exception as e:
         logger.error(f"Router SLM failed: {e}")
-        return ["general"]
+        return ["platform_manual"]
 
 
 logger = logging.getLogger(__name__)

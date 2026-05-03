@@ -201,10 +201,10 @@ export function TreeView({ }: Props) {
           <div className="w-16 h-16 rounded-none bg-[#111111] border border-white/10 flex items-center justify-center mb-6 mx-auto">
             <GitBranch className="w-8 h-8 text-white" />
           </div>
-          <h3 className="text-5xl font-display text-white mb-4 tracking-tight" style={{ fontFamily: "'Instrument Serif', serif" }}>
+          <h3 className="font-display text-5xl text-white mb-4 tracking-tight">
             Дорожная карта
           </h3>
-          <p className="text-[18px] font-light text-white/50 mb-12 max-w-2xl mx-auto leading-relaxed">
+          <p className="text-[18px] font-light text-white/50 mb-12 max-w-4xl mx-auto leading-relaxed">
             Загрузите PDF-документ или опишите идею стартапа — ИИ построит интерактивную дорожную карту анализа.
           </p>
 

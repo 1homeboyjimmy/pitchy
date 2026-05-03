@@ -86,6 +86,19 @@ class SLMClient:
             "is_finance": data.get("is_finance", False)
         }
 
+    @observe(name="detect_search_intent")
+    async def detect_search_intent(self, query: str) -> Dict[str, Any]:
+        """Determines if a web search is required for the given query."""
+        system_prompt = (
+            "You are a search assistant. Determine if a real-time web search is required to answer the query accurately.\n"
+            "Return JSON: {\"needs_search\": true/false, \"search_query\": \"refined search query\"}"
+        )
+        data = await self._call_json(system_prompt, f"Query: {query}")
+        return {
+            "needs_search": data.get("needs_search", False),
+            "search_query": data.get("search_query", query)
+        }
+
     @observe(name="generate_chat_title")
     async def generate_chat_title(self, first_message: str) -> str:
         """Generates a concise 2-4 word title for the chat."""

@@ -112,6 +112,33 @@ def _chunk_text(text: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> 
     return splitter.split_text(text)
 
 
+def _seed_collection(collection: Collection, documents: List[str], source: str = "manual_upload"):
+    """Helper to add documents to a collection with automatic ID generation and metadata."""
+    import hashlib
+    import time
+    if not documents:
+        return
+        
+    ids = []
+    metadatas = []
+    for doc in documents:
+        # Generate unique ID based on content hash and timestamp
+        doc_id = f"seed_{int(time.time())}_{hashlib.md5(doc.encode()).hexdigest()[:8]}"
+        ids.append(doc_id)
+        metadatas.append({
+            "source": source,
+            "ingested_at": datetime.now().isoformat(),
+            MODEL_META_KEY: EMBEDDING_MODEL_NAME
+        })
+        # Small sleep to ensure unique timestamps if needed, though hash should be enough
+    
+    collection.add(
+        documents=documents,
+        ids=ids,
+        metadatas=metadatas
+    )
+
+
 # Isolated Semantic Buckets
 CATEGORIES = [
     "market_analysis",   # Рынки, конкуренты, проблемы и решения
