@@ -37,10 +37,10 @@ export function InternalTopNavBar({ activeTab, onMenuClick }: Props) {
     router.push("/");
   };
 
-  const linkBase = "font-mono-label text-[12px] uppercase tracking-widest transition-colors";
+  const linkBase = "font-sans text-[12px] uppercase tracking-tighter transition-colors font-medium";
 
   return (
-    <header className="fixed top-0 right-0 left-0 md:left-64 h-14 border-b border-white/10 bg-[#0A0A0A] z-40 flex items-center justify-between px-4 sm:px-6">
+    <header className="fixed top-0 right-0 left-0 md:left-64 h-14 border-b border-white/10 bg-[#0A0A0A]/40 backdrop-blur-xl z-40 flex items-center justify-between px-4 sm:px-6">
       <div className="flex items-center gap-3 min-w-0">
         <button
           onClick={onMenuClick}
@@ -50,11 +50,11 @@ export function InternalTopNavBar({ activeTab, onMenuClick }: Props) {
           <Menu size={20} />
         </button>
         <div className="flex items-center gap-2 min-w-0">
-          <span className="font-mono text-[12px] text-neutral-500 uppercase tracking-widest hover:text-white cursor-pointer transition-colors truncate">
+          <span className="font-sans text-[12px] text-neutral-500 uppercase tracking-tighter hover:text-white cursor-pointer transition-colors truncate font-medium">
             {getTabName(activeTab)}
           </span>
-          <span className="font-mono text-[12px] text-neutral-600">/</span>
-          <span className="font-mono text-[12px] text-white uppercase tracking-widest truncate">
+          <span className="font-sans text-[12px] text-neutral-600 font-medium">/</span>
+          <span className="font-sans text-[12px] text-white uppercase tracking-tighter truncate font-medium">
             Проект
           </span>
         </div>
@@ -75,13 +75,13 @@ export function InternalTopNavBar({ activeTab, onMenuClick }: Props) {
       <div className="flex items-center gap-3 sm:gap-4">
         <Link
           href="/account"
-          className="px-4 py-1.5 border border-white text-white font-mono-label text-[12px] uppercase tracking-widest hover:bg-white hover:text-black transition-colors cursor-crosshair"
+          className="px-4 py-1.5 border border-white text-white font-sans text-[11px] font-medium uppercase tracking-tighter hover:bg-white hover:text-black transition-colors"
         >
           АККАУНТ
         </Link>
         <button
           onClick={handleLogout}
-          className="px-4 py-1.5 border border-white text-white font-mono-label text-[12px] uppercase tracking-widest hover:bg-white hover:text-black transition-colors cursor-crosshair"
+          className="px-4 py-1.5 border border-white text-white font-sans text-[11px] font-medium uppercase tracking-tighter hover:bg-white hover:text-black transition-colors"
         >
           ВЫЙТИ
         </button>

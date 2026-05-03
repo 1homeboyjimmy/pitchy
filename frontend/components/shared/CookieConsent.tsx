@@ -64,10 +64,10 @@ export function CookieConsent() {
           transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
           className="fixed bottom-4 left-4 right-4 md:left-auto md:right-8 md:bottom-8 z-[100] md:max-w-md w-auto"
         >
-          <div className="bg-[#18181A] border border-white/10 shadow-2xl shadow-black/50 rounded-2xl p-4 sm:p-5">
-            <div className="flex items-start gap-4">
-              <div className="hidden sm:flex shrink-0 w-10 h-10 rounded-full bg-pitchy-violet/20 items-center justify-center border border-pitchy-violet/30">
-                <Info className="w-5 h-5 text-pitchy-violet-light" />
+          <div className="liquid-glass rounded-2xl p-4 sm:p-5 shadow-2xl">
+            <div className="flex items-start gap-4 relative z-10">
+              <div className="hidden sm:flex shrink-0 w-10 h-10 rounded-full bg-white/5 items-center justify-center border border-white/10">
+                <Info className="w-5 h-5 text-white/60" />
               </div>
               <div className="flex-1">
                 <div className="flex justify-between items-start mb-2">

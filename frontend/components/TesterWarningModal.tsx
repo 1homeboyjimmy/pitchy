@@ -26,8 +26,8 @@ export default function TesterWarningModal({ isOpen, onClose, featureName }: Tes
                 </button>
 
                 <div className="p-8 pb-6 text-center">
-                    <div className="mx-auto bg-pitchy-violet/20 w-16 h-16 rounded-full flex items-center justify-center mb-6">
-                        <Lock className="w-8 h-8 text-pitchy-violet" />
+                    <div className="mx-auto bg-white/10 w-16 h-16 rounded-full flex items-center justify-center mb-6">
+                        <Lock className="w-8 h-8 text-white" />
                     </div>
                     <h3 className="text-2xl font-bold text-white mb-2">
                         Ограничение тарифа Tester
@@ -42,7 +42,7 @@ export default function TesterWarningModal({ isOpen, onClose, featureName }: Tes
                     <Link
                         href="/pricing"
                         onClick={onClose}
-                        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-pitchy-violet hover:bg-pitchy-violet-light text-white font-medium transition-colors"
+                        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-white text-black font-medium transition-colors"
                     >
                         Посмотреть тарифы
                         <ExternalLink className="w-4 h-4" />

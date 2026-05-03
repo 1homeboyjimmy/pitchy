@@ -92,7 +92,7 @@ export function HomeFAQSection() {
                     transition={{ duration: 0.5 }}
                     className="text-center mb-16"
                 >
-                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-pitchy-violet mb-6">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-white mb-6">
                         <HelpCircle className="w-4 h-4" />
                         <span className="text-sm font-medium">FAQ</span>
                     </div>

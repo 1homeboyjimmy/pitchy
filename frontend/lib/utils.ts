@@ -21,3 +21,10 @@ export function stripThoughts(content: string): string {
     
     return stripped.trim();
 }
+
+/**
+ * Combines multiple class names into a single string.
+ */
+export function cn(...inputs: (string | undefined | null | boolean)[]) {
+    return inputs.filter(Boolean).join(" ");
+}

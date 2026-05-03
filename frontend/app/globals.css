@@ -361,12 +361,12 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 
 /* ─── Lovable Design Integration Utilities ─── */
 :root {
-  --aurora-a: oklch(0.4 0.12 280);
-  --aurora-b: oklch(0.35 0.15 250);
-  --aurora-c: oklch(0.3 0.1 230);
+  --aurora-a: oklch(1 0 0 / 12%);
+  --aurora-b: oklch(0.9 0 0 / 8%);
+  --aurora-c: oklch(0.8 0 0 / 5%);
   --gradient-aurora: linear-gradient(135deg, var(--aurora-a), var(--aurora-b) 50%, var(--aurora-c));
-  --gradient-text: linear-gradient(180deg, oklch(1 0 0) 0%, oklch(0.7 0.04 270) 100%);
-  --shadow-glow: 0 0 80px -10px oklch(0.6 0.22 290 / 40%);
+  --gradient-text: linear-gradient(180deg, oklch(1 0 0) 0%, oklch(0.8 0 0) 100%);
+  --shadow-glow: 0 0 80px -10px oklch(1 0 0 / 15%);
   --shadow-glass: 0 8px 32px 0 oklch(0 0 0 / 60%), inset 0 1px 0 0 oklch(1 0 0 / 8%);
 }
 
@@ -409,9 +409,9 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 
 .aurora-bg {
   background-image:
-    radial-gradient(ellipse at 20% 0%, oklch(0.3 0.15 280 / 20%), transparent 60%),
-    radial-gradient(ellipse at 80% 30%, oklch(0.25 0.12 250 / 15%), transparent 50%),
-    radial-gradient(ellipse at 50% 100%, oklch(0.2 0.08 230 / 10%), transparent 70%);
+    radial-gradient(ellipse at 20% 0%, oklch(1 0 0 / 5%), transparent 60%),
+    radial-gradient(ellipse at 80% 30%, oklch(0.9 0 0 / 4%), transparent 50%),
+    radial-gradient(ellipse at 50% 100%, oklch(0.8 0 0 / 3%), transparent 70%);
 }
 
 .section-line {
@@ -433,7 +433,7 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
     135deg,
     oklch(1 0 0 / 0.22),
     oklch(1 0 0 / 0.04),
-    oklch(0.7 0.22 290 / 0.25)
+    oklch(1 0 0 / 0.15)
   );
   -webkit-mask:
     linear-gradient(#fff 0 0) content-box,
@@ -457,8 +457,8 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 }
 
 @keyframes pulse-glow-lovable {
-  0%, 100% { box-shadow: 0 0 20px oklch(0.6 0.22 290 / 30%); }
-  50% { box-shadow: 0 0 40px oklch(0.6 0.22 290 / 60%); }
+  0%, 100% { box-shadow: 0 0 20px oklch(1 0 0 / 10%); }
+  50% { box-shadow: 0 0 40px oklch(1 0 0 / 20%); }
 }
 
 .animate-float-slow {

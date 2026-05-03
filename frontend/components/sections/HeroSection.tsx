@@ -1,10 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Zap, ArrowRight, Instagram, Twitter, Linkedin } from "lucide-react";
+import { Zap } from "lucide-react";
 import Link from "next/link";
-
-import { motion } from "framer-motion";
 
 export function HeroSection() {
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -69,7 +67,7 @@ export function HeroSection() {
     }, []);
 
     return (
-        <section className="relative min-h-screen bg-black overflow-hidden flex flex-col justify-between selection:bg-white/20">
+        <section className="relative min-h-[85vh] bg-black overflow-hidden flex flex-col justify-between selection:bg-white/20">
             {/* Background Video Engine */}
             <video
                 ref={videoRef}
@@ -80,43 +78,8 @@ export function HeroSection() {
                 src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260328_115001_bcdaa3b4-03de-47e7-ad63-ae3e392c32d4.mp4"
             />
 
-            {/* Top Navigation Wrapper */}
-            <div className="relative z-20 w-full px-6 pt-6 flex justify-center">
-                {/* Floating Pill Navbar */}
-                <header className="liquid-glass rounded-full w-full max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
-                    <div className="flex items-center gap-2 relative z-10">
-                        <span className="text-white font-medium text-2xl tracking-tighter" style={{ fontFamily: "'Instrument Serif', serif" }}>
-                            Pitchy
-                            <span className="text-white/40 font-light italic ml-1">.pro</span>
-                        </span>
-                    </div>
-
-                    <nav className="hidden md:flex items-center gap-6 text-[15px] font-medium text-white/70 relative z-10">
-                        <Link href="/" className="hover:text-white transition-colors">Главная</Link>
-                        <Link href="/dashboard" className="bg-white/10 text-white px-4 py-2.5 rounded-full hover:bg-white/20 transition-colors">Дашборд</Link>
-                        <Link href="/faq" className="hover:text-white transition-colors">FAQ</Link>
-                        <Link href="/about" className="hover:text-white transition-colors">О нас</Link>
-                        <Link href="/pricing" className="hover:text-white transition-colors">Тарифы</Link>
-                        <Link href="/contact" className="hover:text-white transition-colors">Контакты</Link>
-                    </nav>
-
-                    <div className="flex items-center gap-6 relative z-10">
-                        <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.95 }} transition={{ duration: 0.2, ease: "easeOut" }}>
-                            <Link href="/login" className="hidden md:block text-[15px] font-medium text-white/70 hover:text-white transition-all">
-                                Войти
-                            </Link>
-                        </motion.div>
-                        <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.95 }} transition={{ duration: 0.2, ease: "easeOut" }}>
-                            <Link href="/signup" className="liquid-glass-strong text-white text-[15px] font-medium px-6 py-2.5 rounded-full transition-all shadow-lg hover:shadow-white/10">
-                                <span className="relative z-10">Регистрация</span>
-                            </Link>
-                        </motion.div>
-                    </div>
-                </header>
-            </div>
-
             {/* Hero Body */}
-            <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 w-full max-w-4xl mx-auto text-center pt-20 pb-12">
+            <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 w-full max-w-4xl mx-auto text-center pt-16 pb-12">
                 <h1 
                     className="text-4xl md:text-5xl lg:text-6xl text-white mb-8 leading-[1.1] font-normal tracking-tight"
                     style={{ fontFamily: "'Instrument Serif', serif" }}

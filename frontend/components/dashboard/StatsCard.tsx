@@ -15,10 +15,10 @@ interface StatsCardProps {
 
 const colorMap = {
     violet: {
-        bg: "rgba(139, 92, 246, 0.1)",
-        border: "rgba(139, 92, 246, 0.2)",
-        icon: "text-pitchy-violet",
-        glow: "shadow-glow-primary/20",
+        bg: "rgba(255, 255, 255, 0.05)",
+        border: "rgba(255, 255, 255, 0.1)",
+        icon: "text-white",
+        glow: "shadow-glow/20",
     },
     cyan: {
         bg: "rgba(6, 182, 212, 0.1)",

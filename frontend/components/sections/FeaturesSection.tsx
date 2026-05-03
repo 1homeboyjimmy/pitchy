@@ -50,9 +50,9 @@ const features = [
 
 const colorMap: Record<string, { bg: string; icon: string; glow: string }> = {
     violet: {
-        bg: "rgba(139, 92, 246, 0.1)",
-        icon: "text-pitchy-violet",
-        glow: "shadow-glow-primary/30",
+        bg: "rgba(255, 255, 255, 0.05)",
+        icon: "text-white",
+        glow: "shadow-glow/30",
     },
     cyan: {
         bg: "rgba(6, 182, 212, 0.1)",
@@ -114,7 +114,7 @@ export function FeaturesSection() {
                     </span>
                     <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-4">
                         Всё для успешного{" "}
-                        <span className="text-gradient-violet">старта бизнеса</span>
+                        <span className="text-white">старта бизнеса</span>
                     </h2>
                     <p className="text-lg text-white/50 max-w-2xl mx-auto">
                         Мощный бизнес-ассистент для современных предпринимателей.
@@ -192,14 +192,14 @@ export function FeaturesSection() {
 
                             <div className="text-center">
                                 <div className="relative inline-flex items-center justify-center w-24 h-24 mb-6">
-                                    <div className="absolute inset-0 rounded-full bg-pitchy-violet/20 blur-xl" />
-                                    <div className="relative w-full h-full rounded-full glass-panel flex items-center justify-center border border-pitchy-violet/30">
-                                        <span className="text-3xl font-bold text-pitchy-violet font-mono-numbers">
+                                    <div className="absolute inset-0 rounded-full bg-white/5 blur-xl" />
+                                    <div className="relative w-full h-full rounded-full glass-panel flex items-center justify-center border border-white/10">
+                                        <span className="text-3xl font-bold text-white font-mono-numbers">
                                             {step.number}
                                         </span>
                                     </div>
-                                    <div className="absolute -bottom-2 -right-2 w-10 h-10 rounded-full bg-pitchy-violet flex items-center justify-center">
-                                        <step.icon className="w-5 h-5 text-white" />
+                                    <div className="absolute -bottom-2 -right-2 w-10 h-10 rounded-full bg-white flex items-center justify-center">
+                                        <step.icon className="w-5 h-5 text-black" />
                                     </div>
                                 </div>
 

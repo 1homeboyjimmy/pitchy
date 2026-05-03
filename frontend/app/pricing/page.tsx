@@ -41,8 +41,8 @@ const plans: Plan[] = [
   {
     name: "Starter",
     nameDisplay: "Starter",
-    priceMonthly: "1 490₽",
-    priceYearly: "1 192₽",
+    priceMonthly: "2 490₽",
+    priceYearly: "24 900₽",
     description: "Оптимально для фрилансеров и небольших команд.",
     features: [
       { text: "До 10 проектов", included: true },
@@ -57,8 +57,8 @@ const plans: Plan[] = [
   {
     name: "Pro",
     nameDisplay: "Pro",
-    priceMonthly: "3 490₽",
-    priceYearly: "2 792₽",
+    priceMonthly: "3 790₽",
+    priceYearly: "37 900₽",
     description: "Максимальные возможности для агентств и корпораций.",
     features: [
       { text: "Безлимитные проекты", included: true },
@@ -75,88 +75,90 @@ export default function PricingPage() {
   const [isYearly, setIsYearly] = useState(false);
 
   return (
-    <div className="bg-background text-on-background min-h-screen flex flex-col font-body-sm">
+    <div className="bg-black text-foreground min-h-screen flex flex-col relative overflow-hidden">
+       {/* Decorative Orbs */}
+       <div className="aurora-orb top-[-10rem] left-[-5rem] h-96 w-96 bg-white/[0.03] animate-pulse" />
+       <div className="aurora-orb bottom-[-5rem] right-[-10rem] h-80 w-80 bg-white/[0.02] animate-float-slow" />
+
       <TopNavBar />
 
-      <main className="flex-grow flex flex-col justify-center pt-16 pb-4 px-4 md:px-8 max-w-[1440px] mx-auto w-full">
+      <main className="flex-grow pt-12 pb-24 px-6 md:px-12 max-w-[1440px] mx-auto w-full relative z-10">
         {/* Header */}
-        <div className="text-center mb-6">
-          <h1 className="font-display text-display text-primary mb-2 tracking-tighter">Выберите свой план</h1>
-          <p className="font-body-lg text-body-lg text-on-surface-variant max-w-2xl mx-auto">
+        <div className="text-center mb-20">
+          <h1 className="font-display text-6xl md:text-8xl text-white mb-8 tracking-tighter leading-none">
+            Выберите свой <span className="text-white/30 italic">ритм</span>.
+          </h1>
+          <p className="font-body-lg text-xl text-foreground/60 max-w-2xl mx-auto leading-relaxed">
             Инструменты для создания профессиональных питчей. Выберите тариф, который подходит именно вам.
           </p>
 
           {/* Billing Toggle */}
-          <div className="mt-6 flex items-center justify-center gap-4">
-            <span className={`font-mono-label text-mono-label ${!isYearly ? "text-primary" : "text-on-surface-variant"}`}>
+          <div className="mt-12 flex items-center justify-center gap-6">
+            <span className={`font-mono-label text-[12px] uppercase tracking-widest transition-colors ${!isYearly ? "text-white" : "text-white/30"}`}>
               Месяц
             </span>
             <button
               aria-label="Toggle billing period"
-              className="relative w-12 h-6 rounded-full border border-white/20 bg-[#111111] cursor-pointer"
+              className="relative w-16 h-8 rounded-full border border-white/10 bg-white/5 cursor-pointer p-1 transition-all hover:border-white/30"
               onClick={() => setIsYearly(!isYearly)}
             >
               <div
-                className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform duration-200 ${
-                  isYearly ? "left-1 translate-x-6" : "left-1 translate-x-0"
+                className={`w-6 h-6 rounded-full bg-white shadow-lg transition-all duration-500 ease-[0.16, 1, 0.3, 1] ${
+                  isYearly ? "translate-x-8" : "translate-x-0"
                 }`}
               />
             </button>
-            <span className={`font-mono-label text-mono-label ${isYearly ? "text-primary" : "text-on-surface-variant"}`}>
-              Год <span className="text-[#888888] ml-1">(Скидка 20%)</span>
+            <span className={`font-mono-label text-[12px] uppercase tracking-widest transition-colors ${isYearly ? "text-white" : "text-white/30"}`}>
+              Год <span className="text-emerald-500 ml-2">(2 месяца в подарок)</span>
             </span>
           </div>
         </div>
 
         {/* Pricing Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto w-full">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto w-full">
           {plans.map((plan) => (
             <div
               key={plan.name}
-              className={`bg-[#111111] rounded p-5 flex flex-col relative group transition-colors ${
-                plan.popular
-                  ? "border border-white/[0.2] shadow-[0_0_0_1px_rgba(255,255,255,0.1)]"
-                  : "border border-white/[0.08] hover:border-white/20"
+              className={`lovable-glass rounded-[40px] p-10 flex flex-col relative group transition-all duration-700 hover:translate-y-[-8px] ${
+                plan.popular ? "border-white/20 shadow-[0_32px_64px_-16px_rgba(255,255,255,0.05)]" : ""
               }`}
             >
               {/* Popular Badge */}
               {plan.popular && (
-                <div className="absolute top-0 right-5 -translate-y-1/2 bg-white text-black font-mono-label text-[10px] uppercase tracking-widest px-3 py-1 rounded">
+                <div className="absolute top-0 right-10 -translate-y-1/2 bg-white text-black font-mono-label text-[10px] uppercase tracking-[0.2em] px-4 py-1.5 rounded-full font-black">
                   Популярный
                 </div>
               )}
 
               {/* Plan Header */}
-              <div className="mb-4">
-                <h2 className={`font-code text-code uppercase mb-1 tracking-widest ${
-                  plan.popular ? "text-white" : "text-on-surface-variant"
-                }`}>
+              <div className="mb-10">
+                <h2 className="font-mono-label text-[12px] text-white/40 uppercase tracking-[0.3em] mb-4">
                   {plan.nameDisplay}
                 </h2>
                 <div className="flex items-baseline gap-2">
-                  <span className="font-display text-h1 text-primary">
+                  <span className="font-display text-6xl text-white tracking-tighter">
                     {isYearly ? plan.priceYearly : plan.priceMonthly}
                   </span>
-                  <span className="font-body-sm text-body-sm text-on-surface-variant">/ мес</span>
+                  <span className="font-body-sm text-white/30">{isYearly ? "/ год" : "/ мес"}</span>
                 </div>
-                <p className="font-body-sm text-body-sm text-[#888888] mt-2">{plan.description}</p>
+                <p className="font-body-sm text-foreground/50 mt-6 leading-relaxed">{plan.description}</p>
               </div>
 
               {/* Features List */}
-              <ul className="flex flex-col gap-2 mb-6 flex-grow">
+              <ul className="flex flex-col gap-4 mb-12 flex-grow">
                 {plan.features.map((feature) => (
                   <li
                     key={feature.text}
-                    className={`flex items-start gap-3 ${!feature.included ? "opacity-50" : ""}`}
+                    className={`flex items-start gap-4 ${!feature.included ? "opacity-20" : ""}`}
                   >
-                    {feature.included ? (
-                      <Check size={16} strokeWidth={2} className="text-white mt-0.5 shrink-0" />
-                    ) : (
-                      <X size={16} strokeWidth={2} className="text-on-surface-variant mt-0.5 shrink-0" />
-                    )}
-                    <span className={`font-body-sm text-body-sm ${
-                      feature.included ? "text-on-surface" : "text-on-surface-variant"
-                    }`}>
+                    <div className={`mt-1 flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center ${feature.included ? "bg-white/10 text-white" : "text-white/20"}`}>
+                      {feature.included ? (
+                        <Check size={12} strokeWidth={3} />
+                      ) : (
+                        <X size={12} strokeWidth={3} />
+                      )}
+                    </div>
+                    <span className="font-body-sm text-[15px] text-foreground/80 tracking-tight">
                       {feature.text}
                     </span>
                   </li>
@@ -165,11 +167,11 @@ export default function PricingPage() {
 
               {/* CTA Button */}
               {plan.buttonStyle === "filled" ? (
-                <button className="w-full bg-white text-black font-mono-label text-mono-label py-2 px-4 rounded hover:opacity-90 transition-opacity cursor-pointer">
+                <button className="w-full bg-white text-black font-sans text-sm font-bold py-4 rounded-full hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer shadow-xl">
                   Выбрать {plan.name}
                 </button>
               ) : (
-                <button className="w-full bg-transparent border border-white/[0.1] text-white font-mono-label text-mono-label py-2 px-4 rounded hover:bg-white/[0.05] transition-colors cursor-pointer">
+                <button className="w-full bg-white/5 border border-white/10 text-white font-sans text-sm font-bold py-4 rounded-full hover:bg-white/10 hover:border-white/20 transition-all cursor-pointer">
                   Выбрать {plan.name}
                 </button>
               )}
@@ -178,10 +180,10 @@ export default function PricingPage() {
         </div>
 
         {/* Custom Solution */}
-        <div className="mt-6 max-w-3xl mx-auto border-t border-white/[0.08] pt-4 text-center">
-          <p className="font-body-sm text-body-sm text-[#888888]">
+        <div className="mt-20 max-w-3xl mx-auto border-t border-white/5 pt-10 text-center">
+          <p className="font-body-sm text-foreground/30">
             Нужно индивидуальное решение?{" "}
-            <Link className="text-white hover:underline underline-offset-4 decoration-white/30" href="/contact">
+            <Link className="text-white hover:text-white/80 transition-colors underline underline-offset-8 decoration-white/20" href="/contact">
               Свяжитесь с нами
             </Link>.
           </p>

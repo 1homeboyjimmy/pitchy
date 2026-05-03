@@ -20,11 +20,11 @@ interface ButtonProps {
 
 const variantClasses = {
     primary: `
-    bg-[#8B5CF6] text-white
-    border border-[#8B5CF6]
-    shadow-[0_0_20px_rgba(139,92,246,0.3)]
-    hover:shadow-[0_0_30px_rgba(139,92,246,0.5)]
-    hover:bg-[#7C3AED]
+    bg-white text-[#0A0A0F]
+    border border-white
+    shadow-[0_0_20px_rgba(255,255,255,0.1)]
+    hover:shadow-[0_0_30px_rgba(255,255,255,0.2)]
+    hover:bg-neutral-100
     active:scale-[0.98]
   `,
     secondary: `

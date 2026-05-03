@@ -3,6 +3,7 @@
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { PitchyLogo } from "@/components/shared/PitchyLogo";
 
 export default function NotFound() {
   const [timestamp, setTimestamp] = useState("");
@@ -71,7 +72,9 @@ export default function NotFound() {
 
       {/* Footer */}
       <footer className="border-t border-white/[0.08] py-lg px-6 flex justify-between items-center font-mono-label text-mono-label text-neutral-600 bg-[#0A0A0A]">
-        <div>PITCHY.PRO © {new Date().getFullYear()}</div>
+        <div className="flex items-center gap-2">
+          <PitchyLogo size="none" /> © {new Date().getFullYear()}
+        </div>
         <div className="flex gap-md">
           <Link className="hover:text-white transition-colors" href="#">STATUS</Link>
           <Link className="hover:text-white transition-colors" href="/terms">TERMS</Link>

@@ -1,54 +1,58 @@
 "use client";
 
 import Link from "next/link";
+import { PitchyLogo } from "../shared/PitchyLogo";
 
 export function LandingFooter() {
   return (
-    <footer className="relative bg-background pt-24 pb-12 overflow-hidden border-t border-foreground/5">
+    <footer className="relative bg-black pt-24 pb-12 overflow-hidden section-line">
       {/* Decorative Aurora Orb for Footer */}
-      <div className="aurora-orb left-[-10rem] bottom-[-5rem] h-64 w-64 bg-[oklch(0.5_0.15_280_/_0.15)] animate-float-slow" />
-      <div className="max-w-7xl mx-auto px-6 md:px-12 relative z-10 font-body-sm">
+      <div className="aurora-orb left-[-10rem] bottom-[-5rem] h-64 w-64 bg-white/[0.02] animate-float-slow" />
+      <div className="max-w-7xl mx-auto px-6 md:px-12 relative z-10">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-x-8 gap-y-12">
           <div className="space-y-6">
-            <h4 className="text-foreground text-sm font-bold uppercase tracking-widest font-display">Product</h4>
+            <h4 className="text-white text-sm font-medium uppercase tracking-tighter font-sans">Продукт</h4>
             <ul className="space-y-3">
-              <li><Link className="text-sm text-foreground/50 hover:text-foreground transition-colors" href="/">Home</Link></li>
-              <li><Link className="text-sm text-foreground/50 hover:text-foreground transition-colors" href="/pricing">Pricing</Link></li>
-              <li><Link className="text-sm text-foreground/50 hover:text-foreground transition-colors" href="/faq">FAQ</Link></li>
+              <li><Link className="text-sm text-white/50 hover:text-white transition-colors font-sans font-medium tracking-tight whitespace-nowrap" href="/">Главная</Link></li>
+              <li><Link className="text-sm text-white/50 hover:text-white transition-colors font-sans font-medium tracking-tight whitespace-nowrap" href="/pricing">Тарифы</Link></li>
+              <li><Link className="text-sm text-white/50 hover:text-white transition-colors font-sans font-medium tracking-tight whitespace-nowrap" href="/faq">FAQ</Link></li>
             </ul>
           </div>
           <div className="space-y-6">
-            <h4 className="text-foreground text-sm font-bold uppercase tracking-widest font-display">Company</h4>
+            <h4 className="text-white text-sm font-medium uppercase tracking-tighter font-sans">Компания</h4>
             <ul className="space-y-3">
-              <li><Link className="text-sm text-foreground/50 hover:text-foreground transition-colors" href="/about">About Us</Link></li>
-              <li><Link className="text-sm text-foreground/50 hover:text-foreground transition-colors" href="/contact">Contact</Link></li>
+              <li><Link className="text-sm text-white/50 hover:text-white transition-colors font-sans font-medium tracking-tight whitespace-nowrap" href="/about">О нас</Link></li>
+              <li><Link className="text-sm text-white/50 hover:text-white transition-colors font-sans font-medium tracking-tight whitespace-nowrap" href="/contact">Контакты</Link></li>
             </ul>
           </div>
           <div className="space-y-6">
-            <h4 className="text-foreground text-sm font-bold uppercase tracking-widest font-display">Resources</h4>
+            <h4 className="text-white text-sm font-medium uppercase tracking-tighter font-sans">Ресурсы</h4>
             <ul className="space-y-3">
-              <li><Link className="text-sm text-foreground/50 hover:text-foreground transition-colors" href="/dashboard">Dashboard</Link></li>
+              <li><Link className="text-sm text-white/50 hover:text-white transition-colors font-sans font-medium tracking-tight whitespace-nowrap" href="/dashboard">Дашборд</Link></li>
             </ul>
           </div>
           <div className="space-y-6">
-            <h4 className="text-foreground text-sm font-bold uppercase tracking-widest font-display">Legal</h4>
+            <h4 className="text-white text-sm font-medium uppercase tracking-tighter font-sans">Правовая информация</h4>
             <ul className="space-y-3">
-              <li><Link className="text-sm text-foreground/50 hover:text-foreground transition-colors" href="/privacy">Privacy</Link></li>
-              <li><Link className="text-sm text-white/50 hover:text-white transition-colors" href="/terms">Terms</Link></li>
-              <li><Link className="text-sm text-white/50 hover:text-white transition-colors" href="/security">Security</Link></li>
+              <li><Link className="text-sm text-white/50 hover:text-white transition-colors font-sans font-medium tracking-tight whitespace-nowrap" href="/privacy">Конфиденциальность</Link></li>
+              <li><Link className="text-sm text-white/50 hover:text-white transition-colors font-sans font-medium tracking-tight whitespace-nowrap" href="/terms">Условия</Link></li>
+              <li><Link className="text-sm text-white/50 hover:text-white transition-colors font-sans font-medium tracking-tight whitespace-nowrap" href="/security">Безопасность</Link></li>
             </ul>
           </div>
         </div>
 
-        <div className="mt-24 pt-8 border-t border-foreground/5 flex flex-col md:flex-row justify-between items-center gap-6">
-          <div className="flex items-center gap-2">
-            <span className="text-foreground font-bold text-xl tracking-tighter font-display uppercase">
-                PITCHY<span className="text-[#a855f7]">.</span>PRO
-            </span>
+        <div className="mt-24 pt-8 border-t border-white/5">
+          <div className="flex flex-col gap-2">
+            <div className="flex items-baseline gap-3">
+              <PitchyLogo size="3xl" />
+              <span className="text-white/20 text-xs font-medium font-sans tracking-tight uppercase">
+                © 2026 Все права защищены
+              </span>
+            </div>
+            <p className="text-white/20 text-[10px] font-medium font-sans tracking-widest uppercase">
+              НПД Фигурняк Егор Сергеевич, ИНН 400700088347
+            </p>
           </div>
-          <p className="text-foreground/30 text-xs font-light">
-            © 2024 Pitchy.pro. All rights reserved.
-          </p>
         </div>
       </div>
     </footer>

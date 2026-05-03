@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { 
   ArrowUpRight, BarChart3, Users, FileText, Sparkles, 
-  MessageSquare, Plus, Radar, Layers3, Zap, 
+  MessageSquare, Radar, Zap, 
   Target, Briefcase, Code, ShieldCheck, UserCheck, Search 
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { LandingFooter } from "@/components/landing/LandingFooter";
 import { HeroSection } from "@/components/sections/HeroSection";
+import { TopNavBar } from "@/components/shared/TopNavBar";
 
 const organizationSchema = {
   "@context": "https://schema.org",
@@ -30,7 +31,7 @@ const SectionHeading = ({ eyebrow, title, text, centered = false }: { eyebrow: s
     viewport={{ once: true, margin: "-100px" }}
     className={`max-w-4xl ${centered ? "mx-auto text-center" : ""}`}
   >
-    <div className="mono-lovable text-white/50 mb-4">{eyebrow}</div>
+    <div className="font-mono text-white/50 mb-4 tracking-[0.2em] text-xs uppercase">{eyebrow}</div>
     <h2 className="text-4xl leading-[1.1] text-white md:text-6xl mb-6" style={{ fontFamily: "'Instrument Serif', serif" }}>
       {title}
     </h2>
@@ -48,10 +49,11 @@ export default function LandingPage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationSchema) }}
       />
 
+      <TopNavBar />
       <HeroSection />
 
       {/* Cinematic Fade Transition */}
-      <div className="w-full h-32 bg-gradient-to-b from-transparent to-black pointer-events-none -mt-32 relative z-10" />
+      <div className="w-full h-64 bg-gradient-to-b from-transparent to-black pointer-events-none -mt-64 relative z-10" />
 
       <main className="relative bg-black">
         {/* Background Decorative Orbs */}
@@ -63,7 +65,7 @@ export default function LandingPage() {
           <div className="mx-auto max-w-7xl">
             <SectionHeading
               centered
-              eyebrow="SYSTEM OVERVIEW"
+              eyebrow="ОБЗОР СИСТЕМЫ"
               title="Единая операционная система для стартапа"
               text="Мы собрали все инструменты в одном интерфейсе: от первичного анализа идеи до полной подготовки к инвестициям. Никаких лишних переключений между вкладками."
             />
@@ -124,7 +126,7 @@ export default function LandingPage() {
               transition={{ duration: 0.8 }}
               viewport={{ once: true }}
             >
-              <div className="mono-lovable text-white/50 mb-4">USER PATH REWIRED</div>
+              <div className="font-mono text-white/50 mb-4 tracking-[0.2em] text-xs uppercase">ПУТЬ ПОЛЬЗОВАТЕЛЯ</div>
               <h2 className="text-5xl md:text-7xl text-white leading-[1.1] mb-8" style={{ fontFamily: "'Instrument Serif', serif" }}>
                 Путь продукта: от гипотезы до результата
               </h2>
@@ -133,12 +135,12 @@ export default function LandingPage() {
               </p>
               <div className="flex flex-wrap gap-4">
                 <Link href="/signup">
-                  <button className="bg-white text-black px-8 py-4 rounded-full font-medium hover:bg-white/90 transition-all">
+                  <button className="bg-white text-black px-8 py-4 rounded-full font-medium hover:bg-white/90 transition-all font-mono tracking-tight uppercase text-xs">
                     Начать анализ
                   </button>
                 </Link>
                 <Link href="/demo">
-                  <button className="lovable-glass text-white px-8 py-4 rounded-full font-medium hover:bg-white/5 transition-all">
+                  <button className="lovable-glass text-white px-8 py-4 rounded-full font-medium hover:bg-white/5 transition-all font-mono tracking-tight uppercase text-xs">
                     Посмотреть демо
                   </button>
                 </Link>
@@ -150,7 +152,7 @@ export default function LandingPage() {
               whileInView={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.8 }}
               viewport={{ once: true }}
-              className="lovable-glass-strong rounded-[2.5rem] p-8 md:p-10"
+              className="lovable-glass-strong lovable-liquid-outline rounded-[2.5rem] p-8 md:p-10 shadow-[0_0_80px_-20px_rgba(255,255,255,0.1)] bg-black/40"
             >
               <div className="space-y-4">
                 {[
@@ -161,7 +163,7 @@ export default function LandingPage() {
                 ].map((step, index) => (
                   <div key={step.id} className="lovable-glass rounded-2xl p-5 flex items-center justify-between group cursor-default border-white/5">
                     <div className="flex items-center gap-6 flex-1">
-                      <div className="w-24 px-4 py-2 rounded-full border border-white/10 text-xs font-bold uppercase tracking-wider text-center group-hover:bg-white group-hover:text-black transition-all">
+                      <div className="w-24 px-4 py-2 rounded-full border border-white/10 text-[10px] font-bold uppercase tracking-wider text-center group-hover:bg-white group-hover:text-black transition-all font-mono">
                         {step.id}
                       </div>
                       <div className="flex items-center gap-3">
@@ -169,7 +171,7 @@ export default function LandingPage() {
                         <span className="text-sm text-white/60 font-light leading-relaxed">{step.text}</span>
                       </div>
                     </div>
-                    <span className="mono-lovable text-white/20 ml-4">0{index + 1}</span>
+                    <span className="font-mono text-white/20 ml-4 text-xs">0{index + 1}</span>
                   </div>
                 ))}
               </div>
@@ -185,7 +187,7 @@ export default function LandingPage() {
               whileInView={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.8 }}
               viewport={{ once: true }}
-              className="lovable-glass-strong rounded-[2.5rem] p-10 relative overflow-hidden"
+              className="lovable-glass-strong lovable-liquid-outline rounded-[2.5rem] p-10 relative overflow-hidden shadow-[0_0_80px_-20px_rgba(255,255,255,0.1)] bg-black/40"
             >
               <div className="flex items-center gap-4 mb-10">
                 <div className="h-12 w-12 rounded-full border border-white/10 flex items-center justify-center bg-white/[0.03]">
@@ -193,7 +195,7 @@ export default function LandingPage() {
                 </div>
                 <div>
                   <div className="font-semibold text-white">Умный ассистент</div>
-                  <div className="text-sm text-white/30 italic">online / context aware</div>
+                  <div className="text-sm text-white/30 italic font-mono uppercase tracking-tighter">online / context aware</div>
                 </div>
               </div>
 
@@ -223,7 +225,7 @@ export default function LandingPage() {
               transition={{ duration: 0.8 }}
               viewport={{ once: true }}
             >
-              <div className="mono-lovable text-white/50 mb-4">AI LAYER</div>
+              <div className="font-mono text-white/50 mb-4 tracking-[0.2em] text-xs uppercase">СЛОЙ ИИ</div>
               <h2 className="text-5xl md:text-7xl text-white leading-[1.1] mb-8" style={{ fontFamily: "'Instrument Serif', serif" }}>
                 Интеллект в каждом действии.
               </h2>
@@ -238,7 +240,7 @@ export default function LandingPage() {
                 <div>
                   <h3 className="text-xl text-white font-medium mb-2">Анализ ЦА</h3>
                   <p className="text-sm text-white/40 font-light">Выявляйте боли, сигналы спроса и скрытые мотивы аудитории.</p>
-                  <div className="mono-lovable mt-4 text-white/20">MODULE 01</div>
+                  <div className="font-mono mt-4 text-white/20 text-[10px] tracking-widest uppercase">MODULE 01</div>
                 </div>
               </div>
             </motion.div>
@@ -250,7 +252,7 @@ export default function LandingPage() {
           <div className="mx-auto max-w-7xl">
             <SectionHeading
               centered
-              eyebrow="SIGNAL MAP"
+              eyebrow="КАРТА СИГНАЛОВ"
               title="Карта рыночных сигналов"
               text="Визуализация спроса, болей аудитории и конкурентной среды в реальном времени."
             />
@@ -270,7 +272,7 @@ export default function LandingPage() {
                   whileInView={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.5, delay: index * 0.05 }}
                   viewport={{ once: true }}
-                  className="lovable-glass rounded-[1.5rem] p-6 group cursor-default border-white/5"
+                  className="lovable-glass lovable-liquid-outline rounded-[1.5rem] p-6 group cursor-default border-white/5 shadow-[0_0_40px_-10px_rgba(255,255,255,0.05)] bg-black/40"
                 >
                   <div className="flex items-center gap-4 mb-6">
                     <span className="h-2 w-2 rounded-full bg-white/40 animate-pulse" />

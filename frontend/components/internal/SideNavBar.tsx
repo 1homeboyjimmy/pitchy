@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { LayoutDashboard, MessageSquare, GitBranch, Users, Shield, HelpCircle, Star, X } from "lucide-react";
+import { PitchyLogo } from "../shared/PitchyLogo";
 
 interface Props {
   activeTab: string;
@@ -15,8 +16,8 @@ export function SideNavBar({ activeTab, setActiveTab, isAdmin, isMobileOpen, onM
   const topNavItems = [
     { id: "overview", label: "Обзор", icon: LayoutDashboard },
     { id: "chat", label: "Чат", icon: MessageSquare },
-    { id: "tree", label: "Древо принятия решений", icon: GitBranch },
-    { id: "custdev", label: "CustDev", icon: Users, href: "https://custdev.pitchy.pro/" },
+    { id: "tree", label: "Дерево решений", icon: GitBranch },
+    { id: "custdev", label: "Кастдев", icon: Users, href: "https://custdev.pitchy.pro/" },
   ];
 
   if (isAdmin) {
@@ -44,8 +45,8 @@ export function SideNavBar({ activeTab, setActiveTab, isAdmin, isMobileOpen, onM
       >
         <div className="px-6 mb-10 flex items-start justify-between">
           <div>
-            <h1 className="text-white font-bold tracking-tighter text-lg">Pitchy.pro</h1>
-            <p className="font-mono uppercase tracking-widest text-[11px] text-neutral-500 mt-1">Внутреннее пространство</p>
+            <PitchyLogo size="xl" />
+            <p className="font-sans font-medium uppercase tracking-tight text-[10px] text-neutral-500 mt-1">Рабочая область</p>
           </div>
           <button
             onClick={onMobileClose}
@@ -61,8 +62,8 @@ export function SideNavBar({ activeTab, setActiveTab, isAdmin, isMobileOpen, onM
             const isActive = activeTab === item.id;
             const content = (
               <>
-                <item.icon size={18} strokeWidth={1.5} />
-                <span className="font-mono uppercase tracking-widest text-[11px]">{item.label}</span>
+                <item.icon size={18} strokeWidth={2} />
+                <span className="font-display font-medium tracking-tight text-[16px]">{item.label}</span>
               </>
             );
 
@@ -71,7 +72,7 @@ export function SideNavBar({ activeTab, setActiveTab, isAdmin, isMobileOpen, onM
                 <a
                   key={item.id}
                   href={item.href}
-                  className="flex items-center gap-3 px-3 py-2 text-neutral-500 hover:bg-white/5 hover:text-white transition-colors duration-150 active:scale-[0.98] rounded-sm"
+                  className="flex items-center gap-3 px-4 py-2.5 text-neutral-400 hover:bg-white/5 hover:text-white transition-all duration-150 active:scale-[0.98] rounded-xl"
                 >
                   {content}
                 </a>
@@ -82,10 +83,10 @@ export function SideNavBar({ activeTab, setActiveTab, isAdmin, isMobileOpen, onM
               <button
                 key={item.id}
                 onClick={() => handleTabClick(item.id)}
-                className={`w-full flex items-center gap-3 px-3 py-2 transition-colors duration-150 active:scale-[0.98] text-left rounded-sm ${
+                className={`w-full flex items-center gap-3 px-4 py-2.5 transition-all duration-150 active:scale-[0.98] text-left rounded-xl ${
                   isActive
-                    ? "bg-white/10 text-white border-l-2 border-white"
-                    : "text-neutral-500 hover:bg-white/5 hover:text-white border-l-2 border-transparent"
+                    ? "bg-white/10 text-white shadow-[0_0_20px_rgba(255,255,255,0.05)]"
+                    : "text-neutral-400 hover:bg-white/5 hover:text-white"
                 }`}
               >
                 {content}
@@ -94,26 +95,26 @@ export function SideNavBar({ activeTab, setActiveTab, isAdmin, isMobileOpen, onM
           })}
         </nav>
 
-        <div className="px-3 mb-4">
-          <div className="border border-white/10 bg-[#111111] p-4 flex flex-col gap-2">
-            <div className="flex items-center gap-2 text-white">
-              <Star size={14} strokeWidth={1.5} />
-              <span className="font-mono-label text-[10px] uppercase tracking-widest font-bold">PRO СОВЕТ</span>
+        <div className="px-4 mb-4">
+          <div className="lovable-glass rounded-2xl p-4 flex flex-col gap-2 border border-white/5">
+            <div className="flex items-center gap-2 text-white/80">
+              <Star size={14} strokeWidth={2} />
+              <span className="font-sans text-[10px] uppercase tracking-wider font-bold">СОВЕТ</span>
             </div>
-            <p className="font-code text-[11px] text-neutral-500 leading-relaxed">
+            <p className="font-sans text-[12px] text-neutral-500 leading-relaxed font-medium">
               Чем подробнее вы опишете проект в начале, тем точнее будет анализ.
             </p>
           </div>
         </div>
 
-        <div className="px-3 border-t border-white/10 pt-4 space-y-1">
+        <div className="px-3 border-t border-white/5 pt-4 space-y-1">
           <Link
             href="/contact"
             onClick={onMobileClose}
-            className="w-full flex items-center gap-3 px-3 py-2 text-neutral-500 hover:bg-white/5 hover:text-white transition-colors duration-150 active:scale-[0.98] text-left rounded-sm"
+            className="w-full flex items-center gap-3 px-4 py-2.5 text-neutral-400 hover:bg-white/5 hover:text-white transition-all duration-150 active:scale-[0.98] text-left rounded-xl"
           >
-            <HelpCircle size={18} strokeWidth={1.5} />
-            <span className="font-mono uppercase tracking-widest text-[11px]">Поддержка</span>
+            <HelpCircle size={18} strokeWidth={2} />
+            <span className="font-display font-medium tracking-tight text-[16px]">Поддержка</span>
           </Link>
         </div>
       </aside>

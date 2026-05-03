@@ -2,22 +2,22 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader, Lock, Activity, RefreshCcw, TrendingUp, BarChart2, ArrowUp, ArrowUpRight, MessageSquare, Search, GitBranch, Terminal } from "lucide-react";
+import { Loader, Lock, Activity, RefreshCcw, TrendingUp, BarChart2, ArrowUp, ArrowUpRight, MessageSquare } from "lucide-react";
 import { ChatInterface } from "@/components/dashboard/ChatInterface";
 import { AdminView } from "@/components/dashboard/AdminView";
 import { TreeView } from "@/components/dashboard/TreeView";
 import { SideNavBar } from "@/components/internal/SideNavBar";
 import { InternalTopNavBar } from "@/components/internal/InternalTopNavBar";
+import { TopNavBar } from "@/components/shared/TopNavBar";
 import { motion } from "framer-motion";
 
 import { useAuth } from "@/lib/hooks/useAuth";
-import { setToken, getToken } from "@/lib/auth";
+import { setToken } from "@/lib/auth";
 import {
   getChatSessions,
   createChatSession,
   getChatSession,
   getMe,
-  deleteChatSession,
   createChatSessionFromIntent,
   ChatSessionResponse,
   ChatSessionDetailResponse,
@@ -27,62 +27,31 @@ import Link from "next/link";
 
 function UnauthDashboard() {
   return (
-    <div className="min-h-screen bg-black flex flex-col relative overflow-hidden">
+    <div className="min-h-screen bg-black flex flex-col relative overflow-hidden antialiased">
       {/* Background Glow */}
-      <div className="absolute top-[-20%] left-1/2 -translate-x-1/2 w-[800px] h-[600px] bg-[#8B5CF6]/20 blur-[120px] rounded-full pointer-events-none" />
+      <div className="absolute top-[-20%] left-1/2 -translate-x-1/2 w-[800px] h-[600px] bg-white/5 blur-[120px] rounded-full pointer-events-none" />
 
-      {/* Top Navigation Wrapper */}
-      <div className="relative z-20 w-full px-6 pt-6 flex justify-center">
-          <header className="liquid-glass rounded-full w-full max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
-              <div className="flex items-center gap-2 relative z-10">
-                  <span className="text-white font-bold text-xl tracking-tight" style={{ fontFamily: "'Instrument Serif', serif" }}>Pitchy <span className="text-white/60">.pro</span></span>
-              </div>
-
-              <nav className="hidden md:flex items-center gap-6 text-[15px] font-medium text-white/70 relative z-10">
-                  <Link href="/" className="hover:text-white transition-colors">Главная</Link>
-                  <Link href="/dashboard" className="bg-white/10 text-white px-4 py-2.5 rounded-full hover:bg-white/20 transition-colors">Дашборд</Link>
-                  <Link href="/faq" className="hover:text-white transition-colors">FAQ</Link>
-                  <Link href="/about" className="hover:text-white transition-colors">О нас</Link>
-                  <Link href="/pricing" className="hover:text-white transition-colors">Тарифы</Link>
-                  <Link href="/contact" className="hover:text-white transition-colors">Контакты</Link>
-              </nav>
-
-              <div className="flex items-center gap-6 relative z-10">
-                  <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.95 }} transition={{ duration: 0.2, ease: "easeOut" }}>
-                      <Link href="/login" className="hidden md:block text-[15px] font-medium text-white/70 hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.8)] transition-all">
-                          Войти
-                      </Link>
-                  </motion.div>
-                  <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.95 }} transition={{ duration: 0.2, ease: "easeOut" }}>
-                      <Link href="/signup" className="liquid-glass-strong text-white text-[15px] font-medium px-6 py-2.5 rounded-full transition-colors shadow-lg">
-                          <span className="relative z-10">Регистрация</span>
-                      </Link>
-                  </motion.div>
-              </div>
-          </header>
-      </div>
+      <TopNavBar />
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col items-center justify-center px-4 relative z-10 mt-[-5%]">
-        <div className="flex flex-col items-center w-full max-w-[320px]">
-          <div className="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mb-6 backdrop-blur-sm">
-            <Lock className="w-8 h-8 text-[#8B5CF6]" strokeWidth={1.5} />
-          </div>
+      <div className="flex-1 flex flex-col items-center justify-center px-4 relative z-10">
+        <div className="flex flex-col items-center w-full max-w-[800px]">
 
-          <div className="text-center w-full mb-10">
-            <h1 className="text-3xl font-bold text-white mb-4 leading-tight tracking-tight" style={{ fontFamily: "'Instrument Serif', serif" }}>
-              Войдите для доступа
+          <div className="text-center w-full mb-12">
+            <h1 className="text-6xl md:text-8xl text-white mb-8 leading-[0.9] tracking-tighter" style={{ fontFamily: "'Instrument Serif', serif" }}>
+              Войдите для <br />
+              <span className="text-white/30 italic transition-all duration-700 hover:text-white/50">доступа</span>.
             </h1>
-            <p className="text-white/50 text-[15px] leading-relaxed">
+            <p className="text-white/40 text-lg font-light leading-relaxed">
               Дашборд доступен только авторизованным пользователям. Войдите или зарегистрируйтесь, чтобы сохранять и отслеживать анализы.
             </p>
           </div>
 
-          <div className="flex gap-4 w-full justify-center">
-            <Link href="/login" className="bg-[#8B5CF6] text-white font-medium text-[15px] px-8 py-3 hover:bg-[#7C3AED] transition-colors rounded-xl text-center flex items-center justify-center gap-2">
+          <div className="flex flex-col sm:flex-row gap-4 w-full justify-center">
+            <Link href="/login" className="bg-white text-black font-semibold text-sm px-10 py-4 hover:bg-neutral-200 transition-all rounded-full text-center flex items-center justify-center gap-2 uppercase tracking-tighter">
               Войти <span>›</span>
             </Link>
-            <Link href="/signup" className="bg-transparent border border-white/20 text-white font-medium text-[15px] px-8 py-3 hover:bg-white/10 transition-colors rounded-xl text-center">
+            <Link href="/signup" className="lovable-glass text-white font-semibold text-sm px-10 py-4 hover:bg-white/5 transition-all rounded-full text-center uppercase tracking-tighter">
               Регистрация
             </Link>
           </div>
@@ -223,7 +192,9 @@ function DashboardContent() {
               {/* Header Section */}
               <div className="flex justify-between items-end mb-12">
                 <div>
-                  <h2 className="text-3xl font-bold text-white mb-2 uppercase tracking-tight">Обзор проекта</h2>
+                  <h2 className="text-4xl md:text-5xl text-white mb-4 leading-tight tracking-tight" style={{ fontFamily: "'Instrument Serif', serif" }}>
+                    Обзор проекта
+                  </h2>
                   <div className="flex gap-4 items-center">
                     <div className="flex items-center gap-2 px-2 py-1 bg-white/5 border border-white/10 rounded">
                       <Activity size={14} className="text-white" />
