@@ -42,8 +42,10 @@ class YandexLockbox:
             return self._cached_secrets
 
         if not self.api_key:
-            logger.warning("YC_API_KEY is missing. Skipping Lockbox.")
+            logger.warning(f"YC_API_KEY is missing (Length: {len(self.api_key or '')}). Skipping Lockbox.")
             return {}
+
+        logger.info(f"Lockbox initialized with API_KEY (len={len(self.api_key)}) and SECRET_ID='{self.secret_id}'")
 
         secrets = {}
 

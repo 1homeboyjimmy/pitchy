@@ -598,11 +598,16 @@ def _format_chat_history(messages: list[ChatMessage], limit: int = 10) -> str:
     return "\n".join(lines)
 
 
-def _build_chat_prompt(messages: list[ChatMessage], context_chunks: list[str]) -> str:
+def _build_chat_prompt(messages: list[ChatMessage], context_chunks: list[Any]) -> str:
     history = _format_chat_history(messages)
     
-    # Фильтруем пустые элементы и склеиваем
-    valid_chunks = [c for c in context_chunks if c.strip()]
+    # Extract text from chunks and filter empty ones
+    valid_chunks = []
+    for c in context_chunks:
+        text = c["text"] if isinstance(c, dict) else str(c)
+        if text and text.strip():
+            valid_chunks.append(text.strip())
+            
     context_block = "\n\n".join(valid_chunks)
 
     return (
