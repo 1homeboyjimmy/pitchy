@@ -8,6 +8,7 @@ import { AdminView } from "@/components/dashboard/AdminView";
 import { TreeView } from "@/components/dashboard/TreeView";
 import { SideNavBar } from "@/components/internal/SideNavBar";
 import { InternalTopNavBar } from "@/components/internal/InternalTopNavBar";
+import { motion } from "framer-motion";
 
 import { useAuth } from "@/lib/hooks/useAuth";
 import { setToken, getToken } from "@/lib/auth";
@@ -26,34 +27,40 @@ import Link from "next/link";
 
 function UnauthDashboard() {
   return (
-    <div className="min-h-screen bg-[#0A0A0A] flex flex-col relative overflow-hidden">
+    <div className="min-h-screen bg-black flex flex-col relative overflow-hidden">
       {/* Background Glow */}
       <div className="absolute top-[-20%] left-1/2 -translate-x-1/2 w-[800px] h-[600px] bg-[#8B5CF6]/20 blur-[120px] rounded-full pointer-events-none" />
 
-      {/* Top Navigation */}
-      <header className="relative z-20 w-full px-6 py-6 md:px-12 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-            <span className="text-white font-bold text-xl tracking-tight">Pitchy <span className="text-[#8B5CF6]">.pro</span></span>
-        </div>
+      {/* Top Navigation Wrapper */}
+      <div className="relative z-20 w-full px-6 pt-6 flex justify-center">
+          <header className="liquid-glass rounded-full w-full max-w-6xl px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                  <span className="text-white font-bold text-xl tracking-tight" style={{ fontFamily: "'Instrument Serif', serif" }}>Pitchy <span className="text-white/60">.pro</span></span>
+              </div>
 
-        <nav className="hidden md:flex items-center gap-6 text-[15px] font-medium text-white/70">
-            <Link href="/" className="hover:text-white transition-colors">Главная</Link>
-            <Link href="/dashboard" className="bg-white/10 text-white px-4 py-2 rounded-lg hover:bg-white/20 transition-colors">Дашборд</Link>
-            <Link href="/faq" className="hover:text-white transition-colors">FAQ</Link>
-            <Link href="/about" className="hover:text-white transition-colors">О нас</Link>
-            <Link href="/pricing" className="hover:text-white transition-colors">Тарифы</Link>
-            <Link href="/contact" className="hover:text-white transition-colors">Контакты</Link>
-        </nav>
+              <nav className="hidden md:flex items-center gap-6 text-[15px] font-medium text-white/70">
+                  <Link href="/" className="hover:text-white transition-colors">Главная</Link>
+                  <Link href="/dashboard" className="bg-white/10 text-white px-4 py-2 rounded-full hover:bg-white/20 transition-colors">Дашборд</Link>
+                  <Link href="/faq" className="hover:text-white transition-colors">FAQ</Link>
+                  <Link href="/about" className="hover:text-white transition-colors">О нас</Link>
+                  <Link href="/pricing" className="hover:text-white transition-colors">Тарифы</Link>
+                  <Link href="/contact" className="hover:text-white transition-colors">Контакты</Link>
+              </nav>
 
-        <div className="flex items-center gap-6">
-            <Link href="/login" className="hidden md:block text-[15px] font-medium text-white/70 hover:text-white transition-colors">
-                Войти
-            </Link>
-            <Link href="/signup" className="bg-[#8B5CF6] text-white text-[15px] font-medium px-5 py-2.5 rounded-xl hover:bg-[#7C3AED] transition-colors">
-                Регистрация
-            </Link>
-        </div>
-      </header>
+              <div className="flex items-center gap-6">
+                  <motion.div whileHover={{ scale: 1.02 }} transition={{ duration: 0.3 }}>
+                      <Link href="/login" className="hidden md:block text-[15px] font-medium text-white/70 hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.8)] transition-all">
+                          Войти
+                      </Link>
+                  </motion.div>
+                  <motion.div whileHover={{ scale: 1.02 }} transition={{ duration: 0.3 }}>
+                      <Link href="/signup" className="liquid-glass-strong border border-white/20 text-white text-[15px] font-medium px-6 py-2.5 rounded-full hover:border-white/40 transition-colors shadow-lg">
+                          Регистрация
+                      </Link>
+                  </motion.div>
+              </div>
+          </header>
+      </div>
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col items-center justify-center px-4 relative z-10 mt-[-5%]">
@@ -63,7 +70,7 @@ function UnauthDashboard() {
           </div>
 
           <div className="text-center w-full mb-10">
-            <h1 className="text-3xl font-bold text-white mb-4 leading-tight tracking-tight">
+            <h1 className="text-3xl font-bold text-white mb-4 leading-tight tracking-tight" style={{ fontFamily: "'Instrument Serif', serif" }}>
               Войдите для доступа
             </h1>
             <p className="text-white/50 text-[15px] leading-relaxed">

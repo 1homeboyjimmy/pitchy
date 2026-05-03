@@ -70,7 +70,7 @@ const websiteSchema = {
 
 export default function LandingPage() {
   return (
-    <div className="antialiased min-h-screen flex flex-col overflow-x-hidden" style={{ backgroundColor: "#0A0A0A", color: "#ffffff" }}>
+    <div className="antialiased min-h-screen flex flex-col overflow-x-hidden bg-black text-white">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationSchema) }}
@@ -81,6 +81,9 @@ export default function LandingPage() {
       />
 
       <HeroSection />
+
+      {/* Cinematic Fade Top */}
+      <div className="w-full h-32 bg-gradient-to-b from-transparent to-black pointer-events-none -mt-32 relative z-10" />
 
       <main className="flex-grow w-full max-w-[1440px] mx-auto px-4 md:px-12 py-12 space-y-32">
 
@@ -95,11 +98,11 @@ export default function LandingPage() {
             <AnimatedSection direction="left" className="flex flex-col items-center">
               <h3 className="text-white text-lg mb-12 tracking-[0.2em] uppercase font-semibold">С Pitchy</h3>
               <div className="relative w-full flex flex-col items-center h-full justify-between gap-8 py-2">
-                <div className="absolute top-6 bottom-6 w-0.5 bg-white shadow-[0_0_15px_rgba(255,255,255,0.8)] z-0" />
+                <div className="absolute top-6 bottom-6 w-px bg-white/20 shadow-[0_0_10px_rgba(255,255,255,0.3)] z-0" />
                 {withPitchy.map((s) => (
                   <div key={s} className="relative z-10 liquid-glass px-8 py-4 rounded-full text-white text-center font-medium w-64 text-sm">{s}</div>
                 ))}
-                <div className="relative z-10 bg-white text-black px-8 py-4 rounded-full text-center shadow-[0_0_20px_rgba(255,255,255,0.3)] font-bold w-64 text-sm uppercase tracking-wider">Получение гранта</div>
+                <div className="relative z-10 liquid-glass-strong px-8 py-4 rounded-full text-center font-bold w-64 text-sm uppercase tracking-wider text-white border border-white/20">Получение гранта</div>
               </div>
             </AnimatedSection>
             <AnimatedSection direction="right" className="flex flex-col items-center">
@@ -107,7 +110,7 @@ export default function LandingPage() {
               <div className="relative w-full flex flex-col items-center gap-6 py-2">
                 <div className="absolute top-6 bottom-6 w-px border-l-2 border-dotted border-white/20 z-0" />
                 {withoutPitchy.map((s, i) => (
-                  <div key={s} className={`relative z-10 bg-[#0A0A0A] border border-white/20 px-6 py-3 rounded-full text-neutral-400 text-center text-xs w-72 ${i === withoutPitchy.length - 1 ? "opacity-70 border-white/10 text-neutral-500" : ""}`}>{s}</div>
+                  <div key={s} className={`relative z-10 liquid-glass px-6 py-3 rounded-full text-white/50 text-center text-xs w-72 ${i === withoutPitchy.length - 1 ? "opacity-50" : ""}`}>{s}</div>
                 ))}
               </div>
             </AnimatedSection>
@@ -168,9 +171,9 @@ export default function LandingPage() {
           <AnimatedSection direction="fade" className="relative w-full max-w-6xl mx-auto liquid-glass rounded-3xl p-8">
             <StaggerContainer className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4" staggerDelay={0.05}>
               {agents.map((a) => (
-                <StaggerItem key={a.role} className="liquid-glass p-4 rounded-2xl shadow-xl transition-all flex flex-col h-full hover:bg-white/5">
-                  <div className="flex items-center gap-2 mb-3 border-b border-white/10 pb-2"><span className={`w-2 h-2 rounded-full ${a.color}`} /><span className="text-white font-mono text-xs">{a.role}</span></div>
-                  <div className="flex-grow flex items-center justify-center"><p className="text-neutral-400 text-xs italic text-center font-mono">{a.quote}</p></div>
+                <StaggerItem key={a.role} className="liquid-glass p-4 rounded-2xl shadow-xl flex flex-col h-full bg-transparent">
+                  <div className="flex items-center gap-2 mb-3 border-b border-white/10 pb-2"><span className={`w-2 h-2 rounded-full ${a.color}`} /><span className="text-white text-xs">{a.role}</span></div>
+                  <div className="flex-grow flex items-center justify-center"><p className="text-white/60 text-xs italic text-center">"{a.quote}"</p></div>
                 </StaggerItem>
               ))}
             </StaggerContainer>
@@ -183,10 +186,10 @@ export default function LandingPage() {
           <AnimatedSection direction="fade" className="relative w-full max-w-5xl mx-auto h-[400px] liquid-glass rounded-3xl p-8 overflow-hidden">
             <div className="absolute left-8 right-8 top-1/2 h-px bg-white/20" />
             <div className="relative h-full font-mono text-xs text-neutral-400">
-              <div className="absolute left-[10%] top-1/2 -mt-4 bg-white text-black px-3 py-1.5 rounded-full flex items-center gap-2 z-10 font-medium">● production</div>
-              <div className="absolute left-[28%] top-[25%] bg-[#1A1A1A] border border-white/20 text-white px-3 py-1.5 rounded-full z-10">● preview-branch</div>
-              <div className="absolute left-[55%] top-[75%] bg-[#1A1A1A] border border-white/20 text-white px-3 py-1.5 rounded-full z-10">● test-branch</div>
-              <div className="absolute left-[70%] top-[30%] bg-white text-black px-3 py-1.5 rounded-full flex items-center gap-2 z-10 font-medium">● dev-branch</div>
+              <div className="absolute left-[10%] top-1/2 -mt-4 liquid-glass-strong text-white px-3 py-1.5 rounded-full flex items-center gap-2 z-10 font-medium">● production</div>
+              <div className="absolute left-[28%] top-[25%] liquid-glass text-white px-3 py-1.5 rounded-full z-10">● preview-branch</div>
+              <div className="absolute left-[55%] top-[75%] liquid-glass text-white px-3 py-1.5 rounded-full z-10">● test-branch</div>
+              <div className="absolute left-[70%] top-[30%] liquid-glass-strong text-white px-3 py-1.5 rounded-full flex items-center gap-2 z-10 font-medium">● dev-branch</div>
             </div>
           </AnimatedSection>
         </section>

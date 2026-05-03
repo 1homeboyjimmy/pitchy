@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Barlow:ital,wght@0,300;0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;700&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap');
 @import "tailwindcss";
 
@@ -58,13 +58,13 @@
   --color-on-error-container: #ffdad6;
 
   /* ── Fonts ── */
-  --font-display: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-h1: 'Inter', ui-sans-serif, system-ui, sans-serif;
-  --font-h2: 'Inter', ui-sans-serif, system-ui, sans-serif;
-  --font-body-lg: 'Inter', ui-sans-serif, system-ui, sans-serif;
-  --font-body-sm: 'Inter', ui-sans-serif, system-ui, sans-serif;
-  --font-mono-label: 'Space Grotesk', monospace;
-  --font-code: 'Space Grotesk', monospace;
+  --font-display: 'Barlow', ui-sans-serif, system-ui, sans-serif;
+  --font-h1: 'Instrument Serif', serif;
+  --font-h2: 'Instrument Serif', serif;
+  --font-body-lg: 'Barlow', ui-sans-serif, system-ui, sans-serif;
+  --font-body-sm: 'Barlow', ui-sans-serif, system-ui, sans-serif;
+  --font-mono-label: 'Barlow', ui-sans-serif, system-ui, sans-serif;
+  --font-code: 'JetBrains Mono', monospace;
 
   /* ── Font Sizes (with line-height / letter-spacing / weight) ── */
   --font-size-display: 48px;
@@ -116,10 +116,10 @@ body {
   min-height: 100vh;
   margin: 0;
   padding: 0;
-  background-color: #0A0A0A;
+  background-color: #000000;
   color: #ffffff;
   overflow-x: hidden;
-  font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-family: 'Barlow', ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -186,8 +186,10 @@ body {
 
 .liquid-glass {
   background: rgba(255, 255, 255, 0.01);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.1);
+  border: none;
   position: relative;
 }
 
@@ -197,7 +199,29 @@ body {
   inset: 0;
   border-radius: inherit;
   padding: 1.4px;
-  background: linear-gradient(180deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0) 40%, rgba(255,255,255,0.45) 100%);
+  background: linear-gradient(180deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0) 50%, rgba(255,255,255,0.45) 100%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+.liquid-glass-strong {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.2);
+  border: none;
+  position: relative;
+}
+
+.liquid-glass-strong::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.4px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.2) 50%, rgba(255,255,255,0.8) 100%);
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
@@ -212,7 +236,7 @@ body {
 }
 
 .mono-data {
-  font-family: 'Space Grotesk', monospace;
+  font-family: 'JetBrains Mono', monospace;
 }
 
 /* ─── Details/Summary accordion animation ─── */
@@ -246,7 +270,7 @@ details[open] summary ~ * { animation: sweep .5s ease-in-out; }
   border-radius: 4px;
   font-weight: 500;
   font-size: 14px;
-  font-family: 'Space Grotesk', monospace;
+  font-family: 'Barlow', sans-serif;
   cursor: pointer;
   transition: all 0.2s ease-out;
 }
@@ -267,7 +291,7 @@ details[open] summary ~ * { animation: sweep .5s ease-in-out; }
   border-radius: 4px;
   font-weight: 500;
   font-size: 14px;
-  font-family: 'Space Grotesk', monospace;
+  font-family: 'Barlow', sans-serif;
   cursor: pointer;
   transition: all 0.2s ease-out;
 }
@@ -306,7 +330,7 @@ details[open] summary ~ * { animation: sweep .5s ease-in-out; }
 
 .pitchy-input::placeholder {
   color: #444444;
-  font-family: 'Space Grotesk', monospace;
+  font-family: 'Barlow', sans-serif;
 }
 
 .pitchy-input:focus {
