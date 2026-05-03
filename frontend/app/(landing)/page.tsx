@@ -1,5 +1,6 @@
+"use client";
+
 import Link from "next/link";
-import { Metadata } from "next";
 import { ArrowUpRight, Bot, BrainCircuit, FileText, Gauge, Layers3, Radar, Sparkles, Plus } from "lucide-react";
 import { motion } from "framer-motion";
 import { LandingNavBar } from "@/components/landing/LandingNavBar";
@@ -56,11 +57,7 @@ function SectionHeading({
   );
 }
 
-export const metadata: Metadata = {
-  alternates: {
-    canonical: '/',
-  },
-};
+
 
 const organizationSchema = {
   "@context": "https://schema.org",
