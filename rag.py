@@ -433,15 +433,21 @@ class StartupRAG:
 
         instance = cls(client=client, collections=collections, embedding_fn=embedding_fn)
         
-        if reindex and raw_docs:
-            logger.info(f"Starting SMART INGESTION for {len(raw_docs)} documents...")
+        # Check if the database is effectively empty
+        total_docs = sum(col.count() for col in collections.values())
+        
+        if (reindex or total_docs == 0) and raw_docs:
+            logger.info(f"Starting SMART INGESTION for {len(raw_docs)} documents (Database empty or Reindex=True)...")
             for doc_entry in raw_docs:
                 chunks = _chunk_text(doc_entry["content"])
                 # Process chunks in batches of 10 to SLM
                 batch_size = 10
                 for i in range(0, len(chunks), batch_size):
                     batch = chunks[i:i+batch_size]
-                    await _smart_ingest_batch(instance, batch, source=doc_entry["source"])
+                    try:
+                        await _smart_ingest_batch(instance, batch, source=doc_entry["source"])
+                    except Exception as e:
+                        logger.error(f"Failed to ingest batch from {doc_entry['source']}: {e}")
             logger.info("SMART INGESTION complete.")
 
         return instance
