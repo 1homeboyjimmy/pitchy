@@ -49,7 +49,7 @@ function SectionHeading({
   text: string;
 }) {
   return (
-    <div className="mx-auto flex max-w-3xl flex-col items-center text-center">
+    <div className="mx-auto flex w-full max-w-3xl flex-col items-center text-center">
       <div className="mono-lovable text-white/70">{eyebrow}</div>
       <h2 className="mt-4 max-w-4xl text-4xl leading-none text-gradient md:text-6xl" style={{ fontFamily: "'Instrument Serif', serif" }}>{title}</h2>
       <p className="mt-5 max-w-2xl text-sm leading-7 text-white/60 md:text-base font-light">{text}</p>
@@ -107,7 +107,7 @@ export default function LandingPage() {
 
         {/* Introduction Section */}
         <section className="relative section-line px-5 pb-14 pt-10 sm:px-8 sm:pt-12 lg:px-12 lg:pt-16">
-          <div className="mx-auto flex max-w-7xl justify-end">
+          <div className="mx-auto flex w-full max-w-7xl justify-end">
             <motion.div
               initial={{ opacity: 0, y: 28 }}
               whileInView={{ opacity: 1, y: 0 }}
@@ -127,7 +127,7 @@ export default function LandingPage() {
         {/* System Overview Section */}
         <section className="relative section-line px-5 py-24 sm:px-8 lg:px-12">
           <div className="absolute inset-0 aurora-bg opacity-80" />
-          <div className="relative mx-auto max-w-7xl">
+          <div className="relative mx-auto w-full max-w-7xl">
             <SectionHeading
               eyebrow="SYSTEM OVERVIEW"
               title="Всё, что идёт после hero, теперь выглядит как продукт, а не лендинг-болванка."
@@ -164,7 +164,7 @@ export default function LandingPage() {
 
         {/* User Path Section */}
         <section className="relative section-line px-5 py-24 sm:px-8 lg:px-12">
-          <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
+          <div className="mx-auto grid w-full max-w-7xl gap-10 lg:grid-cols-2 lg:items-center">
             <motion.div
               initial={{ opacity: 0, y: 28 }}
               whileInView={{ opacity: 1, y: 0 }}
@@ -220,7 +220,7 @@ export default function LandingPage() {
 
         {/* AI Layer Section */}
         <section className="relative section-line px-5 py-24 sm:px-8 lg:px-12">
-          <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.95fr_1.05fr] lg:items-start">
+          <div className="mx-auto grid w-full max-w-7xl gap-8 lg:grid-cols-2 lg:items-start">
             <motion.div
               initial={{ opacity: 0, y: 28 }}
               whileInView={{ opacity: 1, y: 0 }}
@@ -308,7 +308,7 @@ export default function LandingPage() {
 
         {/* Signal Map Section */}
         <section className="relative section-line px-5 py-24 sm:px-8 lg:px-12">
-          <div className="mx-auto max-w-7xl">
+          <div className="mx-auto w-full max-w-7xl">
             <SectionHeading
               eyebrow="SIGNAL MAP"
               title="Синтетическая обратная связь теперь подана как коллекция сигналов."

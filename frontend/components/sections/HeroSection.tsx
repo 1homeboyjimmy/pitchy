@@ -113,7 +113,7 @@ export function HeroSection() {
             </div>
 
             {/* Hero Body */}
-            <main className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 w-full max-w-4xl mx-auto text-center mt-[-5%]">
+            <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 w-full max-w-4xl mx-auto text-center pt-20 pb-12">
                 <h1 
                     className="text-5xl md:text-6xl lg:text-7xl text-white mb-8 leading-[1.1] font-normal tracking-tight"
                     style={{ fontFamily: "'Instrument Serif', serif" }}
@@ -143,7 +143,7 @@ export function HeroSection() {
                         <span className="relative z-10">View Roadmap</span>
                     </button>
                 </div>
-            </main>
+            </div>
 
             {/* Footer */}
             <footer className="relative z-10 w-full px-6 py-8 flex justify-center md:justify-end gap-4">
