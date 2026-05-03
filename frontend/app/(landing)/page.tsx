@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowUpRight, BarChart3, Users, FileText, Sparkles, MessageSquare, Plus } from "lucide-react";
+import { ArrowUpRight, BarChart3, Users, FileText, Sparkles, MessageSquare, Plus, Radar, Layers3 } from "lucide-react";
 import { motion } from "framer-motion";
 import { LandingNavBar } from "@/components/landing/LandingNavBar";
 import { LandingFooter } from "@/components/landing/LandingFooter";
