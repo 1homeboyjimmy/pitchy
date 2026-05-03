@@ -139,7 +139,7 @@ export default function LandingPage() {
                     Начать анализ
                   </button>
                 </Link>
-                <Link href="/demo">
+                <Link href="/dashboard">
                   <button className="lovable-glass text-white px-8 py-4 rounded-full font-medium hover:bg-white/5 transition-all font-mono tracking-tight uppercase text-xs">
                     Посмотреть демо
                   </button>
