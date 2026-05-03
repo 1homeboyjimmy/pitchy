@@ -145,13 +145,13 @@ export default function LandingPage() {
                     viewport={{ once: true, margin: "-80px" }}
                     className="lovable-glass lovable-liquid-outline group rounded-[1.75rem] p-6"
                   >
-                    <div className="flex items-center justify-between relative z-10">
-                      <div className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5">
+                    <div className="flex items-center justify-between relative z-10 w-full">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5">
                         <Icon size={20} strokeWidth={1.5} className="text-white" />
                       </div>
-                      <ArrowUpRight className="h-4 w-4 text-white/40 transition-transform duration-300 group-hover:-translate-y-1 group-hover:translate-x-1" />
+                      <ArrowUpRight className="h-4 w-4 shrink-0 text-white/40 transition-transform duration-300 group-hover:-translate-y-1 group-hover:translate-x-1" />
                     </div>
-                    <div className="relative z-10">
+                    <div className="relative z-10 w-full break-words">
                         <h3 className="mt-10 text-2xl leading-tight text-white font-medium" style={{ fontFamily: "'Instrument Serif', serif" }}>{card.title}</h3>
                         <p className="mt-4 text-sm leading-7 text-white/60 font-light">{card.body}</p>
                     </div>
@@ -170,20 +170,21 @@ export default function LandingPage() {
               whileInView={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8, ease: "easeOut" }}
               viewport={{ once: true, margin: "-120px" }}
+              className="w-full flex-1"
             >
               <div className="mono-lovable text-white/70">USER PATH REWIRED</div>
-              <h2 className="mt-4 max-w-xl text-4xl leading-none text-gradient md:text-6xl" style={{ fontFamily: "'Instrument Serif', serif" }}>
+              <h2 className="mt-4 w-full text-4xl leading-none text-gradient md:text-6xl break-words" style={{ fontFamily: "'Instrument Serif', serif" }}>
                 Вместо скучного скролла — управляемая драматургия пути пользователя.
               </h2>
-              <p className="mt-6 max-w-xl text-sm leading-7 text-white/60 md:text-base font-light">
+              <p className="mt-6 w-full text-sm leading-7 text-white/60 md:text-base font-light break-words">
                 Каждая следующая зона теперь ведёт глубже: сначала ценность, потом механика процесса,
                 затем интеллект системы и в конце — ощущение контроля над исполнением.
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
-                <button className="bg-white text-black px-8 py-3 rounded-full text-sm font-medium hover:opacity-90 transition-opacity">
+                <button className="bg-white text-black px-8 py-3 rounded-full text-sm font-medium hover:opacity-90 transition-opacity shrink-0">
                   View roadmap
                 </button>
-                <button className="lovable-glass text-white px-8 py-3 rounded-full text-sm font-medium hover:bg-white/5 transition-colors">
+                <button className="lovable-glass text-white px-8 py-3 rounded-full text-sm font-medium hover:bg-white/5 transition-colors shrink-0">
                   Explore flow
                 </button>
               </div>
@@ -197,19 +198,19 @@ export default function LandingPage() {
               className="lovable-glass-strong lovable-liquid-outline relative rounded-[2rem] p-6 md:p-8"
             >
               <div className="absolute inset-x-10 top-1/2 h-px -translate-y-1/2 bg-white/10" />
-              <div className="space-y-5 relative z-10">
+              <div className="space-y-5 relative z-10 w-full">
                 {timeline.map((step, index) => (
                   <div
                     key={step.label}
-                    className="grid gap-3 md:grid-cols-[160px_1fr] md:items-center"
+                    className="grid gap-3 md:grid-cols-[160px_1fr] md:items-center w-full"
                   >
-                    <div className="lovable-liquid-outline lovable-glass rounded-full px-5 py-3 text-center text-sm font-medium text-white">
+                    <div className="lovable-liquid-outline lovable-glass rounded-full px-5 py-3 text-center text-sm font-medium text-white shrink-0">
                       {step.label}
                     </div>
-                    <div className="rounded-full border border-white/10 bg-white/[0.03] px-5 py-3 text-sm text-white/60">
-                      <span className="mr-3 inline-block h-2 w-2 rounded-full bg-white/40 align-middle animate-pulse-glow-lovable" />
-                      {step.note}
-                      <span className="mono-lovable ml-3 text-white/30">0{index + 1}</span>
+                    <div className="rounded-full border border-white/10 bg-white/[0.03] px-5 py-3 text-sm text-white/60 break-words flex items-center">
+                      <span className="mr-3 inline-block h-2 w-2 shrink-0 rounded-full bg-white/40 align-middle animate-pulse-glow-lovable" />
+                      <span className="flex-1">{step.note}</span>
+                      <span className="mono-lovable ml-3 shrink-0 text-white/30">0{index + 1}</span>
                     </div>
                   </div>
                 ))}
@@ -228,29 +229,29 @@ export default function LandingPage() {
               viewport={{ once: true, margin: "-120px" }}
               className="lovable-glass-strong lovable-liquid-outline rounded-[2rem] p-6 md:p-8"
             >
-              <div className="flex items-center gap-3 relative z-10">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-white/[0.05]">
-                  <Sparkles className="h-5 w-5" />
+              <div className="flex items-center gap-3 relative z-10 w-full">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.05]">
+                  <Sparkles className="h-5 w-5 shrink-0" />
                 </div>
-                <div>
-                  <div className="font-semibold text-white">Умный ассистент</div>
-                  <div className="text-sm text-white/40">online / context aware</div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-white truncate">Умный ассистент</div>
+                  <div className="text-sm text-white/40 truncate">online / context aware</div>
                 </div>
               </div>
 
-              <div className="mt-8 space-y-4 relative z-10">
-                <div className="ml-auto max-w-md rounded-[1.5rem] bg-white/[0.92] px-5 py-4 text-sm leading-7 text-black shadow-2xl">
+              <div className="mt-8 space-y-4 relative z-10 w-full flex flex-col">
+                <div className="ml-auto w-fit max-w-[85%] rounded-[1.5rem] bg-white/[0.92] px-4 py-3 text-left text-sm leading-relaxed text-black shadow-2xl break-words">
                   Сделай расчёт unit-экономики для B2B SaaS и покажи, где стоит усиливать каналы
                   роста.
                 </div>
-                <div className="lovable-glass lovable-liquid-outline max-w-md rounded-[1.5rem] p-5 text-sm leading-7 text-white/60">
-                  <div className="mb-3 text-white">Результат анализа</div>
+                <div className="lovable-glass lovable-liquid-outline w-fit max-w-[85%] rounded-[1.5rem] p-5 text-sm leading-relaxed text-white/60 break-words">
+                  <div className="mb-3 text-white font-medium">Результат анализа</div>
                   <ul className="space-y-2">
-                    <li>Payback period: ~3.3 месяца</li>
-                    <li>LTV / CAC: 3.6 — в безопасной зоне роста</li>
-                    <li>12-месячный LTV: ~18 000 ₽</li>
+                    <li className="flex items-center gap-2"><span className="h-1 w-1 shrink-0 rounded-full bg-white/40" /> Payback period: ~3.3 месяца</li>
+                    <li className="flex items-center gap-2"><span className="h-1 w-1 shrink-0 rounded-full bg-white/40" /> LTV / CAC: 3.6 — в безопасной зоне роста</li>
+                    <li className="flex items-center gap-2"><span className="h-1 w-1 shrink-0 rounded-full bg-white/40" /> 12-месячный LTV: ~18 000 ₽</li>
                   </ul>
-                  <p className="mt-4 text-white">
+                  <p className="mt-4 text-white border-t border-white/10 pt-3">
                     Экономика сходится. Масштабирование можно ускорять.
                   </p>
                 </div>
@@ -262,9 +263,10 @@ export default function LandingPage() {
               whileInView={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8, ease: "easeOut", delay: 0.1 }}
               viewport={{ once: true, margin: "-120px" }}
+              className="w-full flex-1"
             >
               <div className="mono-lovable text-white/70">AI LAYER</div>
-              <h2 className="mt-4 text-4xl leading-none text-gradient md:text-6xl" style={{ fontFamily: "'Instrument Serif', serif" }}>
+              <h2 className="mt-4 text-4xl leading-none text-gradient md:text-6xl break-words" style={{ fontFamily: "'Instrument Serif', serif" }}>
                 Жидкое стекло и живой интеллект вместо тяжёлых блоков.
               </h2>
               <div className="mt-8 grid gap-4">
@@ -287,14 +289,14 @@ export default function LandingPage() {
                 ].map((item, index) => {
                   const Icon = item.icon;
                   return (
-                    <div key={item.title} className="lovable-glass lovable-liquid-outline rounded-[1.5rem] p-5 relative z-10">
-                      <div className="flex items-start gap-4 relative z-10">
-                        <div className="mt-1 flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.05]">
-                          <Icon className="h-4 w-4" />
+                    <div key={item.title} className="lovable-glass lovable-liquid-outline rounded-[1.5rem] p-5 relative z-10 w-full">
+                      <div className="flex items-start gap-4 relative z-10 w-full">
+                        <div className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.05]">
+                          <Icon className="h-4 w-4 shrink-0" />
                         </div>
-                        <div>
-                          <h3 className="text-xl text-white font-medium">{item.title}</h3>
-                          <p className="mt-2 text-sm leading-7 text-white/60 font-light">{item.text}</p>
+                        <div className="flex-1 min-w-0">
+                          <h3 className="text-xl text-white font-medium truncate">{item.title}</h3>
+                          <p className="mt-2 text-sm leading-7 text-white/60 font-light break-words">{item.text}</p>
                           <div className="mono-lovable mt-3 text-white/30">module 0{index + 1}</div>
                         </div>
                       </div>
@@ -324,11 +326,11 @@ export default function LandingPage() {
                   viewport={{ once: true, margin: "-80px" }}
                   className="lovable-glass lovable-liquid-outline rounded-[1.5rem] p-5"
                 >
-                  <div className="flex items-center gap-3 relative z-10">
-                    <span className="h-2.5 w-2.5 rounded-full bg-white/40 animate-pulse" />
-                    <div className="text-lg text-white font-medium">{signal}</div>
+                  <div className="flex items-center gap-3 relative z-10 w-full">
+                    <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-white/40 animate-pulse" />
+                    <div className="text-lg text-white font-medium truncate">{signal}</div>
                   </div>
-                  <div className="mt-5 border-t border-white/10 pt-4 text-sm italic leading-7 text-white/60 font-light relative z-10">
+                  <div className="mt-5 border-t border-white/10 pt-4 text-sm italic leading-7 text-white/60 font-light relative z-10 break-words w-full">
                     “Сигнал уже виден, но теперь интерфейс не спорит с контентом — он усиливает его.”
                   </div>
                 </motion.div>

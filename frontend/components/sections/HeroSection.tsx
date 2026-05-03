@@ -134,7 +134,7 @@ export function HeroSection() {
                             className="bg-transparent text-white placeholder-white/40 focus:outline-none flex-1 min-w-0 relative z-10"
                         />
                         <button className="bg-white text-black p-3 rounded-full hover:scale-105 transition-transform flex-shrink-0 relative z-10">
-                            <ArrowRight className="w-5 h-5" />
+                            <ArrowRight className="w-5 h-5 shrink-0" />
                         </button>
                     </div>
 
@@ -147,14 +147,14 @@ export function HeroSection() {
 
             {/* Footer */}
             <footer className="relative z-10 w-full px-6 py-8 flex justify-center md:justify-end gap-4">
-                <button className="liquid-glass rounded-full p-3 transition-colors text-white">
-                    <Instagram className="w-4 h-4 relative z-10" />
+                <button className="liquid-glass rounded-full p-3 transition-colors text-white shrink-0">
+                    <Instagram className="w-4 h-4 shrink-0 relative z-10" />
                 </button>
-                <button className="liquid-glass rounded-full p-3 transition-colors text-white">
-                    <Twitter className="w-4 h-4 relative z-10" />
+                <button className="liquid-glass rounded-full p-3 transition-colors text-white shrink-0">
+                    <Twitter className="w-4 h-4 shrink-0 relative z-10" />
                 </button>
-                <button className="liquid-glass rounded-full p-3 transition-colors text-white">
-                    <Linkedin className="w-4 h-4 relative z-10" />
+                <button className="liquid-glass rounded-full p-3 transition-colors text-white shrink-0">
+                    <Linkedin className="w-4 h-4 shrink-0 relative z-10" />
                 </button>
             </footer>
         </section>
