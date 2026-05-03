@@ -94,23 +94,29 @@ export default function LandingPage() {
             <h2 className="text-[40px] md:text-[56px] leading-tight font-normal tracking-tight mb-6" style={{ fontFamily: "'Instrument Serif', serif" }}>Путь пользователя.</h2>
             <p className="text-white/60 text-lg font-light">Ускоряй процесс, повышай качество, реализуй идею.</p>
           </AnimatedSection>
-          <div className="relative w-full max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-16 px-8 font-mono">
+          <div className="relative w-full max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-16 px-8">
             <AnimatedSection direction="left" className="flex flex-col items-center">
               <h3 className="text-white text-lg mb-12 tracking-[0.2em] uppercase font-semibold">С Pitchy</h3>
               <div className="relative w-full flex flex-col items-center h-full justify-between gap-8 py-2">
-                <div className="absolute top-6 bottom-6 w-px bg-white/20 shadow-[0_0_10px_rgba(255,255,255,0.3)] z-0" />
+                <div className="absolute top-6 bottom-6 w-[1px] bg-gradient-to-b from-white/40 to-transparent shadow-[0_0_8px_rgba(255,255,255,0.5)] z-0" />
                 {withPitchy.map((s) => (
-                  <div key={s} className="relative z-10 liquid-glass px-8 py-4 rounded-full text-white text-center font-medium w-64 text-sm">{s}</div>
+                  <div key={s} className="relative z-10 liquid-glass rounded-full px-8 py-4 w-64 text-center">
+                    <span className="relative z-10 text-white font-medium text-sm">{s}</span>
+                  </div>
                 ))}
-                <div className="relative z-10 liquid-glass-strong px-8 py-4 rounded-full text-center font-bold w-64 text-sm uppercase tracking-wider text-white border border-white/20">Получение гранта</div>
+                <div className="relative z-10 liquid-glass-strong rounded-full px-8 py-4 w-64 text-center">
+                  <span className="relative z-10 font-bold text-sm uppercase tracking-wider text-white">Получение гранта</span>
+                </div>
               </div>
             </AnimatedSection>
-            <AnimatedSection direction="right" className="flex flex-col items-center">
+            <AnimatedSection direction="right" className="flex flex-col items-center opacity-40">
               <h3 className="text-neutral-500 text-lg mb-12 tracking-[0.2em] uppercase font-semibold">Без Pitchy</h3>
               <div className="relative w-full flex flex-col items-center gap-6 py-2">
                 <div className="absolute top-6 bottom-6 w-px border-l-2 border-dotted border-white/20 z-0" />
                 {withoutPitchy.map((s, i) => (
-                  <div key={s} className={`relative z-10 liquid-glass px-6 py-3 rounded-full text-white/50 text-center text-xs w-72 ${i === withoutPitchy.length - 1 ? "opacity-50" : ""}`}>{s}</div>
+                  <div key={s} className={`relative z-10 liquid-glass rounded-full px-6 py-3 w-72 text-center`}>
+                    <span className="relative z-10 text-white/70 text-xs">{s}</span>
+                  </div>
                 ))}
               </div>
             </AnimatedSection>
@@ -120,12 +126,12 @@ export default function LandingPage() {
         {/* Smart Assistant */}
         <section className="py-24 border-t border-white/[0.08]">
           <div className="max-w-6xl mx-auto px-8 grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
-            <AnimatedSection direction="left" className="liquid-glass rounded-2xl overflow-hidden shadow-2xl flex flex-col h-[400px]">
-              <div className="bg-[#1A1A1A] px-6 py-4 border-b border-white/5 flex items-center gap-4">
+            <AnimatedSection direction="left" className="liquid-glass rounded-2xl flex flex-col h-[400px]">
+              <div className="bg-[#1A1A1A] px-6 py-4 flex items-center gap-4 relative z-10">
                 <div className="w-10 h-10 rounded-full bg-neutral-800 flex items-center justify-center"><Cpu size={20} strokeWidth={1.5} className="text-white" /></div>
                 <div><h3 className="text-white font-semibold text-sm">Умный ассистент</h3><p className="text-neutral-500 text-xs">Online</p></div>
               </div>
-              <div className="p-6 flex-1 overflow-y-auto space-y-6 bg-transparent">
+              <div className="p-6 flex-1 overflow-y-auto space-y-6 bg-transparent relative z-10">
                 <div className="flex justify-end"><div className="bg-white text-black rounded-2xl rounded-tr-sm px-4 py-3 max-w-[80%] text-sm">Сделай расчет юнит-экономики для B2B SaaS продукта при CAC=5000р и ARPU=1500р/мес.</div></div>
                 <div className="flex justify-start"><div className="bg-[#1A1A1A] border border-white/10 text-white rounded-2xl rounded-tl-sm px-4 py-3 max-w-[85%] text-sm space-y-2"><p className="text-neutral-300">Результат анализа:</p><ul className="list-disc pl-4 space-y-1 text-neutral-400"><li>Payback period: ~3.3 месяца</li><li>При Lifetime 12 мес: LTV = 18,000р</li><li>LTV/CAC Ratio = 3.6 (Оптимально &gt; 3)</li></ul><p className="text-white font-medium mt-2">Вывод: Экономика сходится. Рекомендую масштабировать каналы привлечения.</p></div></div>
                 <div className="flex justify-start opacity-50"><div className="bg-[#1A1A1A] border border-white/10 rounded-2xl rounded-tl-sm px-4 py-3 flex gap-1"><div className="w-1.5 h-1.5 bg-white rounded-full animate-bounce" /><div className="w-1.5 h-1.5 bg-white rounded-full animate-bounce" style={{ animationDelay: "0.1s" }} /><div className="w-1.5 h-1.5 bg-white rounded-full animate-bounce" style={{ animationDelay: "0.2s" }} /></div></div>
@@ -151,14 +157,14 @@ export default function LandingPage() {
 
         {/* Grant Automation */}
         <section className="py-24 border-t border-white/[0.08] relative overflow-hidden">
-          <AnimatedSection direction="up" className="text-center mb-16"><h2 className="text-[40px] md:text-[56px] leading-tight font-normal tracking-tight mb-6" style={{ fontFamily: "'Instrument Serif', serif" }}>Автоматизация грантового цикла</h2><p className="text-white/60 text-sm font-mono">SCAN_FUNDS // DYNAMIC_TRACK_ENGAGED</p></AnimatedSection>
+          <AnimatedSection direction="up" className="text-center mb-16"><h2 className="text-[40px] md:text-[56px] leading-tight font-normal tracking-tight mb-6" style={{ fontFamily: "'Instrument Serif', serif" }}>Автоматизация грантового цикла</h2><p className="text-white/60 text-sm">SCAN_FUNDS // DYNAMIC_TRACK_ENGAGED</p></AnimatedSection>
           <div className="relative w-full max-w-5xl mx-auto px-8">
             <div className="absolute top-1/2 left-8 right-8 h-px bg-gradient-to-r from-transparent via-white/50 to-transparent -translate-y-1/2" />
             <StaggerContainer className="grid grid-cols-1 md:grid-cols-3 gap-8 relative" staggerDelay={0.15}>
               {["ПОДАЧА", "ТРЕКШН", "ОТЧЕТНОСТЬ"].map((label, i) => (
-                <StaggerItem key={label} className="group liquid-glass p-6 rounded-2xl transition-all duration-300 hover:-translate-y-2 cursor-crosshair">
-                  <div className="w-4 h-4 bg-white rounded-full mx-auto mb-6 relative"><div className="absolute inset-0 bg-white rounded-full animate-ping opacity-50" style={{ animationDelay: `${i * 0.3}s` }} /></div>
-                  <div className="text-center"><h3 className="text-white font-mono text-lg mb-2 tracking-wider">{label}</h3></div>
+                <StaggerItem key={label} className="group liquid-glass rounded-2xl p-6 transition-all duration-300">
+                  <div className="relative z-10 w-4 h-4 bg-white rounded-full mx-auto mb-6"><div className="absolute inset-0 bg-white rounded-full animate-ping opacity-50" style={{ animationDelay: `${i * 0.3}s` }} /></div>
+                  <div className="text-center relative z-10"><h3 className="text-white text-lg mb-2 tracking-wider">{label}</h3></div>
                 </StaggerItem>
               ))}
             </StaggerContainer>
@@ -171,9 +177,9 @@ export default function LandingPage() {
           <AnimatedSection direction="fade" className="relative w-full max-w-6xl mx-auto liquid-glass rounded-3xl p-8">
             <StaggerContainer className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4" staggerDelay={0.05}>
               {agents.map((a) => (
-                <StaggerItem key={a.role} className="liquid-glass p-4 rounded-2xl shadow-xl flex flex-col h-full bg-transparent">
-                  <div className="flex items-center gap-2 mb-3 border-b border-white/10 pb-2"><span className={`w-2 h-2 rounded-full ${a.color}`} /><span className="text-white text-xs">{a.role}</span></div>
-                  <div className="flex-grow flex items-center justify-center"><p className="text-white/60 text-xs italic text-center">"{a.quote}"</p></div>
+                <StaggerItem key={a.role} className="liquid-glass rounded-2xl p-4 flex flex-col h-full bg-transparent">
+                  <div className="flex items-center gap-2 mb-3 pb-2 relative z-10"><span className={`w-2 h-2 rounded-full ${a.color}`} /><span className="text-white text-xs">{a.role}</span></div>
+                  <div className="flex-grow flex items-center justify-center relative z-10"><p className="text-white/70 text-xs italic text-center">"{a.quote}"</p></div>
                 </StaggerItem>
               ))}
             </StaggerContainer>
@@ -183,13 +189,21 @@ export default function LandingPage() {
         {/* Roadmap */}
         <section className="py-24 border-t border-white/[0.08]">
           <AnimatedSection direction="up" className="max-w-4xl mx-auto text-center mb-24"><h2 className="text-[40px] md:text-[56px] leading-tight font-normal tracking-tight mb-6" style={{ fontFamily: "'Instrument Serif', serif" }}>Структурированная дорожная карта проекта.</h2></AnimatedSection>
-          <AnimatedSection direction="fade" className="relative w-full max-w-5xl mx-auto h-[400px] liquid-glass rounded-3xl p-8 overflow-hidden">
-            <div className="absolute left-8 right-8 top-1/2 h-px bg-white/20" />
-            <div className="relative h-full font-mono text-xs text-neutral-400">
-              <div className="absolute left-[10%] top-1/2 -mt-4 liquid-glass-strong text-white px-3 py-1.5 rounded-full flex items-center gap-2 z-10 font-medium">● production</div>
-              <div className="absolute left-[28%] top-[25%] liquid-glass text-white px-3 py-1.5 rounded-full z-10">● preview-branch</div>
-              <div className="absolute left-[55%] top-[75%] liquid-glass text-white px-3 py-1.5 rounded-full z-10">● test-branch</div>
-              <div className="absolute left-[70%] top-[30%] liquid-glass-strong text-white px-3 py-1.5 rounded-full flex items-center gap-2 z-10 font-medium">● dev-branch</div>
+          <AnimatedSection direction="fade" className="relative w-full max-w-5xl mx-auto h-[400px] liquid-glass rounded-3xl p-8">
+            <div className="absolute left-[15%] w-[60%] top-1/2 h-[1px] bg-white/20 z-0" />
+            <div className="relative h-full text-xs text-neutral-400 z-10">
+              <div className="absolute left-[10%] top-1/2 -mt-4 liquid-glass-strong rounded-full px-3 py-1.5 flex items-center gap-2 font-medium">
+                <span className="relative z-10 text-white">● production</span>
+              </div>
+              <div className="absolute left-[28%] top-[25%] liquid-glass rounded-full px-3 py-1.5">
+                <span className="relative z-10 text-white">● preview-branch</span>
+              </div>
+              <div className="absolute left-[55%] top-[75%] liquid-glass rounded-full px-3 py-1.5">
+                <span className="relative z-10 text-white">● test-branch</span>
+              </div>
+              <div className="absolute left-[70%] top-[30%] liquid-glass-strong rounded-full px-3 py-1.5 flex items-center gap-2 font-medium">
+                <span className="relative z-10 text-white">● dev-branch</span>
+              </div>
             </div>
           </AnimatedSection>
         </section>
@@ -202,10 +216,12 @@ export default function LandingPage() {
             </AnimatedSection>
             <StaggerContainer className="grid grid-cols-1 md:grid-cols-3 gap-6" staggerDelay={0.1}>
               {features.map((f) => (
-                <StaggerItem key={f.title} className="liquid-glass p-8 rounded-2xl hover:bg-white/5 transition-colors">
-                  <div className="text-white mb-6">{f.icon}</div>
-                  <h3 className="text-white font-semibold mb-3">{f.title}</h3>
-                  <p className="text-neutral-400 text-sm">{f.desc}</p>
+                <StaggerItem key={f.title} className="liquid-glass rounded-2xl p-8 transition-colors">
+                  <div className="relative z-10">
+                    <div className="text-white mb-6">{f.icon}</div>
+                    <h3 className="text-white font-semibold mb-3">{f.title}</h3>
+                    <p className="text-neutral-400 text-sm">{f.desc}</p>
+                  </div>
                 </StaggerItem>
               ))}
             </StaggerContainer>
@@ -222,11 +238,11 @@ export default function LandingPage() {
               {faqItems.map((faq) => (
                 <StaggerItem key={faq.q}>
                   <details className="liquid-glass rounded-2xl group" name="faq">
-                    <summary className="cursor-pointer p-6 flex justify-between items-center font-semibold text-white">
+                    <summary className="cursor-pointer p-6 flex justify-between items-center font-semibold text-white relative z-10">
                       {faq.q}
                       <Plus size={20} strokeWidth={1.5} className="text-neutral-500 group-open:rotate-45 transition-transform duration-200 shrink-0 ml-4" />
                     </summary>
-                    <div className="px-6 pb-6 text-neutral-400 text-sm leading-relaxed">{faq.a}</div>
+                    <div className="px-6 pb-6 text-neutral-400 text-sm leading-relaxed relative z-10">{faq.a}</div>
                   </details>
                 </StaggerItem>
               ))}

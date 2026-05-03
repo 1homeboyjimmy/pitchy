@@ -33,12 +33,12 @@ function UnauthDashboard() {
 
       {/* Top Navigation Wrapper */}
       <div className="relative z-20 w-full px-6 pt-6 flex justify-center">
-          <header className="liquid-glass rounded-full w-full max-w-6xl px-6 py-4 flex items-center justify-between">
-              <div className="flex items-center gap-2">
+          <header className="liquid-glass rounded-full w-full max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2 relative z-10">
                   <span className="text-white font-bold text-xl tracking-tight" style={{ fontFamily: "'Instrument Serif', serif" }}>Pitchy <span className="text-white/60">.pro</span></span>
               </div>
 
-              <nav className="hidden md:flex items-center gap-6 text-[15px] font-medium text-white/70">
+              <nav className="hidden md:flex items-center gap-6 text-[15px] font-medium text-white/70 relative z-10">
                   <Link href="/" className="hover:text-white transition-colors">Главная</Link>
                   <Link href="/dashboard" className="bg-white/10 text-white px-4 py-2.5 rounded-full hover:bg-white/20 transition-colors">Дашборд</Link>
                   <Link href="/faq" className="hover:text-white transition-colors">FAQ</Link>
@@ -47,15 +47,15 @@ function UnauthDashboard() {
                   <Link href="/contact" className="hover:text-white transition-colors">Контакты</Link>
               </nav>
 
-              <div className="flex items-center gap-6">
+              <div className="flex items-center gap-6 relative z-10">
                   <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.95 }} transition={{ duration: 0.2, ease: "easeOut" }}>
                       <Link href="/login" className="hidden md:block text-[15px] font-medium text-white/70 hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.8)] transition-all">
                           Войти
                       </Link>
                   </motion.div>
                   <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.95 }} transition={{ duration: 0.2, ease: "easeOut" }}>
-                      <Link href="/signup" className="liquid-glass-strong border border-white/20 text-white text-[15px] font-medium px-6 py-2.5 rounded-full hover:border-white/40 transition-colors shadow-lg">
-                          Регистрация
+                      <Link href="/signup" className="liquid-glass-strong text-white text-[15px] font-medium px-6 py-2.5 rounded-full transition-colors shadow-lg">
+                          <span className="relative z-10">Регистрация</span>
                       </Link>
                   </motion.div>
               </div>
