@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { X, Copy, Check, DownloadCloud, ArrowRight } from "react-feather";
+import { X, Copy, Check, DownloadCloud, ArrowRight, Loader } from "react-feather";
 import { motion, AnimatePresence } from "framer-motion";
 import { ImportContextResponse } from "@/lib/api";
 
