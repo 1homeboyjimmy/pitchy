@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Menu, X } from "lucide-react";
+import { Menu, X, ChevronDown } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -9,98 +9,83 @@ import { motion, AnimatePresence } from "framer-motion";
 export function LandingNavBar() {
     const pathname = usePathname();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
-    const [isScrolled, setIsScrolled] = useState(false);
-
-    useEffect(() => {
-        const handleScroll = () => {
-            setIsScrolled(window.scrollY > 50);
-        };
-        window.addEventListener("scroll", handleScroll);
-        return () => window.removeEventListener("scroll", handleScroll);
-    }, []);
 
     useEffect(() => {
         setIsMenuOpen(false);
     }, [pathname]);
 
     const navLinks = [
-        { name: "ГЛАВНАЯ", href: "/" },
-        { name: "ДАШБОРД", href: "/dashboard" },
-        { name: "ТАРИФЫ", href: "/pricing" },
-        { name: "FAQ", href: "/faq" },
-        { name: "О НАС", href: "/about" },
+        { name: "Features", href: "#", hasDropdown: true },
+        { name: "Solutions", href: "#" },
+        { name: "Plans", href: "/pricing" },
+        { name: "Learning", href: "#", hasDropdown: true },
     ];
 
     return (
-        <>
-            <header 
-                className={`fixed top-0 left-0 right-0 z-[100] transition-all duration-300 px-6 md:px-12 py-6 ${
-                    isScrolled ? "bg-[#070b0a]/80 backdrop-blur-xl py-4 border-b border-white/5" : "bg-transparent"
-                }`}
-            >
-                <div className="max-w-7xl mx-auto flex items-center justify-between">
-                    <Link href="/" className="flex items-center gap-2 relative z-[110]">
-                        <span className="text-white font-bold text-2xl tracking-tighter" style={{ fontFamily: "'Inter', sans-serif" }}>
-                            PITCHY<span className="text-[#5ed29c]">.</span>PRO
-                        </span>
+        <header className="fixed top-0 left-0 right-0 z-[100] w-full">
+            <div className="flex flex-row justify-between items-center py-5 px-8 w-full max-w-[1440px] mx-auto">
+                {/* Left: Logo */}
+                <Link href="/" className="flex items-center gap-2 relative z-[110]">
+                    <span className="text-foreground font-bold text-2xl tracking-tighter font-display uppercase">
+                        Pitchy
+                    </span>
+                </Link>
+
+                {/* Center: Nav Links */}
+                <nav className="hidden md:flex items-center gap-8">
+                    {navLinks.map((link) => (
+                        <button 
+                            key={link.name} 
+                            className="flex items-center gap-1 text-foreground/90 hover:text-foreground transition-colors font-medium text-sm"
+                        >
+                            {link.name}
+                            {link.hasDropdown && <ChevronDown size={14} className="opacity-50" />}
+                        </button>
+                    ))}
+                </nav>
+
+                {/* Right: Actions */}
+                <div className="flex items-center gap-4 relative z-[110]">
+                    <Link href="/signup" className="bg-foreground/10 text-foreground border border-foreground/20 px-6 py-2 rounded-full text-[13px] font-bold hover:bg-foreground/20 transition-colors">
+                        Sign Up
                     </Link>
-
-                    {/* Desktop Nav */}
-                    <nav className="hidden md:flex items-center gap-8">
-                        {navLinks.map((link) => (
-                            <Link 
-                                key={link.name} 
-                                href={link.href} 
-                                className="text-[14px] font-bold tracking-widest text-white/70 hover:text-[#5ed29c] transition-colors"
-                            >
-                                {link.name}
-                            </Link>
-                        ))}
-                        <Link href="/login" className="text-[14px] font-bold text-white/70 hover:text-white ml-4 tracking-widest">ВОЙТИ</Link>
-                        <Link href="/signup" className="bg-[#5ed29c] text-[#070b0a] px-6 py-2.5 rounded-full text-[13px] font-black tracking-widest hover:scale-105 transition-transform shadow-[0_0_20px_-5px_#5ed29c]">
-                            РЕГИСТРАЦИЯ
-                        </Link>
-                    </nav>
-
+                    
                     {/* Mobile Hamburger */}
                     <button 
-                        className="md:hidden text-white relative z-[110]"
+                        className="md:hidden text-foreground ml-2"
                         onClick={() => setIsMenuOpen(!isMenuOpen)}
                     >
-                        {isMenuOpen ? <X size={28} /> : <Menu size={28} />}
+                        {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
                     </button>
                 </div>
-            </header>
+            </div>
+
+            {/* Divider Line with Gradient */}
+            <div className="w-full h-px bg-gradient-to-r from-transparent via-foreground/20 to-transparent mt-[3px]" />
 
             {/* Mobile Menu Overlay */}
             <AnimatePresence>
                 {isMenuOpen && (
                     <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-[105] bg-[#070b0a] flex flex-col items-center justify-center p-8"
+                        initial={{ opacity: 0, y: -20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        className="absolute top-full left-0 right-0 bg-background/95 backdrop-blur-xl border-b border-foreground/10 p-8 md:hidden"
                     >
-                        <nav className="flex flex-col items-center gap-10">
+                        <nav className="flex flex-col gap-6 items-center">
                             {navLinks.map((link) => (
                                 <Link 
                                     key={link.name} 
                                     href={link.href} 
-                                    className="text-4xl font-black text-white hover:text-[#5ed29c] transition-colors tracking-tighter"
+                                    className="text-2xl font-bold text-foreground/80 hover:text-foreground"
                                 >
                                     {link.name}
                                 </Link>
                             ))}
-                            <div className="flex flex-col gap-4 w-full max-w-xs mt-8">
-                                <Link href="/login" className="text-center text-white/70 text-xl font-bold tracking-widest">ВОЙТИ</Link>
-                                <Link href="/signup" className="bg-[#5ed29c] text-[#070b0a] text-center px-8 py-4 rounded-full text-lg font-black tracking-widest">
-                                    РЕГИСТРАЦИЯ
-                                </Link>
-                            </div>
                         </nav>
                     </motion.div>
                 )}
             </AnimatePresence>
-        </>
+        </header>
     );
 }

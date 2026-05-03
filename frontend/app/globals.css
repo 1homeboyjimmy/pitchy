@@ -1,12 +1,14 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800&family=Plus+Jakarta+Sans:wght@400;700&family=Barlow:ital,wght@0,300;0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import url('https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600,700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800&family=Plus+Jakarta+Sans:wght@400;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap');
 @import "tailwindcss";
 
 /* ─── Tailwind v4 Theme — Design Tokens from newdesign.md ─── */
 @theme {
   /* ── Colors: Full Material-style palette ── */
-  --color-background: #070b0a;
-  --color-on-background: #e5e2e1;
+  --color-background: hsl(260 87% 3%);
+  --color-foreground: hsl(40 6% 95%);
+  --color-hero-sub: hsl(40 6% 82%);
   --color-surface: #141313;
   --color-surface-dim: #141313;
   --color-surface-bright: #3a3939;
@@ -58,9 +60,9 @@
   --color-on-error-container: #ffdad6;
 
   /* ── Fonts ── */
-  --font-display: 'Inter', ui-sans-serif, system-ui, sans-serif;
-  --font-h1: 'Inter', sans-serif;
-  --font-h2: 'Inter', sans-serif;
+  --font-display: 'General Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-h1: 'General Sans', sans-serif;
+  --font-h2: 'General Sans', sans-serif;
   --font-body-lg: 'Inter', ui-sans-serif, system-ui, sans-serif;
   --font-body-sm: 'Inter', ui-sans-serif, system-ui, sans-serif;
   --font-mono-label: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
@@ -508,29 +510,27 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
   border-top: 1px solid oklch(1 0 0 / 0.08);
 }
 
-.lovable-liquid-outline {
-  position: relative;
-  overflow: hidden;
+.liquid-glass { 
+  background: rgba(255, 255, 255, 0.01); 
+  background-blend-mode: luminosity; 
+  backdrop-filter: blur(4px); 
+  border: none; 
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.1); 
+  position: relative; 
+  overflow: hidden; 
 }
 
-.lovable-liquid-outline::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 1px;
-  background: linear-gradient(
-    135deg,
-    oklch(1 0 0 / 0.22),
-    oklch(1 0 0 / 0.04),
-    oklch(0.7 0.22 290 / 0.25)
-  );
-  -webkit-mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  pointer-events: none;
+.liquid-glass::before { 
+  content: ""; 
+  position: absolute; 
+  inset: 0; 
+  border-radius: inherit; 
+  padding: 1.4px; 
+  background: linear-gradient(180deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0.15) 20%, rgba(255,255,255,0) 40%, rgba(255,255,255,0) 60%, rgba(255,255,255,0.15) 80%, rgba(255,255,255,0.45) 100%); 
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); 
+  -webkit-mask-composite: xor; 
+  mask-composite: exclude; 
+  pointer-events: none; 
 }
 
 .aurora-orb {

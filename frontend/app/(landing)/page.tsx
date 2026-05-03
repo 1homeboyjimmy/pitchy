@@ -50,11 +50,11 @@ function SectionHeading({
 }) {
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col items-center text-center">
-      <div className="text-[#5ed29c] text-[11px] font-bold tracking-[0.3em] uppercase mb-4" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>{eyebrow}</div>
-      <h2 className="mt-4 max-w-4xl text-3xl md:text-5xl lg:text-6xl font-extrabold text-white tracking-tight leading-none uppercase">
-        {title}<span className="text-[#5ed29c]">.</span>
+      <div className="text-[#a855f7] text-[11px] font-bold tracking-[0.3em] uppercase mb-4" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>{eyebrow}</div>
+      <h2 className="mt-4 max-w-4xl text-3xl md:text-5xl lg:text-6xl font-bold text-foreground tracking-tight leading-none uppercase font-display">
+        {title}<span className="text-[#a855f7]">.</span>
       </h2>
-      <p className="mt-6 max-w-2xl text-sm leading-7 text-white/60 md:text-lg font-light">{text}</p>
+      <p className="mt-6 max-w-2xl text-sm leading-7 text-foreground/60 md:text-lg font-light">{text}</p>
     </div>
   );
 }
@@ -87,7 +87,7 @@ const websiteSchema = {
 
 export default function LandingPage() {
   return (
-    <div className="antialiased min-h-screen flex flex-col overflow-x-hidden bg-black text-white">
+    <div className="antialiased min-h-screen flex flex-col overflow-x-hidden bg-background text-foreground">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationSchema) }}
@@ -102,7 +102,7 @@ export default function LandingPage() {
       {/* Cinematic Fade Top (Legacy Transition) */}
       <div className="w-full h-32 bg-gradient-to-b from-transparent to-black pointer-events-none -mt-32 relative z-10" />
 
-      <main className="relative min-h-screen overflow-hidden bg-black text-white">
+      <main className="relative min-h-screen overflow-hidden bg-background text-foreground">
         {/* Lovable Aurora Background Elements */}
         <div className="aurora-orb left-[-8rem] top-[18rem] h-64 w-64 bg-[oklch(0.5_0.15_160_/_0.2)] animate-float-slow" />
         <div className="aurora-orb right-[-6rem] top-[58rem] h-72 w-72 bg-[oklch(0.45_0.12_160_/_0.15)] animate-float-slow" />
@@ -138,8 +138,8 @@ export default function LandingPage() {
                       <ArrowUpRight className="h-4 w-4 shrink-0 text-white/40 transition-transform duration-300 group-hover:-translate-y-1 group-hover:translate-x-1" />
                     </div>
                     <div className="relative z-10 w-full break-words">
-                        <h3 className="mt-10 text-xl leading-tight text-white font-bold uppercase tracking-tight">{card.title}</h3>
-                        <p className="mt-4 text-sm leading-7 text-white/60 font-light">{card.body}</p>
+                        <h3 className="mt-10 text-xl leading-tight text-foreground font-bold uppercase tracking-tight font-display">{card.title}</h3>
+                        <p className="mt-4 text-sm leading-7 text-foreground/60 font-light">{card.body}</p>
                     </div>
                   </motion.article>
                 );
@@ -159,10 +159,10 @@ export default function LandingPage() {
               className="w-full flex-1"
             >
               <div className="text-[#5ed29c] text-[11px] font-bold tracking-[0.3em] uppercase mb-4" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>USER PATH REWIRED</div>
-              <h2 className="mt-4 w-full text-4xl leading-none text-white md:text-6xl font-extrabold uppercase tracking-tight">
-                Путь продукта: от гипотезы до результата<span className="text-[#5ed29c]">.</span>
+              <h2 className="mt-4 w-full text-4xl leading-none text-foreground md:text-6xl font-bold uppercase tracking-tight font-display">
+                Путь продукта: от гипотезы до результата<span className="text-[#a855f7]">.</span>
               </h2>
-              <p className="mt-6 w-full text-sm leading-7 text-white/60 md:text-lg font-light break-words">
+              <p className="mt-6 w-full text-sm leading-7 text-foreground/60 md:text-lg font-light break-words">
                 Интерфейс адаптируется под текущий этап развития: сбор сигналов, проверка рынка, проведение CustDev и формирование дорожной карты.
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
@@ -189,7 +189,7 @@ export default function LandingPage() {
                     key={step.label}
                     className="grid gap-3 md:grid-cols-[160px_1fr] md:items-center w-full"
                   >
-                    <div className="lovable-liquid-outline lovable-glass rounded-full px-5 py-3 text-center text-sm font-bold text-[#5ed29c] shrink-0" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+                    <div className="liquid-glass rounded-full px-5 py-3 text-center text-sm font-bold text-[#a855f7] shrink-0" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
                       {step.label.toUpperCase()}
                     </div>
                     <div className="rounded-full border border-white/10 bg-white/[0.03] px-5 py-3 text-sm text-white/60 break-words flex items-center">
@@ -251,10 +251,10 @@ export default function LandingPage() {
               className="w-full flex-1"
             >
               <div className="text-[#5ed29c] text-[11px] font-bold tracking-[0.3em] uppercase mb-4" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>AI LAYER</div>
-              <h2 className="mt-4 text-4xl leading-none text-white md:text-6xl font-extrabold uppercase tracking-tight">
-                Интеллект в каждом действии<span className="text-[#5ed29c]">.</span>
+              <h2 className="mt-4 text-4xl leading-none text-foreground md:text-6xl font-bold uppercase tracking-tight font-display">
+                Интеллект в каждом действии<span className="text-[#a855f7]">.</span>
               </h2>
-              <p className="mt-6 text-sm leading-7 text-white/60 md:text-lg font-light break-words">
+              <p className="mt-6 text-sm leading-7 text-foreground/60 md:text-lg font-light break-words">
                 Слой живого ИИ не просто отвечает на вопросы, а анализирует контекст проекта, подбирает релевантные гранты и помогает структурировать юридические аспекты.
               </p>
               <div className="mt-8 grid gap-4">
@@ -315,8 +315,8 @@ export default function LandingPage() {
                   className="lovable-glass lovable-liquid-outline rounded-[1.5rem] p-5"
                 >
                   <div className="flex items-center gap-3 relative z-10 w-full">
-                    <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#5ed29c] animate-pulse shadow-[0_0_10px_#5ed29c]" />
-                    <div className="text-lg text-white font-bold uppercase tracking-tight truncate">{signal}</div>
+                    <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#a855f7] animate-pulse shadow-[0_0_10px_#a855f7]" />
+                    <div className="text-lg text-foreground font-bold uppercase tracking-tight truncate font-display">{signal}</div>
                   </div>
                   <div className="mt-5 border-t border-white/10 pt-4 text-sm italic leading-7 text-white/60 font-light relative z-10 break-words w-full">
                     “Сигнал уже виден, но теперь интерфейс не спорит с контентом — он усиливает его.”
