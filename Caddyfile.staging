@@ -50,7 +50,7 @@ dev.pitchy.pro {
         Referrer-Policy "strict-origin-when-cross-origin"
 
         # Content Security Policy
-        Content-Security-Policy "default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval'; connect-src 'self' https: wss: dev.pitchy.pro *.pitchy.pro;"
+        Content-Security-Policy "default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval'; media-src 'self' blob: https://stream.mux.com https: data:; worker-src 'self' blob:; connect-src 'self' https://stream.mux.com https: wss: dev.pitchy.pro *.pitchy.pro;"
     }
 
     # Сжатие контента для ускорения загрузки (исключая SSE для предотвращения буферизации)

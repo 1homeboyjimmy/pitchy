@@ -52,7 +52,7 @@ pitchy.pro {
 
         # Content Security Policy (Исправлено для работы /account и WebSocket)
         # Разрешаем подключения к своим поддоменам и внешним API (например, HuggingFace/OpenAI)
-        Content-Security-Policy "default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval'; connect-src 'self' https: wss: pitchy.pro *.pitchy.pro;"
+        Content-Security-Policy "default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval'; media-src 'self' blob: https://stream.mux.com https: data:; worker-src 'self' blob:; connect-src 'self' https://stream.mux.com https: wss: pitchy.pro *.pitchy.pro;"
     }
 
     # Сжатие контента для ускорения загрузки (исключая SSE для предотвращения буферизации)

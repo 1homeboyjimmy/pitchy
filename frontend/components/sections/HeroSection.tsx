@@ -1,14 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { ArrowRight, Menu, X, Zap } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { ArrowRight } from "lucide-react";
 import Link from "next/link";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import Hls from "hls.js";
 
 export function HeroSection() {
     const videoRef = useRef<HTMLVideoElement>(null);
-    const [isMenuOpen, setIsMenuOpen] = useState(false);
 
     useEffect(() => {
         const video = videoRef.current;
@@ -34,14 +33,6 @@ export function HeroSection() {
             });
         }
     }, []);
-
-    const navLinks = [
-        { name: "ГЛАВНАЯ", href: "/" },
-        { name: "ДАШБОРД", href: "/dashboard" },
-        { name: "ТАРИФЫ", href: "/pricing" },
-        { name: "FAQ", href: "/faq" },
-        { name: "О НАС", href: "/about" },
-    ];
 
     return (
         <section className="relative min-h-screen bg-[#070b0a] overflow-hidden flex flex-col font-inter">
@@ -80,40 +71,6 @@ export function HeroSection() {
                 </svg>
             </div>
 
-            {/* Header */}
-            <header className="relative z-50 flex items-center justify-between px-6 py-8 md:px-12">
-                <Link href="/" className="flex items-center gap-2">
-                    <span className="text-white font-medium text-2xl tracking-tighter" style={{ fontFamily: "'Instrument Serif', serif" }}>
-                        Pitchy<span className="text-white/40 font-light italic ml-1">.pro</span>
-                    </span>
-                </Link>
-
-                {/* Desktop Nav */}
-                <nav className="hidden md:flex items-center gap-8">
-                    {navLinks.map((link) => (
-                        <Link 
-                            key={link.name} 
-                            href={link.href} 
-                            className="text-[14px] font-medium tracking-wide text-white/70 hover:text-[#5ed29c] transition-colors"
-                        >
-                            {link.name}
-                        </Link>
-                    ))}
-                    <Link href="/login" className="text-[14px] font-medium text-white/70 hover:text-white ml-4">Войти</Link>
-                    <Link href="/signup" className="bg-[#5ed29c] text-[#070b0a] px-6 py-2.5 rounded-full text-[14px] font-bold hover:scale-105 transition-transform">
-                        РЕГИСТРАЦИЯ
-                    </Link>
-                </nav>
-
-                {/* Mobile Hamburger */}
-                <button 
-                    className="md:hidden text-white"
-                    onClick={() => setIsMenuOpen(!isMenuOpen)}
-                >
-                    {isMenuOpen ? <X size={32} /> : <Menu size={32} />}
-                </button>
-            </header>
-
             {/* Hero Main Content */}
             <div className="relative z-10 flex-1 flex flex-col items-start justify-center px-6 md:px-24 max-w-7xl mx-auto w-full pt-28 pb-40">
                 
@@ -142,8 +99,8 @@ export function HeroSection() {
                     
                     <div>
                         <div className="text-[#5ed29c] text-[12px] font-bold tracking-[0.2em]">[ 2025 ]</div>
-                        <h3 className="mt-2 text-white text-[18px] leading-tight font-medium">
-                            AI-Driven <span className="italic font-light" style={{ fontFamily: "'Instrument Serif', serif" }}>Strategic</span> Insights
+                        <h3 className="mt-2 text-white text-[18px] leading-tight font-bold uppercase tracking-tight">
+                            AI-Driven Strategic Insights
                         </h3>
                     </div>
                     <p className="text-white/40 text-[11px] leading-relaxed">
@@ -157,7 +114,7 @@ export function HeroSection() {
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ duration: 0.8, delay: 0.2 }}
                 >
-                    <div className="font-plus-jakarta text-[#5ed29c] text-[11px] font-bold tracking-[0.3em] uppercase mb-4">
+                    <div className="text-[#5ed29c] text-[11px] font-bold tracking-[0.3em] uppercase mb-4" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
                         Ecosystem for Visionaries
                     </div>
                     
@@ -176,50 +133,6 @@ export function HeroSection() {
                     </Link>
                 </motion.div>
             </div>
-
-            {/* Mobile Menu Overlay */}
-            <AnimatePresence>
-                {isMenuOpen && (
-                    <motion.div
-                        initial={{ opacity: 0, x: "100%" }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: "100%" }}
-                        transition={{ type: "spring", damping: 25, stiffness: 200 }}
-                        className="fixed inset-0 z-[60] bg-[#070b0a] flex flex-col p-8"
-                    >
-                        <div className="flex justify-end">
-                            <button onClick={() => setIsMenuOpen(false)} className="text-white">
-                                <X size={40} />
-                            </button>
-                        </div>
-                        <nav className="flex-1 flex flex-col justify-center gap-8">
-                            {navLinks.map((link) => (
-                                <Link 
-                                    key={link.name} 
-                                    href={link.href} 
-                                    onClick={() => setIsMenuOpen(false)}
-                                    className="text-3xl font-extrabold text-white hover:text-[#5ed29c] transition-colors"
-                                >
-                                    {link.name}
-                                </Link>
-                            ))}
-                            <Link 
-                                href="/signup" 
-                                onClick={() => setIsMenuOpen(false)}
-                                className="mt-4 text-[#5ed29c] text-2xl font-bold"
-                            >
-                                РЕГИСТРАЦИЯ
-                            </Link>
-                        </nav>
-                    </motion.div>
-                )}
-            </AnimatePresence>
-
-            {/* Global Styles for Fonts & Utilities */}
-            <style jsx global>{`
-                .font-plus-jakarta { font-family: 'Plus Jakarta Sans', sans-serif; }
-                .font-inter { font-family: 'Inter', sans-serif; }
-            `}</style>
         </section>
     );
 }

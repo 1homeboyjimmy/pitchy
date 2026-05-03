@@ -138,7 +138,7 @@ export default function LandingPage() {
                       <ArrowUpRight className="h-4 w-4 shrink-0 text-white/40 transition-transform duration-300 group-hover:-translate-y-1 group-hover:translate-x-1" />
                     </div>
                     <div className="relative z-10 w-full break-words">
-                        <h3 className="mt-10 text-2xl leading-tight text-white font-medium" style={{ fontFamily: "'Instrument Serif', serif" }}>{card.title}</h3>
+                        <h3 className="mt-10 text-xl leading-tight text-white font-bold uppercase tracking-tight">{card.title}</h3>
                         <p className="mt-4 text-sm leading-7 text-white/60 font-light">{card.body}</p>
                     </div>
                   </motion.article>
@@ -189,8 +189,8 @@ export default function LandingPage() {
                     key={step.label}
                     className="grid gap-3 md:grid-cols-[160px_1fr] md:items-center w-full"
                   >
-                    <div className="lovable-liquid-outline lovable-glass rounded-full px-5 py-3 text-center text-sm font-medium text-white shrink-0">
-                      {step.label}
+                    <div className="lovable-liquid-outline lovable-glass rounded-full px-5 py-3 text-center text-sm font-bold text-[#5ed29c] shrink-0" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+                      {step.label.toUpperCase()}
                     </div>
                     <div className="rounded-full border border-white/10 bg-white/[0.03] px-5 py-3 text-sm text-white/60 break-words flex items-center">
                       <span className="mr-3 inline-block h-2 w-2 shrink-0 rounded-full bg-white/40 align-middle animate-pulse-glow-lovable" />
@@ -283,7 +283,7 @@ export default function LandingPage() {
                           <Icon className="h-4 w-4 shrink-0" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <h3 className="text-xl text-white font-medium truncate">{item.title}</h3>
+                          <h3 className="text-lg text-white font-bold uppercase tracking-tight truncate">{item.title}</h3>
                           <p className="mt-2 text-sm leading-7 text-white/60 font-light break-words">{item.text}</p>
                           <div className="mono-lovable mt-3 text-white/30">module 0{index + 1}</div>
                         </div>
@@ -315,8 +315,8 @@ export default function LandingPage() {
                   className="lovable-glass lovable-liquid-outline rounded-[1.5rem] p-5"
                 >
                   <div className="flex items-center gap-3 relative z-10 w-full">
-                    <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-white/40 animate-pulse" />
-                    <div className="text-lg text-white font-medium truncate">{signal}</div>
+                    <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#5ed29c] animate-pulse shadow-[0_0_10px_#5ed29c]" />
+                    <div className="text-lg text-white font-bold uppercase tracking-tight truncate">{signal}</div>
                   </div>
                   <div className="mt-5 border-t border-white/10 pt-4 text-sm italic leading-7 text-white/60 font-light relative z-10 break-words w-full">
                     “Сигнал уже виден, но теперь интерфейс не спорит с контентом — он усиливает его.”

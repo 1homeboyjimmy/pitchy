@@ -4,7 +4,7 @@ export function LandingFooter() {
   return (
     <footer className="relative bg-black pt-24 pb-12 overflow-hidden section-line">
       {/* Decorative Aurora Orb for Footer */}
-      <div className="aurora-orb left-[-10rem] bottom-[-5rem] h-64 w-64 bg-[oklch(0.35_0.12_280_/_0.15)] animate-float-slow" />
+      <div className="aurora-orb left-[-10rem] bottom-[-5rem] h-64 w-64 bg-[oklch(0.5_0.15_160_/_0.15)] animate-float-slow" />
       
       <div className="max-w-7xl mx-auto px-6 md:px-12 relative z-10">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-x-8 gap-y-12">
@@ -41,9 +41,8 @@ export function LandingFooter() {
 
         <div className="mt-24 pt-8 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="flex items-center gap-2">
-            <span className="text-white font-medium text-xl tracking-tighter" style={{ fontFamily: "'Instrument Serif', serif" }}>
-                Pitchy
-                <span className="text-white/40 font-light italic ml-1">.pro</span>
+            <span className="text-white font-bold text-xl tracking-tighter" style={{ fontFamily: "'Inter', sans-serif" }}>
+                PITCHY<span className="text-[#5ed29c]">.</span>PRO
             </span>
           </div>
           <p className="text-white/30 text-xs font-light">
