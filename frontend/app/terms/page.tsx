@@ -16,9 +16,6 @@ export default function TermsPage() {
             <main className="flex-grow pt-32 pb-24 px-6 md:px-12 max-w-[1440px] mx-auto w-full relative z-10">
                 <div className="max-w-4xl mx-auto">
                     <header className="mb-16 md:mb-24 mt-8 md:mt-16">
-                        <div className="inline-block bg-white/5 border border-white/[0.08] rounded px-4 py-1.5 mb-8">
-                            <span className="font-mono text-[11px] text-white/50 tracking-[0.2em] uppercase">Legal Documentation</span>
-                        </div>
                         <h1 className="font-display text-5xl md:text-7xl text-white mb-8 tracking-tighter leading-none">
                             Пользовательское<br/>соглашение<span className="text-white/20">.</span>
                         </h1>
@@ -33,12 +30,12 @@ export default function TermsPage() {
                         className="lovable-glass rounded-[40px] p-10 md:p-16 shadow-2xl"
                     >
                         <div className="prose prose-invert prose-neutral max-w-none prose-headings:text-white prose-headings:font-display prose-headings:tracking-tight prose-p:text-foreground/70 prose-li:text-foreground/70">
-                            <h2 className="text-3xl mb-8">1. Предмет соглашения</h2>
+                            <h2 className="text-3xl mb-8 font-display">1. Предмет соглашения</h2>
                             <p>
                                 Самозанятый Фигурняк Егор Сергеевич (ИНН: 400700088347) предоставляет Пользователю доступ к сервисам аналитики стартапов и генерации питчей (далее &quot;Сервис&quot;) на условиях подписки.
                             </p>
 
-                            <h2 className="text-3xl mt-12 mb-8">2. Доступ, оплата и изменение тарифов</h2>
+                            <h2 className="text-3xl mt-12 mb-8 font-display">2. Доступ, оплата и изменение тарифов</h2>
                             <p>
                                 Оплата Сервиса осуществляется по безналичному расчету. Доступ к функциям Сервиса предоставляется в цифровом виде автоматически сразу после подтверждения платежа. Возврат средств за неиспользованный период подписки не предусмотрен, за исключением случаев, установленных законодательством РФ.
                             </p>
@@ -46,12 +43,12 @@ export default function TermsPage() {
                                 Администрация Сервиса оставляет за собой право в любой момент изменять стоимость тарифов, лимиты и состав предоставляемых функций. Обновленные условия публикуются на данной странице и странице Тарифов. Изменение стоимости для уже оплаченных периодов не производится.
                             </p>
 
-                            <h2 className="text-3xl mt-12 mb-8">3. Ограничения использования</h2>
+                            <h2 className="text-3xl mt-12 mb-8 font-display">3. Ограничения использования</h2>
                             <p>
                                 Пользователь обязуется не использовать сервис для массовой автоматической генерации запросов, нарушающих Политику добросовестного использования, а также не пытаться получить несанкционированный доступ к технической инфраструктуре Сервиса.
                             </p>
 
-                            <h2 className="text-3xl mt-12 mb-8">4. Политика добросовестного использования</h2>
+                            <h2 className="text-3xl mt-12 mb-8 font-display">4. Политика добросовестного использования</h2>
                             <p>
                                 &quot;Безлимитный&quot; доступ на тарифах предоставляется для целей добросовестного использования. Нарушением Политики добросовестного использования считаются:
                             </p>
@@ -61,7 +58,7 @@ export default function TermsPage() {
                                 <li>Генерация аномально высокой нагрузки (непропорционально превышающей среднюю активность в десятки раз), которая может навредить работоспособности серверов.</li>
                             </ul>
 
-                            <h2 className="text-3xl mt-12 mb-8">5. Отказ от гарантий</h2>
+                            <h2 className="text-3xl mt-12 mb-8 font-display">5. Отказ от гарантий</h2>
                             <p>
                                 Сервис предоставляется на условиях «как есть». Администрация не гарантирует, что Сервис будет соответствовать вашим требованиям.
                             </p>
@@ -71,12 +68,12 @@ export default function TermsPage() {
                                 </p>
                             </div>
 
-                            <h2 className="text-3xl mt-12 mb-8">6. Интеллектуальная собственность</h2>
+                            <h2 className="text-3xl mt-12 mb-8 font-display">6. Интеллектуальная собственность</h2>
                             <p>
                                 Все права на исходный код сервиса, дизайн и методологию принадлежат Администрации. Права на выходные данные (сгенерированные тексты анализов, PDF-отчеты) полностью передаются Пользователю.
                             </p>
 
-                            <h2 className="text-3xl mt-12 mb-8">7. Контактная информация</h2>
+                            <h2 className="text-3xl mt-12 mb-8 font-display">7. Контактная информация</h2>
                             <p>
                                 В случае возникновения вопросов, Пользователь может обратиться в службу поддержки по электронной почте <strong className="text-white">auth@pitchy.pro</strong> или в Telegram <strong className="text-white">@homeboyjimmy</strong>.
                             </p>

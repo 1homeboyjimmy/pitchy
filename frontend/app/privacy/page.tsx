@@ -57,9 +57,6 @@ export default function PrivacyPage() {
                 <div className="max-w-4xl mx-auto">
                     {/* Header */}
                     <header className="mb-16 md:mb-24 mt-8 md:mt-16 text-center">
-                        <div className="inline-block bg-white/5 border border-white/[0.08] rounded px-4 py-1.5 mb-8">
-                            <span className="font-mono text-[11px] text-white/50 tracking-[0.2em] uppercase">Privacy Policy</span>
-                        </div>
                         <h1 className="font-display text-5xl md:text-7xl text-white mb-8 tracking-tighter leading-none">
                             Конфиденциальность<span className="text-white/20">.</span>
                         </h1>
@@ -82,7 +79,7 @@ export default function PrivacyPage() {
                                 <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                                     <section.icon className="w-5 h-5 text-white/40" />
                                 </div>
-                                <h2 className="font-mono text-sm font-bold text-white mb-4 uppercase tracking-tight">
+                                <h2 className="font-display text-lg font-bold text-white mb-4 uppercase tracking-tight">
                                     {section.title}
                                 </h2>
                                 <p className="font-body-sm text-foreground/50 leading-relaxed">
@@ -102,24 +99,24 @@ export default function PrivacyPage() {
                         <div className="prose prose-invert prose-neutral max-w-none prose-p:text-foreground/70 prose-headings:text-white prose-li:text-foreground/70">
                             <h2 className="text-3xl font-display mb-10 tracking-tight">Полный текст Политики в отношении обработки персональных данных</h2>
                             
-                            <h3 className="text-xl mt-12 mb-6 uppercase tracking-wider font-bold">1. ОБЩИЕ ПОЛОЖЕНИЯ</h3>
+                            <h3 className="text-xl mt-12 mb-6 uppercase tracking-wider font-bold font-display">1. ОБЩИЕ ПОЛОЖЕНИЯ</h3>
                             <p>1.1. Настоящая политика Самозанятого Фигурняк Егора Сергеевича (ИНН 400700088347) (далее – «Оператор») в отношении обработки персональных данных (далее – «Политика») определяет порядок обработки персональных данных.</p>
                             <p>1.2. Настоящая Политика разработана во исполнение требований п. 2 ч. 1 ст. 18.1 Федерального закона от 27.07.2006 N 152-ФЗ «О персональных данных».</p>
 
-                            <h3 className="text-xl mt-12 mb-6 uppercase tracking-wider font-bold">2. ОБЪЕМ И КАТЕГОРИИ ДАННЫХ</h3>
+                            <h3 className="text-xl mt-12 mb-6 uppercase tracking-wider font-bold font-display">2. ОБЪЕМ И КАТЕГОРИИ ДАННЫХ</h3>
                             <p>2.1. Оператор может обрабатывать персональные данные следующих субъектов: посетители сайта <PitchyLogo size="none" /> (далее – «Сайт»), клиенты Оператора.</p>
                             <p>2.2. К персональным данным, обрабатываемым Оператором, относятся: имя; адрес электронной почты; поисковые запросы на Сайте Оператора.</p>
                             <p>2.3. Обработка специальных категорий персональных данных, касающихся расовой, национальной принадлежности, политических взглядов, религиозных или философских убеждений, интимной жизни, Оператором не осуществляется.</p>
 
-                            <h3 className="text-xl mt-12 mb-6 uppercase tracking-wider font-bold">3. ЦЕЛИ СБОРА ДАННЫХ</h3>
+                            <h3 className="text-xl mt-12 mb-6 uppercase tracking-wider font-bold font-display">3. ЦЕЛИ СБОРА ДАННЫХ</h3>
                             <p>3.1. Персональные данные обрабатываются Оператором в целях: предоставления доступа к функционалу Сайта; подготовки, заключения и исполнения гражданско-правового договора (оферты).</p>
 
-                            <h3 className="text-xl mt-12 mb-6 uppercase tracking-wider font-bold">4. ПОРЯДОК И УСЛОВИЯ ОБРАБОТКИ</h3>
+                            <h3 className="text-xl mt-12 mb-6 uppercase tracking-wider font-bold font-display">4. ПОРЯДОК И УСЛОВИЯ ОБРАБОТКИ</h3>
                             <p>4.1. Обработка осуществляется автоматизированным способом с передачей по сети Интернет.</p>
                             <p>4.2. Обработка персональных данных осуществляется Оператором при условии получения согласия субъекта. Согласие дается путем акцепта Оферты при регистрации на Сайте или совершения конклюдентных действий на Сайте.</p>
                             <p>4.3. Хранение персональных данных осуществляется в форме, позволяющей определить субъекта персональных данных, в течение срока не дольше, чем этого требуют цели обработки. При осуществлении хранения Оператор использует базы данных и сервера, находящиеся на территории Российской Федерации.</p>
 
-                            <h3 className="text-xl mt-12 mb-6 uppercase tracking-wider font-bold">5. ИЗМЕНЕНИЕ И УНИЧТОЖЕНИЕ</h3>
+                            <h3 className="text-xl mt-12 mb-6 uppercase tracking-wider font-bold font-display">5. ИЗМЕНЕНИЕ И УНИЧТОЖЕНИЕ</h3>
                             <p>5.1. По письменному запросу (на email: auth@pitchy.pro) субъект персональных данных вправе требовать от Оператора уточнения его персональных данных, их блокирования или уничтожения.</p>
 
                             <div className="mt-16 pt-8 border-t border-white/10">

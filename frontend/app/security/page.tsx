@@ -51,9 +51,6 @@ export default function SecurityPage() {
             <main className="flex-grow pt-32 pb-24 px-6 md:px-12 max-w-[1440px] mx-auto w-full relative z-10">
                 {/* Header */}
                 <header className="mb-16 md:mb-24 mt-8 md:mt-16 text-center">
-                    <div className="inline-block bg-white/5 border border-white/[0.08] rounded px-4 py-1.5 mb-8">
-                        <span className="font-mono text-[11px] text-white/50 tracking-[0.2em] uppercase">Security Protocols</span>
-                    </div>
                     <h1 className="font-display text-6xl md:text-8xl text-white mb-8 tracking-tighter leading-none">
                         Безопасность<span className="text-white/20">.</span>
                     </h1>
@@ -75,7 +72,7 @@ export default function SecurityPage() {
                             <div className="w-12 h-12 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center mb-8 group-hover:scale-110 transition-transform duration-500">
                                 <feature.icon className="w-6 h-6 text-white/60" />
                             </div>
-                            <h3 className="font-mono text-lg text-white mb-4 tracking-tight uppercase font-bold">
+                            <h3 className="font-display text-lg text-white mb-4 tracking-tight uppercase font-bold">
                                 {feature.title}
                             </h3>
                             <p className="font-body-sm text-foreground/50 leading-relaxed">
@@ -85,22 +82,6 @@ export default function SecurityPage() {
                     ))}
                 </div>
 
-                {/* Bottom Card */}
-                <div className="mt-20 max-w-4xl mx-auto">
-                    <div className="lovable-glass-strong rounded-[40px] p-12 text-center relative overflow-hidden">
-                        <div className="absolute inset-0 bg-gradient-to-br from-white/[0.05] to-transparent pointer-events-none" />
-                        <h2 className="font-display text-3xl text-white mb-6">Возникли вопросы по безопасности?</h2>
-                        <p className="text-foreground/60 mb-10 max-w-xl mx-auto">
-                            Наши специалисты готовы предоставить подробную информацию о методах защиты и хранения данных в <PitchyLogo size="none" />.
-                        </p>
-                        <a 
-                            href="/contact" 
-                            className="inline-flex bg-white text-black font-mono text-[11px] font-black uppercase tracking-[0.2em] px-10 py-4 rounded-full hover:scale-105 transition-transform"
-                        >
-                            Связаться с нами
-                        </a>
-                    </div>
-                </div>
             </main>
 
             <SiteFooter />

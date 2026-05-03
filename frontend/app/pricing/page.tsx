@@ -82,7 +82,7 @@ export default function PricingPage() {
 
       <TopNavBar />
 
-      <main className="flex-grow pt-12 pb-24 px-6 md:px-12 max-w-[1440px] mx-auto w-full relative z-10">
+      <main className="flex-grow pt-32 pb-24 px-6 md:px-12 max-w-[1440px] mx-auto w-full relative z-10">
         {/* Header */}
         <div className="text-center mb-20">
           <h1 className="font-display text-6xl md:text-8xl text-white mb-8 tracking-tighter leading-none">
