@@ -5,6 +5,8 @@ import Link from "next/link";
 export function LandingFooter() {
   return (
     <footer className="relative bg-background pt-24 pb-12 overflow-hidden border-t border-foreground/5">
+      {/* Decorative Aurora Orb for Footer */}
+      <div className="aurora-orb left-[-10rem] bottom-[-5rem] h-64 w-64 bg-[oklch(0.5_0.15_280_/_0.15)] animate-float-slow" />
       <div className="max-w-7xl mx-auto px-6 md:px-12 relative z-10 font-body-sm">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-x-8 gap-y-12">
           <div className="space-y-6">

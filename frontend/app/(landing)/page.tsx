@@ -104,8 +104,8 @@ export default function LandingPage() {
 
       <main className="relative min-h-screen overflow-hidden bg-background text-foreground">
         {/* Lovable Aurora Background Elements */}
-        <div className="aurora-orb left-[-8rem] top-[18rem] h-64 w-64 bg-[oklch(0.5_0.15_160_/_0.2)] animate-float-slow" />
-        <div className="aurora-orb right-[-6rem] top-[58rem] h-72 w-72 bg-[oklch(0.45_0.12_160_/_0.15)] animate-float-slow" />
+        <div className="aurora-orb left-[-8rem] top-[18rem] h-64 w-64 bg-[oklch(0.5_0.15_280_/_0.2)] animate-float-slow" />
+        <div className="aurora-orb right-[-6rem] top-[58rem] h-72 w-72 bg-[oklch(0.45_0.12_270_/_0.15)] animate-float-slow" />
 
 
 
