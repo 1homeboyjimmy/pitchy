@@ -3462,26 +3462,32 @@ async def send_chat_message(
 
                 raw_gen = stream_makura(SYSTEM_CHAT_PROMPT, user_prompt)
                 
-                async for json_chunk in parse_thought_generator(raw_gen):
-                    if isinstance(json_chunk, dict):
-                        if "__usage__" in json_chunk:
-                            usage_data = json_chunk["__usage__"]
-                        continue
-
-                    data = json.loads(json_chunk.strip())
-                    if data["type"] == "chunk":
-                        if ttft is None:
-                            ttft = time.time() - start_time
-                        content = data["content"]
-                        if isinstance(content, list):
-                            content = "".join(str(c) for c in content)
-                        full_response += str(content)
-                    elif data["type"] == "thought":
-                        content = data["content"]
-                        if isinstance(content, list):
-                            content = "".join(str(c) for c in content)
-                        full_thoughts += str(content)
-                    yield json_chunk
+                async for sse_item in parse_thought_generator(raw_gen):
+                    # sse_item is a dict from format_sse: {"event": "...", "data": "JSON_STRING"}
+                    # We need to extract data for local state (full_response)
+                    try:
+                        raw_data = sse_item.get("data", "{}")
+                        data = json.loads(raw_data)
+                        
+                        if data.get("type") == "chunk":
+                            if ttft is None:
+                                ttft = time.time() - start_time
+                            content = data.get("content", "")
+                            if isinstance(content, list):
+                                content = "".join(str(c) for c in content)
+                            full_response += str(content)
+                        elif data.get("type") == "thought":
+                            content = data.get("content", "")
+                            if isinstance(content, list):
+                                content = "".join(str(c) for c in content)
+                            full_thoughts += str(content)
+                        elif data.get("type") == "metadata":
+                            if "usage" in data:
+                                usage_data = data["usage"]
+                    except Exception as e:
+                        logger.error(f"Error processing SSE item in chat loop: {e}")
+                    
+                    yield sse_item
             
             # Fallback: if model produced only thoughts (no visible response),
             # use thoughts as the response so the user sees something
