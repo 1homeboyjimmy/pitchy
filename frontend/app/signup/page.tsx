@@ -95,9 +95,9 @@ function SignUpContent() {
           <Link href="/" className="inline-block mb-8">
             <PitchyLogo size="3xl" />
           </Link>
-          <h2 className="text-6xl md:text-8xl text-white tracking-tighter leading-[0.9] mb-4" style={{ fontFamily: "'Instrument Serif', serif" }}>
+          <h2 className="text-6xl md:text-8xl text-white tracking-tighter leading-[0.9] mb-4 font-display">
             {title.split(' ')[0]} <br />
-            <span className="text-white/30 italic">{title.split(' ').slice(1).join(' ')}</span>.
+            <span className="text-white/30">{title.split(' ').slice(1).join(' ')}</span>.
           </h2>
         </div>
 
