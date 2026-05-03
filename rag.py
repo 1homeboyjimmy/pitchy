@@ -433,6 +433,10 @@ class StartupRAG:
 
         instance = cls(client=client, collections=collections, embedding_fn=embedding_fn)
         
+        # Set global instance immediately to allow healthchecks/queries during ingestion
+        global _RAG_INSTANCE
+        _RAG_INSTANCE = instance
+        
         # Check if the database is effectively empty
         total_docs = sum(col.count() for col in collections.values())
         

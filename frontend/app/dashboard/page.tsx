@@ -191,7 +191,7 @@ function DashboardContent() {
         />
 
         <main className="flex-1 overflow-y-auto overflow-x-hidden">
-          <div className={`w-full mx-auto ${activeTab === 'chat' || activeTab === 'tree' ? 'px-4 sm:px-8 pt-4 sm:pt-8 h-full' : 'p-6 sm:p-12 max-w-7xl min-h-full'}`}>
+          <div className={`w-full mx-auto ${activeTab === 'chat' || activeTab === 'tree' ? 'px-4 sm:px-8 pt-24 sm:pt-32 h-full' : 'px-6 sm:px-12 pt-24 sm:pt-32 max-w-7xl min-h-full'}`}>
 
           {activeTab === "overview" && (
             <motion.div
@@ -226,12 +226,12 @@ function DashboardContent() {
                     <TrendingUp size={120} strokeWidth={1} />
                   </div>
                   <div className="flex justify-between items-start mb-12 relative z-10">
-                    <span className="text-[14px] text-white/50 tracking-tight" style={{ fontFamily: "'Instrument Serif', serif" }}>Прогресс системы</span>
+                    <span className="font-display text-[14px] text-white/50 tracking-tight">Прогресс системы</span>
                     <TrendingUp className="text-white/20 group-hover:text-white/40 transition-colors" size={20} />
                   </div>
                   <div className="relative z-10">
                     <div className="flex justify-between items-end mb-4">
-                      <span className="text-6xl text-white tracking-tight" style={{ fontFamily: "'Instrument Serif', serif" }}>84.2%</span>
+                      <span className="font-display text-6xl text-white tracking-tight">84.2%</span>
                       <span className="font-mono text-[9px] text-emerald-400/60 font-bold tracking-widest uppercase mb-1.5">ОПТИМИЗИРОВАНО</span>
                     </div>
                     <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">

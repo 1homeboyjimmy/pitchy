@@ -201,7 +201,7 @@ export function TreeView({ }: Props) {
           <div className="w-16 h-16 rounded-none bg-[#111111] border border-white/10 flex items-center justify-center mb-6 mx-auto">
             <GitBranch className="w-8 h-8 text-white" />
           </div>
-          <h3 className="font-display text-5xl text-white mb-4 tracking-tight">
+          <h3 className="font-display text-5xl text-white mb-6 tracking-tight">
             Дорожная карта
           </h3>
           <p className="text-[18px] font-light text-white/50 mb-12 max-w-4xl mx-auto leading-relaxed">
@@ -272,7 +272,7 @@ export function TreeView({ }: Props) {
         >
           <Loader className="w-8 h-8 text-white" />
         </motion.div>
-        <h3 className="text-3xl text-white mb-4 tracking-tight" style={{ fontFamily: "'Instrument Serif', serif" }}>
+        <h3 className="font-display text-3xl text-white mb-4 tracking-tight">
           {tree.status === "uploading" ? "Загрузка PDF..." : "ИИ строит карту..."}
         </h3>
         <p className="font-mono text-[11px] text-white/30 uppercase tracking-[0.2em] font-bold">Это может занять до 30 секунд</p>
@@ -291,7 +291,7 @@ export function TreeView({ }: Props) {
       <div className="p-8 pb-0 z-10">
         <div className="flex justify-between items-start">
             <div>
-            <h2 className="text-4xl text-white tracking-tight" style={{ fontFamily: "'Instrument Serif', serif" }}>Дорожная карта</h2>
+            <h2 className="font-display text-4xl text-white tracking-tight">Дорожная карта</h2>
             <p className="font-mono text-[10px] text-white/30 mt-1 uppercase tracking-[0.2em] font-bold">AI-ВИЗУАЛИЗАЦИЯ ГОТОВНОСТИ ВАШЕГО СТАРТАПА</p>
             </div>
             <div className="flex space-x-2">
