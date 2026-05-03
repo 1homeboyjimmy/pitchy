@@ -113,8 +113,8 @@ export default function LandingPage() {
           <div className="relative mx-auto w-full max-w-7xl">
             <SectionHeading
               eyebrow="SYSTEM OVERVIEW"
-              title="Всё, что идёт после hero, теперь выглядит как продукт, а не лендинг-болванка."
-              text="Мы сохранили ощущение премиальности и сделали интерфейс глубже: стеклянные поверхности, тонкие контуры, контрастная типографика и анимации, которые поддерживают композицию, а не отвлекают."
+              title="Единая операционная система для стартапа"
+              text="Мы собрали все инструменты в одном интерфейсе: от первичного анализа идеи до полной подготовки к инвестициям. Никаких лишних переключений между вкладками."
             />
 
             <div className="mt-14 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
@@ -158,18 +158,17 @@ export default function LandingPage() {
             >
               <div className="mono-lovable text-white/70">USER PATH REWIRED</div>
               <h2 className="mt-4 w-full text-4xl leading-none text-gradient md:text-6xl break-words" style={{ fontFamily: "'Instrument Serif', serif" }}>
-                Вместо скучного скролла — управляемая драматургия пути пользователя.
+                Путь продукта: от гипотезы до результата
               </h2>
-              <p className="mt-6 w-full text-sm leading-7 text-white/60 md:text-base font-light break-words">
-                Каждая следующая зона теперь ведёт глубже: сначала ценность, потом механика процесса,
-                затем интеллект системы и в конце — ощущение контроля над исполнением.
+              <p className="mt-6 w-full text-sm leading-7 text-white/60 md:text-lg font-light break-words">
+                Интерфейс адаптируется под текущий этап развития: сбор сигналов, проверка рынка, проведение CustDev и формирование дорожной карты.
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
                 <button className="bg-white text-black px-8 py-3 rounded-full text-sm font-medium hover:opacity-90 transition-opacity shrink-0">
-                  View roadmap
+                  Начать анализ
                 </button>
                 <button className="lovable-glass text-white px-8 py-3 rounded-full text-sm font-medium hover:bg-white/5 transition-colors shrink-0">
-                  Explore flow
+                  Посмотреть демо
                 </button>
               </div>
             </motion.div>
@@ -251,8 +250,11 @@ export default function LandingPage() {
             >
               <div className="mono-lovable text-white/70">AI LAYER</div>
               <h2 className="mt-4 text-4xl leading-none text-gradient md:text-6xl break-words" style={{ fontFamily: "'Instrument Serif', serif" }}>
-                Жидкое стекло и живой интеллект вместо тяжёлых блоков.
+                Интеллект в каждом действии.
               </h2>
+              <p className="mt-6 text-sm leading-7 text-white/60 md:text-lg font-light break-words">
+                Слой живого ИИ не просто отвечает на вопросы, а анализирует контекст проекта, подбирает релевантные гранты и помогает структурировать юридические аспекты.
+              </p>
               <div className="mt-8 grid gap-4">
                 {[
                   {
@@ -297,8 +299,8 @@ export default function LandingPage() {
           <div className="mx-auto w-full max-w-7xl">
             <SectionHeading
               eyebrow="SIGNAL MAP"
-              title="Синтетическая обратная связь теперь подана как коллекция сигналов."
-              text="Мы оставили технологичность, но усилили ощущение премиального исследовательского интерфейса: больше воздуха, тоньше рамки, лучше иерархия и мягкая глубина поверхностей."
+              title="Карта рыночных сигналов"
+              text="Визуализация спроса, болей аудитории и конкурентной среды в реальном времени."
             />
 
             <div className="mt-14 grid gap-4 md:grid-cols-2 xl:grid-cols-3">

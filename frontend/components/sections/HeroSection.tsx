@@ -85,7 +85,10 @@ export function HeroSection() {
                 {/* Floating Pill Navbar */}
                 <header className="liquid-glass rounded-full w-full max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
                     <div className="flex items-center gap-2 relative z-10">
-                        <span className="text-white font-bold text-xl tracking-tight" style={{ fontFamily: "'Instrument Serif', serif" }}>Pitchy <span className="text-white/60">.pro</span></span>
+                        <span className="text-white font-medium text-2xl tracking-tighter" style={{ fontFamily: "'Instrument Serif', serif" }}>
+                            Pitchy
+                            <span className="text-white/40 font-light italic ml-1">.pro</span>
+                        </span>
                     </div>
 
                     <nav className="hidden md:flex items-center gap-6 text-[15px] font-medium text-white/70 relative z-10">
@@ -99,12 +102,12 @@ export function HeroSection() {
 
                     <div className="flex items-center gap-6 relative z-10">
                         <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.95 }} transition={{ duration: 0.2, ease: "easeOut" }}>
-                            <Link href="/login" className="hidden md:block text-[15px] font-medium text-white/70 hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.8)] transition-all">
+                            <Link href="/login" className="hidden md:block text-[15px] font-medium text-white/70 hover:text-white transition-all">
                                 Войти
                             </Link>
                         </motion.div>
                         <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.95 }} transition={{ duration: 0.2, ease: "easeOut" }}>
-                            <Link href="/signup" className="liquid-glass-strong text-white text-[15px] font-medium px-6 py-2.5 rounded-full transition-colors shadow-lg">
+                            <Link href="/signup" className="liquid-glass-strong text-white text-[15px] font-medium px-6 py-2.5 rounded-full transition-all shadow-lg hover:shadow-white/10">
                                 <span className="relative z-10">Регистрация</span>
                             </Link>
                         </motion.div>
@@ -115,14 +118,14 @@ export function HeroSection() {
             {/* Hero Body */}
             <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 w-full max-w-4xl mx-auto text-center pt-20 pb-12">
                 <h1 
-                    className="text-5xl md:text-6xl lg:text-7xl text-white mb-8 leading-[1.1] font-normal tracking-tight"
+                    className="text-5xl md:text-6xl lg:text-8xl text-white mb-8 leading-[1.1] font-normal tracking-tight"
                     style={{ fontFamily: "'Instrument Serif', serif" }}
                 >
-                    Built for the visionaries
+                    ИИ-экосистема <br /> для стартапов
                 </h1>
 
-                <p className="text-white/60 text-lg md:text-xl max-w-2xl mx-auto mb-10 font-light">
-                    The AI Copilot for startups. Automate your market research and build your interactive roadmap in minutes.
+                <p className="text-white/70 text-lg md:text-2xl max-w-3xl mx-auto mb-12 font-light leading-relaxed">
+                    От анализа идеи и проведения синтетических CustDev интервью <br className="hidden md:block" /> до подбора и получения грантов.
                 </p>
 
                 <div className="flex justify-center w-full">
