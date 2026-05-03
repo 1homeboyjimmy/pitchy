@@ -50,6 +50,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ru" suppressHydrationWarning>
+      <head>
+        <meta 
+          httpEquiv="Content-Security-Policy" 
+          content="default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval'; media-src 'self' blob: https: data:; worker-src 'self' blob:; connect-src 'self' https: wss:;" 
+        />
+      </head>
       <body className="antialiased">
         <ScrollToTop />
         <BreadcrumbsSchema />

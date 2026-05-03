@@ -115,7 +115,7 @@ export function HeroSection() {
             </header>
 
             {/* Hero Main Content */}
-            <div className="relative z-10 flex-1 flex flex-col items-start justify-center px-6 md:px-24 max-w-7xl mx-auto w-full pt-20">
+            <div className="relative z-10 flex-1 flex flex-col items-start justify-center px-6 md:px-24 max-w-7xl mx-auto w-full pt-28 pb-40">
                 
                 {/* Floating Liquid Glass Card */}
                 <motion.div
