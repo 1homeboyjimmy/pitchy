@@ -2,38 +2,53 @@ import Link from "next/link";
 
 export function LandingFooter() {
   return (
-    <footer className="bg-[#0A0A0A] border-t border-white/[0.08] pt-24 pb-24">
-      <div className="max-w-[1440px] mx-auto px-4 md:px-12">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-12">
+    <footer className="relative bg-black pt-24 pb-12 overflow-hidden section-line">
+      {/* Decorative Aurora Orb for Footer */}
+      <div className="aurora-orb left-[-10rem] bottom-[-5rem] h-64 w-64 bg-[oklch(0.35_0.12_280_/_0.15)] animate-float-slow" />
+      
+      <div className="max-w-7xl mx-auto px-6 md:px-12 relative z-10">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-x-8 gap-y-12">
           <div className="space-y-6">
-            <h4 className="text-white font-mono-label font-bold text-[13px] uppercase tracking-wider mb-6">Продукт</h4>
-            <ul className="space-y-4">
-              <li><Link className="font-code text-neutral-500 hover:text-white transition-colors text-[13px]" href="/">Главная</Link></li>
-              <li><Link className="font-code text-neutral-500 hover:text-white transition-colors text-[13px]" href="/pricing">Тарифы</Link></li>
-              <li><Link className="font-code text-neutral-500 hover:text-white transition-colors text-[13px]" href="/faq">FAQ</Link></li>
+            <h4 className="text-white text-lg font-medium" style={{ fontFamily: "'Instrument Serif', serif" }}>Продукт</h4>
+            <ul className="space-y-3">
+              <li><Link className="text-sm text-white/50 hover:text-white transition-colors" href="/">Главная</Link></li>
+              <li><Link className="text-sm text-white/50 hover:text-white transition-colors" href="/pricing">Тарифы</Link></li>
+              <li><Link className="text-sm text-white/50 hover:text-white transition-colors" href="/faq">FAQ</Link></li>
             </ul>
           </div>
           <div className="space-y-6">
-            <h4 className="text-white font-mono-label font-bold text-[13px] uppercase tracking-wider mb-6">Компания</h4>
-            <ul className="space-y-4">
-              <li><Link className="font-code text-neutral-500 hover:text-white transition-colors text-[13px]" href="/about">О нас</Link></li>
-              <li><Link className="font-code text-neutral-500 hover:text-white transition-colors text-[13px]" href="/contact">Контакты</Link></li>
+            <h4 className="text-white text-lg font-medium" style={{ fontFamily: "'Instrument Serif', serif" }}>Компания</h4>
+            <ul className="space-y-3">
+              <li><Link className="text-sm text-white/50 hover:text-white transition-colors" href="/about">О нас</Link></li>
+              <li><Link className="text-sm text-white/50 hover:text-white transition-colors" href="/contact">Контакты</Link></li>
             </ul>
           </div>
           <div className="space-y-6">
-            <h4 className="text-white font-mono-label font-bold text-[13px] uppercase tracking-wider mb-6">Ресурсы</h4>
-            <ul className="space-y-4">
-              <li><Link className="font-code text-neutral-500 hover:text-white transition-colors text-[13px]" href="/dashboard">Дашборд</Link></li>
+            <h4 className="text-white text-lg font-medium" style={{ fontFamily: "'Instrument Serif', serif" }}>Ресурсы</h4>
+            <ul className="space-y-3">
+              <li><Link className="text-sm text-white/50 hover:text-white transition-colors" href="/dashboard">Дашборд</Link></li>
             </ul>
           </div>
           <div className="space-y-6">
-            <h4 className="text-white font-mono-label font-bold text-[13px] uppercase tracking-wider mb-6">Правовая информация</h4>
-            <ul className="space-y-4">
-              <li><Link className="font-code text-neutral-500 hover:text-white transition-colors text-[13px]" href="/privacy">Конфиденциальность</Link></li>
-              <li><Link className="font-code text-neutral-500 hover:text-white transition-colors text-[13px]" href="/terms">Условия</Link></li>
-              <li><Link className="font-code text-neutral-500 hover:text-white transition-colors text-[13px]" href="/security">Безопасность</Link></li>
+            <h4 className="text-white text-lg font-medium" style={{ fontFamily: "'Instrument Serif', serif" }}>Правовая информация</h4>
+            <ul className="space-y-3">
+              <li><Link className="text-sm text-white/50 hover:text-white transition-colors" href="/privacy">Конфиденциальность</Link></li>
+              <li><Link className="text-sm text-white/50 hover:text-white transition-colors" href="/terms">Условия</Link></li>
+              <li><Link className="text-sm text-white/50 hover:text-white transition-colors" href="/security">Безопасность</Link></li>
             </ul>
           </div>
+        </div>
+
+        <div className="mt-24 pt-8 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-6">
+          <div className="flex items-center gap-2">
+            <span className="text-white font-medium text-xl tracking-tighter" style={{ fontFamily: "'Instrument Serif', serif" }}>
+                Pitchy
+                <span className="text-white/40 font-light italic ml-1">.pro</span>
+            </span>
+          </div>
+          <p className="text-white/30 text-xs font-light">
+            © 2024 Pitchy.pro. Все права защищены.
+          </p>
         </div>
       </div>
     </footer>

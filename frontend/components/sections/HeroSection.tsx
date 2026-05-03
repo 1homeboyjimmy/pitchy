@@ -118,10 +118,10 @@ export function HeroSection() {
             {/* Hero Body */}
             <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 w-full max-w-4xl mx-auto text-center pt-20 pb-12">
                 <h1 
-                    className="text-5xl md:text-6xl lg:text-8xl text-white mb-8 leading-[1.1] font-normal tracking-tight"
+                    className="text-4xl md:text-5xl lg:text-6xl text-white mb-8 leading-[1.1] font-normal tracking-tight"
                     style={{ fontFamily: "'Instrument Serif', serif" }}
                 >
-                    ИИ-экосистема <br /> для стартапов
+                    ИИ-экосистема для стартапов
                 </h1>
 
                 <p className="text-white/70 text-lg md:text-2xl max-w-3xl mx-auto mb-12 font-light leading-relaxed">
