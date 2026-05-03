@@ -125,37 +125,24 @@ export function HeroSection() {
                     The AI Copilot for startups. Automate your market research and build your interactive roadmap in minutes.
                 </p>
 
-                <div className="flex flex-col items-center w-full gap-6">
-                    {/* Input Group */}
-                    <div className="liquid-glass rounded-full w-full max-w-md flex items-center p-2 pl-6">
-                        <input 
-                            type="email" 
-                            placeholder="Enter your email" 
-                            className="bg-transparent text-white placeholder-white/40 focus:outline-none flex-1 min-w-0 relative z-10"
-                        />
-                        <button className="bg-white text-black p-3 rounded-full hover:scale-105 transition-transform flex-shrink-0 relative z-10">
-                            <ArrowRight className="w-5 h-5 shrink-0" />
+                <div className="flex justify-center w-full">
+                    <Link href="/signup">
+                        <button className="liquid-glass-strong text-white px-10 py-4 rounded-full text-lg font-medium hover:scale-105 transition-transform flex items-center gap-3">
+                            <span className="relative z-10">Попробовать</span>
+                            <Zap className="w-5 h-5 shrink-0 text-white fill-white relative z-10" />
                         </button>
-                    </div>
-
-                    {/* Secondary CTA */}
-                    <button className="liquid-glass rounded-full text-white/90 text-sm px-6 py-3 transition-colors flex items-center gap-2">
-                        <span className="relative z-10">View Roadmap</span>
-                    </button>
+                    </Link>
                 </div>
             </div>
 
             {/* Footer */}
-            <footer className="relative z-10 w-full px-6 py-8 flex justify-center md:justify-end gap-4">
-                <button className="liquid-glass rounded-full p-3 transition-colors text-white shrink-0">
-                    <Instagram className="w-4 h-4 shrink-0 relative z-10" />
-                </button>
-                <button className="liquid-glass rounded-full p-3 transition-colors text-white shrink-0">
-                    <Twitter className="w-4 h-4 shrink-0 relative z-10" />
-                </button>
-                <button className="liquid-glass rounded-full p-3 transition-colors text-white shrink-0">
-                    <Linkedin className="w-4 h-4 shrink-0 relative z-10" />
-                </button>
+            <footer className="relative z-10 w-full px-6 py-8 flex justify-center md:justify-end">
+                <Link href="https://t.me/pitchy_pro" target="_blank" className="liquid-glass rounded-full p-4 transition-all hover:bg-white/10 text-white flex items-center gap-2">
+                    <svg className="w-5 h-5 relative z-10 fill-current" viewBox="0 0 24 24">
+                        <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12l-6.87 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.458c.537-.196 1.006.128.831.953z"/>
+                    </svg>
+                    <span className="text-sm font-medium pr-2 relative z-10">Telegram</span>
+                </Link>
             </footer>
         </section>
     );
