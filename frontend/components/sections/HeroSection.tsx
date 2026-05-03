@@ -1,18 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, ChevronDown } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import Link from "next/link";
-import { motion, AnimatePresence } from "framer-motion";
-
-const logos = [
-    { name: "Vortex", icon: "V" },
-    { name: "Nimbus", icon: "N" },
-    { name: "Prysma", icon: "P" },
-    { name: "Cirrus", icon: "C" },
-    { name: "Kynder", icon: "K" },
-    { name: "Halcyn", icon: "H" },
-];
+import { motion } from "framer-motion";
 
 export function HeroSection() {
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -96,18 +87,18 @@ export function HeroSection() {
                     initial={{ opacity: 0, y: 30 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.8, ease: "easeOut" }}
-                    className="text-[120px] md:text-[220px] font-normal leading-[1.02] tracking-[-0.024em] font-display"
+                    className="text-[100px] md:text-[220px] font-normal leading-[1.02] tracking-[-0.024em] font-display uppercase"
                 >
-                    Power <span className="bg-clip-text text-transparent" style={{ backgroundImage: "linear-gradient(to left, #6366f1, #a855f7, #fcd34d)" }}>AI</span>
+                    PITCHY<span className="bg-clip-text text-transparent" style={{ backgroundImage: "linear-gradient(to left, #6366f1, #a855f7, #fcd34d)" }}>.</span>PRO
                 </motion.h1>
 
                 <motion.p 
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.8, delay: 0.2 }}
-                    className="text-hero-sub text-lg md:text-xl leading-8 max-w-md mt-[9px] opacity-80"
+                    className="text-hero-sub text-lg md:text-xl leading-8 max-w-2xl mt-[9px] opacity-80"
                 >
-                    The most powerful AI ever deployed <br className="hidden md:block" /> in talent acquisition
+                    ИИ-ЭКОСИСТЕМА ДЛЯ СТАРТАПОВ: ОТ АНАЛИЗА ИДЕИ И СИНТЕТИЧЕСКИХ CUSTDEV <br className="hidden md:block" /> ДО ПОДБОРА И ПОЛУЧЕНИЯ ГРАНТОВ
                 </motion.p>
 
                 <motion.div
@@ -115,45 +106,13 @@ export function HeroSection() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.8, delay: 0.4 }}
                 >
-                    <Link href="/contact">
-                        <button className="mt-[25px] px-[29px] py-[24px] bg-foreground text-background rounded-full font-bold text-lg hover:scale-105 transition-transform">
-                            Schedule a Consult
+                    <Link href="/signup">
+                        <button className="mt-[25px] px-[29px] py-[24px] bg-foreground text-background rounded-full font-bold text-lg hover:scale-105 transition-transform flex items-center gap-3">
+                            ПОПРОБОВАТЬ <ArrowRight size={20} strokeWidth={3} />
                         </button>
                     </Link>
                 </motion.div>
             </div>
-
-            {/* Logo Marquee */}
-            <div className="relative z-10 pb-10 w-full max-w-5xl mx-auto px-6">
-                <div className="flex flex-col md:flex-row items-center gap-12">
-                    <div className="text-foreground/50 text-sm font-medium shrink-0 text-center md:text-left leading-tight">
-                        Relied on by brands <br /> across the globe
-                    </div>
-                    
-                    <div className="flex-1 overflow-hidden relative">
-                        <div className="flex items-center gap-16 whitespace-nowrap animate-marquee">
-                            {[...logos, ...logos].map((logo, i) => (
-                                <div key={i} className="flex items-center gap-3">
-                                    <div className="liquid-glass w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold text-white">
-                                        {logo.icon}
-                                    </div>
-                                    <span className="text-base font-semibold text-foreground">{logo.name}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <style jsx>{`
-                @keyframes marquee {
-                    0% { transform: translateX(0%); }
-                    100% { transform: translateX(-50%); }
-                }
-                .animate-marquee {
-                    animation: marquee 20s linear infinite;
-                }
-            `}</style>
         </section>
     );
 }

@@ -158,7 +158,7 @@ export default function LandingPage() {
               viewport={{ once: true, margin: "-120px" }}
               className="w-full flex-1"
             >
-              <div className="text-[#5ed29c] text-[11px] font-bold tracking-[0.3em] uppercase mb-4" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>USER PATH REWIRED</div>
+              <div className="text-[#a855f7] text-[11px] font-bold tracking-[0.3em] uppercase mb-4" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>USER PATH REWIRED</div>
               <h2 className="mt-4 w-full text-4xl leading-none text-foreground md:text-6xl font-bold uppercase tracking-tight font-display">
                 Путь продукта: от гипотезы до результата<span className="text-[#a855f7]">.</span>
               </h2>
@@ -250,7 +250,7 @@ export default function LandingPage() {
               viewport={{ once: true, margin: "-120px" }}
               className="w-full flex-1"
             >
-              <div className="text-[#5ed29c] text-[11px] font-bold tracking-[0.3em] uppercase mb-4" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>AI LAYER</div>
+              <div className="text-[#a855f7] text-[11px] font-bold tracking-[0.3em] uppercase mb-4" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>AI LAYER</div>
               <h2 className="mt-4 text-4xl leading-none text-foreground md:text-6xl font-bold uppercase tracking-tight font-display">
                 Интеллект в каждом действии<span className="text-[#a855f7]">.</span>
               </h2>
