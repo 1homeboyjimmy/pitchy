@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader, Lock, Activity, RefreshCcw, TrendingUp, BarChart2, ArrowUp, ArrowUpRight, MessageSquare } from "lucide-react";
+import { Loader, Activity, RefreshCcw, TrendingUp, BarChart2, ArrowUp, ArrowUpRight, MessageSquare, Plus } from "lucide-react";
 import { ChatInterface } from "@/components/dashboard/ChatInterface";
 import { AdminView } from "@/components/dashboard/AdminView";
 import { TreeView } from "@/components/dashboard/TreeView";
@@ -162,7 +162,7 @@ function DashboardContent() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center">
+      <div className="min-h-screen bg-black flex items-center justify-center">
         <Loader className="w-8 h-8 text-white/50 animate-spin" />
       </div>
     );
@@ -171,7 +171,7 @@ function DashboardContent() {
   if (!isAuthenticated) return <UnauthDashboard />;
 
   return (
-    <div className="bg-[#0A0A0A] text-white min-h-screen font-sans flex overflow-hidden">
+    <div className="bg-black text-white min-h-screen font-sans flex overflow-hidden">
       <SideNavBar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -184,127 +184,145 @@ function DashboardContent() {
         onMenuClick={() => setIsMobileSidebarOpen(true)}
       />
 
-      <main className="flex-1 md:ml-64 pt-14 h-screen overflow-y-auto">
-        <div className={`w-full mx-auto ${activeTab === 'chat' || activeTab === 'tree' ? 'px-4 sm:px-8 pt-4 sm:pt-8 h-[calc(100vh-3.5rem)]' : 'p-4 sm:p-8 max-w-7xl min-h-full'}`}>
+      <main className="flex-1 md:ml-64 pt-16 h-screen overflow-y-auto">
+        <div className={`w-full mx-auto ${activeTab === 'chat' || activeTab === 'tree' ? 'px-4 sm:px-8 pt-4 sm:pt-8 h-[calc(100vh-4rem)]' : 'p-6 sm:p-12 max-w-7xl min-h-full'}`}>
 
           {activeTab === "overview" && (
-            <>
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6 }}
+            >
               {/* Header Section */}
-              <div className="flex justify-between items-end mb-12">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6 mb-16">
                 <div>
-                  <h2 className="text-4xl md:text-5xl text-white mb-4 leading-tight tracking-tight" style={{ fontFamily: "'Instrument Serif', serif" }}>
+                  <h2 className="text-5xl md:text-6xl text-white mb-6 leading-tight tracking-tight" style={{ fontFamily: "'Instrument Serif', serif" }}>
                     Обзор проекта
                   </h2>
-                  <div className="flex gap-4 items-center">
-                    <div className="flex items-center gap-2 px-2 py-1 bg-white/5 border border-white/10 rounded">
-                      <Activity size={14} className="text-white" />
-                      <span className="font-mono text-xs text-neutral-400">Сессии: <span className="text-white">{sessions.length}</span></span>
+                  <div className="flex flex-wrap gap-3 items-center">
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-white/[0.03] border border-white/5 rounded-full">
+                      <Activity size={14} className="text-white/40" />
+                      <span className="font-mono text-[10px] text-white/40 uppercase tracking-[0.15em] font-bold">Сессии: <span className="text-white">{sessions.length}</span></span>
                     </div>
-                    <div className="flex items-center gap-2 px-2 py-1 bg-white/5 border border-white/10 rounded">
-                      <RefreshCcw size={14} className="text-white" />
-                      <span className="font-mono text-xs text-neutral-400">Синхронизация: <span className="text-white">только что</span></span>
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-white/[0.03] border border-white/5 rounded-full">
+                      <RefreshCcw size={14} className="text-white/40" />
+                      <span className="font-mono text-[10px] text-white/40 uppercase tracking-[0.15em] font-bold">Синхронизация: <span className="text-white">только что</span></span>
                     </div>
                   </div>
                 </div>
-                <button className="bg-white text-black px-6 py-2 font-mono text-xs uppercase tracking-widest font-bold hover:bg-white/90 transition-all active:scale-[0.98] rounded-sm">
+                <button className="bg-white text-black px-8 py-3.5 font-mono text-[11px] uppercase tracking-[0.2em] font-bold hover:bg-white/90 transition-all active:scale-[0.98] rounded-full shadow-lg shadow-white/5">
                   Экспорт данных
                 </button>
               </div>
 
               {/* Stats Row (Bento Grid Style) */}
-              <div className="grid grid-cols-12 gap-4 mb-12">
+              <div className="grid grid-cols-12 gap-5 mb-16">
                 {/* Progress Card */}
-                <div className="col-span-12 md:col-span-5 bg-[#111111] border border-white/10 p-6 flex flex-col justify-between group hover:border-white/20 transition-all">
-                  <div className="flex justify-between items-start mb-8">
-                    <span className="font-mono text-xs text-neutral-500 uppercase tracking-widest font-bold">ПРОГРЕСС СИСТЕМЫ</span>
-                    <TrendingUp className="text-neutral-500" size={18} />
+                <div className="col-span-12 md:col-span-5 lovable-glass-strong border border-white/5 p-8 flex flex-col justify-between group hover:border-white/20 transition-all duration-500 rounded-[2rem] bg-gradient-to-br from-white/[0.04] to-transparent overflow-hidden relative">
+                  <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
+                    <TrendingUp size={120} strokeWidth={1} />
                   </div>
-                  <div>
-                    <div className="flex justify-between items-end mb-2">
-                      <span className="text-4xl font-mono text-white font-semibold">84.2%</span>
-                      <span className="font-mono text-[10px] text-neutral-600 mb-1">ОПТИМИЗИРОВАНО</span>
+                  <div className="flex justify-between items-start mb-12 relative z-10">
+                    <span className="font-mono text-[10px] text-white/30 uppercase tracking-[0.2em] font-bold">ПРОГРЕСС СИСТЕМЫ</span>
+                    <TrendingUp className="text-white/20 group-hover:text-white/40 transition-colors" size={20} />
+                  </div>
+                  <div className="relative z-10">
+                    <div className="flex justify-between items-end mb-4">
+                      <span className="text-5xl font-display text-white tracking-tight">84.2%</span>
+                      <span className="font-mono text-[9px] text-emerald-400/60 font-bold tracking-widest uppercase mb-1.5">ОПТИМИЗИРОВАНО</span>
                     </div>
-                    <div className="w-full h-1 bg-white/5 rounded-full overflow-hidden">
-                      <div className="h-full bg-white w-[84.2%] transition-all duration-1000"></div>
+                    <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
+                      <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ width: "84.2%" }}
+                        transition={{ duration: 1.5, ease: "easeOut" }}
+                        className="h-full bg-white shadow-[0_0_15px_rgba(255,255,255,0.5)]"
+                      />
                     </div>
                   </div>
                 </div>
 
                 {/* Market Readiness Card */}
-                <div className="col-span-12 md:col-span-3 bg-[#111111] border border-white/10 p-6 flex flex-col justify-between hover:border-white/20 transition-all">
+                <div className="col-span-12 md:col-span-3 lovable-glass-strong border border-white/5 p-8 flex flex-col justify-between hover:border-white/20 transition-all duration-500 rounded-[2rem] bg-gradient-to-br from-white/[0.04] to-transparent">
                   <div className="flex justify-between items-start">
-                    <span className="font-mono text-xs text-neutral-500 uppercase tracking-widest font-bold">ГОТОВНОСТЬ РЫНКА</span>
-                    <BarChart2 className="text-neutral-500" size={18} />
+                    <span className="font-mono text-[10px] text-white/30 uppercase tracking-[0.2em] font-bold">РЫНОК</span>
+                    <BarChart2 className="text-white/20" size={20} />
                   </div>
-                  <div className="mt-8">
-                    <span className="text-4xl font-mono text-white font-semibold">9.4<span className="text-neutral-600 text-2xl">/10</span></span>
+                  <div className="mt-12">
+                    <span className="text-5xl font-display text-white tracking-tight">9.4<span className="text-white/20 text-3xl">/10</span></span>
+                    <p className="font-mono text-[9px] text-white/20 mt-3 font-bold tracking-widest uppercase">ГОТОВНОСТЬ</p>
                   </div>
                 </div>
 
                 {/* Total Branches Card */}
-                <div className="col-span-12 md:col-span-4 bg-[#111111] border border-white/10 p-6 flex flex-col justify-between hover:border-white/20 transition-all">
+                <div className="col-span-12 md:col-span-4 lovable-glass-strong border border-white/5 p-8 flex flex-col justify-between hover:border-white/20 transition-all duration-500 rounded-[2rem] bg-gradient-to-br from-white/[0.04] to-transparent">
                   <div className="flex justify-between items-start">
-                    <span className="font-mono text-xs text-neutral-500 uppercase tracking-widest font-bold">ВСЕГО ВЕТОК</span>
-                    <div className="flex items-center gap-1 text-emerald-500">
-                      <ArrowUp size={12} />
-                      <span className="font-mono text-[10px]">12%</span>
+                    <span className="font-mono text-[10px] text-white/30 uppercase tracking-[0.2em] font-bold">ВЕТКИ</span>
+                    <div className="flex items-center gap-1.5 px-2 py-1 bg-emerald-500/10 rounded-full">
+                      <ArrowUp size={10} className="text-emerald-400" />
+                      <span className="font-mono text-[10px] text-emerald-400 font-bold">12%</span>
                     </div>
                   </div>
-                  <div className="mt-8">
-                    <span className="text-4xl font-mono text-white font-semibold">1,248</span>
-                    <p className="font-mono text-[10px] text-neutral-600 mt-1 uppercase tracking-wider">по сравнению с прошлой неделей</p>
+                  <div className="mt-12">
+                    <span className="text-5xl font-display text-white tracking-tight">1,248</span>
+                    <p className="font-mono text-[9px] text-white/20 mt-3 font-bold tracking-widest uppercase">ПО СРАВНЕНИЮ С ПРОШЛОЙ НЕДЕЛЕЙ</p>
                   </div>
                 </div>
               </div>
 
               {/* Recent Sessions Grid */}
-              <div className="mt-12 pt-8">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+              <div>
+                <h3 className="font-display text-2xl text-white/40 mb-8 ml-2">Последние сессии</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
                   {sessions.slice(0, 7).map(session => (
-                    <div
+                    <motion.div
                       key={session.id}
+                      whileHover={{ y: -4 }}
                       onClick={() => handleSelectSession(session.id)}
-                      className="bg-[#111111] border border-white/10 p-6 flex flex-col justify-between hover:border-white/20 transition-all min-h-[160px] group cursor-pointer"
+                      className="lovable-glass-strong border border-white/5 p-8 flex flex-col justify-between hover:border-white/20 transition-all duration-500 min-h-[200px] group cursor-pointer rounded-[2rem] bg-white/[0.02]"
                     >
-                      <div className="flex justify-between items-start mb-6">
-                        <div className="w-8 h-8 bg-white/5 flex items-center justify-center rounded-sm">
-                          <MessageSquare className="text-neutral-400" size={18} />
+                      <div className="flex justify-between items-start mb-8">
+                        <div className="w-10 h-10 bg-white/5 flex items-center justify-center rounded-2xl group-hover:bg-white/10 transition-colors">
+                          <MessageSquare className="text-white/40 group-hover:text-white transition-colors" size={20} strokeWidth={1.5} />
                         </div>
-                        <span className="font-mono text-[9px] uppercase tracking-widest px-2 py-1 border border-emerald-500/30 text-emerald-500 rounded-sm">
+                        <span className="font-mono text-[9px] uppercase tracking-[0.2em] px-3 py-1 border border-emerald-500/20 text-emerald-400 rounded-full font-bold">
                           ЗАВЕРШЕНО
                         </span>
                       </div>
                       <div>
-                        <h3 className="font-mono text-[13px] text-white uppercase tracking-wider mb-4 line-clamp-2" title={session.title}>
+                        <h4 className="font-display text-lg text-white mb-4 line-clamp-2 leading-snug group-hover:text-white transition-colors" title={session.title}>
                           {session.title || "СЕССИЯ АНАЛИЗА"}
-                        </h3>
-                        <div className="flex justify-between items-end">
-                          <span className="font-mono text-[10px] text-neutral-600">
+                        </h4>
+                        <div className="flex justify-between items-end border-t border-white/5 pt-4">
+                          <span className="font-mono text-[10px] text-white/20 uppercase tracking-widest font-bold">
                             {new Date(session.created_at).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}
                           </span>
-                          <ArrowUpRight className="text-neutral-600 group-hover:text-white transition-colors" size={14} />
+                          <div className="w-8 h-8 flex items-center justify-center rounded-full bg-white/[0.03] group-hover:bg-white group-hover:text-black transition-all duration-300">
+                            <ArrowUpRight size={14} />
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    </motion.div>
                   ))}
 
                   {/* Create New Card */}
-                  <div
+                  <motion.div
+                    whileHover={{ scale: 0.98 }}
                     onClick={handleCreateEmptySession}
-                    className="bg-transparent border border-dashed border-white/20 p-6 flex flex-col justify-center items-center hover:border-white/40 hover:bg-white/5 transition-all min-h-[160px] cursor-pointer rounded-sm"
+                    className="lovable-glass border border-dashed border-white/10 p-8 flex flex-col justify-center items-center hover:border-white/20 hover:bg-white/[0.03] transition-all duration-500 min-h-[200px] cursor-pointer rounded-[2rem] group"
                   >
                     {isCreating ? (
-                      <Loader className="animate-spin text-neutral-400 mb-2" size={24} />
+                      <Loader className="animate-spin text-white/20 mb-2" size={32} />
                     ) : (
-                      <div className="w-8 h-8 bg-white/5 flex items-center justify-center rounded-sm mb-4">
-                        <span className="text-white text-xl font-light">+</span>
+                      <div className="w-12 h-12 bg-white/5 flex items-center justify-center rounded-2xl mb-5 group-hover:scale-110 transition-transform">
+                        <Plus className="text-white/40 group-hover:text-white" size={28} strokeWidth={1.5} />
                       </div>
                     )}
-                    <span className="font-mono text-[11px] text-neutral-400 uppercase tracking-widest">Новый анализ</span>
-                  </div>
+                    <span className="font-mono text-[10px] text-white/30 uppercase tracking-[0.2em] font-bold group-hover:text-white transition-colors">Новый анализ</span>
+                  </motion.div>
                 </div>
               </div>
-            </>
+            </motion.div>
           )}
 
           {activeTab === "chat" && (
@@ -312,20 +330,22 @@ function DashboardContent() {
               {activeSession ? (
                 <ChatInterface session={activeSession} onUpdate={setActiveSession} />
               ) : (
-                <div className="flex flex-col flex-1 h-full bg-[#111111] rounded border border-white/10 items-center justify-center px-4">
+                <div className="flex flex-col flex-1 h-full lovable-glass-strong rounded-[2.5rem] border border-white/5 items-center justify-center px-4 bg-gradient-to-br from-white/[0.02] to-transparent">
                   <div className="w-full max-w-md flex flex-col items-center text-center">
-                    <MessageSquare className="w-12 h-12 text-white/20 mb-6" />
-                    <h3 className="text-xl sm:text-2xl font-bold text-white mb-2">Анализ проекта</h3>
-                    <p className="text-sm text-neutral-500 mb-8 w-full">
-                      Нажмите кнопку ниже, чтобы начать новый интерактивный анализ.
+                    <div className="w-20 h-20 bg-white/5 flex items-center justify-center rounded-[2rem] mb-8">
+                      <MessageSquare className="w-10 h-10 text-white/20" strokeWidth={1} />
+                    </div>
+                    <h3 className="text-4xl font-display text-white mb-4">Начать анализ</h3>
+                    <p className="text-white/40 font-light mb-10 text-lg leading-relaxed">
+                      Pitchy готов помочь вам разобрать идею, рынок и финансовую модель.
                     </p>
                     <button
                       onClick={handleCreateEmptySession}
                       disabled={isCreating}
-                      className="px-6 py-3 bg-white text-black font-mono text-sm uppercase tracking-widest font-bold rounded hover:bg-gray-200 disabled:opacity-50 transition-all cursor-pointer flex items-center justify-center gap-2"
+                      className="px-10 py-4 bg-white text-black font-mono text-[11px] uppercase tracking-[0.2em] font-bold rounded-full hover:bg-neutral-200 disabled:opacity-50 transition-all cursor-pointer flex items-center justify-center gap-3 shadow-xl shadow-white/5"
                     >
-                      {isCreating ? <Loader className="w-5 h-5 animate-spin" /> : <span className="text-xl font-light leading-none mb-0.5">+</span>}
-                      Начать новый анализ
+                      {isCreating ? <Loader className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" strokeWidth={2.5} />}
+                      Создать сессию
                     </button>
                   </div>
                 </div>
@@ -354,7 +374,7 @@ function DashboardContent() {
 export default function AuthDashboard() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center">
+      <div className="min-h-screen bg-black flex items-center justify-center">
         <Loader className="w-8 h-8 animate-spin text-white/50" />
       </div>
     }>

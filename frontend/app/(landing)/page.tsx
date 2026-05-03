@@ -53,7 +53,7 @@ export default function LandingPage() {
       <HeroSection />
 
       {/* Cinematic Fade Transition */}
-      <div className="w-full h-64 bg-gradient-to-b from-transparent to-black pointer-events-none -mt-64 relative z-10" />
+      <div className="w-full h-32 bg-gradient-to-b from-transparent to-black pointer-events-none -mt-32 relative z-10" />
 
       <main className="relative bg-black">
         {/* Background Decorative Orbs */}

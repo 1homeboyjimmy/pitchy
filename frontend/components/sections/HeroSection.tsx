@@ -67,19 +67,19 @@ export function HeroSection() {
     }, []);
 
     return (
-        <section className="relative min-h-[85vh] bg-black overflow-hidden flex flex-col justify-between selection:bg-white/20">
+        <section className="relative min-h-[115vh] bg-black overflow-hidden flex flex-col justify-between selection:bg-white/20">
             {/* Background Video Engine */}
             <video
                 ref={videoRef}
                 autoPlay
                 muted
                 playsInline
-                className="absolute inset-0 w-full h-full object-cover translate-y-[17%] transition-opacity duration-500 opacity-0 pointer-events-none"
+                className="absolute inset-0 w-full h-full object-cover translate-y-[0%] transition-opacity duration-500 opacity-0 pointer-events-none"
                 src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260328_115001_bcdaa3b4-03de-47e7-ad63-ae3e392c32d4.mp4"
             />
 
             {/* Hero Body */}
-            <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 w-full max-w-4xl mx-auto text-center pt-16 pb-12">
+            <div className="relative z-10 flex-1 flex flex-col items-center justify-start px-4 w-full max-w-4xl mx-auto text-center pt-[15vh] pb-12">
                 <h1 
                     className="text-4xl md:text-5xl lg:text-6xl text-white mb-8 leading-[1.1] font-normal tracking-tight"
                     style={{ fontFamily: "'Instrument Serif', serif" }}

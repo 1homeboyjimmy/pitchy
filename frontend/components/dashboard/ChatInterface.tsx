@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Cpu, Loader, Star, Zap, Users, Grid, HelpCircle, ThumbsUp, ThumbsDown, ChevronDown, ChevronUp, Activity, Globe, Link2, FileText } from "lucide-react";
+import { Cpu, Loader, Star, Zap, Users, Grid, HelpCircle, ThumbsUp, ThumbsDown, ChevronDown, ChevronUp, Activity, Globe, Link2, FileText, ArrowRight } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ChatMessageResponse, ChatSessionDetailResponse, sendChatMessageFeedback } from "@/lib/api";
@@ -344,15 +344,24 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
     };
 
     return (
-        <div className="flex flex-col flex-1 h-full min-h-0 bg-[#0A0A0A] relative overflow-hidden">
+        <div className="flex flex-col flex-1 h-full min-h-0 bg-black relative overflow-hidden">
             {/* Messages Area */}
-            <div ref={scrollViewportRef} className="flex-1 overflow-y-auto px-6 lg:px-10 pt-6 pb-64 thin-scrollbar">
-                <div className="max-w-4xl mx-auto w-full space-y-6">
+            <div ref={scrollViewportRef} className="flex-1 overflow-y-auto px-6 lg:px-12 pt-10 pb-64 thin-scrollbar">
+                <div className="max-w-4xl mx-auto w-full space-y-12">
                 {messages.length === 0 && (
-                    <div className="flex flex-col items-center justify-center h-[50vh] text-white/30 text-center p-8">
-                        <Star className="w-12 h-12 mb-4 opacity-50" />
-                        <p className="font-body-lg">Начните диалог с описания вашего стартапа.</p>
-                    </div>
+                    <motion.div 
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="flex flex-col items-center justify-center h-[50vh] text-center p-8"
+                    >
+                        <div className="w-20 h-20 bg-white/5 flex items-center justify-center rounded-[2.5rem] mb-8">
+                            <Star className="w-10 h-10 text-white/20" strokeWidth={1} />
+                        </div>
+                        <h2 className="text-4xl font-display text-white mb-4">Интеллектуальный анализ</h2>
+                        <p className="text-white/40 font-light text-lg leading-relaxed max-w-sm">
+                            Начните диалог, описав ваш проект или задав вопрос Pitchy AI.
+                        </p>
+                    </motion.div>
                 )}
 
                 {messages.map((msg, idx) => {
@@ -374,48 +383,54 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
             const shouldRenderMainBubble = msg.role === "user" || hasContent;
 
             return (
-                <div key={msg.client_id || msg.id.toString()}>
+                <motion.div 
+                    key={msg.client_id || msg.id.toString()}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4 }}
+                >
                     {msg.role === "user" ? (
-                        <div className="mb-10 flex flex-col items-end">
-                            <div className="max-w-[85%]">
-                                <div className="flex items-center justify-end gap-3 mb-2 px-1">
-                                    <span className="font-code text-[10px] text-neutral-500 uppercase tracking-widest">User</span>
+                        <div className="mb-14 flex flex-col items-end">
+                            <div className="max-w-[85%] group">
+                                <div className="flex items-center justify-end gap-3 mb-3 px-2">
+                                    <span className="font-mono text-[9px] text-white/20 uppercase tracking-[0.2em] font-bold group-hover:text-white/40 transition-colors">USER</span>
                                 </div>
-                                <div className="bg-white/[0.03] border border-white/10 p-5 rounded-2xl rounded-tr-none">
-                                    <div className="text-on-surface font-body-lg leading-relaxed whitespace-pre-wrap">
+                                <div className="lovable-glass-strong border border-white/5 p-6 rounded-[2rem] rounded-tr-none bg-gradient-to-br from-white/[0.04] to-transparent">
+                                    <div className="text-white/90 font-sans text-[16px] leading-[1.6] whitespace-pre-wrap selection:bg-white/20">
                                         {getDisplayContent(msg)}
                                     </div>
                                 </div>
                             </div>
                         </div>
                     ) : (
-                        <div className="mb-12 flex flex-col items-start w-full">
+                        <div className="mb-16 flex flex-col items-start w-full">
                             <div className="w-full">
-                                <div className="flex items-center gap-3 mb-4 px-1">
-                                    <div className="w-5 h-5 flex items-center justify-center">
-                                        <img src="/icons/logotip.png" alt="Pitchy" className="w-full h-full object-contain" />
+                                <div className="flex items-center gap-3 mb-6 px-1">
+                                    <div className="w-6 h-6 flex items-center justify-center p-1 bg-white/5 rounded-lg border border-white/5 shadow-inner">
+                                        <img src="/icons/logotip.png" alt="Pitchy" className="w-full h-full object-contain brightness-0 invert opacity-80" />
                                     </div>
-                                    <span className="font-mono-label uppercase tracking-widest text-[11px] text-white">pitchy</span>
-                                    <span className="text-[10px] text-white/30 ml-auto mr-1 font-code">
+                                    <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-white font-bold">pitchy</span>
+                                    <div className="h-px w-12 bg-white/5 mx-2 hidden sm:block"></div>
+                                    <span className="font-mono text-[9px] text-white/20 uppercase tracking-widest font-bold">
                                         {dayjs(msg.created_at).format("HH:mm")}
                                     </span>
                                 </div>
 
                                 {/* Thought Process */}
                                 {showThoughts && (
-                                    <div className="mb-6 ml-1">
+                                    <div className="mb-8 ml-1">
                                         <details className="group" open={msg.thoughtExpanded}>
                                             <summary 
                                                 onClick={(e) => {
                                                     e.preventDefault();
                                                     setMessages(prev => prev.map(m => (m.client_id || m.id) === messageKey ? { ...m, thoughtExpanded: !m.thoughtExpanded } : m));
                                                 }}
-                                                className="list-none cursor-pointer flex items-center gap-2 text-neutral-500 hover:text-white transition-colors py-1 px-2 hover:bg-white/5 rounded w-fit"
+                                                className="list-none cursor-pointer flex items-center gap-2.5 text-white/30 hover:text-white transition-all py-2 px-3 hover:bg-white/[0.03] rounded-full border border-transparent hover:border-white/5 w-fit active:scale-95"
                                             >
-                                                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${msg.thoughtExpanded ? '' : '-rotate-90'}`} />
-                                                <span className="font-code text-[10px] uppercase tracking-wider flex items-center gap-2">
-                                                    {isLoading && isLastAssistant && !msg.thoughtTime ? <Activity className="w-3 h-3 animate-pulse" /> : null}
-                                                    {msg.thoughtTime ? `Логи анализа (${msg.thoughtTime} сек)` : "Логи анализа..."}
+                                                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-300 ${msg.thoughtExpanded ? '' : '-rotate-90'}`} />
+                                                <span className="font-mono text-[9px] uppercase tracking-[0.2em] flex items-center gap-2.5 font-bold">
+                                                    {isLoading && isLastAssistant && !msg.thoughtTime ? <Activity className="w-3.5 h-3.5 animate-pulse text-emerald-400" /> : <Cpu className="w-3.5 h-3.5 text-white/20" />}
+                                                    {msg.thoughtTime ? `ЛОГИ АНАЛИЗА (${msg.thoughtTime} СЕК)` : "ЛОГИ АНАЛИЗА..."}
                                                 </span>
                                             </summary>
                                             <motion.div
@@ -423,7 +438,7 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                                                 animate={{ height: msg.thoughtExpanded ? "auto" : 0, opacity: msg.thoughtExpanded ? 1 : 0 }}
                                                 className="overflow-hidden"
                                             >
-                                                <div className="mt-2 ml-2 pl-4 border-l border-white/10 space-y-1 font-code text-[11px] text-neutral-600 whitespace-pre-wrap leading-relaxed py-2">
+                                                <div className="mt-4 ml-3 pl-6 border-l border-white/5 space-y-2 font-mono text-[12px] text-white/30 whitespace-pre-wrap leading-relaxed py-4 italic selection:bg-white/10">
                                                     {derivedThoughts}
                                                 </div>
                                             </motion.div>
@@ -431,28 +446,30 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                                     </div>
                                 )}
 
-                                {/* Loading state placeholder with smooth fade */}
+                                {/* Loading state placeholder */}
                                 <AnimatePresence mode="wait">
                                     {!hasContent && !showThoughts && isLoading && isLastAssistant && (
                                         <motion.div
                                             key="status-pill"
-                                            initial={{ opacity: 0, y: 6 }}
+                                            initial={{ opacity: 0, y: 10 }}
                                             animate={{ opacity: 1, y: 0 }}
-                                            exit={{ opacity: 0, y: -4, filter: "blur(6px)", scale: 0.97 }}
-                                            transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
-                                            className="flex items-center gap-3 py-2 px-1 text-white/60"
+                                            exit={{ opacity: 0, y: -10, filter: "blur(8px)" }}
+                                            transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+                                            className="flex items-center gap-4 py-3 px-5 rounded-full bg-white/[0.03] border border-white/5 text-white/50 shadow-lg shadow-white/5"
                                         >
-                                            <Loader className="animate-spin h-4 w-4 flex-shrink-0" />
+                                            <div className="w-5 h-5 flex items-center justify-center">
+                                                <Loader className="animate-spin h-3.5 w-3.5" strokeWidth={3} />
+                                            </div>
                                             <AnimatePresence mode="wait">
                                                 <motion.span
                                                     key={streamingStatus || "default"}
-                                                    initial={{ opacity: 0, x: 8 }}
+                                                    initial={{ opacity: 0, x: 10 }}
                                                     animate={{ opacity: 1, x: 0 }}
-                                                    exit={{ opacity: 0, x: -8 }}
-                                                    transition={{ duration: 0.2 }}
-                                                    className="font-code text-[12px]"
+                                                    exit={{ opacity: 0, x: -10 }}
+                                                    transition={{ duration: 0.25 }}
+                                                    className="font-mono text-[11px] uppercase tracking-widest font-bold"
                                                 >
-                                                    {streamingStatus || "Pitchy анализирует данные и ищет информацию..."}
+                                                    {streamingStatus || "Pitchy анализирует данные..."}
                                                 </motion.span>
                                             </AnimatePresence>
                                         </motion.div>
@@ -461,88 +478,102 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
 
                                 {/* Main Analysis Content */}
                                 {shouldRenderMainBubble && (
-                                <div className="space-y-8 pl-1">
-                                    <div className="bg-white/[0.03] border border-white/10 p-6 rounded-2xl rounded-tl-none space-y-6">
-                                        <div className="text-on-surface font-body-lg leading-[1.7] md:leading-[1.8] [&_p]:mb-4 [&_p:last-child]:mb-0 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:mb-4 [&_ul>li]:mb-2 [&_ul>li]:pl-1 [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:mb-4 [&_ol>li]:mb-2 [&_ol>li]:pl-1 [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-white [&_h2]:mt-8 [&_h2]:mb-4 [&_h3]:text-lg [&_h3]:font-bold [&_h3]:text-white [&_h3]:mt-6 [&_h3]:mb-3 [&_strong]:text-white [&_strong]:font-semibold break-words">
+                                <div className="space-y-10 pl-1 group/content">
+                                    <div className="lovable-glass-strong border border-white/5 p-8 lg:p-10 rounded-[2.5rem] rounded-tl-none space-y-8 bg-gradient-to-br from-white/[0.03] to-transparent shadow-xl shadow-black/20">
+                                        <div className="text-white/80 font-sans text-[17px] leading-[1.8] md:leading-[1.9] [&_p]:mb-6 [&_p:last-child]:mb-0 [&_ul]:list-none [&_ul]:pl-0 [&_ul]:mb-6 [&_ul>li]:mb-4 [&_ul>li]:pl-6 [&_ul>li]:relative [&_ul>li:before]:content-[''] [&_ul>li:before]:absolute [&_ul>li:before]:left-0 [&_ul>li:before]:top-[0.8em] [&_ul>li:before]:w-1.5 [&_ul>li:before]:h-px [&_ul>li:before]:bg-white/40 [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:mb-6 [&_ol>li]:mb-4 [&_ol>li]:pl-2 [&_h2]:text-3xl [&_h2]:text-white [&_h2]:mt-12 [&_h2]:mb-6 [&_h2]:tracking-tight [&_h3]:text-xl [&_h3]:font-bold [&_h3]:text-white [&_h3]:mt-10 [&_h3]:mb-4 [&_strong]:text-white [&_strong]:font-bold selection:bg-white/20">
                                             <ReactMarkdown 
                                                 remarkPlugins={[remarkGfm]}
                                                 components={{
+                                                    h2: ({node, ...props}) => <h2 style={{ fontFamily: "'Instrument Serif', serif" }} {...props} />,
+                                                    h3: ({node, ...props}) => <h3 style={{ fontFamily: "'Instrument Serif', serif" }} {...props} />,
                                                     table: ({...props}) => (
-                                                        <div className="my-4 overflow-x-auto rounded-xl border border-white/10 bg-white/5">
-                                                            <table className="w-full text-left border-collapse font-code text-[13px]" {...props} />
+                                                        <div className="my-10 overflow-x-auto rounded-[1.5rem] border border-white/10 bg-white/[0.02] shadow-inner">
+                                                            <table className="w-full text-left border-collapse font-sans text-[14px]" {...props} />
                                                         </div>
                                                     ),
-                                                    thead: ({...props}) => <thead className="bg-white/10" {...props} />,
-                                                    th: ({...props}) => <th className="p-3 font-bold text-white border-b border-white/10" {...props} />,
-                                                    td: ({...props}) => <td className="p-3 text-neutral-400 border-b border-white/5 last:border-0" {...props} />,
+                                                    thead: ({...props}) => <thead className="bg-white/[0.05]" {...props} />,
+                                                    th: ({...props}) => <th className="p-5 font-bold text-white border-b border-white/10 uppercase tracking-widest text-[10px]" {...props} />,
+                                                    td: ({...props}) => <td className="p-5 text-white/50 border-b border-white/5 last:border-0" {...props} />,
                                                 }}
                                             >
                                                 {getDisplayContent(msg)}
                                             </ReactMarkdown>
                                             {msg.id === typingMessageId && (
-                                                <span className="inline-block w-0.5 h-4 bg-white animate-pulse ml-0.5 align-text-bottom" />
+                                                <motion.span 
+                                                    initial={{ opacity: 0 }}
+                                                    animate={{ opacity: 1 }}
+                                                    transition={{ repeat: Infinity, duration: 0.8 }}
+                                                    className="inline-block w-1.5 h-5 bg-white/40 ml-1.5 align-text-bottom rounded-full" 
+                                                />
                                             )}
                                         </div>
 
-                                        <div className="flex items-center gap-2 mt-4 pt-4 border-t border-white/10 w-full">
-                                            <div className="flex items-center gap-1">
+                                        <div className="flex items-center justify-between mt-8 pt-8 border-t border-white/5 w-full opacity-0 group-hover/content:opacity-100 transition-all duration-500">
+                                            <div className="flex items-center gap-3">
                                                 <button
                                                     onClick={() => handleFeedback(msg.id, msg.feedback === 1 ? 0 : 1)}
-                                                    className={`p-1.5 rounded-md transition-colors ${msg.feedback === 1 ? 'text-white bg-white/10' : 'text-neutral-500 hover:text-white hover:bg-white/5'}`}
+                                                    className={`p-2.5 rounded-full transition-all active:scale-90 ${msg.feedback === 1 ? 'text-white bg-white/10 shadow-lg shadow-white/5' : 'text-white/20 hover:text-white hover:bg-white/5'}`}
                                                     title="Хороший ответ"
                                                 >
-                                                    <ThumbsUp className="w-4 h-4" />
+                                                    <ThumbsUp className="w-4 h-4" strokeWidth={1.5} />
                                                 </button>
                                                 <button
                                                     onClick={() => handleFeedback(msg.id, msg.feedback === -1 ? 0 : -1)}
-                                                    className={`p-1.5 rounded-md transition-colors ${msg.feedback === -1 ? 'text-red-400 bg-red-400/10' : 'text-neutral-500 hover:text-white hover:bg-white/5'}`}
+                                                    className={`p-2.5 rounded-full transition-all active:scale-90 ${msg.feedback === -1 ? 'text-red-400 bg-red-400/10 shadow-lg shadow-red-500/5' : 'text-white/20 hover:text-white hover:bg-white/5'}`}
                                                     title="Плохой ответ"
                                                 >
-                                                    <ThumbsDown className="w-4 h-4" />
+                                                    <ThumbsDown className="w-4 h-4" strokeWidth={1.5} />
                                                 </button>
                                             </div>
+                                            {msg.model_used && (
+                                                <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-white/10 font-bold">{msg.model_used}</span>
+                                            )}
                                         </div>
                                     </div>
 
-                                    {/* Qwen-Style Sources Rendering */}
+                                    {/* Sources Rendering */}
                                     {msg.sources && msg.sources.length > 0 && (
-                                    <div className="w-full mt-2">
+                                    <div className="w-full mt-4">
                                         <button
                                         onClick={() => setMessages(prev => prev.map(m => (m.client_id || m.id) === messageKey ? { ...m, sourcesExpanded: !m.sourcesExpanded } : m))}
-                                        className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 text-[11px] font-mono-label uppercase text-white/60 hover:text-white transition-all w-fit"
+                                        className="flex items-center gap-3 px-5 py-2.5 rounded-full bg-white/[0.03] border border-white/5 hover:bg-white/[0.06] text-[10px] font-mono uppercase tracking-[0.2em] text-white/40 hover:text-white transition-all w-fit group shadow-lg shadow-black/10 active:scale-95"
                                         >
-                                        <Globe className="w-3.5 h-3.5 text-white" />
-                                        <span className="font-semibold">{msg.sources.length} ИСТОЧНИКОВ</span>
-                                        {msg.sourcesExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                                        <Globe className="w-4 h-4 text-white/20 group-hover:text-white group-hover:rotate-12 transition-all" strokeWidth={1.5} />
+                                        <span className="font-bold">{msg.sources.length} ИСТОЧНИКОВ</span>
+                                        {msg.sourcesExpanded ? <ChevronUp className="w-3.5 h-3.5 ml-1" /> : <ChevronDown className="w-3.5 h-3.5 ml-1" />}
                                         </button>
                                         
-                                        {msg.sourcesExpanded && (
-                                            <motion.div
-                                            initial={{ height: 0, opacity: 0 }}
-                                            animate={{ height: "auto", opacity: 1 }}
-                                            className="overflow-hidden mt-2"
-                                            >
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-2 bg-[#111111] border border-white/10 rounded-xl">
-                                                {msg.sources.map((s, i) => (
-                                                <a
-                                                    key={i}
-                                                    href={s.url}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="flex flex-col p-3 rounded-lg bg-black/20 hover:bg-white/5 border border-transparent hover:border-white/10 transition-all group"
+                                        <AnimatePresence>
+                                            {msg.sourcesExpanded && (
+                                                <motion.div
+                                                initial={{ height: 0, opacity: 0, y: -10 }}
+                                                animate={{ height: "auto", opacity: 1, y: 0 }}
+                                                exit={{ height: 0, opacity: 0, y: -10 }}
+                                                transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+                                                className="overflow-hidden mt-4"
                                                 >
-                                                    <div className="flex items-center gap-2 mb-1">
-                                                    <div className="w-5 h-5 rounded bg-white/10 flex items-center justify-center shrink-0">
-                                                        <Link2 className="w-3 h-3 text-white/50 group-hover:text-white" />
-                                                    </div>
-                                                    <span className="text-[12px] text-white/80 font-medium line-clamp-1">{s.title || "Источник"}</span>
-                                                    </div>
-                                                    <span className="text-[10px] text-neutral-500 line-clamp-1 truncate block ml-7 font-code">{s.url}</span>
-                                                </a>
-                                                ))}
-                                            </div>
-                                            </motion.div>
-                                        )}
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-white/[0.01] border border-white/5 rounded-3xl">
+                                                    {msg.sources.map((s, i) => (
+                                                    <a
+                                                        key={i}
+                                                        href={s.url}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="flex flex-col p-5 rounded-2xl bg-white/[0.02] hover:bg-white/[0.05] border border-transparent hover:border-white/10 transition-all group/source"
+                                                    >
+                                                        <div className="flex items-center gap-3 mb-2">
+                                                        <div className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center shrink-0 group-hover/source:scale-110 transition-transform">
+                                                            <Link2 className="w-3.5 h-3.5 text-white/20 group-hover/source:text-white" strokeWidth={1.5} />
+                                                        </div>
+                                                        <span className="text-[13px] text-white/70 font-medium line-clamp-1 group-hover/source:text-white transition-colors">{s.title || "Источник"}</span>
+                                                        </div>
+                                                        <span className="text-[10px] text-white/10 line-clamp-1 truncate block ml-10 font-mono tracking-tight group-hover/source:text-white/20 transition-colors">{s.url}</span>
+                                                    </a>
+                                                    ))}
+                                                </div>
+                                                </motion.div>
+                                            )}
+                                        </AnimatePresence>
                                     </div>
                                     )}
                                 </div>
@@ -550,57 +581,62 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                             </div>
                         </div>
                     )}
-                </div>
+                </motion.div>
             );
         })}
 
                 {
                     messages.length <= 2 && !session.analysis && !isLoading && (
                         <motion.div
-                            initial={{ opacity: 0, y: 10 }}
+                            initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
-                            className="flex flex-col gap-3 mt-4"
+                            transition={{ delay: 0.4, duration: 0.6 }}
+                            className="flex flex-col gap-5 mt-8 max-w-2xl mx-auto w-full"
                         >
-                            <p className="font-mono-label text-[11px] uppercase tracking-widest text-neutral-500 text-center mb-2">Выберите тему для продолжения:</p>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl mx-auto w-full">
-                                <button onClick={() => handleSendMessage("Анализ идеи")} className="flex items-center gap-4 p-5 rounded-2xl bg-[#111111] hover:bg-white/5 border border-white/10 transition-all text-left group hover:border-white/20">
-                                    <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center text-white group-hover:scale-110 transition-transform">
-                                        <Zap className="w-5 h-5" />
+                            <p className="font-mono text-[9px] uppercase tracking-[0.3em] text-white/20 text-center mb-2 font-bold">Выберите направление анализа</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <button onClick={() => handleSendMessage("Анализ идеи")} className="flex items-center gap-5 p-6 rounded-[2rem] bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 transition-all duration-500 text-left group hover:border-white/20 hover:shadow-xl hover:shadow-white/5 active:scale-95">
+                                    <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center text-white group-hover:scale-110 group-hover:bg-white/10 transition-all">
+                                        <Zap className="w-6 h-6" strokeWidth={1.5} />
                                     </div>
-                                    <div>
-                                        <div className="text-white font-medium text-[14px]">Анализ идеи</div>
-                                        <div className="text-neutral-500 text-[12px] mt-0.5">Получить оценку 0-100</div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="text-white font-medium text-[16px] tracking-tight">Анализ идеи</div>
+                                        <div className="text-white/30 text-[12px] mt-1 font-light line-clamp-1">Получить оценку концепции</div>
                                     </div>
+                                    <ArrowRight className="w-5 h-5 text-white/10 group-hover:text-white group-hover:translate-x-1 transition-all" strokeWidth={1.5} />
                                 </button>
 
-                                <button onClick={() => handleSendMessage("Анализ ЦА")} className="flex items-center gap-4 p-5 rounded-2xl bg-[#111111] hover:bg-white/5 border border-white/10 transition-all text-left group hover:border-white/20">
-                                    <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center text-white group-hover:scale-110 transition-transform">
-                                        <Users className="w-5 h-5" />
+                                <button onClick={() => handleSendMessage("Анализ ЦА")} className="flex items-center gap-5 p-6 rounded-[2rem] bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 transition-all duration-500 text-left group hover:border-white/20 hover:shadow-xl hover:shadow-white/5 active:scale-95">
+                                    <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center text-white group-hover:scale-110 group-hover:bg-white/10 transition-all">
+                                        <Users className="w-6 h-6" strokeWidth={1.5} />
                                     </div>
-                                    <div>
-                                        <div className="text-white font-medium text-[14px]">Анализ ЦА</div>
-                                        <div className="text-neutral-500 text-[12px] mt-0.5">Сегментация аудитории</div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="text-white font-medium text-[16px] tracking-tight">Анализ ЦА</div>
+                                        <div className="text-white/30 text-[12px] mt-1 font-light line-clamp-1">Сегментация и инсайты</div>
                                     </div>
+                                    <ArrowRight className="w-5 h-5 text-white/10 group-hover:text-white group-hover:translate-x-1 transition-all" strokeWidth={1.5} />
                                 </button>
 
-                                <button onClick={() => handleSendMessage("Посчитать экономику проекта")} className="flex items-center gap-4 p-5 rounded-2xl bg-[#111111] hover:bg-white/5 border border-white/10 transition-all text-left group hover:border-white/20">
-                                    <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center text-white group-hover:scale-110 transition-transform">
-                                        <Grid className="w-5 h-5" />
+                                <button onClick={() => handleSendMessage("Посчитать экономику проекта")} className="flex items-center gap-5 p-6 rounded-[2rem] bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 transition-all duration-500 text-left group hover:border-white/20 hover:shadow-xl hover:shadow-white/5 active:scale-95">
+                                    <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center text-white group-hover:scale-110 group-hover:bg-white/10 transition-all">
+                                        <Grid className="w-6 h-6" strokeWidth={1.5} />
                                     </div>
-                                    <div>
-                                        <div className="text-white font-medium text-[14px]">Юнит-экономика</div>
-                                        <div className="text-neutral-500 text-[12px] mt-0.5">САР, LTV, метрики</div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="text-white font-medium text-[16px] tracking-tight">Экономика</div>
+                                        <div className="text-white/30 text-[12px] mt-1 font-light line-clamp-1">Юнит-метрики и LTV</div>
                                     </div>
+                                    <ArrowRight className="w-5 h-5 text-white/10 group-hover:text-white group-hover:translate-x-1 transition-all" strokeWidth={1.5} />
                                 </button>
 
-                                <button onClick={() => handleSendMessage("Другой вопрос")} className="flex items-center gap-4 p-5 rounded-2xl bg-[#111111] hover:bg-white/5 border border-white/10 transition-all text-left group hover:border-white/20">
-                                    <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center text-white group-hover:scale-110 transition-transform">
-                                        <HelpCircle className="w-5 h-5" />
+                                <button onClick={() => handleSendMessage("Другой вопрос")} className="flex items-center gap-5 p-6 rounded-[2rem] bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 transition-all duration-500 text-left group hover:border-white/20 hover:shadow-xl hover:shadow-white/5 active:scale-95">
+                                    <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center text-white group-hover:scale-110 group-hover:bg-white/10 transition-all">
+                                        <HelpCircle className="w-6 h-6" strokeWidth={1.5} />
                                     </div>
-                                    <div>
-                                        <div className="text-white font-medium text-[14px]">Другой вопрос</div>
-                                        <div className="text-neutral-500 text-[12px] mt-0.5">Свободный диалог</div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="text-white font-medium text-[16px] tracking-tight">Другой вопрос</div>
+                                        <div className="text-white/30 text-[12px] mt-1 font-light line-clamp-1">Свободная консультация</div>
                                     </div>
+                                    <ArrowRight className="w-5 h-5 text-white/10 group-hover:text-white group-hover:translate-x-1 transition-all" strokeWidth={1.5} />
                                 </button>
                             </div>
                         </motion.div>
@@ -610,19 +646,21 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
                 {
                     session.analysis && (
                         <motion.div
-                            initial={{ opacity: 0, y: 20 }}
+                            initial={{ opacity: 0, y: 30 }}
                             animate={{ opacity: 1, y: 0 }}
-                            className="mt-8 border-t border-white/10 pt-8 pb-4"
+                            transition={{ duration: 0.8 }}
+                            className="mt-16 border-t border-white/5 pt-16 pb-10"
                         >
-                            <div className="text-center mb-6">
-                                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[11px] font-mono-label uppercase tracking-widest mb-4">
-                                    <Star className="w-3 h-3" />
+                            <div className="text-center mb-10">
+                                <div className="inline-flex items-center gap-3 px-4 py-2 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-mono-label uppercase tracking-[0.2em] mb-6 font-bold">
+                                    <Star className="w-4 h-4 shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
                                     <span>Анализ готов</span>
                                 </div>
-                                <h3 className="font-display text-[24px] font-medium text-white">Результаты оценки</h3>
+                                <h3 className="font-display text-4xl text-white tracking-tight" style={{ fontFamily: "'Instrument Serif', serif" }}>Результаты оценки</h3>
                             </div>
 
-                            <div className="max-w-md mx-auto">
+                            <div className="max-w-md mx-auto relative group">
+                                <div className="absolute inset-0 bg-white/5 blur-[40px] rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-700 -z-10" />
                                 <AnalysisCard
                                     analysis={{
                                         id: session.analysis.id,
@@ -643,36 +681,42 @@ export function ChatInterface({ session, onUpdate }: ChatInterfaceProps) {
             </div >
 
             {/* Input Area (Fixed Bottom) */}
-            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-[#0A0A0A] via-[#0A0A0A] to-transparent pt-12 pb-8 z-40">
-                <ChatInput
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  onSend={() => handleSendMessage()}
-                  isLoading={isLoading}
-                  onStop={stopGeneration}
-                  useDeepSearch={useDeepSearch}
-                  onToggleDeepSearch={() => setUseDeepSearch(!useDeepSearch)}
-                  isResearchMode={isResearchMode}
-                  onToggleResearchMode={() => setIsResearchMode(!isResearchMode)}
-                  isPresentationMode={isPresentationMode}
-                  onTogglePresentationMode={() => setIsPresentationMode(!isPresentationMode)}
-                  onCancelPresentationMode={() => setIsPresentationMode(false)}
-                  onOpenImportModal={() => setIsImportModalOpen(true)}
-                  disabled={!!session.analysis}
-                  placeholder={isPresentationMode ? "Опишите идею для вашей презентации..." : (session.analysis ? "Диалог завершен" : "Задайте вопрос Pitchy...")}
-                />
-                
-                {presentationSlides && presentationSlides.length > 0 && (
-                    <div className="mt-4 flex justify-center">
-                        <button
-                            onClick={() => setIsPresentationOpen(true)}
-                            className="flex items-center gap-2 px-6 py-2.5 bg-white text-black text-[12px] font-mono-label uppercase tracking-widest rounded hover:opacity-90 transition-opacity"
+            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/95 to-transparent pt-20 pb-10 z-40 px-6 sm:px-12">
+                <div className="max-w-4xl mx-auto w-full">
+                    <ChatInput
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    onSend={() => handleSendMessage()}
+                    isLoading={isLoading}
+                    onStop={stopGeneration}
+                    useDeepSearch={useDeepSearch}
+                    onToggleDeepSearch={() => setUseDeepSearch(!useDeepSearch)}
+                    isResearchMode={isResearchMode}
+                    onToggleResearchMode={() => setIsResearchMode(!isResearchMode)}
+                    isPresentationMode={isPresentationMode}
+                    onTogglePresentationMode={() => setIsPresentationMode(!isPresentationMode)}
+                    onCancelPresentationMode={() => setIsPresentationMode(false)}
+                    onOpenImportModal={() => setIsImportModalOpen(true)}
+                    disabled={!!session.analysis}
+                    placeholder={isPresentationMode ? "Опишите идею для вашей презентации..." : (session.analysis ? "Диалог завершен" : "Задайте вопрос Pitchy...")}
+                    />
+                    
+                    {presentationSlides && presentationSlides.length > 0 && (
+                        <motion.div 
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            className="mt-6 flex justify-center"
                         >
-                            <FileText className="w-4 h-4" />
-                            Открыть презентацию
-                        </button>
-                    </div>
-                )}
+                            <button
+                                onClick={() => setIsPresentationOpen(true)}
+                                className="flex items-center gap-3 px-8 py-4 bg-white text-black text-[11px] font-mono uppercase tracking-[0.2em] font-bold rounded-full hover:bg-neutral-200 transition-all shadow-xl shadow-white/5 active:scale-95"
+                            >
+                                <FileText className="w-4 h-4" strokeWidth={2.5} />
+                                Открыть презентацию
+                            </button>
+                        </motion.div>
+                    )}
+                </div>
             </div>
 
             <PresentationDrawer 

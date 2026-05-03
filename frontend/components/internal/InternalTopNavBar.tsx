@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Menu } from "lucide-react";
+import { Menu, LogOut, User } from "lucide-react";
 import { clearToken } from "@/lib/auth";
 
 const navLinks = [
@@ -37,35 +37,35 @@ export function InternalTopNavBar({ activeTab, onMenuClick }: Props) {
     router.push("/");
   };
 
-  const linkBase = "font-sans text-[12px] uppercase tracking-tighter transition-colors font-medium";
+  const linkBase = "font-mono text-[10px] uppercase tracking-[0.2em] transition-all font-bold";
 
   return (
-    <header className="fixed top-0 right-0 left-0 md:left-64 h-14 border-b border-white/10 bg-[#0A0A0A]/40 backdrop-blur-xl z-40 flex items-center justify-between px-4 sm:px-6">
-      <div className="flex items-center gap-3 min-w-0">
+    <header className="fixed top-0 right-0 left-0 md:left-64 h-16 border-b border-white/5 bg-black/80 backdrop-blur-2xl z-40 flex items-center justify-between px-6 sm:px-8">
+      <div className="flex items-center gap-4 min-w-0">
         <button
           onClick={onMenuClick}
-          className="md:hidden text-white/70 hover:text-white p-1"
+          className="md:hidden text-white/40 hover:text-white p-1 transition-colors"
           aria-label="Меню"
         >
           <Menu size={20} />
         </button>
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="font-sans text-[12px] text-neutral-500 uppercase tracking-tighter hover:text-white cursor-pointer transition-colors truncate font-medium">
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="font-mono text-[10px] text-white/30 uppercase tracking-[0.2em] hover:text-white cursor-pointer transition-colors truncate font-bold">
             {getTabName(activeTab)}
           </span>
-          <span className="font-sans text-[12px] text-neutral-600 font-medium">/</span>
-          <span className="font-sans text-[12px] text-white uppercase tracking-tighter truncate font-medium">
+          <span className="font-mono text-[10px] text-white/10 font-bold">/</span>
+          <span className="font-mono text-[10px] text-white uppercase tracking-[0.2em] truncate font-bold">
             Проект
           </span>
         </div>
       </div>
 
-      <nav className="hidden lg:flex absolute left-1/2 top-0 h-14 -translate-x-1/2 items-center gap-6 z-50">
+      <nav className="hidden xl:flex absolute left-1/2 top-0 h-16 -translate-x-1/2 items-center gap-8 z-50">
         {navLinks.map((link) => (
           <Link
             key={link.href}
             href={link.href}
-            className={`${linkBase} text-neutral-500 hover:text-white`}
+            className={`${linkBase} ${activeTab === link.label.toLowerCase() ? "text-white" : "text-white/30 hover:text-white"}`}
           >
             {link.label}
           </Link>
@@ -75,15 +75,17 @@ export function InternalTopNavBar({ activeTab, onMenuClick }: Props) {
       <div className="flex items-center gap-3 sm:gap-4">
         <Link
           href="/account"
-          className="px-4 py-1.5 border border-white text-white font-sans text-[11px] font-medium uppercase tracking-tighter hover:bg-white hover:text-black transition-colors"
+          className="flex items-center gap-2 px-5 py-2 border border-white/10 text-white/60 font-mono text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-white hover:text-black hover:border-white transition-all rounded-full active:scale-[0.98]"
         >
-          АККАУНТ
+          <User size={14} strokeWidth={2} />
+          <span className="hidden sm:inline">АККАУНТ</span>
         </Link>
         <button
           onClick={handleLogout}
-          className="px-4 py-1.5 border border-white text-white font-sans text-[11px] font-medium uppercase tracking-tighter hover:bg-white hover:text-black transition-colors"
+          className="flex items-center gap-2 px-5 py-2 bg-white/5 border border-white/10 text-white/60 font-mono text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/20 transition-all rounded-full active:scale-[0.98]"
         >
-          ВЫЙТИ
+          <LogOut size={14} strokeWidth={2} />
+          <span className="hidden sm:inline">ВЫЙТИ</span>
         </button>
       </div>
     </header>
