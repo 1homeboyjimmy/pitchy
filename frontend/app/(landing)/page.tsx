@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowUpRight, Bot, BrainCircuit, FileText, Gauge, Layers3, Radar, Sparkles, Plus } from "lucide-react";
+import { ArrowUpRight, BarChart3, Users, FileText, Sparkles, MessageSquare, Plus } from "lucide-react";
 import { motion } from "framer-motion";
 import { LandingNavBar } from "@/components/landing/LandingNavBar";
 import { LandingFooter } from "@/components/landing/LandingFooter";
@@ -9,12 +9,12 @@ import { HeroSection } from "@/components/sections/HeroSection";
 
 const capabilityCards = [
   {
-    icon: Gauge,
+    icon: BarChart3,
     title: "Моментальная unit-экономика",
     body: "Считайте окупаемость, CAC, LTV и сценарии роста в одном живом слое данных.",
   },
   {
-    icon: BrainCircuit,
+    icon: Users,
     title: "Глубокий CustDev",
     body: "Синтетические интервью и сегментация сигналов без сухих дашбордов и лишнего шума.",
   },
@@ -24,7 +24,7 @@ const capabilityCards = [
     body: "Собирайте подачу, трекинг и отчётность в единую управляемую систему.",
   },
   {
-    icon: Bot,
+    icon: MessageSquare,
     title: "Ассистент 24/7",
     body: "AI-слой помогает с RAG, юридическими вопросами и структурированием проектных решений.",
   },
@@ -102,8 +102,8 @@ export default function LandingPage() {
 
       <main className="relative min-h-screen overflow-hidden bg-black text-white">
         {/* Lovable Aurora Background Elements */}
-        <div className="aurora-orb left-[-8rem] top-[18rem] h-64 w-64 bg-[oklch(0.58_0.24_285_/_0.34)] animate-float-slow" />
-        <div className="aurora-orb right-[-6rem] top-[58rem] h-72 w-72 bg-[oklch(0.62_0.2_210_/_0.24)] animate-float-slow" />
+        <div className="aurora-orb left-[-8rem] top-[18rem] h-64 w-64 bg-[oklch(0.35_0.12_280_/_0.2)] animate-float-slow" />
+        <div className="aurora-orb right-[-6rem] top-[58rem] h-72 w-72 bg-[oklch(0.3_0.1_250_/_0.15)] animate-float-slow" />
 
 
 
@@ -125,8 +125,9 @@ export default function LandingPage() {
                     key={card.title}
                     initial={{ opacity: 0, y: 28 }}
                     whileInView={{ opacity: 1, y: 0, transition: { duration: 0.8, ease: "easeOut", delay: 0.08 * index } }}
+                    whileHover={{ y: -5 }}
                     viewport={{ once: true, margin: "-80px" }}
-                    className="lovable-glass lovable-liquid-outline group rounded-[1.75rem] p-6"
+                    className="lovable-glass lovable-liquid-outline group rounded-[1.75rem] p-6 transition-all duration-500 hover:shadow-[0_20px_40px_-15px_oklch(0.5_0.15_260_/_0.2)]"
                   >
                     <div className="flex items-center justify-between relative z-10 w-full">
                       <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5">
