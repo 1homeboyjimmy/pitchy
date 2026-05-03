@@ -227,12 +227,12 @@ function DashboardContent() {
                     <TrendingUp size={120} strokeWidth={1} />
                   </div>
                   <div className="flex justify-between items-start mb-12 relative z-10">
-                    <span className="font-mono text-[10px] text-white/30 uppercase tracking-[0.2em] font-bold">ПРОГРЕСС СИСТЕМЫ</span>
+                    <span className="text-[14px] text-white/50 tracking-tight" style={{ fontFamily: "'Instrument Serif', serif" }}>Прогресс системы</span>
                     <TrendingUp className="text-white/20 group-hover:text-white/40 transition-colors" size={20} />
                   </div>
                   <div className="relative z-10">
                     <div className="flex justify-between items-end mb-4">
-                      <span className="text-5xl font-display text-white tracking-tight">84.2%</span>
+                      <span className="text-6xl text-white tracking-tight" style={{ fontFamily: "'Instrument Serif', serif" }}>84.2%</span>
                       <span className="font-mono text-[9px] text-emerald-400/60 font-bold tracking-widest uppercase mb-1.5">ОПТИМИЗИРОВАНО</span>
                     </div>
                     <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
@@ -248,35 +248,38 @@ function DashboardContent() {
 
                 {/* Market Readiness Card */}
                 <div className="col-span-12 md:col-span-3 lovable-glass-strong border border-white/5 p-8 flex flex-col justify-between hover:border-white/20 transition-all duration-500 rounded-[2rem] bg-gradient-to-br from-white/[0.04] to-transparent">
-                  <div className="flex justify-between items-start">
-                    <span className="font-mono text-[10px] text-white/30 uppercase tracking-[0.2em] font-bold">РЫНОК</span>
-                    <BarChart2 className="text-white/20" size={20} />
+                  <div className="flex justify-between items-start mb-12">
+                    <span className="text-[14px] text-white/50 tracking-tight" style={{ fontFamily: "'Instrument Serif', serif" }}>Рынок</span>
+                    <BarChart2 className="text-white/20 group-hover:text-white/40 transition-colors" size={20} />
                   </div>
-                  <div className="mt-12">
-                    <span className="text-5xl font-display text-white tracking-tight">9.4<span className="text-white/20 text-3xl">/10</span></span>
-                    <p className="font-mono text-[9px] text-white/20 mt-3 font-bold tracking-widest uppercase">ГОТОВНОСТЬ</p>
+                  <div>
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-6xl text-white tracking-tight" style={{ fontFamily: "'Instrument Serif', serif" }}>9.4</span>
+                      <span className="text-xl text-white/20" style={{ fontFamily: "'Instrument Serif', serif" }}>/10</span>
+                    </div>
+                    <p className="font-mono text-[9px] text-white/20 font-bold tracking-widest uppercase mt-3">ГОТОВНОСТЬ</p>
                   </div>
                 </div>
 
                 {/* Total Branches Card */}
                 <div className="col-span-12 md:col-span-4 lovable-glass-strong border border-white/5 p-8 flex flex-col justify-between hover:border-white/20 transition-all duration-500 rounded-[2rem] bg-gradient-to-br from-white/[0.04] to-transparent">
-                  <div className="flex justify-between items-start">
-                    <span className="font-mono text-[10px] text-white/30 uppercase tracking-[0.2em] font-bold">ВЕТКИ</span>
-                    <div className="flex items-center gap-1.5 px-2 py-1 bg-emerald-500/10 rounded-full">
+                  <div className="flex justify-between items-start mb-12">
+                    <span className="text-[14px] text-white/50 tracking-tight" style={{ fontFamily: "'Instrument Serif', serif" }}>Ветки</span>
+                    <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-500/10 rounded-full border border-emerald-500/20">
                       <ArrowUp size={10} className="text-emerald-400" />
                       <span className="font-mono text-[10px] text-emerald-400 font-bold">12%</span>
                     </div>
                   </div>
-                  <div className="mt-12">
-                    <span className="text-5xl font-display text-white tracking-tight">1,248</span>
-                    <p className="font-mono text-[9px] text-white/20 mt-3 font-bold tracking-widest uppercase">ПО СРАВНЕНИЮ С ПРОШЛОЙ НЕДЕЛЕЙ</p>
+                  <div>
+                    <div className="text-6xl text-white tracking-tight mb-2" style={{ fontFamily: "'Instrument Serif', serif" }}>1,248</div>
+                    <p className="font-mono text-[9px] text-white/20 font-bold tracking-widest uppercase">ПО СРАВНЕНИЮ С ПРОШЛОЙ НЕДЕЛЕЙ</p>
                   </div>
                 </div>
               </div>
 
               {/* Recent Sessions Grid */}
               <div>
-                <h3 className="font-display text-2xl text-white/40 mb-8 ml-2">Последние сессии</h3>
+                <h3 className="text-3xl text-white/40 mb-8 ml-2" style={{ fontFamily: "'Instrument Serif', serif" }}>Последние сессии</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
                   {sessions.slice(0, 7).map(session => (
                     <motion.div
@@ -322,7 +325,7 @@ function DashboardContent() {
                         <Plus className="text-white/40 group-hover:text-white" size={28} strokeWidth={1.5} />
                       </div>
                     )}
-                    <span className="font-mono text-[10px] text-white/30 uppercase tracking-[0.2em] font-bold group-hover:text-white transition-colors">Новый анализ</span>
+                    <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-white/20 font-bold group-hover:text-white transition-colors" style={{ fontFamily: "'Instrument Serif', serif", fontSize: "14px" }}>Новый анализ</span>
                   </motion.div>
                 </div>
               </div>

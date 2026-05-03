@@ -347,7 +347,7 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
     return (
         <div className="flex flex-col flex-1 h-full min-h-0 bg-black relative overflow-hidden">
             {/* Messages Area */}
-            <div ref={scrollViewportRef} className="flex-1 overflow-y-auto scroll-smooth pt-24 pb-40 px-6 sm:px-12 scrollbar-hide">
+            <div ref={scrollViewportRef} className="flex-1 overflow-y-auto scroll-smooth pt-24 pb-72 px-6 sm:px-12 scrollbar-hide">
                 <div className={`mx-auto w-full transition-all duration-500 ease-[0.16,1,0.3,1] ${isSidebarCollapsed ? 'max-w-6xl' : 'max-w-4xl'} space-y-12`}>
                 {messages.length === 0 && (
                     <motion.div 
