@@ -1,42 +1,60 @@
 import Link from "next/link";
 import { Metadata } from "next";
-import { Calculator, Users, Gavel, Cpu, PieChart, MessageSquare, Route, Package, Handshake, Plus } from "lucide-react";
+import { ArrowUpRight, Bot, BrainCircuit, FileText, Gauge, Layers3, Radar, Sparkles, Plus } from "lucide-react";
+import { motion } from "framer-motion";
 import { LandingNavBar } from "@/components/landing/LandingNavBar";
 import { LandingFooter } from "@/components/landing/LandingFooter";
-import { AnimatedSection, StaggerContainer, StaggerItem } from "@/components/landing/AnimatedSection";
 import { HeroSection } from "@/components/sections/HeroSection";
 
-const features = [
-  { icon: <Calculator size={24} strokeWidth={1.5} />, title: "Расчет Юнит-экономики.", desc: "Часто проекты рушатся именно из-за ошибок на этом этапе." },
-  { icon: <PieChart size={24} strokeWidth={1.5} />, title: "Расчет ЦА.", desc: "Помогаем проанализировать ЦА вашего продукта." },
-  { icon: <MessageSquare size={24} strokeWidth={1.5} />, title: "Deep-Custdev.", desc: "Проводите десятки синтетических CustDev-интервью одновременно." },
-  { icon: <Route size={24} strokeWidth={1.5} />, title: "Динамический трек проекта.", desc: "Структурируйте ваш проект, чтобы ничего не забыть." },
-  { icon: <Package size={24} strokeWidth={1.5} />, title: "Упаковка под гранты.", desc: "Узнайте, какие меры господдержки вы можете получить уже сейчас." },
-  { icon: <Handshake size={24} strokeWidth={1.5} />, title: "MatchMaking-система.", desc: "Найдите себе специалистов в команду, которые реально заинтересованы в вашем продукте." },
+const capabilityCards = [
+  {
+    icon: Gauge,
+    title: "Моментальная unit-экономика",
+    body: "Считайте окупаемость, CAC, LTV и сценарии роста в одном живом слое данных.",
+  },
+  {
+    icon: BrainCircuit,
+    title: "Глубокий CustDev",
+    body: "Синтетические интервью и сегментация сигналов без сухих дашбордов и лишнего шума.",
+  },
+  {
+    icon: FileText,
+    title: "Гранты и заявки",
+    body: "Собирайте подачу, трекинг и отчётность в единую управляемую систему.",
+  },
+  {
+    icon: Bot,
+    title: "Ассистент 24/7",
+    body: "AI-слой помогает с RAG, юридическими вопросами и структурированием проектных решений.",
+  },
 ];
 
-const agents = [
-  { color: "bg-blue-500", role: "Инвестор", quote: "\"Не вижу четкой стратегии монетизации...\"" },
-  { color: "bg-green-500", role: "Студент", quote: "\"Выглядит круто, но 500р/мес дороговато.\"" },
-  { color: "bg-purple-500", role: "Маркетолог", quote: "\"Нужно доработать онбординг, есть отвал.\"" },
-  { color: "bg-yellow-500", role: "Предприниматель", quote: "\"Слишком сложно, нужен быстрый старт.\"" },
-  { color: "bg-red-500", role: "Дизайнер", quote: "\"Интерфейс перегружен.\"" },
-  { color: "bg-cyan-500", role: "Разработчик", quote: "\"Где API документация?\"" },
-  { color: "bg-pink-500", role: "HR", quote: "\"Непонятно позиционирование команды.\"" },
-  { color: "bg-orange-500", role: "Менеджер", quote: "\"Не хватает интеграции с таск-трекерами.\"" },
-  { color: "bg-teal-500", role: "Юрист", quote: "\"Проверьте пользовательское соглашение.\"" },
-  { color: "bg-indigo-500", role: "Аналитик", quote: "\"Дашборды неинформативны.\"" },
+const timeline = [
+  { label: "Идея", note: "Сбор сигналов, гипотез и рыночного контекста" },
+  { label: "Скоринг", note: "Оценка потенциала, рисков и unit-экономики" },
+  { label: "Интервью", note: "Синтетическая обратная связь от релевантных персон" },
+  { label: "Roadmap", note: "Приоритезация и структурированный трек исполнения" },
 ];
 
-const faqItems = [
-  { q: "Что такое синтетический CustDev?", a: "Это метод тестирования идей, при котором вместо реальных людей используются специализированные ИИ-агенты, настроенные на профили вашей целевой аудитории. Они симулируют поведение пользователей, позволяя получить обратную связь за минуты, а не недели." },
-  { q: "Какие фонды поддерживаются для получения грантов?", a: "Мы анализируем требования крупнейших государственных и частных фондов (ФСИ, Сколково, РФРИТ и др.) и помогаем адаптировать вашу заявку под их специфические критерии." },
-  { q: "Как работает скоринг идеи?", a: "Система анализирует вашу идею по десяткам параметров: объем рынка (TAM/SAM/SOM), наличие конкурентов, сложность реализации и тренды. На основе этих данных формируется объективная оценка жизнеспособности продукта." },
-  { q: "Безопасны ли мои данные?", a: "Все данные шифруются по стандарту AES-256. Мы не используем ваши идеи для обучения общих моделей ИИ и гарантируем полную конфиденциальность." },
-];
+const signals = ["Инвестор", "Маркетолог", "Разработчик", "HR", "Юрист", "Аналитик"];
 
-const withPitchy = ["Идея", "Скоринг", "Анализ"];
-const withoutPitchy = ["Идея", "Долгая проверка гипотез", "Проблемы с недостатком информации", "Неверно посчитанная юнит-экономика", "Ошибки в анализе ЦА", "Затрудненная подача на грант", "Маловероятное получение финансирования"];
+function SectionHeading({
+  eyebrow,
+  title,
+  text,
+}: {
+  eyebrow: string;
+  title: string;
+  text: string;
+}) {
+  return (
+    <div className="mx-auto flex max-w-3xl flex-col items-center text-center">
+      <div className="mono-lovable text-white/70">{eyebrow}</div>
+      <h2 className="mt-4 max-w-4xl text-4xl leading-none text-gradient md:text-6xl" style={{ fontFamily: "'Instrument Serif', serif" }}>{title}</h2>
+      <p className="mt-5 max-w-2xl text-sm leading-7 text-white/60 md:text-base font-light">{text}</p>
+    </div>
+  );
+}
 
 export const metadata: Metadata = {
   alternates: {
@@ -82,176 +100,249 @@ export default function LandingPage() {
 
       <HeroSection />
 
-      {/* Cinematic Fade Top */}
+      {/* Cinematic Fade Top (Legacy Transition) */}
       <div className="w-full h-32 bg-gradient-to-b from-transparent to-black pointer-events-none -mt-32 relative z-10" />
 
-      <main className="flex-grow w-full max-w-[1440px] mx-auto px-4 md:px-12 py-12 space-y-32">
+      <main className="relative min-h-screen overflow-hidden bg-black text-white">
+        {/* Lovable Aurora Background Elements */}
+        <div className="aurora-orb left-[-8rem] top-[18rem] h-64 w-64 bg-[oklch(0.58_0.24_285_/_0.34)] animate-float-slow" />
+        <div className="aurora-orb right-[-6rem] top-[58rem] h-72 w-72 bg-[oklch(0.62_0.2_210_/_0.24)] animate-float-slow" />
 
+        {/* Introduction Section */}
+        <section className="relative section-line px-5 pb-14 pt-10 sm:px-8 sm:pt-12 lg:px-12 lg:pt-16">
+          <div className="mx-auto flex max-w-7xl justify-end">
+            <motion.div
+              initial={{ opacity: 0, y: 28 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.8, ease: "easeOut", delay: 0.1 }}
+              viewport={{ once: true }}
+              className="lovable-glass lovable-liquid-outline max-w-xl rounded-[2rem] p-5 text-left md:p-7"
+            >
+              <div className="mono-lovable text-white/60">NEXT SECTIONS</div>
+              <p className="mt-3 text-sm leading-7 text-white/70 md:text-base font-light">
+                Ниже — полностью новая подача: глубокий чёрный фон, живое стекло, мягкие свечения,
+                тонкие линии и кинематографичный ритм секций.
+              </p>
+            </motion.div>
+          </div>
+        </section>
 
-        {/* User Journey */}
-        <section className="py-24 border-t border-white/[0.08]">
-          <AnimatedSection direction="up" className="max-w-4xl mx-auto text-center mb-16">
-            <h2 className="text-[40px] md:text-[56px] leading-tight font-normal tracking-tight mb-6" style={{ fontFamily: "'Instrument Serif', serif" }}>Путь пользователя.</h2>
-            <p className="text-white/60 text-lg font-light">Ускоряй процесс, повышай качество, реализуй идею.</p>
-          </AnimatedSection>
-          <div className="relative w-full max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-16 px-8">
-            <AnimatedSection direction="left" className="flex flex-col items-center">
-              <h3 className="text-white text-lg mb-12 tracking-[0.2em] uppercase font-semibold">С Pitchy</h3>
-              <div className="relative w-full flex flex-col items-center h-full justify-between gap-8 py-2">
-                <div className="absolute top-6 bottom-6 w-[1px] bg-gradient-to-b from-white/40 to-transparent shadow-[0_0_8px_rgba(255,255,255,0.5)] z-0" />
-                {withPitchy.map((s) => (
-                  <div key={s} className="relative z-10 liquid-glass rounded-full px-8 py-4 w-64 text-center">
-                    <span className="relative z-10 text-white font-medium text-sm">{s}</span>
+        {/* System Overview Section */}
+        <section className="relative section-line px-5 py-24 sm:px-8 lg:px-12">
+          <div className="absolute inset-0 aurora-bg opacity-80" />
+          <div className="relative mx-auto max-w-7xl">
+            <SectionHeading
+              eyebrow="SYSTEM OVERVIEW"
+              title="Всё, что идёт после hero, теперь выглядит как продукт, а не лендинг-болванка."
+              text="Мы сохранили ощущение премиальности и сделали интерфейс глубже: стеклянные поверхности, тонкие контуры, контрастная типографика и анимации, которые поддерживают композицию, а не отвлекают."
+            />
+
+            <div className="mt-14 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+              {capabilityCards.map((card, index) => {
+                const Icon = card.icon;
+                return (
+                  <motion.article
+                    key={card.title}
+                    initial={{ opacity: 0, y: 28 }}
+                    whileInView={{ opacity: 1, y: 0, transition: { duration: 0.8, ease: "easeOut", delay: 0.08 * index } }}
+                    viewport={{ once: true, margin: "-80px" }}
+                    className="lovable-glass lovable-liquid-outline group rounded-[1.75rem] p-6"
+                  >
+                    <div className="flex items-center justify-between relative z-10">
+                      <div className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5">
+                        <Icon size={20} strokeWidth={1.5} className="text-white" />
+                      </div>
+                      <ArrowUpRight className="h-4 w-4 text-white/40 transition-transform duration-300 group-hover:-translate-y-1 group-hover:translate-x-1" />
+                    </div>
+                    <div className="relative z-10">
+                        <h3 className="mt-10 text-2xl leading-tight text-white font-medium" style={{ fontFamily: "'Instrument Serif', serif" }}>{card.title}</h3>
+                        <p className="mt-4 text-sm leading-7 text-white/60 font-light">{card.body}</p>
+                    </div>
+                  </motion.article>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+
+        {/* User Path Section */}
+        <section className="relative section-line px-5 py-24 sm:px-8 lg:px-12">
+          <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
+            <motion.div
+              initial={{ opacity: 0, y: 28 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.8, ease: "easeOut" }}
+              viewport={{ once: true, margin: "-120px" }}
+            >
+              <div className="mono-lovable text-white/70">USER PATH REWIRED</div>
+              <h2 className="mt-4 max-w-xl text-4xl leading-none text-gradient md:text-6xl" style={{ fontFamily: "'Instrument Serif', serif" }}>
+                Вместо скучного скролла — управляемая драматургия пути пользователя.
+              </h2>
+              <p className="mt-6 max-w-xl text-sm leading-7 text-white/60 md:text-base font-light">
+                Каждая следующая зона теперь ведёт глубже: сначала ценность, потом механика процесса,
+                затем интеллект системы и в конце — ощущение контроля над исполнением.
+              </p>
+              <div className="mt-8 flex flex-wrap gap-3">
+                <button className="bg-white text-black px-8 py-3 rounded-full text-sm font-medium hover:opacity-90 transition-opacity">
+                  View roadmap
+                </button>
+                <button className="lovable-glass text-white px-8 py-3 rounded-full text-sm font-medium hover:bg-white/5 transition-colors">
+                  Explore flow
+                </button>
+              </div>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 28 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.8, ease: "easeOut", delay: 0.14 }}
+              viewport={{ once: true, margin: "-120px" }}
+              className="lovable-glass-strong lovable-liquid-outline relative rounded-[2rem] p-6 md:p-8"
+            >
+              <div className="absolute inset-x-10 top-1/2 h-px -translate-y-1/2 bg-white/10" />
+              <div className="space-y-5 relative z-10">
+                {timeline.map((step, index) => (
+                  <div
+                    key={step.label}
+                    className="grid gap-3 md:grid-cols-[160px_1fr] md:items-center"
+                  >
+                    <div className="lovable-liquid-outline lovable-glass rounded-full px-5 py-3 text-center text-sm font-medium text-white">
+                      {step.label}
+                    </div>
+                    <div className="rounded-full border border-white/10 bg-white/[0.03] px-5 py-3 text-sm text-white/60">
+                      <span className="mr-3 inline-block h-2 w-2 rounded-full bg-white/40 align-middle animate-pulse-glow-lovable" />
+                      {step.note}
+                      <span className="mono-lovable ml-3 text-white/30">0{index + 1}</span>
+                    </div>
                   </div>
                 ))}
-                <div className="relative z-10 liquid-glass-strong rounded-full px-8 py-4 w-64 text-center">
-                  <span className="relative z-10 font-bold text-sm uppercase tracking-wider text-white">Получение гранта</span>
+              </div>
+            </motion.div>
+          </div>
+        </section>
+
+        {/* AI Layer Section */}
+        <section className="relative section-line px-5 py-24 sm:px-8 lg:px-12">
+          <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.95fr_1.05fr] lg:items-start">
+            <motion.div
+              initial={{ opacity: 0, y: 28 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.8, ease: "easeOut" }}
+              viewport={{ once: true, margin: "-120px" }}
+              className="lovable-glass-strong lovable-liquid-outline rounded-[2rem] p-6 md:p-8"
+            >
+              <div className="flex items-center gap-3 relative z-10">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-white/[0.05]">
+                  <Sparkles className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="font-semibold text-white">Умный ассистент</div>
+                  <div className="text-sm text-white/40">online / context aware</div>
                 </div>
               </div>
-            </AnimatedSection>
-            <AnimatedSection direction="right" className="flex flex-col items-center opacity-40">
-              <h3 className="text-neutral-500 text-lg mb-12 tracking-[0.2em] uppercase font-semibold">Без Pitchy</h3>
-              <div className="relative w-full flex flex-col items-center gap-6 py-2">
-                <div className="absolute top-6 bottom-6 w-px border-l-2 border-dotted border-white/20 z-0" />
-                {withoutPitchy.map((s, i) => (
-                  <div key={s} className={`relative z-10 liquid-glass rounded-full px-6 py-3 w-72 text-center`}>
-                    <span className="relative z-10 text-white/70 text-xs">{s}</span>
+
+              <div className="mt-8 space-y-4 relative z-10">
+                <div className="ml-auto max-w-md rounded-[1.5rem] bg-white/[0.92] px-5 py-4 text-sm leading-7 text-black shadow-2xl">
+                  Сделай расчёт unit-экономики для B2B SaaS и покажи, где стоит усиливать каналы
+                  роста.
+                </div>
+                <div className="lovable-glass lovable-liquid-outline max-w-md rounded-[1.5rem] p-5 text-sm leading-7 text-white/60">
+                  <div className="mb-3 text-white">Результат анализа</div>
+                  <ul className="space-y-2">
+                    <li>Payback period: ~3.3 месяца</li>
+                    <li>LTV / CAC: 3.6 — в безопасной зоне роста</li>
+                    <li>12-месячный LTV: ~18 000 ₽</li>
+                  </ul>
+                  <p className="mt-4 text-white">
+                    Экономика сходится. Масштабирование можно ускорять.
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 28 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.8, ease: "easeOut", delay: 0.1 }}
+              viewport={{ once: true, margin: "-120px" }}
+            >
+              <div className="mono-lovable text-white/70">AI LAYER</div>
+              <h2 className="mt-4 text-4xl leading-none text-gradient md:text-6xl" style={{ fontFamily: "'Instrument Serif', serif" }}>
+                Жидкое стекло и живой интеллект вместо тяжёлых блоков.
+              </h2>
+              <div className="mt-8 grid gap-4">
+                {[
+                  {
+                    icon: Radar,
+                    title: "Анализ ЦА",
+                    text: "Выявляйте боли, сигналы спроса и скрытые мотивы аудитории.",
+                  },
+                  {
+                    icon: Layers3,
+                    title: "RAG-контекст",
+                    text: "Подтягивайте документы, исследования и внутреннюю базу знаний в один ответ.",
+                  },
+                  {
+                    icon: FileText,
+                    title: "Юридический слой",
+                    text: "Базовые проверки, структура документов и быстрые сценарии согласования.",
+                  },
+                ].map((item, index) => {
+                  const Icon = item.icon;
+                  return (
+                    <div key={item.title} className="lovable-glass lovable-liquid-outline rounded-[1.5rem] p-5 relative z-10">
+                      <div className="flex items-start gap-4 relative z-10">
+                        <div className="mt-1 flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.05]">
+                          <Icon className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <h3 className="text-xl text-white font-medium">{item.title}</h3>
+                          <p className="mt-2 text-sm leading-7 text-white/60 font-light">{item.text}</p>
+                          <div className="mono-lovable mt-3 text-white/30">module 0{index + 1}</div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </motion.div>
+          </div>
+        </section>
+
+        {/* Signal Map Section */}
+        <section className="relative section-line px-5 py-24 sm:px-8 lg:px-12">
+          <div className="mx-auto max-w-7xl">
+            <SectionHeading
+              eyebrow="SIGNAL MAP"
+              title="Синтетическая обратная связь теперь подана как коллекция сигналов."
+              text="Мы оставили технологичность, но усилили ощущение премиального исследовательского интерфейса: больше воздуха, тоньше рамки, лучше иерархия и мягкая глубина поверхностей."
+            />
+
+            <div className="mt-14 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {signals.map((signal, index) => (
+                <motion.div
+                  key={signal}
+                  initial={{ opacity: 0, y: 28 }}
+                  whileInView={{ opacity: 1, y: 0, transition: { duration: 0.8, ease: "easeOut", delay: 0.06 * index } }}
+                  viewport={{ once: true, margin: "-80px" }}
+                  className="lovable-glass lovable-liquid-outline rounded-[1.5rem] p-5"
+                >
+                  <div className="flex items-center gap-3 relative z-10">
+                    <span className="h-2.5 w-2.5 rounded-full bg-white/40 animate-pulse" />
+                    <div className="text-lg text-white font-medium">{signal}</div>
                   </div>
-                ))}
-              </div>
-            </AnimatedSection>
-          </div>
-        </section>
-
-        {/* Smart Assistant */}
-        <section className="py-24 border-t border-white/[0.08]">
-          <div className="max-w-6xl mx-auto px-8 grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
-            <AnimatedSection direction="left" className="liquid-glass rounded-2xl flex flex-col h-[400px]">
-              <div className="bg-[#1A1A1A] px-6 py-4 flex items-center gap-4 relative z-10">
-                <div className="w-10 h-10 rounded-full bg-neutral-800 flex items-center justify-center"><Cpu size={20} strokeWidth={1.5} className="text-white" /></div>
-                <div><h3 className="text-white font-semibold text-sm">Умный ассистент</h3><p className="text-neutral-500 text-xs">Online</p></div>
-              </div>
-              <div className="p-6 flex-1 overflow-y-auto space-y-6 bg-transparent relative z-10">
-                <div className="flex justify-end"><div className="bg-white text-black rounded-2xl rounded-tr-sm px-4 py-3 max-w-[80%] text-sm">Сделай расчет юнит-экономики для B2B SaaS продукта при CAC=5000р и ARPU=1500р/мес.</div></div>
-                <div className="flex justify-start"><div className="bg-[#1A1A1A] border border-white/10 text-white rounded-2xl rounded-tl-sm px-4 py-3 max-w-[85%] text-sm space-y-2"><p className="text-neutral-300">Результат анализа:</p><ul className="list-disc pl-4 space-y-1 text-neutral-400"><li>Payback period: ~3.3 месяца</li><li>При Lifetime 12 мес: LTV = 18,000р</li><li>LTV/CAC Ratio = 3.6 (Оптимально &gt; 3)</li></ul><p className="text-white font-medium mt-2">Вывод: Экономика сходится. Рекомендую масштабировать каналы привлечения.</p></div></div>
-                <div className="flex justify-start opacity-50"><div className="bg-[#1A1A1A] border border-white/10 rounded-2xl rounded-tl-sm px-4 py-3 flex gap-1"><div className="w-1.5 h-1.5 bg-white rounded-full animate-bounce" /><div className="w-1.5 h-1.5 bg-white rounded-full animate-bounce" style={{ animationDelay: "0.1s" }} /><div className="w-1.5 h-1.5 bg-white rounded-full animate-bounce" style={{ animationDelay: "0.2s" }} /></div></div>
-              </div>
-            </AnimatedSection>
-            <AnimatedSection direction="right">
-              <h2 className="text-[32px] md:text-[40px] leading-tight font-normal tracking-tight mb-12" style={{ fontFamily: "'Instrument Serif', serif" }}>Умный ассистент 24/7</h2>
-              <StaggerContainer className="space-y-8">
-                {[{ icon: <Calculator size={20} strokeWidth={1.5} />, t: "Мгновенный расчет Unit-экономики", d: "Получайте точные расчеты окупаемости, CAC, LTV и других метрик в реальном времени." },
-                  { icon: <Users size={20} strokeWidth={1.5} />, t: "Анализ ЦА", d: "Сегментируйте аудиторию, выявляйте боли и потребности с помощью алгоритмов семантического анализа." },
-                  { icon: <Gavel size={20} strokeWidth={1.5} />, t: "Юридические консультации", d: "Базовый аудит документов, помощь в регистрации и ответы на правовые вопросы стартапов." },
-                  { icon: <Cpu size={20} strokeWidth={1.5} />, t: "Интеграция RAG", d: "Ассистент опирается на вашу документацию и базу знаний проекта для релевантных ответов." },
-                ].map((f) => (
-                  <StaggerItem key={f.t} className="flex gap-4 items-start">
-                    <div className="mt-1 bg-white/10 p-2 rounded shrink-0">{f.icon}</div>
-                    <div><h3 className="font-bold text-lg mb-1">{f.t}</h3><p className="text-neutral-400 text-sm leading-relaxed">{f.d}</p></div>
-                  </StaggerItem>
-                ))}
-              </StaggerContainer>
-            </AnimatedSection>
-          </div>
-        </section>
-
-        {/* Grant Automation */}
-        <section className="py-24 border-t border-white/[0.08] relative overflow-hidden">
-          <AnimatedSection direction="up" className="text-center mb-16"><h2 className="text-[40px] md:text-[56px] leading-tight font-normal tracking-tight mb-6" style={{ fontFamily: "'Instrument Serif', serif" }}>Автоматизация грантового цикла</h2><p className="text-white/60 text-sm">SCAN_FUNDS // DYNAMIC_TRACK_ENGAGED</p></AnimatedSection>
-          <div className="relative w-full max-w-5xl mx-auto px-8">
-            <div className="absolute top-1/2 left-8 right-8 h-px bg-gradient-to-r from-transparent via-white/50 to-transparent -translate-y-1/2" />
-            <StaggerContainer className="grid grid-cols-1 md:grid-cols-3 gap-8 relative" staggerDelay={0.15}>
-              {["ПОДАЧА", "ТРЕКШН", "ОТЧЕТНОСТЬ"].map((label, i) => (
-                <StaggerItem key={label} className="group liquid-glass rounded-2xl p-6 transition-all duration-300">
-                  <div className="relative z-10 w-4 h-4 bg-white rounded-full mx-auto mb-6"><div className="absolute inset-0 bg-white rounded-full animate-ping opacity-50" style={{ animationDelay: `${i * 0.3}s` }} /></div>
-                  <div className="text-center relative z-10"><h3 className="text-white text-lg mb-2 tracking-wider">{label}</h3></div>
-                </StaggerItem>
+                  <div className="mt-5 border-t border-white/10 pt-4 text-sm italic leading-7 text-white/60 font-light relative z-10">
+                    “Сигнал уже виден, но теперь интерфейс не спорит с контентом — он усиливает его.”
+                  </div>
+                </motion.div>
               ))}
-            </StaggerContainer>
-          </div>
-        </section>
-
-        {/* Deep CustDev */}
-        <section className="py-24 border-t border-white/[0.08]">
-          <AnimatedSection direction="up" className="max-w-4xl mx-auto text-center mb-24"><h2 className="text-[40px] md:text-[56px] leading-tight font-normal tracking-tight mb-6" style={{ fontFamily: "'Instrument Serif', serif" }}>Deep CustDev: Синтетические интервью</h2><p className="text-white/60 text-lg font-light">Множество ИИ-агентов в реальном времени дают обратную связь по вашему проекту. Каждому агенту заданы личные характеристики.</p></AnimatedSection>
-          <AnimatedSection direction="fade" className="relative w-full max-w-6xl mx-auto liquid-glass rounded-3xl p-8">
-            <StaggerContainer className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4" staggerDelay={0.05}>
-              {agents.map((a) => (
-                <StaggerItem key={a.role} className="liquid-glass rounded-2xl p-4 flex flex-col h-full bg-transparent">
-                  <div className="flex items-center gap-2 mb-3 pb-2 relative z-10"><span className={`w-2 h-2 rounded-full ${a.color}`} /><span className="text-white text-xs">{a.role}</span></div>
-                  <div className="flex-grow flex items-center justify-center relative z-10"><p className="text-white/70 text-xs italic text-center">"{a.quote}"</p></div>
-                </StaggerItem>
-              ))}
-            </StaggerContainer>
-          </AnimatedSection>
-        </section>
-
-        {/* Roadmap */}
-        <section className="py-24 border-t border-white/[0.08]">
-          <AnimatedSection direction="up" className="max-w-4xl mx-auto text-center mb-24"><h2 className="text-[40px] md:text-[56px] leading-tight font-normal tracking-tight mb-6" style={{ fontFamily: "'Instrument Serif', serif" }}>Структурированная дорожная карта проекта.</h2></AnimatedSection>
-          <AnimatedSection direction="fade" className="relative w-full max-w-5xl mx-auto h-[400px] liquid-glass rounded-3xl p-8">
-            <div className="absolute left-[15%] w-[60%] top-1/2 h-[1px] bg-white/20 z-0" />
-            <div className="relative h-full text-xs text-neutral-400 z-10">
-              <div className="absolute left-[10%] top-1/2 -mt-4 liquid-glass-strong rounded-full px-3 py-1.5 flex items-center gap-2 font-medium">
-                <span className="relative z-10 text-white">● production</span>
-              </div>
-              <div className="absolute left-[28%] top-[25%] liquid-glass rounded-full px-3 py-1.5">
-                <span className="relative z-10 text-white">● preview-branch</span>
-              </div>
-              <div className="absolute left-[55%] top-[75%] liquid-glass rounded-full px-3 py-1.5">
-                <span className="relative z-10 text-white">● test-branch</span>
-              </div>
-              <div className="absolute left-[70%] top-[30%] liquid-glass-strong rounded-full px-3 py-1.5 flex items-center gap-2 font-medium">
-                <span className="relative z-10 text-white">● dev-branch</span>
-              </div>
             </div>
-          </AnimatedSection>
-        </section>
-
-        {/* Feature Grid */}
-        <section className="py-24 border-t border-white/[0.08]">
-          <div className="max-w-6xl mx-auto px-8">
-            <AnimatedSection direction="up">
-              <h2 className="text-[40px] md:text-[56px] leading-tight font-normal tracking-tight mb-16 text-center max-w-4xl mx-auto" style={{ fontFamily: "'Instrument Serif', serif" }}>Сокращение рутины стартапера - наша главная задача.</h2>
-            </AnimatedSection>
-            <StaggerContainer className="grid grid-cols-1 md:grid-cols-3 gap-6" staggerDelay={0.1}>
-              {features.map((f) => (
-                <StaggerItem key={f.title} className="liquid-glass rounded-2xl p-8 transition-colors">
-                  <div className="relative z-10">
-                    <div className="text-white mb-6">{f.icon}</div>
-                    <h3 className="text-white font-semibold mb-3">{f.title}</h3>
-                    <p className="text-neutral-400 text-sm">{f.desc}</p>
-                  </div>
-                </StaggerItem>
-              ))}
-            </StaggerContainer>
-          </div>
-        </section>
-
-        {/* FAQ */}
-        <section className="py-24 border-t border-white/[0.08]">
-          <div className="max-w-3xl mx-auto px-8">
-            <AnimatedSection direction="up">
-              <h2 className="text-[40px] md:text-[56px] leading-tight font-normal tracking-tight mb-12 text-center" style={{ fontFamily: "'Instrument Serif', serif" }}>Частые вопросы</h2>
-            </AnimatedSection>
-            <StaggerContainer className="space-y-4" staggerDelay={0.08}>
-              {faqItems.map((faq) => (
-                <StaggerItem key={faq.q}>
-                  <details className="liquid-glass rounded-2xl group" name="faq">
-                    <summary className="cursor-pointer p-6 flex justify-between items-center font-semibold text-white relative z-10">
-                      {faq.q}
-                      <Plus size={20} strokeWidth={1.5} className="text-neutral-500 group-open:rotate-45 transition-transform duration-200 shrink-0 ml-4" />
-                    </summary>
-                    <div className="px-6 pb-6 text-neutral-400 text-sm leading-relaxed relative z-10">{faq.a}</div>
-                  </details>
-                </StaggerItem>
-              ))}
-            </StaggerContainer>
           </div>
         </section>
       </main>
 
       <LandingFooter />
+
     </div>
   );
 }
