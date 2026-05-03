@@ -4,6 +4,7 @@ import { Calculator, Users, Gavel, Cpu, PieChart, MessageSquare, Route, Package,
 import { LandingNavBar } from "@/components/landing/LandingNavBar";
 import { LandingFooter } from "@/components/landing/LandingFooter";
 import { AnimatedSection, StaggerContainer, StaggerItem } from "@/components/landing/AnimatedSection";
+import { HeroSection } from "@/components/sections/HeroSection";
 
 const features = [
   { icon: <Calculator size={24} strokeWidth={1.5} />, title: "Расчет Юнит-экономики.", desc: "Часто проекты рушатся именно из-за ошибок на этом этапе." },
@@ -78,23 +79,11 @@ export default function LandingPage() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteSchema) }}
       />
-      <LandingNavBar />
+
+      <HeroSection />
 
       <main className="flex-grow w-full max-w-[1440px] mx-auto px-4 md:px-12 py-12 space-y-32">
-        {/* Hero */}
-        <section className="relative w-full min-h-[80vh] flex flex-col justify-center items-center text-center">
-          <div className="absolute inset-0 z-0 flex items-center justify-center overflow-hidden pointer-events-none" style={{ maskImage: "radial-gradient(circle, white 20%, transparent 80%)", WebkitMaskImage: "radial-gradient(circle, white 20%, transparent 80%)" }}>
-            <img alt="AI Visualization" className="w-full h-full object-cover opacity-60 mix-blend-screen" src="https://lh3.googleusercontent.com/aida/ADBb0ugz33rXftnCLjTsUMl8LieoiTQdeMLUCU7M5GpeuBGF4JPwBrcGMtexVFKxgb-uElgA-nqWYey3hZxWtJBEff6klejL4atIxifq0FBMNXuM74eZDMmQqzgu4j42peoITX-t5l9ITR5mfn3ICLRW5205DA5nZJBKUqr66UKWvM2gvw5qETUi-BJPcBOmw7tUOVinekEq3e01cgMNe56vni6BSl4Ze0qjvn7cEYz3F1u_2ofdZe2H2lIsvKg" />
-          </div>
-          <AnimatedSection direction="fade" duration={0.9} className="relative z-10 bg-black/40 backdrop-blur-[2px] p-8 rounded-2xl">
-            <h1 className="font-display text-[48px] md:text-[80px] leading-tight mb-6 tracking-tight font-semibold drop-shadow-lg">Экосистема для бизнеса</h1>
-            <p className="text-lg md:text-xl text-neutral-300 max-w-2xl mb-12 mx-auto drop-shadow-md">Поможем с Юнит-экономикой, анализом ЦА, проведением Custdev-интервью и получением грантов</p>
-            <div className="flex items-center justify-center gap-4">
-              <Link href="/signup" className="bg-white text-black font-mono-label text-sm px-8 py-3 rounded-full hover:bg-gray-200 transition-colors shadow-lg">Get started</Link>
-              <Link href="/about" className="bg-black/50 backdrop-blur-md border border-white/20 text-white font-mono-label text-sm px-8 py-3 rounded-full hover:bg-white/10 transition-colors shadow-lg">Read the docs</Link>
-            </div>
-          </AnimatedSection>
-        </section>
+
 
         {/* User Journey */}
         <section className="py-24 border-t border-white/[0.08]">
