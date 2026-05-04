@@ -3,8 +3,8 @@ grafana.pitchy.pro {
     reverse_proxy grafana:3000
 }
 
-# Основной сайт Pitchy.pro
-pitchy.pro {
+# Основной сайт Pitchy.pro и Dev-стенд
+pitchy.pro, dev.pitchy.pro {
     # Ограничение доступа к метрикам (только для локальных запросов)
     handle /metrics {
         @external not remote_ip private_ranges 127.0.0.1/8 ::1
