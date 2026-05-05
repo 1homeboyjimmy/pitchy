@@ -10,6 +10,7 @@ import { motion } from "framer-motion";
 import { LandingFooter } from "@/components/landing/LandingFooter";
 import { HeroSection } from "@/components/sections/HeroSection";
 import { TopNavBar } from "@/components/shared/TopNavBar";
+import { useAuth } from "@/lib/hooks/useAuth";
 
 const organizationSchema = {
   "@context": "https://schema.org",
@@ -42,6 +43,8 @@ const SectionHeading = ({ eyebrow, title, text, centered = false }: { eyebrow: s
 );
 
 export default function LandingPage() {
+  const { isAuthenticated } = useAuth();
+  const ctaHref = isAuthenticated ? "/dashboard" : "/signup";
   return (
     <div className="antialiased min-h-screen flex flex-col overflow-x-hidden bg-black text-white selection:bg-white/10">
       <script
@@ -99,18 +102,22 @@ export default function LandingPage() {
                   whileInView={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.6, delay: index * 0.1 }}
                   viewport={{ once: true }}
-                  className="lovable-glass rounded-[2rem] p-8 group hover:bg-white/[0.05] transition-all"
                 >
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.05] mb-8">
-                    <item.icon className="h-5 w-5 text-white/70" />
-                  </div>
-                  <h3 className="text-xl font-medium text-white mb-4 pr-6 leading-tight relative">
-                    {item.title}
-                    <ArrowUpRight className="absolute top-0 right-0 h-4 w-4 opacity-20 group-hover:opacity-100 transition-opacity" />
-                  </h3>
-                  <p className="text-sm leading-relaxed text-white/40 font-light">
-                    {item.text}
-                  </p>
+                  <Link
+                    href={ctaHref}
+                    className="block lovable-glass rounded-[2rem] p-8 group hover:bg-white/[0.05] hover:border-white/20 transition-all cursor-pointer h-full"
+                  >
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.05] mb-8">
+                      <item.icon className="h-5 w-5 text-white/70" />
+                    </div>
+                    <h3 className="text-xl font-medium text-white mb-4 pr-6 leading-tight relative">
+                      {item.title}
+                      <ArrowUpRight className="absolute top-0 right-0 h-4 w-4 opacity-20 group-hover:opacity-100 transition-opacity" />
+                    </h3>
+                    <p className="text-sm leading-relaxed text-white/40 font-light">
+                      {item.text}
+                    </p>
+                  </Link>
                 </motion.div>
               ))}
             </div>

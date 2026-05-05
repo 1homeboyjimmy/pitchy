@@ -3,8 +3,10 @@
 import { useEffect, useRef } from "react";
 import { Zap } from "lucide-react";
 import Link from "next/link";
+import { useAuth } from "@/lib/hooks/useAuth";
 
 export function HeroSection() {
+    const { isAuthenticated } = useAuth();
     const videoRef = useRef<HTMLVideoElement>(null);
     const fadingOutRef = useRef(false);
 
@@ -92,9 +94,9 @@ export function HeroSection() {
                 </p>
 
                 <div className="flex justify-center w-full">
-                    <Link href="/signup">
+                    <Link href={isAuthenticated ? "/dashboard" : "/signup"}>
                         <button className="liquid-glass-strong text-white px-10 py-4 rounded-full text-lg font-medium hover:scale-105 transition-transform flex items-center gap-3">
-                            <span className="relative z-10">Попробовать</span>
+                            <span className="relative z-10">Протестировать идею</span>
                             <Zap className="w-5 h-5 shrink-0 text-white fill-white relative z-10" />
                         </button>
                     </Link>

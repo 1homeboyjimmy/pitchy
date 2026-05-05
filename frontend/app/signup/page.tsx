@@ -269,7 +269,7 @@ function SignUpContent() {
               </span>
             ) : (
               <>
-                <span>Запросить доступ</span>
+                <span>Зарегистрироваться</span>
                 <ArrowRight size={18} />
               </>
             )}

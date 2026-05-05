@@ -49,10 +49,10 @@ export const ReadinessNode = memo(function ReadinessNode({ data }: NodeProps) {
       className="flex flex-col items-center group"
     >
         <div className="absolute inset-0 bg-white/5 blur-xl group-hover:bg-white/10 transition-all duration-700 rounded-full pointer-events-none"></div>
-        <div className="relative bg-[#111111] border-2 border-white/20 p-8 flex flex-col items-center justify-center w-48 h-48 border-dashed group-hover:border-white/40 transition-colors">
+        <div className="relative bg-[#111111] border-2 border-white/20 rounded-full p-8 flex flex-col items-center justify-center w-48 h-48 border-dashed group-hover:border-white/40 transition-colors">
             <span className="font-display text-white text-5xl font-black tracking-tighter">{pct}</span>
             <span className="font-mono-label text-[11px] text-neutral-500 uppercase tracking-widest mt-2">{d.label}</span>
-            <div className="absolute -bottom-2.5 bg-white text-black px-2.5 py-0.5 text-[9px] font-bold font-mono-label uppercase">КОРНЕВОЙ УЗЕЛ</div>
+            <div className="absolute -bottom-2.5 bg-white text-black px-3 py-1 rounded-full text-[9px] font-bold font-mono-label uppercase">КОРНЕВОЙ УЗЕЛ</div>
         </div>
       <Handle type="source" position={Position.Bottom} className="!bg-white !w-2 !h-2 !border-none opacity-0" />
     </motion.div>
@@ -82,11 +82,11 @@ export const CategoryNode = memo(function CategoryNode({ data }: NodeProps) {
     <motion.div
       initial={{ scale: 0.9, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
-      className={`relative rounded-none cursor-pointer flex flex-col items-center group`}
+      className={`relative cursor-pointer flex flex-col items-center group`}
     >
       <Handle type="target" position={Position.Top} className="!bg-white/20 !w-2 !h-2 !border-none opacity-0" />
 
-      <div className={`bg-[#111111] border ${isCompleted ? 'border-white/30 shadow-[0_0_30px_rgba(255,255,255,0.05)] bg-[#161616]' : 'border-white/10 hover:border-white/40'} p-6 w-64 transition-all duration-300`}>
+      <div className={`bg-[#111111] border rounded-2xl ${isCompleted ? 'border-white/30 shadow-[0_0_30px_rgba(255,255,255,0.05)] bg-[#161616]' : 'border-white/10 hover:border-white/40'} p-6 w-64 transition-all duration-300`}>
         <div className="flex justify-between items-start mb-4">
             {icon}
             <span className="text-[10px] font-mono text-neutral-600 uppercase">CAT</span>
@@ -163,11 +163,11 @@ export const TaskNode = memo(function TaskNode({ data }: NodeProps) {
     <motion.div
       initial={{ scale: 0.9, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
-      className={`relative rounded-none cursor-pointer flex flex-col items-center group`}
+      className={`relative cursor-pointer flex flex-col items-center group`}
     >
       <Handle type="target" position={Position.Top} className="!bg-white/20 !w-1.5 !h-1.5 !border-none opacity-0" />
 
-      <div className={`bg-[#111111] border ${isActive ? 'border-white/50 bg-[#161616]' : (isCompleted ? 'border-white/30 shadow-[0_0_30px_rgba(255,255,255,0.05)] bg-[#161616]' : 'border-white/10 hover:border-white/40')} p-6 w-60 transition-all duration-300`}>
+      <div className={`bg-[#111111] border rounded-2xl ${isActive ? 'border-white/50 bg-[#161616]' : (isCompleted ? 'border-white/30 shadow-[0_0_30px_rgba(255,255,255,0.05)] bg-[#161616]' : 'border-white/10 hover:border-white/40')} p-6 w-60 transition-all duration-300`}>
         <div className="flex justify-between items-start mb-4">
             {icon}
             <span className="text-[10px] font-mono text-neutral-600 uppercase tracking-widest">{d.nodeType}</span>

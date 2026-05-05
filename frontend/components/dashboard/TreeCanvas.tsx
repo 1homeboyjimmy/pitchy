@@ -234,7 +234,7 @@ export function TreeCanvas({
   );
 
   return (
-    <div className="relative w-full h-full border border-white/10 bg-[#0A0A0A]">
+    <div className="relative w-full h-full border border-white/10 rounded-2xl bg-[#0A0A0A] overflow-hidden">
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -251,7 +251,7 @@ export function TreeCanvas({
       >
         <Background color="rgba(255,255,255,0.05)" gap={32} size={1} />
         <Controls
-          className="!bg-[#111111] !border-white/10 !rounded-none [&>button]:!bg-[#111111] [&>button]:!border-white/10 [&>button]:!text-white/50 [&>button:hover]:!bg-white/5"
+          className="!bg-[#111111] !border-white/10 !rounded-2xl overflow-hidden [&>button]:!bg-[#111111] [&>button]:!border-white/10 [&>button]:!text-white/50 [&>button:hover]:!bg-white/5"
           showInteractive={false}
         />
         <MiniMap
@@ -261,7 +261,7 @@ export function TreeCanvas({
             return "#222222";
           }}
           maskColor="rgba(10,10,10,0.8)"
-          className="!bg-[#111111] !border-white/10 !rounded-none"
+          className="!bg-[#111111] !border-white/10 !rounded-2xl overflow-hidden"
         />
       </ReactFlow>
     </div>
