@@ -9,12 +9,59 @@ import { AnalysisCard } from "@/components/dashboard/AnalysisCard";
 import dayjs from "dayjs";
 import "dayjs/locale/ru";
 import { ChatInput } from "@/components/chat/ChatInput";
-import { CollapsibleUserMessage } from "@/components/chat/CollapsibleUserMessage";
 import { PresentationDrawer } from "./PresentationDrawer";
 import { PresentationSlide, importContext } from "@/lib/api";
 import { ContextImportModal } from "@/components/chat/ContextImportModal";
 import { UpgradeModal } from "@/components/chat/UpgradeModal";
 import { stripThoughts } from "@/lib/utils";
+
+function CollapsibleUserBubble({ content }: { content: string }) {
+    const [isExpanded, setIsExpanded] = useState(false);
+    const [isOverflowing, setIsOverflowing] = useState(false);
+    const ref = useRef<HTMLDivElement>(null);
+    const COLLAPSED_PX = 144; // ~5 lines
+
+    useEffect(() => {
+        const el = ref.current;
+        if (!el) return;
+        const next = el.scrollHeight > COLLAPSED_PX + 4;
+        if (next !== isOverflowing) setIsOverflowing(next);
+    }, [content, isOverflowing]);
+
+    return (
+        <div className="lovable-glass-strong border border-white/5 p-6 rounded-[2rem] rounded-tr-none bg-gradient-to-br from-white/[0.04] to-transparent">
+            <motion.div
+                layout
+                initial={false}
+                animate={{ height: isOverflowing && !isExpanded ? COLLAPSED_PX : "auto" }}
+                transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+                className="relative overflow-hidden"
+            >
+                <div
+                    ref={ref}
+                    className="text-white/90 font-sans text-[16px] leading-[1.6] whitespace-pre-wrap selection:bg-white/20"
+                    style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
+                >
+                    {content}
+                </div>
+                {isOverflowing && !isExpanded && (
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-black/70 via-black/40 to-transparent" />
+                )}
+            </motion.div>
+            {isOverflowing && (
+                <div className="mt-3 flex justify-end">
+                    <button
+                        onClick={() => setIsExpanded((v) => !v)}
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] text-white/60 hover:text-white text-[10px] font-mono uppercase tracking-[0.2em] font-bold transition-all active:scale-95"
+                    >
+                        {isExpanded ? "Свернуть" : "Развернуть"}
+                        {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+}
 
 interface ExtendedChatMessage extends ChatMessageResponse {
     thoughts?: string;
@@ -128,27 +175,73 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
         }
     }, [session.messages, mergeMessages]);
 
+    // Pause autoscroll while user is interacting with scroll. Cleared once they
+    // come back to the bottom of the chat.
+    const [userScrolledUp, setUserScrolledUp] = useState(false);
+    const lastUserMessageKeyRef = useRef<string | null>(null);
+
+    useEffect(() => {
+        const container = scrollViewportRef.current;
+        if (!container) return;
+        const onScroll = () => {
+            const distance = container.scrollHeight - container.scrollTop - container.clientHeight;
+            setUserScrolledUp(distance > 80);
+        };
+        const onWheel = () => {
+            const distance = container.scrollHeight - container.scrollTop - container.clientHeight;
+            if (distance > 40) setUserScrolledUp(true);
+        };
+        container.addEventListener("scroll", onScroll, { passive: true });
+        container.addEventListener("wheel", onWheel, { passive: true });
+        container.addEventListener("touchmove", onWheel, { passive: true });
+        return () => {
+            container.removeEventListener("scroll", onScroll);
+            container.removeEventListener("wheel", onWheel);
+            container.removeEventListener("touchmove", onWheel);
+        };
+    }, []);
+
     const scrollToBottom = (force = false) => {
-        if (scrollViewportRef.current) {
-            const container = scrollViewportRef.current;
-            const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 150;
-            
-            if (isNearBottom || force) {
-                container.scrollTo({
-                    top: container.scrollHeight,
-                    behavior: "smooth"
-                });
-            }
+        if (!scrollViewportRef.current) return;
+        const container = scrollViewportRef.current;
+        const distance = container.scrollHeight - container.scrollTop - container.clientHeight;
+        if (force || (!userScrolledUp && distance < 200)) {
+            container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
         }
     };
 
+    // Anchor the most recently sent user message to the top of the viewport so
+    // the user can read it while the assistant is generating. Runs once per
+    // new user message; further auto-scrolling is governed by scrollToBottom.
     useEffect(() => {
-        if (messages.length > 0 && isLoading && displayedLength === 0) {
+        const last = messages[messages.length - 1];
+        if (!last) return;
+        const lastUser = [...messages].reverse().find((m) => m.role === "user");
+        if (!lastUser) return;
+        const key = (lastUser.client_id || lastUser.id)?.toString();
+        if (!key || lastUserMessageKeyRef.current === key) return;
+        lastUserMessageKeyRef.current = key;
+        setUserScrolledUp(false);
+        // wait one frame so the DOM has the new message rendered
+        requestAnimationFrame(() => {
+            const node = scrollViewportRef.current?.querySelector(
+                `[data-message-key="${key}"]`
+            ) as HTMLElement | null;
+            if (node && scrollViewportRef.current) {
+                const container = scrollViewportRef.current;
+                const top = node.offsetTop - 24; // small breathing room above
+                container.scrollTo({ top, behavior: "smooth" });
+            }
+        });
+    }, [messages]);
+
+    useEffect(() => {
+        // First time loading a session — drop to the latest reply
+        if (!isLoading && messages.length > 0 && lastUserMessageKeyRef.current === null) {
             scrollToBottom(true);
-        } else {
-            scrollToBottom();
         }
-    }, [messages.length, isLoading, session.analysis, displayedLength]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [session.id]);
 
     useEffect(() => {
         if (typingMessageId === null) return;
@@ -256,8 +349,18 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
 
             let assistantContent = "";
             let fullThoughtContent = "";
+            let statusTrace = "";
+            let lastStatusForTrace = "";
             const startTime = now.getTime();
             const { sendChatMessageStream, getChatSession } = await import("@/lib/api");
+
+            // Seed the thinking block immediately so the user sees something
+            // alive instead of the bare "planning…" status pill.
+            setMessages((prev) => prev.map((m) =>
+                m.client_id === assistantClientId
+                    ? { ...m, thoughts: "Pitchy анализирует ваш запрос…", thoughtExpanded: true }
+                    : m
+            ));
 
             try {
                 for await (const chunk of sendChatMessageStream(
@@ -273,17 +376,19 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
                 )) {
                     if (chunk.type === "thought") {
                         fullThoughtContent += chunk.content;
+                        const merged = (statusTrace ? statusTrace + "\n\n" : "") + fullThoughtContent;
                         setMessages(prev => prev.map(m =>
-                            m.client_id === assistantClientId ? { ...m, thoughts: fullThoughtContent, isResearch: true, thoughtExpanded: true } : m
+                            m.client_id === assistantClientId ? { ...m, thoughts: merged, isResearch: true, thoughtExpanded: true } : m
                         ));
                     } else if (chunk.type === "chunk") {
-                        let thoughtUpdate = {};
+                        let thoughtUpdate: Record<string, unknown> = {};
                         const isFirstChunk = !assistantContent;
-                        if (isFirstChunk && fullThoughtContent) {
+                        if (isFirstChunk) {
                             const duration = Math.round((Date.now() - startTime) / 1000);
-                            thoughtUpdate = { thoughtTime: duration, thoughtExpanded: false };
+                            const finalThoughts = fullThoughtContent || statusTrace || "";
+                            thoughtUpdate = { thoughtTime: duration, thoughtExpanded: false, thoughts: finalThoughts };
+                            setStreamingStatus(null);
                         }
-                        if (isFirstChunk) setStreamingStatus(null);
                         assistantContent += chunk.content;
                         setMessages((prev) =>
                             prev.map(m => m.client_id === assistantClientId ? { ...m, content: assistantContent, isResearch: isResearchMode || useDeepSearch, ...thoughtUpdate } : m)
@@ -298,6 +403,21 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
                     } else if (chunk.type === "status") {
                         setStreamingStatus(chunk.content);
                         setGenerationStatus(chunk.content);
+                        // Append status into the live thinking trace so the
+                        // user sees Pitchy's planning steps in the same block
+                        // instead of a bare status pill.
+                        if (chunk.content && chunk.content !== lastStatusForTrace) {
+                            lastStatusForTrace = chunk.content;
+                            statusTrace = (statusTrace ? statusTrace + "\n" : "") + "› " + chunk.content;
+                            const liveThoughts = fullThoughtContent
+                                ? statusTrace + "\n\n" + fullThoughtContent
+                                : statusTrace;
+                            setMessages((prev) => prev.map((m) =>
+                                m.client_id === assistantClientId
+                                    ? { ...m, thoughts: liveThoughts, isResearch: true, thoughtExpanded: true }
+                                    : m
+                            ));
+                        }
                     } else if (chunk.type === "metadata") {
                         setMessages((prev) =>
                             prev.map(m => m.client_id === assistantClientId ? { ...m, model_used: chunk.model } : m)
@@ -406,16 +526,12 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
                     transition={{ duration: 0.4 }}
                 >
                     {msg.role === "user" ? (
-                        <div className="mb-14 flex flex-col items-end">
+                        <div className="mb-14 flex flex-col items-end" data-message-key={messageKey}>
                             <div className="max-w-[85%] group">
                                 <div className="flex items-center justify-end gap-3 mb-3 px-2">
                                     <span className="font-mono text-[9px] text-white/20 uppercase tracking-[0.2em] font-bold group-hover:text-white/40 transition-colors">USER</span>
                                 </div>
-                                <div className="lovable-glass-strong border border-white/5 p-6 rounded-[2rem] rounded-tr-none bg-gradient-to-br from-white/[0.04] to-transparent">
-                                    <div className="text-white/90 font-sans text-[16px] leading-[1.6] whitespace-pre-wrap selection:bg-white/20">
-                                        {getDisplayContent(msg)}
-                                    </div>
-                                </div>
+                                <CollapsibleUserBubble content={getDisplayContent(msg)} />
                             </div>
                         </div>
                     ) : (
