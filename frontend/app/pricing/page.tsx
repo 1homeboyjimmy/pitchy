@@ -99,12 +99,12 @@ export default function PricingPage() {
             </span>
             <button
               aria-label="Toggle billing period"
-              className="relative w-16 h-8 rounded-full border border-white/10 bg-white/5 cursor-pointer p-1 transition-all hover:border-white/30"
+              className="relative w-16 h-8 rounded-full border border-white/10 bg-white/5 cursor-pointer transition-all hover:border-white/30"
               onClick={() => setIsYearly(!isYearly)}
             >
               <div
-                className={`w-6 h-6 rounded-full bg-white shadow-lg transition-all duration-500 ease-[0.16, 1, 0.3, 1] ${
-                  isYearly ? "translate-x-8" : "translate-x-0"
+                className={`absolute top-1/2 left-1 -translate-y-1/2 w-5 h-5 rounded-full bg-white shadow-lg transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                  isYearly ? "translate-x-[34px]" : "translate-x-0"
                 }`}
               />
             </button>

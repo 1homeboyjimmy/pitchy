@@ -103,39 +103,6 @@ export function ChatInput({
       </AnimatePresence>
 
       <div className="px-6">
-        <div className="flex flex-wrap gap-2 mb-4 ml-4">
-            <button 
-              onClick={onOpenImportModal}
-              className="lovable-glass-strong border border-white/5 px-4 py-1.5 rounded-full text-[10px] font-mono text-white/30 hover:text-white hover:bg-white/10 transition-all flex items-center gap-2 uppercase tracking-[0.2em] font-bold active:scale-95"
-            >
-              <Paperclip className="w-3.5 h-3.5" strokeWidth={1.5} /> Контекст
-            </button>
-            <button 
-              onClick={onToggleDeepSearch}
-              className={`lovable-glass-strong border px-4 py-1.5 rounded-full text-[10px] font-mono transition-all flex items-center gap-2 uppercase tracking-[0.2em] font-bold active:scale-95 ${
-                useDeepSearch ? "text-white border-white/20 bg-white/10" : "text-white/30 border-white/5 hover:text-white hover:bg-white/5"
-              }`}
-            >
-              <Database className="w-3.5 h-3.5" strokeWidth={1.5} /> Web-поиск
-            </button>
-            <button 
-              onClick={onToggleResearchMode}
-              className={`lovable-glass-strong border px-4 py-1.5 rounded-full text-[10px] font-mono transition-all flex items-center gap-2 uppercase tracking-[0.2em] font-bold active:scale-95 ${
-                isResearchMode ? "text-white border-white/20 bg-white/10 shadow-[0_0_15px_rgba(255,255,255,0.05)]" : "text-white/30 border-white/5 hover:text-white hover:bg-white/5"
-              }`}
-            >
-              <Activity className="w-3.5 h-3.5" strokeWidth={1.5} /> Deep Research
-            </button>
-            {!isPresentationMode && (
-                <button 
-                    onClick={onTogglePresentationMode}
-                    className="lovable-glass-strong border border-white/5 px-4 py-1.5 rounded-full text-[10px] font-mono text-white/30 hover:text-white hover:bg-white/10 transition-all flex items-center gap-2 uppercase tracking-[0.2em] font-bold active:scale-95"
-                >
-                    <FileText className="w-3.5 h-3.5" strokeWidth={1.5} /> Слайды
-                </button>
-            )}
-        </div>
-
         <div className="relative group">
             <div className="absolute -inset-[1px] bg-white/10 rounded-[2rem] blur-sm opacity-0 group-focus-within:opacity-100 transition duration-700 pointer-events-none"></div>
             <div className={`relative bg-black/40 backdrop-blur-3xl border rounded-[2rem] p-3 flex items-end gap-3 transition-all duration-500 shadow-2xl ${
@@ -174,6 +141,39 @@ export function ChatInput({
                 )}
             </div>
             </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2 mt-4 ml-4">
+            <button
+              onClick={onOpenImportModal}
+              className="lovable-glass-strong border border-white/5 px-4 py-1.5 rounded-full text-[10px] font-mono text-white/30 hover:text-white hover:bg-white/10 transition-all flex items-center gap-2 uppercase tracking-[0.2em] font-bold active:scale-95"
+            >
+              <Paperclip className="w-3.5 h-3.5" strokeWidth={1.5} /> Контекст
+            </button>
+            <button
+              onClick={onToggleDeepSearch}
+              className={`lovable-glass-strong border px-4 py-1.5 rounded-full text-[10px] font-mono transition-all flex items-center gap-2 uppercase tracking-[0.2em] font-bold active:scale-95 ${
+                useDeepSearch ? "text-white border-white/20 bg-white/10" : "text-white/30 border-white/5 hover:text-white hover:bg-white/5"
+              }`}
+            >
+              <Database className="w-3.5 h-3.5" strokeWidth={1.5} /> Web-поиск
+            </button>
+            <button
+              onClick={onToggleResearchMode}
+              className={`lovable-glass-strong border px-4 py-1.5 rounded-full text-[10px] font-mono transition-all flex items-center gap-2 uppercase tracking-[0.2em] font-bold active:scale-95 ${
+                isResearchMode ? "text-white border-white/20 bg-white/10 shadow-[0_0_15px_rgba(255,255,255,0.05)]" : "text-white/30 border-white/5 hover:text-white hover:bg-white/5"
+              }`}
+            >
+              <Activity className="w-3.5 h-3.5" strokeWidth={1.5} /> Deep Research
+            </button>
+            {!isPresentationMode && (
+                <button
+                    onClick={onTogglePresentationMode}
+                    className="lovable-glass-strong border border-white/5 px-4 py-1.5 rounded-full text-[10px] font-mono text-white/30 hover:text-white hover:bg-white/10 transition-all flex items-center gap-2 uppercase tracking-[0.2em] font-bold active:scale-95"
+                >
+                    <FileText className="w-3.5 h-3.5" strokeWidth={1.5} /> Слайды
+                </button>
+            )}
         </div>
       </div>
     </div>

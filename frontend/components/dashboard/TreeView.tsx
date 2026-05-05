@@ -188,7 +188,7 @@ export function TreeView({ }: Props) {
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
-              className="mb-4 flex items-center gap-2 px-4 py-2.5 rounded-none bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[13px] font-code"
+              className="mb-4 flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[13px] font-mono"
             >
               <AlertCircle className="w-4 h-4 shrink-0" />
               {tree.error}
@@ -198,10 +198,10 @@ export function TreeView({ }: Props) {
 
         <div className="flex-1 flex items-center justify-center px-4 w-full">
           <div className="w-full max-w-5xl mx-auto text-center">
-          <div className="w-16 h-16 rounded-none bg-[#111111] border border-white/10 flex items-center justify-center mb-6 mx-auto">
+          <div className="w-16 h-16 rounded-2xl lovable-glass border border-white/10 flex items-center justify-center mb-6 mx-auto">
             <GitBranch className="w-8 h-8 text-white" />
           </div>
-          <h3 className="font-display text-5xl text-white mb-6 tracking-tight">
+          <h3 className="font-display text-5xl md:text-6xl text-white mb-6 tracking-tight">
             Дорожная карта
           </h3>
           <p className="text-[18px] font-light text-white/50 mb-12 max-w-4xl mx-auto leading-relaxed">
@@ -210,19 +210,19 @@ export function TreeView({ }: Props) {
 
           <div className="w-full space-y-4 text-left">
             {/* Text input */}
-            <div className="bg-[#111111] border border-white/10 p-6">
+            <div className="lovable-glass-strong border border-white/10 rounded-[2rem] p-6 bg-gradient-to-br from-white/[0.04] to-transparent">
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Опишите идею стартапа (минимум 10 символов)..."
-                className="w-full bg-transparent text-white font-body-sm text-[14px] placeholder-neutral-600 resize-none outline-none min-h-[100px]"
+                className="w-full bg-transparent text-white font-sans text-[15px] placeholder-white/20 resize-none outline-none min-h-[100px]"
               />
               <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/10">
-                <span className="font-code text-[11px] text-neutral-500">{description.length} символов</span>
+                <span className="font-mono text-[11px] text-white/30 uppercase tracking-widest">{description.length} символов</span>
                 <button
                   onClick={handleCreateFromText}
                   disabled={description.trim().length < 10}
-                  className="flex items-center gap-2 px-4 py-2 bg-white text-black font-mono-label text-[10px] uppercase font-bold disabled:opacity-50 hover:opacity-90 transition-opacity cursor-pointer"
+                  className="flex items-center gap-2 px-5 py-2.5 bg-white text-black font-mono text-[10px] uppercase tracking-[0.2em] font-bold rounded-full disabled:opacity-40 hover:bg-neutral-200 active:scale-[0.98] transition-all cursor-pointer shadow-lg shadow-white/5"
                 >
                   <Star className="w-3.5 h-3.5" />
                   Построить древо
@@ -233,17 +233,17 @@ export function TreeView({ }: Props) {
             {/* Divider */}
             <div className="flex items-center gap-3">
               <div className="flex-1 h-px bg-white/10" />
-              <span className="font-code text-[10px] uppercase tracking-widest text-neutral-500">или</span>
+              <span className="font-mono text-[10px] uppercase tracking-widest text-white/30">или</span>
               <div className="flex-1 h-px bg-white/10" />
             </div>
 
             {/* PDF Upload */}
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="w-full flex items-center justify-center gap-3 px-6 py-6 border border-dashed border-white/20 bg-[#111111] hover:border-white/40 transition-all group cursor-pointer"
+              className="w-full flex items-center justify-center gap-3 px-6 py-6 border border-dashed border-white/15 bg-white/[0.02] rounded-[2rem] hover:border-white/40 hover:bg-white/[0.04] transition-all group cursor-pointer"
             >
-              <Upload className="w-5 h-5 text-neutral-500 group-hover:text-white transition-colors" />
-              <span className="font-mono-label text-[11px] uppercase tracking-widest text-neutral-500 group-hover:text-white transition-colors">
+              <Upload className="w-5 h-5 text-white/40 group-hover:text-white transition-colors" />
+              <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-white/40 group-hover:text-white transition-colors font-bold">
                 Загрузить PDF-документ
               </span>
             </button>
@@ -268,7 +268,7 @@ export function TreeView({ }: Props) {
         <motion.div
           animate={{ rotate: 360 }}
           transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-          className="w-16 h-16 bg-[#111111] border border-white/20 flex items-center justify-center mb-6"
+          className="w-16 h-16 rounded-2xl lovable-glass border border-white/20 flex items-center justify-center mb-6"
         >
           <Loader className="w-8 h-8 text-white" />
         </motion.div>
@@ -315,7 +315,7 @@ export function TreeView({ }: Props) {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
-            className="mx-8 mt-4 flex items-center gap-2 px-4 py-2.5 rounded-none bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[13px] font-code"
+            className="mx-8 mt-4 flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[13px] font-mono"
           >
             <AlertCircle className="w-4 h-4 shrink-0" />
             {tree.error}

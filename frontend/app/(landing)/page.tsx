@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { 
-  ArrowUpRight, BarChart3, Users, FileText, Sparkles, 
-  MessageSquare, Radar, Zap, 
-  Target, Briefcase, Code, ShieldCheck, UserCheck, Search 
+  ArrowUpRight, BarChart3, Users, FileText, Sparkles,
+  MessageSquare, Radar, Zap, Layers, Scale,
+  Target, Briefcase, Code, ShieldCheck, UserCheck, Search
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { LandingFooter } from "@/components/landing/LandingFooter";
@@ -233,15 +233,45 @@ export default function LandingPage() {
                 Слой живого ИИ не просто отвечает на вопросы, а анализирует контекст проекта, подбирает релевантные гранты и помогает структурировать юридические аспекты.
               </p>
               
-              <div className="lovable-glass rounded-[1.5rem] p-6 flex items-start gap-5 border-white/5">
-                <div className="mt-1 h-10 w-10 rounded-xl border border-white/10 flex items-center justify-center bg-white/[0.03]">
-                  <Radar className="h-4 w-4" />
-                </div>
-                <div>
-                  <h3 className="text-xl text-white font-medium mb-2">Анализ ЦА</h3>
-                  <p className="text-sm text-white/40 font-light">Выявляйте боли, сигналы спроса и скрытые мотивы аудитории.</p>
-                  <div className="font-mono mt-4 text-white/20 text-[10px] tracking-widest uppercase">MODULE 01</div>
-                </div>
+              <div className="space-y-4">
+                {[
+                  {
+                    icon: Radar,
+                    title: "Анализ ЦА",
+                    text: "Выявляйте боли, сигналы спроса и скрытые мотивы аудитории.",
+                    module: "MODULE 01",
+                  },
+                  {
+                    icon: Layers,
+                    title: "RAG-контекст",
+                    text: "Подтягивайте документы, исследования и внутреннюю базу знаний в один ответ.",
+                    module: "MODULE 02",
+                  },
+                  {
+                    icon: Scale,
+                    title: "Юридический слой",
+                    text: "Базовые проверки, структура документов и быстрые сценарии согласования.",
+                    module: "MODULE 03",
+                  },
+                ].map((mod, idx) => (
+                  <motion.div
+                    key={mod.title}
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5, delay: idx * 0.1 }}
+                    viewport={{ once: true }}
+                    className="lovable-glass rounded-[1.5rem] p-6 flex items-start gap-5 border-white/5"
+                  >
+                    <div className="mt-1 h-10 w-10 rounded-xl border border-white/10 flex items-center justify-center bg-white/[0.03] shrink-0">
+                      <mod.icon className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl text-white font-medium mb-2">{mod.title}</h3>
+                      <p className="text-sm text-white/40 font-light">{mod.text}</p>
+                      <div className="font-mono mt-4 text-white/20 text-[10px] tracking-widest uppercase">{mod.module}</div>
+                    </div>
+                  </motion.div>
+                ))}
               </div>
             </motion.div>
           </div>

@@ -213,18 +213,18 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
   const stopGeneration = () => { if (abortControllerRef.current) { abortControllerRef.current.abort(); setIsLoading(false); abortControllerRef.current = null; } };
 
   return (
-    <div className="flex flex-col h-full bg-[#0c0a1a]/95 backdrop-blur-2xl border-l border-white/10 w-[400px] shadow-2xl relative overflow-hidden">
+    <div className="flex flex-col h-full bg-black/90 backdrop-blur-2xl border-l border-white/10 w-[400px] shadow-2xl relative overflow-hidden">
       
       {/* Header & Tabs */}
       <div className="pt-5 px-4 pb-0 border-b border-white/10 bg-white/[0.02]">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-pitchy-violet/20 flex items-center justify-center text-pitchy-violet">
+            <div className="w-8 h-8 rounded-full border border-white/10 bg-white/[0.05] flex items-center justify-center text-white/70">
               <Star className="w-4 h-4" />
             </div>
             <div>
               <h3 className="text-sm font-bold text-white leading-none">Управление узлом</h3>
-              <p className="text-[10px] text-white/40 uppercase tracking-widest font-semibold mt-1 truncate max-w-[180px]">
+              <p className="font-mono text-[10px] text-white/40 uppercase tracking-[0.2em] font-bold mt-1 truncate max-w-[180px]">
                 {activeNode?.label || "Выберите узел"}
               </p>
             </div>
@@ -235,17 +235,17 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
         </div>
 
         {/* Tab Switcher */}
-        <div className="flex p-1 bg-black/40 rounded-xl mb-4 border border-white/5">
-          <button 
+        <div className="flex p-1 bg-white/[0.03] rounded-full mb-4 border border-white/10">
+          <button
             onClick={() => setActiveTab("analysis")}
-            className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-medium transition-all ${activeTab === "analysis" ? "bg-pitchy-violet text-white shadow-lg" : "text-white/40 hover:text-white/70"}`}
+            className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-full font-mono text-[10px] uppercase tracking-[0.15em] font-bold transition-all ${activeTab === "analysis" ? "bg-white text-black shadow-lg" : "text-white/40 hover:text-white/70"}`}
           >
             <FileText className="w-3.5 h-3.5" />
             Анализ
           </button>
-          <button 
+          <button
             onClick={() => setActiveTab("chat")}
-            className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-medium transition-all ${activeTab === "chat" ? "bg-white/10 text-white shadow-lg" : "text-white/40 hover:text-white/70"}`}
+            className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-full font-mono text-[10px] uppercase tracking-[0.15em] font-bold transition-all ${activeTab === "chat" ? "bg-white text-black shadow-lg" : "text-white/40 hover:text-white/70"}`}
           >
             <MessageSquare className="w-3.5 h-3.5" />
             Помощник
@@ -269,12 +269,12 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
                   {activeNode.status === "completed" ? (
                     /* Completed State View */
                     <div className="space-y-6 animate-in fade-in slide-in-from-top-4 duration-500">
-                      <div className="p-4 rounded-2xl bg-[#10B981]/10 border border-[#10B981]/20">
-                         <h4 className="flex items-center gap-2 text-[#10B981] font-bold text-sm mb-3">
-                           <CheckCircle className="w-4 h-4" /> Узел проанализирован
+                      <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10">
+                         <h4 className="flex items-center gap-2 text-white font-bold text-sm mb-3">
+                           <CheckCircle className="w-4 h-4 text-emerald-400" /> Узел проанализирован
                          </h4>
                          {activeNode.data.feedback && (
-                           <p className="text-sm text-white/80 leading-relaxed italic border-l-2 border-[#10B981]/40 pl-3">
+                           <p className="text-sm text-white/80 leading-relaxed italic border-l-2 border-white/20 pl-3">
                              {activeNode.data.feedback}
                            </p>
                          )}
@@ -325,7 +325,7 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
                                 value={formData[field.id] || ""}
                                 onChange={(e) => handleFormChange(field.id, e.target.value)}
                                 placeholder={field.placeholder}
-                                className="w-full min-h-[100px] bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white placeholder-white/20 focus:outline-none focus:border-pitchy-violet/50 transition-all resize-none"
+                                className="w-full min-h-[100px] bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white placeholder-white/20 focus:outline-none focus:border-white/40 transition-all resize-none"
                               />
                             ) : (
                               <input 
@@ -333,7 +333,7 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
                                 value={formData[field.id] || ""}
                                 onChange={(e) => handleFormChange(field.id, e.target.value)}
                                 placeholder={field.placeholder}
-                                className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white placeholder-white/20 focus:outline-none focus:border-pitchy-violet/50 transition-all"
+                                className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white placeholder-white/20 focus:outline-none focus:border-white/40 transition-all"
                               />
                             )}
                           </div>
@@ -344,14 +344,14 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
                         <button 
                           onClick={handleEvaluate}
                           disabled={isEvaluating}
-                          className="w-full py-4 rounded-2xl bg-gradient-to-r from-pitchy-violet to-purple-600 text-white font-bold text-sm shadow-[0_4px_15px_rgba(168,85,247,0.3)] hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:scale-100 flex items-center justify-center gap-2"
+                          className="w-full py-4 rounded-full bg-white text-black font-mono text-[11px] uppercase tracking-[0.2em] font-bold shadow-xl shadow-white/5 hover:bg-neutral-200 hover:scale-[1.01] active:scale-[0.98] transition-all disabled:opacity-50 disabled:scale-100 flex items-center justify-center gap-2"
                         >
                           {isEvaluating ? <Loader className="w-4 h-4 animate-spin" /> : <Star className="w-4 h-4" />}
                           Проанализировать узел
                         </button>
                         <button 
                           onClick={() => setActiveTab("chat")}
-                          className="w-full py-3 rounded-xl bg-white/5 border border-white/10 text-white/40 text-xs font-semibold hover:text-white hover:bg-white/10 transition-all flex items-center justify-center gap-2"
+                          className="w-full py-3 rounded-full bg-white/5 border border-white/10 text-white/60 font-mono text-[10px] uppercase tracking-[0.2em] font-bold hover:text-white hover:bg-white/10 transition-all flex items-center justify-center gap-2"
                         >
                           <MessageSquare className="w-3.5 h-3.5" />
                           Помоги мне заполнить (Чат)
@@ -398,14 +398,14 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
 
                   return (
                     <div key={getMsgKey(msg)} className={`flex gap-3 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
-                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${msg.role === "user" ? "bg-white/10" : "bg-pitchy-violet"}`}>
-                        {msg.role === "user" ? <User className="w-4 h-4 text-white/70" /> : <Cpu className="w-4 h-4 text-white" />}
+                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${msg.role === "user" ? "bg-white/10" : "bg-white text-black"}`}>
+                        {msg.role === "user" ? <User className="w-4 h-4 text-white/70" /> : <Cpu className="w-4 h-4 text-black" />}
                       </div>
                       <div className={`max-w-[90%] flex flex-col gap-2 ${msg.role === "user" ? "items-end" : "items-start"}`}>
                         {msg.role === "assistant" && showThoughts && (
                           <div className="w-full bg-transparent overflow-hidden self-start">
                             <button onClick={() => setMessages(prev => prev.map((m, i) => (m.client_id || i) === (msg.client_id || idx) ? { ...m, thoughtExpanded: !m.thoughtExpanded } : m))} className="flex items-center gap-2 px-1 py-1 text-[10px] text-white/40 hover:text-white/60 transition-colors">
-                                <Activity className={`w-3.5 h-3.5 ${isLoading && isLastAssistant && !msg.thoughtTime ? "animate-spin" : "text-pitchy-violet"}`} />
+                                <Activity className={`w-3.5 h-3.5 ${isLoading && isLastAssistant && !msg.thoughtTime ? "animate-spin" : "text-white"}`} />
                                 <span className="font-medium uppercase tracking-wider">{msg.thoughtTime ? `Размышления (${msg.thoughtTime} сек)` : "Pitchy рассуждает..."}</span>
                                 {msg.thoughtExpanded ? <ChevronUp className="w-3.5 h-3.5 ml-auto text-white/20" /> : <ChevronDown className="w-3.5 h-3.5 ml-auto text-white/20" />}
                             </button>
@@ -416,7 +416,7 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
                         )}
                         {msg.role === "assistant" && !hasContent && !showThoughts && isLoading && isLastAssistant && (
                           <div className="flex items-center gap-3 p-3 bg-white/5 rounded-2xl border border-white/10 text-white/50 italic animate-pulse">
-                            <Loader className="animate-spin h-3.5 w-3.5 text-pitchy-violet" />
+                            <Loader className="animate-spin h-3.5 w-3.5 text-white" />
                             <span className="text-[12px]">{streamingStatus || "Я анализирую ситуацию..."}</span>
                           </div>
                         )}
@@ -424,12 +424,12 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
                           msg.role === "user" ? (
                             <CollapsibleUserMessage content={msg.content} />
                           ) : (
-                            <div className="p-3 rounded-2xl text-sm leading-relaxed bg-pitchy-violet/5 text-white/90 border border-pitchy-violet/20 rounded-tl-sm relative">
+                            <div className="p-3 rounded-2xl text-sm leading-relaxed bg-white/[0.03] text-white/90 border border-white/10 rounded-tl-sm relative">
                               <div className="prose prose-invert prose-sm max-w-none text-white/80">
                                 <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
                                   table: ({...props}) => (<div className="my-3 overflow-x-auto rounded-xl border border-white/10 bg-white/5"><table className="w-full text-left border-collapse" {...props} /></div>),
                                   thead: ({...props}) => <thead className="bg-white/10" {...props} />,
-                                  th: ({...props}) => <th className="p-2 text-[11px] font-bold text-pitchy-cyan-light border-b border-white/10 uppercase tracking-wider" {...props} />,
+                                  th: ({...props}) => <th className="p-2 text-[11px] font-bold text-white/80 border-b border-white/10 uppercase tracking-wider" {...props} />,
                                   td: ({...props}) => <td className="p-2 text-[12px] text-white/80 border-b border-white/5 last:border-0" {...props} />,
                                 }}>
                                   {stripThoughts(msg.content)}
@@ -446,7 +446,7 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
                               onClick={() => setMessages(prev => prev.map((m, i) => (m.client_id || i) === (msg.client_id || idx) ? { ...m, sourcesExpanded: !m.sourcesExpanded } : m))}
                               className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 text-[11px] text-white/60 hover:text-white transition-all w-fit"
                             >
-                              <Globe className="w-3.5 h-3.5 text-pitchy-violet" />
+                              <Globe className="w-3.5 h-3.5 text-white" />
                               <span className="font-semibold">{msg.sources.length} ИСТОЧНИКОВ</span>
                               {msg.sourcesExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                             </button>

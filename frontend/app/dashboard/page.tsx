@@ -226,12 +226,12 @@ function DashboardContent() {
                     <TrendingUp size={120} strokeWidth={1} />
                   </div>
                   <div className="flex justify-between items-start mb-12 relative z-10">
-                    <span className="font-display text-[14px] text-white/50 tracking-tight">Прогресс системы</span>
+                    <span className="font-sans text-[14px] text-white/50 tracking-tight">Прогресс системы</span>
                     <TrendingUp className="text-white/20 group-hover:text-white/40 transition-colors" size={20} />
                   </div>
                   <div className="relative z-10">
                     <div className="flex justify-between items-end mb-4">
-                      <span className="font-display text-6xl text-white tracking-tight">84.2%</span>
+                      <span className="font-sans text-6xl font-semibold text-white tracking-tight">84.2%</span>
                       <span className="font-mono text-[9px] text-emerald-400/60 font-bold tracking-widest uppercase mb-1.5">ОПТИМИЗИРОВАНО</span>
                     </div>
                     <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
@@ -248,13 +248,13 @@ function DashboardContent() {
                 {/* Market Readiness Card */}
                 <div className="col-span-12 md:col-span-3 lovable-glass-strong border border-white/5 p-8 flex flex-col justify-between hover:border-white/20 transition-all duration-500 rounded-[2rem] bg-gradient-to-br from-white/[0.04] to-transparent">
                   <div className="flex justify-between items-start mb-12">
-                    <span className="text-[14px] text-white/50 tracking-tight" style={{ fontFamily: "'Instrument Serif', serif" }}>Рынок</span>
+                    <span className="font-sans text-[14px] text-white/50 tracking-tight">Рынок</span>
                     <BarChart2 className="text-white/20 group-hover:text-white/40 transition-colors" size={20} />
                   </div>
                   <div>
                     <div className="flex items-baseline gap-1">
-                      <span className="text-6xl text-white tracking-tight" style={{ fontFamily: "'Instrument Serif', serif" }}>9.4</span>
-                      <span className="text-xl text-white/20" style={{ fontFamily: "'Instrument Serif', serif" }}>/10</span>
+                      <span className="font-sans text-6xl font-semibold text-white tracking-tight">9.4</span>
+                      <span className="font-sans text-xl text-white/20">/10</span>
                     </div>
                     <p className="font-mono text-[9px] text-white/20 font-bold tracking-widest uppercase mt-3">ГОТОВНОСТЬ</p>
                   </div>
@@ -263,14 +263,14 @@ function DashboardContent() {
                 {/* Total Branches Card */}
                 <div className="col-span-12 md:col-span-4 lovable-glass-strong border border-white/5 p-8 flex flex-col justify-between hover:border-white/20 transition-all duration-500 rounded-[2rem] bg-gradient-to-br from-white/[0.04] to-transparent">
                   <div className="flex justify-between items-start mb-12">
-                    <span className="text-[14px] text-white/50 tracking-tight" style={{ fontFamily: "'Instrument Serif', serif" }}>Ветки</span>
+                    <span className="font-sans text-[14px] text-white/50 tracking-tight">Ветки</span>
                     <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-500/10 rounded-full border border-emerald-500/20">
                       <ArrowUp size={10} className="text-emerald-400" />
                       <span className="font-mono text-[10px] text-emerald-400 font-bold">12%</span>
                     </div>
                   </div>
                   <div>
-                    <div className="text-6xl text-white tracking-tight mb-2" style={{ fontFamily: "'Instrument Serif', serif" }}>1,248</div>
+                    <div className="font-sans text-6xl font-semibold text-white tracking-tight mb-2">1,248</div>
                     <p className="font-mono text-[9px] text-white/20 font-bold tracking-widest uppercase">ПО СРАВНЕНИЮ С ПРОШЛОЙ НЕДЕЛЕЙ</p>
                   </div>
                 </div>
@@ -280,6 +280,22 @@ function DashboardContent() {
               <div>
                 <h3 className="font-display text-3xl text-white/40 mb-8 ml-2">Последние сессии</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+                  {/* Create New Card */}
+                  <motion.div
+                    whileHover={{ scale: 0.98 }}
+                    onClick={handleCreateEmptySession}
+                    className="lovable-glass border border-dashed border-white/10 p-8 flex flex-col justify-center items-center hover:border-white/20 hover:bg-white/[0.03] transition-all duration-500 min-h-[200px] cursor-pointer rounded-[2rem] group"
+                  >
+                    {isCreating ? (
+                      <Loader className="animate-spin text-white/20 mb-2" size={32} />
+                    ) : (
+                      <div className="w-12 h-12 bg-white/5 flex items-center justify-center rounded-2xl mb-5 group-hover:scale-110 transition-transform">
+                        <Plus className="text-white/40 group-hover:text-white" size={28} strokeWidth={1.5} />
+                      </div>
+                    )}
+                    <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-white/20 font-bold group-hover:text-white transition-colors" style={{ fontSize: "14px" }}>Новый анализ</span>
+                  </motion.div>
+
                   {sessions.slice(0, 7).map(session => (
                     <motion.div
                       key={session.id}
@@ -310,22 +326,6 @@ function DashboardContent() {
                       </div>
                     </motion.div>
                   ))}
-
-                  {/* Create New Card */}
-                  <motion.div
-                    whileHover={{ scale: 0.98 }}
-                    onClick={handleCreateEmptySession}
-                    className="lovable-glass border border-dashed border-white/10 p-8 flex flex-col justify-center items-center hover:border-white/20 hover:bg-white/[0.03] transition-all duration-500 min-h-[200px] cursor-pointer rounded-[2rem] group"
-                  >
-                    {isCreating ? (
-                      <Loader className="animate-spin text-white/20 mb-2" size={32} />
-                    ) : (
-                      <div className="w-12 h-12 bg-white/5 flex items-center justify-center rounded-2xl mb-5 group-hover:scale-110 transition-transform">
-                        <Plus className="text-white/40 group-hover:text-white" size={28} strokeWidth={1.5} />
-                      </div>
-                    )}
-                    <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-white/20 font-bold group-hover:text-white transition-colors" style={{ fontSize: "14px" }}>Новый анализ</span>
-                  </motion.div>
                 </div>
               </div>
             </motion.div>
