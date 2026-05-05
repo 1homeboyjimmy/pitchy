@@ -154,26 +154,40 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
         if (typingMessageId === null) return;
         const msg = messages.find((m) => getSafeKey(m) === typingMessageId.toString());
         if (!msg) { setTypingMessageId(null); return; }
-        const fullLen = msg.content.length;
-        if (displayedLength >= fullLen) {
-            setTypingMessageId(null);
+        const cleanLen = stripThoughts(msg.content || "").length;
+        if (displayedLength >= cleanLen) {
+            // caught up to currently-streamed content; stop typewriter only when stream is done
+            if (!isLoading) {
+                setTypingMessageId(null);
+            }
             return;
         }
-        const nextChar = msg.content[displayedLength];
+        const nextChar = stripThoughts(msg.content || "")[displayedLength];
         const speed = /[|\-#*\n\r]/.test(nextChar) ? 2 : typingSpeed;
         const timer = setTimeout(() => {
-            const chunk = Math.min(3, fullLen - displayedLength);
+            const chunk = Math.min(3, cleanLen - displayedLength);
             setDisplayedLength((prev) => prev + chunk);
         }, speed);
         return () => clearTimeout(timer);
-    }, [typingMessageId, displayedLength, messages, getSafeKey]);
+    }, [typingMessageId, displayedLength, messages, getSafeKey, isLoading]);
+
+    useEffect(() => {
+        if (!isLoading && typingMessageId !== null) {
+            const msg = messages.find((m) => getSafeKey(m) === typingMessageId.toString());
+            if (msg) {
+                const cleanLen = stripThoughts(msg.content || "").length;
+                if (displayedLength >= cleanLen) setTypingMessageId(null);
+            }
+        }
+    }, [isLoading, typingMessageId, messages, getSafeKey, displayedLength]);
 
     const getDisplayContent = useCallback((msg: ChatMessageResponse) => {
-        const rawContent = getSafeKey(msg) === typingMessageId?.toString()
-            ? msg.content.slice(0, displayedLength)
-            : msg.content;
-        const safeContent = rawContent.replace(/\n\|[ \-|]*$/g, "\n");
-        return stripThoughts(safeContent);
+        const cleaned = stripThoughts(msg.content || "");
+        const safeFull = cleaned.replace(/\n\|[ \-|]*$/g, "\n");
+        if (msg.role === "assistant" && getSafeKey(msg) === typingMessageId?.toString()) {
+            return safeFull.slice(0, displayedLength);
+        }
+        return safeFull;
     }, [typingMessageId, displayedLength, getSafeKey]);
 
     const handleSendMessage = async (text?: string, forceIntent?: string, silent: boolean = false) => {
@@ -264,11 +278,12 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
                         ));
                     } else if (chunk.type === "chunk") {
                         let thoughtUpdate = {};
-                        if (!assistantContent && fullThoughtContent) {
+                        const isFirstChunk = !assistantContent;
+                        if (isFirstChunk && fullThoughtContent) {
                             const duration = Math.round((Date.now() - startTime) / 1000);
-                            thoughtUpdate = { thoughtTime: duration };
+                            thoughtUpdate = { thoughtTime: duration, thoughtExpanded: false };
                         }
-                        if (!assistantContent) setStreamingStatus(null);
+                        if (isFirstChunk) setStreamingStatus(null);
                         assistantContent += chunk.content;
                         setMessages((prev) =>
                             prev.map(m => m.client_id === assistantClientId ? { ...m, content: assistantContent, isResearch: isResearchMode || useDeepSearch, ...thoughtUpdate } : m)
@@ -431,7 +446,7 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
                                                 <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-300 ${msg.thoughtExpanded ? '' : '-rotate-90'}`} />
                                                 <span className="font-mono text-[9px] uppercase tracking-[0.2em] flex items-center gap-2.5 font-bold">
                                                     {isLoading && isLastAssistant && !msg.thoughtTime ? <Activity className="w-3.5 h-3.5 animate-pulse text-emerald-400" /> : <Cpu className="w-3.5 h-3.5 text-white/20" />}
-                                                    {msg.thoughtTime ? `ЛОГИ АНАЛИЗА (${msg.thoughtTime} СЕК)` : "ЛОГИ АНАЛИЗА..."}
+                                                    {msg.thoughtTime ? `ПРОЦЕСС МЫШЛЕНИЯ (${msg.thoughtTime} СЕК)` : "ПРОЦЕСС МЫШЛЕНИЯ..."}
                                                 </span>
                                             </summary>
                                             <motion.div
@@ -499,7 +514,7 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
                                             >
                                                 {getDisplayContent(msg)}
                                             </ReactMarkdown>
-                                            {msg.id === typingMessageId && (
+                                            {getSafeKey(msg) === typingMessageId?.toString() && (
                                                 <motion.span 
                                                     initial={{ opacity: 0 }}
                                                     animate={{ opacity: 1 }}

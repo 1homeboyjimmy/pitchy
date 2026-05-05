@@ -181,7 +181,7 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
         } else if (chunk.type === "chunk") {
           let durationUpdate = {};
           if (!assistantContent && fullThoughtContent) {
-              durationUpdate = { thoughtTime: Math.round((Date.now() - stableKey) / 1000) };
+              durationUpdate = { thoughtTime: Math.round((Date.now() - stableKey) / 1000), thoughtExpanded: false };
           }
           assistantContent += chunk.content;
           setMessages((prev) => prev.map(m => m.client_id === assistantClientId ? { ...m, content: assistantContent, ...durationUpdate } : m));
@@ -406,7 +406,7 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
                           <div className="w-full bg-transparent overflow-hidden self-start">
                             <button onClick={() => setMessages(prev => prev.map((m, i) => (m.client_id || i) === (msg.client_id || idx) ? { ...m, thoughtExpanded: !m.thoughtExpanded } : m))} className="flex items-center gap-2 px-1 py-1 text-[10px] text-white/40 hover:text-white/60 transition-colors">
                                 <Activity className={`w-3.5 h-3.5 ${isLoading && isLastAssistant && !msg.thoughtTime ? "animate-spin" : "text-white"}`} />
-                                <span className="font-medium uppercase tracking-wider">{msg.thoughtTime ? `Размышления (${msg.thoughtTime} сек)` : "Pitchy рассуждает..."}</span>
+                                <span className="font-medium uppercase tracking-wider">{msg.thoughtTime ? `Процесс мышления (${msg.thoughtTime} сек)` : "Процесс мышления..."}</span>
                                 {msg.thoughtExpanded ? <ChevronUp className="w-3.5 h-3.5 ml-auto text-white/20" /> : <ChevronDown className="w-3.5 h-3.5 ml-auto text-white/20" />}
                             </button>
                             <motion.div initial={false} animate={{ height: msg.thoughtExpanded ? "auto" : 0, opacity: msg.thoughtExpanded ? 1 : 0 }} className="overflow-hidden">
