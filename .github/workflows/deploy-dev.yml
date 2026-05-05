@@ -101,6 +101,14 @@ jobs:
           # Login to GHCR
           echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
 
+          # Ensure repo is writable by current user (some files may have been
+          # created by root via earlier sudo runs)
+          if [ -w .git/logs/refs/heads/dev ] 2>/dev/null; then :; else
+            sudo -n chown -R "$(id -u):$(id -g)" /opt/ai-startup 2>/dev/null || \
+              chown -R "$(id -u):$(id -g)" /opt/ai-startup 2>/dev/null || true
+          fi
+          git config --global --add safe.directory /opt/ai-startup
+
           # Pull latest code
           git fetch origin
           git reset --hard origin/dev

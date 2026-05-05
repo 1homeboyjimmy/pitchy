@@ -98,6 +98,15 @@ jobs:
               "GITHUB_TOKEN='$GH_TOKEN' GITHUB_ACTOR='$GH_ACTOR' bash -s" <<'REMOTE_SCRIPT'
           set -e
           cd /opt/ai-startup
+
+          # Ensure repo is writable by current user (some files may have been
+          # created by root via earlier sudo runs)
+          if [ -w .git/logs/refs/heads/main ] 2>/dev/null; then :; else
+            sudo -n chown -R "$(id -u):$(id -g)" /opt/ai-startup 2>/dev/null || \
+              chown -R "$(id -u):$(id -g)" /opt/ai-startup 2>/dev/null || true
+          fi
+          git config --global --add safe.directory /opt/ai-startup
+
           git fetch origin
           git reset --hard origin/main
           chmod +x deploy.sh
