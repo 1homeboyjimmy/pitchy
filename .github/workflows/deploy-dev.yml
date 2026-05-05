@@ -75,66 +75,80 @@ jobs:
     needs: [build-backend, build-frontend]
     steps:
       - name: Deploy to staging over SSH
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.DEV_HOST }}
-          username: ${{ secrets.DEV_USERNAME }}
-          key: ${{ secrets.DEV_SSH_KEY }}
-          command_timeout: 30m
-          script: |
-            export GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
-            export GITHUB_ACTOR=${{ github.actor }}
+        env:
+          DEV_HOST: ${{ secrets.DEV_HOST }}
+          DEV_USERNAME: ${{ secrets.DEV_USERNAME }}
+          DEV_SSH_KEY: ${{ secrets.DEV_SSH_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$DEV_SSH_KEY" > ~/.ssh/dev_deploy_key
+          chmod 600 ~/.ssh/dev_deploy_key
+          ssh-keyscan -H "$DEV_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
 
-            cd /opt/ai-startup
+          ssh -i ~/.ssh/dev_deploy_key \
+              -o StrictHostKeyChecking=accept-new \
+              -o ServerAliveInterval=30 \
+              -o ServerAliveCountMax=120 \
+              "$DEV_USERNAME@$DEV_HOST" \
+              "GITHUB_TOKEN='$GH_TOKEN' GITHUB_ACTOR='$GH_ACTOR' bash -s" <<'REMOTE_SCRIPT'
+          set -e
+          cd /opt/ai-startup
 
-            # Login to GHCR
-            echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          # Login to GHCR
+          echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
 
-            # Pull latest code
-            git fetch origin
-            git reset --hard origin/dev
+          # Pull latest code
+          git fetch origin
+          git reset --hard origin/dev
 
-            # Pull new images
-            docker compose -f docker-compose.staging.yml pull -q || echo "WARNING: Some images failed to pull"
+          # Pull new images
+          docker compose -f docker-compose.staging.yml pull -q || echo "WARNING: Some images failed to pull"
 
-            # Restart services
-            docker compose -f docker-compose.staging.yml down --timeout 10 --remove-orphans || true
-            docker compose -f docker-compose.staging.yml up -d --force-recreate --remove-orphans
+          # Restart services
+          docker compose -f docker-compose.staging.yml down --timeout 10 --remove-orphans || true
+          docker compose -f docker-compose.staging.yml up -d --force-recreate --remove-orphans
 
-            # Wait for postgres
-            for i in $(seq 1 10); do
-              if docker compose -f docker-compose.staging.yml exec -T postgres pg_isready -U app_user -d app; then
-                echo "Postgres is ready."
-                break
-              fi
-              echo "Waiting for postgres... ($i/10)"
-              sleep 2
-            done
-
-            # Run migrations
-            timeout 60 docker compose -f docker-compose.staging.yml exec -T backend python -m alembic upgrade head || {
-              echo "WARNING: Migrations failed or timed out, continuing..."
-            }
-
-            # Healthcheck
-            health_ok="false"
-            for i in $(seq 1 30); do
-              body="$(docker compose -f docker-compose.staging.yml exec -T backend curl -s http://127.0.0.1:8000/health || true)"
-              if echo "$body" | grep -q '"status":"ok"'; then
-                health_ok="true"
-                echo "Healthcheck passed on attempt $i!"
-                break
-              fi
-              echo "Healthcheck attempt $i: ${body:-<empty>}"
-              sleep 5
-            done
-
-            if [ "$health_ok" != "true" ]; then
-              echo "DEPLOY FAILED: healthcheck timeout"
-              docker compose -f docker-compose.staging.yml logs backend --tail=50
-              exit 1
+          # Wait for postgres
+          for i in $(seq 1 10); do
+            if docker compose -f docker-compose.staging.yml exec -T postgres pg_isready -U app_user -d app; then
+              echo "Postgres is ready."
+              break
             fi
+            echo "Waiting for postgres... ($i/10)"
+            sleep 2
+          done
 
-            # Cleanup
-            docker image prune -af 2>/dev/null || true
-            echo "Staging deploy successful!"
+          # Run migrations
+          timeout 60 docker compose -f docker-compose.staging.yml exec -T backend python -m alembic upgrade head || {
+            echo "WARNING: Migrations failed or timed out, continuing..."
+          }
+
+          # Healthcheck
+          health_ok="false"
+          for i in $(seq 1 30); do
+            body="$(docker compose -f docker-compose.staging.yml exec -T backend curl -s http://127.0.0.1:8000/health || true)"
+            if echo "$body" | grep -q '"status":"ok"'; then
+              health_ok="true"
+              echo "Healthcheck passed on attempt $i!"
+              break
+            fi
+            echo "Healthcheck attempt $i: ${body:-<empty>}"
+            sleep 5
+          done
+
+          if [ "$health_ok" != "true" ]; then
+            echo "DEPLOY FAILED: healthcheck timeout"
+            docker compose -f docker-compose.staging.yml logs backend --tail=50
+            exit 1
+          fi
+
+          # Cleanup
+          docker image prune -af 2>/dev/null || true
+          echo "Staging deploy successful!"
+          REMOTE_SCRIPT
+
+          rm -f ~/.ssh/dev_deploy_key

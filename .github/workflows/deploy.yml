@@ -76,17 +76,32 @@ jobs:
     needs: [build-backend, build-frontend]
     steps:
       - name: Deploy over SSH
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
-          command_timeout: 30m
-          script: |
-            export GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
-            export GITHUB_ACTOR=${{ github.actor }}
-            cd /opt/ai-startup
-            git fetch origin
-            git reset --hard origin/main
-            chmod +x deploy.sh
-            ./deploy.sh
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$VPS_SSH_PRIVATE_KEY" > ~/.ssh/prod_deploy_key
+          chmod 600 ~/.ssh/prod_deploy_key
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+          ssh -i ~/.ssh/prod_deploy_key \
+              -o StrictHostKeyChecking=accept-new \
+              -o ServerAliveInterval=30 \
+              -o ServerAliveCountMax=120 \
+              "$VPS_USER@$VPS_HOST" \
+              "GITHUB_TOKEN='$GH_TOKEN' GITHUB_ACTOR='$GH_ACTOR' bash -s" <<'REMOTE_SCRIPT'
+          set -e
+          cd /opt/ai-startup
+          git fetch origin
+          git reset --hard origin/main
+          chmod +x deploy.sh
+          ./deploy.sh
+          REMOTE_SCRIPT
+
+          rm -f ~/.ssh/prod_deploy_key
