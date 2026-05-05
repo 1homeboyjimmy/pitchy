@@ -91,6 +91,8 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const scrollViewportRef = useRef<HTMLDivElement>(null);
+    const inputBarRef = useRef<HTMLDivElement>(null);
+    const [inputBarHeight, setInputBarHeight] = useState(280);
     const abortControllerRef = useRef<AbortController | null>(null);
 
     // Presentation state
@@ -180,6 +182,19 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
     const [userScrolledUp, setUserScrolledUp] = useState(false);
     const lastUserMessageKeyRef = useRef<string | null>(null);
 
+    // Measure the absolute input bar so the scroll viewport reserves exactly
+    // the right amount of bottom padding — answer's last line lands above the
+    // input bar with no extra empty scroll space below.
+    useEffect(() => {
+        const el = inputBarRef.current;
+        if (!el || typeof ResizeObserver === "undefined") return;
+        const apply = () => setInputBarHeight(Math.ceil(el.getBoundingClientRect().height));
+        apply();
+        const ro = new ResizeObserver(apply);
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, []);
+
     useEffect(() => {
         const container = scrollViewportRef.current;
         if (!container) return;
@@ -224,14 +239,18 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
         setUserScrolledUp(false);
         // wait one frame so the DOM has the new message rendered
         requestAnimationFrame(() => {
-            const node = scrollViewportRef.current?.querySelector(
+            const container = scrollViewportRef.current;
+            if (!container) return;
+            const node = container.querySelector(
                 `[data-message-key="${key}"]`
             ) as HTMLElement | null;
-            if (node && scrollViewportRef.current) {
-                const container = scrollViewportRef.current;
-                const top = node.offsetTop - 24; // small breathing room above
-                container.scrollTo({ top, behavior: "smooth" });
-            }
+            if (!node) return;
+            const containerRect = container.getBoundingClientRect();
+            const nodeRect = node.getBoundingClientRect();
+            // offsetTop is unreliable here because the message's offsetParent
+            // is the positioned ChatInterface root, not the scroll container.
+            const target = container.scrollTop + (nodeRect.top - containerRect.top) - 24;
+            container.scrollTo({ top: Math.max(0, target), behavior: "smooth" });
         });
     }, [messages]);
 
@@ -482,8 +501,12 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
     return (
         <div className="flex flex-col flex-1 h-full min-h-0 bg-black relative overflow-hidden">
             {/* Messages Area */}
-            <div ref={scrollViewportRef} className="flex-1 overflow-y-auto scroll-smooth pt-24 pb-[32rem] px-6 sm:px-12 scrollbar-hide">
-                <div className={`mx-auto w-full transition-all duration-500 ease-[0.16,1,0.3,1] ${isSidebarCollapsed ? 'max-w-6xl' : 'max-w-4xl'} space-y-12`}>
+            <div
+                ref={scrollViewportRef}
+                style={{ paddingBottom: inputBarHeight + 24 }}
+                className="flex-1 overflow-y-auto scroll-smooth pt-24 px-6 sm:px-12 scrollbar-hide"
+            >
+                <div className={`mx-auto w-full transition-all duration-500 ease-[0.16,1,0.3,1] ${isSidebarCollapsed ? 'max-w-6xl' : 'max-w-4xl'} space-y-8`}>
                 {messages.length === 0 && (
                     <motion.div 
                         initial={{ opacity: 0, y: 20 }}
@@ -526,7 +549,7 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
                     transition={{ duration: 0.4 }}
                 >
                     {msg.role === "user" ? (
-                        <div className="mb-14 flex flex-col items-end" data-message-key={messageKey}>
+                        <div className="mb-8 flex flex-col items-end" data-message-key={messageKey}>
                             <div className="max-w-[85%] group">
                                 <div className="flex items-center justify-end gap-3 mb-3 px-2">
                                     <span className="font-mono text-[9px] text-white/20 uppercase tracking-[0.2em] font-bold group-hover:text-white/40 transition-colors">USER</span>
@@ -535,7 +558,7 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
                             </div>
                         </div>
                     ) : (
-                        <div className="mb-16 flex flex-col items-start w-full">
+                        <div className="mb-10 flex flex-col items-start w-full">
                             <div className="w-full">
                                 <div className="flex items-center gap-3 mb-6 px-1">
                                     <div className="w-6 h-6 flex items-center justify-center p-1 bg-white/5 rounded-lg border border-white/5 shadow-inner">
@@ -611,7 +634,7 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
                                 {/* Main Analysis Content */}
                                 {shouldRenderMainBubble && (
                                 <div className="space-y-10 pl-1 group/content">
-                                    <div className="lovable-glass-strong border border-white/5 p-8 lg:p-10 rounded-[2.5rem] rounded-tl-none space-y-8 bg-gradient-to-br from-white/[0.03] to-transparent shadow-xl shadow-black/20">
+                                    <div className="lovable-glass-strong border border-white/5 p-6 lg:p-8 rounded-[2.5rem] rounded-tl-none space-y-6 bg-gradient-to-br from-white/[0.03] to-transparent shadow-xl shadow-black/20">
                                         <div className="text-white/80 font-sans text-[17px] leading-[1.8] md:leading-[1.9] [&_p]:mb-6 [&_p:last-child]:mb-0 [&_ul]:list-none [&_ul]:pl-0 [&_ul]:mb-6 [&_ul>li]:mb-4 [&_ul>li]:pl-6 [&_ul>li]:relative [&_ul>li:before]:content-[''] [&_ul>li:before]:absolute [&_ul>li:before]:left-0 [&_ul>li:before]:top-[0.8em] [&_ul>li:before]:w-1.5 [&_ul>li:before]:h-px [&_ul>li:before]:bg-white/40 [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:mb-6 [&_ol>li]:mb-4 [&_ol>li]:pl-2 [&_h2]:text-3xl [&_h2]:text-white [&_h2]:mt-12 [&_h2]:mb-6 [&_h2]:tracking-tight [&_h3]:text-xl [&_h3]:font-bold [&_h3]:text-white [&_h3]:mt-10 [&_h3]:mb-4 [&_strong]:text-white [&_strong]:font-bold selection:bg-white/20">
                                             <ReactMarkdown 
                                                 remarkPlugins={[remarkGfm]}
@@ -723,12 +746,12 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: 0.4, duration: 0.6 }}
-                            className="flex flex-col gap-5 mt-8 max-w-2xl mx-auto w-full"
+                            className="flex flex-col gap-3 mt-2 max-w-2xl mx-auto w-full"
                         >
-                            <p className="font-mono text-[9px] uppercase tracking-[0.3em] text-white/20 text-center mb-2 font-bold">Выберите направление анализа</p>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <button onClick={() => handleSendMessage("Анализ идеи")} className="flex items-center gap-5 p-6 rounded-[2rem] bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 transition-all duration-500 text-left group hover:border-white/20 hover:shadow-xl hover:shadow-white/5 active:scale-95">
-                                    <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center text-white group-hover:scale-110 group-hover:bg-white/10 transition-all">
+                            <p className="font-mono text-[9px] uppercase tracking-[0.3em] text-white/20 text-center mb-1 font-bold">Выберите направление анализа</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <button onClick={() => handleSendMessage("Анализ идеи")} className="flex items-center gap-4 p-4 rounded-[1.5rem] bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 transition-all duration-500 text-left group hover:border-white/20 hover:shadow-xl hover:shadow-white/5 active:scale-95">
+                                    <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-white group-hover:scale-110 group-hover:bg-white/10 transition-all">
                                         <Zap className="w-6 h-6" strokeWidth={1.5} />
                                     </div>
                                     <div className="flex-1 min-w-0">
@@ -738,8 +761,8 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
                                     <ArrowRight className="w-5 h-5 text-white/10 group-hover:text-white group-hover:translate-x-1 transition-all" strokeWidth={1.5} />
                                 </button>
 
-                                <button onClick={() => handleSendMessage("Анализ ЦА")} className="flex items-center gap-5 p-6 rounded-[2rem] bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 transition-all duration-500 text-left group hover:border-white/20 hover:shadow-xl hover:shadow-white/5 active:scale-95">
-                                    <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center text-white group-hover:scale-110 group-hover:bg-white/10 transition-all">
+                                <button onClick={() => handleSendMessage("Анализ ЦА")} className="flex items-center gap-4 p-4 rounded-[1.5rem] bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 transition-all duration-500 text-left group hover:border-white/20 hover:shadow-xl hover:shadow-white/5 active:scale-95">
+                                    <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-white group-hover:scale-110 group-hover:bg-white/10 transition-all">
                                         <Users className="w-6 h-6" strokeWidth={1.5} />
                                     </div>
                                     <div className="flex-1 min-w-0">
@@ -749,8 +772,8 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
                                     <ArrowRight className="w-5 h-5 text-white/10 group-hover:text-white group-hover:translate-x-1 transition-all" strokeWidth={1.5} />
                                 </button>
 
-                                <button onClick={() => handleSendMessage("Посчитать экономику проекта")} className="flex items-center gap-5 p-6 rounded-[2rem] bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 transition-all duration-500 text-left group hover:border-white/20 hover:shadow-xl hover:shadow-white/5 active:scale-95">
-                                    <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center text-white group-hover:scale-110 group-hover:bg-white/10 transition-all">
+                                <button onClick={() => handleSendMessage("Посчитать экономику проекта")} className="flex items-center gap-4 p-4 rounded-[1.5rem] bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 transition-all duration-500 text-left group hover:border-white/20 hover:shadow-xl hover:shadow-white/5 active:scale-95">
+                                    <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-white group-hover:scale-110 group-hover:bg-white/10 transition-all">
                                         <Grid className="w-6 h-6" strokeWidth={1.5} />
                                     </div>
                                     <div className="flex-1 min-w-0">
@@ -760,8 +783,8 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
                                     <ArrowRight className="w-5 h-5 text-white/10 group-hover:text-white group-hover:translate-x-1 transition-all" strokeWidth={1.5} />
                                 </button>
 
-                                <button onClick={() => handleSendMessage("Другой вопрос")} className="flex items-center gap-5 p-6 rounded-[2rem] bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 transition-all duration-500 text-left group hover:border-white/20 hover:shadow-xl hover:shadow-white/5 active:scale-95">
-                                    <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center text-white group-hover:scale-110 group-hover:bg-white/10 transition-all">
+                                <button onClick={() => handleSendMessage("Другой вопрос")} className="flex items-center gap-4 p-4 rounded-[1.5rem] bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 transition-all duration-500 text-left group hover:border-white/20 hover:shadow-xl hover:shadow-white/5 active:scale-95">
+                                    <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-white group-hover:scale-110 group-hover:bg-white/10 transition-all">
                                         <HelpCircle className="w-6 h-6" strokeWidth={1.5} />
                                     </div>
                                     <div className="flex-1 min-w-0">
@@ -813,7 +836,7 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
             </div >
 
             {/* Input Area (Fixed Bottom) */}
-            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/95 to-transparent pt-20 pb-10 z-40 px-6 sm:px-12">
+            <div ref={inputBarRef} className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/95 to-transparent pt-20 pb-10 z-40 px-6 sm:px-12">
                 <div className={`mx-auto w-full transition-all duration-500 ease-[0.16,1,0.3,1] ${isSidebarCollapsed ? 'max-w-6xl' : 'max-w-4xl'}`}>
                     <ChatInput
                     value={inputValue}
