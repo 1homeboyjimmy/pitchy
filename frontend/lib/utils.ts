@@ -9,11 +9,15 @@
 export function stripThoughts(content: string): string {
     if (!content) return "";
     
-    // Remove complete tags
+    // Remove complete tags (including ǏǏǏ and [STATUS:])
     let stripped = content.replace(/<(think|thought|tool_call|tool_thought|think_process)>[\s\S]*?<\/\1>/gi, "");
+    stripped = stripped.replace(/ǏǏǏ[\s\S]*?ǏǏǏ/g, "");
+    stripped = stripped.replace(/\[STATUS:[\s\S]*?\]/g, "");
     
     // Remove unclosed pure-thought tags (at the end of string)
     stripped = stripped.replace(/<(think|thought|think_process)>[\s\S]*$/gi, "");
+    stripped = stripped.replace(/ǏǏǏ[\s\S]*$/g, "");
+    stripped = stripped.replace(/\[STATUS:[\s\S]*$/g, "");
     
     // Handle partially present tags at the end to prevent flickering during streaming
     // Matches things like <t, <th, <think, but not <table>

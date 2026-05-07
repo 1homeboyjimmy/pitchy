@@ -176,8 +176,10 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
             setMessages(prev => {
                 const merged = mergeMessages(prev, session.messages);
                 if (merged.length <= 1 && typeof window !== "undefined") {
+                    const isActive = localStorage.getItem(`pitchy_is_mode_active_${session.id}`);
                     const savedGreeting = localStorage.getItem(`pitchy_chat_greeting_${session.id}`);
-                    if (savedGreeting && !merged.some(m => m.content === savedGreeting)) {
+                    
+                    if (!isActive && savedGreeting && !merged.some(m => m.content === savedGreeting)) {
                         return [...merged, {
                             id: Date.now(),
                             role: "assistant",
@@ -335,6 +337,7 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
             if (typeof window !== "undefined") {
                 localStorage.setItem(`pitchy_chat_mode_${session.id}`, forceIntent);
                 localStorage.setItem(`pitchy_chat_greeting_${session.id}`, greeting);
+                localStorage.setItem(`pitchy_is_mode_active_${session.id}`, "true");
             }
 
             setMessages(prev => [...prev, {
@@ -354,6 +357,11 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
 
         if (typeof text !== 'string') setInputValue("");
         setIsLoading(true);
+
+        // Set flag to prevent greeting duplication on next sync
+        if (typeof window !== "undefined") {
+            localStorage.setItem(`pitchy_is_mode_active_${session.id}`, "true");
+        }
 
         const isPresentationRequest = intentToSend === 'presentation' || isPresentationMode;
 
@@ -574,8 +582,8 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
 
             let derivedThoughts = msg.thoughts;
             const rawContentText = msg.content || "";
-            if (!derivedThoughts && rawContentText.includes("<think>")) {
-                const match = rawContentText.match(/<think>([\s\S]*?)(?:<\/think>|$)/);
+            if (!derivedThoughts && (rawContentText.includes("<think>") || rawContentText.includes("ǏǏǏ"))) {
+                const match = rawContentText.match(/<think>([\s\S]*?)(?:<\/think>|$)/) || rawContentText.match(/ǏǏǏ([\s\S]*?)(?:ǏǏǏ|$)/);
                 if (match) derivedThoughts = match[1];
             }
 
