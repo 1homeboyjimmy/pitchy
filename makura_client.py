@@ -37,6 +37,7 @@ async def call_makura(system_prompt: str, user_message: str, model: str = None) 
         ],
         "temperature": 0.4,
         "max_tokens": 4000,
+        "tool_stream": True,
         "thinking": {"type": "enabled"}
     }
 
@@ -118,6 +119,7 @@ async def stream_makura(system_prompt: str = None, user_message: str = None, mes
         "temperature": 0.4,
         "max_tokens": 4000,
         "stream": True,
+        "tool_stream": True,
         "thinking": {"type": "enabled"}
     }
 

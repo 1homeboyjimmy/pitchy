@@ -288,7 +288,7 @@ class ChatOrchestrator:
         """
         active_start_tag = None
         buffer = ""
-        tags = [("<thought>", "</thought>"), ("<think>", "</think>"), ("<tool_call>", "</tool_call>"), ("<tool_thought>", "</tool_thought>")]
+        tags = [("<thought>", "</thought>"), ("<think>", "</think>"), ("<tool_call>", "</tool_call>"), ("<tool_thought>", "</tool_thought>"), ("<think_process>", "</think_process>")]
         
         async for chunk in generator:
             if isinstance(chunk, dict):
@@ -352,7 +352,7 @@ class ChatOrchestrator:
                 if not found_tag:
                     # If no complete tag found, yield what we can but keep a small buffer
                     # to avoid splitting a tag that might be coming in the next chunk.
-                    max_tag_len = 12
+                    max_tag_len = 16
                     if not active_start_tag:
                         if len(buffer) > max_tag_len:
                             to_yield = buffer[:-max_tag_len]
@@ -374,7 +374,7 @@ class ChatOrchestrator:
             if final_content.strip():
                 # FALLBACK: If we are at the end of the stream and still have an active_start_tag,
                 # we decide whether to hide it or leak it.
-                is_pure_thought = active_start_tag in ["<think>", "<thought>"]
+                is_pure_thought = active_start_tag in ["<think>", "<thought>", "<think_process>"]
                 yield self._format_sse({"type": "thought" if is_pure_thought else "chunk", "content": final_content})
 
 

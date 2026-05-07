@@ -750,7 +750,7 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
                         >
                             <p className="font-mono text-[9px] uppercase tracking-[0.3em] text-white/20 text-center mb-1 font-bold">Выберите направление анализа</p>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <button onClick={() => handleSendMessage("Анализ идеи")} className="flex items-center gap-4 p-4 rounded-[1.5rem] bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 transition-all duration-500 text-left group hover:border-white/20 hover:shadow-xl hover:shadow-white/5 active:scale-95">
+                                <button onClick={() => handleSendMessage("Проведи анализ идеи. Используй предоставленный контекст только если он относится к моему проекту. Если данных недостаточно — задай вопросы.", "roadmap")} className="flex items-center gap-4 p-4 rounded-[1.5rem] bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 transition-all duration-500 text-left group hover:border-white/20 hover:shadow-xl hover:shadow-white/5 active:scale-95">
                                     <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-white group-hover:scale-110 group-hover:bg-white/10 transition-all">
                                         <Zap className="w-6 h-6" strokeWidth={1.5} />
                                     </div>
@@ -761,7 +761,7 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
                                     <ArrowRight className="w-5 h-5 text-white/10 group-hover:text-white group-hover:translate-x-1 transition-all" strokeWidth={1.5} />
                                 </button>
 
-                                <button onClick={() => handleSendMessage("Анализ ЦА")} className="flex items-center gap-4 p-4 rounded-[1.5rem] bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 transition-all duration-500 text-left group hover:border-white/20 hover:shadow-xl hover:shadow-white/5 active:scale-95">
+                                <button onClick={() => handleSendMessage("Проведи анализ целевой аудитории (ЦА). Выдели сегменты, боли и JTBD. Выведи результат строго в структурированном виде.", "roadmap")} className="flex items-center gap-4 p-4 rounded-[1.5rem] bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 transition-all duration-500 text-left group hover:border-white/20 hover:shadow-xl hover:shadow-white/5 active:scale-95">
                                     <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-white group-hover:scale-110 group-hover:bg-white/10 transition-all">
                                         <Users className="w-6 h-6" strokeWidth={1.5} />
                                     </div>
@@ -772,7 +772,7 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
                                     <ArrowRight className="w-5 h-5 text-white/10 group-hover:text-white group-hover:translate-x-1 transition-all" strokeWidth={1.5} />
                                 </button>
 
-                                <button onClick={() => handleSendMessage("Посчитать экономику проекта")} className="flex items-center gap-4 p-4 rounded-[1.5rem] bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 transition-all duration-500 text-left group hover:border-white/20 hover:shadow-xl hover:shadow-white/5 active:scale-95">
+                                <button onClick={() => handleSendMessage("Посчитай экономику проекта, LTV, CAC и другие метрики. Выведи результат строго в структурированном виде.", "finance")} className="flex items-center gap-4 p-4 rounded-[1.5rem] bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 transition-all duration-500 text-left group hover:border-white/20 hover:shadow-xl hover:shadow-white/5 active:scale-95">
                                     <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-white group-hover:scale-110 group-hover:bg-white/10 transition-all">
                                         <Grid className="w-6 h-6" strokeWidth={1.5} />
                                     </div>
