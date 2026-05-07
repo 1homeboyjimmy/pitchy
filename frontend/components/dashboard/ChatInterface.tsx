@@ -173,9 +173,24 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
 
     useEffect(() => {
         if (session.messages) {
-            setMessages(prev => mergeMessages(prev, session.messages));
+            setMessages(prev => {
+                const merged = mergeMessages(prev, session.messages);
+                if (merged.length <= 1 && typeof window !== "undefined") {
+                    const savedGreeting = localStorage.getItem(`pitchy_chat_greeting_${session.id}`);
+                    if (savedGreeting && !merged.some(m => m.content === savedGreeting)) {
+                        return [...merged, {
+                            id: Date.now(),
+                            role: "assistant",
+                            content: savedGreeting,
+                            created_at: new Date().toISOString(),
+                            client_id: crypto.randomUUID()
+                        }];
+                    }
+                }
+                return merged;
+            });
         }
-    }, [session.messages, mergeMessages]);
+    }, [session.messages, mergeMessages, session.id]);
 
     // Pause autoscroll while user is interacting with scroll. Cleared once they
     // come back to the bottom of the chat.
@@ -306,10 +321,41 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
         const content = typeof text === 'string' ? text : inputValue.trim();
         if (!content || isLoading) return;
 
+        // Mode Selector Logic for Empty Chat
+        if (messages.length <= 1 && text && !silent && forceIntent) {
+            let greeting = "Я готов помочь с любым вопросом по стартапу: от подготовки к питчу до технической архитектуры. Что вас сейчас беспокоит?";
+            if (text.toLowerCase().includes("анализ идеи")) {
+                greeting = "Режим анализа идеи активирован. Опишите вашу задумку: какую проблему вы решаете и в чем уникальность вашего продукта? Я помогу оценить потенциал и риски.";
+            } else if (text.toLowerCase().includes("ца") || text.toLowerCase().includes("целевой аудитории")) {
+                greeting = "Переходим к анализу аудитории. Кто ваш идеальный клиент? Опишите тех, кто первым купит ваш продукт, и я помогу выделить сегменты и боли.";
+            } else if (text.toLowerCase().includes("экономик") || text.toLowerCase().includes("посчитай")) {
+                greeting = "Режим фин-анализа включен. Пожалуйста, введите данные проекта (CAC, ARPU, Churn Rate) или опишите модель монетизации для примерного расчета.";
+            }
+
+            if (typeof window !== "undefined") {
+                localStorage.setItem(`pitchy_chat_mode_${session.id}`, forceIntent);
+                localStorage.setItem(`pitchy_chat_greeting_${session.id}`, greeting);
+            }
+
+            setMessages(prev => [...prev, {
+                id: Date.now(),
+                role: "assistant",
+                content: greeting,
+                created_at: new Date().toISOString(),
+                client_id: crypto.randomUUID()
+            }]);
+            return;
+        }
+
+        let intentToSend = forceIntent;
+        if (!intentToSend && messages.length <= 2 && typeof window !== "undefined") {
+            intentToSend = localStorage.getItem(`pitchy_chat_mode_${session.id}`) || undefined;
+        }
+
         if (typeof text !== 'string') setInputValue("");
         setIsLoading(true);
 
-        const isPresentationRequest = forceIntent === 'presentation' || isPresentationMode;
+        const isPresentationRequest = intentToSend === 'presentation' || isPresentationMode;
 
         if (isPresentationRequest) {
             setPresentationSlides(null); 
@@ -391,7 +437,7 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
                     assistantClientId, 
                     useDeepSearch,
                     isResearchMode,
-                    isPresentationRequest ? 'presentation' : (forceIntent || undefined)
+                    isPresentationRequest ? 'presentation' : (intentToSend || undefined)
                 )) {
                     if (chunk.type === "thought") {
                         fullThoughtContent += chunk.content;

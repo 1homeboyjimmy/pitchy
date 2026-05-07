@@ -595,11 +595,15 @@ async def init_rag() -> None:
 
 @observe(name="rag_retrieval")
 def get_relevant_chunks(text: str, categories: List[str] = None, top_k: int = 3) -> List[dict]:
+    if len(text.strip()) < 30:
+        return []
     if _RAG_INSTANCE is None:
         raise RuntimeError("RAG is not initialized")
     return _RAG_INSTANCE.query(text, categories=categories, top_k=top_k)
 
 async def aget_relevant_chunks(text: str, categories: List[str] = None, top_k: int = 3, parent_trace=None) -> List[dict]:
+    if len(text.strip()) < 30:
+        return []
     if _RAG_INSTANCE is None:
         raise RuntimeError("RAG is not initialized")
     return await _RAG_INSTANCE.aquery(text, categories=categories, top_k=top_k, parent_trace=parent_trace)
