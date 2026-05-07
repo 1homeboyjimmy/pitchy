@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { Menu, LogOut, User } from "lucide-react";
+import { Menu, LogOut, User, Maximize2 } from "lucide-react";
 import { clearToken } from "@/lib/auth";
 import { PitchyLogo } from "@/components/shared/PitchyLogo";
 
@@ -19,9 +19,10 @@ interface Props {
   activeTab: string;
   onMenuClick?: () => void;
   isSidebarCollapsed?: boolean;
+  onEnterFullscreen?: () => void;
 }
 
-export function InternalTopNavBar({ activeTab, onMenuClick, isSidebarCollapsed }: Props) {
+export function InternalTopNavBar({ activeTab, onMenuClick, isSidebarCollapsed, onEnterFullscreen }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const isAccountPage = pathname === "/account";
@@ -85,6 +86,16 @@ export function InternalTopNavBar({ activeTab, onMenuClick, isSidebarCollapsed }
 
         {/* Right — Desktop */}
         <div className="flex items-center gap-3 sm:gap-4 relative z-[110]">
+          {onEnterFullscreen && (
+            <button
+              onClick={onEnterFullscreen}
+              className="hidden md:flex items-center justify-center w-10 h-10 border border-white/10 text-white/60 transition-all rounded-full hover:bg-white hover:text-black hover:border-white active:scale-[0.98]"
+              aria-label="Скрыть панели"
+              title="Скрыть панели"
+            >
+              <Maximize2 size={14} strokeWidth={2.5} />
+            </button>
+          )}
           <Link
             href="/account"
             className={`flex items-center gap-2 px-6 py-2 border font-sans text-[12px] font-bold uppercase tracking-tight transition-all rounded-full active:scale-[0.98] ${

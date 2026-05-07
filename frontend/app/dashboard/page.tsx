@@ -2,13 +2,15 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader, Activity, RefreshCcw, TrendingUp, BarChart2, ArrowUp, ArrowUpRight, MessageSquare, Plus } from "lucide-react";
+import { Loader, Activity, RefreshCcw, ArrowUpRight, MessageSquare, Plus, Microscope, Map, Users, Minimize2 } from "lucide-react";
 import { ChatInterface } from "@/components/dashboard/ChatInterface";
 import { AdminView } from "@/components/dashboard/AdminView";
 import { TreeView } from "@/components/dashboard/TreeView";
 import { SideNavBar } from "@/components/internal/SideNavBar";
 import { InternalTopNavBar } from "@/components/internal/InternalTopNavBar";
 import { TopNavBar } from "@/components/shared/TopNavBar";
+import { QuotaCard } from "@/components/dashboard/QuotaCard";
+import { getQuotas, getPlaceholderUsage, buildSnapshot, getTierLabel } from "@/lib/planLimits";
 import { motion } from "framer-motion";
 
 import { useAuth } from "@/lib/hooks/useAuth";
@@ -74,6 +76,15 @@ function DashboardContent() {
   const [isCreating, setIsCreating] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const tier = userProfile?.subscription_tier || "free";
+  const quotas = getQuotas(tier);
+  const usage = getPlaceholderUsage(sessions.length);
+  const messagesSnap = buildSnapshot(usage.messages, quotas.messages);
+  const researchSnap = buildSnapshot(usage.deepResearch, quotas.deepResearch);
+  const roadmapsSnap = buildSnapshot(usage.roadmaps, quotas.roadmaps);
+  const custdevSnap = buildSnapshot(usage.deepCustdev, quotas.deepCustdev);
 
   useEffect(() => {
     const tab = searchParams.get("tab");
@@ -171,27 +182,45 @@ function DashboardContent() {
 
   if (!isAuthenticated) return <UnauthDashboard />;
 
+  const mainPadTop = isFullscreen ? "pt-10 sm:pt-12" : "pt-24 sm:pt-32";
+
   return (
     <div className="bg-black text-white h-screen font-sans flex overflow-hidden">
-      <SideNavBar
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        isAdmin={userProfile?.is_admin}
-        isMobileOpen={isMobileSidebarOpen}
-        onMobileClose={() => setIsMobileSidebarOpen(false)}
-        isCollapsed={isSidebarCollapsed}
-        onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-      />
-      
-      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden relative">
-        <InternalTopNavBar
+      {!isFullscreen && (
+        <SideNavBar
           activeTab={activeTab}
-          onMenuClick={() => setIsMobileSidebarOpen(true)}
-          isSidebarCollapsed={isSidebarCollapsed}
+          setActiveTab={setActiveTab}
+          isAdmin={userProfile?.is_admin}
+          isMobileOpen={isMobileSidebarOpen}
+          onMobileClose={() => setIsMobileSidebarOpen(false)}
+          isCollapsed={isSidebarCollapsed}
+          onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
         />
+      )}
+
+      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden relative">
+        {!isFullscreen && (
+          <InternalTopNavBar
+            activeTab={activeTab}
+            onMenuClick={() => setIsMobileSidebarOpen(true)}
+            isSidebarCollapsed={isSidebarCollapsed}
+            onEnterFullscreen={() => setIsFullscreen(true)}
+          />
+        )}
+
+        {isFullscreen && (
+          <button
+            onClick={() => setIsFullscreen(false)}
+            className="fixed top-4 left-4 z-[120] flex items-center justify-center w-10 h-10 bg-black/80 backdrop-blur-xl border border-white/10 text-white/70 transition-all rounded-full hover:bg-white hover:text-black hover:border-white active:scale-[0.98] shadow-lg shadow-black/40"
+            aria-label="Показать панели"
+            title="Показать панели"
+          >
+            <Minimize2 size={14} strokeWidth={2.5} />
+          </button>
+        )}
 
         <main className="flex-1 overflow-y-auto overflow-x-hidden">
-          <div className={`w-full mx-auto ${activeTab === 'chat' || activeTab === 'tree' ? 'px-4 sm:px-8 pt-24 sm:pt-32 h-full' : 'px-6 sm:px-12 pt-24 sm:pt-32 max-w-7xl min-h-full'}`}>
+          <div className={`w-full mx-auto ${activeTab === 'chat' || activeTab === 'tree' ? `px-4 sm:px-8 ${mainPadTop} h-full` : `px-6 sm:px-12 ${mainPadTop} max-w-7xl min-h-full`}`}>
 
           {activeTab === "overview" && (
             <motion.div
@@ -208,7 +237,7 @@ function DashboardContent() {
                   <div className="flex flex-wrap gap-3 items-center">
                     <div className="flex items-center gap-2 px-3 py-1.5 bg-white/[0.03] border border-white/5 rounded-full">
                       <Activity size={14} className="text-white/40" />
-                      <span className="font-mono text-[10px] text-white/40 uppercase tracking-[0.15em] font-bold">Сессии: <span className="text-white">{sessions.length}</span></span>
+                      <span className="font-mono text-[10px] text-white/40 uppercase tracking-[0.15em] font-bold">Тариф: <span className="text-white">{getTierLabel(tier)}</span></span>
                     </div>
                     <div className="flex items-center gap-2 px-3 py-1.5 bg-white/[0.03] border border-white/5 rounded-full">
                       <RefreshCcw size={14} className="text-white/40" />
@@ -218,62 +247,32 @@ function DashboardContent() {
                 </div>
               </div>
 
-              {/* Stats Row (Bento Grid Style) */}
-              <div className="grid grid-cols-12 gap-5 mb-16">
-                {/* Progress Card */}
-                <div className="col-span-12 md:col-span-5 lovable-glass-strong border border-white/5 p-8 flex flex-col justify-between group hover:border-white/20 transition-all duration-500 rounded-[2rem] bg-gradient-to-br from-white/[0.04] to-transparent overflow-hidden relative">
-                  <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
-                    <TrendingUp size={120} strokeWidth={1} />
-                  </div>
-                  <div className="flex justify-between items-start mb-12 relative z-10">
-                    <span className="font-sans text-[14px] text-white/50 tracking-tight">Прогресс системы</span>
-                    <TrendingUp className="text-white/20 group-hover:text-white/40 transition-colors" size={20} />
-                  </div>
-                  <div className="relative z-10">
-                    <div className="flex justify-between items-end mb-4">
-                      <span className="font-sans text-6xl font-semibold text-white tracking-tight">84.2%</span>
-                      <span className="font-mono text-[9px] text-emerald-400/60 font-bold tracking-widest uppercase mb-1.5">ОПТИМИЗИРОВАНО</span>
-                    </div>
-                    <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
-                      <motion.div 
-                        initial={{ width: 0 }}
-                        animate={{ width: "84.2%" }}
-                        transition={{ duration: 1.5, ease: "easeOut" }}
-                        className="h-full bg-white shadow-[0_0_15px_rgba(255,255,255,0.5)]"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Market Readiness Card */}
-                <div className="col-span-12 md:col-span-3 lovable-glass-strong border border-white/5 p-8 flex flex-col justify-between hover:border-white/20 transition-all duration-500 rounded-[2rem] bg-gradient-to-br from-white/[0.04] to-transparent">
-                  <div className="flex justify-between items-start mb-12">
-                    <span className="font-sans text-[14px] text-white/50 tracking-tight">Рынок</span>
-                    <BarChart2 className="text-white/20 group-hover:text-white/40 transition-colors" size={20} />
-                  </div>
-                  <div>
-                    <div className="flex items-baseline gap-1">
-                      <span className="font-sans text-6xl font-semibold text-white tracking-tight">9.4</span>
-                      <span className="font-sans text-xl text-white/20">/10</span>
-                    </div>
-                    <p className="font-mono text-[9px] text-white/20 font-bold tracking-widest uppercase mt-3">ГОТОВНОСТЬ</p>
-                  </div>
-                </div>
-
-                {/* Total Branches Card */}
-                <div className="col-span-12 md:col-span-4 lovable-glass-strong border border-white/5 p-8 flex flex-col justify-between hover:border-white/20 transition-all duration-500 rounded-[2rem] bg-gradient-to-br from-white/[0.04] to-transparent">
-                  <div className="flex justify-between items-start mb-12">
-                    <span className="font-sans text-[14px] text-white/50 tracking-tight">Ветки</span>
-                    <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-500/10 rounded-full border border-emerald-500/20">
-                      <ArrowUp size={10} className="text-emerald-400" />
-                      <span className="font-mono text-[10px] text-emerald-400 font-bold">12%</span>
-                    </div>
-                  </div>
-                  <div>
-                    <div className="font-sans text-6xl font-semibold text-white tracking-tight mb-2">1,248</div>
-                    <p className="font-mono text-[9px] text-white/20 font-bold tracking-widest uppercase">ПО СРАВНЕНИЮ С ПРОШЛОЙ НЕДЕЛЕЙ</p>
-                  </div>
-                </div>
+              {/* Quota Cards Row */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-16">
+                <QuotaCard
+                  label="Сообщения"
+                  caption="ОСТАЛОСЬ"
+                  icon={MessageSquare}
+                  snapshot={messagesSnap}
+                />
+                <QuotaCard
+                  label="Глубокие исследования"
+                  caption="ОСТАЛОСЬ"
+                  icon={Microscope}
+                  snapshot={researchSnap}
+                />
+                <QuotaCard
+                  label="Дорожные карты"
+                  caption="ОСТАЛОСЬ"
+                  icon={Map}
+                  snapshot={roadmapsSnap}
+                />
+                <QuotaCard
+                  label="Deep Custdev"
+                  caption="ОСТАЛОСЬ"
+                  icon={Users}
+                  snapshot={custdevSnap}
+                />
               </div>
 
               {/* Recent Sessions Grid */}
@@ -334,10 +333,10 @@ function DashboardContent() {
           {activeTab === "chat" && (
             <div className="h-full w-full flex flex-col pb-8 max-w-7xl mx-auto">
               {activeSession ? (
-                <ChatInterface 
-                  session={activeSession} 
-                  onUpdate={setActiveSession} 
-                  isSidebarCollapsed={isSidebarCollapsed}
+                <ChatInterface
+                  session={activeSession}
+                  onUpdate={setActiveSession}
+                  isSidebarCollapsed={isSidebarCollapsed || isFullscreen}
                 />
               ) : (
                 <div className="flex flex-col flex-1 h-full lovable-glass-strong rounded-[2.5rem] border border-white/5 items-center justify-center px-4 bg-gradient-to-br from-white/[0.02] to-transparent">
