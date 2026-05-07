@@ -61,8 +61,7 @@ ROLE_PROMPTS = {
 1. ДЕТАЛИЗАЦИЯ: На вопросы по валидации идеи отвечай подробно и структурированно. 
 2. ГРАНИЦЫ: Если запрос касается финансов или сегментации ЦА, дай краткий ответ и направь в соответствующий раздел дорожной карты.
 3. ТАБЛИЦЫ: Всегда закрывай таблицы символом |. Не используй сложные форматирования внутри ячеек. Если данных нет, пиши 'н/д' вместо пустой строки.
-4. СТАТУСЫ: Каждое свое действие начинай с тега [STATUS: Название этапа]. 
-Например: [STATUS: Анализ бизнес-модели].""",
+4. СТАТУСЫ: Твой САМЫЙ ПЕРВЫЙ токен ответа должен быть тегом [STATUS: Название этапа]. Каждое свое действие начинай с него, до начала размышлений. Например: [STATUS: Анализ бизнес-модели].""",
 
     "target_audience": """Ты — маркетолог-исследователь. 
 ОТВЕЧАЙ СТРОГО НА РУССКОМ ЯЗЫКЕ. Использование китайских иероглифов или любых других языков КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО.
@@ -73,8 +72,7 @@ ROLE_PROMPTS = {
 1. ДЕТАЛИЗАЦИЯ: На вопросы о пользователях и сегментации отвечай максимально глубоко.
 2. ГРАНИЦЫ: Если запрос касается экономики или концепции продукта, дай краткий ответ и направь в нужный раздел дорожной карты.
 3. ТАБЛИЦЫ: Всегда закрывай таблицы символом |. Не используй сложные форматирования внутри ячеек. Если данных нет, пиши 'н/д' вместо пустой строки.
-4. СТАТУСЫ: Каждое свое действие начинай с тега [STATUS: Название этапа]. 
-Например: [STATUS: Сегментация аудитории].""",
+4. СТАТУСЫ: Твой САМЫЙ ПЕРВЫЙ токен ответа должен быть тегом [STATUS: Название этапа]. Каждое свое действие начинай с него, до начала размышлений. Например: [STATUS: Сегментация аудитории].""",
 
     "unit_economics": """Ты — финансовый директор (CFO) и эксперт по метрикам. 
 ОТВЕЧАЙ СТРОГО НА РУССКОМ ЯЗЫКЕ. Использование китайских иероглифов или любых других языков КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО.
@@ -85,8 +83,7 @@ ROLE_PROMPTS = {
 1. ДЕТАЛИЗАЦИЯ: На финансовые вопросы отвечай максимально подробно с цифрами.
 2. ГРАНИЦЫ: Если запрос про идею или маркетинг без цифр, дай краткий ответ и направь в нужный раздел дорожной карты.
 3. ТАБЛИЦЫ: Всегда закрывай таблицы символом |. Не используй сложные форматирования внутри ячеек. Если данных нет, пиши 'н/д' вместо пустой строки.
-4. СТАТУСЫ: Каждое свое действие начинай с тега [STATUS: Название этапа]. 
-Например: [STATUS: Расчет юнит-метрик]."""
+4. СТАТУСЫ: Твой САМЫЙ ПЕРВЫЙ токен ответа должен быть тегом [STATUS: Название этапа]. Каждое свое действие начинай с него, до начала размышлений. Например: [STATUS: Расчет юнит-метрик]."""
 }
 
 FINANCE_PROMPT = """Ты — финансовый эксперт. 
@@ -97,7 +94,7 @@ FINANCE_PROMPT = """Ты — финансовый эксперт.
 
 Всегда закрывай таблицы символом |. Не используй сложные форматирования внутри ячеек. Если данных нет, пиши 'н/д' вместо пустой строки.
 
-СТАТУСЫ: Каждое свое действие (анализ, расчет, поиск) начинай с тега [STATUS: Название этапа].
+СТАТУСЫ: Твой САМЫЙ ПЕРВЫЙ токен ответа должен быть тегом [STATUS: Название этапа]. Каждое свое действие (анализ, расчет, поиск) начинай с него, до начала размышлений.
 
 ВНИМАНИЕ: Сегодня {current_date} года. Любые документы из контекста, описывающие {current_year} год в будущем времени (прогнозы, планы), являются ИСТОРИЧЕСКИМИ данными. Ты обязан подтверждать текущую дату в первой же 'мысли' (thought) и использовать Web Search для верификации любых цифр.
 
@@ -253,8 +250,8 @@ class ChatOrchestrator:
             f"Ты обязан подтверждать текущую дату в первой же 'мысли' (thought) и использовать Web Search для верификации любых цифр.\n"
             f"При ответе на вопросы о статистике или состоянии рынка {datetime.now().year} года опирайся ИСКЛЮЧИТЕЛЬНО на актуальные данные веб-поиска.\n"
             f"Перед генерацией ответа ты ОБЯЗАН написать свои рассуждения. Начни свой ответ СТРОГО с тега <think>.\n"
-            f"Сначала ОБЯЗАТЕЛЬНО запиши свои мысли о запросе внутри тегов <think>...</think>, а затем дай итоговый ответ пользователю.\n"
-            f"Каждый этап анализа (поиск, расчет, синтез) начинай с тега [STATUS: Название этапа]."
+            f"Сначала ОБЯЗАТЕЛЬНО выведи тег статуса, затем запиши свои мысли о запросе внутри тегов <think>...</think>, а затем дай итоговый ответ пользователю.\n"
+            f"Каждый этап анализа (поиск, расчет, синтез) начинай с тега [STATUS: Название этапа] (СТРОГО САМЫМ ПЕРВЫМ ТОКЕНОМ)."
         )
         
         if rag_context:
@@ -364,17 +361,27 @@ class ChatOrchestrator:
                 if not found_tag:
                     # If no complete tag found, yield what we can but keep a small buffer
                     # to avoid splitting a tag that might be coming in the next chunk.
-                    max_tag_len = 16
                     if not active_start_tag:
+                        max_tag_len = 16
                         if len(buffer) > max_tag_len:
                             to_yield = buffer[:-max_tag_len]
                             buffer = buffer[-max_tag_len:]
                             yield self._format_sse({"type": "chunk", "content": to_yield})
                     else:
-                        if len(buffer) > max_tag_len:
-                            to_yield = buffer[:-max_tag_len]
-                            buffer = buffer[-max_tag_len:]
-                            yield self._format_sse({"type": "thought", "content": to_yield})
+                        # Flush thoughts almost immediately (only buffer the size of the end_tag)
+                        end_tag_len = 3  # typical for ǏǏǏ or </think> it's 8, let's use a safe 8
+                        for st, et in tags:
+                            if st == active_start_tag:
+                                end_tag_len = len(et)
+                                break
+                        
+                        if len(buffer) > end_tag_len:
+                            to_yield = buffer[:-end_tag_len]
+                            buffer = buffer[-end_tag_len:]
+                            if active_start_tag == "[STATUS:":
+                                yield self._format_sse({"type": "status", "content": to_yield})
+                            else:
+                                yield self._format_sse({"type": "thought", "content": to_yield})
                     break
                         
         if buffer:
@@ -445,6 +452,18 @@ class ChatOrchestrator:
             yield self._format_sse({"type": "metadata", "model": "Semantic Cache (Hit)"})
             yield self._format_sse({"type": "final", "readiness_index": 0})
             return
+
+        async def keep_alive_generator(gen):
+            """Wraps a generator to emit ping events every 3 seconds if blocked."""
+            iterator = gen.__aiter__()
+            while True:
+                try:
+                    chunk = await asyncio.wait_for(iterator.__anext__(), timeout=3.0)
+                    yield chunk
+                except asyncio.TimeoutError:
+                    yield {"type": "ping"}
+                except StopAsyncIteration:
+                    break
 
         # --- STREAMING START: Yield immediately after trace creation ---
         reply_full = ""
@@ -669,8 +688,11 @@ class ChatOrchestrator:
                 yield self._format_sse({"type": "metadata", "model": model_used})
                 start_time = time.time()
                 ttft = None
-                async for json_chunk in self._parse_thought_generator(self._stream_chat(user_message, history, state, active_node_id, rag_context=compiled_rag_context)):
+                async for json_chunk in self._parse_thought_generator(keep_alive_generator(self._stream_chat(user_message, history, state, active_node_id, rag_context=compiled_rag_context))):
                     if isinstance(json_chunk, dict):
+                        if json_chunk.get("type") == "ping":
+                            yield self._format_sse(json_chunk)
+                            continue
                         if "__usage__" in json_chunk:
                             usage_data = json_chunk["__usage__"]
                         continue
@@ -717,8 +739,11 @@ class ChatOrchestrator:
                 if sources_list:
                     yield self._format_sse({"type": "sources", "data": sources_list})
                     
-                async for json_chunk in self._parse_thought_generator(stream_makura(system, prompt)):
+                async for json_chunk in self._parse_thought_generator(keep_alive_generator(stream_makura(system, prompt))):
                     if isinstance(json_chunk, dict):
+                        if json_chunk.get("type") == "ping":
+                            yield self._format_sse(json_chunk)
+                            continue
                         if "__usage__" in json_chunk:
                             usage_data = json_chunk["__usage__"]
                         continue
@@ -760,13 +785,24 @@ class ChatOrchestrator:
                 )
                 system_prompt = f"Ты финансовый эксперт Pitchy. На основе контекста ответь пользователю:\n{compiled_rag_context}"
                 
-                async for chunk in stream_makura(prompt, system_prompt=system_prompt):
-                    if isinstance(chunk, dict):
-                        if "__usage__" in chunk:
-                            usage_data = chunk["__usage__"]
+                async for json_chunk in self._parse_thought_generator(keep_alive_generator(stream_makura(prompt, system_prompt=system_prompt))):
+                    if isinstance(json_chunk, dict):
+                        if json_chunk.get("type") == "ping":
+                            yield self._format_sse(json_chunk)
+                            continue
+                        if "__usage__" in json_chunk:
+                            usage_data = json_chunk["__usage__"]
                         continue
-                    yield self._format_sse({"type": "chunk", "content": chunk})
-                    reply_full += str(chunk)
+                    
+                    data = json.loads(json_chunk.strip())
+                    if data["type"] == "chunk":
+                        yield self._format_sse({"type": "chunk", "content": data["content"]})
+                        reply_full += data["content"]
+                    elif data["type"] == "thought":
+                        yield self._format_sse({"type": "thought", "content": data["content"]})
+                        thoughts_full += data["content"]
+                    elif data["type"] == "status":
+                        yield self._format_sse({"type": "status", "content": data["content"]})
             
             elif intent == "presentation":
                 from sqlalchemy import select
@@ -797,7 +833,12 @@ class ChatOrchestrator:
             else:
                 model_used = "Makura (GLM-5)"
                 yield self._format_sse({"type": "metadata", "model": model_used})
-                async for json_chunk in self._parse_thought_generator(self._stream_chat(user_message, history, state, active_node_id)):
+                async for json_chunk in self._parse_thought_generator(keep_alive_generator(self._stream_chat(user_message, history, state, active_node_id))):
+                    if isinstance(json_chunk, dict):
+                        if json_chunk.get("type") == "ping":
+                            yield self._format_sse(json_chunk)
+                            continue
+                        pass
                     if isinstance(json_chunk, dict):
                         if "__usage__" in json_chunk:
                             usage_data = json_chunk["__usage__"]

@@ -82,6 +82,7 @@ interface ChatInterfaceProps {
 
 export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInterfaceProps) {
     const [messages, setMessages] = useState<ExtendedChatMessage[]>(session.messages || []);
+    const [modeHint, setModeHint] = useState<string | null>(null);
     const [inputValue, setInputValue] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [streamingStatus, setStreamingStatus] = useState<string | null>(null);
@@ -175,22 +176,21 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
         if (session.messages) {
             setMessages(prev => {
                 const merged = mergeMessages(prev, session.messages);
-                if (merged.length <= 1 && typeof window !== "undefined") {
-                    const isActive = localStorage.getItem(`pitchy_is_mode_active_${session.id}`);
-                    const savedGreeting = localStorage.getItem(`pitchy_chat_greeting_${session.id}`);
-                    
-                    if (!isActive && savedGreeting && !merged.some(m => m.content === savedGreeting)) {
-                        return [...merged, {
-                            id: Date.now(),
-                            role: "assistant",
-                            content: savedGreeting,
-                            created_at: new Date().toISOString(),
-                            client_id: crypto.randomUUID()
-                        }];
-                    }
-                }
+                // We no longer add a fake greeting message here.
                 return merged;
             });
+            // Show modeHint if chat is almost empty and mode is locked but not active
+            if (session.messages.length <= 1 && typeof window !== "undefined") {
+                const isActive = localStorage.getItem(`pitchy_is_mode_active_${session.id}`);
+                const savedGreeting = localStorage.getItem(`pitchy_chat_greeting_${session.id}`);
+                if (!isActive && savedGreeting) {
+                    setModeHint(savedGreeting);
+                } else {
+                    setModeHint(null);
+                }
+            } else {
+                setModeHint(null);
+            }
         }
     }, [session.messages, mergeMessages, session.id]);
 
@@ -337,16 +337,9 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
             if (typeof window !== "undefined") {
                 localStorage.setItem(`pitchy_chat_mode_${session.id}`, forceIntent);
                 localStorage.setItem(`pitchy_chat_greeting_${session.id}`, greeting);
-                localStorage.setItem(`pitchy_is_mode_active_${session.id}`, "true");
             }
 
-            setMessages(prev => [...prev, {
-                id: Date.now(),
-                role: "assistant",
-                content: greeting,
-                created_at: new Date().toISOString(),
-                client_id: crypto.randomUUID()
-            }]);
+            setModeHint(greeting);
             return;
         }
 
@@ -362,6 +355,7 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
         if (typeof window !== "undefined") {
             localStorage.setItem(`pitchy_is_mode_active_${session.id}`, "true");
         }
+        setModeHint(null);
 
         const isPresentationRequest = intentToSend === 'presentation' || isPresentationMode;
 
@@ -435,6 +429,20 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
                     : m
             ));
 
+            let watchdog: NodeJS.Timeout;
+            const resetWatchdog = () => {
+                clearTimeout(watchdog);
+                watchdog = setTimeout(() => {
+                    console.error("Watchdog timeout: no events for 20s");
+                    if (abortControllerRef.current) {
+                        abortControllerRef.current.abort();
+                    }
+                    setStreamingStatus("Слишком долгое ожидание ответа от серверов (Таймаут).");
+                }, 20000);
+            };
+
+            resetWatchdog();
+
             try {
                 for await (const chunk of sendChatMessageStream(
                     session.id, 
@@ -447,6 +455,10 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
                     isResearchMode,
                     isPresentationRequest ? 'presentation' : (intentToSend || undefined)
                 )) {
+                    resetWatchdog();
+                    if (chunk.type === "ping") {
+                        continue;
+                    }
                     if (chunk.type === "thought") {
                         fullThoughtContent += chunk.content;
                         const merged = (statusTrace ? statusTrace + "\n\n" : "") + fullThoughtContent;
@@ -504,6 +516,8 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
                     console.error("Stream error:", err);
                     throw err;
                 }
+            } finally {
+                clearTimeout(watchdog!);
             }
 
             await new Promise(resolve => setTimeout(resolve, 400));
@@ -892,6 +906,26 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
             {/* Input Area (Fixed Bottom) */}
             <div ref={inputBarRef} className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/95 to-transparent pt-20 pb-10 z-40 px-6 sm:px-12">
                 <div className={`mx-auto w-full transition-all duration-500 ease-[0.16,1,0.3,1] ${isSidebarCollapsed ? 'max-w-6xl' : 'max-w-4xl'}`}>
+                    
+                    <AnimatePresence>
+                        {modeHint && !isLoading && (
+                            <motion.div
+                                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                                transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+                                className="mb-4 lovable-glass-strong border border-white/10 p-5 rounded-3xl bg-gradient-to-br from-white/[0.04] to-transparent flex gap-4 items-start shadow-2xl shadow-black/50"
+                            >
+                                <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center shrink-0 border border-white/5 shadow-inner mt-0.5">
+                                    <img src="/icons/logotip.png" alt="Pitchy" className="w-4 h-4 object-contain brightness-0 invert opacity-80" />
+                                </div>
+                                <div className="text-white/90 font-sans text-[15px] leading-relaxed font-medium">
+                                    {modeHint}
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+
                     <ChatInput
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
