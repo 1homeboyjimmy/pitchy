@@ -19,6 +19,13 @@ export function stripThoughts(content: string): string {
     // Matches things like <t, <th, <think, but not <table>
     stripped = stripped.replace(/<(t|th|thi|thin|think|think_|think_p|think_pr|think_pro|think_proc|think_proce|think_proces|think_process|tho|thou|thoug|thought)?$/gi, "");
     
+    // SANITIZE: Prevent prompt leakage from injecting raw CSS or JS that breaks the UI
+    stripped = stripped.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "");
+    stripped = stripped.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "");
+    // Handle unclosed style/script tags
+    stripped = stripped.replace(/<style[^>]*>[\s\S]*$/gi, "");
+    stripped = stripped.replace(/<script[^>]*>[\s\S]*$/gi, "");
+    
     return stripped.trim();
 }
 
