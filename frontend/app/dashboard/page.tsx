@@ -186,17 +186,15 @@ function DashboardContent() {
 
   return (
     <div className="bg-black text-white h-screen font-sans flex overflow-hidden">
-      {!isFullscreen && (
-        <SideNavBar
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-          isAdmin={userProfile?.is_admin}
-          isMobileOpen={isMobileSidebarOpen}
-          onMobileClose={() => setIsMobileSidebarOpen(false)}
-          isCollapsed={isSidebarCollapsed}
-          onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-        />
-      )}
+      <SideNavBar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        isAdmin={userProfile?.is_admin}
+        isMobileOpen={isMobileSidebarOpen}
+        onMobileClose={() => setIsMobileSidebarOpen(false)}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+      />
 
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden relative">
         {!isFullscreen && (
@@ -211,11 +209,11 @@ function DashboardContent() {
         {isFullscreen && (
           <button
             onClick={() => setIsFullscreen(false)}
-            className="fixed top-4 left-4 z-[120] flex items-center justify-center w-10 h-10 bg-black/80 backdrop-blur-xl border border-white/10 text-white/70 transition-all rounded-full hover:bg-white hover:text-black hover:border-white active:scale-[0.98] shadow-lg shadow-black/40"
-            aria-label="Показать панели"
-            title="Показать панели"
+            className="fixed top-4 left-1/2 -translate-x-1/2 z-[120] hidden md:flex items-center justify-center w-9 h-9 bg-black/80 backdrop-blur-xl border border-white/10 text-white/70 transition-all rounded-full hover:bg-white hover:text-black hover:border-white active:scale-[0.95] shadow-lg shadow-black/40"
+            aria-label="Показать верхнюю панель"
+            title="Показать верхнюю панель"
           >
-            <Minimize2 size={14} strokeWidth={2.5} />
+            <Minimize2 size={14} strokeWidth={2.25} />
           </button>
         )}
 
@@ -336,7 +334,7 @@ function DashboardContent() {
                 <ChatInterface
                   session={activeSession}
                   onUpdate={setActiveSession}
-                  isSidebarCollapsed={isSidebarCollapsed || isFullscreen}
+                  isSidebarCollapsed={isSidebarCollapsed}
                 />
               ) : (
                 <div className="flex flex-col flex-1 h-full lovable-glass-strong rounded-[2.5rem] border border-white/5 items-center justify-center px-4 bg-gradient-to-br from-white/[0.02] to-transparent">

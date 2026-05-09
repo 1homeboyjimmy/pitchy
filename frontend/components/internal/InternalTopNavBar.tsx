@@ -64,6 +64,16 @@ export function InternalTopNavBar({ activeTab, onMenuClick, isSidebarCollapsed, 
               {getTabName(activeTab)}
             </span>
           </div>
+          {onEnterFullscreen && (
+            <button
+              onClick={onEnterFullscreen}
+              className="hidden md:flex items-center justify-center w-9 h-9 ml-2 text-white/40 hover:text-white transition-all rounded-full hover:bg-white/5 active:scale-[0.95]"
+              aria-label="Скрыть верхнюю панель"
+              title="Скрыть верхнюю панель"
+            >
+              <Maximize2 size={14} strokeWidth={2.25} />
+            </button>
+          )}
         </div>
 
         {/* Center Nav Links — Desktop */}
@@ -86,16 +96,6 @@ export function InternalTopNavBar({ activeTab, onMenuClick, isSidebarCollapsed, 
 
         {/* Right — Desktop */}
         <div className="flex items-center gap-3 sm:gap-4 relative z-[110]">
-          {onEnterFullscreen && (
-            <button
-              onClick={onEnterFullscreen}
-              className="hidden md:flex items-center justify-center w-10 h-10 border border-white/10 text-white/60 transition-all rounded-full hover:bg-white hover:text-black hover:border-white active:scale-[0.98]"
-              aria-label="Скрыть панели"
-              title="Скрыть панели"
-            >
-              <Maximize2 size={14} strokeWidth={2.5} />
-            </button>
-          )}
           <Link
             href="/account"
             className={`flex items-center gap-2 px-6 py-2 border font-sans text-[12px] font-bold uppercase tracking-tight transition-all rounded-full active:scale-[0.98] ${
