@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader, Activity, RefreshCcw, ArrowUpRight, MessageSquare, Plus, Microscope, Map, Users, Minimize2 } from "lucide-react";
+import { Loader, Activity, RefreshCcw, ArrowUpRight, MessageSquare, Plus, Microscope, Map, Users } from "lucide-react";
 import { ChatInterface } from "@/components/dashboard/ChatInterface";
 import { AdminView } from "@/components/dashboard/AdminView";
 import { TreeView } from "@/components/dashboard/TreeView";
@@ -11,7 +11,7 @@ import { InternalTopNavBar } from "@/components/internal/InternalTopNavBar";
 import { TopNavBar } from "@/components/shared/TopNavBar";
 import { QuotaCard } from "@/components/dashboard/QuotaCard";
 import { getQuotas, getPlaceholderUsage, buildSnapshot, getTierLabel } from "@/lib/planLimits";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 
 import { useAuth } from "@/lib/hooks/useAuth";
 import { setToken } from "@/lib/auth";
@@ -76,7 +76,6 @@ function DashboardContent() {
   const [isCreating, setIsCreating] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const tier = userProfile?.subscription_tier || "free";
   const quotas = getQuotas(tier);
@@ -182,7 +181,8 @@ function DashboardContent() {
 
   if (!isAuthenticated) return <UnauthDashboard />;
 
-  const mainPadTop = isFullscreen ? "pt-10 sm:pt-12" : "pt-24 sm:pt-32";
+  const mainPadTop = isSidebarCollapsed ? "pt-10 sm:pt-14" : "pt-24 sm:pt-32";
+  const overviewMaxW = isSidebarCollapsed ? "" : "max-w-7xl";
 
   return (
     <div className="bg-black text-white h-screen font-sans flex overflow-hidden">
@@ -197,28 +197,26 @@ function DashboardContent() {
       />
 
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden relative">
-        {!isFullscreen && (
-          <InternalTopNavBar
-            activeTab={activeTab}
-            onMenuClick={() => setIsMobileSidebarOpen(true)}
-            isSidebarCollapsed={isSidebarCollapsed}
-            onEnterFullscreen={() => setIsFullscreen(true)}
-          />
-        )}
+        <AnimatePresence initial={false}>
+          {!isSidebarCollapsed && (
+            <motion.div
+              key="top-nav"
+              initial={{ y: -80, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: -80, opacity: 0 }}
+              transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+              className="absolute top-0 left-0 right-0 z-[100]"
+            >
+              <InternalTopNavBar
+                activeTab={activeTab}
+                onMenuClick={() => setIsMobileSidebarOpen(true)}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-        {isFullscreen && (
-          <button
-            onClick={() => setIsFullscreen(false)}
-            className="fixed top-4 left-1/2 -translate-x-1/2 z-[120] hidden md:flex items-center justify-center w-9 h-9 bg-black/80 backdrop-blur-xl border border-white/10 text-white/70 transition-all rounded-full hover:bg-white hover:text-black hover:border-white active:scale-[0.95] shadow-lg shadow-black/40"
-            aria-label="Показать верхнюю панель"
-            title="Показать верхнюю панель"
-          >
-            <Minimize2 size={14} strokeWidth={2.25} />
-          </button>
-        )}
-
-        <main className="flex-1 overflow-y-auto overflow-x-hidden">
-          <div className={`w-full mx-auto ${activeTab === 'chat' || activeTab === 'tree' ? `px-4 sm:px-8 ${mainPadTop} h-full` : `px-6 sm:px-12 ${mainPadTop} max-w-7xl min-h-full`}`}>
+        <main className="flex-1 overflow-y-auto overflow-x-hidden transition-[padding] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]">
+          <div className={`w-full mx-auto transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${activeTab === 'chat' || activeTab === 'tree' ? `px-4 sm:px-8 ${mainPadTop} h-full` : `px-6 sm:px-12 ${mainPadTop} ${overviewMaxW} min-h-full`}`}>
 
           {activeTab === "overview" && (
             <motion.div
@@ -329,7 +327,7 @@ function DashboardContent() {
           )}
 
           {activeTab === "chat" && (
-            <div className="h-full w-full flex flex-col pb-8 max-w-7xl mx-auto">
+            <div className={`h-full w-full flex flex-col pb-8 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${isSidebarCollapsed ? '' : 'max-w-7xl mx-auto'}`}>
               {activeSession ? (
                 <ChatInterface
                   session={activeSession}
@@ -361,7 +359,7 @@ function DashboardContent() {
           )}
 
           {activeTab === "tree" && (
-            <div className="h-full w-full max-w-7xl mx-auto pb-8">
+            <div className={`h-full w-full pb-8 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${isSidebarCollapsed ? '' : 'max-w-7xl mx-auto'}`}>
                <TreeView onSwitchToChat={(ctx) => { if(ctx) handleCreateEmptySession(); setActiveTab("chat"); }} />
             </div>
           )}

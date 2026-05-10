@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { Menu, LogOut, User, Maximize2 } from "lucide-react";
+import { Menu, LogOut, User } from "lucide-react";
 import { clearToken } from "@/lib/auth";
 import { PitchyLogo } from "@/components/shared/PitchyLogo";
 
@@ -18,11 +18,9 @@ const navLinks = [
 interface Props {
   activeTab: string;
   onMenuClick?: () => void;
-  isSidebarCollapsed?: boolean;
-  onEnterFullscreen?: () => void;
 }
 
-export function InternalTopNavBar({ activeTab, onMenuClick, isSidebarCollapsed, onEnterFullscreen }: Props) {
+export function InternalTopNavBar({ activeTab, onMenuClick }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const isAccountPage = pathname === "/account";
@@ -45,7 +43,7 @@ export function InternalTopNavBar({ activeTab, onMenuClick, isSidebarCollapsed, 
   const linkBase = "font-mono text-[10px] uppercase tracking-[0.2em] transition-all font-bold";
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-[100] w-full bg-black/95 backdrop-blur-xl border-b border-white/5 transition-all duration-500 ease-[0.16,1,0.3,1]">
+    <header className="w-full bg-black/95 backdrop-blur-xl border-b border-white/5">
       <div className="flex flex-row justify-between items-center py-4 px-8 w-full max-w-[1440px] mx-auto">
         {/* Left: Logo & Menu Toggle */}
         <div className="flex items-center gap-4 relative z-[110]">
@@ -64,16 +62,6 @@ export function InternalTopNavBar({ activeTab, onMenuClick, isSidebarCollapsed, 
               {getTabName(activeTab)}
             </span>
           </div>
-          {onEnterFullscreen && (
-            <button
-              onClick={onEnterFullscreen}
-              className="hidden md:flex items-center justify-center w-9 h-9 ml-2 text-white/40 hover:text-white transition-all rounded-full hover:bg-white/5 active:scale-[0.95]"
-              aria-label="Скрыть верхнюю панель"
-              title="Скрыть верхнюю панель"
-            >
-              <Maximize2 size={14} strokeWidth={2.25} />
-            </button>
-          )}
         </div>
 
         {/* Center Nav Links — Desktop */}

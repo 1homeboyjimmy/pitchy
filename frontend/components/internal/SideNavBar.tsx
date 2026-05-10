@@ -2,7 +2,10 @@
 
 import Link from "next/link";
 import { LayoutDashboard, MessageSquare, GitBranch, Users, Shield, HelpCircle, Star, X, ChevronLeft, ChevronRight } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import { PitchyLogo } from "../shared/PitchyLogo";
+
+const EASE = [0.16, 1, 0.3, 1] as const;
 
 interface Props {
   activeTab: string;
@@ -48,10 +51,13 @@ export function SideNavBar({
           onClick={onMobileClose}
         />
       )}
-      <aside
-        className={`h-screen border-r border-white/5 bg-black flex flex-col py-8 z-50 transition-all duration-500 ease-[0.16,1,0.3,1] ${
-          isMobileOpen ? "fixed inset-y-0 left-0 translate-x-0 w-64" : "hidden md:flex translate-x-0"
-        } ${isCollapsed ? "w-20" : "w-64"}`}
+      <motion.aside
+        initial={false}
+        animate={{ width: !isMobileOpen && isCollapsed ? 80 : 256 }}
+        transition={{ duration: 0.45, ease: EASE }}
+        className={`h-screen border-r border-white/5 bg-black flex flex-col py-8 z-50 ${
+          isMobileOpen ? "fixed inset-y-0 left-0" : "hidden md:flex"
+        }`}
       >
         <div className={`px-6 mb-12 flex items-center justify-between transition-all duration-500 ${isCollapsed ? "flex-col gap-8" : ""}`}>
           <div className="flex items-center gap-3 overflow-hidden">
@@ -112,8 +118,16 @@ export function SideNavBar({
           })}
         </nav>
 
-        {!isCollapsed && (
-            <div className="px-5 mb-6 transition-all duration-500 opacity-100">
+        <AnimatePresence initial={false}>
+          {!isCollapsed && (
+            <motion.div
+              key="tip-card"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.35, ease: EASE }}
+              className="px-5 mb-6 overflow-hidden"
+            >
               <div className="lovable-glass rounded-3xl p-5 flex flex-col gap-3 border border-white/5 bg-gradient-to-br from-white/[0.02] to-transparent">
                 <div className="flex items-center gap-2 text-white/40">
                   <Star size={14} strokeWidth={2} />
@@ -123,8 +137,9 @@ export function SideNavBar({
                   «Чем подробнее вы опишете проект в начале, тем точнее будет анализ.»
                 </p>
               </div>
-            </div>
-        )}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <div className={`px-3 border-t border-white/5 pt-6 transition-all duration-500 ${isCollapsed ? "flex flex-col items-center" : ""}`}>
           <Link
@@ -141,7 +156,7 @@ export function SideNavBar({
             )}
           </Link>
         </div>
-      </aside>
+      </motion.aside>
     </>
   );
 }
