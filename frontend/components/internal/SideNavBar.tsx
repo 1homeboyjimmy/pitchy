@@ -122,21 +122,18 @@ export function SideNavBar({
           {!isCollapsed && (
             <motion.div
               key="tip-card"
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.35, ease: EASE }}
-              className="px-5 mb-6 overflow-hidden"
+              initial={{ y: 40, opacity: 0 }}
+              animate={{ y: 0, opacity: 1, transition: { duration: 0.45, ease: EASE, delay: 0.25 } }}
+              exit={{ y: 40, opacity: 0, transition: { duration: 0.25, ease: EASE } }}
+              className="mx-5 mb-6 lovable-glass rounded-3xl p-5 flex flex-col gap-3 border border-white/5 bg-gradient-to-br from-white/[0.02] to-transparent"
             >
-              <div className="lovable-glass rounded-3xl p-5 flex flex-col gap-3 border border-white/5 bg-gradient-to-br from-white/[0.02] to-transparent">
-                <div className="flex items-center gap-2 text-white/40">
-                  <Star size={14} strokeWidth={2} />
-                  <span className="font-mono text-[9px] uppercase tracking-[0.2em] font-bold">СОВЕТ</span>
-                </div>
-                <p className="font-sans text-[12px] text-white/40 leading-relaxed font-medium italic">
-                  «Чем подробнее вы опишете проект в начале, тем точнее будет анализ.»
-                </p>
+              <div className="flex items-center gap-2 text-white/40">
+                <Star size={14} strokeWidth={2} />
+                <span className="font-mono text-[9px] uppercase tracking-[0.2em] font-bold">СОВЕТ</span>
               </div>
+              <p className="font-sans text-[12px] text-white/40 leading-relaxed font-medium italic">
+                «Чем подробнее вы опишете проект в начале, тем точнее будет анализ.»
+              </p>
             </motion.div>
           )}
         </AnimatePresence>

@@ -21,9 +21,20 @@ export function PitchyLogo({ className, size = "md", isSentence = false, isCompa
     none: "",
   };
 
+  if (isCompact) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src="/icons/logotip.png"
+        alt="Pitchy"
+        className={cn("h-8 w-8 object-contain shrink-0", className)}
+      />
+    );
+  }
+
   return (
     <span className={cn("font-display tracking-tight text-white inline-flex items-baseline", size !== "none" && sizeClasses[size], className)}>
-      {isCompact ? "P" : (isSentence ? "Pitchy" : "Pitchy")}<span className="text-white/30 italic">.pro</span>
+      {isSentence ? "Pitchy" : "Pitchy"}<span className="text-white/30 italic">.pro</span>
     </span>
   );
 }
