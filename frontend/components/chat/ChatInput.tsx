@@ -67,35 +67,36 @@ export function ChatInput({
             animate={{ opacity: 1, y: 0, height: 'auto' }}
             exit={{ opacity: 0, y: 10, height: 0 }}
             transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-            className="mb-6 overflow-hidden px-6"
+            className="mb-4 sm:mb-6 overflow-hidden px-3 sm:px-6"
           >
-            <div className="relative rounded-[2rem] border border-white/10 bg-white/[0.03] p-6 backdrop-blur-2xl group overflow-hidden shadow-2xl shadow-white/5">
+            <div className="relative rounded-2xl sm:rounded-[2rem] border border-white/10 bg-white/[0.03] p-4 sm:p-6 backdrop-blur-2xl group overflow-hidden shadow-2xl shadow-white/5">
               <div className="absolute inset-0 bg-gradient-to-br from-white/[0.08] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
               <div className="absolute -top-24 -right-24 w-48 h-48 bg-white/5 blur-[60px] rounded-full group-hover:bg-white/10 transition-colors duration-700" />
-              
-              <div className="flex items-start justify-between gap-6 relative z-10">
-                <div className="flex items-start gap-5">
-                  <div className="w-14 h-14 rounded-[1.25rem] bg-white text-black flex items-center justify-center flex-shrink-0 shadow-xl shadow-white/10">
-                    <Sparkles className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <h4 className="text-xl text-white flex items-center gap-3 mb-2 tracking-tight" style={{ fontFamily: "'Instrument Serif', serif" }}>
-                      Режим генерации презентации
-                      <span className="text-[9px] font-mono uppercase px-2 py-0.5 rounded-full bg-white/10 text-white/60 tracking-[0.2em] font-bold border border-white/5">Agent v1</span>
-                    </h4>
-                    <p className="text-[14px] text-white/40 leading-relaxed font-light">
-                      Опишите тему, ключевые тезисы и стиль вашей презентации.
-                      Pitchy автоматически спроектирует структуру и наполнит слайды контентом.
-                    </p>
-                  </div>
+
+              {/* Close button — always positioned at the top-right, regardless of layout */}
+              <button
+                onClick={() => onCancelPresentationMode?.()}
+                className="absolute top-3 right-3 sm:top-4 sm:right-4 z-20 p-2 rounded-full text-white/40 hover:text-white hover:bg-white/10 transition-all active:scale-90"
+                title="Отменить"
+                aria-label="Отменить"
+              >
+                <X className="w-4 h-4 sm:w-5 sm:h-5" strokeWidth={1.5} />
+              </button>
+
+              <div className="flex items-start gap-3 sm:gap-5 relative z-10 pr-8">
+                <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-xl sm:rounded-[1.25rem] bg-white text-black flex items-center justify-center flex-shrink-0 shadow-xl shadow-white/10">
+                  <Sparkles className="w-4 h-4 sm:w-6 sm:h-6" />
                 </div>
-                <button
-                  onClick={() => onCancelPresentationMode?.()}
-                  className="p-2 rounded-full text-white/20 hover:text-white hover:bg-white/5 transition-all flex-shrink-0 active:scale-90"
-                  title="Отменить"
-                >
-                  <X className="w-5 h-5" strokeWidth={1.5} />
-                </button>
+                <div className="min-w-0 flex-1">
+                  <h4 className="font-sans text-[15px] sm:text-xl text-white font-semibold flex flex-wrap items-center gap-2 sm:gap-3 mb-1.5 sm:mb-2 tracking-tight leading-tight">
+                    <span>Режим генерации презентации</span>
+                    <span className="text-[8px] sm:text-[9px] font-mono uppercase px-1.5 sm:px-2 py-0.5 rounded-full bg-white/10 text-white/60 tracking-[0.2em] font-bold border border-white/5 whitespace-nowrap">Agent v1</span>
+                  </h4>
+                  <p className="text-[12px] sm:text-[14px] text-white/40 leading-relaxed font-light">
+                    Опишите тему, ключевые тезисы и стиль вашей презентации.
+                    Pitchy автоматически спроектирует структуру и наполнит слайды контентом.
+                  </p>
+                </div>
               </div>
             </div>
           </motion.div>
