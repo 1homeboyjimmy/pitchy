@@ -216,7 +216,7 @@ function DashboardContent() {
         </AnimatePresence>
 
         <main className="flex-1 overflow-y-auto overflow-x-hidden transition-[padding] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]">
-          <div className={`w-full mx-auto transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${activeTab === 'chat' || activeTab === 'tree' ? `px-4 sm:px-8 ${mainPadTop} h-full` : `px-6 sm:px-12 ${mainPadTop} ${overviewMaxW} min-h-full`}`}>
+          <div className={`w-full mx-auto transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${activeTab === 'chat' || activeTab === 'tree' ? `px-3 sm:px-8 ${mainPadTop} h-full` : `px-4 sm:px-8 lg:px-12 ${mainPadTop} ${overviewMaxW} min-h-full`}`}>
 
           {activeTab === "overview" && (
             <motion.div
@@ -225,9 +225,9 @@ function DashboardContent() {
               transition={{ duration: 0.6 }}
             >
               {/* Header Section */}
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6 mb-16">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6 mb-10 sm:mb-16">
                 <div>
-                  <h2 className="font-display text-5xl md:text-6xl text-white mb-6 leading-tight tracking-tight">
+                  <h2 className="font-display text-4xl sm:text-5xl md:text-6xl text-white mb-4 sm:mb-6 leading-tight tracking-tight">
                     Обзор проекта
                   </h2>
                   <div className="flex flex-wrap gap-3 items-center">
@@ -244,7 +244,7 @@ function DashboardContent() {
               </div>
 
               {/* Quota Cards Row */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-16">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5 mb-10 sm:mb-16">
                 <QuotaCard
                   label="Сообщения"
                   caption="ОСТАЛОСЬ"
@@ -273,13 +273,13 @@ function DashboardContent() {
 
               {/* Recent Sessions Grid */}
               <div>
-                <h3 className="font-display text-3xl text-white/40 mb-8 ml-2">Последние сессии</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+                <h3 className="font-display text-2xl sm:text-3xl text-white/40 mb-5 sm:mb-8 ml-2">Последние сессии</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
                   {/* Create New Card */}
                   <motion.div
                     whileHover={{ scale: 0.98 }}
                     onClick={handleCreateEmptySession}
-                    className="lovable-glass border border-dashed border-white/10 p-8 flex flex-col justify-center items-center hover:border-white/20 hover:bg-white/[0.03] transition-all duration-500 min-h-[200px] cursor-pointer rounded-[2rem] group"
+                    className="lovable-glass border border-dashed border-white/10 p-6 sm:p-8 flex flex-col justify-center items-center hover:border-white/20 hover:bg-white/[0.03] transition-all duration-500 min-h-[140px] sm:min-h-[200px] cursor-pointer rounded-2xl sm:rounded-[2rem] group"
                   >
                     {isCreating ? (
                       <Loader className="animate-spin text-white/20 mb-2" size={32} />
@@ -296,7 +296,7 @@ function DashboardContent() {
                       key={session.id}
                       whileHover={{ y: -4 }}
                       onClick={() => handleSelectSession(session.id)}
-                      className="lovable-glass-strong border border-white/5 p-8 flex flex-col justify-between hover:border-white/20 transition-all duration-500 min-h-[200px] group cursor-pointer rounded-[2rem] bg-white/[0.02]"
+                      className="lovable-glass-strong border border-white/5 p-6 sm:p-8 flex flex-col justify-between hover:border-white/20 transition-all duration-500 min-h-[140px] sm:min-h-[200px] group cursor-pointer rounded-2xl sm:rounded-[2rem] bg-white/[0.02]"
                     >
                       <div className="flex justify-between items-start mb-8">
                         <div className="w-14 h-10 bg-white/5 flex items-center justify-center rounded-2xl group-hover:bg-white/10 transition-colors">
@@ -335,13 +335,13 @@ function DashboardContent() {
                   isSidebarCollapsed={isSidebarCollapsed}
                 />
               ) : (
-                <div className="flex flex-col flex-1 h-full lovable-glass-strong rounded-[2.5rem] border border-white/5 items-center justify-center px-4 bg-gradient-to-br from-white/[0.02] to-transparent">
+                <div className="flex flex-col flex-1 h-full lovable-glass-strong rounded-3xl sm:rounded-[2.5rem] border border-white/5 items-center justify-center px-4 sm:px-6 py-8 bg-gradient-to-br from-white/[0.02] to-transparent">
                   <div className="w-full max-w-4xl flex flex-col items-center text-center">
-                    <div className="w-20 h-20 bg-white/5 flex items-center justify-center rounded-[2rem] mb-8">
-                      <MessageSquare className="w-10 h-10 text-white/20" strokeWidth={1} />
+                    <div className="w-14 h-14 sm:w-20 sm:h-20 bg-white/5 flex items-center justify-center rounded-2xl sm:rounded-[2rem] mb-5 sm:mb-8">
+                      <MessageSquare className="w-7 h-7 sm:w-10 sm:h-10 text-white/20" strokeWidth={1} />
                     </div>
-                    <h3 className="font-display text-5xl text-white mb-6">Начать анализ</h3>
-                    <p className="text-white/50 font-light mb-12 text-xl leading-relaxed max-w-4xl mx-auto">
+                    <h3 className="font-display text-3xl sm:text-5xl text-white mb-3 sm:mb-6">Начать анализ</h3>
+                    <p className="text-white/50 font-light mb-8 sm:mb-12 text-base sm:text-xl leading-relaxed max-w-4xl mx-auto px-2">
                       Pitchy готов помочь вам разобрать идею, рынок и финансовую модель.
                     </p>
                     <button

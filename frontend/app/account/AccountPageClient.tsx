@@ -194,54 +194,54 @@ export function AccountPageClient() {
     <div className="bg-black text-white antialiased min-h-screen flex flex-col font-sans selection:bg-white/20">
       <TopNavBar />
       
-      <main className="flex-grow w-full max-w-[1024px] mx-auto px-6 py-12 flex flex-col gap-12 pt-24 pb-20">
-        
-        <header className="flex flex-col gap-4 relative">
-            <h1 className="font-display text-[56px] md:text-[72px] text-white leading-none tracking-tight">Аккаунт</h1>
-            <p className="font-mono text-[10px] text-white/30 uppercase tracking-[0.2em] font-bold">Управление вашим профилем и безопасностью</p>
+      <main className="flex-grow w-full max-w-[1024px] mx-auto px-4 sm:px-6 py-8 sm:py-12 flex flex-col gap-8 sm:gap-12 pt-24 pb-20">
+
+        <header className="flex flex-col gap-3 sm:gap-4 relative">
+            <h1 className="font-display text-[40px] sm:text-[56px] md:text-[72px] text-white leading-[0.95] tracking-tight">Аккаунт</h1>
+            <p className="font-mono text-[10px] text-white/30 uppercase tracking-[0.15em] sm:tracking-[0.2em] font-bold">Управление вашим профилем и безопасностью</p>
         </header>
 
         {/* Profile Card */}
-        <section className="lovable-glass-strong rounded-[2.5rem] p-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-8 relative overflow-hidden group border border-white/5 bg-gradient-to-br from-white/[0.04] to-transparent shadow-[0_0_80px_-20px_rgba(255,255,255,0.05)]">
-          <div className="flex items-center gap-10 relative z-10 w-full md:w-auto">
-            <div className="w-24 h-24 rounded-[2rem] border border-white/10 bg-white/5 flex items-center justify-center shrink-0">
-               <User className="w-12 h-12 text-white/20" />
+        <section className="lovable-glass-strong rounded-3xl sm:rounded-[2.5rem] p-5 sm:p-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 sm:gap-8 relative overflow-hidden group border border-white/5 bg-gradient-to-br from-white/[0.04] to-transparent shadow-[0_0_80px_-20px_rgba(255,255,255,0.05)]">
+          <div className="flex items-center gap-5 sm:gap-10 relative z-10 w-full md:w-auto min-w-0">
+            <div className="w-16 h-16 sm:w-24 sm:h-24 rounded-2xl sm:rounded-[2rem] border border-white/10 bg-white/5 flex items-center justify-center shrink-0">
+               <User className="w-8 h-8 sm:w-12 sm:h-12 text-white/20" />
             </div>
-            
-            <div className="flex flex-col gap-4">
-              <div className="flex items-center gap-5 flex-wrap">
-                <h2 className="font-display text-4xl text-white leading-none">{user?.name || "Пользователь"}</h2>
+
+            <div className="flex flex-col gap-3 sm:gap-4 min-w-0 flex-1">
+              <div className="flex items-center gap-3 sm:gap-5 flex-wrap">
+                <h2 className="font-display text-2xl sm:text-4xl text-white leading-none break-words">{user?.name || "Пользователь"}</h2>
                 {isEmailVerified && (
-                  <span className="bg-white text-black font-mono text-[10px] font-bold uppercase tracking-[0.15em] px-4 py-1.5 rounded-full flex items-center gap-2 shadow-lg shadow-white/5">
+                  <span className="bg-white text-black font-mono text-[10px] font-bold uppercase tracking-[0.15em] px-3 sm:px-4 py-1 sm:py-1.5 rounded-full flex items-center gap-2 shadow-lg shadow-white/5">
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     Подтвержден
                   </span>
                 )}
                 {isEmailUnverified && (
-                  <span className="bg-amber-500/10 border border-amber-500/20 text-amber-400 font-mono text-[10px] font-bold uppercase tracking-[0.15em] px-4 py-1.5 rounded-full">
+                  <span className="bg-amber-500/10 border border-amber-500/20 text-amber-400 font-mono text-[10px] font-bold uppercase tracking-[0.15em] px-3 sm:px-4 py-1 sm:py-1.5 rounded-full">
                     Не подтвержден
                   </span>
                 )}
               </div>
-              
-              <div className="flex items-center gap-5 text-white/30 font-mono text-[11px] font-bold uppercase tracking-[0.15em]">
+
+              <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-5 text-white/30 font-mono text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.15em] min-w-0">
                 <span>ID: {user?.id}</span>
-                <span className="w-1 h-1 rounded-full bg-white/10"></span>
-                <span className="truncate max-w-[200px] sm:max-w-none text-white/60">{user?.email || "Email не указан"}</span>
+                <span className="hidden sm:block w-1 h-1 rounded-full bg-white/10"></span>
+                <span className="text-white/60 normal-case tracking-normal break-all min-w-0">{user?.email || "Email не указан"}</span>
               </div>
-              
-              <div className="flex items-center gap-3 mt-1 flex-wrap">
-                <span className="bg-white/5 border border-white/10 text-white/40 font-mono text-[10px] font-bold uppercase tracking-[0.15em] px-4 py-1.5 rounded-full">Тариф: {subscriptionLabel}</span>
+
+              <div className="flex items-center gap-2 sm:gap-3 mt-1 flex-wrap">
+                <span className="bg-white/5 border border-white/10 text-white/40 font-mono text-[10px] font-bold uppercase tracking-[0.15em] px-3 sm:px-4 py-1 sm:py-1.5 rounded-full">Тариф: {subscriptionLabel}</span>
                 {user?.is_admin && (
-                  <span className="bg-white/10 border border-white/20 text-white font-mono text-[10px] font-bold uppercase tracking-[0.15em] px-4 py-1.5 rounded-full">Администратор</span>
+                  <span className="bg-white/10 border border-white/20 text-white font-mono text-[10px] font-bold uppercase tracking-[0.15em] px-3 sm:px-4 py-1 sm:py-1.5 rounded-full">Администратор</span>
                 )}
               </div>
             </div>
           </div>
-          
-          <button 
+
+          <button
             onClick={handleLogout}
-            className="relative z-10 w-full md:w-auto flex items-center justify-center gap-3 px-8 py-3.5 bg-white/5 border border-white/10 text-white/60 font-mono text-[11px] font-bold uppercase tracking-[0.2em] rounded-full hover:bg-white hover:text-black hover:border-white transition-all active:scale-[0.98]"
+            className="relative z-10 w-full md:w-auto flex items-center justify-center gap-3 px-6 sm:px-8 py-3 sm:py-3.5 bg-white/5 border border-white/10 text-white/60 font-mono text-[11px] font-bold uppercase tracking-[0.2em] rounded-full hover:bg-white hover:text-black hover:border-white transition-all active:scale-[0.98]"
           >
             <LogOut className="w-4 h-4" />
             Выйти
@@ -278,17 +278,17 @@ export function AccountPageClient() {
 
         {/* Security Section */}
         <section className="flex flex-col gap-8">
-          <h3 className="font-display text-[28px] font-medium text-white flex items-center gap-3 border-b border-white/10 pb-6">
+          <h3 className="font-display text-2xl sm:text-[28px] font-medium text-white flex items-center gap-3 border-b border-white/10 pb-4 sm:pb-6">
             <Shield className="w-6 h-6 text-neutral-400" />
             Безопасность
           </h3>
           
           <div className="flex flex-col border border-white/10 rounded-2xl bg-[#111111] overflow-hidden relative border-white/5 bg-black/40">
             {/* Email Row */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between p-10 border-b border-white/5 gap-6 hover:bg-white/[0.02] transition-all duration-500 relative z-10 group/row">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between p-5 sm:p-10 border-b border-white/5 gap-6 hover:bg-white/[0.02] transition-all duration-500 relative z-10 group/row">
               <div className="flex flex-col gap-3">
                 <span className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-white/20">Email адрес</span>
-                <span className="text-xl text-white font-light">{user?.email || "Не указан"}</span>
+                <span className="text-base sm:text-xl text-white font-light break-all min-w-0">{user?.email || "Не указан"}</span>
               </div>
               <button 
                 onClick={() => setIsChangeEmailOpen(true)}
@@ -299,10 +299,10 @@ export function AccountPageClient() {
             </div>
             
             {/* Password Row */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between p-10 gap-6 hover:bg-white/[0.02] transition-all duration-500 relative z-10 group/row">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between p-5 sm:p-10 gap-6 hover:bg-white/[0.02] transition-all duration-500 relative z-10 group/row">
               <div className="flex flex-col gap-3">
                 <span className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-white/20">Безопасность</span>
-                <span className="text-xl text-white font-light">Обновить пароль</span>
+                <span className="text-base sm:text-xl text-white font-light">Обновить пароль</span>
                 <p className="text-white/20 text-xs font-light">Рекомендуется менять пароль каждые 3 месяца</p>
               </div>
               <button 

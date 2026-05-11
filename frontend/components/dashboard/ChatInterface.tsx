@@ -572,7 +572,7 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
             <div
                 ref={scrollViewportRef}
                 style={{ paddingBottom: inputBarHeight + 24 }}
-                className="flex-1 overflow-y-auto scroll-smooth pt-24 px-6 sm:px-12 scrollbar-hide"
+                className="flex-1 overflow-y-auto scroll-smooth pt-24 px-3 sm:px-6 lg:px-12 scrollbar-hide"
             >
                 <div className={`mx-auto w-full transition-all duration-500 ease-[0.16,1,0.3,1] ${isSidebarCollapsed ? 'max-w-6xl' : 'max-w-4xl'} space-y-8`}>
                 {messages.length === 0 && (
@@ -904,7 +904,7 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
             </div >
 
             {/* Input Area (Fixed Bottom) */}
-            <div ref={inputBarRef} className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/95 to-transparent pt-20 pb-10 z-40 px-6 sm:px-12">
+            <div ref={inputBarRef} className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/95 to-transparent pt-12 sm:pt-20 pb-5 sm:pb-10 z-40 px-2 sm:px-6 lg:px-12">
                 <div className={`mx-auto w-full transition-all duration-500 ease-[0.16,1,0.3,1] ${isSidebarCollapsed ? 'max-w-6xl' : 'max-w-4xl'}`}>
                     
                     <AnimatePresence>

@@ -47,7 +47,7 @@ export function SideNavBar({
       {/* Mobile backdrop */}
       {isMobileOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/60 md:hidden"
+          className="fixed inset-0 z-40 bg-black/85 backdrop-blur-sm md:hidden"
           onClick={onMobileClose}
         />
       )}

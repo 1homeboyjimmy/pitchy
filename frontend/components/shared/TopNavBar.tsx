@@ -59,6 +59,15 @@ export function TopNavBar() {
           })}
         </nav>
 
+        {/* Mobile burger — always visible on small screens */}
+        <button
+          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          className="md:hidden text-white/80 hover:text-white relative z-[110] p-2 -mr-2"
+          aria-label="Меню"
+        >
+          {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+        </button>
+
         {/* Right — Desktop */}
         <div className="hidden md:flex items-center gap-4 relative z-[110]">
           {isAuthenticated ? (
@@ -88,14 +97,6 @@ export function TopNavBar() {
             </>
           )}
 
-          {/* Mobile burger button */}
-          <button
-            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            className="md:hidden text-foreground ml-2"
-            aria-label="Меню"
-          >
-            {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
-          </button>
         </div>
       </div>
 

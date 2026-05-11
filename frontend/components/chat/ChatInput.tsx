@@ -102,10 +102,10 @@ export function ChatInput({
         )}
       </AnimatePresence>
 
-      <div className="px-6">
+      <div className="px-3 sm:px-6">
         <div className="relative group">
-            <div className="absolute -inset-[1px] bg-white/10 rounded-[2rem] blur-sm opacity-0 group-focus-within:opacity-100 transition duration-700 pointer-events-none"></div>
-            <div className={`relative bg-black/40 backdrop-blur-3xl border rounded-[2rem] p-3 flex items-end gap-3 transition-all duration-500 shadow-2xl ${
+            <div className="absolute -inset-[1px] bg-white/10 rounded-3xl sm:rounded-[2rem] blur-sm opacity-0 group-focus-within:opacity-100 transition duration-700 pointer-events-none"></div>
+            <div className={`relative bg-black/40 backdrop-blur-3xl border rounded-3xl sm:rounded-[2rem] p-2 sm:p-3 flex items-end gap-2 sm:gap-3 transition-all duration-500 shadow-2xl ${
                 isPresentationMode ? "border-white/30 bg-white/[0.02]" : "border-white/5 focus-within:border-white/20"
             } ${disabled ? "opacity-40" : ""}`}>
             <textarea
@@ -115,44 +115,44 @@ export function ChatInput({
                 onKeyDown={handleKeyDown}
                 placeholder={isPresentationMode ? "Опишите идею для вашей презентации..." : placeholder}
                 disabled={disabled}
-                className="flex-1 bg-transparent border-none py-4 px-6 text-white focus:outline-none focus:ring-0 resize-none font-sans text-[16px] min-h-[60px] max-h-48 placeholder:text-white/20 leading-relaxed selection:bg-white/20"
+                className="flex-1 min-w-0 bg-transparent border-none py-3 sm:py-4 px-3 sm:px-6 text-white focus:outline-none focus:ring-0 resize-none font-sans text-[15px] sm:text-[16px] min-h-[52px] sm:min-h-[60px] max-h-48 placeholder:text-white/20 leading-relaxed selection:bg-white/20"
                 rows={1}
             ></textarea>
-            <div className="flex items-center gap-2 mb-2 mr-2">
+            <div className="flex items-center gap-2 mb-1.5 sm:mb-2 mr-1 sm:mr-2 shrink-0">
                 {isLoading ? (
-                    <button 
+                    <button
                       onClick={onStop}
-                      className="bg-white/10 text-white border border-white/20 h-12 w-12 flex items-center justify-center rounded-2xl hover:bg-white/20 active:scale-90 transition-all shadow-lg shadow-black/20"
+                      className="bg-white/10 text-white border border-white/20 h-10 w-10 sm:h-12 sm:w-12 flex items-center justify-center rounded-xl sm:rounded-2xl hover:bg-white/20 active:scale-90 transition-all shadow-lg shadow-black/20"
                     >
                       <Square className="w-4 h-4 fill-white" />
                     </button>
                 ) : (
-                    <button 
+                    <button
                       onClick={onSend}
                       disabled={disabled || !value.trim()}
-                      className={`h-12 w-12 flex items-center justify-center rounded-2xl transition-all shadow-lg ${
+                      className={`h-10 w-10 sm:h-12 sm:w-12 flex items-center justify-center rounded-xl sm:rounded-2xl transition-all shadow-lg ${
                         value.trim() && !disabled
                         ? "bg-white text-black hover:scale-105 active:scale-90 shadow-white/5"
                         : "bg-white/5 text-white/10 cursor-not-allowed border border-white/5"
                       }`}
                     >
-                      <ArrowUp className="w-6 h-6" strokeWidth={2.5} />
+                      <ArrowUp className="w-5 h-5 sm:w-6 sm:h-6" strokeWidth={2.5} />
                     </button>
                 )}
             </div>
             </div>
         </div>
 
-        <div className="flex flex-wrap gap-2 mt-4 ml-4">
+        <div className="flex flex-nowrap sm:flex-wrap gap-2 mt-3 sm:mt-4 sm:ml-4 overflow-x-auto pb-1 -mx-1 px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <button
               onClick={onOpenImportModal}
-              className="lovable-glass-strong border border-white/5 px-4 py-1.5 rounded-full text-[10px] font-mono text-white/30 hover:text-white hover:bg-white/10 transition-all flex items-center gap-2 uppercase tracking-[0.2em] font-bold active:scale-95"
+              className="lovable-glass-strong border border-white/5 px-4 py-1.5 rounded-full text-[10px] font-mono text-white/30 hover:text-white hover:bg-white/10 transition-all flex items-center gap-2 uppercase tracking-[0.2em] font-bold active:scale-95 whitespace-nowrap shrink-0"
             >
               <Paperclip className="w-3.5 h-3.5" strokeWidth={1.5} /> Контекст
             </button>
             <button
               onClick={onToggleDeepSearch}
-              className={`lovable-glass-strong border px-4 py-1.5 rounded-full text-[10px] font-mono transition-all flex items-center gap-2 uppercase tracking-[0.2em] font-bold active:scale-95 ${
+              className={`lovable-glass-strong border px-4 py-1.5 rounded-full text-[10px] font-mono transition-all flex items-center gap-2 uppercase tracking-[0.2em] font-bold active:scale-95 whitespace-nowrap shrink-0 ${
                 useDeepSearch ? "text-white border-white/20 bg-white/10" : "text-white/30 border-white/5 hover:text-white hover:bg-white/5"
               }`}
             >
@@ -160,7 +160,7 @@ export function ChatInput({
             </button>
             <button
               onClick={onToggleResearchMode}
-              className={`lovable-glass-strong border px-4 py-1.5 rounded-full text-[10px] font-mono transition-all flex items-center gap-2 uppercase tracking-[0.2em] font-bold active:scale-95 ${
+              className={`lovable-glass-strong border px-4 py-1.5 rounded-full text-[10px] font-mono transition-all flex items-center gap-2 uppercase tracking-[0.2em] font-bold active:scale-95 whitespace-nowrap shrink-0 ${
                 isResearchMode ? "text-white border-white/20 bg-white/10 shadow-[0_0_15px_rgba(255,255,255,0.05)]" : "text-white/30 border-white/5 hover:text-white hover:bg-white/5"
               }`}
             >
@@ -169,7 +169,7 @@ export function ChatInput({
             {!isPresentationMode && (
                 <button
                     onClick={onTogglePresentationMode}
-                    className="lovable-glass-strong border border-white/5 px-4 py-1.5 rounded-full text-[10px] font-mono text-white/30 hover:text-white hover:bg-white/10 transition-all flex items-center gap-2 uppercase tracking-[0.2em] font-bold active:scale-95"
+                    className="lovable-glass-strong border border-white/5 px-4 py-1.5 rounded-full text-[10px] font-mono text-white/30 hover:text-white hover:bg-white/10 transition-all flex items-center gap-2 uppercase tracking-[0.2em] font-bold active:scale-95 whitespace-nowrap shrink-0"
                 >
                     <FileText className="w-3.5 h-3.5" strokeWidth={1.5} /> Слайды
                 </button>
