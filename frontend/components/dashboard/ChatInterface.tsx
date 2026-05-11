@@ -29,7 +29,7 @@ function CollapsibleUserBubble({ content }: { content: string }) {
     }, [content, isOverflowing]);
 
     return (
-        <div className="lovable-glass-strong border border-white/5 p-6 rounded-[2rem] rounded-tr-none bg-gradient-to-br from-white/[0.04] to-transparent">
+        <div className="lovable-glass-strong border border-white/5 p-4 sm:p-6 rounded-2xl sm:rounded-[2rem] rounded-tr-none bg-gradient-to-br from-white/[0.04] to-transparent">
             <motion.div
                 layout
                 initial={false}
@@ -702,8 +702,8 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
                                 {/* Main Analysis Content */}
                                 {shouldRenderMainBubble && (
                                 <div className="space-y-10 pl-1 group/content">
-                                    <div className="lovable-glass-strong border border-white/5 p-6 lg:p-8 rounded-[2.5rem] rounded-tl-none space-y-6 bg-gradient-to-br from-white/[0.03] to-transparent shadow-xl shadow-black/20">
-                                        <div className="text-white/80 font-sans text-[17px] leading-[1.8] md:leading-[1.9] [&_p]:mb-6 [&_p:last-child]:mb-0 [&_ul]:list-none [&_ul]:pl-0 [&_ul]:mb-6 [&_ul>li]:mb-4 [&_ul>li]:pl-6 [&_ul>li]:relative [&_ul>li:before]:content-[''] [&_ul>li:before]:absolute [&_ul>li:before]:left-0 [&_ul>li:before]:top-[0.8em] [&_ul>li:before]:w-1.5 [&_ul>li:before]:h-px [&_ul>li:before]:bg-white/40 [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:mb-6 [&_ol>li]:mb-4 [&_ol>li]:pl-2 [&_h2]:text-3xl [&_h2]:text-white [&_h2]:mt-12 [&_h2]:mb-6 [&_h2]:tracking-tight [&_h3]:text-xl [&_h3]:font-bold [&_h3]:text-white [&_h3]:mt-10 [&_h3]:mb-4 [&_strong]:text-white [&_strong]:font-bold selection:bg-white/20">
+                                    <div className="lovable-glass-strong border border-white/5 p-4 sm:p-6 lg:p-8 rounded-2xl sm:rounded-[2.5rem] rounded-tl-none space-y-4 sm:space-y-6 bg-gradient-to-br from-white/[0.03] to-transparent shadow-xl shadow-black/20">
+                                        <div className="text-white/80 font-sans text-[14px] sm:text-[17px] leading-relaxed sm:leading-[1.8] md:leading-[1.9] [&_p]:mb-4 sm:[&_p]:mb-6 [&_p:last-child]:mb-0 [&_ul]:list-none [&_ul]:pl-0 [&_ul]:mb-6 [&_ul>li]:mb-4 [&_ul>li]:pl-6 [&_ul>li]:relative [&_ul>li:before]:content-[''] [&_ul>li:before]:absolute [&_ul>li:before]:left-0 [&_ul>li:before]:top-[0.8em] [&_ul>li:before]:w-1.5 [&_ul>li:before]:h-px [&_ul>li:before]:bg-white/40 [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:mb-6 [&_ol>li]:mb-4 [&_ol>li]:pl-2 [&_h2]:text-3xl [&_h2]:text-white [&_h2]:mt-12 [&_h2]:mb-6 [&_h2]:tracking-tight [&_h3]:text-xl [&_h3]:font-bold [&_h3]:text-white [&_h3]:mt-10 [&_h3]:mb-4 [&_strong]:text-white [&_strong]:font-bold selection:bg-white/20">
                                             <ReactMarkdown 
                                                 remarkPlugins={[remarkGfm]}
                                                 components={{
@@ -817,49 +817,49 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
                             className="flex flex-col gap-3 mt-2 max-w-2xl mx-auto w-full"
                         >
                             <p className="font-mono text-[9px] uppercase tracking-[0.3em] text-white/20 text-center mb-1 font-bold">Выберите направление анализа</p>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <button onClick={() => handleSendMessage("Проведи анализ идеи. Используй предоставленный контекст только если он относится к моему проекту. Если данных недостаточно — задай вопросы.", "roadmap")} className="flex items-center gap-4 p-4 rounded-[1.5rem] bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 transition-all duration-500 text-left group hover:border-white/20 hover:shadow-xl hover:shadow-white/5 active:scale-95">
-                                    <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-white group-hover:scale-110 group-hover:bg-white/10 transition-all">
-                                        <Zap className="w-6 h-6" strokeWidth={1.5} />
+                            <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                                <button onClick={() => handleSendMessage("Проведи анализ идеи. Используй предоставленный контекст только если он относится к моему проекту. Если данных недостаточно — задай вопросы.", "roadmap")} className="flex items-center gap-2 sm:gap-4 p-3 sm:p-4 rounded-2xl sm:rounded-[1.5rem] bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 transition-all duration-500 text-left group hover:border-white/20 hover:shadow-xl hover:shadow-white/5 active:scale-95">
+                                    <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-white/5 flex items-center justify-center text-white shrink-0 group-hover:scale-110 group-hover:bg-white/10 transition-all">
+                                        <Zap className="w-4 h-4 sm:w-6 sm:h-6" strokeWidth={1.5} />
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <div className="text-white font-medium text-[16px] tracking-tight">Анализ идеи</div>
-                                        <div className="text-white/30 text-[12px] mt-1 font-light line-clamp-1">Получить оценку концепции</div>
+                                        <div className="text-white font-medium text-[13px] sm:text-[16px] tracking-tight leading-snug">Анализ идеи</div>
+                                        <div className="text-white/30 text-[10px] sm:text-[12px] mt-0.5 sm:mt-1 font-light line-clamp-1">Получить оценку концепции</div>
                                     </div>
-                                    <ArrowRight className="w-5 h-5 text-white/10 group-hover:text-white group-hover:translate-x-1 transition-all" strokeWidth={1.5} />
+                                    <ArrowRight className="hidden sm:block w-5 h-5 text-white/10 group-hover:text-white group-hover:translate-x-1 transition-all shrink-0" strokeWidth={1.5} />
                                 </button>
 
-                                <button onClick={() => handleSendMessage("Проведи анализ целевой аудитории (ЦА). Выдели сегменты, боли и JTBD. Выведи результат строго в структурированном виде.", "roadmap")} className="flex items-center gap-4 p-4 rounded-[1.5rem] bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 transition-all duration-500 text-left group hover:border-white/20 hover:shadow-xl hover:shadow-white/5 active:scale-95">
-                                    <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-white group-hover:scale-110 group-hover:bg-white/10 transition-all">
-                                        <Users className="w-6 h-6" strokeWidth={1.5} />
+                                <button onClick={() => handleSendMessage("Проведи анализ целевой аудитории (ЦА). Выдели сегменты, боли и JTBD. Выведи результат строго в структурированном виде.", "roadmap")} className="flex items-center gap-2 sm:gap-4 p-3 sm:p-4 rounded-2xl sm:rounded-[1.5rem] bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 transition-all duration-500 text-left group hover:border-white/20 hover:shadow-xl hover:shadow-white/5 active:scale-95">
+                                    <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-white/5 flex items-center justify-center text-white shrink-0 group-hover:scale-110 group-hover:bg-white/10 transition-all">
+                                        <Users className="w-4 h-4 sm:w-6 sm:h-6" strokeWidth={1.5} />
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <div className="text-white font-medium text-[16px] tracking-tight">Анализ ЦА</div>
-                                        <div className="text-white/30 text-[12px] mt-1 font-light line-clamp-1">Сегментация и инсайты</div>
+                                        <div className="text-white font-medium text-[13px] sm:text-[16px] tracking-tight leading-snug">Анализ ЦА</div>
+                                        <div className="text-white/30 text-[10px] sm:text-[12px] mt-0.5 sm:mt-1 font-light line-clamp-1">Сегментация и инсайты</div>
                                     </div>
-                                    <ArrowRight className="w-5 h-5 text-white/10 group-hover:text-white group-hover:translate-x-1 transition-all" strokeWidth={1.5} />
+                                    <ArrowRight className="hidden sm:block w-5 h-5 text-white/10 group-hover:text-white group-hover:translate-x-1 transition-all shrink-0" strokeWidth={1.5} />
                                 </button>
 
-                                <button onClick={() => handleSendMessage("Посчитай экономику проекта, LTV, CAC и другие метрики. Выведи результат строго в структурированном виде.", "finance")} className="flex items-center gap-4 p-4 rounded-[1.5rem] bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 transition-all duration-500 text-left group hover:border-white/20 hover:shadow-xl hover:shadow-white/5 active:scale-95">
-                                    <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-white group-hover:scale-110 group-hover:bg-white/10 transition-all">
-                                        <Grid className="w-6 h-6" strokeWidth={1.5} />
+                                <button onClick={() => handleSendMessage("Посчитай экономику проекта, LTV, CAC и другие метрики. Выведи результат строго в структурированном виде.", "finance")} className="flex items-center gap-2 sm:gap-4 p-3 sm:p-4 rounded-2xl sm:rounded-[1.5rem] bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 transition-all duration-500 text-left group hover:border-white/20 hover:shadow-xl hover:shadow-white/5 active:scale-95">
+                                    <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-white/5 flex items-center justify-center text-white shrink-0 group-hover:scale-110 group-hover:bg-white/10 transition-all">
+                                        <Grid className="w-4 h-4 sm:w-6 sm:h-6" strokeWidth={1.5} />
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <div className="text-white font-medium text-[16px] tracking-tight">Экономика</div>
-                                        <div className="text-white/30 text-[12px] mt-1 font-light line-clamp-1">Юнит-метрики и LTV</div>
+                                        <div className="text-white font-medium text-[13px] sm:text-[16px] tracking-tight leading-snug">Экономика</div>
+                                        <div className="text-white/30 text-[10px] sm:text-[12px] mt-0.5 sm:mt-1 font-light line-clamp-1">Юнит-метрики и LTV</div>
                                     </div>
-                                    <ArrowRight className="w-5 h-5 text-white/10 group-hover:text-white group-hover:translate-x-1 transition-all" strokeWidth={1.5} />
+                                    <ArrowRight className="hidden sm:block w-5 h-5 text-white/10 group-hover:text-white group-hover:translate-x-1 transition-all shrink-0" strokeWidth={1.5} />
                                 </button>
 
-                                <button onClick={() => handleSendMessage("Другой вопрос")} className="flex items-center gap-4 p-4 rounded-[1.5rem] bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 transition-all duration-500 text-left group hover:border-white/20 hover:shadow-xl hover:shadow-white/5 active:scale-95">
-                                    <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-white group-hover:scale-110 group-hover:bg-white/10 transition-all">
-                                        <HelpCircle className="w-6 h-6" strokeWidth={1.5} />
+                                <button onClick={() => handleSendMessage("Другой вопрос")} className="flex items-center gap-2 sm:gap-4 p-3 sm:p-4 rounded-2xl sm:rounded-[1.5rem] bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 transition-all duration-500 text-left group hover:border-white/20 hover:shadow-xl hover:shadow-white/5 active:scale-95">
+                                    <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-white/5 flex items-center justify-center text-white shrink-0 group-hover:scale-110 group-hover:bg-white/10 transition-all">
+                                        <HelpCircle className="w-4 h-4 sm:w-6 sm:h-6" strokeWidth={1.5} />
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <div className="text-white font-medium text-[16px] tracking-tight">Другой вопрос</div>
-                                        <div className="text-white/30 text-[12px] mt-1 font-light line-clamp-1">Свободная консультация</div>
+                                        <div className="text-white font-medium text-[13px] sm:text-[16px] tracking-tight leading-snug">Другой вопрос</div>
+                                        <div className="text-white/30 text-[10px] sm:text-[12px] mt-0.5 sm:mt-1 font-light line-clamp-1">Свободная консультация</div>
                                     </div>
-                                    <ArrowRight className="w-5 h-5 text-white/10 group-hover:text-white group-hover:translate-x-1 transition-all" strokeWidth={1.5} />
+                                    <ArrowRight className="hidden sm:block w-5 h-5 text-white/10 group-hover:text-white group-hover:translate-x-1 transition-all shrink-0" strokeWidth={1.5} />
                                 </button>
                             </div>
                         </motion.div>

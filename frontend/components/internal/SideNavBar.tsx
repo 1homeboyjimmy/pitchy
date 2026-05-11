@@ -125,7 +125,7 @@ export function SideNavBar({
               initial={{ y: 40, opacity: 0 }}
               animate={{ y: 0, opacity: 1, transition: { duration: 0.45, ease: EASE, delay: 0.25 } }}
               exit={{ y: 40, opacity: 0, transition: { duration: 0.25, ease: EASE } }}
-              className="mx-5 mb-6 lovable-glass rounded-3xl p-5 flex flex-col gap-3 border border-white/5 bg-gradient-to-br from-white/[0.02] to-transparent"
+              className="hidden md:flex mx-5 mb-6 lovable-glass rounded-3xl p-5 flex-col gap-3 border border-white/5 bg-gradient-to-br from-white/[0.02] to-transparent"
             >
               <div className="flex items-center gap-2 text-white/40">
                 <Star size={14} strokeWidth={2} />

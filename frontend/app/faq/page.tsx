@@ -128,19 +128,19 @@ export default function FAQPage() {
           </section>
 
           {/* Bottom CTA */}
-          <section className="mt-32 py-20 border-t border-white/5">
-            <div className="lovable-glass p-12 rounded-[40px] flex flex-col md:flex-row items-center justify-between gap-10">
-              <div className="max-w-md text-center md:text-left">
-                <h4 className="text-white font-display tracking-tight text-4xl mb-4">Остались вопросы?</h4>
-                <p className="text-foreground/40 font-body-sm text-[15px] leading-relaxed">
+          <section className="mt-16 sm:mt-32 py-12 sm:py-20 border-t border-white/5">
+            <div className="lovable-glass p-6 sm:p-12 rounded-3xl sm:rounded-[40px] flex flex-col md:flex-row md:items-center justify-between gap-8 sm:gap-10">
+              <div className="w-full md:max-w-md text-center md:text-left">
+                <h4 className="text-white font-display tracking-tight text-3xl sm:text-4xl mb-3 sm:mb-4">Остались вопросы?</h4>
+                <p className="text-foreground/40 font-body-sm text-[14px] sm:text-[15px] leading-relaxed">
                   Прямые линии поддержки открыты 24/7 для подписчиков всех уровней. Мы поможем вам настроить систему.
                 </p>
               </div>
-              <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
-                <button className="bg-white text-black px-10 py-4 rounded-full font-mono-label text-[11px] uppercase tracking-[0.2em] font-black hover:scale-105 transition-all text-center">
+              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 w-full md:w-auto shrink-0">
+                <button className="bg-white text-black px-6 sm:px-10 py-3 sm:py-4 rounded-full font-mono-label text-[11px] uppercase tracking-[0.2em] font-black hover:scale-105 transition-all text-center whitespace-nowrap">
                   СВЯЗАТЬСЯ С НАМИ
                 </button>
-                <button className="bg-white/5 border border-white/10 text-white px-10 py-4 rounded-full font-mono-label text-[11px] uppercase tracking-[0.2em] font-black hover:bg-white/10 transition-all text-center">
+                <button className="bg-white/5 border border-white/10 text-white px-6 sm:px-10 py-3 sm:py-4 rounded-full font-mono-label text-[11px] uppercase tracking-[0.2em] font-black hover:bg-white/10 transition-all text-center whitespace-nowrap">
                   ДОКУМЕНТАЦИЯ
                 </button>
               </div>

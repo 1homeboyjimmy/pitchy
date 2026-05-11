@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader, Activity, RefreshCcw, ArrowUpRight, MessageSquare, Plus, Microscope, Map, Users } from "lucide-react";
+import { Loader, Activity, RefreshCcw, ArrowUpRight, MessageSquare, Plus, Microscope, Map, Users, Menu, X } from "lucide-react";
 import { ChatInterface } from "@/components/dashboard/ChatInterface";
 import { AdminView } from "@/components/dashboard/AdminView";
 import { TreeView } from "@/components/dashboard/TreeView";
@@ -186,6 +186,16 @@ function DashboardContent() {
 
   return (
     <div className="bg-black text-white h-screen font-sans flex overflow-hidden">
+      {/* Mobile sidebar toggle — fixed at the dashboard root so it always
+          sits above the sidebar's stacking context. */}
+      <button
+        onClick={() => setIsMobileSidebarOpen((prev) => !prev)}
+        className="md:hidden fixed top-3 left-3 z-[200] p-2 text-white/80 hover:text-white bg-black/70 backdrop-blur-md border border-white/10 rounded-lg active:scale-95 transition-colors"
+        aria-label={isMobileSidebarOpen ? "Закрыть меню" : "Открыть меню"}
+      >
+        {isMobileSidebarOpen ? <X size={20} /> : <Menu size={20} />}
+      </button>
+
       <SideNavBar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -207,10 +217,7 @@ function DashboardContent() {
               transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
               className="absolute top-0 left-0 right-0 z-[100]"
             >
-              <InternalTopNavBar
-                activeTab={activeTab}
-                onMenuClick={() => setIsMobileSidebarOpen(true)}
-              />
+              <InternalTopNavBar activeTab={activeTab} />
             </motion.div>
           )}
         </AnimatePresence>

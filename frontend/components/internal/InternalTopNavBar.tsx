@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { Menu, LogOut, User } from "lucide-react";
+import { LogOut, User } from "lucide-react";
 import { clearToken } from "@/lib/auth";
 import { PitchyLogo } from "@/components/shared/PitchyLogo";
 
@@ -17,10 +17,9 @@ const navLinks = [
 
 interface Props {
   activeTab: string;
-  onMenuClick?: () => void;
 }
 
-export function InternalTopNavBar({ activeTab, onMenuClick }: Props) {
+export function InternalTopNavBar({ activeTab }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const isAccountPage = pathname === "/account";
@@ -47,13 +46,8 @@ export function InternalTopNavBar({ activeTab, onMenuClick }: Props) {
       <div className="flex flex-row justify-between items-center py-4 px-8 w-full max-w-[1440px] mx-auto">
         {/* Left: Logo & Menu Toggle */}
         <div className="flex items-center gap-4 relative z-[110]">
-          <button
-            onClick={onMenuClick}
-            className="md:hidden text-white/40 hover:text-white p-1 transition-colors"
-            aria-label="Меню"
-          >
-            <Menu size={20} />
-          </button>
+          {/* Spacer so logo aligns with mobile floating burger position */}
+          <span className="md:hidden w-9 h-9" aria-hidden />
           <Link href="/" className="flex items-center gap-2">
             <PitchyLogo size="xl" />
           </Link>

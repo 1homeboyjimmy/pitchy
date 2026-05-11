@@ -285,29 +285,29 @@ export function AccountPageClient() {
           
           <div className="flex flex-col border border-white/10 rounded-2xl bg-[#111111] overflow-hidden relative border-white/5 bg-black/40">
             {/* Email Row */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between p-5 sm:p-10 border-b border-white/5 gap-6 hover:bg-white/[0.02] transition-all duration-500 relative z-10 group/row">
-              <div className="flex flex-col gap-3">
+            <div className="flex flex-row items-center justify-between gap-4 sm:gap-6 p-5 sm:p-10 border-b border-white/5 hover:bg-white/[0.02] transition-all duration-500 relative z-10 group/row">
+              <div className="flex flex-col gap-2 sm:gap-3 min-w-0 flex-1">
                 <span className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-white/20">Email адрес</span>
                 <span className="text-base sm:text-xl text-white font-light break-all min-w-0">{user?.email || "Не указан"}</span>
               </div>
               <button 
                 onClick={() => setIsChangeEmailOpen(true)}
-                className="self-start sm:self-center px-8 py-3 bg-white/5 border border-white/10 text-white/60 font-mono text-[11px] font-bold uppercase tracking-[0.2em] rounded-full hover:bg-white hover:text-black hover:border-white transition-all active:scale-[0.98]"
+                className="shrink-0 px-4 sm:px-8 py-2 sm:py-3 bg-white/5 border border-white/10 text-white/60 font-mono text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.15em] sm:tracking-[0.2em] rounded-full hover:bg-white hover:text-black hover:border-white transition-all active:scale-[0.98]"
               >
                 Изменить
               </button>
             </div>
             
             {/* Password Row */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between p-5 sm:p-10 gap-6 hover:bg-white/[0.02] transition-all duration-500 relative z-10 group/row">
-              <div className="flex flex-col gap-3">
+            <div className="flex flex-row items-center justify-between gap-4 sm:gap-6 p-5 sm:p-10 hover:bg-white/[0.02] transition-all duration-500 relative z-10 group/row">
+              <div className="flex flex-col gap-2 sm:gap-3 min-w-0 flex-1">
                 <span className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-white/20">Безопасность</span>
                 <span className="text-base sm:text-xl text-white font-light">Обновить пароль</span>
                 <p className="text-white/20 text-xs font-light">Рекомендуется менять пароль каждые 3 месяца</p>
               </div>
               <button 
                 onClick={() => setIsChangePasswordOpen(true)}
-                className="self-start sm:self-center px-8 py-3 bg-white/5 border border-white/10 text-white/60 font-mono text-[11px] font-bold uppercase tracking-[0.2em] rounded-full hover:bg-white hover:text-black hover:border-white transition-all active:scale-[0.98]"
+                className="shrink-0 px-4 sm:px-8 py-2 sm:py-3 bg-white/5 border border-white/10 text-white/60 font-mono text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.15em] sm:tracking-[0.2em] rounded-full hover:bg-white hover:text-black hover:border-white transition-all active:scale-[0.98]"
               >
                 Изменить
               </button>
