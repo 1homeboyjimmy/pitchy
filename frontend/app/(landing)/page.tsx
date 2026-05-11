@@ -294,7 +294,7 @@ export default function LandingPage() {
               text="Визуализация спроса, болей аудитории и конкурентной среды в реальном времени."
             />
 
-            <div className="mt-20 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className="mt-10 sm:mt-20 grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-3">
               {[
                 { icon: Target, title: "Инвестор" },
                 { icon: Search, title: "Маркетолог" },
@@ -309,13 +309,13 @@ export default function LandingPage() {
                   whileInView={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.5, delay: index * 0.05 }}
                   viewport={{ once: true }}
-                  className="lovable-glass lovable-liquid-outline rounded-[1.5rem] p-6 group cursor-default border-white/5 shadow-[0_0_40px_-10px_rgba(255,255,255,0.05)] bg-black/40"
+                  className="lovable-glass lovable-liquid-outline rounded-2xl sm:rounded-[1.5rem] p-4 sm:p-6 group cursor-default border-white/5 shadow-[0_0_40px_-10px_rgba(255,255,255,0.05)] bg-black/40"
                 >
-                  <div className="flex items-center gap-4 mb-6">
-                    <span className="h-2 w-2 rounded-full bg-white/40 animate-pulse" />
-                    <h3 className="text-xl text-white font-medium">{item.title}</h3>
+                  <div className="flex items-center gap-3 sm:gap-4 mb-3 sm:mb-6">
+                    <span className="h-2 w-2 rounded-full bg-white/40 animate-pulse shrink-0" />
+                    <h3 className="text-base sm:text-xl text-white font-medium leading-tight">{item.title}</h3>
                   </div>
-                  <div className="pt-4 border-t border-white/10 italic text-sm text-white/30 font-light leading-relaxed">
+                  <div className="pt-3 sm:pt-4 border-t border-white/10 italic text-[12px] sm:text-sm text-white/30 font-light leading-relaxed line-clamp-3 sm:line-clamp-none">
                     &ldquo;Сигнал уже виден, но теперь интерфейс не спорит с контентом — он усиливает его.&rdquo;
                   </div>
                 </motion.div>
