@@ -73,7 +73,7 @@ export default function LandingPage() {
               text="Мы собрали все инструменты в одном интерфейсе: от первичного анализа идеи до полной подготовки к инвестициям. Никаких лишних переключений между вкладками."
             />
 
-            <div className="mt-20 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="mt-10 sm:mt-20 grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
               {[
                 {
                   icon: BarChart3,
@@ -105,16 +105,16 @@ export default function LandingPage() {
                 >
                   <Link
                     href={ctaHref}
-                    className="block lovable-glass rounded-[2rem] p-8 group hover:bg-white/[0.05] hover:border-white/20 transition-all cursor-pointer h-full"
+                    className="block lovable-glass rounded-2xl sm:rounded-[2rem] p-4 sm:p-8 group hover:bg-white/[0.05] hover:border-white/20 transition-all cursor-pointer h-full"
                   >
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.05] mb-8">
-                      <item.icon className="h-5 w-5 text-white/70" />
+                    <div className="flex h-10 w-10 sm:h-12 sm:w-12 items-center justify-center rounded-xl sm:rounded-2xl border border-white/10 bg-white/[0.05] mb-4 sm:mb-8">
+                      <item.icon className="h-4 w-4 sm:h-5 sm:w-5 text-white/70" />
                     </div>
-                    <h3 className="text-xl font-medium text-white mb-4 pr-6 leading-tight relative">
+                    <h3 className="text-base sm:text-xl font-medium text-white mb-2 sm:mb-4 pr-6 leading-tight relative">
                       {item.title}
                       <ArrowUpRight className="absolute top-0 right-0 h-4 w-4 opacity-20 group-hover:opacity-100 transition-opacity" />
                     </h3>
-                    <p className="text-sm leading-relaxed text-white/40 font-light">
+                    <p className="text-[12px] sm:text-sm leading-relaxed text-white/40 font-light line-clamp-4 sm:line-clamp-none">
                       {item.text}
                     </p>
                   </Link>
