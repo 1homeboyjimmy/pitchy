@@ -78,9 +78,10 @@ interface ChatInterfaceProps {
     session: ChatSessionDetailResponse;
     onUpdate: (updatedSession: ChatSessionDetailResponse) => void;
     isSidebarCollapsed?: boolean;
+    onImportModalChange?: (open: boolean) => void;
 }
 
-export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInterfaceProps) {
+export function ChatInterface({ session, onUpdate, isSidebarCollapsed, onImportModalChange }: ChatInterfaceProps) {
     const [messages, setMessages] = useState<ExtendedChatMessage[]>(session.messages || []);
     const [modeHint, setModeHint] = useState<string | null>(null);
     const [inputValue, setInputValue] = useState("");
@@ -104,6 +105,9 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed }: ChatInt
 
     // Import Modal state
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+    useEffect(() => {
+        onImportModalChange?.(isImportModalOpen);
+    }, [isImportModalOpen, onImportModalChange]);
 
     // Upgrade Modal state (shown on limit errors)
     const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);

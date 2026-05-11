@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader, Activity, RefreshCcw, ArrowUpRight, MessageSquare, Plus, Microscope, Map, Users, Menu, X } from "lucide-react";
+import { Loader, Activity, RefreshCcw, ArrowUpRight, MessageSquare, Plus, Microscope, Map, Users, ChevronRight, ChevronLeft } from "lucide-react";
 import { ChatInterface } from "@/components/dashboard/ChatInterface";
 import { AdminView } from "@/components/dashboard/AdminView";
 import { TreeView } from "@/components/dashboard/TreeView";
@@ -76,6 +76,7 @@ function DashboardContent() {
   const [isCreating, setIsCreating] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isContextImportOpen, setIsContextImportOpen] = useState(false);
 
   const tier = userProfile?.subscription_tier || "free";
   const quotas = getQuotas(tier);
@@ -187,14 +188,17 @@ function DashboardContent() {
   return (
     <div className="bg-black text-white h-screen font-sans flex overflow-hidden">
       {/* Mobile sidebar toggle — fixed at the dashboard root so it always
-          sits above the sidebar's stacking context. */}
-      <button
-        onClick={() => setIsMobileSidebarOpen((prev) => !prev)}
-        className="md:hidden fixed top-3 left-3 z-[200] p-2 text-white/80 hover:text-white bg-black/70 backdrop-blur-md border border-white/10 rounded-lg active:scale-95 transition-colors"
-        aria-label={isMobileSidebarOpen ? "Закрыть меню" : "Открыть меню"}
-      >
-        {isMobileSidebarOpen ? <X size={20} /> : <Menu size={20} />}
-      </button>
+          sits above the sidebar's stacking context. Hidden while the
+          context-import modal is open so it doesn't sit on top of it. */}
+      {!isContextImportOpen && (
+        <button
+          onClick={() => setIsMobileSidebarOpen((prev) => !prev)}
+          className="md:hidden fixed top-3 left-3 z-[200] p-2 text-white/80 hover:text-white bg-black/70 backdrop-blur-md border border-white/10 rounded-lg active:scale-95 transition-colors"
+          aria-label={isMobileSidebarOpen ? "Закрыть меню" : "Открыть меню"}
+        >
+          {isMobileSidebarOpen ? <ChevronLeft size={20} /> : <ChevronRight size={20} />}
+        </button>
+      )}
 
       <SideNavBar
         activeTab={activeTab}
@@ -340,6 +344,7 @@ function DashboardContent() {
                   session={activeSession}
                   onUpdate={setActiveSession}
                   isSidebarCollapsed={isSidebarCollapsed}
+                  onImportModalChange={setIsContextImportOpen}
                 />
               ) : (
                 <div className="flex flex-col flex-1 h-full lovable-glass-strong rounded-3xl sm:rounded-[2.5rem] border border-white/5 items-center justify-center px-4 sm:px-6 py-8 bg-gradient-to-br from-white/[0.02] to-transparent">
