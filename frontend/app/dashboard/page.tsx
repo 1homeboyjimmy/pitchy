@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader, Activity, RefreshCcw, ArrowUpRight, MessageSquare, Plus, Microscope, Map, Users, ChevronRight, ChevronLeft } from "lucide-react";
+import { Loader, Activity, RefreshCcw, ArrowUpRight, MessageSquare, Plus, Microscope, Map, Users, ChevronRight, ChevronLeft, Trash2 } from "lucide-react";
 import { ChatInterface } from "@/components/dashboard/ChatInterface";
 import { AdminView } from "@/components/dashboard/AdminView";
 import { TreeView } from "@/components/dashboard/TreeView";
@@ -19,6 +19,7 @@ import {
   getChatSessions,
   createChatSession,
   getChatSession,
+  deleteChatSession,
   getMe,
   createChatSessionFromIntent,
   ChatSessionResponse,
@@ -172,6 +173,29 @@ function DashboardContent() {
     }
   };
 
+  const handleDeleteSession = async (
+    e: React.MouseEvent,
+    sessionId: number,
+    sessionTitle?: string,
+  ) => {
+    e.stopPropagation(); // do not trigger card click
+    e.preventDefault();
+    if (!token) return;
+    const label = sessionTitle?.trim() || `чат #${sessionId}`;
+    if (!window.confirm(`Удалить «${label}»? Это действие нельзя отменить.`)) return;
+    try {
+      await deleteChatSession(sessionId, token);
+      setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+      if (activeSession?.id === sessionId) {
+        setActiveSession(null);
+        setActiveTab("overview");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Не удалось удалить чат. Попробуйте ещё раз.");
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
@@ -307,8 +331,17 @@ function DashboardContent() {
                       key={session.id}
                       whileHover={{ y: -4 }}
                       onClick={() => handleSelectSession(session.id)}
-                      className="lovable-glass-strong border border-white/5 p-6 sm:p-8 flex flex-col justify-between hover:border-white/20 transition-all duration-500 min-h-[140px] sm:min-h-[200px] group cursor-pointer rounded-2xl sm:rounded-[2rem] bg-white/[0.02]"
+                      className="relative lovable-glass-strong border border-white/5 p-6 sm:p-8 flex flex-col justify-between hover:border-white/20 transition-all duration-500 min-h-[140px] sm:min-h-[200px] group cursor-pointer rounded-2xl sm:rounded-[2rem] bg-white/[0.02]"
                     >
+                      <button
+                        type="button"
+                        onClick={(e) => handleDeleteSession(e, session.id, session.title)}
+                        className="absolute top-3 right-3 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-black/40 border border-white/5 text-white/30 opacity-0 group-hover:opacity-100 hover:bg-red-500/20 hover:border-red-500/40 hover:text-red-400 transition-all duration-200"
+                        title="Удалить чат"
+                        aria-label="Удалить чат"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" strokeWidth={1.8} />
+                      </button>
                       <div className="flex justify-between items-start mb-8">
                         <div className="w-14 h-10 bg-white/5 flex items-center justify-center rounded-2xl group-hover:bg-white/10 transition-colors">
                           <MessageSquare className="text-white/40 group-hover:text-white transition-colors" size={20} strokeWidth={1.5} />
