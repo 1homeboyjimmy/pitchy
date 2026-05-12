@@ -3418,61 +3418,169 @@ async def send_chat_message(
             history = sorted(session.messages, key=lambda m: m.created_at)
             chat_history = [ChatMessage(role=m.role, content=m.content) for m in history]
 
-            # Narrative "thoughts" so the UI's reasoning panel shows real progress.
-            # Makura proxy strips reasoning_content from upstream models and they
-            # rarely emit literal <think>...</think> tags, so we synthesize a
-            # trace from the actual pipeline stages.
-            yield format_sse({"type": "thought", "content": "Изучаю ваш запрос и поднимаю контекст сессии…\n"})
-            full_thoughts += "Изучаю ваш запрос и поднимаю контекст сессии…\n"
+            use_deep_search_flag = getattr(payload, "use_deep_search", False)
+            use_research_flag = getattr(payload, "use_research", False)
+            is_pres_request = payload.intent == "presentation"
+            if is_pres_request:
+                logger.info(f"Detected presentation intent for session {session.id}")
 
-            # Identify RAG contexts in parallel to reduce latency
-            is_pres_request = False
+            # ===========================================================
+            # STAGE 1/6 — Redis Semantic Cache (Pitchy 2.0 architecture)
+            # ===========================================================
+            yield format_sse({"type": "thought", "content": "🔍 Шаг 1/6: проверяю Redis Semantic Cache…\n"})
+            full_thoughts += "🔍 Шаг 1/6: проверяю Redis Semantic Cache…\n"
+
+            if not (use_deep_search_flag or use_research_flag or is_pres_request):
+                try:
+                    from ops.cache.semantic_cache import semantic_cache as _sc
+                    cached = await _sc.get(query=payload.content, project_id=str(session.id))
+                    if cached:
+                        hit_note = "✅ Найден похожий ответ в кэше — отдаю мгновенно.\n"
+                        yield format_sse({"type": "thought", "content": hit_note})
+                        full_thoughts += hit_note
+                        yield format_sse({"type": "metadata", "model": "Semantic Cache (hit)"})
+                        yield format_sse({"type": "chunk", "content": cached})
+                        full_response = cached
+                        ttft = time.time() - start_time
+                        # Persist cached reply as new assistant message
+                        message_saved = True
+                        asyncio.create_task(asyncio.to_thread(
+                            save_assistant_message,
+                            session_id=session.id,
+                            content=full_response,
+                            thoughts=full_thoughts.strip() or None,
+                            client_id=payload.assistant_client_id,
+                            sources=None,
+                        ))
+                        return
+                except Exception as e:
+                    logger.error(f"Semantic cache lookup failed: {e}")
+            else:
+                skip_note = "   ⏩ Пропускаю кэш (deep_search/research/presentation требуют свежих данных).\n"
+                yield format_sse({"type": "thought", "content": skip_note})
+                full_thoughts += skip_note
+
+            # ===========================================================
+            # STAGE 2/6 — Параллельно: SLM-классификатор + ChromaDB
+            # ===========================================================
             cats: list = []
+            slm_res: dict = {}
             context_chunks: list = []
             try:
-                # Wrap both in create_task so asyncio.wait can poll them with a timeout
-                # (lets us emit ping heartbeats while they run).
-                cats_task = asyncio.create_task(classify_intent(payload.content))
+                from slm_dispatcher import slm_dispatcher as _slm
+                slm_task = asyncio.create_task(_slm.classify_query_intent(payload.content))
                 context_task = asyncio.create_task(
-                    asyncio.to_thread(rag.get_relevant_chunks, payload.content, categories=None, top_k=5)
+                    asyncio.to_thread(rag.get_relevant_chunks, payload.content, categories=None, top_k=10)
                 )
-                # Check for presentation intent (strictly explicit)
-                is_pres_request = payload.intent == "presentation"
 
-                if is_pres_request:
-                    logger.info(f"Detected presentation intent for session {session.id} (explicit: {payload.intent == 'presentation'})")
+                yield format_sse({"type": "thought", "content": "⚡ Шаг 2/6: параллельно SLM-диспетчер + ChromaDB retrieval…\n"})
+                full_thoughts += "⚡ Шаг 2/6: параллельно SLM-диспетчер + ChromaDB retrieval…\n"
 
-                yield format_sse({"type": "thought", "content": "Параллельно классифицирую интент и ищу релевантные фрагменты в базе знаний…\n"})
-                full_thoughts += "Параллельно классифицирую интент и ищу релевантные фрагменты в базе знаний…\n"
-
-                # Wait for both with periodic ping heartbeats every 5s
-                pending = {cats_task, context_task}
+                pending = {slm_task, context_task}
                 while pending:
                     _, pending = await asyncio.wait(pending, timeout=5.0)
                     if pending:
                         yield format_sse({"type": "ping"})
 
-                if cats_task.exception() is None:
-                    cats = cats_task.result() or []
+                if slm_task.exception() is None:
+                    slm_res = slm_task.result() or {}
+                    cats = slm_res.get("categories") or []
                 if context_task.exception() is None:
                     context_chunks = context_task.result() or []
 
-                # For now, we use the broad search results but filter by cats if they arrived.
                 if cats:
                     context_chunks = [
                         c for c in context_chunks
                         if isinstance(c, dict) and any(cat in c.get('metadata', {}).get('collection', '') for cat in cats)
                     ] or context_chunks
 
-                cats_label = ", ".join(cats) if cats else "общий контекст"
-                rag_note = f"Категории запроса: {cats_label}. Найдено {len(context_chunks)} фрагментов в базе знаний.\n"
+                cats_label = ", ".join(cats) if cats else "общий"
+                rag_note = (
+                    f"   📚 Категории: {cats_label}. Фрагментов в базе: {len(context_chunks)}. "
+                    f"Deep-search флаг SLM: {slm_res.get('is_deep_search', False)}. "
+                    f"Финансовый запрос: {slm_res.get('is_finance', False)}.\n"
+                )
                 yield format_sse({"type": "thought", "content": rag_note})
                 full_thoughts += rag_note
             except Exception as e:
-                logger.error(f"Error in parallel RAG/Classification: {e}")
-                context_chunks = []
-                yield format_sse({"type": "thought", "content": "Не удалось получить полный контекст — отвечаю на основе общих знаний.\n"})
-                full_thoughts += "Не удалось получить полный контекст — отвечаю на основе общих знаний.\n"
+                logger.error(f"Stage 2 (SLM+RAG) failed: {e}")
+                err_note = "   ⚠️ Не удалось получить полный контекст — отвечаю на общих знаниях.\n"
+                yield format_sse({"type": "thought", "content": err_note})
+                full_thoughts += err_note
+
+            # ===========================================================
+            # STAGE 3/6 — Exa AI web search (условно)
+            # ===========================================================
+            search_ctx = ""
+            should_search = (
+                use_deep_search_flag
+                or use_research_flag
+                or slm_res.get("is_deep_search", False)
+            )
+            if should_search and not is_pres_request:
+                yield format_sse({"type": "thought", "content": "🌐 Шаг 3/6: Exa AI — ищу свежие данные в интернете…\n"})
+                full_thoughts += "🌐 Шаг 3/6: Exa AI…\n"
+                try:
+                    from search_agent import async_search_with_sources
+                    search_sources, search_ctx = await async_search_with_sources(payload.content, use_deep_search=True)
+                    if search_sources:
+                        sources = search_sources
+                        yield format_sse({"type": "sources", "data": search_sources})
+                        src_note = f"   ✅ Найдено {len(search_sources)} источников.\n"
+                        yield format_sse({"type": "thought", "content": src_note})
+                        full_thoughts += src_note
+                except Exception as e:
+                    logger.error(f"Stage 3 (Exa) failed: {e}")
+            else:
+                skip_note = "⏩ Шаг 3/6: Exa не запускаю — данных в RAG достаточно.\n"
+                yield format_sse({"type": "thought", "content": skip_note})
+                full_thoughts += skip_note
+
+            # ===========================================================
+            # STAGE 4/6 — Swarm of Qwen agents (Map phase)
+            # ===========================================================
+            swarm_facts = ""
+            rag_texts = [c["text"] if isinstance(c, dict) else c for c in context_chunks[:10]]
+            chunks_for_swarm = rag_texts + ([search_ctx] if search_ctx else [])
+
+            if chunks_for_swarm and not is_pres_request and not use_research_flag:
+                swarm_note = f"🐝 Шаг 4/6: рой Qwen-агентов на {len(chunks_for_swarm)} фрагментах (Map-фаза)…\n"
+                yield format_sse({"type": "thought", "content": swarm_note})
+                full_thoughts += swarm_note
+                try:
+                    from swarm_agent import run_analytical_swarm
+                    swarm_res = await run_analytical_swarm(chunks_for_swarm)
+                    facts: list[str] = []
+                    for item in swarm_res or []:
+                        comps = getattr(item, 'competitors', None) or []
+                        mets = getattr(item, 'metrics', None) or []
+                        if comps:
+                            facts.append("Конкуренты: " + ", ".join(comps))
+                        if mets:
+                            facts.append("Метрики: " + "; ".join(mets))
+                    if facts:
+                        swarm_facts = "\n- ".join(sorted(set(facts)))
+                        fact_note = f"   ✅ Рой извлёк {len(facts)} групп фактов.\n"
+                        yield format_sse({"type": "thought", "content": fact_note})
+                        full_thoughts += fact_note
+                    else:
+                        none_note = "   ℹ️ Рой не нашёл структурированных фактов — использую сырой RAG.\n"
+                        yield format_sse({"type": "thought", "content": none_note})
+                        full_thoughts += none_note
+                except Exception as e:
+                    logger.error(f"Stage 4 (Swarm) failed: {e}")
+            else:
+                yield format_sse({"type": "thought", "content": "⏩ Шаг 4/6: рой не запускаю.\n"})
+                full_thoughts += "⏩ Шаг 4/6: рой не запускаю.\n"
+
+            # Compile final RAG context for GLM-5 (Reduce phase input)
+            compiled_rag = ""
+            if swarm_facts:
+                compiled_rag += f"ПРОВЕРЕННЫЕ ФАКТЫ ИЗ БАЗЫ ЗНАНИЙ И СЕТИ:\n- {swarm_facts}\n\n"
+            if not swarm_facts and rag_texts:
+                compiled_rag += f"ДАННЫЕ ИЗ БАЗЫ ЗНАНИЙ:\n{chr(10).join(rag_texts[:3])}\n\n"
+            if search_ctx and not swarm_facts:
+                compiled_rag += f"ДАННЫЕ ИЗ ИНТЕРНЕТА:\n{search_ctx[:2500]}\n\n"
 
             # 3.1 MODE: PRESENTATION GENERATION
             if is_pres_request:
@@ -3519,23 +3627,19 @@ async def send_chat_message(
             
             # 4. MODE: QUICK SEARCH OR REGULAR CHAT
             else:
-                user_prompt = _build_chat_prompt(chat_history, context_chunks)
-                
-                # Additional internet search if requested (Quick Search)
-                if getattr(payload, "use_deep_search", False):
-                    yield format_sse({"type": "thought", "content": "Запускаю поиск в интернете для свежих данных…\n"})
-                    full_thoughts += "Запускаю поиск в интернете для свежих данных…\n"
-                    from search_agent import async_search_with_sources
-                    sources, search_ctx = await async_search_with_sources(payload.content, use_deep_search=True)
-                    if search_ctx:
-                        user_prompt = f"ДАННЫЕ ИЗ БАЗЫ:\n\n{context_chunks}\n\nДАННЫЕ ИЗ ИНТЕРНЕТА:\n\n{search_ctx}\n\nВопрос: {payload.content}"
-                        if sources:
-                            yield format_sse({"type": "sources", "data": sources})
-                            yield format_sse({"type": "thought", "content": f"Подобрано {len(sources)} источников из сети.\n"})
-                            full_thoughts += f"Подобрано {len(sources)} источников из сети.\n"
+                # =======================================================
+                # STAGE 5/6 — GLM-5 Reduce phase (synthesis + streaming)
+                # =======================================================
+                history_text = "\n".join([f"{m.role}: {m.content[:300]}" for m in chat_history[-8:]])
+                user_prompt = (
+                    f"{compiled_rag}"
+                    f"ИСТОРИЯ ДИАЛОГА:\n{history_text}\n\n"
+                    f"Вопрос пользователя: {payload.content}"
+                )
 
-                yield format_sse({"type": "thought", "content": "Формирую развёрнутый ответ…\n"})
-                full_thoughts += "Формирую развёрнутый ответ…\n"
+                synth_note = "✍️ Шаг 5/6: GLM-5 синтезирует ответ из собранных данных (Reduce-фаза)…\n"
+                yield format_sse({"type": "thought", "content": synth_note})
+                full_thoughts += synth_note
                 raw_gen = stream_makura(SYSTEM_CHAT_PROMPT, user_prompt)
 
                 async for sse_item in parse_thought_generator(raw_gen):
@@ -3579,14 +3683,30 @@ async def send_chat_message(
                 message_saved = True
                 asyncio.create_task(
                     asyncio.to_thread(
-                        save_assistant_message, 
-                        session_id=session.id, 
+                        save_assistant_message,
+                        session_id=session.id,
                         content=full_response,
                         thoughts=full_thoughts.strip() if full_thoughts.strip() else None,
                         client_id=payload.assistant_client_id,
                         sources=sources if getattr(payload, "use_deep_search", False) else None
                     )
                 )
+
+            # =======================================================
+            # STAGE 6/6 — Background Semantic Cache write
+            # Cache only successful, non-research, non-presentation
+            # responses so future identical queries get the fast path.
+            # =======================================================
+            if full_response and not (use_deep_search_flag or use_research_flag or is_pres_request):
+                try:
+                    from ops.cache.semantic_cache import semantic_cache as _sc
+                    asyncio.create_task(_sc.set(
+                        query=payload.content,
+                        response=full_response,
+                        project_id=str(session.id),
+                    ))
+                except Exception as e:
+                    logger.error(f"Stage 6 (semantic cache set) failed: {e}")
         except Exception as e:
             logger.error(f"Session streaming failed: {e}")
             yield format_sse({"type": "error", "content": str(e)})
