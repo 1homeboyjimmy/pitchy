@@ -1,7 +1,10 @@
 "use client";
 
-import React, { useRef, useEffect } from "react";
-import { Send, Square, Globe, Activity, FileText, DownloadCloud, Paperclip, Database, Mic, ArrowUp, X, Sparkles } from "lucide-react";
+import React, { useRef, useEffect, useState, useCallback } from "react";
+import {
+  Square, Globe, Activity, FileText, Paperclip,
+  ArrowUp, X, Sparkles, Wrench, Check, ChevronDown,
+} from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface ChatInputProps {
@@ -40,13 +43,34 @@ export function ChatInput({
   onCancelPresentationMode,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const toolsRef = useRef<HTMLDivElement>(null);
+  const [toolsOpen, setToolsOpen] = useState(false);
 
   useEffect(() => {
     if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = "auto";
       textareaRef.current.style.height = `${Math.min(Math.max(textareaRef.current.scrollHeight, 56), 192)}px`;
     }
   }, [value]);
+
+  // Close tools menu on outside click / escape
+  useEffect(() => {
+    if (!toolsOpen) return;
+    const onClick = (e: MouseEvent) => {
+      if (toolsRef.current && !toolsRef.current.contains(e.target as Node)) {
+        setToolsOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setToolsOpen(false);
+    };
+    document.addEventListener("mousedown", onClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [toolsOpen]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -57,14 +81,65 @@ export function ChatInput({
     }
   };
 
+  const activeToolsCount = [useDeepSearch, isResearchMode, isPresentationMode].filter(Boolean).length;
+
+  const runHandler = useCallback((fn?: () => void) => {
+    if (fn) fn();
+    setToolsOpen(false);
+  }, []);
+
+  type ToolEntry = {
+    key: string;
+    icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
+    title: string;
+    subtitle: string;
+    active: boolean;
+    onClick?: () => void;
+  };
+
+  const tools: ToolEntry[] = [
+    {
+      key: "context",
+      icon: Paperclip,
+      title: "Импорт контекста",
+      subtitle: "Загрузить описание проекта или прошлый питч-дек",
+      active: false,
+      onClick: onOpenImportModal,
+    },
+    {
+      key: "web",
+      icon: Globe,
+      title: "Поиск в интернете",
+      subtitle: "Подтянуть свежие данные и источники из сети",
+      active: useDeepSearch,
+      onClick: onToggleDeepSearch,
+    },
+    {
+      key: "research",
+      icon: Activity,
+      title: "Глубокое исследование",
+      subtitle: "Развёрнутый отчёт с многошаговым анализом",
+      active: isResearchMode,
+      onClick: onToggleResearchMode,
+    },
+    {
+      key: "slides",
+      icon: FileText,
+      title: "Сгенерировать слайды",
+      subtitle: "Собрать инвестиционную презентацию",
+      active: isPresentationMode,
+      onClick: onTogglePresentationMode,
+    },
+  ];
+
   return (
-    <div className="relative w-full max-w-4xl mx-auto">
+    <div className="relative w-full max-w-5xl mx-auto">
       {/* Agent Mode Banner */}
       <AnimatePresence>
         {isPresentationMode && (
           <motion.div
             initial={{ opacity: 0, y: 20, height: 0 }}
-            animate={{ opacity: 1, y: 0, height: 'auto' }}
+            animate={{ opacity: 1, y: 0, height: "auto" }}
             exit={{ opacity: 0, y: 10, height: 0 }}
             transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
             className="mb-4 sm:mb-6 overflow-hidden px-3 sm:px-6"
@@ -73,7 +148,6 @@ export function ChatInput({
               <div className="absolute inset-0 bg-gradient-to-br from-white/[0.08] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
               <div className="absolute -top-24 -right-24 w-48 h-48 bg-white/5 blur-[60px] rounded-full group-hover:bg-white/10 transition-colors duration-700" />
 
-              {/* Close button — always positioned at the top-right, regardless of layout */}
               <button
                 onClick={() => onCancelPresentationMode?.()}
                 className="absolute top-3 right-3 sm:top-4 sm:right-4 z-20 p-2 rounded-full text-white/40 hover:text-white hover:bg-white/10 transition-all active:scale-90"
@@ -105,76 +179,111 @@ export function ChatInput({
 
       <div className="px-3 sm:px-6">
         <div className="relative group">
-            <div className="absolute -inset-[1px] bg-white/10 rounded-3xl sm:rounded-[2rem] blur-sm opacity-0 group-focus-within:opacity-100 transition duration-700 pointer-events-none"></div>
-            <div className={`relative bg-black/40 backdrop-blur-3xl border rounded-3xl sm:rounded-[2rem] p-2 sm:p-3 flex items-end gap-2 sm:gap-3 transition-all duration-500 shadow-2xl ${
-                isPresentationMode ? "border-white/30 bg-white/[0.02]" : "border-white/5 focus-within:border-white/20"
-            } ${disabled ? "opacity-40" : ""}`}>
-            <textarea
-                ref={textareaRef}
-                value={value}
-                onChange={onChange}
-                onKeyDown={handleKeyDown}
-                placeholder={isPresentationMode ? "Опишите идею для вашей презентации..." : placeholder}
-                disabled={disabled}
-                className="flex-1 min-w-0 bg-transparent border-none py-3 sm:py-4 px-3 sm:px-6 text-white focus:outline-none focus:ring-0 resize-none font-sans text-[15px] sm:text-[16px] min-h-[52px] sm:min-h-[60px] max-h-48 placeholder:text-white/20 leading-relaxed selection:bg-white/20"
-                rows={1}
-            ></textarea>
-            <div className="flex items-center gap-2 mb-1.5 sm:mb-2 mr-1 sm:mr-2 shrink-0">
-                {isLoading ? (
-                    <button
-                      onClick={onStop}
-                      className="bg-white/10 text-white border border-white/20 h-10 w-10 sm:h-12 sm:w-12 flex items-center justify-center rounded-xl sm:rounded-2xl hover:bg-white/20 active:scale-90 transition-all shadow-lg shadow-black/20"
-                    >
-                      <Square className="w-4 h-4 fill-white" />
-                    </button>
-                ) : (
-                    <button
-                      onClick={onSend}
-                      disabled={disabled || !value.trim()}
-                      className={`h-10 w-10 sm:h-12 sm:w-12 flex items-center justify-center rounded-xl sm:rounded-2xl transition-all shadow-lg ${
-                        value.trim() && !disabled
-                        ? "bg-white text-black hover:scale-105 active:scale-90 shadow-white/5"
-                        : "bg-white/5 text-white/10 cursor-not-allowed border border-white/5"
-                      }`}
-                    >
-                      <ArrowUp className="w-5 h-5 sm:w-6 sm:h-6" strokeWidth={2.5} />
-                    </button>
+          <div className="absolute -inset-[1px] bg-white/10 rounded-3xl sm:rounded-[2rem] blur-sm opacity-0 group-focus-within:opacity-100 transition duration-700 pointer-events-none" />
+          <div className={`relative bg-black/40 backdrop-blur-3xl border rounded-3xl sm:rounded-[2rem] p-2 sm:p-3 flex items-end gap-2 sm:gap-3 transition-all duration-500 shadow-2xl ${
+            isPresentationMode ? "border-white/30 bg-white/[0.02]" : "border-white/5 focus-within:border-white/20"
+          } ${disabled ? "opacity-40" : ""}`}>
+            {/* Tools button (inside the input pill, left) */}
+            <div ref={toolsRef} className="relative shrink-0 mb-1.5 sm:mb-2 ml-1 sm:ml-2">
+              <button
+                type="button"
+                onClick={() => setToolsOpen((v) => !v)}
+                aria-haspopup="menu"
+                aria-expanded={toolsOpen}
+                className={`h-10 sm:h-12 px-3 sm:px-4 flex items-center gap-2 rounded-xl sm:rounded-2xl border transition-all active:scale-95 ${
+                  activeToolsCount > 0 || toolsOpen
+                    ? "bg-white/10 text-white border-white/20"
+                    : "bg-white/[0.03] text-white/60 border-white/5 hover:bg-white/5 hover:text-white"
+                }`}
+                title="Инструменты"
+              >
+                <Wrench className="w-4 h-4" strokeWidth={1.8} />
+                <span className="hidden sm:inline text-[13px] font-medium tracking-tight">Инструменты</span>
+                {activeToolsCount > 0 && (
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-white text-black font-bold leading-none">
+                    {activeToolsCount}
+                  </span>
                 )}
-            </div>
-            </div>
-        </div>
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${toolsOpen ? "rotate-180" : ""}`} strokeWidth={2} />
+              </button>
 
-        <div className="flex flex-nowrap sm:flex-wrap gap-2 mt-3 sm:mt-4 sm:ml-4 overflow-x-auto pb-1 -mx-1 px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <button
-              onClick={onOpenImportModal}
-              className="lovable-glass-strong border border-white/5 px-4 py-1.5 rounded-full text-[10px] font-mono text-white/30 hover:text-white hover:bg-white/10 transition-all flex items-center gap-2 uppercase tracking-[0.2em] font-bold active:scale-95 whitespace-nowrap shrink-0"
-            >
-              <Paperclip className="w-3.5 h-3.5" strokeWidth={1.5} /> Контекст
-            </button>
-            <button
-              onClick={onToggleDeepSearch}
-              className={`lovable-glass-strong border px-4 py-1.5 rounded-full text-[10px] font-mono transition-all flex items-center gap-2 uppercase tracking-[0.2em] font-bold active:scale-95 whitespace-nowrap shrink-0 ${
-                useDeepSearch ? "text-white border-white/20 bg-white/10" : "text-white/30 border-white/5 hover:text-white hover:bg-white/5"
-              }`}
-            >
-              <Database className="w-3.5 h-3.5" strokeWidth={1.5} /> Web-поиск
-            </button>
-            <button
-              onClick={onToggleResearchMode}
-              className={`lovable-glass-strong border px-4 py-1.5 rounded-full text-[10px] font-mono transition-all flex items-center gap-2 uppercase tracking-[0.2em] font-bold active:scale-95 whitespace-nowrap shrink-0 ${
-                isResearchMode ? "text-white border-white/20 bg-white/10 shadow-[0_0_15px_rgba(255,255,255,0.05)]" : "text-white/30 border-white/5 hover:text-white hover:bg-white/5"
-              }`}
-            >
-              <Activity className="w-3.5 h-3.5" strokeWidth={1.5} /> Deep Research
-            </button>
-            {!isPresentationMode && (
+              <AnimatePresence>
+                {toolsOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                    transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
+                    role="menu"
+                    className="absolute left-0 bottom-full mb-2 w-[320px] sm:w-[380px] rounded-2xl border border-white/10 bg-[#0e0e0e]/95 backdrop-blur-2xl shadow-[0_20px_60px_rgba(0,0,0,0.6)] overflow-hidden z-30"
+                  >
+                    <div className="p-1.5">
+                      {tools.map(({ key, icon: Icon, title, subtitle, active, onClick }) => (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => runHandler(onClick)}
+                          role="menuitemcheckbox"
+                          aria-checked={active}
+                          className={`w-full flex items-start gap-3 px-3 py-2.5 rounded-xl text-left transition-colors ${
+                            active ? "bg-white/[0.08]" : "hover:bg-white/[0.04]"
+                          }`}
+                        >
+                          <div className={`mt-0.5 w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                            active ? "bg-white text-black" : "bg-white/[0.06] text-white/70"
+                          }`}>
+                            <Icon className="w-4 h-4" strokeWidth={1.8} />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className={`text-[13px] font-medium tracking-tight ${active ? "text-white" : "text-white/85"}`}>
+                                {title}
+                              </span>
+                              {active && <Check className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />}
+                            </div>
+                            <p className="mt-0.5 text-[11px] leading-snug text-white/40">{subtitle}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            <textarea
+              ref={textareaRef}
+              value={value}
+              onChange={onChange}
+              onKeyDown={handleKeyDown}
+              placeholder={isPresentationMode ? "Опишите идею для вашей презентации..." : placeholder}
+              disabled={disabled}
+              className="flex-1 min-w-0 bg-transparent border-none py-3 sm:py-4 px-2 sm:px-3 text-white focus:outline-none focus:ring-0 resize-none font-sans text-[15px] sm:text-[16px] min-h-[52px] sm:min-h-[60px] max-h-48 placeholder:text-white/20 leading-relaxed selection:bg-white/20"
+              rows={1}
+            />
+            <div className="flex items-center gap-2 mb-1.5 sm:mb-2 mr-1 sm:mr-2 shrink-0">
+              {isLoading ? (
                 <button
-                    onClick={onTogglePresentationMode}
-                    className="lovable-glass-strong border border-white/5 px-4 py-1.5 rounded-full text-[10px] font-mono text-white/30 hover:text-white hover:bg-white/10 transition-all flex items-center gap-2 uppercase tracking-[0.2em] font-bold active:scale-95 whitespace-nowrap shrink-0"
+                  onClick={onStop}
+                  className="bg-white/10 text-white border border-white/20 h-10 w-10 sm:h-12 sm:w-12 flex items-center justify-center rounded-xl sm:rounded-2xl hover:bg-white/20 active:scale-90 transition-all shadow-lg shadow-black/20"
                 >
-                    <FileText className="w-3.5 h-3.5" strokeWidth={1.5} /> Слайды
+                  <Square className="w-4 h-4 fill-white" />
                 </button>
-            )}
+              ) : (
+                <button
+                  onClick={onSend}
+                  disabled={disabled || !value.trim()}
+                  className={`h-10 w-10 sm:h-12 sm:w-12 flex items-center justify-center rounded-xl sm:rounded-2xl transition-all shadow-lg ${
+                    value.trim() && !disabled
+                      ? "bg-white text-black hover:scale-105 active:scale-90 shadow-white/5"
+                      : "bg-white/5 text-white/10 cursor-not-allowed border border-white/5"
+                  }`}
+                >
+                  <ArrowUp className="w-5 h-5 sm:w-6 sm:h-6" strokeWidth={2.5} />
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </div>

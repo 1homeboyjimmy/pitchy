@@ -576,9 +576,9 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed, onImportM
             <div
                 ref={scrollViewportRef}
                 style={{ paddingBottom: inputBarHeight + 24 }}
-                className="flex-1 overflow-y-auto scroll-smooth pt-24 px-3 sm:px-6 lg:px-12 scrollbar-hide"
+                className="flex-1 overflow-y-auto scroll-smooth pt-24 px-3 sm:px-6 lg:px-12 pitchy-chat-scroll"
             >
-                <div className={`mx-auto w-full transition-all duration-500 ease-[0.16,1,0.3,1] ${isSidebarCollapsed ? 'max-w-6xl' : 'max-w-4xl'} space-y-8`}>
+                <div className={`mx-auto w-full transition-all duration-500 ease-[0.16,1,0.3,1] ${isSidebarCollapsed ? 'max-w-6xl' : 'max-w-5xl'} space-y-8`}>
                 {messages.length === 0 && (
                     <motion.div 
                         initial={{ opacity: 0, y: 20 }}
