@@ -399,7 +399,7 @@ async def metrics_middleware(request: Request, call_next):
         "style-src 'self' 'unsafe-inline'; "
         "img-src 'self' data: https:; "
         "font-src 'self' data: https:; "
-        "connect-src 'self' https://cloud.langfuse.com https://api.makura.ai https://lumigate.us https://api.routerai.ru https://api.tavily.com;"
+        "connect-src 'self' wss: https: *.pitchy.pro https://cloud.langfuse.com https://api.makura.ai https://lumigate.us https://api.routerai.ru https://api.tavily.com;"
     )
 
     logger.info(
