@@ -35,7 +35,11 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
+          pull: true
+          provenance: false
           tags: ${{ env.BACKEND_IMAGE }}:dev,${{ env.BACKEND_IMAGE }}:dev-${{ github.sha }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
           cache-from: type=gha,scope=dev-backend
           cache-to: type=gha,mode=max,scope=dev-backend
 
@@ -63,10 +67,13 @@ jobs:
         with:
           context: ./frontend
           push: true
+          pull: true
+          provenance: false
           tags: ${{ env.FRONTEND_IMAGE }}:dev,${{ env.FRONTEND_IMAGE }}:dev-${{ github.sha }}
           build-args: |
             NEXT_PUBLIC_API_BASE_URL=https://dev.pitchy.pro
             BACKEND_INTERNAL_URL=http://backend:8000
+            GIT_SHA=${{ github.sha }}
           cache-from: type=gha,scope=dev-frontend
           cache-to: type=gha,mode=max,scope=dev-frontend
 

@@ -21,6 +21,12 @@ ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 ARG BACKEND_INTERNAL_URL
 ENV BACKEND_INTERNAL_URL=$BACKEND_INTERNAL_URL
 COPY --from=deps /app/node_modules ./node_modules
+# Force cache invalidation for the source-copy layer whenever the commit changes.
+# Buildx's GHA cache backend has occasionally reused stale COPY layers; this
+# explicit cachebuster guarantees `COPY . .` and `npm run build` always
+# re-run on a new commit while `deps` (npm ci) stays cached.
+ARG GIT_SHA=unknown
+RUN echo "$GIT_SHA" > /tmp/.git_sha
 COPY . .
 RUN --mount=type=cache,target=/app/.next/cache \
     npm run build
