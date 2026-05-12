@@ -20,6 +20,49 @@ def format_sse(data) -> dict:
         return {"event": data.get("type", "message"), "data": json.dumps(data, ensure_ascii=False)}
     return {"event": "message", "data": json.dumps(data, ensure_ascii=False)}
 
+
+async def _with_heartbeat(gen, interval: float = 5.0):
+    """Wrap an SSE generator and inject ping events when no data flows for `interval` seconds.
+
+    Keeps the frontend 20s watchdog alive during slow upstream operations
+    (LLM TTFB, deep research, swarm processing) without requiring every
+    callsite to remember to emit pings. The ping is a real `data:` event
+    (not an SSE comment), so it reaches the frontend's `for await` loop
+    and resets the watchdog. The frontend already skips `type === "ping"`.
+    """
+    import asyncio as _asyncio
+    queue: _asyncio.Queue = _asyncio.Queue()
+
+    async def _pump():
+        try:
+            async for item in gen:
+                await queue.put(("item", item))
+        except BaseException as exc:
+            await queue.put(("error", exc))
+            return
+        await queue.put(("done", None))
+
+    task = _asyncio.create_task(_pump())
+    try:
+        while True:
+            try:
+                kind, payload = await _asyncio.wait_for(queue.get(), timeout=interval)
+            except _asyncio.TimeoutError:
+                yield format_sse({"type": "ping"})
+                continue
+            if kind == "done":
+                return
+            if kind == "error":
+                raise payload
+            yield payload
+    finally:
+        if not task.done():
+            task.cancel()
+            try:
+                await task
+            except BaseException:
+                pass
+
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from starlette.concurrency import run_in_threadpool
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
@@ -1987,7 +2030,7 @@ async def create_chat_message(
         "Connection": "keep-alive",
         "X-Accel-Buffering": "no"
     }
-    return EventSourceResponse(session_chat_generator(), headers=headers)
+    return EventSourceResponse(_with_heartbeat(session_chat_generator()), headers=headers)
 
 
 @app.get("/chat/messages/search")
@@ -3564,7 +3607,7 @@ async def send_chat_message(
         "Connection": "keep-alive",
         "X-Accel-Buffering": "no"
     }
-    return EventSourceResponse(session_chat_generator(), headers=headers)
+    return EventSourceResponse(_with_heartbeat(session_chat_generator()), headers=headers)
 
 
 async def _handle_presentation_in_chat(user_message: str, history_text: str, rag_context: str):
