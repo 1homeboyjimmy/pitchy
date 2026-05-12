@@ -33,11 +33,11 @@ async def _process_single_chunk(client, chunk: str, trace_id: str = None, parent
     """Анализ одного чанка одним микро-агентом."""
     if langfuse_context:
         if trace_id:
-            langfuse_context.update(trace_id=trace_id)
+            langfuse_context.update_current_observation(trace_id=trace_id)
         if parent_observation_id:
-            langfuse_context.update(parent_observation_id=parent_observation_id)
+            langfuse_context.update_current_observation(parent_observation_id=parent_observation_id)
         # Help Langfuse link parallel tasks if context propagation is flaky
-        langfuse_context.update(metadata={"chunk_len": len(chunk)})
+        langfuse_context.update_current_observation(metadata={"chunk_len": len(chunk)})
         
     try:
         response = await client.chat.completions.create(
@@ -72,9 +72,9 @@ async def stream_analytical_swarm(chunks: List[str], trace_id: str = None, paren
     """Генератор для потоковой обработки чанков роем."""
     if langfuse_context:
         if trace_id:
-            langfuse_context.update(trace_id=trace_id)
+            langfuse_context.update_current_observation(trace_id=trace_id)
         if parent_observation_id:
-            langfuse_context.update(parent_observation_id=parent_observation_id)
+            langfuse_context.update_current_observation(parent_observation_id=parent_observation_id)
         
     client = get_patched_client()
     tasks = [_process_single_chunk(client, chunk, trace_id=trace_id, parent_observation_id=parent_observation_id) for chunk in chunks]

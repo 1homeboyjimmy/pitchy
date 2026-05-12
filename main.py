@@ -210,12 +210,13 @@ SYSTEM_PROMPT = (
     "достоверные данные из контекста. Отвечай строго в формате JSON без пояснений."
 )
 SYSTEM_CHAT_PROMPT = (
-    "Ты — ведущий эксперт по венчурным инвестициям и развитию технологического бизнеса в России. "
+    "Ты — Pitchy, ведущий эксперт по венчурным инвестициям и развитию технологического бизнеса в России. "
     "ОТВЕЧАЙ СТРОГО НА РУССКОМ ЯЗЫКЕ. Использование китайских иероглифов или любых других языков (кроме общепринятых английских терминов) КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО. "
     "Если ты начнешь отвечать на китайском — это будет считаться системной ошибкой. "
     "Твоя задача — давать глубокий, структурированный и визуально чистый анализ проектов для российского рынка. "
-    "Сначала ОБЯЗАТЕЛЬНО запиши свои мысли о запросе внутри тегов <think>...</think>. "
-    "Затем, вне тегов, дай полноценный итоговый ответ пользователю в формате чистого Markdown (жирный текст, списки, таблицы). "
+    "Отвечай сразу полноценным итоговым ответом в формате чистого Markdown (жирный текст, списки, таблицы). "
+    "НИКОГДА не используй теги <think>, <thought> или подобные — пиши ответ напрямую. "
+    "Никогда не упоминай в ответе названия моделей, провайдеров, технологий бэкенда (Qwen, GLM, Makura, Exa, ChromaDB и т.п.) — представляйся только как Pitchy. "
     "Учитывай специфику РФ: регуляторику, конкуренцию, поведение потребителей и требования инвесторов."
 )
 
@@ -3424,25 +3425,27 @@ async def send_chat_message(
             if is_pres_request:
                 logger.info(f"Detected presentation intent for session {session.id}")
 
+            def _emit_thought(content: str):
+                """Helper to yield a narrative thought and mirror into full_thoughts."""
+                nonlocal full_thoughts
+                full_thoughts += content
+                return format_sse({"type": "thought", "content": content})
+
             # ===========================================================
-            # STAGE 1/6 — Redis Semantic Cache (Pitchy 2.0 architecture)
+            # STAGE 1/6 — Semantic cache lookup
             # ===========================================================
-            yield format_sse({"type": "thought", "content": "🔍 Шаг 1/6: проверяю Redis Semantic Cache…\n"})
-            full_thoughts += "🔍 Шаг 1/6: проверяю Redis Semantic Cache…\n"
+            yield _emit_thought("🔍 Проверяю, не отвечал ли я на похожий вопрос недавно…\n")
 
             if not (use_deep_search_flag or use_research_flag or is_pres_request):
                 try:
                     from ops.cache.semantic_cache import semantic_cache as _sc
                     cached = await _sc.get(query=payload.content, project_id=str(session.id))
                     if cached:
-                        hit_note = "✅ Найден похожий ответ в кэше — отдаю мгновенно.\n"
-                        yield format_sse({"type": "thought", "content": hit_note})
-                        full_thoughts += hit_note
-                        yield format_sse({"type": "metadata", "model": "Semantic Cache (hit)"})
+                        yield _emit_thought("✅ Нашёл подходящий ответ из памяти — отдаю мгновенно.\n")
+                        yield format_sse({"type": "metadata", "model": "Pitchy"})
                         yield format_sse({"type": "chunk", "content": cached})
                         full_response = cached
                         ttft = time.time() - start_time
-                        # Persist cached reply as new assistant message
                         message_saved = True
                         asyncio.create_task(asyncio.to_thread(
                             save_assistant_message,
@@ -3456,12 +3459,10 @@ async def send_chat_message(
                 except Exception as e:
                     logger.error(f"Semantic cache lookup failed: {e}")
             else:
-                skip_note = "   ⏩ Пропускаю кэш (deep_search/research/presentation требуют свежих данных).\n"
-                yield format_sse({"type": "thought", "content": skip_note})
-                full_thoughts += skip_note
+                yield _emit_thought("   ⏩ Пропускаю быстрый ответ — нужен свежий анализ.\n")
 
             # ===========================================================
-            # STAGE 2/6 — Параллельно: SLM-классификатор + ChromaDB
+            # STAGE 2/6 — Parallel: intent classifier + knowledge base
             # ===========================================================
             cats: list = []
             slm_res: dict = {}
@@ -3473,8 +3474,7 @@ async def send_chat_message(
                     asyncio.to_thread(rag.get_relevant_chunks, payload.content, categories=None, top_k=10)
                 )
 
-                yield format_sse({"type": "thought", "content": "⚡ Шаг 2/6: параллельно SLM-диспетчер + ChromaDB retrieval…\n"})
-                full_thoughts += "⚡ Шаг 2/6: параллельно SLM-диспетчер + ChromaDB retrieval…\n"
+                yield _emit_thought("⚡ Разбираюсь в сути запроса и одновременно поднимаю релевантный контекст из базы знаний…\n")
 
                 pending = {slm_task, context_task}
                 while pending:
@@ -3494,22 +3494,18 @@ async def send_chat_message(
                         if isinstance(c, dict) and any(cat in c.get('metadata', {}).get('collection', '') for cat in cats)
                     ] or context_chunks
 
-                cats_label = ", ".join(cats) if cats else "общий"
-                rag_note = (
-                    f"   📚 Категории: {cats_label}. Фрагментов в базе: {len(context_chunks)}. "
-                    f"Deep-search флаг SLM: {slm_res.get('is_deep_search', False)}. "
-                    f"Финансовый запрос: {slm_res.get('is_finance', False)}.\n"
+                topic_label = "финансовая модель" if slm_res.get("is_finance") else \
+                              "глубокий анализ" if slm_res.get("is_deep_search") else "общий анализ"
+                yield _emit_thought(
+                    f"   📚 Определил тематику: {topic_label}. "
+                    f"Поднял {len(context_chunks)} релевантных фрагментов из базы знаний.\n"
                 )
-                yield format_sse({"type": "thought", "content": rag_note})
-                full_thoughts += rag_note
             except Exception as e:
-                logger.error(f"Stage 2 (SLM+RAG) failed: {e}")
-                err_note = "   ⚠️ Не удалось получить полный контекст — отвечаю на общих знаниях.\n"
-                yield format_sse({"type": "thought", "content": err_note})
-                full_thoughts += err_note
+                logger.error(f"Stage 2 (intent+RAG) failed: {e}")
+                yield _emit_thought("   ⚠️ Контекст подгрузить не удалось — отвечаю на общих знаниях.\n")
 
             # ===========================================================
-            # STAGE 3/6 — Exa AI web search (условно)
+            # STAGE 3/6 — Web search (conditional)
             # ===========================================================
             search_ctx = ""
             should_search = (
@@ -3518,35 +3514,31 @@ async def send_chat_message(
                 or slm_res.get("is_deep_search", False)
             )
             if should_search and not is_pres_request:
-                yield format_sse({"type": "thought", "content": "🌐 Шаг 3/6: Exa AI — ищу свежие данные в интернете…\n"})
-                full_thoughts += "🌐 Шаг 3/6: Exa AI…\n"
+                yield _emit_thought("🌐 Запрос требует свежих данных — ищу актуальную информацию в интернете…\n")
                 try:
                     from search_agent import async_search_with_sources
                     search_sources, search_ctx = await async_search_with_sources(payload.content, use_deep_search=True)
                     if search_sources:
                         sources = search_sources
                         yield format_sse({"type": "sources", "data": search_sources})
-                        src_note = f"   ✅ Найдено {len(search_sources)} источников.\n"
-                        yield format_sse({"type": "thought", "content": src_note})
-                        full_thoughts += src_note
+                        yield _emit_thought(f"   ✅ Подобрал {len(search_sources)} проверенных источников.\n")
                 except Exception as e:
-                    logger.error(f"Stage 3 (Exa) failed: {e}")
+                    logger.error(f"Stage 3 (web search) failed: {e}")
             else:
-                skip_note = "⏩ Шаг 3/6: Exa не запускаю — данных в RAG достаточно.\n"
-                yield format_sse({"type": "thought", "content": skip_note})
-                full_thoughts += skip_note
+                yield _emit_thought("⏩ Внешний поиск не нужен — данных в базе знаний достаточно.\n")
 
             # ===========================================================
-            # STAGE 4/6 — Swarm of Qwen agents (Map phase)
+            # STAGE 4/6 — Analytical agents (Map phase)
             # ===========================================================
             swarm_facts = ""
             rag_texts = [c["text"] if isinstance(c, dict) else c for c in context_chunks[:10]]
             chunks_for_swarm = rag_texts + ([search_ctx] if search_ctx else [])
 
             if chunks_for_swarm and not is_pres_request and not use_research_flag:
-                swarm_note = f"🐝 Шаг 4/6: рой Qwen-агентов на {len(chunks_for_swarm)} фрагментах (Map-фаза)…\n"
-                yield format_sse({"type": "thought", "content": swarm_note})
-                full_thoughts += swarm_note
+                yield _emit_thought(
+                    f"🐝 Прогоняю {len(chunks_for_swarm)} фрагментов через аналитических агентов "
+                    "— ищу проверенные факты, цифры и упоминания конкурентов…\n"
+                )
                 try:
                     from swarm_agent import run_analytical_swarm
                     swarm_res = await run_analytical_swarm(chunks_for_swarm)
@@ -3560,18 +3552,14 @@ async def send_chat_message(
                             facts.append("Метрики: " + "; ".join(mets))
                     if facts:
                         swarm_facts = "\n- ".join(sorted(set(facts)))
-                        fact_note = f"   ✅ Рой извлёк {len(facts)} групп фактов.\n"
-                        yield format_sse({"type": "thought", "content": fact_note})
-                        full_thoughts += fact_note
+                        yield _emit_thought(f"   ✅ Извлёк {len(facts)} групп проверенных фактов.\n")
                     else:
-                        none_note = "   ℹ️ Рой не нашёл структурированных фактов — использую сырой RAG.\n"
-                        yield format_sse({"type": "thought", "content": none_note})
-                        full_thoughts += none_note
+                        yield _emit_thought("   ℹ️ Структурированных фактов не нашлось — опираюсь на исходные фрагменты.\n")
                 except Exception as e:
-                    logger.error(f"Stage 4 (Swarm) failed: {e}")
+                    logger.error(f"Stage 4 (analytical agents) failed: {e}")
+                    yield _emit_thought("   ⚠️ Аналитические агенты недоступны — опираюсь на исходные фрагменты.\n")
             else:
-                yield format_sse({"type": "thought", "content": "⏩ Шаг 4/6: рой не запускаю.\n"})
-                full_thoughts += "⏩ Шаг 4/6: рой не запускаю.\n"
+                yield _emit_thought("⏩ Дополнительный анализ фрагментов не требуется.\n")
 
             # Compile final RAG context for GLM-5 (Reduce phase input)
             compiled_rag = ""
@@ -3637,9 +3625,7 @@ async def send_chat_message(
                     f"Вопрос пользователя: {payload.content}"
                 )
 
-                synth_note = "✍️ Шаг 5/6: GLM-5 синтезирует ответ из собранных данных (Reduce-фаза)…\n"
-                yield format_sse({"type": "thought", "content": synth_note})
-                full_thoughts += synth_note
+                yield _emit_thought("✍️ Готов. Формулирую развёрнутый ответ на основе собранных данных…\n")
                 raw_gen = stream_makura(SYSTEM_CHAT_PROMPT, user_prompt)
 
                 async for sse_item in parse_thought_generator(raw_gen):
@@ -3669,14 +3655,17 @@ async def send_chat_message(
                     
                     yield sse_item
             
-            # Fallback: if model produced only thoughts (no visible response),
-            # use thoughts as the response so the user sees something
+            # Fallback: if upstream model produced no visible response, apologize
+            # cleanly. Do NOT leak narrative thought events back as the answer —
+            # they are internal pipeline status, not the model's reply.
             full_response = full_response.strip()
-            if not full_response and full_thoughts.strip():
-                full_response = full_thoughts.strip()
-                full_thoughts = ""
-                # Emit the rescued content as a chunk so frontend displays it
-                yield format_sse({"type": "chunk", "content": full_response})
+            if not full_response:
+                apology = (
+                    "Извините, не удалось сформировать ответ. "
+                    "Попробуйте переформулировать запрос или повторить через минуту."
+                )
+                yield format_sse({"type": "chunk", "content": apology})
+                full_response = apology
 
             # Save assistant response in background using asyncio instead of background_tasks
             if full_response:
