@@ -3418,6 +3418,13 @@ async def send_chat_message(
             history = sorted(session.messages, key=lambda m: m.created_at)
             chat_history = [ChatMessage(role=m.role, content=m.content) for m in history]
 
+            # Narrative "thoughts" so the UI's reasoning panel shows real progress.
+            # Makura proxy strips reasoning_content from upstream models and they
+            # rarely emit literal <think>...</think> tags, so we synthesize a
+            # trace from the actual pipeline stages.
+            yield format_sse({"type": "thought", "content": "Изучаю ваш запрос и поднимаю контекст сессии…\n"})
+            full_thoughts += "Изучаю ваш запрос и поднимаю контекст сессии…\n"
+
             # Identify RAG contexts in parallel to reduce latency
             is_pres_request = False
             cats: list = []
@@ -3434,6 +3441,9 @@ async def send_chat_message(
 
                 if is_pres_request:
                     logger.info(f"Detected presentation intent for session {session.id} (explicit: {payload.intent == 'presentation'})")
+
+                yield format_sse({"type": "thought", "content": "Параллельно классифицирую интент и ищу релевантные фрагменты в базе знаний…\n"})
+                full_thoughts += "Параллельно классифицирую интент и ищу релевантные фрагменты в базе знаний…\n"
 
                 # Wait for both with periodic ping heartbeats every 5s
                 pending = {cats_task, context_task}
@@ -3453,9 +3463,16 @@ async def send_chat_message(
                         c for c in context_chunks
                         if isinstance(c, dict) and any(cat in c.get('metadata', {}).get('collection', '') for cat in cats)
                     ] or context_chunks
+
+                cats_label = ", ".join(cats) if cats else "общий контекст"
+                rag_note = f"Категории запроса: {cats_label}. Найдено {len(context_chunks)} фрагментов в базе знаний.\n"
+                yield format_sse({"type": "thought", "content": rag_note})
+                full_thoughts += rag_note
             except Exception as e:
                 logger.error(f"Error in parallel RAG/Classification: {e}")
                 context_chunks = []
+                yield format_sse({"type": "thought", "content": "Не удалось получить полный контекст — отвечаю на основе общих знаний.\n"})
+                full_thoughts += "Не удалось получить полный контекст — отвечаю на основе общих знаний.\n"
 
             # 3.1 MODE: PRESENTATION GENERATION
             if is_pres_request:
@@ -3506,15 +3523,19 @@ async def send_chat_message(
                 
                 # Additional internet search if requested (Quick Search)
                 if getattr(payload, "use_deep_search", False):
+                    yield format_sse({"type": "thought", "content": "Запускаю поиск в интернете для свежих данных…\n"})
+                    full_thoughts += "Запускаю поиск в интернете для свежих данных…\n"
                     from search_agent import async_search_with_sources
                     sources, search_ctx = await async_search_with_sources(payload.content, use_deep_search=True)
                     if search_ctx:
                         user_prompt = f"ДАННЫЕ ИЗ БАЗЫ:\n\n{context_chunks}\n\nДАННЫЕ ИЗ ИНТЕРНЕТА:\n\n{search_ctx}\n\nВопрос: {payload.content}"
                         if sources:
                             yield format_sse({"type": "sources", "data": sources})
+                            yield format_sse({"type": "thought", "content": f"Подобрано {len(sources)} источников из сети.\n"})
+                            full_thoughts += f"Подобрано {len(sources)} источников из сети.\n"
 
-                # Heartbeat right before model call — model TTFB can be 3-5s
-                yield format_sse({"type": "ping"})
+                yield format_sse({"type": "thought", "content": "Формирую развёрнутый ответ…\n"})
+                full_thoughts += "Формирую развёрнутый ответ…\n"
                 raw_gen = stream_makura(SYSTEM_CHAT_PROMPT, user_prompt)
 
                 async for sse_item in parse_thought_generator(raw_gen):
