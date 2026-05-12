@@ -3358,13 +3358,17 @@ async def send_chat_message(
 
     @observe(name="main_chat", as_type="generation")
     async def session_chat_generator():
+        # Immediate heartbeat so the frontend's 20s watchdog doesn't fire during
+        # slow setup (intent classification + RAG can take 10-15s combined).
+        yield format_sse({"type": "ping"})
+
         if langfuse_context:
             langfuse_context.update_current_observation(
                 user_id=str(user.id),
                 session_id=str(session.id),
                 tags=["main_chat", "deep_search" if getattr(payload, "use_deep_search", False) else "basic_search"]
             )
-        
+
         provider = os.getenv("PRIMARY_PROVIDER", "makura")
         full_response = ""
         full_thoughts = ""
@@ -3373,31 +3377,45 @@ async def send_chat_message(
         start_time = time.time()
         ttft = None
         message_saved = False  # Track if the message was successfully queued for saving
-        
+
         try:
             # We need history for contextual responses — use pre-loaded messages
             history = sorted(session.messages, key=lambda m: m.created_at)
             chat_history = [ChatMessage(role=m.role, content=m.content) for m in history]
-            
+
             # Identify RAG contexts in parallel to reduce latency
             is_pres_request = False
+            cats: list = []
+            context_chunks: list = []
             try:
-                # Use asyncio.gather to run intent classification and vector search concurrently
+                # Wrap both in create_task so asyncio.wait can poll them with a timeout
+                # (lets us emit ping heartbeats while they run).
                 cats_task = asyncio.create_task(classify_intent(payload.content))
-                context_task = asyncio.to_thread(rag.get_relevant_chunks, payload.content, categories=None, top_k=5)
-                # Check for presentation intent (explicit or keyword-based)
+                context_task = asyncio.create_task(
+                    asyncio.to_thread(rag.get_relevant_chunks, payload.content, categories=None, top_k=5)
+                )
                 # Check for presentation intent (strictly explicit)
                 is_pres_request = payload.intent == "presentation"
-                
+
                 if is_pres_request:
                     logger.info(f"Detected presentation intent for session {session.id} (explicit: {payload.intent == 'presentation'})")
-                
-                cats, context_chunks = await asyncio.gather(cats_task, context_task)
-                
+
+                # Wait for both with periodic ping heartbeats every 5s
+                pending = {cats_task, context_task}
+                while pending:
+                    _, pending = await asyncio.wait(pending, timeout=5.0)
+                    if pending:
+                        yield format_sse({"type": "ping"})
+
+                if cats_task.exception() is None:
+                    cats = cats_task.result() or []
+                if context_task.exception() is None:
+                    context_chunks = context_task.result() or []
+
                 # For now, we use the broad search results but filter by cats if they arrived.
                 if cats:
                     context_chunks = [
-                        c for c in context_chunks 
+                        c for c in context_chunks
                         if isinstance(c, dict) and any(cat in c.get('metadata', {}).get('collection', '') for cat in cats)
                     ] or context_chunks
             except Exception as e:
@@ -3460,8 +3478,10 @@ async def send_chat_message(
                         if sources:
                             yield format_sse({"type": "sources", "data": sources})
 
+                # Heartbeat right before model call — model TTFB can be 3-5s
+                yield format_sse({"type": "ping"})
                 raw_gen = stream_makura(SYSTEM_CHAT_PROMPT, user_prompt)
-                
+
                 async for sse_item in parse_thought_generator(raw_gen):
                     # sse_item is a dict from format_sse: {"event": "...", "data": "JSON_STRING"}
                     # We need to extract data for local state (full_response)
