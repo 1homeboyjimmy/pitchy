@@ -390,17 +390,9 @@ async def metrics_middleware(request: Request, call_next):
     if response.status_code >= 400:
         ERROR_COUNT.labels(method=method, path=path, status=status_code).inc()
 
-    # Security Headers
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
-    response.headers["Content-Security-Policy"] = (
-        "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
-        "style-src 'self' 'unsafe-inline'; "
-        "img-src 'self' data: https:; "
-        "font-src 'self' data: https:; "
-        "connect-src 'self' wss: https: *.pitchy.pro https://cloud.langfuse.com https://api.makura.ai https://lumigate.us https://api.routerai.ru https://api.tavily.com;"
-    )
+    # Security headers (CSP, X-Frame-Options, X-Content-Type-Options, HSTS, Referrer-Policy)
+    # are set by the Caddy reverse proxy — see Caddyfile. Setting them here too produced
+    # duplicate headers (and an X-Frame-Options conflict: SAMEORIGIN vs DENY).
 
     logger.info(
         "request_complete",
