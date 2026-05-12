@@ -3434,14 +3434,14 @@ async def send_chat_message(
             # ===========================================================
             # STAGE 1/6 — Semantic cache lookup
             # ===========================================================
-            yield _emit_thought("🔍 Проверяю, не отвечал ли я на похожий вопрос недавно…\n")
+            yield _emit_thought("Проверяю, не отвечал ли я на похожий вопрос недавно.\n")
 
             if not (use_deep_search_flag or use_research_flag or is_pres_request):
                 try:
                     from ops.cache.semantic_cache import semantic_cache as _sc
                     cached = await _sc.get(query=payload.content, project_id=str(session.id))
                     if cached:
-                        yield _emit_thought("✅ Нашёл подходящий ответ из памяти — отдаю мгновенно.\n")
+                        yield _emit_thought("Нашёл подходящий ответ из памяти — отдаю мгновенно.\n")
                         yield format_sse({"type": "metadata", "model": "Pitchy"})
                         yield format_sse({"type": "chunk", "content": cached})
                         full_response = cached
@@ -3459,7 +3459,7 @@ async def send_chat_message(
                 except Exception as e:
                     logger.error(f"Semantic cache lookup failed: {e}")
             else:
-                yield _emit_thought("   ⏩ Пропускаю быстрый ответ — нужен свежий анализ.\n")
+                yield _emit_thought("Пропускаю быстрый ответ — нужен свежий анализ.\n")
 
             # ===========================================================
             # STAGE 2/6 — Parallel: intent classifier + knowledge base
@@ -3474,7 +3474,7 @@ async def send_chat_message(
                     asyncio.to_thread(rag.get_relevant_chunks, payload.content, categories=None, top_k=10)
                 )
 
-                yield _emit_thought("⚡ Разбираюсь в сути запроса и одновременно поднимаю релевантный контекст из базы знаний…\n")
+                yield _emit_thought("Разбираюсь в сути запроса и одновременно поднимаю релевантный контекст из базы знаний.\n")
 
                 pending = {slm_task, context_task}
                 while pending:
@@ -3497,12 +3497,12 @@ async def send_chat_message(
                 topic_label = "финансовая модель" if slm_res.get("is_finance") else \
                               "глубокий анализ" if slm_res.get("is_deep_search") else "общий анализ"
                 yield _emit_thought(
-                    f"   📚 Определил тематику: {topic_label}. "
+                    f"Определил тематику: {topic_label}. "
                     f"Поднял {len(context_chunks)} релевантных фрагментов из базы знаний.\n"
                 )
             except Exception as e:
                 logger.error(f"Stage 2 (intent+RAG) failed: {e}")
-                yield _emit_thought("   ⚠️ Контекст подгрузить не удалось — отвечаю на общих знаниях.\n")
+                yield _emit_thought("Контекст подгрузить не удалось — отвечаю на общих знаниях.\n")
 
             # ===========================================================
             # STAGE 3/6 — Web search (conditional)
@@ -3514,18 +3514,18 @@ async def send_chat_message(
                 or slm_res.get("is_deep_search", False)
             )
             if should_search and not is_pres_request:
-                yield _emit_thought("🌐 Запрос требует свежих данных — ищу актуальную информацию в интернете…\n")
+                yield _emit_thought("Запрос требует свежих данных — ищу актуальную информацию в интернете.\n")
                 try:
                     from search_agent import async_search_with_sources
                     search_sources, search_ctx = await async_search_with_sources(payload.content, use_deep_search=True)
                     if search_sources:
                         sources = search_sources
                         yield format_sse({"type": "sources", "data": search_sources})
-                        yield _emit_thought(f"   ✅ Подобрал {len(search_sources)} проверенных источников.\n")
+                        yield _emit_thought(f"Подобрал {len(search_sources)} проверенных источников.\n")
                 except Exception as e:
                     logger.error(f"Stage 3 (web search) failed: {e}")
             else:
-                yield _emit_thought("⏩ Внешний поиск не нужен — данных в базе знаний достаточно.\n")
+                yield _emit_thought("Внешний поиск не нужен — данных в базе знаний достаточно.\n")
 
             # ===========================================================
             # STAGE 4/6 — Analytical agents (Map phase)
@@ -3536,8 +3536,8 @@ async def send_chat_message(
 
             if chunks_for_swarm and not is_pres_request and not use_research_flag:
                 yield _emit_thought(
-                    f"🐝 Прогоняю {len(chunks_for_swarm)} фрагментов через аналитических агентов "
-                    "— ищу проверенные факты, цифры и упоминания конкурентов…\n"
+                    f"Прогоняю {len(chunks_for_swarm)} фрагментов через аналитических агентов "
+                    "— ищу проверенные факты, цифры и упоминания конкурентов.\n"
                 )
                 try:
                     from swarm_agent import run_analytical_swarm
@@ -3552,14 +3552,14 @@ async def send_chat_message(
                             facts.append("Метрики: " + "; ".join(mets))
                     if facts:
                         swarm_facts = "\n- ".join(sorted(set(facts)))
-                        yield _emit_thought(f"   ✅ Извлёк {len(facts)} групп проверенных фактов.\n")
+                        yield _emit_thought(f"Извлёк {len(facts)} групп проверенных фактов.\n")
                     else:
-                        yield _emit_thought("   ℹ️ Структурированных фактов не нашлось — опираюсь на исходные фрагменты.\n")
+                        yield _emit_thought("Структурированных фактов не нашлось — опираюсь на исходные фрагменты.\n")
                 except Exception as e:
                     logger.error(f"Stage 4 (analytical agents) failed: {e}")
-                    yield _emit_thought("   ⚠️ Аналитические агенты недоступны — опираюсь на исходные фрагменты.\n")
+                    yield _emit_thought("Аналитические агенты недоступны — опираюсь на исходные фрагменты.\n")
             else:
-                yield _emit_thought("⏩ Дополнительный анализ фрагментов не требуется.\n")
+                yield _emit_thought("Дополнительный анализ фрагментов не требуется.\n")
 
             # Compile final RAG context for GLM-5 (Reduce phase input)
             compiled_rag = ""
@@ -3625,7 +3625,7 @@ async def send_chat_message(
                     f"Вопрос пользователя: {payload.content}"
                 )
 
-                yield _emit_thought("✍️ Готов. Формулирую развёрнутый ответ на основе собранных данных…\n")
+                yield _emit_thought("Готов. Формулирую развёрнутый ответ на основе собранных данных.\n")
                 raw_gen = stream_makura(SYSTEM_CHAT_PROMPT, user_prompt)
 
                 async for sse_item in parse_thought_generator(raw_gen):
