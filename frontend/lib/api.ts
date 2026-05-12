@@ -320,10 +320,12 @@ export async function* sendChatMessageStream(
     const { done, value } = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
-    const events = buffer.split("\n\n");
+    // SSE spec uses CRLF; sse-starlette emits \r\n\r\n between events.
+    // Accept both \r\n\r\n and \n\n so the parser works with any backend.
+    const events = buffer.split(/\r?\n\r?\n/);
     buffer = events.pop() || "";
     for (const event of events) {
-      const lines = event.split("\n");
+      const lines = event.split(/\r?\n/);
       for (const line of lines) {
         const trimmedLine = line.trim();
         if (!trimmedLine || trimmedLine.startsWith(':')) {
@@ -563,10 +565,12 @@ export async function* postTreeChatStream(
     const { done, value } = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
-    const events = buffer.split("\n\n");
+    // SSE spec uses CRLF; sse-starlette emits \r\n\r\n between events.
+    // Accept both \r\n\r\n and \n\n so the parser works with any backend.
+    const events = buffer.split(/\r?\n\r?\n/);
     buffer = events.pop() || "";
     for (const event of events) {
-      const lines = event.split("\n");
+      const lines = event.split(/\r?\n/);
       for (const line of lines) {
         const trimmedLine = line.trim();
         if (!trimmedLine || trimmedLine.startsWith(':')) {
