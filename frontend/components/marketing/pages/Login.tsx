@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mail, Lock, User, Loader } from "react-feather";
+import { Mail, Lock, User, Loader, Key } from "react-feather";
 import { useRouter } from "next/navigation";
 import { FadeContent } from "../reactbits/FadeContent";
 import { AnimatedButton } from "../ui-custom/AnimatedButton";
@@ -20,6 +20,11 @@ export function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  // Reset-password flow has two steps: "email" (request code), "code" (enter code + new password).
+  const [resetStep, setResetStep] = useState<"email" | "code">("email");
+  const [resetCode, setResetCode] = useState("");
+  const [resetNewPassword, setResetNewPassword] = useState("");
+  const [resetConfirmPassword, setResetConfirmPassword] = useState("");
   const router = useRouter();
 
   const resetForm = () => {
@@ -28,6 +33,10 @@ export function LoginPage() {
     setName("");
     setError(null);
     setSuccessMessage(null);
+    setResetStep("email");
+    setResetCode("");
+    setResetNewPassword("");
+    setResetConfirmPassword("");
   };
 
   const switchTab = (newTab: Tab) => {
@@ -81,11 +90,54 @@ export function LoginPage() {
     event.preventDefault();
     setIsLoading(true);
     setError(null);
+    setSuccessMessage(null);
     try {
       await postJson("/auth/request-password-reset", { email });
-      setSuccessMessage("If that email exists, a reset link has been sent.");
+      // Backend always returns 200 — go to code step regardless of whether email exists,
+      // so we never leak which addresses are registered.
+      setResetStep("code");
+      setSuccessMessage("Если такой email зарегистрирован — мы отправили на него 6-значный код. Введите его ниже.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Request failed");
+      setError(err instanceof Error ? err.message : "Не удалось отправить код. Попробуйте ещё раз.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleConfirmReset = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError(null);
+    setSuccessMessage(null);
+    if (resetNewPassword.length < 8 || resetNewPassword.length > 72) {
+      setError("Пароль должен быть от 8 до 72 символов.");
+      return;
+    }
+    if (!/[a-zA-Zа-яА-Я]/.test(resetNewPassword) || !/\d/.test(resetNewPassword)) {
+      setError("Пароль должен содержать буквы и цифры.");
+      return;
+    }
+    if (resetNewPassword !== resetConfirmPassword) {
+      setError("Пароли не совпадают.");
+      return;
+    }
+    const normalizedCode = resetCode.replace(/\D/g, "");
+    if (normalizedCode.length < 4) {
+      setError("Введите код из письма.");
+      return;
+    }
+    setIsLoading(true);
+    try {
+      await postJson("/auth/reset-password", {
+        email,
+        code: normalizedCode,
+        new_password: resetNewPassword,
+      });
+      setSuccessMessage("Пароль обновлён. Сейчас перенаправим на вход…");
+      setTimeout(() => {
+        switchTab("login");
+      }, 1500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось сбросить пароль.");
     } finally {
       setIsLoading(false);
     }
@@ -306,8 +358,8 @@ export function LoginPage() {
                     </form>
                   ) : null}
 
-                  {/* Reset password form */}
-                  {tab === "reset" ? (
+                  {/* Reset password — Step 1: request code by email */}
+                  {tab === "reset" && resetStep === "email" ? (
                     <form onSubmit={handleResetPassword} className="space-y-4">
                       <InputField
                         label="Email"
@@ -320,7 +372,7 @@ export function LoginPage() {
                       />
 
                       {error ? (
-                        <p className="text-sm text-red-400">{error === "Request failed" ? "Ошибка запроса" : error}</p>
+                        <p className="text-sm text-red-400">{error}</p>
                       ) : null}
 
                       <AnimatedButton
@@ -333,13 +385,116 @@ export function LoginPage() {
                           ) : undefined
                         }
                       >
-                        {isLoading ? "Отправка..." : "Отправить ссылку"}
+                        {isLoading ? "Отправка..." : "Получить код"}
                       </AnimatedButton>
+
+                      <p className="text-xs text-zinc-500 text-center leading-relaxed">
+                        На указанный email придёт 6-значный код. Он действителен 15 минут.
+                      </p>
 
                       <button
                         type="button"
                         onClick={() => switchTab("login")}
                         className="w-full text-sm text-zinc-400 hover:text-white transition-colors py-2"
+                      >
+                        ← Вернуться ко входу
+                      </button>
+                    </form>
+                  ) : null}
+
+                  {/* Reset password — Step 2: enter code + new password */}
+                  {tab === "reset" && resetStep === "code" ? (
+                    <form onSubmit={handleConfirmReset} className="space-y-4">
+                      {successMessage ? (
+                        <p className="text-sm text-emerald-400 bg-emerald-500/5 border border-emerald-500/20 rounded-lg px-3 py-2">
+                          {successMessage}
+                        </p>
+                      ) : null}
+
+                      <div className="text-xs text-zinc-500">
+                        Email: <span className="text-zinc-300">{email}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setResetStep("email");
+                            setError(null);
+                            setSuccessMessage(null);
+                            setResetCode("");
+                            setResetNewPassword("");
+                            setResetConfirmPassword("");
+                          }}
+                          className="ml-2 text-violet-400 hover:text-violet-300 transition-colors"
+                        >
+                          изменить
+                        </button>
+                      </div>
+
+                      <InputField
+                        label="Код из письма"
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        placeholder="000000"
+                        value={resetCode}
+                        onChange={(event) =>
+                          setResetCode(event.target.value.replace(/\D/g, "").slice(0, 6))
+                        }
+                        icon={<Key className="w-5 h-5" />}
+                        required
+                      />
+
+                      <InputField
+                        label="Новый пароль"
+                        type="password"
+                        placeholder="8–72 символов"
+                        value={resetNewPassword}
+                        onChange={(event) => setResetNewPassword(event.target.value)}
+                        icon={<Lock className="w-5 h-5" />}
+                        required
+                      />
+
+                      <InputField
+                        label="Повторите пароль"
+                        type="password"
+                        placeholder="Введите пароль ещё раз"
+                        value={resetConfirmPassword}
+                        onChange={(event) => setResetConfirmPassword(event.target.value)}
+                        icon={<Lock className="w-5 h-5" />}
+                        required
+                      />
+
+                      {error ? (
+                        <p className="text-sm text-red-400">{error}</p>
+                      ) : null}
+
+                      <AnimatedButton
+                        type="submit"
+                        className="w-full"
+                        disabled={isLoading || resetCode.length < 4}
+                        icon={
+                          isLoading ? (
+                            <Loader className="w-4 h-4 animate-spin" />
+                          ) : undefined
+                        }
+                      >
+                        {isLoading ? "Сохранение..." : "Сменить пароль"}
+                      </AnimatedButton>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleResetPassword({ preventDefault: () => {} } as React.FormEvent);
+                        }}
+                        disabled={isLoading}
+                        className="w-full text-sm text-zinc-400 hover:text-white transition-colors py-2 disabled:opacity-50"
+                      >
+                        Отправить код повторно
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => switchTab("login")}
+                        className="w-full text-sm text-zinc-500 hover:text-zinc-300 transition-colors py-1"
                       >
                         ← Вернуться ко входу
                       </button>

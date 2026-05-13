@@ -60,8 +60,19 @@ class PasswordResetRequest(BaseModel):
 
 
 class PasswordResetConfirm(BaseModel):
-    token: str = Field(..., min_length=10)
+    # New flow: identify user by email + numeric code (sent by /auth/request-password-reset).
+    # The legacy long-token form is gone — kept the field name "code" for clarity.
+    email: EmailStr
+    code: str = Field(..., min_length=4, max_length=12)
     new_password: str = Field(..., min_length=8, max_length=72)
+
+    @field_validator("code")
+    @classmethod
+    def validate_code(cls, value: str) -> str:
+        v = value.strip()
+        if not v.isdigit():
+            raise ValueError("Code must contain digits only")
+        return v
 
     @field_validator("new_password")
     @classmethod

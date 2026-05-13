@@ -1177,25 +1177,39 @@ async def request_password_reset(
     request: Request,
     db: AsyncSession = Depends(get_async_db),
 ) -> dict:
+    """Send a 6-digit password-reset code to the user's email.
+
+    Always returns 200 OK regardless of whether the email exists — never
+    leak which addresses are registered. Code expires in 15 minutes and is
+    stored hashed (same column as the legacy long-token flow).
+
+    On dev where SMTP is dead, the rendered email is still queued via
+    email_utils.send_email and visible at GET /dev/emails — that gives
+    QA a way to grab the code without a real inbox.
+    """
     ip = request.client.host if request.client else "unknown"
     _check_rate_limit(ip)
     res = await db.execute(select(User).where(User.email == payload.email))
     user = res.scalar_one_or_none()
     if not user:
         return {"status": "ok"}
-    token = generate_token()
-    user.password_reset_token_hash = hash_token(token)
-    user.password_reset_expires_at = datetime.utcnow() + timedelta(hours=1)
+    code = "".join(str(random.randint(0, 9)) for _ in range(6))
+    user.password_reset_token_hash = hash_token(code)
+    user.password_reset_expires_at = datetime.utcnow() + timedelta(minutes=15)
     await db.commit()
     try:
-        base_url = os.getenv("APP_PUBLIC_URL", "http://localhost:3000")
-        reset_link = f"{base_url}/account?reset={token}"
         send_email(
             payload.email,
-            "Reset your password",
-            f"Reset your password using this link: {reset_link}",
+            "Код для сброса пароля Pitchy",
+            (
+                f"Ваш код для сброса пароля: {code}\n\n"
+                "Введите этот код на странице сброса пароля. "
+                "Код действителен 15 минут.\n\n"
+                "Если вы не запрашивали сброс — просто проигнорируйте это письмо."
+            ),
         )
     except Exception:
+        # SMTP may be unavailable on dev — code is still readable from /dev/emails.
         pass
     return {"status": "ok"}
 
@@ -1205,16 +1219,21 @@ async def reset_password(
     payload: PasswordResetConfirm,
     db: AsyncSession = Depends(get_async_db),
 ) -> dict:
-    token_hash = hash_token(payload.token)
-    res = await db.execute(select(User).where(User.password_reset_token_hash == token_hash))
+    """Confirm a password reset using email + 6-digit code + new password."""
+    res = await db.execute(select(User).where(User.email == payload.email))
     user = res.scalar_one_or_none()
-    
+
     if (
         not user
+        or not user.password_reset_token_hash
         or not user.password_reset_expires_at
         or user.password_reset_expires_at < datetime.utcnow()
     ):
-        raise HTTPException(status_code=400, detail="Invalid or expired token")
+        raise HTTPException(status_code=400, detail="Код недействителен или истёк")
+
+    if hash_token(payload.code) != user.password_reset_token_hash:
+        raise HTTPException(status_code=400, detail="Код недействителен или истёк")
+
     user.password_hash = hash_password(payload.new_password)
     user.password_reset_token_hash = None
     user.password_reset_expires_at = None
