@@ -7,6 +7,11 @@ from typing import Optional, Tuple, Dict, Any
 
 logger = logging.getLogger("app")
 
+# Models tried in order. The first is the default primary; the rest are
+# fallbacks used when an earlier model fails before producing any output.
+# glm-5 is deliberately excluded — it currently hangs with no response.
+MAKURA_FALLBACK_MODELS = ["glm-4.7", "glm-4.6", "auto"]
+
 async def call_makura(system_prompt: str, user_message: str, model: str = None) -> Tuple[Optional[str], Optional[str], Dict[str, Any]]:
     """
     Calls Makura.ai API (OpenAI compatible).
@@ -19,7 +24,7 @@ async def call_makura(system_prompt: str, user_message: str, model: str = None) 
 
     # Use model from env if not provided
     if not model:
-        model = os.getenv("MAKURA_MODEL", "glm-5")
+        model = os.getenv("MAKURA_MODEL", MAKURA_FALLBACK_MODELS[0])
 
     # Base URL from user: https://api.makura.ai/v1
     url = "https://api.makura.ai/v1/chat/completions"
@@ -84,18 +89,74 @@ async def call_makura(system_prompt: str, user_message: str, model: str = None) 
         return None, None, {}
 
 
+async def _stream_makura_attempt(model: str, payload_messages: list, headers: dict, url: str):
+    """
+    Single streaming attempt against one model. Yields chunks; raises on any
+    failure so the caller can decide whether to fall back to another model.
+    """
+    payload = {
+        "model": model,
+        "messages": payload_messages,
+        "temperature": 0.4,
+        "max_tokens": 4000,
+        "stream": True,
+        "tool_stream": True,
+        "thinking": {"type": "enabled"}
+    }
+
+    # read=60s: a healthy stream sends tokens continuously, so a 60s gap means
+    # the model is hung (e.g. glm-5) — fail fast and fall back instead of
+    # blocking the whole request for the full 120s.
+    timeout = httpx.Timeout(120.0, connect=15.0, read=60.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        async with client.stream("POST", url, headers=headers, json=payload) as response:
+            if response.status_code != 200:
+                err_body = await response.aread()
+                raise RuntimeError(f"Makura HTTP {response.status_code}: {err_body.decode()[:300]}")
+
+            usage_data = {}
+            async for line in response.aiter_lines():
+                if not line.strip():
+                    continue
+                if line.startswith("data: "):
+                    data_str = line[6:].strip()
+                    if data_str == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data_str)
+                        # Capture usage from the final chunk (OpenAI-compatible APIs send it there)
+                        if "usage" in chunk and chunk["usage"]:
+                            usage_data = chunk["usage"]
+                        choices = chunk.get("choices", [])
+                        if not choices:
+                            continue
+                        delta = choices[0].get("delta", {})
+
+                        # Handle native Z-AI/GLM reasoning_content
+                        if "reasoning_content" in delta and delta["reasoning_content"]:
+                            yield {"__thinking__": delta["reasoning_content"]}
+
+                        if "content" in delta:
+                            yield delta["content"]
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Error parsing Makura stream chunk: {e}")
+                        continue
+            # Yield usage as a special sentinel dict at the very end
+            if usage_data:
+                yield {"__usage__": usage_data}
+
+
 async def stream_makura(system_prompt: str = None, user_message: str = None, messages: list = None, model: str = None):
     """
-    Streams response from Makura.ai API.
-    Yields chunks of text.
+    Streams response from Makura.ai API with model fallback.
+    Yields chunks of text. If a model fails before producing any output, the
+    next model in MAKURA_FALLBACK_MODELS is tried. Once content has reached the
+    client a mid-stream failure is surfaced as an error (switching is unsafe).
     """
     api_key = os.getenv("MAKURA_API_KEY")
     if not api_key:
         yield "Error: MAKURA_API_KEY not set"
         return
-
-    if not model:
-        model = os.getenv("MAKURA_MODEL", "glm-5")
 
     url = "https://api.makura.ai/v1/chat/completions"
     headers = {
@@ -113,55 +174,27 @@ async def stream_makura(system_prompt: str = None, user_message: str = None, mes
             {"role": "user", "content": user_message or ""}
         ]
 
-    payload = {
-        "model": model,
-        "messages": payload_messages,
-        "temperature": 0.4,
-        "max_tokens": 4000,
-        "stream": True,
-        "tool_stream": True,
-        "thinking": {"type": "enabled"}
-    }
+    # Build the model chain: explicit/env model first, then the fallbacks.
+    primary = model or os.getenv("MAKURA_MODEL", MAKURA_FALLBACK_MODELS[0])
+    candidates = [primary] + [m for m in MAKURA_FALLBACK_MODELS if m != primary]
 
-    try:
-        async with httpx.AsyncClient(timeout=120) as client:
-            async with client.stream("POST", url, headers=headers, json=payload) as response:
-                if response.status_code != 200:
-                    err_body = await response.aread()
-                    logger.error(f"Makura streaming error: {response.status_code} - {err_body.decode()}")
-                    yield f"Error: {response.status_code}"
-                    return
+    last_error = None
+    for candidate in candidates:
+        produced = False
+        try:
+            async for chunk in _stream_makura_attempt(candidate, payload_messages, headers, url):
+                produced = True
+                yield chunk
+            return  # stream finished cleanly
+        except Exception as e:
+            last_error = e
+            if produced:
+                # Content already reached the client — switching models now
+                # would corrupt the response, so surface the error instead.
+                logger.error(f"Makura stream broke mid-response on {candidate}: {type(e).__name__}: {e}", exc_info=True)
+                yield f"\n[Ошибка соединения: {type(e).__name__}: {e}]"
+                return
+            logger.warning(f"Makura model {candidate} failed before any output ({type(e).__name__}: {e}); trying fallback")
 
-                usage_data = {}
-                async for line in response.aiter_lines():
-                    if not line.strip():
-                        continue
-                    if line.startswith("data: "):
-                        data_str = line[6:].strip()
-                        if data_str == "[DONE]":
-                            break
-                        try:
-                            chunk = json.loads(data_str)
-                            # Capture usage from the final chunk (OpenAI-compatible APIs send it there)
-                            if "usage" in chunk and chunk["usage"]:
-                                usage_data = chunk["usage"]
-                            choices = chunk.get("choices", [])
-                            if not choices:
-                                continue
-                            delta = choices[0].get("delta", {})
-                            
-                            # Handle native Z-AI/GLM reasoning_content
-                            if "reasoning_content" in delta and delta["reasoning_content"]:
-                                yield {"__thinking__": delta["reasoning_content"]}
-                                
-                            if "content" in delta:
-                                yield delta["content"]
-                        except Exception as e:
-                            logger.error(f"Error parsing Makura stream chunk: {e}")
-                            continue
-                # Yield usage as a special sentinel dict at the very end
-                if usage_data:
-                    yield {"__usage__": usage_data}
-    except Exception as e:
-        logger.error(f"Makura streaming failed: {str(e)}")
-        yield f"\n[Ошибка соединения: {str(e)}]"
+    logger.error(f"All Makura models failed. Last: {type(last_error).__name__}: {last_error}", exc_info=last_error)
+    yield f"\n[Ошибка соединения: {type(last_error).__name__}: {last_error}]"
