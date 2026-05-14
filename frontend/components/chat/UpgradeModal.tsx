@@ -20,7 +20,7 @@ export function UpgradeModal({ isOpen, onClose, message }: UpgradeModalProps) {
     "Глубокий поиск по рынку",
   ];
 
-  const originalPrice = 1490;
+  const originalPrice = 2490;
   const discount = 30;
   const discountedPrice = Math.round(originalPrice * (1 - discount / 100));
 

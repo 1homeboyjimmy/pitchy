@@ -27,12 +27,12 @@ def setup_yookassa():
 
 PRICING_PLANS = {
     "starter": {
-        "monthly": 1490,
-        "yearly": 14900
+        "monthly": 2490,
+        "yearly": 24900
     },
     "pro": {
-        "monthly": 3499,
-        "yearly": 34990
+        "monthly": 3790,
+        "yearly": 37900
     },
     "tester": {
         "monthly": 1,
