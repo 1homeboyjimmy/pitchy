@@ -27,7 +27,11 @@ class SLMClient:
     def __init__(self):
         api_key = os.getenv("ROUTERAI_API_KEY") or os.getenv("MAKURA_API_KEY")
         base_url = os.getenv("SLM_API_BASE", "https://routerai.ru/api/v1")
-        self.model = os.getenv("SLM_MODEL", "qwen/qwen-2.5-7b-instruct")
+        # qwen/qwen3-30b-a3b: MoE, ~750ms p50 on RouterAI, supports JSON mode.
+        # The older `qwen/qwen-2.5-7b-instruct` is upstream-rejected when
+        # response_format=json_object is requested (Provider error 400),
+        # which is the entire reason we use SLM here — so don't fall back.
+        self.model = os.getenv("SLM_MODEL", "qwen/qwen3-30b-a3b")
         
         if not api_key:
             logger.warning("No API key found for SLM dispatcher (ROUTERAI_API_KEY or MAKURA_API_KEY)")
