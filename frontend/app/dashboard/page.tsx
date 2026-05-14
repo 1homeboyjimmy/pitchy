@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader, Activity, RefreshCcw, ArrowUpRight, MessageSquare, Plus, Microscope, Map, Users, ChevronRight, ChevronLeft, Trash2 } from "lucide-react";
+import { Loader, Activity, RefreshCcw, ArrowUpRight, MessageSquare, Plus, Microscope, Map, Users, ChevronRight, ChevronLeft, Trash2, Calendar } from "lucide-react";
 import { ChatInterface } from "@/components/dashboard/ChatInterface";
 import { AdminView } from "@/components/dashboard/AdminView";
 import { TreeView } from "@/components/dashboard/TreeView";
@@ -306,65 +306,109 @@ function DashboardContent() {
                 />
               </div>
 
-              {/* Recent Sessions Grid */}
+              {/* Recent Sessions — horizontal row list */}
               <div>
                 <h3 className="font-display text-2xl sm:text-3xl text-white/40 mb-5 sm:mb-8 ml-2">Последние сессии</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
-                  {/* Create New Card */}
-                  <motion.div
-                    whileHover={{ scale: 0.98 }}
+                <div className="flex flex-col gap-2 sm:gap-3">
+                  {/* Create New — full-width dashed row */}
+                  <motion.button
+                    type="button"
+                    whileHover={{ y: -1 }}
                     onClick={handleCreateEmptySession}
-                    className="lovable-glass border border-dashed border-white/10 p-6 sm:p-8 flex flex-col justify-center items-center hover:border-white/20 hover:bg-white/[0.03] transition-all duration-500 min-h-[140px] sm:min-h-[200px] cursor-pointer rounded-2xl sm:rounded-[2rem] group"
+                    disabled={isCreating}
+                    className="lovable-glass w-full border border-dashed border-white/10 hover:border-white/25 hover:bg-white/[0.03] transition-all duration-300 rounded-2xl px-5 sm:px-6 py-4 sm:py-5 flex items-center gap-4 group disabled:opacity-50"
                   >
-                    {isCreating ? (
-                      <Loader className="animate-spin text-white/20 mb-2" size={32} />
-                    ) : (
-                      <div className="w-12 h-12 bg-white/5 flex items-center justify-center rounded-2xl mb-5 group-hover:scale-110 transition-transform">
-                        <Plus className="text-white/40 group-hover:text-white" size={28} strokeWidth={1.5} />
+                    <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-white/[0.04] border border-white/5 flex items-center justify-center shrink-0 group-hover:bg-white group-hover:text-black transition-colors duration-300">
+                      {isCreating ? (
+                        <Loader className="animate-spin" size={20} />
+                      ) : (
+                        <Plus size={22} strokeWidth={1.8} />
+                      )}
+                    </div>
+                    <div className="flex-1 text-left">
+                      <div className="font-display text-base sm:text-lg text-white/90 group-hover:text-white transition-colors">
+                        Новый анализ
                       </div>
-                    )}
-                    <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-white/20 font-bold group-hover:text-white transition-colors" style={{ fontSize: "14px" }}>Новый анализ</span>
-                  </motion.div>
+                      <div className="font-mono text-[10px] sm:text-[11px] uppercase tracking-[0.18em] text-white/30 mt-0.5">
+                        Создать чат с аналитиком
+                      </div>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-white/20 group-hover:text-white/60 transition-colors" strokeWidth={2} />
+                  </motion.button>
 
-                  {sessions.slice(0, 7).map(session => (
-                    <motion.div
-                      key={session.id}
-                      whileHover={{ y: -4 }}
-                      onClick={() => handleSelectSession(session.id)}
-                      className="relative lovable-glass-strong border border-white/5 p-6 sm:p-8 flex flex-col justify-between hover:border-white/20 transition-all duration-500 min-h-[140px] sm:min-h-[200px] group cursor-pointer rounded-2xl sm:rounded-[2rem] bg-white/[0.02]"
-                    >
-                      <button
-                        type="button"
-                        onClick={(e) => handleDeleteSession(e, session.id, session.title)}
-                        className="absolute top-3 right-3 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-black/40 border border-white/5 text-white/30 opacity-0 group-hover:opacity-100 hover:bg-red-500/20 hover:border-red-500/40 hover:text-red-400 transition-all duration-200"
-                        title="Удалить чат"
-                        aria-label="Удалить чат"
+                  {sessions.slice(0, 12).map(session => {
+                    const created = new Date(session.created_at);
+                    const dateLabel = created.toLocaleDateString("ru-RU", {
+                      day: "numeric",
+                      month: "long",
+                      year: "numeric",
+                    });
+                    const timeLabel = created.toLocaleTimeString("ru-RU", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    });
+                    const isInProgress = session.analysis_id == null;
+                    return (
+                      <motion.div
+                        key={session.id}
+                        whileHover={{ x: 2 }}
+                        onClick={() => handleSelectSession(session.id)}
+                        className="lovable-glass-strong w-full border border-white/5 hover:border-white/15 hover:bg-white/[0.04] transition-all duration-300 rounded-2xl px-4 sm:px-5 py-4 flex items-center gap-4 cursor-pointer group bg-white/[0.02]"
                       >
-                        <Trash2 className="w-3.5 h-3.5" strokeWidth={1.8} />
-                      </button>
-                      <div className="flex justify-between items-start mb-8">
-                        <div className="w-14 h-10 bg-white/5 flex items-center justify-center rounded-2xl group-hover:bg-white/10 transition-colors">
-                          <MessageSquare className="text-white/40 group-hover:text-white transition-colors" size={20} strokeWidth={1.5} />
+                        <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-white/5 border border-white/5 flex items-center justify-center shrink-0 group-hover:bg-white/10 transition-colors">
+                          <MessageSquare className="text-white/50 group-hover:text-white transition-colors" size={20} strokeWidth={1.5} />
                         </div>
-                        <span className="font-mono text-[9px] uppercase tracking-[0.2em] px-3 py-1 border border-emerald-500/20 text-emerald-400 rounded-full font-bold">
-                          ЗАВЕРШЕНО
-                        </span>
-                      </div>
-                      <div>
-                        <h4 className="font-display text-lg text-white mb-4 line-clamp-2 leading-snug group-hover:text-white transition-colors" title={session.title}>
-                          {session.title || "СЕССИЯ АНАЛИЗА"}
-                        </h4>
-                        <div className="flex justify-between items-end border-t border-white/5 pt-4">
-                          <span className="font-mono text-[10px] text-white/20 uppercase tracking-widest font-bold">
-                            {new Date(session.created_at).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}
-                          </span>
-                          <div className="w-8 h-8 flex items-center justify-center rounded-full bg-white/[0.03] group-hover:bg-white group-hover:text-black transition-all duration-300">
-                            <ArrowUpRight size={14} />
+
+                        <div className="flex-1 min-w-0">
+                          <h4
+                            className="font-display text-base sm:text-lg text-white truncate leading-tight group-hover:text-white transition-colors"
+                            title={session.title}
+                          >
+                            {session.title || "Чат с аналитиком"}
+                          </h4>
+                          <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mt-1.5 text-[12px]">
+                            <span className="inline-flex items-center gap-1.5 text-white/40">
+                              <Calendar size={12} strokeWidth={1.8} />
+                              <span>{dateLabel}, {timeLabel}</span>
+                            </span>
+                            <span
+                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-mono uppercase tracking-[0.18em] font-bold border ${
+                                isInProgress
+                                  ? "border-amber-500/30 text-amber-400 bg-amber-500/10"
+                                  : "border-emerald-500/30 text-emerald-400 bg-emerald-500/10"
+                              }`}
+                            >
+                              {isInProgress ? "В процессе" : "Завершено"}
+                            </span>
                           </div>
                         </div>
-                      </div>
-                    </motion.div>
-                  ))}
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteSession(e, session.id, session.title)}
+                            className="w-9 h-9 flex items-center justify-center rounded-xl bg-white/[0.03] border border-white/5 text-white/40 hover:bg-red-500/15 hover:border-red-500/40 hover:text-red-400 transition-all"
+                            title="Удалить чат"
+                            aria-label="Удалить чат"
+                          >
+                            <Trash2 className="w-4 h-4" strokeWidth={1.8} />
+                          </button>
+                          <div
+                            className="w-9 h-9 flex items-center justify-center rounded-xl bg-white/[0.03] border border-white/5 text-white/40 group-hover:bg-white group-hover:text-black group-hover:border-white transition-all"
+                            aria-hidden
+                          >
+                            <ChevronRight className="w-4 h-4" strokeWidth={2.2} />
+                          </div>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+
+                  {sessions.length === 0 && (
+                    <div className="text-center py-12 text-white/30 font-mono text-[11px] uppercase tracking-[0.2em]">
+                      Пока нет ни одной сессии
+                    </div>
+                  )}
                 </div>
               </div>
             </motion.div>
