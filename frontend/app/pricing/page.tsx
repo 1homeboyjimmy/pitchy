@@ -3,8 +3,11 @@
 import { useState } from "react";
 import { Check, X } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { TopNavBar } from "@/components/shared/TopNavBar";
 import { SiteFooter } from "@/components/shared/SiteFooter";
+import { getToken } from "@/lib/auth";
+import { createPayment } from "@/lib/api";
 
 interface PlanFeature {
   text: string;
@@ -14,6 +17,8 @@ interface PlanFeature {
 interface Plan {
   name: string;
   nameDisplay: string;
+  // Backend billing tier key; null = free plan (no payment)
+  tier: "starter" | "pro" | null;
   priceMonthly: string;
   priceYearly: string;
   description: string;
@@ -26,6 +31,7 @@ const plans: Plan[] = [
   {
     name: "Free",
     nameDisplay: "Бесплатный",
+    tier: null,
     priceMonthly: "0₽",
     priceYearly: "0₽",
     description: "Базовые функции для начала работы.",
@@ -41,6 +47,7 @@ const plans: Plan[] = [
   {
     name: "Starter",
     nameDisplay: "Starter",
+    tier: "starter",
     priceMonthly: "2 490₽",
     priceYearly: "24 900₽",
     description: "Оптимально для фрилансеров и небольших команд.",
@@ -57,6 +64,7 @@ const plans: Plan[] = [
   {
     name: "Pro",
     nameDisplay: "Pro",
+    tier: "pro",
     priceMonthly: "3 790₽",
     priceYearly: "37 900₽",
     description: "Максимальные возможности для агентств и корпораций.",
@@ -72,7 +80,32 @@ const plans: Plan[] = [
 ];
 
 export default function PricingPage() {
+  const router = useRouter();
   const [isYearly, setIsYearly] = useState(false);
+  const [loadingTier, setLoadingTier] = useState<string | null>(null);
+  const [payError, setPayError] = useState<string | null>(null);
+
+  const handleSelectPlan = async (plan: Plan) => {
+    if (!plan.tier) {
+      router.push("/signup");
+      return;
+    }
+    const token = getToken();
+    if (!token) {
+      router.push("/login?next=/pricing");
+      return;
+    }
+    setPayError(null);
+    setLoadingTier(plan.tier);
+    try {
+      const { confirmation_url } = await createPayment(plan.tier, isYearly, null, token);
+      window.location.href = confirmation_url;
+    } catch (e) {
+      console.error("Payment creation failed", e);
+      setPayError("Не удалось создать платёж. Попробуйте ещё раз.");
+      setLoadingTier(null);
+    }
+  };
 
   return (
     <div className="bg-black text-foreground min-h-screen flex flex-col relative overflow-hidden">
@@ -167,13 +200,24 @@ export default function PricingPage() {
 
               {/* CTA Button */}
               {plan.buttonStyle === "filled" ? (
-                <button className="w-full bg-white text-black font-sans text-sm font-bold py-4 rounded-full hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer shadow-xl">
-                  Выбрать {plan.name}
+                <button
+                  onClick={() => handleSelectPlan(plan)}
+                  disabled={loadingTier !== null}
+                  className="w-full bg-white text-black font-sans text-sm font-bold py-4 rounded-full hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loadingTier === plan.tier ? "Загрузка…" : `Выбрать ${plan.name}`}
                 </button>
               ) : (
-                <button className="w-full bg-white/5 border border-white/10 text-white font-sans text-sm font-bold py-4 rounded-full hover:bg-white/10 hover:border-white/20 transition-all cursor-pointer">
-                  Выбрать {plan.name}
+                <button
+                  onClick={() => handleSelectPlan(plan)}
+                  disabled={loadingTier !== null}
+                  className="w-full bg-white/5 border border-white/10 text-white font-sans text-sm font-bold py-4 rounded-full hover:bg-white/10 hover:border-white/20 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loadingTier === plan.tier ? "Загрузка…" : `Выбрать ${plan.name}`}
                 </button>
+              )}
+              {payError && loadingTier === null && plan.popular && (
+                <p className="mt-4 text-center font-body-sm text-red-400">{payError}</p>
               )}
             </div>
           ))}
