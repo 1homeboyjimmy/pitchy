@@ -30,6 +30,7 @@ def _secret_key() -> str:
 
 
 import bcrypt
+from passlib.hash import pbkdf2_sha256
 
 def hash_password(password: str) -> str:
     # Double-check: bcrypt expects bytes
@@ -42,7 +43,10 @@ def verify_password(password: str, password_hash: str | None) -> bool:
     if not password_hash:
         return False
     try:
-        # Bcrypt requires bytes for both password and hash
+        # Legacy passlib pbkdf2_sha256 hashes (users created before the bcrypt switch).
+        # bcrypt.checkpw raises on these, so route them to the right verifier.
+        if password_hash.startswith("$pbkdf2-sha256$"):
+            return pbkdf2_sha256.verify(password, password_hash)
         return bcrypt.checkpw(
             password.encode('utf-8'),
             password_hash.encode('utf-8')
@@ -51,9 +55,11 @@ def verify_password(password: str, password_hash: str | None) -> bool:
         # Fallback for old/empty hashes
         return False
 
-def needs_update(password_hash: str) -> bool:
-    # Simplified for direct bcrypt
-    return False
+def needs_update(password_hash: str | None) -> bool:
+    # Rehash any non-bcrypt (legacy pbkdf2) hash to bcrypt on next successful login
+    if not password_hash:
+        return False
+    return not password_hash.startswith("$2")
 
 
 def create_access_token(user_id: int) -> str:
