@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { useMounted } from "@mantine/hooks";
 import { TopNavBar } from "@/components/shared/TopNavBar";
@@ -320,7 +321,7 @@ export function AccountPageClient() {
       {/* MODALS */}
       
       {/* Add Email Modal */}
-      {isAddEmailOpen && (
+      {isAddEmailOpen && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
           <div className="bg-[#111111] border border-white/10 rounded w-full max-w-md p-6">
             <h3 className="text-xl font-display font-medium text-white mb-6">Добавить Email</h3>
@@ -336,11 +337,12 @@ export function AccountPageClient() {
               <button className="px-4 py-2 bg-white text-black font-mono-label text-[12px] uppercase tracking-widest rounded hover:opacity-90 transition-opacity" onClick={handleAddEmail}>Сохранить</button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Change Password Modal */}
-      {isChangePasswordOpen && (
+      {isChangePasswordOpen && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
           <div className="bg-[#111111] border border-white/10 rounded w-full max-w-md p-6">
             <h3 className="text-xl font-display font-medium text-white mb-6">Сменить пароль</h3>
@@ -400,11 +402,12 @@ export function AccountPageClient() {
               </>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Change Email Modal */}
-      {isChangeEmailOpen && (
+      {isChangeEmailOpen && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
           <div className="bg-[#111111] border border-white/10 rounded w-full max-w-md p-6 overflow-hidden relative">
             <motion.div layout>
@@ -481,11 +484,12 @@ export function AccountPageClient() {
               </AnimatePresence>
             </motion.div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Email Sent Confirmation Modal */}
-      {showEmailSentModal && (
+      {showEmailSentModal && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
           <div className="bg-[#111111] border border-white/10 rounded w-full max-w-sm p-8 text-center">
             <div className="flex justify-center mb-6">
@@ -505,7 +509,8 @@ export function AccountPageClient() {
               Понятно
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       <SiteFooter />
