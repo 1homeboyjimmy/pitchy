@@ -143,6 +143,7 @@ from schemas import (
     ChatSessionAutoRequest,
     RagSearchRequest,
     RagSearchResponse,
+    RagChunk,
     ToolResultResponse,
     ToolSearchRequest,
     ToolResearchRequest,
@@ -1278,19 +1279,42 @@ def verify_rag_token(credentials: HTTPAuthorizationCredentials = Security(securi
 @app.post("/api/rag/search", response_model=RagSearchResponse)
 async def rag_search_endpoint(
     payload: RagSearchRequest,
-    token: str = Depends(verify_rag_token)
+    token: str = Depends(verify_rag_token),
 ) -> RagSearchResponse:
+    """Cross-service RAG read endpoint.
+
+    Authenticated with a static Bearer token (env: RAG_API_KEY) so a
+    separate backend (e.g. CustDev) can read the same knowledge base
+    without sharing user credentials. Returns both a pre-joined context
+    string and structured chunks with score + metadata.
+
+    Example:
+        curl -X POST https://dev.pitchy.pro/api/rag/search \
+          -H "Authorization: Bearer $RAG_API_KEY" \
+          -H "Content-Type: application/json" \
+          -d '{"query":"Какие требования у ФСИ", "top_k": 8}'
+    """
     try:
-        # Use asyncio.to_thread because rag.get_relevant_chunks is synchronous and might be slow
-        context_chunks = await asyncio.to_thread(rag.get_relevant_chunks, payload.query, top_k=5)
-        context = "\n\n".join([c["text"] for c in context_chunks])
-        return RagSearchResponse(context=context)
+        context_chunks = await asyncio.to_thread(
+            rag.get_relevant_chunks,
+            payload.query,
+            categories=payload.categories,
+            top_k=payload.top_k,
+        )
     except Exception as e:
         logger.error(f"RAG search error: {e}")
-        # Return empty context or 500 based on requirements. 
-        # User said: "returning an empty string or 500 so as not to crash the server".
-        # I'll return empty string as it's safer for the caller's logic usually.
-        return RagSearchResponse(context="")
+        return RagSearchResponse(context="", chunks=[], count=0)
+
+    structured = [
+        RagChunk(
+            text=c.get("text", "") if isinstance(c, dict) else str(c),
+            score=c.get("score") if isinstance(c, dict) else None,
+            metadata=c.get("metadata") if isinstance(c, dict) else None,
+        )
+        for c in (context_chunks or [])
+    ]
+    context = "" if payload.chunks_only else "\n\n".join(ch.text for ch in structured if ch.text)
+    return RagSearchResponse(context=context, chunks=structured, count=len(structured))
 
 
 @app.post("/analyze-startup", response_model=AnalyzeResponse)

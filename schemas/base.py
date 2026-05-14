@@ -368,11 +368,30 @@ class TreeEvaluateRequest(BaseModel):
 
 
 class RagSearchRequest(BaseModel):
-    query: str = Field(..., min_length=1)
+    query: str = Field(..., min_length=1, max_length=4000)
+    top_k: int = Field(default=5, ge=1, le=20)
+    # Optional category filter — must match values from the SLM dispatcher
+    # taxonomy (e.g. "platform_manual", "market_rf", "finance", ...).
+    # Omit for an unfiltered search across the whole knowledge base.
+    categories: list[str] | None = None
+    # If true, return only the chunks array without the glued `context`
+    # string (saves bytes on the wire for large top_k).
+    chunks_only: bool = False
+
+
+class RagChunk(BaseModel):
+    text: str
+    score: float | None = None
+    metadata: dict | None = None
 
 
 class RagSearchResponse(BaseModel):
+    # Pre-joined context for callers that just want one string to feed
+    # into an LLM. Empty if `chunks_only=True` on the request.
     context: str
+    chunks: list[RagChunk] = Field(default_factory=list)
+    # How many chunks were actually returned (≤ top_k).
+    count: int = 0
 
 class ToolResultResponse(BaseModel):
     id: int
