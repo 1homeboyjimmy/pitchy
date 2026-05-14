@@ -347,7 +347,6 @@ function DashboardContent() {
                       hour: "2-digit",
                       minute: "2-digit",
                     });
-                    const isInProgress = session.analysis_id == null;
                     return (
                       <motion.div
                         key={session.id}
@@ -366,20 +365,9 @@ function DashboardContent() {
                           >
                             {session.title || "Чат с аналитиком"}
                           </h4>
-                          <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mt-1.5 text-[12px]">
-                            <span className="inline-flex items-center gap-1.5 text-white/40">
-                              <Calendar size={12} strokeWidth={1.8} />
-                              <span>{dateLabel}, {timeLabel}</span>
-                            </span>
-                            <span
-                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-mono uppercase tracking-[0.18em] font-bold border ${
-                                isInProgress
-                                  ? "border-amber-500/30 text-amber-400 bg-amber-500/10"
-                                  : "border-emerald-500/30 text-emerald-400 bg-emerald-500/10"
-                              }`}
-                            >
-                              {isInProgress ? "В процессе" : "Завершено"}
-                            </span>
+                          <div className="flex items-center gap-1.5 mt-1.5 text-[12px] text-white/40">
+                            <Calendar size={12} strokeWidth={1.8} />
+                            <span>{dateLabel}, {timeLabel}</span>
                           </div>
                         </div>
 
