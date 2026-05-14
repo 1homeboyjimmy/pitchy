@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Cpu, Loader, Star, Zap, Users, Grid, HelpCircle, ThumbsUp, ThumbsDown, ChevronDown, ChevronUp, Activity, Globe, Link2, FileText, ArrowRight } from "lucide-react";
+import { Cpu, Loader, Star, Zap, Users, Grid, HelpCircle, ThumbsUp, ThumbsDown, ChevronDown, ChevronUp, Activity, Globe, Link2, FileText, ArrowRight, Lock } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ChatMessageResponse, ChatSessionDetailResponse, sendChatMessageFeedback } from "@/lib/api";
@@ -79,9 +79,29 @@ interface ChatInterfaceProps {
     onUpdate: (updatedSession: ChatSessionDetailResponse) => void;
     isSidebarCollapsed?: boolean;
     onImportModalChange?: (open: boolean) => void;
+    // Feature gates from /me/usage — when false, the matching tool in
+    // the dropdown is rendered as locked and clicks open the upgrade modal.
+    canUseDeepSearch?: boolean;
+    canUseResearch?: boolean;
+    canUsePresentation?: boolean;
+    canUseImportContext?: boolean;
+    // Used to show the ChatGPT-style upgrade banner when messages run out.
+    messagesRemaining?: number | null;
+    tierLabel?: string;
 }
 
-export function ChatInterface({ session, onUpdate, isSidebarCollapsed, onImportModalChange }: ChatInterfaceProps) {
+export function ChatInterface({
+    session,
+    onUpdate,
+    isSidebarCollapsed,
+    onImportModalChange,
+    canUseDeepSearch = true,
+    canUseResearch = true,
+    canUsePresentation = true,
+    canUseImportContext = true,
+    messagesRemaining,
+    tierLabel,
+}: ChatInterfaceProps) {
     const [messages, setMessages] = useState<ExtendedChatMessage[]>(session.messages || []);
     const [modeHint, setModeHint] = useState<string | null>(null);
     const [inputValue, setInputValue] = useState("");
@@ -930,6 +950,35 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed, onImportM
                         )}
                     </AnimatePresence>
 
+                    {/* Free-tier exhausted banner — ChatGPT-style upsell */}
+                    {messagesRemaining === 0 && (
+                        <motion.div
+                            initial={{ opacity: 0, y: 8 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="mb-4 mx-3 sm:mx-6 rounded-2xl border border-amber-500/30 bg-gradient-to-r from-amber-500/[0.08] to-amber-500/[0.02] p-4 sm:p-5 flex items-start gap-3"
+                        >
+                            <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center shrink-0">
+                                <Lock className="w-4 h-4 text-amber-400" strokeWidth={2} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <div className="text-[14px] font-medium text-white mb-0.5">
+                                    Месячный лимит сообщений исчерпан
+                                </div>
+                                <p className="text-[12px] text-white/55 leading-snug">
+                                    На тарифе {tierLabel || "Free"} доступно ограниченное число сообщений в месяц.
+                                    Обновите тариф, чтобы продолжить диалог с Pitchy.
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setIsUpgradeModalOpen(true)}
+                                className="px-4 py-2 rounded-xl bg-white text-black text-[12px] font-mono uppercase tracking-[0.18em] font-bold hover:bg-neutral-200 active:scale-95 transition-all shrink-0"
+                            >
+                                Улучшить
+                            </button>
+                        </motion.div>
+                    )}
+
                     <ChatInput
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
@@ -944,8 +993,30 @@ export function ChatInterface({ session, onUpdate, isSidebarCollapsed, onImportM
                     onTogglePresentationMode={() => setIsPresentationMode(!isPresentationMode)}
                     onCancelPresentationMode={() => setIsPresentationMode(false)}
                     onOpenImportModal={() => setIsImportModalOpen(true)}
-                    disabled={!!session.analysis}
-                    placeholder={isPresentationMode ? "Опишите идею для вашей презентации..." : (session.analysis ? "Диалог завершен" : "Задайте вопрос Pitchy...")}
+                    disabled={!!session.analysis || messagesRemaining === 0}
+                    placeholder={
+                        messagesRemaining === 0
+                            ? "Лимит сообщений исчерпан — обновите тариф"
+                            : isPresentationMode
+                                ? "Опишите идею для вашей презентации..."
+                                : session.analysis ? "Диалог завершен" : "Задайте вопрос Pitchy..."
+                    }
+                    lockedTools={{
+                        deepSearch: !canUseDeepSearch,
+                        research: !canUseResearch,
+                        presentation: !canUsePresentation,
+                        importContext: !canUseImportContext,
+                    }}
+                    onLockedTool={(key) => {
+                        const labels: Record<string, string> = {
+                            deepSearch: "Поиск в интернете",
+                            research: "Глубокое исследование",
+                            presentation: "Сгенерировать слайды",
+                            importContext: "Импорт контекста",
+                        };
+                        setUpgradeModalMessage(`Функция «${labels[key] || key}» доступна на тарифах Starter и Pro.`);
+                        setIsUpgradeModalOpen(true);
+                    }}
                     />
                     
                     {presentationSlides && presentationSlides.length > 0 && (

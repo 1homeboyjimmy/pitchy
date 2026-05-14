@@ -3,7 +3,7 @@
 import React, { useRef, useEffect, useState, useCallback } from "react";
 import {
   Square, Globe, Activity, FileText, Paperclip,
-  ArrowUp, X, Sparkles, Wrench, Check, ChevronDown,
+  ArrowUp, X, Sparkles, Wrench, Check, ChevronDown, Lock,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -23,6 +23,15 @@ interface ChatInputProps {
   isPresentationMode?: boolean;
   onTogglePresentationMode?: () => void;
   onCancelPresentationMode?: () => void;
+  // Tools that are visible but locked behind a paid tier. Clicking a
+  // locked tool calls `onLockedTool` instead of running the action.
+  lockedTools?: {
+    deepSearch?: boolean;
+    research?: boolean;
+    presentation?: boolean;
+    importContext?: boolean;
+  };
+  onLockedTool?: (toolKey: "deepSearch" | "research" | "presentation" | "importContext") => void;
 }
 
 export function ChatInput({
@@ -41,6 +50,8 @@ export function ChatInput({
   isPresentationMode = false,
   onTogglePresentationMode,
   onCancelPresentationMode,
+  lockedTools = {},
+  onLockedTool,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const toolsRef = useRef<HTMLDivElement>(null);
@@ -88,46 +99,57 @@ export function ChatInput({
     setToolsOpen(false);
   }, []);
 
+  type ToolKey = "deepSearch" | "research" | "presentation" | "importContext";
   type ToolEntry = {
     key: string;
+    lockKey: ToolKey;
     icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
     title: string;
     subtitle: string;
     active: boolean;
+    locked: boolean;
     onClick?: () => void;
   };
 
   const tools: ToolEntry[] = [
     {
       key: "context",
+      lockKey: "importContext",
       icon: Paperclip,
       title: "Импорт контекста",
       subtitle: "Загрузить описание проекта или прошлый питч-дек",
       active: false,
+      locked: !!lockedTools.importContext,
       onClick: onOpenImportModal,
     },
     {
       key: "web",
+      lockKey: "deepSearch",
       icon: Globe,
       title: "Поиск в интернете",
       subtitle: "Подтянуть свежие данные и источники из сети",
       active: useDeepSearch,
+      locked: !!lockedTools.deepSearch,
       onClick: onToggleDeepSearch,
     },
     {
       key: "research",
+      lockKey: "research",
       icon: Activity,
       title: "Глубокое исследование",
       subtitle: "Развёрнутый отчёт с многошаговым анализом",
       active: isResearchMode,
+      locked: !!lockedTools.research,
       onClick: onToggleResearchMode,
     },
     {
       key: "slides",
+      lockKey: "presentation",
       icon: FileText,
       title: "Сгенерировать слайды",
       subtitle: "Собрать инвестиционную презентацию",
       active: isPresentationMode,
+      locked: !!lockedTools.presentation,
       onClick: onTogglePresentationMode,
     },
   ];
@@ -254,30 +276,53 @@ export function ChatInput({
                 className="absolute left-0 bottom-full mb-2 w-[min(380px,calc(100vw-2rem))] rounded-2xl border border-white/10 bg-[#0e0e0e]/95 backdrop-blur-2xl shadow-[0_20px_60px_rgba(0,0,0,0.6)] overflow-hidden z-30"
               >
                 <div className="p-1.5">
-                  {tools.map(({ key, icon: Icon, title, subtitle, active, onClick }) => (
+                  {tools.map(({ key, lockKey, icon: Icon, title, subtitle, active, locked, onClick }) => (
                     <button
                       key={key}
                       type="button"
-                      onClick={() => runHandler(onClick)}
+                      onClick={() => {
+                        if (locked) {
+                          setToolsOpen(false);
+                          onLockedTool?.(lockKey);
+                          return;
+                        }
+                        runHandler(onClick);
+                      }}
                       role="menuitemcheckbox"
                       aria-checked={active}
                       className={`w-full flex items-start gap-3 px-3 py-2.5 rounded-xl text-left transition-colors ${
-                        active ? "bg-white/[0.08]" : "hover:bg-white/[0.04]"
+                        locked
+                          ? "hover:bg-amber-500/[0.06]"
+                          : active
+                            ? "bg-white/[0.08]"
+                            : "hover:bg-white/[0.04]"
                       }`}
                     >
                       <div className={`mt-0.5 w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-                        active ? "bg-white text-black" : "bg-white/[0.06] text-white/70"
+                        locked
+                          ? "bg-amber-500/[0.08] text-amber-400/70"
+                          : active
+                            ? "bg-white text-black"
+                            : "bg-white/[0.06] text-white/70"
                       }`}>
                         <Icon className="w-4 h-4" strokeWidth={1.8} />
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
-                          <span className={`text-[13px] font-medium tracking-tight ${active ? "text-white" : "text-white/85"}`}>
+                          <span className={`text-[13px] font-medium tracking-tight ${
+                            locked ? "text-white/55" : active ? "text-white" : "text-white/85"
+                          }`}>
                             {title}
                           </span>
-                          {active && <Check className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />}
+                          {locked
+                            ? <Lock className="w-3 h-3 text-amber-400/70" strokeWidth={2.4} />
+                            : active
+                              ? <Check className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
+                              : null}
                         </div>
-                        <p className="mt-0.5 text-[11px] leading-snug text-white/40">{subtitle}</p>
+                        <p className="mt-0.5 text-[11px] leading-snug text-white/40">
+                          {locked ? "Доступно на тарифах Starter и Pro" : subtitle}
+                        </p>
                       </div>
                     </button>
                   ))}

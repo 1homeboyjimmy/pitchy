@@ -1014,6 +1014,101 @@ async def me(user: User = Depends(get_async_current_user)) -> UserResponse:
     )
 
 
+@app.get("/me/usage")
+async def me_usage(
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+) -> dict:
+    """Real per-user monthly usage counters + the effective plan limits.
+
+    Counters are scoped to the current calendar month (UTC) so they
+    reset on the 1st. Admins get a synthetic "unlimited" view.
+    Frontend uses this to render QuotaCard and feature locks.
+    """
+    from plan_limits import (
+        PLAN_LIMITS,
+        UNLIMITED,
+        get_limits_for,
+        resolve_tier,
+        limits_as_dict,
+        start_of_month_utc,
+    )
+
+    tier_name = "pro" if user.is_admin else resolve_tier(user.subscription_tier, user.subscription_expires_at)
+    limits = PLAN_LIMITS["pro"] if user.is_admin else get_limits_for(user.subscription_tier, user.subscription_expires_at)
+    month_start = start_of_month_utc()
+
+    # Main-chat user messages this month (counts only role="user")
+    messages_used = (await db.execute(
+        select(sa_func.count())
+        .select_from(DbChatMessage)
+        .join(ChatSession, ChatSession.id == DbChatMessage.session_id)
+        .where(
+            ChatSession.user_id == user.id,
+            DbChatMessage.role == "user",
+            DbChatMessage.created_at >= month_start,
+        )
+    )).scalar() or 0
+
+    # CustDev runs = Analysis rows. The external CustDev backend writes
+    # into this same table (sessions/analyses are already synced).
+    custdev_used = (await db.execute(
+        select(sa_func.count())
+        .select_from(Analysis)
+        .where(Analysis.user_id == user.id, Analysis.created_at >= month_start)
+    )).scalar() or 0
+
+    # Roadmaps = ProjectTree rows created this month.
+    try:
+        roadmaps_used = (await db.execute(
+            select(sa_func.count())
+            .select_from(ProjectTree)
+            .where(ProjectTree.user_id == user.id, ProjectTree.created_at >= month_start)
+        )).scalar() or 0
+    except Exception:
+        roadmaps_used = 0
+
+    # Deep research messages — heuristic: messages with non-empty `sources` JSON,
+    # which is only set when use_deep_search/use_research was on.
+    try:
+        research_used = (await db.execute(
+            select(sa_func.count())
+            .select_from(DbChatMessage)
+            .join(ChatSession, ChatSession.id == DbChatMessage.session_id)
+            .where(
+                ChatSession.user_id == user.id,
+                DbChatMessage.role == "assistant",
+                DbChatMessage.created_at >= month_start,
+                DbChatMessage.sources.isnot(None),
+            )
+        )).scalar() or 0
+    except Exception:
+        research_used = 0
+
+    def remaining(limit_value: int, used: int) -> int | None:
+        if limit_value == UNLIMITED:
+            return None  # JSON null → frontend treats as unlimited
+        return max(0, limit_value - used)
+
+    return {
+        "tier": tier_name,
+        "limits": limits_as_dict(limits),
+        "usage": {
+            "messages": messages_used,
+            "custdev": custdev_used,
+            "roadmaps": roadmaps_used,
+            "deep_research": research_used,
+        },
+        "remaining": {
+            "messages": remaining(limits.messages, messages_used),
+            "custdev": remaining(limits.custdev, custdev_used),
+            "roadmaps": remaining(limits.roadmaps, roadmaps_used),
+            "deep_research": remaining(limits.deep_research, research_used),
+        },
+        "period_start": month_start.isoformat() + "Z",
+    }
+
+
 @app.patch("/me", response_model=UserResponse)
 async def update_me(
     payload: UserUpdateRequest,
@@ -1414,48 +1509,115 @@ def _check_subscription_limits(user: User, db: Session, resource_type: str, sess
             if msg_count >= 10:
                 raise HTTPException(status_code=403, detail="Free tier limit: maximum 10 messages per chat session. Please upgrade your subscription.")
 
-async def async_check_subscription_limits(user: User, db: AsyncSession, resource_type: str, session_id: int = None, feature: str = None, is_search: bool = False):
+async def async_check_subscription_limits(
+    user: User,
+    db: AsyncSession,
+    resource_type: str,
+    session_id: int = None,
+    feature: str = None,
+    is_search: bool = False,
+):
+    """Authorize a user action against their subscription plan.
+
+    resource_type:
+        "project"  — creating a new CustDev/Tree project (counted monthly)
+        "message"  — sending a main-chat message (counted monthly)
+        "feature"  — gating a feature toggle (no counter, just permission)
+    feature:
+        "custdev" | "tree" | "deep_search" | "research" |
+        "presentation" | "import"
+    """
     if user.is_admin:
         return
-    tier = "free"
-    if user.subscription_tier in ("pro", "premium", "starter", "tester"):
-        if not user.subscription_expires_at or user.subscription_expires_at > datetime.utcnow():
-            tier = user.subscription_tier
-    if tier == "tester":
-        if feature in ("custdev", "presentation", "deep_research", "import", "tree"):
-             raise HTTPException(status_code=403, detail="Эта функция недоступна в тарифе Tester.")
-    if tier == "premium":
-        return
+
+    from plan_limits import (
+        PLAN_LIMITS,
+        UNLIMITED,
+        get_limits_for,
+        resolve_tier,
+        start_of_month_utc,
+    )
+
+    limits = get_limits_for(user.subscription_tier, user.subscription_expires_at)
+    tier = resolve_tier(user.subscription_tier, user.subscription_expires_at)
+    month_start = start_of_month_utc()
+
+    # --- Feature gates (boolean permission, no usage count) ----------
+    feature_map = {
+        "custdev": limits.can_use_custdev,
+        "tree": limits.can_use_tree,
+        "deep_search": limits.can_use_deep_search,
+        "research": limits.can_use_research,
+        "presentation": limits.can_use_presentation,
+        "import": limits.can_use_import_context,
+    }
+    if feature and feature in feature_map and not feature_map[feature]:
+        feature_label = {
+            "custdev": "глубокий CustDev",
+            "tree": "интерактивная дорожная карта",
+            "deep_search": "поиск в интернете",
+            "research": "глубокое исследование",
+            "presentation": "генерация презентации",
+            "import": "импорт контекста",
+        }.get(feature, feature)
+        raise HTTPException(
+            status_code=403,
+            detail=f"upgrade_required: функция «{feature_label}» доступна на тарифах Starter и Pro. Обновите подписку.",
+        )
+
+    # --- Project creation (monthly counters) -------------------------
     if resource_type == "project":
-        if tier == "tester":
-             return
-        analyses_count = (await db.execute(select(sa_func.count()).select_from(Analysis).where(Analysis.user_id == user.id))).scalar()
-        chat_sessions_count = (await db.execute(select(sa_func.count()).select_from(ChatSession).where(ChatSession.user_id == user.id, ChatSession.analysis_id == None))).scalar()
-        total_projects = analyses_count + chat_sessions_count
-        if tier == "free":
-            if feature == "custdev" and analyses_count >= 1:
-                raise HTTPException(status_code=403, detail="Free tier limit: maximum 1 analysis project.")
-        elif tier == "pro" and total_projects >= 5:
-            raise HTTPException(status_code=403, detail="Pro tier limit: maximum 5 projects.")
-    elif resource_type == "message":
-        if tier == "tester":
-            redis = get_redis()
-            if redis:
-                key = f"tester_limit_{user.id}_{'search' if is_search else 'normal'}"
-                count = redis.get(key)
-                count = int(count) if count else 0
-                max_allowed = 5 if is_search else 20
-                if count >= max_allowed:
-                    raise HTTPException(status_code=403, detail="Лимит сообщений тарифа Tester исчерпан.")
-                redis.incr(key)
-            else:
-                total_messages_count = (await db.execute(select(sa_func.count()).select_from(DbChatMessage).join(ChatSession).where(ChatSession.user_id == user.id, DbChatMessage.role == "user"))).scalar()
-                if total_messages_count >= 25:
-                    raise HTTPException(status_code=403, detail="Лимит сообщений тарифа Tester исчерпан (25).")
-        elif tier == "free" and session_id:
-            msg_count = (await db.execute(select(sa_func.count()).select_from(DbChatMessage).where(DbChatMessage.session_id == session_id, DbChatMessage.role == "user"))).scalar()
-            if msg_count >= 10:
-                raise HTTPException(status_code=403, detail="Free tier limit: maximum 10 messages per chat session.")
+        if feature == "custdev":
+            if limits.custdev == UNLIMITED:
+                return
+            used = (await db.execute(
+                select(sa_func.count())
+                .select_from(Analysis)
+                .where(Analysis.user_id == user.id, Analysis.created_at >= month_start)
+            )).scalar() or 0
+            if used >= limits.custdev:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"quota_exceeded: исчерпан месячный лимит CustDev на тарифе {tier} ({limits.custdev}). Обновите подписку.",
+                )
+            return
+        if feature == "tree" or feature == "roadmap":
+            if limits.roadmaps == UNLIMITED:
+                return
+            used = (await db.execute(
+                select(sa_func.count())
+                .select_from(ProjectTree)
+                .where(ProjectTree.user_id == user.id, ProjectTree.created_at >= month_start)
+            )).scalar() or 0
+            if used >= limits.roadmaps:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"quota_exceeded: исчерпан месячный лимит дорожных карт на тарифе {tier} ({limits.roadmaps}). Обновите подписку.",
+                )
+            return
+
+    # --- Main chat message (monthly counter) -------------------------
+    if resource_type == "message":
+        if limits.messages == UNLIMITED:
+            return
+        used = (await db.execute(
+            select(sa_func.count())
+            .select_from(DbChatMessage)
+            .join(ChatSession, ChatSession.id == DbChatMessage.session_id)
+            .where(
+                ChatSession.user_id == user.id,
+                DbChatMessage.role == "user",
+                DbChatMessage.created_at >= month_start,
+            )
+        )).scalar() or 0
+        if used >= limits.messages:
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    f"quota_exceeded: исчерпан месячный лимит сообщений на тарифе {tier} "
+                    f"({limits.messages}). Обновите подписку, чтобы продолжить."
+                ),
+            )
 
 
 @app.post("/analysis", response_model=AnalysisResponse)
@@ -3404,13 +3566,23 @@ async def send_chat_message(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
+    # Determine which feature flag (if any) this request is asking for so
+    # the limit check can short-circuit with upgrade_required on free tier.
+    requested_feature = None
+    if getattr(payload, "use_research", False):
+        requested_feature = "research"
+    elif getattr(payload, "use_deep_search", False):
+        requested_feature = "deep_search"
+    elif getattr(payload, "intent", None) == "presentation":
+        requested_feature = "presentation"
+
     await async_check_subscription_limits(
-        user, 
-        db, 
-        "message", 
-        session.id, 
-        feature="deep_research" if getattr(payload, "use_research", False) else getattr(payload, "intent", None),
-        is_search=getattr(payload, "use_deep_search", False)
+        user,
+        db,
+        "message",
+        session.id,
+        feature=requested_feature,
+        is_search=getattr(payload, "use_deep_search", False),
     )
 
     # 1. Save User Message

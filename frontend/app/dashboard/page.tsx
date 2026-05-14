@@ -10,7 +10,7 @@ import { SideNavBar } from "@/components/internal/SideNavBar";
 import { InternalTopNavBar } from "@/components/internal/InternalTopNavBar";
 import { TopNavBar } from "@/components/shared/TopNavBar";
 import { QuotaCard } from "@/components/dashboard/QuotaCard";
-import { getQuotas, getPlaceholderUsage, buildSnapshot, getTierLabel } from "@/lib/planLimits";
+import { getQuotas, getPlaceholderUsage, buildSnapshot, getTierLabel, fetchUsage, type UsageResponse } from "@/lib/planLimits";
 import { motion, AnimatePresence } from "framer-motion";
 
 import { useAuth } from "@/lib/hooks/useAuth";
@@ -78,14 +78,31 @@ function DashboardContent() {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isContextImportOpen, setIsContextImportOpen] = useState(false);
+  const [usage, setUsage] = useState<UsageResponse | null>(null);
 
-  const tier = userProfile?.subscription_tier || "free";
+  // Prefer the live tier returned by /me/usage (server-side resolved,
+  // accounts for expired subscriptions); fall back to /me before the
+  // usage fetch resolves.
+  const tier = (usage?.tier || userProfile?.subscription_tier || "free").toLowerCase();
   const quotas = getQuotas(tier);
-  const usage = getPlaceholderUsage(sessions.length);
-  const messagesSnap = buildSnapshot(usage.messages, quotas.messages);
-  const researchSnap = buildSnapshot(usage.deepResearch, quotas.deepResearch);
-  const roadmapsSnap = buildSnapshot(usage.roadmaps, quotas.roadmaps);
-  const custdevSnap = buildSnapshot(usage.deepCustdev, quotas.deepCustdev);
+  const usageCounts = usage?.usage || getPlaceholderUsage(sessions.length);
+  const liveLimits = usage?.limits;
+  const messagesSnap = buildSnapshot(
+    usageCounts.messages,
+    liveLimits ? liveLimits.messages : quotas.messages,
+  );
+  const researchSnap = buildSnapshot(
+    "deep_research" in usageCounts ? usageCounts.deep_research : usageCounts.deepResearch,
+    liveLimits ? liveLimits.deep_research : quotas.deepResearch,
+  );
+  const roadmapsSnap = buildSnapshot(
+    usageCounts.roadmaps,
+    liveLimits ? liveLimits.roadmaps : quotas.roadmaps,
+  );
+  const custdevSnap = buildSnapshot(
+    "custdev" in usageCounts ? usageCounts.custdev : usageCounts.deepCustdev,
+    liveLimits ? liveLimits.custdev : quotas.deepCustdev,
+  );
 
   useEffect(() => {
     const tab = searchParams.get("tab");
@@ -126,12 +143,14 @@ function DashboardContent() {
         return;
       }
       try {
-        const [sessionsList, user] = await Promise.all([
+        const [sessionsList, user, usageData] = await Promise.all([
           getChatSessions(token).catch(() => []),
-          getMe(token).catch(() => null)
+          getMe(token).catch(() => null),
+          fetchUsage(token).catch(() => null),
         ]);
         setSessions(sessionsList);
         setUserProfile(user);
+        setUsage(usageData);
       } catch (e) {
         console.error(e);
       } finally {
@@ -140,6 +159,16 @@ function DashboardContent() {
     };
     init();
   }, [isLoaded, token]);
+
+  // Refresh usage after session changes (create / delete / send message)
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    fetchUsage(token).then((u) => {
+      if (!cancelled) setUsage(u);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [token, sessions.length, activeSession?.id]);
 
   const handleCreateEmptySession = async () => {
     setIsCreating(true);
@@ -232,6 +261,11 @@ function DashboardContent() {
         onMobileClose={() => setIsMobileSidebarOpen(false)}
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+        canUseTree={usage?.limits.can_use_tree ?? quotas.canUseTree}
+        canUseCustdev={usage?.limits.can_use_custdev ?? quotas.canUseCustdev}
+        onLockedClick={(label) => {
+          alert(`Функция «${label}» доступна на тарифах Starter и Pro. Обновите подписку, чтобы открыть её.`);
+        }}
       />
 
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden relative">
@@ -410,6 +444,12 @@ function DashboardContent() {
                   onUpdate={setActiveSession}
                   isSidebarCollapsed={isSidebarCollapsed}
                   onImportModalChange={setIsContextImportOpen}
+                  canUseDeepSearch={usage?.limits.can_use_deep_search ?? quotas.canUseDeepSearch}
+                  canUseResearch={usage?.limits.can_use_research ?? quotas.canUseResearch}
+                  canUsePresentation={usage?.limits.can_use_presentation ?? quotas.canUsePresentation}
+                  canUseImportContext={usage?.limits.can_use_import_context ?? quotas.canUseImportContext}
+                  messagesRemaining={usage?.remaining.messages ?? null}
+                  tierLabel={getTierLabel(tier)}
                 />
               ) : (
                 <div className="flex flex-col flex-1 h-full lovable-glass-strong rounded-3xl sm:rounded-[2.5rem] border border-white/5 items-center justify-center px-4 sm:px-6 py-8 bg-gradient-to-br from-white/[0.02] to-transparent">
