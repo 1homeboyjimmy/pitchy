@@ -182,6 +182,7 @@ async def stream_makura(system_prompt: str = None, user_message: str = None, mes
     for candidate in candidates:
         produced = False
         try:
+            logger.info(f"Makura stream attempt: model={candidate}")
             async for chunk in _stream_makura_attempt(candidate, payload_messages, headers, url):
                 produced = True
                 yield chunk
