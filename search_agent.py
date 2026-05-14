@@ -57,7 +57,6 @@ async def async_search_with_sources(query: str, use_deep_search: bool = False, t
             # Boost Rosstat for statistical queries
             search_kwargs = {
                 "type": "auto",
-                "use_autoprompt": True,
                 "num_results": num_results,
                 "highlights": True
             }
