@@ -9,8 +9,9 @@ logger = logging.getLogger("app")
 
 # Models tried in order. The first is the default primary; the rest are
 # fallbacks used when an earlier model fails before producing any output.
-# glm-5 is deliberately excluded — it currently hangs with no response.
-MAKURA_FALLBACK_MODELS = ["glm-4.7", "glm-4.6", "auto"]
+# glm-5 had a transient Makura-side outage — the fallback chain covers it
+# if that recurs (a hung model fails over after the 60s read timeout).
+MAKURA_FALLBACK_MODELS = ["glm-5", "glm-4.7", "glm-4.6", "auto"]
 
 async def call_makura(system_prompt: str, user_message: str, model: str = None) -> Tuple[Optional[str], Optional[str], Dict[str, Any]]:
     """
