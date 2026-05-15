@@ -110,8 +110,9 @@ from db_async import get_async_db
 from swarm_agent import run_analytical_swarm
 from sqlalchemy.ext.asyncio import AsyncSession
 from models import (
-    Analysis, ChatMessage as DbChatMessage, ChatSession, ErrorLog, 
-    User, PromoCode, Payment, RagLog, ToolResult, SocialAccount, ProjectTree
+    Analysis, ChatMessage as DbChatMessage, ChatSession, ErrorLog,
+    User, PromoCode, Payment, RagLog, ToolResult, SocialAccount, ProjectTree,
+    AdminAuditLog,
 )
 from sqlalchemy import select, func as sa_func
 from schemas import (
@@ -2471,10 +2472,39 @@ async def admin_users(
     ]
 
 
+def _stage_audit_entry(
+    db: AsyncSession,
+    admin: User,
+    action: str,
+    target_type: str | None = None,
+    target_id: str | int | None = None,
+    details: dict | None = None,
+    request: Request | None = None,
+) -> None:
+    """Add an admin_audit_log row to the current session. Caller commits.
+
+    Staged (not committed) so the audit lives or dies with the action it
+    describes — if the action fails and rolls back, the audit goes with
+    it instead of recording a phantom event.
+    """
+    entry = AdminAuditLog(
+        admin_id=admin.id,
+        admin_email=admin.email,
+        action=action,
+        target_type=target_type,
+        target_id=str(target_id) if target_id is not None else None,
+        details=details,
+        ip_address=(request.client.host if request and request.client else None),
+        user_agent=(request.headers.get("user-agent", "")[:500] if request else None),
+    )
+    db.add(entry)
+
+
 @app.post("/admin/users/{user_id}/block")
 async def admin_block_user(
     user_id: int,
-    _: User = Depends(require_async_admin),
+    request: Request,
+    admin: User = Depends(require_async_admin),
     db: AsyncSession = Depends(get_async_db),
 ) -> dict:
     res = await db.execute(select(User).where(User.id == user_id))
@@ -2482,6 +2512,8 @@ async def admin_block_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     user.is_active = False
+    _stage_audit_entry(db, admin, "user.block", "user", user_id,
+                       details={"target_email": user.email}, request=request)
     await db.commit()
     return {"status": "ok"}
 
@@ -2489,7 +2521,8 @@ async def admin_block_user(
 @app.post("/admin/users/{user_id}/unblock")
 async def admin_unblock_user(
     user_id: int,
-    _: User = Depends(require_async_admin),
+    request: Request,
+    admin: User = Depends(require_async_admin),
     db: AsyncSession = Depends(get_async_db),
 ) -> dict:
     res = await db.execute(select(User).where(User.id == user_id))
@@ -2497,6 +2530,8 @@ async def admin_unblock_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     user.is_active = True
+    _stage_audit_entry(db, admin, "user.unblock", "user", user_id,
+                       details={"target_email": user.email}, request=request)
     await db.commit()
     return {"status": "ok"}
 
@@ -2504,7 +2539,8 @@ async def admin_unblock_user(
 @app.post("/admin/users/{user_id}/make-admin")
 async def admin_make_admin(
     user_id: int,
-    _: User = Depends(require_async_admin),
+    request: Request,
+    admin: User = Depends(require_async_admin),
     db: AsyncSession = Depends(get_async_db),
 ) -> dict:
     res = await db.execute(select(User).where(User.id == user_id))
@@ -2512,6 +2548,8 @@ async def admin_make_admin(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     user.is_admin = True
+    _stage_audit_entry(db, admin, "user.make_admin", "user", user_id,
+                       details={"target_email": user.email}, request=request)
     await db.commit()
     return {"status": "ok"}
 
@@ -2519,7 +2557,8 @@ async def admin_make_admin(
 @app.delete("/admin/users/{user_id}")
 async def admin_delete_user(
     user_id: int,
-    _: User = Depends(require_async_admin),
+    request: Request,
+    admin: User = Depends(require_async_admin),
     db: AsyncSession = Depends(get_async_db),
 ) -> dict:
     res = await db.execute(select(User).where(User.id == user_id))
@@ -2527,19 +2566,65 @@ async def admin_delete_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     from sqlalchemy import delete
-    
+
+    target_snapshot = {
+        "target_email": user.email,
+        "target_name": user.name,
+        "target_subscription_tier": user.subscription_tier,
+    }
+
     session_res = await db.execute(select(ChatSession.id).where(ChatSession.user_id == user.id))
     session_ids = session_res.scalars().all()
-    
+
     if session_ids:
         await db.execute(delete(DbChatMessage).where(DbChatMessage.session_id.in_(session_ids)))
-        
+
     await db.execute(delete(ChatSession).where(ChatSession.user_id == user.id))
     await db.execute(delete(Analysis).where(Analysis.user_id == user.id))
-    
+
+    # Audit before the user row goes away so admin_id still resolves cleanly.
+    _stage_audit_entry(db, admin, "user.delete", "user", user_id,
+                       details=target_snapshot, request=request)
+
     await db.delete(user)
     await db.commit()
     return {"status": "ok"}
+
+
+@app.get("/admin/audit")
+async def admin_audit(
+    limit: int = 100,
+    offset: int = 0,
+    _: User = Depends(require_async_admin),
+    db: AsyncSession = Depends(get_async_db),
+) -> dict:
+    """Read the admin audit trail, most recent first."""
+    limit = max(1, min(limit, 500))
+    offset = max(0, offset)
+    res = await db.execute(
+        select(AdminAuditLog)
+        .order_by(AdminAuditLog.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    rows = res.scalars().all()
+    return {
+        "entries": [
+            {
+                "id": r.id,
+                "admin_id": r.admin_id,
+                "admin_email": r.admin_email,
+                "action": r.action,
+                "target_type": r.target_type,
+                "target_id": r.target_id,
+                "details": r.details,
+                "ip_address": r.ip_address,
+                "user_agent": r.user_agent,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in rows
+        ]
+    }
 
 
 @app.get("/admin/analytics")
