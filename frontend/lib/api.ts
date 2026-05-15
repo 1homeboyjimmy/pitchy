@@ -147,7 +147,29 @@ async function request<T>(
       throw new Error("Invalid token");
     }
     const err = await res.json().catch(() => ({}));
-    const detail = typeof err?.detail === "string" ? err.detail : "Request failed";
+    const d = err?.detail;
+    let detail = "Request failed";
+    if (typeof d === "string") {
+      detail = d;
+    } else if (Array.isArray(d)) {
+      // FastAPI 422 returns detail as an array of { loc, msg, type, ... }.
+      // Translate common pydantic messages so users see something useful
+      // instead of the generic "Request failed".
+      const translate = (m: string): string => {
+        if (/Password must contain letters and numbers/i.test(m)) return "Пароль должен содержать буквы и цифры";
+        const minMatch = m.match(/at least (\d+) character/i);
+        if (minMatch) return `Минимум ${minMatch[1]} символов`;
+        const maxMatch = m.match(/at most (\d+) character/i);
+        if (maxMatch) return `Максимум ${maxMatch[1]} символов`;
+        if (/value is not a valid email|valid email address/i.test(m)) return "Неверный формат email";
+        if (/Field required/i.test(m)) return "Поле обязательно";
+        return m;
+      };
+      const parts = d
+        .map((e: { msg?: string }) => translate(e?.msg || ""))
+        .filter(Boolean);
+      if (parts.length) detail = parts.join("; ");
+    }
     throw new Error(detail);
   }
   return (await res.json()) as T;

@@ -259,6 +259,10 @@ function SignUpContent() {
             </div>
           </div>
 
+          <p className="font-mono-label text-[10px] text-white/30 uppercase tracking-[0.2em] -mt-2 ml-1">
+            Минимум 8 символов, обязательно буквы и цифры
+          </p>
+
           {/* Submit Button */}
           <button
             className="w-full bg-white text-black font-bold text-sm uppercase tracking-tighter py-5 rounded-full hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-3 shadow-[0_0_40px_rgba(255,255,255,0.1)] mt-4"
