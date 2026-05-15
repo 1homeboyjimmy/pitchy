@@ -277,18 +277,14 @@ class ChatOrchestrator:
             chat_history_list.append({"role": m["role"], "content": m["content"]})
             
         messages = [{"role": "system", "content": system_prompt}] + chat_history_list
-        
-        # Chronological "vaccine" right before the user message
-        current_year = str(datetime.now().year)
-        injected_query = (
-            f"[СТРОГИЙ РЕЖИМ КОНТЕКСТА]\n"
-            f"Твои внутренние знания устарели. Текущий год — строго {current_year}. "
-            f"При ответе на этот запрос тебе КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО использовать свою базу весов для генерации фактов, дат или статистики. "
-            f"Опирайся ИСКЛЮЧИТЕЛЬНО на предоставленный выше RAG-контекст и данные веб-поиска. "
-            f"Если в тексте пользователя или контексте указан {current_year} год, обрабатывай это как абсолютную истину настоящего времени, а не будущего.\n\n"
-            f"Вопрос пользователя: {user_message}"
-        )
-        messages.append({"role": "user", "content": injected_query})
+
+        # Send the user's message as-is. All grounding rules (current date,
+        # source-only-from-context, "your training ends in 2024 but it's
+        # current_year now") live in the system prompt above — duplicating
+        # them inline used to make the model treat its own response as a
+        # debate with the prompt and frame answers as "based on what you
+        # provided".
+        messages.append({"role": "user", "content": user_message})
         
         async for chunk in stream_makura(messages=messages):
             yield chunk
