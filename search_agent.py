@@ -61,13 +61,22 @@ async def async_search_with_sources(query: str, use_deep_search: bool = False, t
                 "highlights": True
             }
             
-            if any(w in query.lower() for w in ["статистика", "росстат", "цифр", "мвд", "мсп"]):
-                # We don't use include_domains strictly to avoid empty results if site is down,
-                # but we can adjust the query to favor it. 
-                # Or better: use include_domains and fallback if needed.
-                logger.info("Prioritizing rosstat.gov.ru and factual markers in search query")
-                factual_markers = "фактические данные 2026 официальная статистика реестр"
-                localized_query = f"site:rosstat.gov.ru {localized_query} {factual_markers}"
+            # Soft hint toward authoritative sources for statistical queries.
+            # A hard `site:rosstat.gov.ru` operator was returning irrelevant
+            # pages for topics that Rosstat doesn't actually cover (e.g.
+            # МСП register is owned by FNS, not Rosstat) — so we let Exa
+            # rank freely and just nudge the query with factual markers and
+            # the authoritative domain names for each topic.
+            ql = query.lower()
+            if any(w in ql for w in ["статистика", "росстат", "цифр", "мвд", "мсп", "перепис"]):
+                hints = ["официальная статистика", "реестр"]
+                if "мсп" in ql or "малого" in ql or "малый бизнес" in ql:
+                    # МСП registry is published by FNS, not Rosstat
+                    hints.append("rmsp.nalog.ru единый реестр субъектов МСП ФНС")
+                else:
+                    hints.append("rosstat.gov.ru")
+                logger.info(f"Applying soft factual hints: {hints}")
+                localized_query = f"{localized_query} {' '.join(hints)}"
 
             return exa_client.search_and_contents(
                 localized_query,

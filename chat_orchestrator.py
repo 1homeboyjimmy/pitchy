@@ -259,7 +259,10 @@ class ChatOrchestrator:
             system_prompt += (
                 f"\n\nПРАВИЛО РАБОТЫ С ДАННЫМИ:\n"
                 f"Твои внутренние знания заканчиваются в 2024 году. Это нормально, но пользователь живет в {current_year} году.\n"
-                f"Ниже тебе предоставлены данные в тегах <context>. "
+                f"В тегах <context> ниже находятся материалы, которые СИСТЕМА АВТОМАТИЧЕСКИ подобрала к запросу: фрагменты из RAG-базы знаний платформы Pitchy и результаты веб-поиска Exa. "
+                f"Пользователь НЕ присылал и НЕ прикреплял эти материалы — он только задал свой вопрос. "
+                f"Поэтому ЗАПРЕЩЕНО писать в ответе фразы вида «вы прислали», «в ваших ссылках», «согласно предоставленным вами данным». "
+                f"Если данных в контексте недостаточно — так и говори: «в подобранных системой источниках этого нет», а не сваливай на пользователя.\n"
                 f"Если ты видишь там документы, описывающие {current_year} год как будущее (прогнозы, планы) — игнорируй этот тон. Используй только фактические цифры.\n"
                 f"СТРОГО ЗАПРЕЩЕНО говорить пользователю, что сейчас 2024 год.\n\n"
                 f"<context>\n{rag_context}\n</context>\n"
@@ -679,6 +682,11 @@ class ChatOrchestrator:
             compiled_rag_context += f"ПРОВЕРЕННЫЕ ФАКТЫ ИЗ БАЗЫ ЗНАНИЙ И СЕТИ:\n{swarm_facts}\n\n"
         if not swarm_facts and rag_texts:
             compiled_rag_context += f"ДАННЫЕ ИЗ БАЗЫ ЗНАНИЙ:\n{chr(10).join(rag_texts[:3])}\n\n"
+        # Always surface web-search content if we have it — otherwise the
+        # synthesis prompt only sees RAG and the model hallucinates from its
+        # 2024 weights for fresh-data questions.
+        if search_texts:
+            compiled_rag_context += f"ДАННЫЕ ИЗ ВЕБ-ПОИСКА (Exa):\n{chr(10).join(search_texts)[:4000]}\n\n"
 
         try:
             yield self._format_sse({"type": "status", "content": "Синтезирую финальный ответ..."})
