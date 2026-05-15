@@ -50,9 +50,14 @@ pitchy.pro, dev.pitchy.pro {
         X-Content-Type-Options "nosniff"
         Referrer-Policy "strict-origin-when-cross-origin"
 
-        # Content Security Policy (Исправлено для работы /account и WebSocket)
-        # Разрешаем подключения к своим поддоменам и внешним API (например, HuggingFace/OpenAI)
-        Content-Security-Policy "default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval'; media-src 'self' blob: https://stream.mux.com https: data:; worker-src 'self' blob:; connect-src 'self' https://stream.mux.com https: wss: pitchy.pro *.pitchy.pro;"
+        # Content Security Policy. Note: script/style still need
+        # 'unsafe-inline' for Next.js hydration scripts and Mantine inline
+        # styles. Proper hardening requires a nonce-based CSP (Next.js
+        # middleware) — for now we add the cheap-but-real directives the
+        # original policy was missing: frame-ancestors (clickjacking),
+        # object-src (Flash/legacy), base-uri (base-tag injection),
+        # form-action (constrains where forms can POST).
+        Content-Security-Policy "default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval'; media-src 'self' blob: https://stream.mux.com https: data:; worker-src 'self' blob:; connect-src 'self' https://stream.mux.com https: wss: pitchy.pro *.pitchy.pro; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self' https://*.yandex.ru https://accounts.google.com https://github.com https://yoomoney.ru https://yookassa.ru;"
     }
 
     # Сжатие контента для ускорения загрузки (исключая SSE для предотвращения буферизации)

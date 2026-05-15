@@ -49,8 +49,8 @@ dev.pitchy.pro {
         X-Content-Type-Options "nosniff"
         Referrer-Policy "strict-origin-when-cross-origin"
 
-        # Content Security Policy
-        Content-Security-Policy "default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval'; media-src 'self' blob: https://stream.mux.com https: data:; worker-src 'self' blob:; connect-src 'self' https://stream.mux.com https: wss: dev.pitchy.pro *.pitchy.pro;"
+        # Content Security Policy — kept aligned with prod Caddyfile.
+        Content-Security-Policy "default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval'; media-src 'self' blob: https://stream.mux.com https: data:; worker-src 'self' blob:; connect-src 'self' https://stream.mux.com https: wss: dev.pitchy.pro *.pitchy.pro; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self' https://*.yandex.ru https://accounts.google.com https://github.com https://yoomoney.ru https://yookassa.ru;"
     }
 
     # Сжатие контента для ускорения загрузки (исключая SSE для предотвращения буферизации)

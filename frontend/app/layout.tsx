@@ -51,10 +51,11 @@ export default function RootLayout({
   return (
     <html lang="ru" suppressHydrationWarning>
       <head>
-        <meta 
-          httpEquiv="Content-Security-Policy" 
-          content="default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval'; media-src 'self' blob: https: data:; worker-src 'self' blob:; connect-src 'self' https: wss:;" 
-        />
+        {/* CSP is set by Caddy at the edge — keeping a separate meta tag
+            here would mean the browser intersects two different policies
+            and the more restrictive wins, making it easy to ship a broken
+            page by changing only one place. Single source of truth =
+            Caddyfile. */}
       </head>
       <body className="antialiased">
         <ScrollToTop />
