@@ -236,7 +236,7 @@ function DashboardContent() {
   if (!isAuthenticated) return <UnauthDashboard />;
 
   const mainPadTop = isSidebarCollapsed ? "pt-10 sm:pt-14" : "pt-24 sm:pt-32";
-  const overviewMaxW = isSidebarCollapsed ? "" : "max-w-7xl";
+  const overviewMaxW = isSidebarCollapsed ? "" : "max-w-6xl";
 
   return (
     <div className="bg-black text-white h-screen font-sans flex overflow-hidden">
@@ -294,9 +294,9 @@ function DashboardContent() {
               transition={{ duration: 0.6 }}
             >
               {/* Header Section */}
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6 mb-10 sm:mb-16">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-5 mb-8 sm:mb-12">
                 <div>
-                  <h2 className="font-display text-4xl sm:text-5xl md:text-6xl text-white mb-4 sm:mb-6 leading-tight tracking-tight">
+                  <h2 className="font-display text-3xl sm:text-4xl md:text-5xl text-white mb-3 sm:mb-5 leading-tight tracking-tight">
                     Обзор проекта
                   </h2>
                   <div className="flex flex-wrap gap-3 items-center">
@@ -313,7 +313,7 @@ function DashboardContent() {
               </div>
 
               {/* Quota Cards Row */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5 mb-10 sm:mb-16">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 mb-8 sm:mb-12">
                 <QuotaCard
                   label="Сообщения"
                   caption="ОСТАЛОСЬ"
@@ -342,7 +342,7 @@ function DashboardContent() {
 
               {/* Recent Sessions — horizontal row list */}
               <div>
-                <h3 className="font-display text-2xl sm:text-3xl text-white/40 mb-5 sm:mb-8 ml-2">Последние сессии</h3>
+                <h3 className="font-display text-xl sm:text-2xl text-white/40 mb-4 sm:mb-6 ml-2">Последние сессии</h3>
                 <div className="flex flex-col gap-2 sm:gap-3">
                   {/* Create New — full-width dashed row */}
                   <motion.button
@@ -437,7 +437,7 @@ function DashboardContent() {
           )}
 
           {activeTab === "chat" && (
-            <div className={`h-full w-full flex flex-col pb-8 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${isSidebarCollapsed ? '' : 'max-w-7xl mx-auto'}`}>
+            <div className={`h-full w-full flex flex-col pb-8 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${isSidebarCollapsed ? '' : 'max-w-6xl mx-auto'}`}>
               {activeSession ? (
                 <ChatInterface
                   session={activeSession}
@@ -476,7 +476,7 @@ function DashboardContent() {
           )}
 
           {activeTab === "tree" && (
-            <div className={`h-full w-full pb-8 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${isSidebarCollapsed ? '' : 'max-w-7xl mx-auto'}`}>
+            <div className={`h-full w-full pb-8 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${isSidebarCollapsed ? '' : 'max-w-6xl mx-auto'}`}>
                <TreeView onSwitchToChat={(ctx) => { if(ctx) handleCreateEmptySession(); setActiveTab("chat"); }} />
             </div>
           )}

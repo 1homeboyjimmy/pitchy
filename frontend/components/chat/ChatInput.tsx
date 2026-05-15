@@ -180,15 +180,15 @@ export function ChatInput({
               </button>
 
               <div className="flex items-start gap-3 sm:gap-5 relative z-10 pr-8">
-                <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-xl sm:rounded-[1.25rem] bg-white text-black flex items-center justify-center flex-shrink-0 shadow-xl shadow-white/10">
-                  <Sparkles className="w-4 h-4 sm:w-6 sm:h-6" />
+                <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl sm:rounded-[1.1rem] bg-white text-black flex items-center justify-center flex-shrink-0 shadow-xl shadow-white/10">
+                  <Sparkles className="w-4 h-4 sm:w-5 sm:h-5" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <h4 className="font-sans text-[15px] sm:text-xl text-white font-semibold flex flex-wrap items-center gap-2 sm:gap-3 mb-1.5 sm:mb-2 tracking-tight leading-tight">
+                  <h4 className="font-sans text-[14px] sm:text-lg text-white font-semibold flex flex-wrap items-center gap-2 sm:gap-3 mb-1 sm:mb-1.5 tracking-tight leading-tight">
                     <span>Режим генерации презентации</span>
                     <span className="text-[8px] sm:text-[9px] font-mono uppercase px-1.5 sm:px-2 py-0.5 rounded-full bg-white/10 text-white/60 tracking-[0.2em] font-bold border border-white/5 whitespace-nowrap">Agent v1</span>
                   </h4>
-                  <p className="text-[12px] sm:text-[14px] text-white/40 leading-relaxed font-light">
+                  <p className="text-[11px] sm:text-[13px] text-white/40 leading-relaxed font-light">
                     Опишите тему, ключевые тезисы и стиль вашей презентации.
                     Pitchy автоматически спроектирует структуру и наполнит слайды контентом.
                   </p>
