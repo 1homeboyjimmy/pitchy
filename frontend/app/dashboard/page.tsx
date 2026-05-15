@@ -112,8 +112,16 @@ function DashboardContent() {
     if (urlToken) {
       setToken(urlToken);
       const params = new URLSearchParams(searchParams.toString());
+      const nextParam = params.get("next");
       params.delete("token");
-      router.replace(params.toString() ? `/dashboard?${params.toString()}` : "/dashboard");
+      params.delete("next");
+      // If the SSO callback forwarded a `next` (post-login destination),
+      // honour it — only local paths to avoid open-redirect.
+      if (nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//") && !nextParam.startsWith("/\\")) {
+        router.replace(nextParam);
+      } else {
+        router.replace(params.toString() ? `/dashboard?${params.toString()}` : "/dashboard");
+      }
     }
 
     const handleIntentLoad = async () => {

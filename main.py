@@ -9,7 +9,8 @@ import random
 import secrets
 from datetime import datetime, timedelta, date
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Response, UploadFile, File, BackgroundTasks, Security
+import urllib.parse
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, UploadFile, File, BackgroundTasks, Security
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.responses import StreamingResponse, FileResponse
@@ -889,15 +890,48 @@ def logout(response: Response) -> dict:
     return {"status": "ok"}
 
 
+def _safe_next_path(value: str | None) -> str | None:
+    """Allow only local app paths; reject external URLs and scheme-relative
+    tricks (//host, /\\host). Used to validate the `next` redirect target
+    after auth so we don't open an open-redirect."""
+    if not value:
+        return None
+    if not value.startswith("/"):
+        return None
+    if value.startswith("//") or value.startswith("/\\"):
+        return None
+    return value
+
+
 @app.get("/auth/{provider}/login")
-async def auth_login(provider: str):
+async def auth_login(
+    provider: str,
+    next_path: str | None = Query(None, alias="next"),
+):
     if provider == "yandex":
-        return await yandex_sso.get_login_redirect()
+        redirect = await yandex_sso.get_login_redirect()
     elif provider == "github":
-        return await github_sso.get_login_redirect()
+        redirect = await github_sso.get_login_redirect()
     elif provider == "google":
-        return await google_sso.get_login_redirect()
-    raise HTTPException(status_code=404, detail="Provider not found")
+        redirect = await google_sso.get_login_redirect()
+    else:
+        raise HTTPException(status_code=404, detail="Provider not found")
+
+    # Stash the post-auth destination in a short-lived cookie so the SSO
+    # round-trip can survive without exposing it to the OAuth provider.
+    safe_next = _safe_next_path(next_path)
+    if safe_next:
+        redirect.set_cookie(
+            key="sso_next",
+            value=safe_next,
+            httponly=True,
+            secure=os.getenv("APP_ENV", "dev").lower() == "prod",
+            samesite="lax",
+            max_age=600,  # 10 minutes is plenty for any SSO round-trip
+            path="/",
+            domain=os.getenv("COOKIE_DOMAIN", ".pitchy.pro"),
+        )
+    return redirect
 
 
 @app.get("/auth/{provider}/callback")
@@ -979,8 +1013,23 @@ async def auth_callback(
     # Create session
     token = create_access_token(user.id)
     frontend_url = os.getenv("APP_PUBLIC_URL", "http://localhost:3000")
-    # Pass token in URL so frontend can pick it up and save to localStorage
-    redirect = RedirectResponse(url=f"{frontend_url}/dashboard?token={token}", status_code=302)
+
+    # Honour the `next` destination stashed by /auth/{provider}/login. The
+    # dashboard route already captures `?token=` and pushes it into
+    # localStorage; we forward `&next=` so the dashboard's redirect lands
+    # the user on the page they actually wanted (e.g. /pricing).
+    sso_next = _safe_next_path(request.cookies.get("sso_next"))
+    target = f"{frontend_url}/dashboard?token={token}"
+    if sso_next:
+        target += f"&next={urllib.parse.quote(sso_next, safe='/')}"
+
+    redirect = RedirectResponse(url=target, status_code=302)
+    if sso_next:
+        redirect.delete_cookie(
+            "sso_next",
+            path="/",
+            domain=os.getenv("COOKIE_DOMAIN", ".pitchy.pro"),
+        )
     redirect.set_cookie(
         key=get_access_token_cookie_name(),
         value=token,

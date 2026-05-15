@@ -150,30 +150,34 @@ function LoginContent() {
             <div className="flex-grow h-px bg-white"></div>
           </div>
 
-          {/* SSO Options */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 relative z-10">
-            {/* Yandex */}
-            <a
-              href="/auth/yandex/login"
-              className="flex items-center justify-center gap-3 bg-white/5 border border-white/10 text-white py-4 rounded-full hover:bg-white/10 hover:border-white/20 transition-all font-sans text-xs font-bold uppercase tracking-tight"
-            >
-              <YandexIcon size={16} /> Yandex
-            </a>
-            {/* Google */}
-            <a
-              href="/auth/google/login"
-              className="flex items-center justify-center gap-3 bg-white/5 border border-white/10 text-white py-4 rounded-full hover:bg-white/10 hover:border-white/20 transition-all font-sans text-xs font-bold uppercase tracking-tight"
-            >
-              <Chrome size={16} /> Google
-            </a>
-            {/* GitHub */}
-            <a
-              href="/auth/github/login"
-              className="flex items-center justify-center gap-3 bg-white/5 border border-white/10 text-white py-4 rounded-full hover:bg-white/10 hover:border-white/20 transition-all font-sans text-xs font-bold uppercase tracking-tight"
-            >
-              <Github size={16} /> GitHub
-            </a>
-          </div>
+          {/* SSO Options — forward ?next= so the OAuth round-trip
+              returns the user to the page they originally wanted. */}
+          {(() => {
+            const nextParam = searchParams?.get("next");
+            const ssoSuffix = nextParam ? `?next=${encodeURIComponent(nextParam)}` : "";
+            return (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 relative z-10">
+                <a
+                  href={`/auth/yandex/login${ssoSuffix}`}
+                  className="flex items-center justify-center gap-3 bg-white/5 border border-white/10 text-white py-4 rounded-full hover:bg-white/10 hover:border-white/20 transition-all font-sans text-xs font-bold uppercase tracking-tight"
+                >
+                  <YandexIcon size={16} /> Yandex
+                </a>
+                <a
+                  href={`/auth/google/login${ssoSuffix}`}
+                  className="flex items-center justify-center gap-3 bg-white/5 border border-white/10 text-white py-4 rounded-full hover:bg-white/10 hover:border-white/20 transition-all font-sans text-xs font-bold uppercase tracking-tight"
+                >
+                  <Chrome size={16} /> Google
+                </a>
+                <a
+                  href={`/auth/github/login${ssoSuffix}`}
+                  className="flex items-center justify-center gap-3 bg-white/5 border border-white/10 text-white py-4 rounded-full hover:bg-white/10 hover:border-white/20 transition-all font-sans text-xs font-bold uppercase tracking-tight"
+                >
+                  <Github size={16} /> GitHub
+                </a>
+              </div>
+            );
+          })()}
         </div>
 
         {/* Footer / Helper */}
