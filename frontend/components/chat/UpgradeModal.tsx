@@ -20,8 +20,12 @@ export function UpgradeModal({ isOpen, onClose, message }: UpgradeModalProps) {
     "Глубокий поиск по рынку",
   ];
 
+  // Must match the live values in DB.promocodes for STARTER30 — the modal
+  // promises this discount, so changing one without the other lies to users.
+  // promocodes.STARTER30: discount_percent=34, target_tier=starter
+  // billing.PRICING_PLANS.starter.monthly = 2490
   const originalPrice = 2490;
-  const discount = 30;
+  const discount = 34;
   const discountedPrice = Math.round(originalPrice * (1 - discount / 100));
 
   const handleUpgrade = () => {
