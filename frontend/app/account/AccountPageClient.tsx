@@ -198,7 +198,7 @@ export function AccountPageClient() {
       <main className="flex-grow w-full max-w-[1024px] mx-auto px-4 sm:px-6 py-8 sm:py-12 flex flex-col gap-8 sm:gap-12 pt-24 pb-20">
 
         <header className="flex flex-col gap-3 sm:gap-4 relative">
-            <h1 className="font-display text-[40px] sm:text-[56px] md:text-[72px] text-white leading-[0.95] tracking-tight">Аккаунт</h1>
+            <h1 className="font-display text-[40px] sm:text-[56px] md:text-[72px] text-white leading-[1.15] tracking-tight pb-1">Аккаунт</h1>
             <p className="font-mono text-[10px] text-white/30 uppercase tracking-[0.15em] sm:tracking-[0.2em] font-bold">Управление вашим профилем и безопасностью</p>
         </header>
 
@@ -323,7 +323,7 @@ export function AccountPageClient() {
       {/* Add Email Modal */}
       {isAddEmailOpen && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="bg-[#111111] border border-white/10 rounded w-full max-w-md p-6">
+          <div className="bg-[#111111] border border-white/10 rounded w-[28rem] max-w-[calc(100vw-2rem)] shrink-0 p-6">
             <h3 className="text-xl font-display font-medium text-white mb-6">Добавить Email</h3>
             <input
               type="email"
@@ -344,7 +344,7 @@ export function AccountPageClient() {
       {/* Change Password Modal */}
       {isChangePasswordOpen && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="bg-[#111111] border border-white/10 rounded w-full max-w-md p-6">
+          <div className="bg-[#111111] border border-white/10 rounded w-[28rem] max-w-[calc(100vw-2rem)] shrink-0 p-6">
             <h3 className="text-xl font-display font-medium text-white mb-6">Сменить пароль</h3>
 
             {passwordStep === "init" && (
@@ -409,7 +409,7 @@ export function AccountPageClient() {
       {/* Change Email Modal */}
       {isChangeEmailOpen && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="bg-[#111111] border border-white/10 rounded w-full max-w-md p-6 overflow-hidden relative">
+          <div className="bg-[#111111] border border-white/10 rounded w-[28rem] max-w-[calc(100vw-2rem)] shrink-0 p-6 overflow-hidden relative">
             <motion.div layout>
               <motion.h3 layout="position" className="text-xl font-display font-medium text-white mb-6">Сменить Email</motion.h3>
 
@@ -491,7 +491,7 @@ export function AccountPageClient() {
       {/* Email Sent Confirmation Modal */}
       {showEmailSentModal && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="bg-[#111111] border border-white/10 rounded w-full max-w-sm p-8 text-center">
+          <div className="bg-[#111111] border border-white/10 rounded w-[24rem] max-w-[calc(100vw-2rem)] shrink-0 p-8 text-center">
             <div className="flex justify-center mb-6">
               <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center border border-white/10">
                 <Check className="w-8 h-8 text-white" />
