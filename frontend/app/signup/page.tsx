@@ -9,6 +9,40 @@ import { postJson } from "@/lib/api";
 import { setToken } from "@/lib/auth";
 import { YandexIcon } from "@/components/shared/icons/YandexIcon";
 
+// Defined at module scope so its identity is stable across renders.
+// When this used to be declared inside SignUpContent, every keystroke
+// re-created the component, remounting the input tree and losing focus
+// after each character.
+const AuthWrapper = ({ children, title }: { children: React.ReactNode; title: string }) => (
+  <div className="bg-black text-foreground min-h-screen flex items-center justify-center p-6 relative overflow-hidden antialiased">
+    {/* Decorative Orbs */}
+    <div className="aurora-orb top-[-10rem] left-[-10rem] h-96 w-96 bg-white/[0.04] animate-pulse" />
+    <div className="aurora-orb bottom-[-5rem] right-[-5rem] h-80 w-80 bg-white/[0.02] animate-float-slow" />
+
+    <div className="w-full max-w-[900px] relative z-10">
+      <div className="text-center mb-12">
+        <Link href="/" className="inline-block mb-8">
+          <PitchyLogo size="3xl" />
+        </Link>
+        <h2 className="text-6xl md:text-8xl text-white tracking-tighter leading-[0.9] mb-4 font-display">
+          {title.split(' ')[0]} <br />
+          <span className="text-white/30 italic">{title.split(' ').slice(1).join(' ')}</span>.
+        </h2>
+      </div>
+
+      <div className="lovable-glass rounded-[40px] p-10 md:p-12 shadow-2xl relative overflow-hidden group max-w-[540px] mx-auto">
+         <div className="absolute inset-0 bg-gradient-to-br from-white/[0.05] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
+         {children}
+      </div>
+    </div>
+
+    {/* Visual Accents */}
+    <div className="fixed bottom-0 right-0 p-12 pointer-events-none z-0">
+      <div className="text-[140px] font-black text-white/[0.01] leading-none select-none tracking-tighter uppercase">Join</div>
+    </div>
+  </div>
+);
+
 function SignUpContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -83,41 +117,10 @@ function SignUpContent() {
     }
   };
 
-  // Common Wrapper for Auth Cards
-  const AuthWrapper = ({ children, title, subtitle, icon: Icon }: any) => (
-    <div className="bg-black text-foreground min-h-screen flex items-center justify-center p-6 relative overflow-hidden antialiased">
-      {/* Decorative Orbs */}
-      <div className="aurora-orb top-[-10rem] left-[-10rem] h-96 w-96 bg-white/[0.04] animate-pulse" />
-      <div className="aurora-orb bottom-[-5rem] right-[-5rem] h-80 w-80 bg-white/[0.02] animate-float-slow" />
-
-      <div className="w-full max-w-[900px] relative z-10">
-        <div className="text-center mb-12">
-          <Link href="/" className="inline-block mb-8">
-            <PitchyLogo size="3xl" />
-          </Link>
-          <h2 className="text-6xl md:text-8xl text-white tracking-tighter leading-[0.9] mb-4 font-display">
-            {title.split(' ')[0]} <br />
-            <span className="text-white/30 italic">{title.split(' ').slice(1).join(' ')}</span>.
-          </h2>
-        </div>
-
-        <div className="lovable-glass rounded-[40px] p-10 md:p-12 shadow-2xl relative overflow-hidden group max-w-[540px] mx-auto">
-           <div className="absolute inset-0 bg-gradient-to-br from-white/[0.05] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
-           {children}
-        </div>
-      </div>
-      
-      {/* Visual Accents */}
-      <div className="fixed bottom-0 right-0 p-12 pointer-events-none z-0">
-        <div className="text-[140px] font-black text-white/[0.01] leading-none select-none tracking-tighter uppercase">Join</div>
-      </div>
-    </div>
-  );
-
   // ── Verification Step ──
   if (verificationStep === "verify") {
     return (
-      <AuthWrapper title="Подтверждение почты" subtitle="SECURITY VERIFICATION" icon={ShieldCheck}>
+      <AuthWrapper title="Подтверждение почты">
         <div className="text-center relative z-10">
           <p className="font-body-sm text-[16px] text-white/50 mb-10 leading-relaxed">
             Мы отправили код подтверждения на <br/>
@@ -164,7 +167,7 @@ function SignUpContent() {
 
   // ── Registration Form ──
   return (
-    <AuthWrapper title="Регистрация в системе" subtitle="ACCESS REQUEST">
+    <AuthWrapper title="Регистрация в системе">
         {/* Error message */}
         {error && (
           <div className="p-4 mb-8 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-200 text-sm font-medium flex items-center gap-3">
