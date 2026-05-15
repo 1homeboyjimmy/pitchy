@@ -48,7 +48,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1G
+          memory: 2G
 
   backend:
     image: ghcr.io/1homeboyjimmy/pitchy/backend:latest

@@ -58,17 +58,20 @@ class SLMClient:
             )
             content = response.choices[0].message.content or ""
             
-            # Robust JSON extraction
+            # Robust JSON extraction. The SLM occasionally returns a JSON
+            # primitive (number, string, list) even with response_format=
+            # json_object — callers then do data.get(...) which blows up
+            # with "'float' object has no attribute 'get'". Enforce dict
+            # here so every call site can safely use .get().
             try:
-                # First try direct parse
-                return json.loads(content)
+                parsed = json.loads(content)
             except json.JSONDecodeError:
-                # Fallback: extract from text
                 start = content.find("{")
                 end = content.rfind("}")
-                if start != -1 and end != -1:
-                    return json.loads(content[start:end+1])
-                raise
+                if start == -1 or end == -1:
+                    raise
+                parsed = json.loads(content[start:end+1])
+            return parsed if isinstance(parsed, dict) else {}
         except Exception as e:
             logger.error(f"SLM call failed: {e}. Raw content: {content}")
             return {}
