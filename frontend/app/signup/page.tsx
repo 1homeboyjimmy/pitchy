@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, Suspense } from "react";
-import { UserRound, Mail, KeyRound, ArrowRight, ShieldCheck, Github, Chrome, ShieldAlert } from "lucide-react";
+import { UserRound, Mail, KeyRound, ArrowRight, ShieldCheck, Github, Chrome, ShieldAlert, Check } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { PitchyLogo } from "@/components/shared/PitchyLogo";
@@ -259,9 +259,41 @@ function SignUpContent() {
             </div>
           </div>
 
-          <p className="font-mono-label text-[10px] text-white/30 uppercase tracking-[0.2em] -mt-2 ml-1">
-            Минимум 8 символов, обязательно буквы и цифры
-          </p>
+          {/* Live password requirements — light up as the user types */}
+          {(() => {
+            const pw = formData.password;
+            const cpw = formData.confirmPassword;
+            const rules: { id: string; label: string; pass: boolean; show?: boolean }[] = [
+              { id: "len",    label: "Минимум 8 символов",  pass: pw.length >= 8 },
+              { id: "letter", label: "Содержит букву",      pass: /\p{L}/u.test(pw) },
+              { id: "digit",  label: "Содержит цифру",      pass: /\d/.test(pw) },
+              { id: "match",  label: "Пароли совпадают",    pass: pw.length > 0 && pw === cpw, show: cpw.length > 0 },
+            ];
+            return (
+              <ul className="flex flex-col gap-1.5 -mt-1 ml-1" aria-live="polite">
+                {rules.filter(r => r.show !== false).map((r) => (
+                  <li
+                    key={r.id}
+                    className={`flex items-center gap-2.5 font-mono-label text-[10px] uppercase tracking-[0.2em] transition-colors duration-300 ${
+                      r.pass ? "text-emerald-400/90" : "text-white/30"
+                    }`}
+                  >
+                    <span
+                      className={`w-4 h-4 rounded-full flex items-center justify-center border transition-all duration-300 ${
+                        r.pass
+                          ? "border-emerald-400/60 bg-emerald-400/15 shadow-[0_0_12px_rgba(52,211,153,0.25)]"
+                          : "border-white/15 bg-white/[0.02]"
+                      }`}
+                      aria-hidden="true"
+                    >
+                      {r.pass && <Check size={10} strokeWidth={3} />}
+                    </span>
+                    <span>{r.label}</span>
+                  </li>
+                ))}
+              </ul>
+            );
+          })()}
 
           {/* Submit Button */}
           <button
