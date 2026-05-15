@@ -13,6 +13,38 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+
+def _maybe_fix_mojibake(title: str) -> str:
+    """Detect cp1251-decoded-from-utf-8 mojibake in Exa-returned titles
+    (happens when the source page has no <meta charset> and gets read as
+    cp1251) and recover.
+
+    Mojibake signature: titles like "Р§РРЎР›Р•РќРќРћРЎРўР¬" where each
+    UTF-8 byte of the original cyrillic letter became a single cp1251
+    character. Round-trip via `.encode('cp1251').decode('utf-8')` reverses
+    the breakage. No-op if input isn't actually mojibake.
+    """
+    if not title or not isinstance(title, str):
+        return title or "Источник"
+    # Quick reject: real Russian text rarely has runs of "Р" / "С" / "Т" as
+    # standalone capitals next to each other; mojibake titles are full of them.
+    if not any(c in title for c in "РСТУФ"):
+        return title
+    try:
+        recovered = title.encode("cp1251").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return title
+    # Sanity: recovered should look like real Russian (cyrillic letters in
+    # normal a-я range, not the upper-case-only mash that mojibake produces).
+    def _cyr_density(s: str) -> int:
+        return sum(1 for c in s if "Ѐ" <= c <= "ӿ")
+    orig = _cyr_density(title)
+    rec = _cyr_density(recovered)
+    if rec >= 3 and rec >= orig:
+        return recovered
+    return title
+
+
 def _get_exa_client() -> Exa | None:
     load_dotenv()
     api_key = os.getenv("EXA_API_KEY", "")
@@ -92,7 +124,7 @@ async def async_search_with_sources(query: str, use_deep_search: bool = False, t
             return [], "Поиск не дал результатов."
             
         for idx, r in enumerate(response.results, 1):
-            sources.append({"title": getattr(r, 'title', 'Источник'), "url": getattr(r, 'url', '')})
+            sources.append({"title": _maybe_fix_mojibake(getattr(r, 'title', 'Источник')), "url": getattr(r, 'url', '')})
             
             # Use highlights if available, otherwise fallback to text
             content = ""
