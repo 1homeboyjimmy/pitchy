@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { TopNavBar } from "@/components/shared/TopNavBar";
 import { SiteFooter } from "@/components/shared/SiteFooter";
 import { getToken } from "@/lib/auth";
-import { createPayment } from "@/lib/api";
+import { createPayment, validatePromoCode } from "@/lib/api";
 
 interface PlanFeature {
   text: string;
@@ -17,10 +17,12 @@ interface PlanFeature {
 interface Plan {
   name: string;
   nameDisplay: string;
-  // Backend billing tier key; null = free plan (no payment)
+  // Backend billing tier key; null = free plan (no payment).
   tier: "starter" | "pro" | null;
-  priceMonthly: string;
-  priceYearly: string;
+  // Numeric prices so the promo discount can be applied at render time
+  // without parsing display strings.
+  priceMonthly: number;
+  priceYearly: number;
   description: string;
   features: PlanFeature[];
   popular?: boolean;
@@ -32,8 +34,8 @@ const plans: Plan[] = [
     name: "Free",
     nameDisplay: "Бесплатный",
     tier: null,
-    priceMonthly: "0₽",
-    priceYearly: "0₽",
+    priceMonthly: 0,
+    priceYearly: 0,
     description: "Базовые функции для начала работы.",
     features: [
       { text: "1 проект", included: true },
@@ -48,8 +50,8 @@ const plans: Plan[] = [
     name: "Starter",
     nameDisplay: "Starter",
     tier: "starter",
-    priceMonthly: "2 490₽",
-    priceYearly: "24 900₽",
+    priceMonthly: 2490,
+    priceYearly: 24900,
     description: "Оптимально для фрилансеров и небольших команд.",
     features: [
       { text: "До 10 проектов", included: true },
@@ -65,8 +67,8 @@ const plans: Plan[] = [
     name: "Pro",
     nameDisplay: "Pro",
     tier: "pro",
-    priceMonthly: "3 790₽",
-    priceYearly: "37 900₽",
+    priceMonthly: 3790,
+    priceYearly: 37900,
     description: "Максимальные возможности для агентств и корпораций.",
     features: [
       { text: "Безлимитные проекты", included: true },
@@ -79,11 +81,71 @@ const plans: Plan[] = [
   },
 ];
 
+const formatPrice = (n: number): string => {
+  if (n === 0) return "0₽";
+  return `${n.toLocaleString("ru-RU")}₽`;
+};
+
+type PromoResult = {
+  valid: boolean;
+  discount_percent: number;
+  target_tier?: string | null;
+  fixed_price?: number | null;
+  detail?: string;
+};
+
 export default function PricingPage() {
   const router = useRouter();
   const [isYearly, setIsYearly] = useState(false);
   const [loadingTier, setLoadingTier] = useState<string | null>(null);
   const [payError, setPayError] = useState<string | null>(null);
+
+  // Promo state
+  const [promoInput, setPromoInput] = useState("");
+  const [appliedPromo, setAppliedPromo] = useState<string | null>(null);
+  const [promoData, setPromoData] = useState<PromoResult | null>(null);
+  const [promoChecking, setPromoChecking] = useState(false);
+
+  const handleValidatePromo = async () => {
+    const code = promoInput.trim();
+    if (!code) return;
+    setPromoChecking(true);
+    try {
+      const result = (await validatePromoCode(code)) as PromoResult;
+      setPromoData(result);
+      setAppliedPromo(result.valid ? code : null);
+    } catch (e) {
+      console.error("Promo validation failed", e);
+      setPromoData({ valid: false, discount_percent: 0, detail: "Не удалось проверить промокод" });
+      setAppliedPromo(null);
+    } finally {
+      setPromoChecking(false);
+    }
+  };
+
+  const handleClearPromo = () => {
+    setPromoInput("");
+    setAppliedPromo(null);
+    setPromoData(null);
+  };
+
+  // Compute the displayed price for a plan, applying a valid promo only
+  // when its target_tier matches (or has no target — applies to any tier).
+  // fixed_price wins over discount_percent (matches backend logic).
+  const getDisplayPrice = (plan: Plan): { final: number; original: number | null } => {
+    const base = isYearly ? plan.priceYearly : plan.priceMonthly;
+    if (!plan.tier || !promoData?.valid) return { final: base, original: null };
+    if (promoData.target_tier && promoData.target_tier !== plan.tier) {
+      return { final: base, original: null };
+    }
+    let final = base;
+    if (promoData.fixed_price !== null && promoData.fixed_price !== undefined) {
+      final = promoData.fixed_price;
+    } else if (promoData.discount_percent) {
+      final = Math.round((base * (100 - promoData.discount_percent)) / 100);
+    }
+    return final === base ? { final, original: null } : { final, original: base };
+  };
 
   const handleSelectPlan = async (plan: Plan) => {
     if (!plan.tier) {
@@ -98,7 +160,7 @@ export default function PricingPage() {
     setPayError(null);
     setLoadingTier(plan.tier);
     try {
-      const { confirmation_url } = await createPayment(plan.tier, isYearly, null, token);
+      const { confirmation_url } = await createPayment(plan.tier, isYearly, appliedPromo, token);
       window.location.href = confirmation_url;
     } catch (e) {
       console.error("Payment creation failed", e);
@@ -145,11 +207,53 @@ export default function PricingPage() {
               Год <span className="text-emerald-500 ml-2">(2 месяца в подарок)</span>
             </span>
           </div>
+
+          {/* Promo code */}
+          <div className="mt-10 max-w-md mx-auto">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={promoInput}
+                onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
+                onKeyDown={(e) => { if (e.key === "Enter") handleValidatePromo(); }}
+                placeholder="ПРОМОКОД"
+                disabled={appliedPromo !== null}
+                className="flex-1 bg-white/5 border border-white/10 text-white rounded-full px-5 py-3 font-mono text-[13px] tracking-widest placeholder:text-white/20 focus:outline-none focus:border-white/30 transition-colors disabled:opacity-50"
+              />
+              {appliedPromo ? (
+                <button
+                  onClick={handleClearPromo}
+                  className="px-5 py-3 bg-white/5 border border-white/10 text-white/60 text-[11px] font-mono uppercase tracking-widest rounded-full hover:bg-white/10 hover:text-white transition-all"
+                >
+                  Сбросить
+                </button>
+              ) : (
+                <button
+                  onClick={handleValidatePromo}
+                  disabled={!promoInput.trim() || promoChecking}
+                  className="px-5 py-3 bg-white text-black text-[11px] font-mono uppercase tracking-widest rounded-full hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {promoChecking ? "..." : "Применить"}
+                </button>
+              )}
+            </div>
+            {promoData && (
+              <p className={`mt-3 text-center font-mono-label text-[11px] uppercase tracking-widest ${promoData.valid ? "text-emerald-400" : "text-red-400"}`}>
+                {promoData.valid
+                  ? promoData.fixed_price !== null && promoData.fixed_price !== undefined
+                    ? `Цена: ${formatPrice(promoData.fixed_price)}${promoData.target_tier ? ` (тариф ${promoData.target_tier})` : ""}`
+                    : `Скидка −${promoData.discount_percent}%${promoData.target_tier ? ` на тариф ${promoData.target_tier}` : ""}`
+                  : (promoData.detail || "Промокод неверный")}
+              </p>
+            )}
+          </div>
         </div>
 
         {/* Pricing Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto w-full">
-          {plans.map((plan) => (
+          {plans.map((plan) => {
+            const { final, original } = getDisplayPrice(plan);
+            return (
             <div
               key={plan.name}
               className={`lovable-glass rounded-[40px] p-10 flex flex-col relative group transition-all duration-700 hover:translate-y-[-8px] ${
@@ -170,10 +274,16 @@ export default function PricingPage() {
                 </h2>
                 <div className="flex items-baseline gap-2">
                   <span className="font-display text-6xl text-white tracking-tighter">
-                    {isYearly ? plan.priceYearly : plan.priceMonthly}
+                    {formatPrice(final)}
                   </span>
                   <span className="font-body-sm text-white/30">{isYearly ? "/ год" : "/ мес"}</span>
                 </div>
+                {original !== null && (
+                  <p className="mt-2 font-mono-label text-[11px] uppercase tracking-widest text-white/30">
+                    <span className="line-through">{formatPrice(original)}</span>
+                    <span className="ml-2 text-emerald-400">по промокоду</span>
+                  </p>
+                )}
                 <p className="font-body-sm text-foreground/50 mt-6 leading-relaxed">{plan.description}</p>
               </div>
 
@@ -220,7 +330,8 @@ export default function PricingPage() {
                 <p className="mt-4 text-center font-body-sm text-red-400">{payError}</p>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Custom Solution */}
