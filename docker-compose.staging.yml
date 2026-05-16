@@ -175,9 +175,18 @@ services:
     ports:
       - "127.0.0.1:3001:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      # GF_SECURITY_ADMIN_PASSWORD only seeds on first DB init. Reset with
+      # docker exec -w /usr/share/grafana ai-startup-grafana-1 ./bin/grafana cli admin reset-admin-password NEW
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      - GF_LOG_LEVEL=warn
     volumes:
       - grafana_data:/var/lib/grafana
+      # Provisioning — kept in sync with prod docker-compose.yml so
+      # datasources/dashboards survive a volume wipe.
+      - ./ops/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./ops/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
     deploy:
       resources:
         limits:
