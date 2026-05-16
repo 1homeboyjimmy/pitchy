@@ -101,6 +101,7 @@ export default function PricingPage() {
   const [payError, setPayError] = useState<string | null>(null);
 
   // Promo state
+  const [showPromo, setShowPromo] = useState(false);
   const [promoInput, setPromoInput] = useState("");
   const [appliedPromo, setAppliedPromo] = useState<string | null>(null);
   const [promoData, setPromoData] = useState<PromoResult | null>(null);
@@ -208,43 +209,56 @@ export default function PricingPage() {
             </span>
           </div>
 
-          {/* Promo code */}
-          <div className="mt-10 max-w-md mx-auto">
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={promoInput}
-                onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
-                onKeyDown={(e) => { if (e.key === "Enter") handleValidatePromo(); }}
-                placeholder="ПРОМОКОД"
-                disabled={appliedPromo !== null}
-                className="flex-1 bg-white/5 border border-white/10 text-white rounded-full px-5 py-3 font-mono text-[13px] tracking-widest placeholder:text-white/20 focus:outline-none focus:border-white/30 transition-colors disabled:opacity-50"
-              />
-              {appliedPromo ? (
-                <button
-                  onClick={handleClearPromo}
-                  className="px-5 py-3 bg-white/5 border border-white/10 text-white/60 text-[11px] font-mono uppercase tracking-widest rounded-full hover:bg-white/10 hover:text-white transition-all"
-                >
-                  Сбросить
-                </button>
-              ) : (
-                <button
-                  onClick={handleValidatePromo}
-                  disabled={!promoInput.trim() || promoChecking}
-                  className="px-5 py-3 bg-white text-black text-[11px] font-mono uppercase tracking-widest rounded-full hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {promoChecking ? "..." : "Применить"}
-                </button>
-              )}
-            </div>
-            {promoData && (
-              <p className={`mt-3 text-center font-mono-label text-[11px] uppercase tracking-widest ${promoData.valid ? "text-emerald-400" : "text-red-400"}`}>
-                {promoData.valid
-                  ? promoData.fixed_price !== null && promoData.fixed_price !== undefined
-                    ? `Цена: ${formatPrice(promoData.fixed_price)}${promoData.target_tier ? ` (тариф ${promoData.target_tier})` : ""}`
-                    : `Скидка −${promoData.discount_percent}%${promoData.target_tier ? ` на тариф ${promoData.target_tier}` : ""}`
-                  : (promoData.detail || "Промокод неверный")}
-              </p>
+          {/* Promo code — hidden behind a small link by default since most
+              visitors don't have one; revealing it would just add noise. */}
+          <div className="mt-10 flex flex-col items-center gap-3">
+            {!showPromo ? (
+              <button
+                onClick={() => setShowPromo(true)}
+                className="font-mono-label text-[11px] uppercase tracking-widest text-white/40 hover:text-white transition-colors underline underline-offset-4 decoration-white/10 hover:decoration-white/40"
+              >
+                У меня есть промокод
+              </button>
+            ) : (
+              <div className="w-full max-w-md mx-auto">
+                <div className="flex gap-2 items-stretch">
+                  <input
+                    type="text"
+                    value={promoInput}
+                    onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
+                    onKeyDown={(e) => { if (e.key === "Enter") handleValidatePromo(); }}
+                    placeholder="ПРОМОКОД"
+                    disabled={appliedPromo !== null}
+                    autoFocus
+                    className="flex-1 min-w-0 bg-white/5 border border-white/10 text-white rounded-full px-5 py-3 font-mono text-[13px] tracking-widest text-center placeholder:text-white/20 focus:outline-none focus:border-white/30 transition-colors disabled:opacity-50"
+                  />
+                  {appliedPromo ? (
+                    <button
+                      onClick={handleClearPromo}
+                      className="px-5 py-3 bg-white/5 border border-white/10 text-white/60 text-[11px] font-mono uppercase tracking-widest rounded-full hover:bg-white/10 hover:text-white transition-all whitespace-nowrap"
+                    >
+                      Сбросить
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleValidatePromo}
+                      disabled={!promoInput.trim() || promoChecking}
+                      className="px-5 py-3 bg-white text-black text-[11px] font-mono uppercase tracking-widest rounded-full hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                    >
+                      {promoChecking ? "..." : "Применить"}
+                    </button>
+                  )}
+                </div>
+                {promoData && (
+                  <p className={`mt-3 text-center text-[13px] leading-snug ${promoData.valid ? "text-emerald-400" : "text-red-400"}`}>
+                    {promoData.valid
+                      ? promoData.fixed_price !== null && promoData.fixed_price !== undefined
+                        ? `Цена ${formatPrice(promoData.fixed_price)}${promoData.target_tier ? ` (тариф ${promoData.target_tier})` : ""}`
+                        : `Скидка −${promoData.discount_percent}%${promoData.target_tier ? ` на тариф ${promoData.target_tier}` : ""}`
+                      : (promoData.detail || "Промокод неверный")}
+                  </p>
+                )}
+              </div>
             )}
           </div>
         </div>
