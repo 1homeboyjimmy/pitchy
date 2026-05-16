@@ -210,15 +210,19 @@ export default function PricingPage() {
           </div>
 
           {/* Promo code — hidden behind a small link by default since most
-              visitors don't have one. Outer is a plain block with
-              max-w-md + mx-auto so the row reliably takes 448px on
-              desktop and flex children inside grow as expected. */}
-          <div className="mt-10 mx-auto max-w-md">
+              visitors don't have one. Width is set inline because tailwind
+              max-w-md was being squeezed to content-width by some ancestor
+              in this layout (likely the .text-center parent quirk) and the
+              input collapsed to a circle. Inline width overrides anything. */}
+          <div
+            className="mt-10 mx-auto block"
+            style={{ width: "100%", maxWidth: "28rem" }}
+          >
             {!showPromo ? (
               <div className="text-center">
                 <button
                   onClick={() => setShowPromo(true)}
-                  className="font-mono-label text-[11px] uppercase tracking-widest text-white/40 hover:text-white transition-colors underline underline-offset-4 decoration-white/10 hover:decoration-white/40"
+                  className="font-mono-label text-[11px] uppercase tracking-widest text-white/40 hover:text-white transition-colors underline underline-offset-4 decoration-white/10 hover:decoration-white/40 whitespace-nowrap"
                 >
                   У меня есть промокод
                 </button>
