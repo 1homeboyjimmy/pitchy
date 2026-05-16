@@ -170,6 +170,30 @@ export default function PricingPage() {
     }
   };
 
+  // For promos whose target_tier isn't shown in the cards grid (e.g.
+  // INTENSIV1 → tester) — no visible card the user can click, so we
+  // expose a dedicated CTA below the promo input that hits createPayment
+  // directly with that tier.
+  const handleActivatePromoTier = async () => {
+    const tier = promoData?.target_tier;
+    if (!tier) return;
+    const token = getToken();
+    if (!token) {
+      router.push("/login?next=/pricing");
+      return;
+    }
+    setPayError(null);
+    setLoadingTier(tier);
+    try {
+      const { confirmation_url } = await createPayment(tier, isYearly, appliedPromo, token);
+      window.location.href = confirmation_url;
+    } catch (e) {
+      console.error("Promo activation failed", e);
+      setPayError("Не удалось создать платёж. Попробуйте ещё раз.");
+      setLoadingTier(null);
+    }
+  };
+
   return (
     <div className="bg-black text-foreground min-h-screen flex flex-col relative overflow-hidden">
        {/* Decorative Orbs */}
@@ -266,6 +290,31 @@ export default function PricingPage() {
                       : (promoData.detail || "Промокод неверный")}
                   </p>
                 )}
+                {/* Promo targets a tariff that isn't shown in the cards
+                    grid (e.g. INTENSIV1 → tester). The cards can't change
+                    visually, so give the user a direct CTA — otherwise the
+                    valid promo looks broken. */}
+                {promoData?.valid
+                  && promoData.target_tier
+                  && !plans.some(p => p.tier === promoData.target_tier)
+                  && (() => {
+                    const ctaPrice = promoData.fixed_price !== null && promoData.fixed_price !== undefined
+                      ? formatPrice(promoData.fixed_price)
+                      : null;
+                    return (
+                      <button
+                        onClick={handleActivatePromoTier}
+                        disabled={loadingTier !== null}
+                        className="mt-4 w-full bg-white text-black font-sans text-sm font-bold py-3 rounded-full hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {loadingTier === promoData.target_tier
+                          ? "Загрузка…"
+                          : ctaPrice
+                            ? `Активировать тариф ${promoData.target_tier} за ${ctaPrice}`
+                            : `Активировать тариф ${promoData.target_tier}`}
+                      </button>
+                    );
+                  })()}
               </>
             )}
           </div>
