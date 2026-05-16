@@ -4,7 +4,14 @@ export PATH="$HOME/yandex-cloud/bin:$PATH"
 set -euo pipefail
 
 REPO_DIR="/opt/ai-startup"
-COMPOSE_FILE="docker-compose.yml"
+# Compose file selection is now driven by env vars docker-compose reads natively:
+#   COMPOSE_FILE — colon-separated list of compose files (prod = just the base)
+#   COMPOSE_PROFILES — comma-separated profile names (security = crowdsec + bouncer)
+# Staging deploy (deploy-dev.yml) overrides COMPOSE_FILE to layer
+# docker-compose.staging.yml on top, and leaves COMPOSE_PROFILES unset
+# so crowdsec is skipped on the dev box.
+export COMPOSE_FILE="docker-compose.yml"
+export COMPOSE_PROFILES="security"
 BASE_ENV_FILE=".env"
 RUNTIME_ENV_FILE=".env.runtime"
 HEALTHCHECK_URL="${HEALTHCHECK_URL:-http://127.0.0.1/health}"
@@ -46,7 +53,7 @@ fi
 
 # ---- PULL IMAGES ----
 echo "Updating images from registry (quiet mode)..."
-APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" pull -q || echo "WARNING: Some images failed to pull, using local cache."
+APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" pull -q || echo "WARNING: Some images failed to pull, using local cache."
 
 # ---- CREATE PRE-DEPLOYMENT BACKUP ----
 if [[ -f "ops/backup/backup.sh" ]]; then
@@ -56,13 +63,13 @@ fi
 
 # ---- STOP OLD CONTAINERS ----
 echo "Stopping old containers..."
-docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" down --timeout 10 --remove-orphans || true
+docker compose --env-file "$RUNTIME_ENV_FILE" down --timeout 10 --remove-orphans || true
 docker rm -f $(docker ps -aq --filter "label=com.docker.compose.project=ai-startup") 2>/dev/null || true
 docker container prune -f 2>/dev/null || true
 
 # ---- START CONTAINERS (no --build, images are pre-built) ----
 echo "Starting containers..."
-APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" up -d --force-recreate --remove-orphans
+APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" up -d --force-recreate --remove-orphans
 
 # ---- CROWDSEC BOUNCER SETUP ----
 echo "Setting up CrowdSec Bouncer..."
@@ -73,12 +80,12 @@ if ! grep -q "CROWDSEC_BOUNCER_KEY" "$RUNTIME_ENV_FILE"; then
   BOUNCER_KEY=$(head -c 16 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 32)
   # Register the bouncer with crowdsec using the generated key
   # First, remove if exists to avoid "already exists" error
-  docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" exec -T crowdsec cscli bouncers delete firewall-bouncer || true
-  if docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" exec -T crowdsec cscli bouncers add firewall-bouncer -k "$BOUNCER_KEY"; then
+  docker compose --env-file "$RUNTIME_ENV_FILE" exec -T crowdsec cscli bouncers delete firewall-bouncer || true
+  if docker compose --env-file "$RUNTIME_ENV_FILE" exec -T crowdsec cscli bouncers add firewall-bouncer -k "$BOUNCER_KEY"; then
     # Add the key to the runtime env file so the bouncer container can pick it up
     echo "CROWDSEC_BOUNCER_KEY=$BOUNCER_KEY" >> "$RUNTIME_ENV_FILE"
     # Restart the bouncer so it picks up the new env var
-    APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" up -d crowdsec-bouncer-firewall
+    APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" up -d crowdsec-bouncer-firewall
     echo "CrowdSec Bouncer registered successfully."
   else
     echo "ERROR: Failed to register CrowdSec Bouncer. Deployment aborted to prevent insecure state."
@@ -90,14 +97,14 @@ fi
 echo "Applying database migrations..."
 # Wait for postgres to be healthy
 for i in {1..10}; do
-  if docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" exec -T postgres pg_isready -U "$(read_runtime_env_value "POSTGRES_USER")" -d "$(read_runtime_env_value "POSTGRES_DB")"; then
+  if docker compose --env-file "$RUNTIME_ENV_FILE" exec -T postgres pg_isready -U "$(read_runtime_env_value "POSTGRES_USER")" -d "$(read_runtime_env_value "POSTGRES_DB")"; then
     echo "Postgres is ready for migrations."
     break
   fi
   echo "Waiting for postgres... ($i/10)"
   sleep 2
 done
-timeout 60 docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" exec -T backend python -m alembic upgrade head || {
+timeout 60 docker compose --env-file "$RUNTIME_ENV_FILE" exec -T backend python -m alembic upgrade head || {
   echo "WARNING: Migrations failed or timed out (exit=$?), continuing..."
 }
 
@@ -108,7 +115,7 @@ docker image prune -af
 health_ok="false"
 for i in $(seq 1 60); do
   body="$(
-    docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" \
+    docker compose --env-file "$RUNTIME_ENV_FILE" \
       exec -T backend curl -s http://127.0.0.1:8000/health || true
   )"
   if [[ "$body" == *'"status":"ok"'* ]]; then
@@ -119,7 +126,7 @@ for i in $(seq 1 60); do
   # Every 5 attempts, print backend logs for debugging
   if (( i % 5 == 0 )); then
     echo "--- Backend logs (attempt $i) ---"
-    docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" logs backend --tail=20 2>&1 || true
+    docker compose --env-file "$RUNTIME_ENV_FILE" logs backend --tail=20 2>&1 || true
     echo "--- End backend logs ---"
   fi
   echo "Healthcheck attempt $i failed: ${body:-<empty>}"
@@ -129,18 +136,18 @@ done
 if [[ "$health_ok" != "true" ]]; then
   echo "====== DEPLOY FAILED: healthcheck timeout ======"
   echo "====== BACKEND LOGS ======"
-  docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" logs backend --tail=100 2>&1 || true
+  docker compose --env-file "$RUNTIME_ENV_FILE" logs backend --tail=100 2>&1 || true
   echo "====== CHROMA LOGS ======"
-  docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" logs chroma --tail=30 2>&1 || true
+  docker compose --env-file "$RUNTIME_ENV_FILE" logs chroma --tail=30 2>&1 || true
   echo "====== POSTGRES LOGS ======"
-  docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" logs postgres --tail=30 2>&1 || true
+  docker compose --env-file "$RUNTIME_ENV_FILE" logs postgres --tail=30 2>&1 || true
   if [[ "$ROLLBACK_ON_FAIL" == "true" ]]; then
     echo "Rolling back to commit $PREVIOUS_COMMIT"
     git reset --hard "$PREVIOUS_COMMIT"
     chmod +x scripts/load_lockbox_env.sh
     scripts/load_lockbox_env.sh "$BASE_ENV_FILE" "$RUNTIME_ENV_FILE"
-    docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" down
-    docker compose --env-file "$RUNTIME_ENV_FILE" -f "$COMPOSE_FILE" up -d
+    docker compose --env-file "$RUNTIME_ENV_FILE" down
+    docker compose --env-file "$RUNTIME_ENV_FILE" up -d
   fi
   exit 1
 fi

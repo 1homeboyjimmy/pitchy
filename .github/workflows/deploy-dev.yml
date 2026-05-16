@@ -105,6 +105,14 @@ jobs:
           set -e
           cd /opt/ai-startup
 
+          # Compose-file selection now lives in env so we don't have to
+          # sprinkle -f flags everywhere. Staging layers the small override
+          # file on top of the prod base; COMPOSE_PROFILES intentionally
+          # NOT set so the security-profile services (crowdsec + firewall
+          # bouncer) stay off on dev.
+          export COMPOSE_FILE="docker-compose.yml:docker-compose.staging.yml"
+          export CADDYFILE="Caddyfile.staging"
+
           # Login to GHCR
           echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
 
@@ -121,15 +129,15 @@ jobs:
           git reset --hard origin/dev
 
           # Pull new images
-          docker compose -f docker-compose.staging.yml pull -q || echo "WARNING: Some images failed to pull"
+          docker compose pull -q || echo "WARNING: Some images failed to pull"
 
           # Restart services
-          docker compose -f docker-compose.staging.yml down --timeout 10 --remove-orphans || true
-          docker compose -f docker-compose.staging.yml up -d --force-recreate --remove-orphans
+          docker compose down --timeout 10 --remove-orphans || true
+          docker compose up -d --force-recreate --remove-orphans
 
           # Wait for postgres
           for i in $(seq 1 10); do
-            if docker compose -f docker-compose.staging.yml exec -T postgres pg_isready -U app_user -d app; then
+            if docker compose exec -T postgres pg_isready -U app_user -d app; then
               echo "Postgres is ready."
               break
             fi
@@ -138,14 +146,14 @@ jobs:
           done
 
           # Run migrations
-          timeout 60 docker compose -f docker-compose.staging.yml exec -T backend python -m alembic upgrade head || {
+          timeout 60 docker compose exec -T backend python -m alembic upgrade head || {
             echo "WARNING: Migrations failed or timed out, continuing..."
           }
 
           # Healthcheck
           health_ok="false"
           for i in $(seq 1 30); do
-            body="$(docker compose -f docker-compose.staging.yml exec -T backend curl -s http://127.0.0.1:8000/health || true)"
+            body="$(docker compose exec -T backend curl -s http://127.0.0.1:8000/health || true)"
             if echo "$body" | grep -q '"status":"ok"'; then
               health_ok="true"
               echo "Healthcheck passed on attempt $i!"
@@ -157,7 +165,7 @@ jobs:
 
           if [ "$health_ok" != "true" ]; then
             echo "DEPLOY FAILED: healthcheck timeout"
-            docker compose -f docker-compose.staging.yml logs backend --tail=50
+            docker compose logs backend --tail=50
             exit 1
           fi
 

@@ -121,7 +121,10 @@ services:
       - 8.8.8.8
       - 8.8.4.4
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # CADDYFILE env var lets staging point at Caddyfile.staging without
+      # needing a list-override in the staging compose file (which would
+      # otherwise *append* to this list and double-mount the same target).
+      - ./${CADDYFILE:-Caddyfile}:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
 
@@ -176,15 +179,20 @@ services:
         limits:
           memory: 256M
 
+  # Crowdsec and its firewall bouncer are gated behind COMPOSE_PROFILES=security
+  # so that staging (which uses the same base file) doesn't bring them up.
+  # Prod's deploy.sh exports COMPOSE_PROFILES=security; staging's deploy
+  # doesn't set the profile and these services are skipped.
   crowdsec:
     image: crowdsecurity/crowdsec:latest
     restart: unless-stopped
+    profiles: ["security"]
     environment:
       COLLECTIONS: "crowdsecurity/caddy crowdsecurity/linux crowdsecurity/geo-blocking"
     volumes:
       - crowdsec_db:/var/lib/crowdsec/data
       - crowdsec_config:/etc/crowdsec
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./${CADDYFILE:-Caddyfile}:/etc/caddy/Caddyfile:ro
       - caddy_data:/var/log/caddy:ro
       - /var/log:/var/log/host:ro
       - ./ops/monitoring/crowdsec-acquis.yaml:/etc/crowdsec/acquis.d/ssh.yaml:ro
@@ -201,6 +209,7 @@ services:
     image: ghcr.io/shgew/cs-firewall-bouncer-docker:latest
     container_name: crowdsec-firewall-bouncer
     restart: unless-stopped
+    profiles: ["security"]
     network_mode: host
     cap_add:
       - NET_ADMIN
@@ -209,7 +218,7 @@ services:
     # at /config/crowdsec-firewall-bouncer.yaml into /tmp/crowdsec/...,
     # then runs the bouncer. The mount + matching env-var names are both
     # required — without the mount the entrypoint exits with "no such file"
-    # and the container crash-loops every minute (which is what was happening).
+    # and the container crash-loops every minute.
     volumes:
       - ./ops/monitoring/crowdsec-firewall-bouncer.yaml:/config/crowdsec-firewall-bouncer.yaml:ro
     environment:
