@@ -210,17 +210,21 @@ export default function PricingPage() {
           </div>
 
           {/* Promo code — hidden behind a small link by default since most
-              visitors don't have one; revealing it would just add noise. */}
-          <div className="mt-10 flex flex-col items-center gap-3">
+              visitors don't have one. Outer is a plain block with
+              max-w-md + mx-auto so the row reliably takes 448px on
+              desktop and flex children inside grow as expected. */}
+          <div className="mt-10 mx-auto max-w-md">
             {!showPromo ? (
-              <button
-                onClick={() => setShowPromo(true)}
-                className="font-mono-label text-[11px] uppercase tracking-widest text-white/40 hover:text-white transition-colors underline underline-offset-4 decoration-white/10 hover:decoration-white/40"
-              >
-                У меня есть промокод
-              </button>
+              <div className="text-center">
+                <button
+                  onClick={() => setShowPromo(true)}
+                  className="font-mono-label text-[11px] uppercase tracking-widest text-white/40 hover:text-white transition-colors underline underline-offset-4 decoration-white/10 hover:decoration-white/40"
+                >
+                  У меня есть промокод
+                </button>
+              </div>
             ) : (
-              <div className="w-full max-w-md mx-auto">
+              <>
                 <div className="flex gap-2 items-stretch">
                   <input
                     type="text"
@@ -258,7 +262,7 @@ export default function PricingPage() {
                       : (promoData.detail || "Промокод неверный")}
                   </p>
                 )}
-              </div>
+              </>
             )}
           </div>
         </div>
