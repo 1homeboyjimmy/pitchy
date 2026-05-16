@@ -1,0 +1,139 @@
+{
+  "uid": "pitchy-overview",
+  "title": "Pitchy — Overview",
+  "tags": ["pitchy", "logs"],
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {"from": "now-1h", "to": "now"},
+  "timezone": "browser",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "liveNow": true,
+  "templating": {
+    "list": [
+      {
+        "name": "container",
+        "label": "Container",
+        "type": "query",
+        "datasource": {"type": "loki", "uid": "loki"},
+        "query": {"label": "container", "refId": "LokiVariableQueryEditor-VariableQuery", "stream": "", "type": 1},
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "current": {"selected": false, "text": "All", "value": "$__all"}
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Backend logs by level (req/min)",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "loki", "uid": "loki"},
+          "expr": "sum by (level) (count_over_time({container=\"ai-startup-backend-1\"} | json | level != \"\" [1m]))",
+          "legendFormat": "{{level}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {"drawStyle": "bars", "stacking": {"mode": "normal"}, "fillOpacity": 80, "lineWidth": 0},
+          "color": {"mode": "palette-classic"},
+          "unit": "short"
+        },
+        "overrides": [
+          {"matcher": {"id": "byName", "options": "ERROR"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}]},
+          {"matcher": {"id": "byName", "options": "WARNING"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "orange"}}]},
+          {"matcher": {"id": "byName", "options": "INFO"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "blue"}}]}
+        ]
+      },
+      "options": {"legend": {"showLegend": true, "displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}}
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "HTTP responses by status code (req/min)",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "loki", "uid": "loki"},
+          "expr": "sum by (status_code) (count_over_time({container=\"ai-startup-backend-1\"} |= \"request_complete\" | json | status_code != \"\" [1m]))",
+          "legendFormat": "{{status_code}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {"drawStyle": "bars", "stacking": {"mode": "normal"}, "fillOpacity": 80, "lineWidth": 0},
+          "color": {"mode": "palette-classic"},
+          "unit": "short"
+        },
+        "overrides": [
+          {"matcher": {"id": "byRegexp", "options": "^5\\d\\d$"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}]},
+          {"matcher": {"id": "byRegexp", "options": "^4\\d\\d$"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "orange"}}]},
+          {"matcher": {"id": "byRegexp", "options": "^2\\d\\d$"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "green"}}]}
+        ]
+      },
+      "options": {"legend": {"showLegend": true, "displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}}
+    },
+    {
+      "id": 3,
+      "type": "logs",
+      "title": "Backend ERROR / WARNING (last)",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "gridPos": {"x": 0, "y": 8, "w": 24, "h": 10},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "loki", "uid": "loki"},
+          "expr": "{container=\"ai-startup-backend-1\"} | json | level=~\"ERROR|WARNING\"",
+          "maxLines": 200
+        }
+      ],
+      "options": {"showTime": true, "showLabels": false, "showCommonLabels": false, "wrapLogMessage": true, "prettifyLogMessage": false, "enableLogDetails": true, "dedupStrategy": "none", "sortOrder": "Descending"}
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Slow backend requests p95 (ms)",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "gridPos": {"x": 0, "y": 18, "w": 12, "h": 8},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "loki", "uid": "loki"},
+          "expr": "quantile_over_time(0.95, {container=\"ai-startup-backend-1\"} |= \"request_complete\" | json | unwrap latency_ms [1m]) by (path)",
+          "legendFormat": "{{path}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {"custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10}, "unit": "ms"},
+        "overrides": []
+      },
+      "options": {"legend": {"showLegend": true, "displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}}
+    },
+    {
+      "id": 5,
+      "type": "logs",
+      "title": "Live log stream (filter via $container)",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "gridPos": {"x": 12, "y": 18, "w": 12, "h": 8},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "loki", "uid": "loki"},
+          "expr": "{container=~\"$container\"}",
+          "maxLines": 100
+        }
+      ],
+      "options": {"showTime": true, "showLabels": false, "showCommonLabels": false, "wrapLogMessage": true, "prettifyLogMessage": false, "enableLogDetails": true, "dedupStrategy": "exact", "sortOrder": "Descending"}
+    }
+  ]
+}

@@ -158,9 +158,19 @@ services:
     ports:
       - "127.0.0.1:3001:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      # GF_SECURITY_ADMIN_PASSWORD only seeds on first DB init. If the
+      # admin password was changed via UI, env reseeding is ignored — reset
+      # it with `docker compose exec grafana grafana-cli admin reset-admin-password <new>`.
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      - GF_LOG_LEVEL=warn
     volumes:
       - grafana_data:/var/lib/grafana
+      # Provisioning — datasources and dashboards defined as code in the repo
+      # rather than clicked through the UI (so they survive volume wipes).
+      - ./ops/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./ops/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
     deploy:
       resources:
         limits:
@@ -195,9 +205,16 @@ services:
     cap_add:
       - NET_ADMIN
       - NET_RAW
+    # The shgew/cs-firewall-bouncer image entrypoint envsubst's the file
+    # at /config/crowdsec-firewall-bouncer.yaml into /tmp/crowdsec/...,
+    # then runs the bouncer. The mount + matching env-var names are both
+    # required — without the mount the entrypoint exits with "no such file"
+    # and the container crash-loops every minute (which is what was happening).
+    volumes:
+      - ./ops/monitoring/crowdsec-firewall-bouncer.yaml:/config/crowdsec-firewall-bouncer.yaml:ro
     environment:
-      CROWDSEC_LAPI_URL: http://127.0.0.1:8080
-      CROWDSEC_LAPI_KEY: ${CROWDSEC_BOUNCER_KEY:-}
+      API_URL: http://127.0.0.1:8080
+      CROWDSEC_BOUNCER_API_KEY: ${CROWDSEC_BOUNCER_KEY:-}
     depends_on:
       - crowdsec
     deploy:
