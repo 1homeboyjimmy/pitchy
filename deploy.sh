@@ -104,9 +104,28 @@ for i in {1..10}; do
   echo "Waiting for postgres... ($i/10)"
   sleep 2
 done
-timeout 60 docker compose --env-file "$RUNTIME_ENV_FILE" exec -T backend python -m alembic upgrade head || {
-  echo "WARNING: Migrations failed or timed out (exit=$?), continuing..."
-}
+# Migrations must succeed AND land at HEAD — silently continuing on
+# failure (the old behaviour) let two migrations sit unapplied for days
+# before being caught by 500s on the dependent endpoints. Fail loud so
+# the operator can investigate. We do NOT auto-rollback here: a partial
+# migration plus a code rollback leaves the schema ahead of the code,
+# which is worse than leaving things stopped and investigating.
+if ! timeout 60 docker compose --env-file "$RUNTIME_ENV_FILE" exec -T backend python -m alembic upgrade head; then
+  echo "ERROR: alembic upgrade head exited non-zero. Aborting deploy."
+  exit 1
+fi
+
+# Even on a clean exit, verify current revision matches HEAD — alembic
+# can report success for partial runs in rare cases (e.g. multi-head merge
+# resolved to one branch only).
+CURRENT_REV=$(docker compose --env-file "$RUNTIME_ENV_FILE" exec -T backend python -m alembic current 2>/dev/null | grep -oE '[a-f0-9]{12}' | head -n 1 || true)
+HEAD_REV=$(docker compose --env-file "$RUNTIME_ENV_FILE" exec -T backend python -m alembic heads 2>/dev/null | grep -oE '[a-f0-9]{12}' | head -n 1 || true)
+if [[ -z "$CURRENT_REV" || -z "$HEAD_REV" || "$CURRENT_REV" != "$HEAD_REV" ]]; then
+  echo "ERROR: alembic revision mismatch — current=${CURRENT_REV:-<empty>}, head=${HEAD_REV:-<empty>}"
+  echo "       Investigate before retrying; do NOT auto-rollback (DB may be ahead of code)."
+  exit 1
+fi
+echo "Migrations OK — alembic at $CURRENT_REV (matches head)"
 
 # ---- PRUNE OLD IMAGES ----
 docker image prune -af

@@ -145,10 +145,21 @@ jobs:
             sleep 2
           done
 
-          # Run migrations
-          timeout 60 docker compose exec -T backend python -m alembic upgrade head || {
-            echo "WARNING: Migrations failed or timed out, continuing..."
-          }
+          # Migrations must succeed AND land at HEAD. The old "|| continuing"
+          # let two migrations sit unapplied for days before being caught
+          # by 500s on the dependent endpoints. Fail loud — the workflow
+          # turns red, and the issue is fixed before users see it.
+          if ! timeout 60 docker compose exec -T backend python -m alembic upgrade head; then
+            echo "ERROR: alembic upgrade head exited non-zero on dev"
+            exit 1
+          fi
+          CURRENT_REV=$(docker compose exec -T backend python -m alembic current 2>/dev/null | grep -oE '[a-f0-9]{12}' | head -n 1 || true)
+          HEAD_REV=$(docker compose exec -T backend python -m alembic heads 2>/dev/null | grep -oE '[a-f0-9]{12}' | head -n 1 || true)
+          if [ -z "$CURRENT_REV" ] || [ -z "$HEAD_REV" ] || [ "$CURRENT_REV" != "$HEAD_REV" ]; then
+            echo "ERROR: alembic revision mismatch — current=$CURRENT_REV, head=$HEAD_REV"
+            exit 1
+          fi
+          echo "Migrations OK — alembic at $CURRENT_REV"
 
           # Healthcheck
           health_ok="false"
