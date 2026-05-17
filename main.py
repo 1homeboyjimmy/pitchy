@@ -1377,6 +1377,44 @@ async def me(user: User = Depends(get_async_current_user)) -> UserResponse:
     )
 
 
+@app.get("/me/payments")
+async def me_payments(
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+) -> dict:
+    """Current subscription state + this user's full payment history.
+
+    Powers the self-service section on the account page so users can see
+    what they pay for and when it expires without writing to support.
+    """
+    res = await db.execute(
+        select(Payment)
+        .where(Payment.user_id == user.id)
+        .order_by(Payment.created_at.desc())
+    )
+    payments = res.scalars().all()
+    return {
+        "current_subscription": {
+            "tier": user.subscription_tier,
+            "expires_at": user.subscription_expires_at.isoformat() if user.subscription_expires_at else None,
+            "is_admin": user.is_admin,
+        },
+        "payments": [
+            {
+                "id": p.id,
+                "yookassa_id": p.yookassa_payment_id,
+                "amount": float(p.amount) if p.amount is not None else 0.0,
+                "currency": p.currency,
+                "status": p.status,
+                "tier": p.tier,
+                "is_annual": p.is_annual,
+                "created_at": p.created_at.isoformat() if p.created_at else None,
+            }
+            for p in payments
+        ],
+    }
+
+
 @app.get("/me/usage")
 async def me_usage(
     user: User = Depends(get_async_current_user),

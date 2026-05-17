@@ -620,10 +620,17 @@ class ChatOrchestrator:
         # Step 1.6: Dynamic Mini-Graph
         mini_graph = self._extract_mini_graph(state)
         
+        # Step 1.65: LLM-as-reranker. Chroma returns top-10 by vector
+        # similarity; reranker picks the top-6 most actually useful for
+        # answering the user's question. Falls back to naive top-K on any
+        # failure (no key, timeout, malformed JSON) — never a hard dep.
+        from rag_reranker import rerank_chunks
+        all_rag_texts = [c["text"] if isinstance(c, dict) else c for c in initial_rag_chunks]
+        rag_texts = await rerank_chunks(user_message, all_rag_texts, top_k=6)
+
         # Step 1.7: Swarm Analysis (Map-Reduce)
         from swarm_agent import run_analytical_swarm
-        rag_texts = [c["text"] if isinstance(c, dict) else c for c in initial_rag_chunks]
-        chunks_to_swarm = rag_texts[:10] + search_texts
+        chunks_to_swarm = rag_texts + search_texts
         swarm_facts = ""
         
         if (intent in ["chat", "finance", "search", "presentation"]) and chunks_to_swarm:
@@ -681,7 +688,10 @@ class ChatOrchestrator:
         if swarm_facts:
             compiled_rag_context += f"ПРОВЕРЕННЫЕ ФАКТЫ ИЗ БАЗЫ ЗНАНИЙ И СЕТИ:\n{swarm_facts}\n\n"
         if not swarm_facts and rag_texts:
-            compiled_rag_context += f"ДАННЫЕ ИЗ БАЗЫ ЗНАНИЙ:\n{chr(10).join(rag_texts[:3])}\n\n"
+            # Use the full reranked set (now 6 instead of the old hard-coded 3) —
+            # the LLM-as-reranker has already picked the relevant ones, so we no
+            # longer need to be defensive about prompt size.
+            compiled_rag_context += f"ДАННЫЕ ИЗ БАЗЫ ЗНАНИЙ:\n{chr(10).join(rag_texts)}\n\n"
         # Always surface web-search content if we have it — otherwise the
         # synthesis prompt only sees RAG and the model hallucinates from its
         # 2024 weights for fresh-data questions.

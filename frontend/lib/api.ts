@@ -409,6 +409,30 @@ export async function getMe(token: string): Promise<UserResponse> {
   return getAuthJson<UserResponse>("/me", token);
 }
 
+export type PaymentRecord = {
+  id: number;
+  yookassa_id: string | null;
+  amount: number;
+  currency: string;
+  status: string;          // pending, waiting_for_capture, succeeded, canceled
+  tier: string;
+  is_annual: boolean;
+  created_at: string | null;
+};
+
+export type MyPaymentsResponse = {
+  current_subscription: {
+    tier: string;
+    expires_at: string | null;
+    is_admin: boolean;
+  };
+  payments: PaymentRecord[];
+};
+
+export async function getMyPayments(token: string): Promise<MyPaymentsResponse> {
+  return getAuthJson<MyPaymentsResponse>("/me/payments", token);
+}
+
 /* ——— Tree (Decision Tree) ——— */
 
 export type TreeInputResponse = {

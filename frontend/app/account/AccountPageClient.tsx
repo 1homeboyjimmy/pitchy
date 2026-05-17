@@ -6,9 +6,10 @@ import { useRouter } from "next/navigation";
 import { useMounted } from "@mantine/hooks";
 import { TopNavBar } from "@/components/shared/TopNavBar";
 import { SiteFooter } from "@/components/shared/SiteFooter";
+import Link from "next/link";
 import { clearToken, getToken } from "@/lib/auth";
-import { postAuthJson, patchAuthJson, UserProfile } from "@/lib/api";
-import { LogOut, User, Shield, CheckCircle2, ChevronLeft, Check } from "lucide-react";
+import { postAuthJson, patchAuthJson, getMyPayments, UserProfile, MyPaymentsResponse } from "@/lib/api";
+import { LogOut, User, Shield, CheckCircle2, ChevronLeft, Check, CreditCard } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 export function AccountPageClient() {
@@ -16,6 +17,7 @@ export function AccountPageClient() {
   const mounted = useMounted();
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [billing, setBilling] = useState<MyPaymentsResponse | null>(null);
 
   // Modal states
   const [isAddEmailOpen, setIsAddEmailOpen] = useState(false);
@@ -41,6 +43,14 @@ export function AccountPageClient() {
       try {
         const data = await postAuthJson<UserProfile>("/me", {}, token);
         setUser(data);
+        // Payment history is non-critical — separate try so a failure
+        // here doesn't prevent the rest of the account page from rendering.
+        try {
+          const billingData = await getMyPayments(token);
+          setBilling(billingData);
+        } catch (be) {
+          console.error("Failed to load payments", be);
+        }
       } catch (e) {
         console.error(e);
       } finally {
@@ -276,6 +286,119 @@ export function AccountPageClient() {
             </div>
           </section>
         )}
+
+        {/* Subscription & Payments Section — self-service so users
+            can see current plan, expiry date, and history of payments
+            without writing to support. Cancellation isn't needed: each
+            payment buys a fixed period that simply doesn't renew. */}
+        {billing && (() => {
+          const sub = billing.current_subscription;
+          const tierLabel =
+            sub.tier === "pro" ? "Pro" :
+            sub.tier === "starter" ? "Starter" :
+            sub.tier === "tester" ? "Tester" :
+            sub.tier === "premium" ? "Premium" :
+            "Бесплатный";
+          const fmtDate = (iso: string | null) => {
+            if (!iso) return "—";
+            const d = new Date(iso);
+            const months = ["янв","фев","мар","апр","мая","июн","июл","авг","сен","окт","ноя","дек"];
+            return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+          };
+          const fmtAmount = (n: number) => `${n.toLocaleString("ru-RU")} ₽`;
+          const statusLabel = (s: string) =>
+            s === "succeeded" ? "Оплачен" :
+            s === "canceled" ? "Отменён" :
+            s === "pending" || s === "waiting_for_capture" ? "Ожидание" :
+            s;
+          const statusClass = (s: string) =>
+            s === "succeeded" ? "text-emerald-400" :
+            s === "canceled" ? "text-red-400" :
+            "text-amber-400";
+          const isFree = !sub.tier || sub.tier === "free";
+          const hasExpiry = !!sub.expires_at;
+          const isActiveSub = !isFree && !sub.is_admin;
+          return (
+            <section className="flex flex-col gap-6">
+              <h3 className="font-display text-2xl sm:text-[28px] font-medium text-white flex items-center gap-3 border-b border-white/10 pb-4 sm:pb-6">
+                <CreditCard className="w-6 h-6 text-neutral-400" />
+                Подписка и платежи
+              </h3>
+
+              {/* Current plan card */}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 sm:p-8 bg-[#111111] border border-white/10 rounded-2xl">
+                <div className="flex flex-col gap-2 min-w-0">
+                  <span className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-white/20">
+                    Текущий тариф
+                  </span>
+                  <div className="flex items-baseline gap-3 flex-wrap">
+                    <span className="text-2xl sm:text-3xl text-white font-light">{tierLabel}</span>
+                    {sub.is_admin && (
+                      <span className="font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-white/40">
+                        админ — без ограничений
+                      </span>
+                    )}
+                  </div>
+                  {hasExpiry && !sub.is_admin && (
+                    <span className="text-sm text-white/50">
+                      Действует до <span className="text-white">{fmtDate(sub.expires_at)}</span>
+                    </span>
+                  )}
+                  {!hasExpiry && isFree && !sub.is_admin && (
+                    <span className="text-sm text-white/40">Бесплатный план</span>
+                  )}
+                </div>
+                <Link
+                  href="/pricing"
+                  className="shrink-0 px-4 sm:px-8 py-2 sm:py-3 bg-white text-black font-mono text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.15em] sm:tracking-[0.2em] rounded-full hover:opacity-90 transition-opacity active:scale-[0.98] text-center"
+                >
+                  {isActiveSub ? "Продлить" : "Оформить"}
+                </Link>
+              </div>
+
+              {/* Payment history table */}
+              <div className="flex flex-col bg-[#111111] border border-white/10 rounded-2xl overflow-hidden">
+                <div className="px-5 sm:px-8 py-4 sm:py-5 border-b border-white/5">
+                  <span className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">
+                    История платежей ({billing.payments.length})
+                  </span>
+                </div>
+                {billing.payments.length === 0 ? (
+                  <div className="px-5 sm:px-8 py-8 text-white/30 text-sm">
+                    Платежей пока нет.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-white/30 font-mono text-[10px] uppercase tracking-[0.15em]">
+                          <th className="text-left px-5 sm:px-8 py-3 font-normal">Дата</th>
+                          <th className="text-left px-3 py-3 font-normal">Тариф</th>
+                          <th className="text-left px-3 py-3 font-normal">Период</th>
+                          <th className="text-right px-3 py-3 font-normal">Сумма</th>
+                          <th className="text-right px-5 sm:px-8 py-3 font-normal">Статус</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {billing.payments.map((p) => (
+                          <tr key={p.id} className="border-t border-white/5 hover:bg-white/[0.02] transition-colors">
+                            <td className="px-5 sm:px-8 py-3 text-white/70">{fmtDate(p.created_at)}</td>
+                            <td className="px-3 py-3 text-white/80 capitalize">{p.tier}</td>
+                            <td className="px-3 py-3 text-white/50">{p.is_annual ? "год" : "месяц"}</td>
+                            <td className="px-3 py-3 text-right text-white">{fmtAmount(p.amount)}</td>
+                            <td className={`px-5 sm:px-8 py-3 text-right font-mono text-[11px] uppercase tracking-widest ${statusClass(p.status)}`}>
+                              {statusLabel(p.status)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </section>
+          );
+        })()}
 
         {/* Security Section */}
         <section className="flex flex-col gap-8">
