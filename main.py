@@ -323,6 +323,13 @@ async def lifespan(app: FastAPI):
         logger.error("RAG init failed permanently after retries.")
     
     asyncio.create_task(_init_rag_bg())
+
+    # IMAP → Telegram bridge for support@/hello@/billing@/noreply@ mailboxes.
+    # The module no-ops gracefully if the relevant env vars are missing,
+    # so this is safe to call unconditionally on every startup.
+    from mail_to_telegram import run_mail_bridge
+    asyncio.create_task(run_mail_bridge())
+
     yield
     # Shutdown logic
     try:

@@ -42,3 +42,4 @@ asyncpg
 cachetools
 bcrypt
 sse-starlette>=2.0.0
+aioimaplib>=1.0.1
