@@ -1,12 +1,15 @@
+# File-based acquisition only — the previous file also had a journald
+# source ("source: journald", filtered for ssh.service) but crowdsec in
+# Docker can't reach the host's systemd-journald socket, so it crashed
+# at boot with "unknown data source journald" and restart-looped.
+#
+# Heads-up: Ubuntu 22.04 uses journald for SSH logs by default, so
+# /var/log/auth.log usually doesn't exist either — these patterns will
+# warn "No matching files" but that's a warning, not fatal. If you want
+# crowdsec to actually see SSH attempts, install rsyslog on the host or
+# add a journald → file bridge.
 filenames:
   - /var/log/host/auth.log
   - /var/log/host/secure
-labels:
-  type: syslog
----
-source: journald
-journalctl_filter:
-  - _SYSTEMD_UNIT=ssh.service
-  - _SYSTEMD_UNIT=sshd.service
 labels:
   type: syslog
