@@ -693,19 +693,161 @@ async def langfuse_observability_middleware(request: Request, call_next):
              
     return response
 
+async def _check_http(url: str, headers: dict | None = None, timeout: float = 3.0,
+                       method: str = "HEAD") -> dict:
+    """Tiny HTTP probe used by /health. Always returns a dict; never raises."""
+    import time
+    t0 = time.time()
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as c:
+            r = await c.request(method, url, headers=headers or {})
+        return {
+            "ok": r.status_code < 500,
+            "status_code": r.status_code,
+            "latency_ms": int((time.time() - t0) * 1000),
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": type(e).__name__,
+            "latency_ms": int((time.time() - t0) * 1000),
+        }
+
+
+async def _check_tcp(host: str, port: int, timeout: float = 3.0) -> dict:
+    """TCP connect probe — for SMTP / DB sockets where we don't speak the protocol."""
+    import time
+    import socket
+    t0 = time.time()
+    try:
+        fut = asyncio.get_running_loop().run_in_executor(
+            None,
+            lambda: socket.create_connection((host, port), timeout=timeout).close(),
+        )
+        await asyncio.wait_for(fut, timeout=timeout + 0.5)
+        return {"ok": True, "latency_ms": int((time.time() - t0) * 1000)}
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": type(e).__name__,
+            "latency_ms": int((time.time() - t0) * 1000),
+        }
+
+
 @app.get("/health")
-def health() -> dict:
+async def health() -> dict:
+    """Full system health.
+
+    Top-level boolean fields (`db`, `redis`, `rag`, `chromadb`) are kept
+    for backward compatibility with the docker healthcheck and the
+    deploy.sh / Caddy probes that grep `"status":"ok"`. Detailed per-
+    component results are nested under `checks` and never block the
+    response — every external probe has a short timeout and failures are
+    captured as `{"ok": false, "error": ...}` instead of raising.
+    """
+    import time
+
+    # --- core checks (these decide top-level status) ---
     db_ok = _db_healthcheck()
     redis_ok = _redis_healthcheck()
     rag_ok = rag.healthcheck()
-    # RAG loads in background - don't block deploy healthcheck on it
+
+    # --- alembic revision matches HEAD? ---
+    def _alembic_state() -> dict:
+        try:
+            with SessionLocal() as session:
+                row = session.execute(text("SELECT version_num FROM alembic_version")).first()
+            current = row[0] if row else None
+            # Compare against HEAD on disk
+            from alembic.config import Config as AlembicConfig
+            from alembic.script import ScriptDirectory
+            cfg = AlembicConfig("alembic.ini")
+            head = ScriptDirectory.from_config(cfg).get_current_head()
+            return {"ok": current == head, "current": current, "head": head}
+        except Exception as e:
+            return {"ok": False, "error": type(e).__name__}
+
+    # --- system snapshot ---
+    def _system_info() -> dict:
+        info: dict = {}
+        try:
+            import shutil
+            total, used, free = shutil.disk_usage("/")
+            info["disk_free_gb"] = round(free / (1024 ** 3), 1)
+            info["disk_used_pct"] = round(used * 100 / total)
+        except Exception:
+            pass
+        try:
+            with open("/proc/meminfo") as f:
+                meminfo = {line.split(":")[0]: line.split(":")[1].strip().split()[0]
+                           for line in f if ":" in line}
+            mem_total = int(meminfo.get("MemTotal", 0)) // 1024
+            mem_avail = int(meminfo.get("MemAvailable", 0)) // 1024
+            if mem_total:
+                info["mem_total_mb"] = mem_total
+                info["mem_available_mb"] = mem_avail
+                info["mem_used_pct"] = round((mem_total - mem_avail) * 100 / mem_total)
+        except Exception:
+            pass
+        try:
+            with open("/proc/loadavg") as f:
+                la = f.read().split()
+            info["load_1m"] = float(la[0])
+            info["load_5m"] = float(la[1])
+            info["load_15m"] = float(la[2])
+        except Exception:
+            pass
+        return info
+
+    # --- external probes, run in parallel ---
+    makura_key = os.getenv("MAKURA_API_KEY", "")
+    exa_key = os.getenv("EXA_API_KEY", "")
+    smtp_host = os.getenv("SMTP_HOST", "")
+    smtp_port = int(os.getenv("SMTP_PORT", "0") or 0)
+
+    probes = await asyncio.gather(
+        _check_http("https://api.makura.ai/v1/models",
+                    headers={"Authorization": f"Bearer {makura_key}"} if makura_key else None,
+                    method="GET"),
+        _check_http("https://api.exa.ai",
+                    headers={"x-api-key": exa_key} if exa_key else None),
+        _check_http("https://api.jina.ai/v1/rerank"),  # known 451 from RU — visibility only
+        _check_tcp(smtp_host, smtp_port) if (smtp_host and smtp_port) else
+            asyncio.sleep(0, result={"ok": False, "error": "SMTP_HOST/PORT not configured"}),
+        return_exceptions=False,
+    )
+    makura_check, exa_check, jina_check, smtp_check = probes
+
+    # jina is geo-blocked from RU servers — annotate so it's not alarming
+    if not jina_check.get("ok") and jina_check.get("status_code") == 451:
+        jina_check["note"] = "geo-blocked from RU (expected, RAG falls back)"
+
+    alembic_check = _alembic_state()
+    sys_info = _system_info()
+
+    # status: ok if db is alive; degraded otherwise
     status = "ok" if db_ok else "degraded"
+
     return {
         "status": status,
+        # Backward-compatible top-level booleans
         "db": db_ok,
         "redis": redis_ok,
         "rag": rag_ok,
         "chromadb": rag_ok,
+        # Detailed nested checks
+        "checks": {
+            "db": {"ok": db_ok},
+            "redis": {"ok": redis_ok},
+            "rag": {"ok": rag_ok},
+            "alembic": alembic_check,
+            "smtp": {**smtp_check, "host": smtp_host, "port": smtp_port},
+            "makura": {**makura_check, "configured": bool(makura_key)},
+            "exa": {**exa_check, "configured": bool(exa_key)},
+            "jina": jina_check,
+            "system": sys_info,
+        },
     }
 
 
