@@ -188,7 +188,11 @@ services:
     restart: unless-stopped
     profiles: ["security"]
     environment:
-      COLLECTIONS: "crowdsecurity/caddy crowdsecurity/linux crowdsecurity/geo-blocking"
+      # crowdsecurity/geo-blocking was removed from the Hub — leaving it
+      # in COLLECTIONS makes the crowdsec container crash at start with
+      # "can't find 'crowdsecurity/geo-blocking' in collections". If you
+      # want geo-blocking back, see the new appsec collections in the Hub.
+      COLLECTIONS: "crowdsecurity/caddy crowdsecurity/linux"
     volumes:
       - crowdsec_db:/var/lib/crowdsec/data
       - crowdsec_config:/etc/crowdsec
