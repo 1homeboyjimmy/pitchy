@@ -7,7 +7,10 @@ quietly disables itself instead of crashing the backend.
 
 ENV:
     TELEGRAM_BOT_TOKEN              — bot from @BotFather
-    TELEGRAM_MAIL_CHAT_ID           — chat to post into (DM or group)
+    TELEGRAM_MAIL_CHAT_ID           — chat(s) to post into. Comma-separated
+                                       for fan-out (e.g. "976708202,123456789"
+                                       posts to both DMs). A single value
+                                       (DM, group id, channel id) also works.
     IMAP_PASS_SUPPORT               — app-password for support@pitchy.pro
     IMAP_PASS_HELLO                 — app-password for hello@pitchy.pro
     IMAP_PASS_BILLING               — app-password for billing@pitchy.pro
@@ -84,22 +87,24 @@ def _escape_html(s: str) -> str:
              .replace(">", "&gt;"))
 
 
-async def _send_telegram(token: str, chat_id: str, text: str) -> None:
-    try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            r = await client.post(
-                TG_API.format(token=token),
-                json={
-                    "chat_id": chat_id,
-                    "text": text,
-                    "parse_mode": "HTML",
-                    "disable_web_page_preview": True,
-                },
-            )
-        if r.status_code != 200:
-            logger.error(f"Telegram send failed: {r.status_code} {r.text[:200]}")
-    except Exception as e:
-        logger.error(f"Telegram send error: {type(e).__name__}: {e}")
+async def _send_telegram(token: str, chat_ids: list[str], text: str) -> None:
+    """Fan-out to all configured chats. One failed recipient does not block others."""
+    async with httpx.AsyncClient(timeout=15) as client:
+        for cid in chat_ids:
+            try:
+                r = await client.post(
+                    TG_API.format(token=token),
+                    json={
+                        "chat_id": cid,
+                        "text": text,
+                        "parse_mode": "HTML",
+                        "disable_web_page_preview": True,
+                    },
+                )
+                if r.status_code != 200:
+                    logger.error(f"Telegram send to {cid} failed: {r.status_code} {r.text[:200]}")
+            except Exception as e:
+                logger.error(f"Telegram send to {cid} error: {type(e).__name__}: {e}")
 
 
 def _format_message(mailbox: str, msg) -> str:
@@ -119,7 +124,7 @@ def _format_message(mailbox: str, msg) -> str:
     )
 
 
-async def _watch_mailbox(mailbox: str, password: str, token: str, chat_id: str) -> None:
+async def _watch_mailbox(mailbox: str, password: str, token: str, chat_ids: list[str]) -> None:
     """One IMAP IDLE loop per mailbox; reconnects on any error.
 
     On startup, snapshots the current UID list so we don't replay historical
@@ -181,7 +186,7 @@ async def _watch_mailbox(mailbox: str, password: str, token: str, chat_id: str) 
                         raw = fetch_res.lines[1]
                         msg = message_from_bytes(raw if isinstance(raw, (bytes, bytearray)) else raw.encode())
                         text = _format_message(mailbox, msg)
-                        await _send_telegram(token, chat_id, text)
+                        await _send_telegram(token, chat_ids, text)
                         seen.add(uid)
                     except Exception as e:
                         logger.error(f"Failed to forward UID {uid!r} from {mailbox}: "
@@ -199,9 +204,10 @@ async def _watch_mailbox(mailbox: str, password: str, token: str, chat_id: str) 
 async def run_mail_bridge() -> None:
     """Entry point — call once at backend startup."""
     token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-    chat_id = os.getenv("TELEGRAM_MAIL_CHAT_ID", "").strip()
+    chat_ids_raw = os.getenv("TELEGRAM_MAIL_CHAT_ID", "").strip()
+    chat_ids = [c.strip() for c in chat_ids_raw.split(",") if c.strip()]
 
-    if not token or not chat_id:
+    if not token or not chat_ids:
         logger.info("Mail-to-Telegram bridge disabled: TELEGRAM_BOT_TOKEN or TELEGRAM_MAIL_CHAT_ID not set")
         return
 
@@ -217,8 +223,9 @@ async def run_mail_bridge() -> None:
         logger.info("Mail-to-Telegram bridge disabled: no mailbox passwords set")
         return
 
-    logger.info(f"Mail-to-Telegram bridge starting for {len(accounts)} mailbox(es) → chat {chat_id}")
+    logger.info(f"Mail-to-Telegram bridge starting for {len(accounts)} mailbox(es) → "
+                f"{len(chat_ids)} chat(s): {chat_ids}")
     await asyncio.gather(
-        *[_watch_mailbox(m, p, token, chat_id) for m, p in accounts],
+        *[_watch_mailbox(m, p, token, chat_ids) for m, p in accounts],
         return_exceptions=True,
     )

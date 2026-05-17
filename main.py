@@ -330,6 +330,11 @@ async def lifespan(app: FastAPI):
     from mail_to_telegram import run_mail_bridge
     asyncio.create_task(run_mail_bridge())
 
+    # Daily-ish job: notify users whose subscription expires in ~3 days.
+    # Dedup via Redis (per user+expiry). Disabled cleanly if Redis is down.
+    from subscription_notices import run_subscription_notices_loop
+    asyncio.create_task(run_subscription_notices_loop())
+
     yield
     # Shutdown logic
     try:
@@ -921,12 +926,9 @@ async def register(
     await db.refresh(user)
 
     try:
-        await run_in_threadpool(
-            send_email,
-            payload.email,
-            "Verify your email",
-            f"Your verification code is: {verify_code}\n\nEnter this code to complete registration.",
-        )
+        import email_templates
+        subj, body = email_templates.email_verification(payload.name, verify_code)
+        await run_in_threadpool(send_email, payload.email, subj, body)
     except Exception:
         logger.error(f"Failed to send verification email to {payload.email}")
 
@@ -1338,12 +1340,9 @@ async def update_me(
         user.email_verify_expires_at = verify_expires
 
         try:
-            await run_in_threadpool(
-                send_email,
-                payload.email,
-                "Verify your new email",
-                f"Your verification code is: {verify_code}\n\nEnter this code to convert your email.",
-            )
+            import email_templates
+            subj, body = email_templates.email_change_verification(user.name, verify_code)
+            await run_in_threadpool(send_email, payload.email, subj, body)
         except Exception:
             logger.error("Failed to send verification email during update")
 
@@ -1391,11 +1390,9 @@ async def initiate_change_password(
     await db.commit()
 
     try:
-        send_email(
-            user.email,
-            "Verification Code for Password Change",
-            f"Your verification code is: {code}\n\nIt expires in 10 minutes.",
-        )
+        import email_templates
+        subj, body = email_templates.password_change_code(user.name, code)
+        send_email(user.email, subj, body)
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to send verification code")
 
@@ -1424,11 +1421,9 @@ async def confirm_change_password(
     await db.commit()
 
     try:
-        send_email(
-            user.email,
-            "Password Changed",
-            "Your password has been successfully changed.",
-        )
+        import email_templates
+        subj, body = email_templates.password_changed_notice(user.name)
+        send_email(user.email, subj, body)
     except Exception:
         pass
 
@@ -1455,11 +1450,9 @@ async def resend_verification(
     await db.commit()
 
     try:
-        send_email(
-            user.email,
-            "Verify your email",
-            f"Your verification code is: {verify_code}\n\nEnter this code to complete verification.",
-        )
+        import email_templates
+        subj, body = email_templates.email_verification(user.name, verify_code)
+        send_email(user.email, subj, body)
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to send email")
 
@@ -1493,16 +1486,9 @@ async def request_password_reset(
     user.password_reset_expires_at = datetime.utcnow() + timedelta(minutes=15)
     await db.commit()
     try:
-        send_email(
-            payload.email,
-            "Код для сброса пароля Pitchy",
-            (
-                f"Ваш код для сброса пароля: {code}\n\n"
-                "Введите этот код на странице сброса пароля. "
-                "Код действителен 15 минут.\n\n"
-                "Если вы не запрашивали сброс — просто проигнорируйте это письмо."
-            ),
-        )
+        import email_templates
+        subj, body = email_templates.password_reset_code(code)
+        send_email(payload.email, subj, body)
     except Exception:
         # SMTP may be unavailable on dev — code is still readable from /dev/emails.
         pass

@@ -164,30 +164,48 @@ async def yookassa_webhook(request: Request, db: AsyncSession = Depends(get_asyn
             payment_id = response_object.id
             res = await db.execute(select(Payment).options(selectinload(Payment.promo_code)).where(Payment.yookassa_payment_id == payment_id))
             db_payment = res.scalar_one_or_none()
-            
+
             if db_payment and db_payment.status != "succeeded":
                 db_payment.status = "succeeded"
-                
+
                 res_user = await db.execute(select(User).where(User.id == db_payment.user_id))
                 user = res_user.scalar_one_or_none()
                 if user:
                     user.subscription_tier = db_payment.tier
-                    
+
                     # Calculate new expiration date
                     now = datetime.utcnow()
                     if user.subscription_expires_at and user.subscription_expires_at > now:
                         start_date = user.subscription_expires_at
                     else:
                         start_date = now
-                        
+
                     delta = relativedelta(years=1) if db_payment.is_annual else relativedelta(months=1)
                     user.subscription_expires_at = start_date + delta
-                    
+
                 if db_payment.promo_code:
                     db_payment.promo_code.current_uses += 1
-                    
+
                 await db.commit()
-                
+
+                # Notify user that the subscription is active.
+                if user and user.email:
+                    try:
+                        import email_templates
+                        from email_utils import send_email
+                        from fastapi.concurrency import run_in_threadpool
+                        subj, body = email_templates.payment_succeeded(
+                            name=user.name,
+                            tier=db_payment.tier,
+                            amount=float(db_payment.amount),
+                            is_annual=db_payment.is_annual,
+                            expires_at=user.subscription_expires_at,
+                            payment_id=db_payment.yookassa_payment_id or "",
+                        )
+                        await run_in_threadpool(send_email, user.email, subj, body)
+                    except Exception as e:
+                        logger.error(f"Failed to send payment_succeeded email to {user.email}: {e}")
+
         elif notification_object.event == WebhookNotificationEventType.PAYMENT_CANCELED:
             payment_id = response_object.id
             res = await db.execute(select(Payment).where(Payment.yookassa_payment_id == payment_id))
@@ -195,6 +213,23 @@ async def yookassa_webhook(request: Request, db: AsyncSession = Depends(get_asyn
             if db_payment and db_payment.status != "canceled":
                 db_payment.status = "canceled"
                 await db.commit()
+
+                res_user = await db.execute(select(User).where(User.id == db_payment.user_id))
+                user = res_user.scalar_one_or_none()
+                if user and user.email:
+                    try:
+                        import email_templates
+                        from email_utils import send_email
+                        from fastapi.concurrency import run_in_threadpool
+                        subj, body = email_templates.payment_canceled(
+                            name=user.name,
+                            tier=db_payment.tier,
+                            amount=float(db_payment.amount),
+                            payment_id=db_payment.yookassa_payment_id or "",
+                        )
+                        await run_in_threadpool(send_email, user.email, subj, body)
+                    except Exception as e:
+                        logger.error(f"Failed to send payment_canceled email to {user.email}: {e}")
                 
     except Exception as e:
         await db.rollback()
