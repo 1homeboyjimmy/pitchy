@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, date
 import urllib.parse
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, UploadFile, File, BackgroundTasks, Security
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse
 from fastapi.responses import StreamingResponse, FileResponse
 from sse_starlette.sse import EventSourceResponse
 
@@ -705,29 +705,47 @@ async def langfuse_observability_middleware(request: Request, call_next):
              
     return response
 
+def _classify_http_state(status_code: int) -> str:
+    """3-level classification of an HTTP probe result."""
+    if 200 <= status_code < 400:
+        return "healthy"
+    if 400 <= status_code < 500:
+        return "warning"  # service reachable, but says no (auth, geoblock, missing endpoint)
+    return "down"
+
+
 async def _check_http(url: str, headers: dict | None = None, timeout: float = 3.0,
                        method: str = "HEAD") -> dict:
-    """Tiny HTTP probe used by /health. Always returns a dict; never raises."""
+    """HTTP probe used by /health. Always returns a dict; never raises.
+
+    State levels:
+        healthy   2xx / 3xx — service alive and happy
+        warning   4xx       — reachable, but rejecting our probe (auth/geo/etc)
+        down      5xx / timeout / connection error
+    """
     import time
     t0 = time.time()
     try:
         import httpx
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as c:
             r = await c.request(method, url, headers=headers or {})
+        state = _classify_http_state(r.status_code)
         return {
-            "ok": r.status_code < 500,
+            "state": state,
+            "ok": state == "healthy",
             "status_code": r.status_code,
             "latency_ms": int((time.time() - t0) * 1000),
         }
     except Exception as e:
         return {
+            "state": "down",
             "ok": False,
             "error": type(e).__name__,
             "latency_ms": int((time.time() - t0) * 1000),
         }
 
 
-async def _check_tcp(host: str, port: int, timeout: float = 3.0) -> dict:
+async def _check_tcp(host: str, port: int, timeout: float = 5.0) -> dict:
     """TCP connect probe — for SMTP / DB sockets where we don't speak the protocol."""
     import time
     import socket
@@ -738,28 +756,19 @@ async def _check_tcp(host: str, port: int, timeout: float = 3.0) -> dict:
             lambda: socket.create_connection((host, port), timeout=timeout).close(),
         )
         await asyncio.wait_for(fut, timeout=timeout + 0.5)
-        return {"ok": True, "latency_ms": int((time.time() - t0) * 1000)}
+        return {"state": "healthy", "ok": True, "latency_ms": int((time.time() - t0) * 1000)}
     except Exception as e:
         return {
+            "state": "down",
             "ok": False,
             "error": type(e).__name__,
             "latency_ms": int((time.time() - t0) * 1000),
         }
 
 
-@app.get("/health")
-async def health() -> dict:
-    """Full system health.
-
-    Top-level boolean fields (`db`, `redis`, `rag`, `chromadb`) are kept
-    for backward compatibility with the docker healthcheck and the
-    deploy.sh / Caddy probes that grep `"status":"ok"`. Detailed per-
-    component results are nested under `checks` and never block the
-    response — every external probe has a short timeout and failures are
-    captured as `{"ok": false, "error": ...}` instead of raising.
-    """
-    import time
-
+async def _gather_health() -> dict:
+    """Gather all health checks. Pure data — both /health (JSON) and the
+    HTML view share this builder."""
     # --- core checks (these decide top-level status) ---
     db_ok = _db_healthcheck()
     redis_ok = _redis_healthcheck()
@@ -818,6 +827,11 @@ async def health() -> dict:
     smtp_host = os.getenv("SMTP_HOST", "")
     smtp_port = int(os.getenv("SMTP_PORT", "0") or 0)
 
+    smtp_probe = (_check_tcp(smtp_host, smtp_port, timeout=5.0)
+                  if (smtp_host and smtp_port)
+                  else asyncio.sleep(0, result={"state": "skipped", "ok": False,
+                                                "note": "SMTP_HOST/PORT not configured"}))
+
     probes = await asyncio.gather(
         _check_http("https://api.makura.ai/v1/models",
                     headers={"Authorization": f"Bearer {makura_key}"} if makura_key else None,
@@ -825,21 +839,36 @@ async def health() -> dict:
         _check_http("https://api.exa.ai",
                     headers={"x-api-key": exa_key} if exa_key else None),
         _check_http("https://api.jina.ai/v1/rerank"),  # known 451 from RU — visibility only
-        _check_tcp(smtp_host, smtp_port) if (smtp_host and smtp_port) else
-            asyncio.sleep(0, result={"ok": False, "error": "SMTP_HOST/PORT not configured"}),
+        smtp_probe,
         return_exceptions=False,
     )
     makura_check, exa_check, jina_check, smtp_check = probes
 
-    # jina is geo-blocked from RU servers — annotate so it's not alarming
-    if not jina_check.get("ok") and jina_check.get("status_code") == 451:
-        jina_check["note"] = "geo-blocked from RU (expected, RAG falls back)"
+    # Friendlier annotations for known states ----
+    # jina is geo-blocked from RU servers; we have an internal fallback,
+    # so demote to "warning" with a clear note instead of "down".
+    if jina_check.get("status_code") == 451:
+        jina_check["state"] = "warning"
+        jina_check["note"] = "geo-blocked from RU (expected, RAG fallback covers it)"
+    # exa probe with no key returns 404 — that's "configured: false" not "broken"
+    if not exa_key:
+        exa_check["state"] = "skipped"
+        exa_check["note"] = "EXA_API_KEY not set"
+    # makura "configured: false" if no key
+    if not makura_key:
+        makura_check["state"] = "skipped"
+        makura_check["note"] = "MAKURA_API_KEY not set"
 
     alembic_check = _alembic_state()
+    if "state" not in alembic_check:
+        alembic_check["state"] = "healthy" if alembic_check.get("ok") else "warning"
     sys_info = _system_info()
 
-    # status: ok if db is alive; degraded otherwise
+    # top-level status: ok if db is alive; degraded otherwise
     status = "ok" if db_ok else "degraded"
+
+    def _core_state(ok: bool) -> str:
+        return "healthy" if ok else "down"
 
     return {
         "status": status,
@@ -850,17 +879,150 @@ async def health() -> dict:
         "chromadb": rag_ok,
         # Detailed nested checks
         "checks": {
-            "db": {"ok": db_ok},
-            "redis": {"ok": redis_ok},
-            "rag": {"ok": rag_ok},
+            "db":      {"state": _core_state(db_ok), "ok": db_ok},
+            "redis":   {"state": _core_state(redis_ok), "ok": redis_ok},
+            "rag":     {"state": _core_state(rag_ok), "ok": rag_ok,
+                        "note": None if rag_ok else "indexing in background or not ready"},
             "alembic": alembic_check,
-            "smtp": {**smtp_check, "host": smtp_host, "port": smtp_port},
-            "makura": {**makura_check, "configured": bool(makura_key)},
-            "exa": {**exa_check, "configured": bool(exa_key)},
-            "jina": jina_check,
-            "system": sys_info,
+            "smtp":    {**smtp_check, "host": smtp_host, "port": smtp_port},
+            "makura":  {**makura_check, "configured": bool(makura_key)},
+            "exa":     {**exa_check, "configured": bool(exa_key)},
+            "jina":    jina_check,
+            "system":  sys_info,
         },
     }
+
+
+def _render_health_html(data: dict) -> str:
+    """Render the same health dict as a human-readable page.
+
+    Tiny inline CSS so the page is self-contained (no fonts/CDNs).
+    Auto-refreshes every 30 s so you can leave it open as a dashboard.
+    """
+    state_color = {
+        "healthy": "#10b981",   # emerald
+        "warning": "#f59e0b",   # amber
+        "down":    "#ef4444",   # red
+        "skipped": "#6b7280",   # gray
+    }
+    state_label = {
+        "healthy": "OK",
+        "warning": "WARN",
+        "down":    "DOWN",
+        "skipped": "OFF",
+    }
+
+    def card(name: str, check: dict) -> str:
+        st = check.get("state", "healthy" if check.get("ok") else "down")
+        color = state_color.get(st, "#6b7280")
+        label = state_label.get(st, "?")
+        # Build a small key-value table of all interesting fields, skipping
+        # the ones we already render in the header.
+        skip = {"state", "ok", "note"}
+        rows = []
+        for k, v in check.items():
+            if k in skip or v is None:
+                continue
+            if isinstance(v, bool):
+                v = "yes" if v else "no"
+            rows.append(f'<div class="kv"><span class="k">{k}</span>'
+                        f'<span class="v">{v}</span></div>')
+        note = check.get("note")
+        note_html = f'<div class="note">{note}</div>' if note else ""
+        return f"""
+        <div class="card">
+          <div class="card-head">
+            <span class="name">{name}</span>
+            <span class="badge" style="background:{color}">{label}</span>
+          </div>
+          {note_html}
+          <div class="kvs">{''.join(rows)}</div>
+        </div>"""
+
+    checks = data.get("checks", {})
+    # System info gets its own larger card at the bottom
+    sys_info = checks.pop("system", {})
+    ordered = ["db", "redis", "rag", "alembic", "smtp", "makura", "exa", "jina"]
+    cards_html = "".join(card(k, checks[k]) for k in ordered if k in checks)
+
+    sys_rows = "".join(
+        f'<div class="kv"><span class="k">{k}</span><span class="v">{v}</span></div>'
+        for k, v in sys_info.items()
+    )
+
+    top_status = data.get("status", "?")
+    top_color = state_color["healthy"] if top_status == "ok" else state_color["down"]
+    top_label = "OK" if top_status == "ok" else "DEGRADED"
+
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pitchy · health</title>
+<meta http-equiv="refresh" content="30">
+<style>
+  *{{box-sizing:border-box}}
+  body{{margin:0;background:#0a0a0a;color:#e5e5e5;
+       font-family:ui-sans-serif,system-ui,sans-serif;padding:32px}}
+  h1{{margin:0 0 8px;font-weight:600;font-size:20px;letter-spacing:.5px}}
+  .sub{{color:#9ca3af;font-size:12px;margin-bottom:24px}}
+  .grid{{display:grid;gap:12px;
+        grid-template-columns:repeat(auto-fill,minmax(240px,1fr));max-width:1100px}}
+  .card{{background:#141414;border:1px solid #2a2a2a;border-radius:10px;padding:14px 16px}}
+  .card-head{{display:flex;justify-content:space-between;align-items:center;
+             margin-bottom:8px}}
+  .name{{font-weight:600;font-size:14px;letter-spacing:.3px}}
+  .badge{{font-family:ui-monospace,Menlo,monospace;font-size:10px;font-weight:700;
+         padding:3px 7px;border-radius:4px;color:#0a0a0a;letter-spacing:.5px}}
+  .note{{font-size:11px;color:#a3a3a3;margin-bottom:6px;font-style:italic}}
+  .kvs{{display:flex;flex-direction:column;gap:2px}}
+  .kv{{display:flex;justify-content:space-between;font-family:ui-monospace,Menlo,monospace;
+       font-size:11px;color:#9ca3af}}
+  .k{{color:#6b7280}}
+  .v{{color:#d4d4d4}}
+  .top{{display:flex;align-items:center;gap:12px;margin-bottom:24px}}
+  .top .badge{{font-size:12px;padding:5px 10px}}
+  .sys{{margin-top:18px;background:#141414;border:1px solid #2a2a2a;border-radius:10px;
+       padding:14px 16px;max-width:1100px}}
+  .sys h2{{margin:0 0 10px;font-size:13px;font-weight:600;color:#9ca3af;
+          letter-spacing:.5px;text-transform:uppercase}}
+  .sys .kvs{{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));
+            gap:4px 16px}}
+  a{{color:#60a5fa;text-decoration:none}}
+</style>
+</head>
+<body>
+  <div class="top">
+    <h1>pitchy.pro · system status</h1>
+    <span class="badge" style="background:{top_color}">{top_label}</span>
+  </div>
+  <div class="sub">auto-refresh 30s · raw JSON: <a href="/health" onclick="event.preventDefault();
+       fetch('/health',{{headers:{{Accept:'application/json'}}}}).then(r=>r.text()).then(t=>
+       document.body.innerHTML='<pre style=padding:24px;white-space:pre-wrap>'+t+'</pre>')">view</a></div>
+  <div class="grid">{cards_html}</div>
+  <div class="sys">
+    <h2>system</h2>
+    <div class="kvs">{sys_rows}</div>
+  </div>
+</body>
+</html>"""
+
+
+@app.get("/health")
+async def health(request: Request):
+    """System health endpoint.
+
+    Returns JSON by default. If the request `Accept` header asks for HTML
+    (e.g. a browser), returns a small auto-refreshing dashboard page
+    that renders the same data more readably. The Caddy / docker
+    healthcheck always sees JSON because they don't send Accept: text/html.
+    """
+    data = await _gather_health()
+    accept = request.headers.get("accept", "")
+    if "text/html" in accept and "application/json" not in accept:
+        return HTMLResponse(_render_health_html(data))
+    return data
 
 
 @app.get("/metrics")
