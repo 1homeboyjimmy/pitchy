@@ -69,12 +69,46 @@ docker container prune -f 2>/dev/null || true
 
 # ---- START CONTAINERS (no --build, images are pre-built) ----
 echo "Starting containers..."
+DEPLOY_START_EPOCH=$(date +%s)
 APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" up -d --force-recreate --remove-orphans
 
+# Verify that `up -d --force-recreate` actually recreated containers.
+# Previously, force-recreate silently no-op'd in some scenarios — leaving
+# containers with stale config (old volume mounts, old env) running
+# under the new compose definition. The grafana provisioning + bouncer
+# config mounts from the compose refactor went unapplied for hours
+# because of this; the only symptom was "Up 25 hours" instead of fresh
+# uptime in `docker ps`. Now we explicitly assert recency.
+#
+# Skip the check for crowdsec-bouncer-firewall — it's created later by
+# the bouncer-setup block below (after API key registration).
+sleep 5
+STALE_FOUND=0
+for cn in $(docker ps --format '{{.Names}}' --filter "label=com.docker.compose.project=ai-startup"); do
+  [[ "$cn" == "crowdsec-firewall-bouncer" ]] && continue
+  created=$(docker inspect "$cn" --format '{{.Created}}' 2>/dev/null || echo "")
+  if [[ -z "$created" ]]; then continue; fi
+  # Created is RFC3339; convert to epoch
+  created_epoch=$(date -d "$created" +%s 2>/dev/null || echo 0)
+  age=$(( DEPLOY_START_EPOCH - created_epoch ))
+  if (( age > 60 )); then
+    echo "ERROR: $cn was not recreated (created $age s before deploy start) — force-recreate skipped it"
+    STALE_FOUND=1
+  fi
+done
+if (( STALE_FOUND > 0 )); then
+  echo "ERROR: at least one container is running stale. Aborting before further steps could mask this."
+  exit 1
+fi
+echo "All containers freshly recreated."
+
 # ---- CROWDSEC BOUNCER SETUP ----
+# Match the line with a non-empty value (=. anchors at least one char after =).
+# `grep -q "CROWDSEC_BOUNCER_KEY"` used to match an EMPTY value too, which
+# skipped key generation and left bouncer crash-looping with no API key.
 echo "Setting up CrowdSec Bouncer..."
 sleep 5 # Wait for crowdsec to initialize
-if ! grep -q "CROWDSEC_BOUNCER_KEY" "$RUNTIME_ENV_FILE"; then
+if ! grep -qE "^CROWDSEC_BOUNCER_KEY=.+$" "$RUNTIME_ENV_FILE"; then
   echo "Generating new CrowdSec Bouncer API key..."
   # Generate a random API key
   BOUNCER_KEY=$(head -c 16 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 32)
@@ -82,7 +116,10 @@ if ! grep -q "CROWDSEC_BOUNCER_KEY" "$RUNTIME_ENV_FILE"; then
   # First, remove if exists to avoid "already exists" error
   docker compose --env-file "$RUNTIME_ENV_FILE" exec -T crowdsec cscli bouncers delete firewall-bouncer || true
   if docker compose --env-file "$RUNTIME_ENV_FILE" exec -T crowdsec cscli bouncers add firewall-bouncer -k "$BOUNCER_KEY"; then
-    # Add the key to the runtime env file so the bouncer container can pick it up
+    # Remove any pre-existing (empty or stale) line before appending the
+    # fresh key, otherwise the file ends up with two CROWDSEC_BOUNCER_KEY
+    # entries and the wrong one may win at compose-substitution time.
+    sed -i '/^CROWDSEC_BOUNCER_KEY=/d' "$RUNTIME_ENV_FILE"
     echo "CROWDSEC_BOUNCER_KEY=$BOUNCER_KEY" >> "$RUNTIME_ENV_FILE"
     # Restart the bouncer so it picks up the new env var
     APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" up -d crowdsec-bouncer-firewall
