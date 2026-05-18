@@ -139,6 +139,10 @@ async def _watch_mailbox(mailbox: str, password: str, token: str, chat_ids: list
         return
 
     backoff = 30
+    # Persist seen-UIDs across reconnects so a message that arrives while
+    # we're briefly disconnected isn't silently swallowed into a fresh
+    # baseline. None on first connect → take a baseline snapshot.
+    seen: set[bytes] | None = None
     while True:
         try:
             client = aioimaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT, timeout=30)
@@ -152,10 +156,22 @@ async def _watch_mailbox(mailbox: str, password: str, token: str, chat_ids: list
 
             await client.select("INBOX")
 
-            # Snapshot existing UIDs so we don't replay history.
             search_res = await client.uid_search("ALL")
-            seen: set[bytes] = set(search_res.lines[0].split()) if search_res.lines else set()
-            logger.info(f"Mail bridge connected to {mailbox} (baseline UIDs: {len(seen)})")
+            current = set(search_res.lines[0].split()) if search_res.lines else set()
+            if seen is None:
+                # First connect — baseline; everything currently in the box
+                # is "history" and shouldn't be re-sent.
+                seen = current
+                logger.info(f"Mail bridge connected to {mailbox} (baseline UIDs: {len(seen)})")
+            else:
+                # Reconnect — anything that appeared while we were down is
+                # genuinely new and must be forwarded below.
+                missed = sorted(current - seen)
+                if missed:
+                    logger.info(f"Mail bridge {mailbox}: {len(missed)} UID(s) arrived during reconnect: "
+                                f"{[u.decode() for u in missed]}")
+                else:
+                    logger.info(f"Mail bridge reconnected to {mailbox} (no missed mail)")
             backoff = 30  # reset after successful connect
 
             while True:
