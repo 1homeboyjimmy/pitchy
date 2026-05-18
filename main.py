@@ -836,8 +836,7 @@ async def _gather_health() -> dict:
         _check_http("https://api.makura.ai/v1/models",
                     headers={"Authorization": f"Bearer {makura_key}"} if makura_key else None,
                     method="GET"),
-        _check_http("https://api.exa.ai",
-                    headers={"x-api-key": exa_key} if exa_key else None),
+        _check_tcp("api.exa.ai", 443, timeout=5.0),
         _check_http("https://api.jina.ai/v1/rerank"),  # known 451 from RU — visibility only
         smtp_probe,
         return_exceptions=False,
@@ -850,10 +849,14 @@ async def _gather_health() -> dict:
     if jina_check.get("status_code") == 451:
         jina_check["state"] = "warning"
         jina_check["note"] = "geo-blocked from RU (expected, RAG fallback covers it)"
-    # exa probe with no key returns 404 — that's "configured: false" not "broken"
+    # exa: TCP-only probe to api.exa.ai:443 — validates reachability without
+    # burning the search balance. If the key isn't set, we still report reachability
+    # but mark as configured: false in the response.
+    if exa_check.get("ok"):
+        exa_check["state"] = "healthy"
+        exa_check["note"] = "TCP reachable" + ("" if exa_key else " (no key configured)")
     if not exa_key:
-        exa_check["state"] = "skipped"
-        exa_check["note"] = "EXA_API_KEY not set"
+        exa_check.setdefault("note", "EXA_API_KEY not set")
     # makura "configured: false" if no key
     if not makura_key:
         makura_check["state"] = "skipped"
