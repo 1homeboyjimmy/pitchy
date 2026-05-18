@@ -28,6 +28,8 @@ type User = {
     is_active: boolean;
     subscription_tier: string;
     created_at: string;
+    privacy_consent_at?: string | null;
+    cookies_consent_at?: string | null;
 };
 
 type AnalyticsData = {
@@ -703,6 +705,7 @@ export function AdminView() {
                                             <th className="px-6 py-4 font-bold">СТАТУС & РОЛЬ</th>
                                             <th className="px-6 py-4 font-bold">ДАТА РЕГИСТРАЦИИ</th>
                                             <th className="px-6 py-4 font-bold text-center">ТАРИФ</th>
+                                            <th className="px-6 py-4 font-bold text-center">СОГЛАСИЯ</th>
                                             <th className="px-6 py-4 font-bold text-right">ДЕЙСТВИЕ</th>
                                         </tr>
                                     </thead>
@@ -731,6 +734,12 @@ export function AdminView() {
                                                 <td className="px-6 py-4 text-center text-white/70 font-mono-label uppercase text-[11px]">
                                                     {u.subscription_tier}
                                                 </td>
+                                                <td className="px-6 py-4 text-center">
+                                                    <div className="flex justify-center gap-1.5" title={`Политика: ${u.privacy_consent_at ? new Date(u.privacy_consent_at).toLocaleString('ru-RU') : '—'}\nCookies: ${u.cookies_consent_at ? new Date(u.cookies_consent_at).toLocaleString('ru-RU') : '—'}`}>
+                                                        <span className={`text-[10px] font-mono-label uppercase tracking-widest px-1.5 py-0.5 border ${u.privacy_consent_at ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-white/5 text-white/30 border-white/10'}`}>П</span>
+                                                        <span className={`text-[10px] font-mono-label uppercase tracking-widest px-1.5 py-0.5 border ${u.cookies_consent_at ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-white/5 text-white/30 border-white/10'}`}>C</span>
+                                                    </div>
+                                                </td>
                                                 <td className="px-6 py-4 text-right">
                                                     <div className="flex justify-end gap-2">
                                                         {u.is_active ? (
@@ -748,7 +757,7 @@ export function AdminView() {
                                         ))}
                                         {users.length === 0 && (
                                             <tr>
-                                                <td colSpan={4} className="px-6 py-8 text-center text-white/30 font-code">Нет пользователей</td>
+                                                <td colSpan={6} className="px-6 py-8 text-center text-white/30 font-code">Нет пользователей</td>
                                             </tr>
                                         )}
                                     </tbody>

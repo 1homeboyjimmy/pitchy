@@ -1147,6 +1147,7 @@ async def register(
     
     verify_expires = datetime.utcnow() + timedelta(hours=24)
 
+    consent_ts = datetime.utcnow()
     user = User(
         email=payload.email,
         name=payload.name,
@@ -1156,6 +1157,9 @@ async def register(
         email_verify_expires_at=verify_expires,
         email_verified=False,
         is_active=True,
+        privacy_consent_at=consent_ts,
+        cookies_consent_at=consent_ts,
+        cookie_consent=True,  # legacy column, mirrors the new timestamps
     )
     db.add(user)
     try:

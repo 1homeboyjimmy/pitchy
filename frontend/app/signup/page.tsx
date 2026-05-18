@@ -51,6 +51,8 @@ function SignUpContent() {
     email: "",
     password: "",
     confirmPassword: "",
+    acceptPrivacy: false,
+    acceptCookies: false,
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -65,6 +67,10 @@ function SignUpContent() {
       setError("Пароли не совпадают");
       return;
     }
+    if (!formData.acceptPrivacy || !formData.acceptCookies) {
+      setError("Отметьте оба согласия, чтобы продолжить");
+      return;
+    }
 
     setLoading(true);
     setError("");
@@ -76,6 +82,8 @@ function SignUpContent() {
           name: formData.name,
           email: formData.email,
           password: formData.password,
+          accept_privacy: formData.acceptPrivacy,
+          accept_cookies: formData.acceptCookies,
         }
       );
 
@@ -295,11 +303,43 @@ function SignUpContent() {
             );
           })()}
 
+          {/* Consent checkboxes — both required, not pre-checked */}
+          <div className="flex flex-col gap-3 mt-2 ml-1">
+            <label className="flex items-start gap-3 cursor-pointer group select-none">
+              <input
+                type="checkbox"
+                className="mt-1 w-4 h-4 rounded border-white/20 bg-white/5 accent-white cursor-pointer shrink-0"
+                checked={formData.acceptPrivacy}
+                onChange={(e) => setFormData({ ...formData, acceptPrivacy: e.target.checked })}
+              />
+              <span className="font-body-sm text-[13px] text-white/60 leading-relaxed group-hover:text-white/80 transition-colors">
+                Я согласен с{" "}
+                <Link href="/privacy" target="_blank" className="text-white underline underline-offset-2 hover:text-white/70">
+                  политикой конфиденциальности
+                </Link>
+              </span>
+            </label>
+            <label className="flex items-start gap-3 cursor-pointer group select-none">
+              <input
+                type="checkbox"
+                className="mt-1 w-4 h-4 rounded border-white/20 bg-white/5 accent-white cursor-pointer shrink-0"
+                checked={formData.acceptCookies}
+                onChange={(e) => setFormData({ ...formData, acceptCookies: e.target.checked })}
+              />
+              <span className="font-body-sm text-[13px] text-white/60 leading-relaxed group-hover:text-white/80 transition-colors">
+                Я согласен на использование{" "}
+                <Link href="/cookies" target="_blank" className="text-white underline underline-offset-2 hover:text-white/70">
+                  файлов cookie
+                </Link>
+              </span>
+            </label>
+          </div>
+
           {/* Submit Button */}
           <button
-            className="w-full bg-white text-black font-bold text-sm uppercase tracking-tighter py-5 rounded-full hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-3 shadow-[0_0_40px_rgba(255,255,255,0.1)] mt-4"
+            className="w-full bg-white text-black font-bold text-sm uppercase tracking-tighter py-5 rounded-full hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center justify-center gap-3 shadow-[0_0_40px_rgba(255,255,255,0.1)] mt-4"
             type="submit"
-            disabled={loading}
+            disabled={loading || !formData.acceptPrivacy || !formData.acceptCookies}
           >
             {loading ? (
               <span className="flex items-center justify-center gap-3">

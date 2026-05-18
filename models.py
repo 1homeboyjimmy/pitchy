@@ -27,6 +27,8 @@ class User(Base):
     subscription_tier: Mapped[str] = mapped_column(String(50), default="free", server_default="free")
     subscription_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     cookie_consent: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    privacy_consent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    cookies_consent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     analyses: Mapped[list["Analysis"]] = relationship(back_populates="user", cascade="all, delete-orphan", passive_deletes=True)

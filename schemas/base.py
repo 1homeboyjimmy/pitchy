@@ -10,12 +10,28 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     name: str = Field(..., min_length=2)
     password: str = Field(..., min_length=8, max_length=72)
+    accept_privacy: bool
+    accept_cookies: bool
 
     @field_validator("password")
     @classmethod
     def validate_password(cls, value: str) -> str:
         if not any(ch.isalpha() for ch in value) or not any(ch.isdigit() for ch in value):
             raise ValueError("Password must contain letters and numbers")
+        return value
+
+    @field_validator("accept_privacy")
+    @classmethod
+    def must_accept_privacy(cls, value: bool) -> bool:
+        if value is not True:
+            raise ValueError("Чтобы зарегистрироваться, нужно согласие с политикой конфиденциальности")
+        return value
+
+    @field_validator("accept_cookies")
+    @classmethod
+    def must_accept_cookies(cls, value: bool) -> bool:
+        if value is not True:
+            raise ValueError("Чтобы зарегистрироваться, нужно согласие на использование cookies")
         return value
 
 
@@ -41,6 +57,8 @@ class UserResponse(BaseModel):
     subscription_tier: str = "free"
     subscription_expires_at: datetime | None = None
     cookie_consent: bool | None = None
+    privacy_consent_at: datetime | None = None
+    cookies_consent_at: datetime | None = None
 
     class Config:
         from_attributes = True
