@@ -18,6 +18,8 @@ def test_register_and_login():
         "email": unique_email,
         "name": "Test",
         "password": "Pass1234",
+        "accept_privacy": True,
+        "accept_cookies": True,
     }
 
     with TestClient(main.app) as client:
