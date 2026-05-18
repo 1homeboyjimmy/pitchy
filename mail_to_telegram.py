@@ -159,12 +159,14 @@ async def _watch_mailbox(mailbox: str, password: str, token: str, chat_ids: list
             backoff = 30  # reset after successful connect
 
             while True:
-                # IDLE — Yandex closes IDLE after 29 min, so refresh just under that.
+                # IDLE with short poll window — Yandex sometimes doesn't push EXISTS
+                # for new mail, so we re-check UIDs every 60 s as a fallback. Real
+                # pushes still wake wait_server_push() immediately.
                 idle_task = await client.idle_start(timeout=29 * 60)
                 try:
-                    await asyncio.wait_for(client.wait_server_push(), timeout=29 * 60)
+                    await asyncio.wait_for(client.wait_server_push(), timeout=60)
                 except asyncio.TimeoutError:
-                    pass  # idle window expired, will restart below
+                    pass  # poll-interval expired, do a UID diff anyway
                 finally:
                     client.idle_done()
                     try:
@@ -176,6 +178,9 @@ async def _watch_mailbox(mailbox: str, password: str, token: str, chat_ids: list
                 search_res = await client.uid_search("ALL")
                 current = set(search_res.lines[0].split()) if search_res.lines else set()
                 new_uids = sorted(u for u in current - seen)
+                if new_uids:
+                    logger.info(f"Mail bridge {mailbox}: {len(new_uids)} new UID(s) "
+                                f"detected: {[u.decode() for u in new_uids]}")
 
                 for uid in new_uids:
                     try:
