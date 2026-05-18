@@ -175,22 +175,12 @@ async def _watch_mailbox(mailbox: str, password: str, token: str, chat_ids: list
             backoff = 30  # reset after successful connect
 
             while True:
-                # IDLE with short poll window — Yandex sometimes doesn't push EXISTS
-                # for new mail, so we re-check UIDs every 60 s as a fallback. Real
-                # pushes still wake wait_server_push() immediately.
-                idle_task = await client.idle_start(timeout=29 * 60)
-                try:
-                    await asyncio.wait_for(client.wait_server_push(), timeout=60)
-                except asyncio.TimeoutError:
-                    pass  # poll-interval expired, do a UID diff anyway
-                finally:
-                    client.idle_done()
-                    try:
-                        await asyncio.wait_for(idle_task, 30)
-                    except Exception:
-                        pass
+                # Plain polling — IDLE is unreliable here: aioimaplib silently
+                # drops Yandex's EXISTS pushes ("ignored untagged response") and
+                # wait_server_push() can hang past its asyncio timeout. 30 s
+                # polling is cheap (one UID SEARCH per mailbox) and deterministic.
+                await asyncio.sleep(30)
 
-                # Check for new UIDs since last snapshot.
                 search_res = await client.uid_search("ALL")
                 current = set(search_res.lines[0].split()) if search_res.lines else set()
                 new_uids = sorted(u for u in current - seen)

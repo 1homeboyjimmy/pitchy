@@ -11,9 +11,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-# When a real support@pitchy.pro mailbox is wired up, swap this constant
-# to "support@pitchy.pro". Until then we point users to the website form.
-SUPPORT_CONTACT = "https://pitchy.pro/contact"
+SUPPORT_CONTACT = "support@pitchy.pro"
 
 SIGNATURE = "\n\n— Команда Pitchy"
 

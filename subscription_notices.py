@@ -41,7 +41,7 @@ async def _send_one(user_email: str, user_name: str | None, tier: str,
         subj, body = email_templates.subscription_expiring(
             name=user_name, tier=tier, expires_at=expires_at, days_left=days_left,
         )
-        await run_in_threadpool(send_email, user_email, subj, body)
+        await run_in_threadpool(send_email, user_email, subj, body, "billing")
     except Exception as e:
         logger.error(f"Failed to send expiring-soon email to {user_email}: {e}")
 

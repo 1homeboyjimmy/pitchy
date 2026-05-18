@@ -202,7 +202,7 @@ async def yookassa_webhook(request: Request, db: AsyncSession = Depends(get_asyn
                             expires_at=user.subscription_expires_at,
                             payment_id=db_payment.yookassa_payment_id or "",
                         )
-                        await run_in_threadpool(send_email, user.email, subj, body)
+                        await run_in_threadpool(send_email, user.email, subj, body, "billing")
                     except Exception as e:
                         logger.error(f"Failed to send payment_succeeded email to {user.email}: {e}")
 
@@ -227,7 +227,7 @@ async def yookassa_webhook(request: Request, db: AsyncSession = Depends(get_asyn
                             amount=float(db_payment.amount),
                             payment_id=db_payment.yookassa_payment_id or "",
                         )
-                        await run_in_threadpool(send_email, user.email, subj, body)
+                        await run_in_threadpool(send_email, user.email, subj, body, "billing")
                     except Exception as e:
                         logger.error(f"Failed to send payment_canceled email to {user.email}: {e}")
                 
