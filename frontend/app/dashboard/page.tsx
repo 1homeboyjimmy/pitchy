@@ -15,6 +15,7 @@ import { motion, AnimatePresence } from "framer-motion";
 
 import { useAuth } from "@/lib/hooks/useAuth";
 import { setToken } from "@/lib/auth";
+import { notifyError, confirmAction, notifyTierGate } from "@/lib/ui";
 import {
   getChatSessions,
   createChatSession,
@@ -188,7 +189,7 @@ function DashboardContent() {
       setActiveTab("chat");
     } catch (e) {
       console.error(e);
-      alert("Ошибка создания чата");
+      notifyError("Не удалось создать чат. Попробуйте позже.");
     } finally {
       setIsCreating(false);
     }
@@ -206,7 +207,7 @@ function DashboardContent() {
       setActiveTab("chat");
     } catch (e) {
       console.error(e);
-      alert("Не удалось загрузить чат");
+      notifyError("Не удалось загрузить чат.");
     }
   };
 
@@ -219,7 +220,13 @@ function DashboardContent() {
     e.preventDefault();
     if (!token) return;
     const label = sessionTitle?.trim() || `чат #${sessionId}`;
-    if (!window.confirm(`Удалить «${label}»? Это действие нельзя отменить.`)) return;
+    const ok = await confirmAction({
+      title: "Удалить чат?",
+      message: `«${label}» будет удалён навсегда. Это действие нельзя отменить.`,
+      confirmLabel: "Удалить",
+      danger: true,
+    });
+    if (!ok) return;
     try {
       await deleteChatSession(sessionId, token);
       setSessions((prev) => prev.filter((s) => s.id !== sessionId));
@@ -229,7 +236,7 @@ function DashboardContent() {
       }
     } catch (err) {
       console.error(err);
-      alert("Не удалось удалить чат. Попробуйте ещё раз.");
+      notifyError("Не удалось удалить чат. Попробуйте ещё раз.");
     }
   };
 
@@ -271,9 +278,7 @@ function DashboardContent() {
         onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
         canUseTree={usage?.limits.can_use_tree ?? quotas.canUseTree}
         canUseCustdev={usage?.limits.can_use_custdev ?? quotas.canUseCustdev}
-        onLockedClick={(label) => {
-          alert(`Функция «${label}» доступна на тарифах Starter и Pro. Обновите подписку, чтобы открыть её.`);
-        }}
+        onLockedClick={(label) => notifyTierGate(label)}
       />
 
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden relative">

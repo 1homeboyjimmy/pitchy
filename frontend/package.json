@@ -14,6 +14,7 @@
     "@mantine/dates": "^8.3.14",
     "@mantine/form": "^8.3.14",
     "@mantine/hooks": "^8.3.14",
+    "@mantine/modals": "^8.3.14",
     "@mantine/notifications": "^8.3.14",
     "@sentry/nextjs": "^8.54.0",
     "@tabler/icons-react": "^3.36.1",

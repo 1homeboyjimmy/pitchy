@@ -5,6 +5,7 @@ import { Users, Tag, BarChart2, Plus, Trash2, Shield, Loader, CreditCard } from 
 import { Button, GlassCard } from "@/components/shared";
 import { getToken } from "@/lib/auth";
 import { AreaChart } from "@mantine/charts";
+import { notifyError, confirmAction } from "@/lib/ui";
 
 // Temporary Types mapping what API returns
 type PromoCode = {
@@ -233,7 +234,7 @@ export function AdminView() {
                 setPromocodes([created, ...promocodes]);
                 setNewPromo({ code: "", discount_percent: 10, max_uses: "", target_tier: "", fixed_price: "" });
             } else {
-                alert("Ошибка при создании промокода. Возможно, он уже существует.");
+                notifyError("Не удалось создать промокод. Возможно, такой код уже существует.");
             }
         } catch (e) {
             console.error(e);
@@ -241,7 +242,13 @@ export function AdminView() {
     };
 
     const handleDeletePromo = async (id: number) => {
-        if (!confirm("Удалить промокод?")) return;
+        const ok = await confirmAction({
+            title: "Удалить промокод?",
+            message: "Промокод будет удалён. Это действие нельзя отменить.",
+            confirmLabel: "Удалить",
+            danger: true,
+        });
+        if (!ok) return;
         try {
             const token = getToken();
             const res = await fetch(`${API_BASE}/admin/promocodes/${id}`, {
@@ -366,13 +373,17 @@ export function AdminView() {
     };
 
     const handleUserAction = async (userId: number, action: "block" | "unblock" | "make-admin" | "delete") => {
-        let confirmMsg = "";
-        if (action === "block") confirmMsg = "Заблокировать пользователя?";
-        else if (action === "unblock") confirmMsg = "Разблокировать пользователя?";
-        else if (action === "make-admin") confirmMsg = "Сделать пользователя администратором?";
-        else if (action === "delete") confirmMsg = "Удалить пользователя навсегда?";
+        let title = "Подтверждение";
+        let message = "";
+        let confirmLabel = "Подтвердить";
+        let danger = false;
+        if (action === "block") { title = "Заблокировать пользователя?"; message = "Пользователь не сможет войти в аккаунт."; confirmLabel = "Заблокировать"; danger = true; }
+        else if (action === "unblock") { title = "Разблокировать пользователя?"; message = "Доступ к аккаунту будет восстановлен."; confirmLabel = "Разблокировать"; }
+        else if (action === "make-admin") { title = "Назначить администратором?"; message = "Пользователь получит полные права администратора."; confirmLabel = "Назначить"; }
+        else if (action === "delete") { title = "Удалить пользователя навсегда?"; message = "Все данные пользователя будут удалены. Это действие нельзя отменить."; confirmLabel = "Удалить"; danger = true; }
 
-        if (!confirm(confirmMsg)) return;
+        const ok = await confirmAction({ title, message, confirmLabel, danger });
+        if (!ok) return;
 
         try {
             const token = getToken();
@@ -396,7 +407,7 @@ export function AdminView() {
                     }));
                 }
             } else {
-                alert("Ошибка при выполнении действия");
+                notifyError("Не удалось выполнить действие.");
             }
         } catch (e) {
             console.error(e);

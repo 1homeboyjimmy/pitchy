@@ -9,6 +9,7 @@ import { SiteFooter } from "@/components/shared/SiteFooter";
 import Link from "next/link";
 import { clearToken, getToken } from "@/lib/auth";
 import { postAuthJson, patchAuthJson, getMyPayments, UserProfile, MyPaymentsResponse } from "@/lib/api";
+import { notifyError, notifySuccess } from "@/lib/ui";
 import { LogOut, User, Shield, CheckCircle2, ChevronLeft, Check, CreditCard } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -76,7 +77,7 @@ export function AccountPageClient() {
       }
     } catch (e) {
       console.error(e);
-      alert("Ошибка отправки письма");
+      notifyError("Не удалось отправить письмо. Попробуйте позже.");
     } finally {
       setIsResending(false);
     }
@@ -94,7 +95,7 @@ export function AccountPageClient() {
       }
     } catch (e) {
       console.error(e);
-      alert("Ошибка добавления email");
+      notifyError("Не удалось добавить email. Попробуйте позже.");
     }
   };
 
@@ -109,7 +110,7 @@ export function AccountPageClient() {
       }
     } catch (e) {
       console.error(e);
-      alert("Ошибка. Проверьте текущий пароль.");
+      notifyError("Текущий пароль введён неверно.");
     }
   };
 
@@ -121,28 +122,28 @@ export function AccountPageClient() {
           code: passwordForm.code,
           new_password: passwordForm.new,
         }, token);
-        alert("Пароль успешно изменен!");
+        notifySuccess("Пароль успешно изменён.");
         setIsChangePasswordOpen(false);
         setPasswordForm({ current: "", new: "", code: "" });
         setPasswordStep("init");
       }
     } catch (e) {
       console.error(e);
-      alert("Ошибка. Проверьте код.");
+      notifyError("Код введён неверно или истёк.");
     }
   };
 
   const handleInitiateChangeEmail = async () => {
     if (!emailForm.new || !emailForm.confirm) {
-      alert("Заполните все поля");
+      notifyError("Заполните все поля.");
       return;
     }
     if (emailForm.new !== emailForm.confirm) {
-      alert("Email адреса не совпадают");
+      notifyError("Email-адреса не совпадают.");
       return;
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailForm.new)) {
-      alert("Некорректный формат Email");
+      notifyError("Некорректный формат email.");
       return;
     }
 
@@ -154,7 +155,7 @@ export function AccountPageClient() {
       }
     } catch (e) {
       console.error(e);
-      alert("Ошибка при смене Email. Возможно, этот email уже занят.");
+      notifyError("Не удалось сменить email. Возможно, этот адрес уже занят.");
     }
   };
 
@@ -167,7 +168,7 @@ export function AccountPageClient() {
           code: emailForm.code
         }, token);
 
-        alert("Email успешно изменен и подтвержден!");
+        notifySuccess("Email успешно изменён и подтверждён.");
         setIsChangeEmailOpen(false);
         setEmailForm({ new: "", confirm: "", code: "" });
         setEmailStep("init");
@@ -177,7 +178,7 @@ export function AccountPageClient() {
       }
     } catch (e) {
       console.error(e);
-      alert("Ошибка подтверждения кода.");
+      notifyError("Не удалось подтвердить код. Проверьте и попробуйте снова.");
     }
   };
 

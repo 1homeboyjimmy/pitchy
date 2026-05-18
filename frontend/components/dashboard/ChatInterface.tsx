@@ -13,6 +13,7 @@ import { PresentationDrawer } from "./PresentationDrawer";
 import { PresentationSlide, importContext } from "@/lib/api";
 import { ContextImportModal } from "@/components/chat/ContextImportModal";
 import { UpgradeModal } from "@/components/chat/UpgradeModal";
+import { notifyError } from "@/lib/ui";
 import { stripThoughts } from "@/lib/utils";
 
 function CollapsibleUserBubble({ content }: { content: string }) {
@@ -557,10 +558,10 @@ export function ChatInterface({
                     setUpgradeModalMessage(detail);
                     setIsUpgradeModalOpen(true);
                 } else {
-                    alert(detail || "Ошибка отправки сообщения (отказано в доступе)");
+                    notifyError(detail || "Отказано в доступе. Сообщение не отправлено.");
                 }
             } else {
-                alert("Ошибка отправки сообщения");
+                notifyError("Не удалось отправить сообщение.");
             }
             setMessages((prev) => {
                 const last = prev.length;
