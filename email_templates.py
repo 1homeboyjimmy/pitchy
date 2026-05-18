@@ -13,7 +13,11 @@ from datetime import datetime
 
 SUPPORT_CONTACT = "support@pitchy.pro"
 
-SIGNATURE = "\n\n— Команда Pitchy"
+SIGNATURE = (
+    f"\n\n"
+    f"Если возникнут вопросы или проблемы — напишите на {SUPPORT_CONTACT}.\n\n"
+    f"— Команда Pitchy"
+)
 
 
 def _first_name(name: str | None) -> str:
@@ -117,7 +121,7 @@ def password_changed_notice(name: str | None) -> tuple[str, str]:
         f"Пароль аккаунта Pitchy успешно изменён {when}.\n\n"
         f"Если это были не вы — войдите в аккаунт через социальный логин\n"
         f"(Яндекс / Google / GitHub) и немедленно сбросьте пароль через\n"
-        f"«Забыли пароль?». Или напишите нам: {SUPPORT_CONTACT}"
+        f"«Забыли пароль?»."
         f"{SIGNATURE}"
     )
     return subj, body
@@ -197,8 +201,7 @@ def payment_canceled(name: str | None, tier: str, amount: float, payment_id: str
         f"Подписка не активирована, деньги списаны не будут. Это могло\n"
         f"произойти по разным причинам: банк отклонил операцию, недостаточно\n"
         f"средств, отмена с вашей стороны.\n\n"
-        f"Попробовать снова: https://pitchy.pro/pricing\n\n"
-        f"Если повторяется — напишите нам: {SUPPORT_CONTACT}"
+        f"Попробовать снова: https://pitchy.pro/pricing"
         f"{SIGNATURE}"
     )
     return subj, body
