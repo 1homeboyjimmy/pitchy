@@ -17,14 +17,17 @@ KNOWN_MAILBOXES = {"noreply", "billing", "hello", "support"}
 
 
 def send_email(to_email: str, subject: str, body: str,
-               from_mailbox: str = "noreply") -> None:
+               from_mailbox: str | None = None) -> None:
     """Send mail.
 
-    If IMAP_PASS_<MAILBOX> is set for the requested mailbox, route through
-    Yandex 360 SMTP with that mailbox as sender. Otherwise fall back to the
-    legacy single-sender SMTP configured via SMTP_HOST / SMTP_FROM.
+    Default (from_mailbox=None) → legacy SMTP_FROM via SMTP_HOST. This is the
+    Postbox path that auth@pitchy.pro uses for registration / password codes.
+
+    Explicit from_mailbox ("billing", "hello", "support", "noreply") → Yandex
+    360 SMTP with the matching IMAP_PASS_* app-password as auth. Use this for
+    mail where the recipient might reply (billing receipts, support replies).
     """
-    if from_mailbox in KNOWN_MAILBOXES:
+    if from_mailbox and from_mailbox in KNOWN_MAILBOXES:
         pw = os.getenv(f"IMAP_PASS_{from_mailbox.upper()}", "").strip()
         if pw:
             _send_via_y360(to_email, subject, body, from_mailbox, pw)
