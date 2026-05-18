@@ -17,7 +17,8 @@ KNOWN_MAILBOXES = {"noreply", "billing", "hello", "support"}
 
 
 def send_email(to_email: str, subject: str, body: str,
-               from_mailbox: str | None = None) -> None:
+               from_mailbox: str | None = None,
+               reply_to: str | None = None) -> None:
     """Send mail.
 
     Default (from_mailbox=None) → legacy SMTP_FROM via SMTP_HOST. This is the
@@ -26,30 +27,37 @@ def send_email(to_email: str, subject: str, body: str,
     Explicit from_mailbox ("billing", "hello", "support", "noreply") → Yandex
     360 SMTP with the matching IMAP_PASS_* app-password as auth. Use this for
     mail where the recipient might reply (billing receipts, support replies).
+
+    reply_to → if set, adds Reply-To header. Useful when forwarding a contact-
+    form submission to support@ so a reply goes back to the original sender.
     """
     if from_mailbox and from_mailbox in KNOWN_MAILBOXES:
         pw = os.getenv(f"IMAP_PASS_{from_mailbox.upper()}", "").strip()
         if pw:
-            _send_via_y360(to_email, subject, body, from_mailbox, pw)
+            _send_via_y360(to_email, subject, body, from_mailbox, pw, reply_to)
             return
 
-    _send_via_legacy(to_email, subject, body)
+    _send_via_legacy(to_email, subject, body, reply_to)
 
 
 def _send_via_y360(to_email: str, subject: str, body: str,
-                   mailbox: str, password: str) -> None:
+                   mailbox: str, password: str,
+                   reply_to: str | None = None) -> None:
     sender = f"{mailbox}@{DOMAIN}"
 
     message = EmailMessage()
     message["From"] = sender
     message["To"] = to_email
     message["Subject"] = subject
+    if reply_to:
+        message["Reply-To"] = reply_to
     message.set_content(body)
 
     if os.getenv("APP_ENV") == "dev" and os.getenv("FORCE_REAL_EMAIL", "false").lower() != "true":
         _DEV_EMAILS.append({
-            "to": to_email, "from": sender, "subject": subject,
-            "body": body, "created_at": datetime.utcnow().isoformat(),
+            "to": to_email, "from": sender, "reply_to": reply_to,
+            "subject": subject, "body": body,
+            "created_at": datetime.utcnow().isoformat(),
         })
         return
 
@@ -58,7 +66,8 @@ def _send_via_y360(to_email: str, subject: str, body: str,
         server.send_message(message)
 
 
-def _send_via_legacy(to_email: str, subject: str, body: str) -> None:
+def _send_via_legacy(to_email: str, subject: str, body: str,
+                     reply_to: str | None = None) -> None:
     host = os.getenv("SMTP_HOST")
     port = int(os.getenv("SMTP_PORT", "587"))
     username = os.getenv("SMTP_USER")
@@ -73,12 +82,15 @@ def _send_via_legacy(to_email: str, subject: str, body: str) -> None:
     message["From"] = sender
     message["To"] = to_email
     message["Subject"] = subject
+    if reply_to:
+        message["Reply-To"] = reply_to
     message.set_content(body)
 
     if os.getenv("APP_ENV") == "dev" and os.getenv("FORCE_REAL_EMAIL", "false").lower() != "true":
         _DEV_EMAILS.append({
-            "to": to_email, "from": sender, "subject": subject,
-            "body": body, "created_at": datetime.utcnow().isoformat(),
+            "to": to_email, "from": sender, "reply_to": reply_to,
+            "subject": subject, "body": body,
+            "created_at": datetime.utcnow().isoformat(),
         })
         return
 

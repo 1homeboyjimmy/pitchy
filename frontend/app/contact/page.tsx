@@ -4,22 +4,45 @@ import { useState } from "react";
 import { TopNavBar } from "@/components/shared/TopNavBar";
 import { SiteFooter } from "@/components/shared/SiteFooter";
 import { MapPin, Clock, ArrowRight, CheckCircle2, Mail, Send } from "lucide-react";
+import { notifyError, notifySuccess } from "@/lib/ui";
 
 export default function ContactPage() {
     const [formData, setFormData] = useState({
         name: "",
         email: "",
-        user_id: "",
         subject: "",
         message: "",
     });
+    const [submitting, setSubmitting] = useState(false);
     const [submitted, setSubmitted] = useState(false);
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        setSubmitted(true);
-        setTimeout(() => setSubmitted(false), 3000);
-        setFormData({ name: "", email: "", user_id: "", subject: "", message: "" });
+        if (submitting) return;
+        setSubmitting(true);
+        try {
+            const res = await fetch(`/contact-form`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(formData),
+            });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                const detail = typeof data?.detail === "string"
+                    ? data.detail
+                    : "Не удалось отправить обращение. Попробуйте позже.";
+                notifyError(detail);
+                return;
+            }
+            notifySuccess("Обращение отправлено. Ответим на email в течение 24 часов.");
+            setSubmitted(true);
+            setFormData({ name: "", email: "", subject: "", message: "" });
+            setTimeout(() => setSubmitted(false), 4000);
+        } catch {
+            notifyError("Не удалось связаться с сервером. Проверьте интернет.");
+        } finally {
+            setSubmitting(false);
+        }
     };
 
     return (
@@ -50,7 +73,7 @@ export default function ContactPage() {
                             
                             <div className="flex flex-col gap-4 relative z-10">
                                 <span className="font-mono-label text-[11px] text-white/30 uppercase tracking-[0.3em]">Email</span>
-                                <a className="font-display text-3xl text-white hover:text-white/70 transition-colors tracking-tight" href="mailto:auth@pitchy.pro">auth@pitchy.pro</a>
+                                <a className="font-display text-3xl text-white hover:text-white/70 transition-colors tracking-tight" href="mailto:support@pitchy.pro">support@pitchy.pro</a>
                             </div>
                             
                             <div className="w-full h-px bg-white/5 relative z-10"></div>
@@ -151,16 +174,16 @@ export default function ContactPage() {
                             </div>
 
                             <div className="pt-4">
-                                <button 
+                                <button
                                     className={`w-full py-5 rounded-2xl font-mono-label text-[12px] uppercase tracking-[0.3em] font-black flex items-center justify-center gap-3 transition-all duration-500 ${
-                                        submitted 
-                                        ? "bg-emerald-500 text-white shadow-[0_0_40px_rgba(16,185,129,0.3)]" 
-                                        : "bg-white text-black hover:scale-[1.02] active:scale-[0.98] shadow-2xl"
-                                    }`} 
+                                        submitted
+                                        ? "bg-emerald-500 text-white shadow-[0_0_40px_rgba(16,185,129,0.3)]"
+                                        : "bg-white text-black hover:scale-[1.02] active:scale-[0.98] shadow-2xl disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100"
+                                    }`}
                                     type="submit"
-                                    disabled={submitted}
+                                    disabled={submitting || submitted}
                                 >
-                                    <span>{submitted ? "УСПЕШНО ОТПРАВЛЕНО" : "ОТПРАВИТЬ ЗАПРОС"}</span>
+                                    <span>{submitted ? "УСПЕШНО ОТПРАВЛЕНО" : submitting ? "ОТПРАВКА…" : "ОТПРАВИТЬ ЗАПРОС"}</span>
                                     {submitted ? <CheckCircle2 size={18} /> : <ArrowRight size={18} />}
                                 </button>
                             </div>

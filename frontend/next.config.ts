@@ -35,6 +35,7 @@ const nextConfig: NextConfig = {
       { source: "/health", destination: `${BACKEND_URL}/health` },
       { source: "/dev/:path*", destination: `${BACKEND_URL}/dev/:path*` },
       { source: "/tree/:path*", destination: `${BACKEND_URL}/tree/:path*` },
+      { source: "/contact-form", destination: `${BACKEND_URL}/contact-form` },
     ];
   },
 };
