@@ -47,4 +47,9 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run pending alembic migrations at container start, then exec uvicorn. If
+# the upgrade fails, container exits non-zero, deploy healthcheck fires red,
+# and we never end up with a backend running on an outdated schema (which
+# is what happened in commit 62a4044 — the deploy workflow's manual exec
+# step silently no-op'd because the container wasn't ready yet).
+CMD ["sh", "-c", "python -m alembic upgrade head && exec uvicorn main:app --host 0.0.0.0 --port 8000"]
