@@ -1,0 +1,552 @@
+"""Auth router — registration, login, logout, password reset/change, SSO.
+
+Carved out of main.py to shrink the monolith. SSO providers (yandex_sso /
+github_sso / google_sso) and rate-limit helpers stay in main.py for now;
+this module pulls them via late imports inside endpoint bodies, which
+avoids a circular at module load time (main imports this module to call
+include_router; this module imports main only when handlers run).
+
+Endpoints moved:
+    POST /auth/register
+    POST /auth/verify-email          (code-based — replaces legacy token one)
+    POST /auth/login
+    POST /auth/logout
+    GET  /auth/{provider}/login      (SSO redirect)
+    GET  /auth/{provider}/callback   (SSO callback)
+    POST /auth/change-password/initiate
+    POST /auth/change-password/confirm
+    POST /auth/resend-verification
+    POST /auth/request-password-reset
+    POST /auth/reset-password
+
+The legacy POST /auth/verify-email (long-token) stays in main.py; it
+conflicts on path with the code-based one and is effectively dead code.
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+import random
+import secrets
+import urllib.parse
+from datetime import datetime, timedelta
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import RedirectResponse
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from auth import (
+    create_access_token,
+    get_access_token_cookie_name,
+    get_access_token_max_age,
+    get_async_current_user,
+    hash_password,
+    hash_token,
+    needs_update,
+    verify_password,
+    verify_token,
+)
+from db_async import get_async_db
+from email_utils import send_email
+from models import User
+from schemas.base import (
+    EmailCodeVerifyRequest,
+    LoginRequest,
+    PasswordChangeConfirmRequest,
+    PasswordChangeInitRequest,
+    PasswordResetConfirm,
+    PasswordResetRequest,
+    RegisterRequest,
+    TokenResponse,
+    UserResponse,
+)
+
+router = APIRouter(tags=["auth"])
+logger = logging.getLogger("app.routers.auth")
+
+
+def _safe_next_path(value: str | None) -> str | None:
+    """Allow only local app paths; reject external URLs and scheme-relative
+    tricks (//host, /\\host). Used to validate the `next` redirect target
+    after auth so we don't open an open-redirect."""
+    if not value:
+        return None
+    if not value.startswith("/"):
+        return None
+    if value.startswith("//") or value.startswith("/\\"):
+        return None
+    return value
+
+
+def _set_session_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        key=get_access_token_cookie_name(),
+        value=token,
+        httponly=True,
+        secure=os.getenv("APP_ENV", "dev").lower() == "prod",
+        samesite="lax",
+        max_age=get_access_token_max_age(),
+        path="/",
+        domain=os.getenv("COOKIE_DOMAIN", ".pitchy.pro"),
+    )
+
+
+# ===================================================================
+# Registration / email verification
+# ===================================================================
+
+@router.post("/auth/register")
+async def register(
+    payload: RegisterRequest,
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_async_db),
+) -> dict:
+    # Late imports to dodge circular: main imports us to register the
+    # router; we touch main only when a request actually lands here.
+    from main import _check_rate_limit, _check_registration_rate_limit
+    import email_templates
+
+    ip = request.client.host if request.client else "unknown"
+    _check_rate_limit(ip)
+    _check_registration_rate_limit(ip)
+
+    result = await db.execute(select(User).where(User.email == payload.email))
+    exists = result.scalar_one_or_none()
+
+    if exists:
+        if not exists.email_verified:
+            # Overwrite an abandoned unverified registration
+            await db.delete(exists)
+            await db.commit()
+        else:
+            raise HTTPException(status_code=400, detail="Email already registered")
+
+    verify_code = "".join([str(random.randint(0, 9)) for _ in range(6)])
+    verify_hash = hash_token(verify_code)
+
+    verify_token_str = secrets.token_urlsafe(32)
+    verify_token_hash = hash_token(verify_token_str)
+
+    verify_expires = datetime.utcnow() + timedelta(hours=24)
+
+    consent_ts = datetime.utcnow()
+    user = User(
+        email=payload.email,
+        name=payload.name,
+        password_hash=hash_password(payload.password),
+        email_verify_token_hash=verify_token_hash,
+        email_verify_code_hash=verify_hash,
+        email_verify_expires_at=verify_expires,
+        email_verified=False,
+        is_active=True,
+        privacy_consent_at=consent_ts,
+        cookies_consent_at=consent_ts,
+        cookie_consent=True,
+    )
+    db.add(user)
+    try:
+        await db.commit()
+    except Exception as exc:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="Registration failed") from exc
+    await db.refresh(user)
+
+    try:
+        subj, body = email_templates.email_verification(payload.name, verify_code)
+        await run_in_threadpool(send_email, payload.email, subj, body)
+    except Exception:
+        logger.error(f"Failed to send verification email to {payload.email}")
+
+    return {"status": "verification_required", "email": payload.email}
+
+
+@router.post("/auth/verify-email", response_model=TokenResponse)
+async def verify_email_code(
+    payload: EmailCodeVerifyRequest,
+    response: Response,
+    db: AsyncSession = Depends(get_async_db),
+) -> TokenResponse:
+    result = await db.execute(
+        select(User).where(User.email == payload.email, User.deleted_at.is_(None))
+    )
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if not user.email_verified:
+        if not user.email_verify_code_hash or not user.email_verify_expires_at:
+            raise HTTPException(status_code=400, detail="No pending verification")
+
+        if datetime.utcnow() > user.email_verify_expires_at:
+            raise HTTPException(status_code=400, detail="Verification code expired")
+
+        if not verify_token(payload.code, user.email_verify_code_hash):
+            raise HTTPException(status_code=400, detail="Invalid verification code")
+
+        user.email_verified = True
+        user.email_verify_token_hash = None
+        user.email_verify_code_hash = None
+        user.email_verify_expires_at = None
+        await db.commit()
+
+    token = create_access_token(user.id)
+    _set_session_cookie(response, token)
+    return TokenResponse(access_token=token)
+
+
+@router.post("/auth/resend-verification")
+async def resend_verification(
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+) -> dict:
+    import email_templates
+
+    if user.email_verified:
+        return {"status": "ok", "message": "Already verified"}
+
+    verify_code = "".join([str(random.randint(0, 9)) for _ in range(6)])
+    verify_hash = hash_token(verify_code)
+    verify_expires = datetime.utcnow() + timedelta(hours=24)
+
+    user.email_verify_token_hash = verify_hash
+    user.email_verify_expires_at = verify_expires
+    await db.commit()
+
+    try:
+        subj, body = email_templates.email_verification(user.name, verify_code)
+        send_email(user.email, subj, body)
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to send email")
+
+    return {"status": "ok"}
+
+
+# ===================================================================
+# Login / logout
+# ===================================================================
+
+@router.post("/auth/login", response_model=TokenResponse)
+async def login(
+    payload: LoginRequest,
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_async_db),
+) -> TokenResponse:
+    from main import _check_rate_limit
+
+    ip = request.client.host if request.client else "unknown"
+    _check_rate_limit(ip)
+
+    result = await db.execute(
+        select(User).where(User.email == payload.email, User.deleted_at.is_(None))
+    )
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="User is blocked")
+    if user.locked_until and user.locked_until > datetime.utcnow():
+        raise HTTPException(status_code=403, detail="User is temporarily locked")
+    if not user.email_verified:
+        raise HTTPException(status_code=403, detail="Email is not verified")
+    if not verify_password(payload.password, user.password_hash):
+        user.failed_login_attempts += 1
+        if user.failed_login_attempts >= 5:
+            user.locked_until = datetime.utcnow() + timedelta(minutes=15)
+            user.failed_login_attempts = 0
+        await db.commit()
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    # Rehash legacy pbkdf2 hashes on successful login.
+    if needs_update(user.password_hash):
+        user.password_hash = hash_password(payload.password)
+
+    user.failed_login_attempts = 0
+    user.locked_until = None
+    await db.commit()
+
+    token = create_access_token(user.id)
+    _set_session_cookie(response, token)
+    return TokenResponse(access_token=token)
+
+
+@router.post("/auth/logout")
+def logout(response: Response) -> dict:
+    response.delete_cookie(
+        key=get_access_token_cookie_name(),
+        path="/",
+        domain=os.getenv("COOKIE_DOMAIN", ".pitchy.pro"),
+    )
+    return {"status": "ok"}
+
+
+# ===================================================================
+# Password change / reset
+# ===================================================================
+
+@router.post("/auth/change-password/initiate")
+async def initiate_change_password(
+    payload: PasswordChangeInitRequest,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+) -> dict:
+    import email_templates
+
+    if not user.password_hash:
+        raise HTTPException(status_code=400, detail="User has no password set (social login?)")
+
+    if not verify_password(payload.current_password, user.password_hash):
+        raise HTTPException(status_code=400, detail="Invalid current password")
+
+    code = "".join([str(random.randint(0, 9)) for _ in range(6)])
+    code_hash = hash_token(code)
+    expires = datetime.utcnow() + timedelta(minutes=10)
+
+    user.password_reset_token_hash = code_hash
+    user.password_reset_expires_at = expires
+    await db.commit()
+
+    try:
+        subj, body = email_templates.password_change_code(user.name, code)
+        send_email(user.email, subj, body)
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to send verification code")
+
+    return {"status": "ok", "message": "Verification code sent"}
+
+
+@router.post("/auth/change-password/confirm")
+async def confirm_change_password(
+    payload: PasswordChangeConfirmRequest,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+) -> dict:
+    import email_templates
+
+    if not user.password_reset_token_hash or not user.password_reset_expires_at:
+        raise HTTPException(status_code=400, detail="No pending password change request")
+
+    if datetime.utcnow() > user.password_reset_expires_at:
+        raise HTTPException(status_code=400, detail="Verification code expired")
+
+    if not verify_token(payload.code, user.password_reset_token_hash):
+        raise HTTPException(status_code=400, detail="Invalid verification code")
+
+    user.password_hash = hash_password(payload.new_password)
+    user.password_reset_token_hash = None
+    user.password_reset_expires_at = None
+    await db.commit()
+
+    try:
+        subj, body = email_templates.password_changed_notice(user.name)
+        send_email(user.email, subj, body)
+    except Exception:
+        pass
+
+    return {"status": "ok"}
+
+
+@router.post("/auth/request-password-reset")
+async def request_password_reset(
+    payload: PasswordResetRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_async_db),
+) -> dict:
+    """Always returns 200 OK regardless of whether the email exists — never
+    leak which addresses are registered. Code expires in 15 min and is
+    stored hashed.
+    """
+    from main import _check_rate_limit
+    import email_templates
+
+    ip = request.client.host if request.client else "unknown"
+    _check_rate_limit(ip)
+    res = await db.execute(
+        select(User).where(User.email == payload.email, User.deleted_at.is_(None))
+    )
+    user = res.scalar_one_or_none()
+    if not user:
+        return {"status": "ok"}
+    code = "".join(str(random.randint(0, 9)) for _ in range(6))
+    user.password_reset_token_hash = hash_token(code)
+    user.password_reset_expires_at = datetime.utcnow() + timedelta(minutes=15)
+    await db.commit()
+    try:
+        subj, body = email_templates.password_reset_code(code)
+        send_email(payload.email, subj, body)
+    except Exception:
+        # SMTP may be unavailable on dev — code is still readable from /dev/emails.
+        pass
+    return {"status": "ok"}
+
+
+@router.post("/auth/reset-password")
+async def reset_password(
+    payload: PasswordResetConfirm,
+    db: AsyncSession = Depends(get_async_db),
+) -> dict:
+    res = await db.execute(
+        select(User).where(User.email == payload.email, User.deleted_at.is_(None))
+    )
+    user = res.scalar_one_or_none()
+
+    if (
+        not user
+        or not user.password_reset_token_hash
+        or not user.password_reset_expires_at
+        or user.password_reset_expires_at < datetime.utcnow()
+    ):
+        raise HTTPException(status_code=400, detail="Код недействителен или истёк")
+
+    if hash_token(payload.code) != user.password_reset_token_hash:
+        raise HTTPException(status_code=400, detail="Код недействителен или истёк")
+
+    user.password_hash = hash_password(payload.new_password)
+    user.password_reset_token_hash = None
+    user.password_reset_expires_at = None
+    await db.commit()
+    return {"status": "ok"}
+
+
+# ===================================================================
+# Social login (yandex / github / google)
+# ===================================================================
+
+@router.get("/auth/{provider}/login")
+async def sso_login(
+    provider: str,
+    next_path: str | None = Query(None, alias="next"),
+):
+    from main import yandex_sso, github_sso, google_sso
+
+    if provider == "yandex":
+        redirect = await yandex_sso.get_login_redirect()
+    elif provider == "github":
+        redirect = await github_sso.get_login_redirect()
+    elif provider == "google":
+        redirect = await google_sso.get_login_redirect()
+    else:
+        raise HTTPException(status_code=404, detail="Provider not found")
+
+    safe_next = _safe_next_path(next_path)
+    if safe_next:
+        redirect.set_cookie(
+            key="sso_next",
+            value=safe_next,
+            httponly=True,
+            secure=os.getenv("APP_ENV", "dev").lower() == "prod",
+            samesite="lax",
+            max_age=600,
+            path="/",
+            domain=os.getenv("COOKIE_DOMAIN", ".pitchy.pro"),
+        )
+    return redirect
+
+
+@router.get("/auth/{provider}/callback")
+async def sso_callback(
+    provider: str,
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_async_db),
+):
+    from main import yandex_sso, github_sso, google_sso
+    from models import SocialAccount
+
+    if provider == "yandex":
+        sso = yandex_sso
+    elif provider == "github":
+        sso = github_sso
+    elif provider == "google":
+        sso = google_sso
+    else:
+        raise HTTPException(status_code=404, detail="Provider not found")
+
+    try:
+        openid_user = await sso.verify_and_process(request)
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        logger.error(f"SSO Error ({provider}): {str(e)}\n{error_details}", extra={
+            "query_params": str(request.query_params),
+            "provider": provider,
+        })
+        raise HTTPException(status_code=400, detail="SSO Authentication Failed")
+
+    if not openid_user or not openid_user.email:
+        raise HTTPException(status_code=400, detail="No email provided by social login")
+
+    res_social = await db.execute(
+        select(SocialAccount).where(
+            SocialAccount.provider == provider,
+            SocialAccount.provider_id == str(openid_user.id),
+        )
+    )
+    social_acc = res_social.scalar_one_or_none()
+
+    if social_acc:
+        res_user = await db.execute(
+            select(User).where(User.id == social_acc.user_id, User.deleted_at.is_(None))
+        )
+        user = res_user.scalar_one_or_none()
+    else:
+        res_user = await db.execute(
+            select(User).where(User.email == openid_user.email, User.deleted_at.is_(None))
+        )
+        user = res_user.scalar_one_or_none()
+
+        if not user:
+            user = User(
+                email=openid_user.email,
+                name=openid_user.display_name or openid_user.email.split("@")[0],
+                password_hash=None,
+                is_active=True,
+                email_verified=True,  # trusted from OAuth
+            )
+            db.add(user)
+            await db.flush()
+
+        social_acc = SocialAccount(
+            user_id=user.id,
+            provider=provider,
+            provider_id=str(openid_user.id),
+            email=openid_user.email,
+        )
+        db.add(social_acc)
+        await db.commit()
+
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="User is blocked")
+
+    token = create_access_token(user.id)
+    frontend_url = os.getenv("APP_PUBLIC_URL", "http://localhost:3000")
+
+    sso_next = _safe_next_path(request.cookies.get("sso_next"))
+    target = f"{frontend_url}/dashboard?token={token}"
+    if sso_next:
+        target += f"&next={urllib.parse.quote(sso_next, safe='/')}"
+
+    redirect = RedirectResponse(url=target, status_code=302)
+    if sso_next:
+        redirect.delete_cookie(
+            "sso_next",
+            path="/",
+            domain=os.getenv("COOKIE_DOMAIN", ".pitchy.pro"),
+        )
+    redirect.set_cookie(
+        key=get_access_token_cookie_name(),
+        value=token,
+        httponly=True,
+        secure=os.getenv("APP_ENV", "dev").lower() == "prod",
+        samesite="lax",
+        max_age=get_access_token_max_age(),
+        path="/",
+        domain=os.getenv("COOKIE_DOMAIN", ".pitchy.pro"),
+    )
+    return redirect
