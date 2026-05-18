@@ -73,6 +73,7 @@ async def _run_once() -> int:
                 User.subscription_expires_at >= window_low,
                 User.subscription_expires_at <= window_high,
                 User.is_active.is_(True),
+                User.deleted_at.is_(None),
             )
         )
         users = result.scalars().all()

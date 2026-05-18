@@ -113,7 +113,7 @@ def get_current_user(
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-    user = db.query(User).filter(User.id == int(user_id)).first()
+    user = db.query(User).filter(User.id == int(user_id), User.deleted_at.is_(None)).first()
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
     if not user.is_active:
@@ -153,10 +153,10 @@ async def get_async_current_user(
     result = await db.execute(
         select(User)
         .options(selectinload(User.social_accounts))
-        .where(User.id == int(user_id))
+        .where(User.id == int(user_id), User.deleted_at.is_(None))
     )
     user = result.scalar_one_or_none()
-    
+
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
     if not user.is_active:

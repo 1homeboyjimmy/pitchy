@@ -30,6 +30,7 @@ type User = {
     created_at: string;
     privacy_consent_at?: string | null;
     cookies_consent_at?: string | null;
+    deleted_at?: string | null;
 };
 
 type AnalyticsData = {
@@ -711,7 +712,7 @@ export function AdminView() {
                                     </thead>
                                     <tbody>
                                         {users.map(u => (
-                                            <tr key={u.id} className={`border-b border-white/5 hover:bg-white/5 transition-colors ${!u.is_active ? 'opacity-50' : ''}`}>
+                                            <tr key={u.id} className={`border-b border-white/5 hover:bg-white/5 transition-colors ${!u.is_active ? 'opacity-50' : ''} ${u.deleted_at ? 'opacity-40' : ''}`}>
                                                 <td className="px-6 py-4">
                                                     <div className="font-bold tracking-tight">{u.name || "Без имени"}</div>
                                                     <div className="text-white/50 text-[11px] font-mono mt-1">{u.email}</div>
@@ -723,7 +724,9 @@ export function AdminView() {
                                                         ) : (
                                                             <span className="text-[10px] font-mono-label uppercase tracking-widest bg-[#0A0A0A] border border-white/10 text-white/50 px-2 py-0.5">Юзер</span>
                                                         )}
-                                                        {!u.is_active && (
+                                                        {u.deleted_at ? (
+                                                            <span className="text-[10px] font-mono-label uppercase tracking-widest bg-red-500/20 text-red-300 px-2 py-0.5 border border-red-500/30 mt-1" title={`Удалён ${new Date(u.deleted_at).toLocaleString('ru-RU')}`}>Удалён</span>
+                                                        ) : !u.is_active && (
                                                             <span className="text-[10px] font-mono-label uppercase tracking-widest bg-red-500/10 text-red-400 px-2 py-0.5 border border-red-500/20 mt-1">Заблокирован</span>
                                                         )}
                                                     </div>
@@ -741,6 +744,9 @@ export function AdminView() {
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
+                                                    {u.deleted_at ? (
+                                                        <span className="font-mono-label uppercase text-[10px] text-white/30 tracking-widest">—</span>
+                                                    ) : (
                                                     <div className="flex justify-end gap-2">
                                                         {u.is_active ? (
                                                             <button onClick={() => handleUserAction(u.id, "block")} className="text-amber-400 hover:text-amber-300 font-mono-label uppercase text-[10px] tracking-widest px-2 py-1 border border-amber-500/20 bg-amber-500/10 transition-colors">Блок</button>
@@ -752,6 +758,7 @@ export function AdminView() {
                                                         )}
                                                         <button onClick={() => handleUserAction(u.id, "delete")} className="text-red-400 hover:text-red-300 font-mono-label uppercase text-[10px] tracking-widest px-2 py-1 border border-red-500/20 bg-red-500/10 transition-colors" title="Удалить"><Trash2 className="w-3 h-3" /></button>
                                                     </div>
+                                                    )}
                                                 </td>
                                             </tr>
                                         ))}

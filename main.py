@@ -1186,9 +1186,11 @@ async def verify_email_code(
     response: Response,
     db: AsyncSession = Depends(get_async_db),
 ) -> TokenResponse:
-    result = await db.execute(select(User).where(User.email == payload.email))
+    result = await db.execute(
+        select(User).where(User.email == payload.email, User.deleted_at.is_(None))
+    )
     user = result.scalar_one_or_none()
-    
+
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -1235,10 +1237,12 @@ async def login(
 ) -> TokenResponse:
     ip = request.client.host if request.client else "unknown"
     _check_rate_limit(ip)
-    
-    result = await db.execute(select(User).where(User.email == payload.email))
+
+    result = await db.execute(
+        select(User).where(User.email == payload.email, User.deleted_at.is_(None))
+    )
     user = result.scalar_one_or_none()
-    
+
     if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if not user.is_active:
@@ -1374,11 +1378,15 @@ async def auth_callback(
     social_acc = res_social.scalar_one_or_none()
 
     if social_acc:
-        res_user = await db.execute(select(User).where(User.id == social_acc.user_id))
+        res_user = await db.execute(
+            select(User).where(User.id == social_acc.user_id, User.deleted_at.is_(None))
+        )
         user = res_user.scalar_one_or_none()
     else:
-        # Check if user with this email exists
-        res_user = await db.execute(select(User).where(User.email == openid_user.email))
+        # Check if user with this email exists (and isn't soft-deleted).
+        res_user = await db.execute(
+            select(User).where(User.email == openid_user.email, User.deleted_at.is_(None))
+        )
         user = res_user.scalar_one_or_none()
 
         if not user:
@@ -1759,7 +1767,9 @@ async def request_password_reset(
     """
     ip = request.client.host if request.client else "unknown"
     _check_rate_limit(ip)
-    res = await db.execute(select(User).where(User.email == payload.email))
+    res = await db.execute(
+        select(User).where(User.email == payload.email, User.deleted_at.is_(None))
+    )
     user = res.scalar_one_or_none()
     if not user:
         return {"status": "ok"}
@@ -1783,7 +1793,9 @@ async def reset_password(
     db: AsyncSession = Depends(get_async_db),
 ) -> dict:
     """Confirm a password reset using email + 6-digit code + new password."""
-    res = await db.execute(select(User).where(User.email == payload.email))
+    res = await db.execute(
+        select(User).where(User.email == payload.email, User.deleted_at.is_(None))
+    )
     user = res.scalar_one_or_none()
 
     if (
@@ -1810,7 +1822,12 @@ async def verify_email(
     db: AsyncSession = Depends(get_async_db),
 ) -> dict:
     token_hash = hash_token(payload.token)
-    res = await db.execute(select(User).where(User.email_verify_token_hash == token_hash))
+    res = await db.execute(
+        select(User).where(
+            User.email_verify_token_hash == token_hash,
+            User.deleted_at.is_(None),
+        )
+    )
     user = res.scalar_one_or_none()
     if (
         not user
@@ -2978,34 +2995,40 @@ async def admin_delete_user(
     admin: User = Depends(require_async_admin),
     db: AsyncSession = Depends(get_async_db),
 ) -> dict:
+    """Soft-delete a user: set deleted_at, anonymize email/name, deactivate.
+    Child data (analyses, chat sessions) is preserved for audit purposes.
+    A fresh registration with the original email is now possible because
+    the user's email is rewritten into the reserved deleted.pitchy.pro space.
+    """
     res = await db.execute(select(User).where(User.id == user_id))
     user = res.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    from sqlalchemy import delete
+    if user.deleted_at is not None:
+        raise HTTPException(status_code=400, detail="User already deleted")
 
+    original_email = user.email
     target_snapshot = {
-        "target_email": user.email,
+        "target_email": original_email,
         "target_name": user.name,
         "target_subscription_tier": user.subscription_tier,
     }
 
-    session_res = await db.execute(select(ChatSession.id).where(ChatSession.user_id == user.id))
-    session_ids = session_res.scalars().all()
+    now = datetime.utcnow()
+    user.deleted_at = now
+    user.is_active = False
+    user.email = f"deleted-{user.id}@deleted.pitchy.pro"
+    user.name = "Удалённый пользователь"
+    user.password_hash = None  # password login disabled
+    user.email_verify_token_hash = None
+    user.email_verify_code_hash = None
+    user.password_reset_token_hash = None
 
-    if session_ids:
-        await db.execute(delete(DbChatMessage).where(DbChatMessage.session_id.in_(session_ids)))
-
-    await db.execute(delete(ChatSession).where(ChatSession.user_id == user.id))
-    await db.execute(delete(Analysis).where(Analysis.user_id == user.id))
-
-    # Audit before the user row goes away so admin_id still resolves cleanly.
     _stage_audit_entry(db, admin, "user.delete", "user", user_id,
                        details=target_snapshot, request=request)
 
-    await db.delete(user)
     await db.commit()
-    return {"status": "ok"}
+    return {"status": "ok", "soft_deleted": True}
 
 
 @app.get("/admin/audit")
@@ -3335,7 +3358,10 @@ async def admin_subscriptions(
     db: AsyncSession = Depends(get_async_db),
 ):
     """List all users with active or expired subscriptions."""
-    query = select(User).where(User.subscription_tier != "free")
+    query = select(User).where(
+        User.subscription_tier != "free",
+        User.deleted_at.is_(None),
+    )
     if tier and tier != "all":
         query = query.where(User.subscription_tier == tier)
 

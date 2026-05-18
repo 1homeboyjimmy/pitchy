@@ -59,6 +59,7 @@ class UserResponse(BaseModel):
     cookie_consent: bool | None = None
     privacy_consent_at: datetime | None = None
     cookies_consent_at: datetime | None = None
+    deleted_at: datetime | None = None
 
     class Config:
         from_attributes = True
