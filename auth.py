@@ -94,14 +94,12 @@ def get_user_id_from_token(token: str) -> int | None:
 
 def get_current_user(
     request: Request,
-    credentials: HTTPAuthorizationCredentials | None = Depends(security),
     db: Session = Depends(get_db),
 ) -> User:
-    token: str | None = None
-    if credentials and credentials.credentials:
-        token = credentials.credentials
-    else:
-        token = request.cookies.get(get_access_token_cookie_name())
+    """Cookie-only session auth. The Authorization: Bearer fallback was
+    removed so an XSS-stolen localStorage token can't be replayed against
+    the API — only the httpOnly cookie counts."""
+    token = request.cookies.get(get_access_token_cookie_name())
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
@@ -131,14 +129,10 @@ def require_admin(user: User = Depends(get_current_user)) -> User:
 
 async def get_async_current_user(
     request: Request,
-    credentials: HTTPAuthorizationCredentials | None = Depends(security),
     db: AsyncSession = Depends(get_async_db),
 ) -> User:
-    token: str | None = None
-    if credentials and credentials.credentials:
-        token = credentials.credentials
-    else:
-        token = request.cookies.get(get_access_token_cookie_name())
+    """Cookie-only session auth. See get_current_user."""
+    token = request.cookies.get(get_access_token_cookie_name())
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
