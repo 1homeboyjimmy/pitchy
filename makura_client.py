@@ -13,6 +13,11 @@ logger = logging.getLogger("app")
 # if that recurs (a hung model fails over after the 60s read timeout).
 MAKURA_FALLBACK_MODELS = ["glm-5", "glm-4.7", "glm-4.6", "auto"]
 
+# If every Makura model fails (e.g. provider-wide outage), the main chat
+# falls through to RouterAI's glm-5 as a last-ditch backstop. Separate API
+# key and balance, so a Makura billing/quota issue can't take the chat down.
+ROUTERAI_FALLBACK_MODEL = os.getenv("ROUTERAI_FALLBACK_MODEL", "glm-5")
+
 async def call_makura(system_prompt: str, user_message: str, model: str = None) -> Tuple[Optional[str], Optional[str], Dict[str, Any]]:
     """
     Calls Makura.ai API (OpenAI compatible).
@@ -147,12 +152,74 @@ async def _stream_makura_attempt(model: str, payload_messages: list, headers: di
                 yield {"__usage__": usage_data}
 
 
+async def _stream_routerai_attempt(model: str, payload_messages: list):
+    """Single streaming attempt against RouterAI (OpenAI-compatible).
+    Same shape as _stream_makura_attempt — yields content chunks and a
+    final {"__usage__": ...} sentinel. Raises on any failure so the
+    caller can decide to give up or try another fallback.
+    """
+    api_key = os.getenv("ROUTERAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("ROUTERAI_API_KEY not set")
+    base = os.getenv("ROUTERAI_API_BASE", "https://routerai.ru/api/v1").rstrip("/")
+    url = f"{base}/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "X-Accel-Buffering": "no",
+    }
+    payload = {
+        "model": model,
+        "messages": payload_messages,
+        "temperature": 0.4,
+        "max_tokens": 4000,
+        "stream": True,
+    }
+
+    timeout = httpx.Timeout(120.0, connect=15.0, read=60.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        async with client.stream("POST", url, headers=headers, json=payload) as response:
+            if response.status_code != 200:
+                err_body = await response.aread()
+                raise RuntimeError(f"RouterAI HTTP {response.status_code}: {err_body.decode()[:300]}")
+
+            usage_data = {}
+            async for line in response.aiter_lines():
+                if not line.strip():
+                    continue
+                if line.startswith("data: "):
+                    data_str = line[6:].strip()
+                    if data_str == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data_str)
+                        if "usage" in chunk and chunk["usage"]:
+                            usage_data = chunk["usage"]
+                        choices = chunk.get("choices", [])
+                        if not choices:
+                            continue
+                        delta = choices[0].get("delta", {})
+                        if "reasoning_content" in delta and delta["reasoning_content"]:
+                            yield {"__thinking__": delta["reasoning_content"]}
+                        if "content" in delta and delta["content"]:
+                            yield delta["content"]
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Error parsing RouterAI stream chunk: {e}")
+                        continue
+            if usage_data:
+                yield {"__usage__": usage_data}
+
+
 async def stream_makura(system_prompt: str = None, user_message: str = None, messages: list = None, model: str = None):
     """
-    Streams response from Makura.ai API with model fallback.
+    Streams response from Makura.ai API with model fallback, then falls
+    through to RouterAI/glm-5 if every Makura model fails before output.
+
     Yields chunks of text. If a model fails before producing any output, the
-    next model in MAKURA_FALLBACK_MODELS is tried. Once content has reached the
-    client a mid-stream failure is surfaced as an error (switching is unsafe).
+    next model in MAKURA_FALLBACK_MODELS is tried; if all Makura models fail,
+    one final attempt is made against RouterAI as a cross-provider safety net.
+    Once content has reached the client a mid-stream failure is surfaced as
+    an error (switching providers mid-stream would corrupt the response).
     """
     api_key = os.getenv("MAKURA_API_KEY")
     if not api_key:
@@ -198,5 +265,21 @@ async def stream_makura(system_prompt: str = None, user_message: str = None, mes
                 return
             logger.warning(f"Makura model {candidate} failed before any output ({type(e).__name__}: {e}); trying fallback")
 
-    logger.error(f"All Makura models failed. Last: {type(last_error).__name__}: {last_error}", exc_info=last_error)
+    # Every Makura model failed before producing output. Fall through to
+    # RouterAI (separate provider, separate balance, OpenAI-compatible API)
+    # with glm-5 as a final cross-provider safety net.
+    if os.getenv("ROUTERAI_API_KEY"):
+        try:
+            logger.warning(f"All Makura models failed; falling over to RouterAI/{ROUTERAI_FALLBACK_MODEL}")
+            produced = False
+            async for chunk in _stream_routerai_attempt(ROUTERAI_FALLBACK_MODEL, payload_messages):
+                produced = True
+                yield chunk
+            if produced:
+                return  # RouterAI saved us
+        except Exception as e:
+            last_error = e
+            logger.error(f"RouterAI fallback ({ROUTERAI_FALLBACK_MODEL}) also failed: {type(e).__name__}: {e}")
+
+    logger.error(f"All providers exhausted. Last: {type(last_error).__name__}: {last_error}", exc_info=last_error)
     yield f"\n[Ошибка соединения: {type(last_error).__name__}: {last_error}]"
