@@ -315,13 +315,17 @@ async def lifespan(app: FastAPI):
             try:
                 await rag.init_rag()
                 logger.info("RAG initialized successfully in background.")
+                # Keep the embedding endpoint connection warm — the first
+                # call after an idle gap was ~30s on prod, which would
+                # stall the first chat query of a session.
+                asyncio.create_task(rag.run_embedding_keepwarm_loop())
                 return
             except Exception as e:
                 logger.warning(f"RAG init failed (attempt {attempt+1}/{max_retries}): {e}")
                 if attempt < max_retries - 1:
                     await asyncio.sleep(5)
         logger.error("RAG init failed permanently after retries.")
-    
+
     asyncio.create_task(_init_rag_bg())
 
     # IMAP → Telegram bridge for support@/hello@/billing@/noreply@ mailboxes.

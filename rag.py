@@ -54,11 +54,30 @@ class GeminiEmbeddingFunction(EmbeddingFunction):
         api_key = os.getenv("ROUTERAI_API_KEY", "")
         if not api_key:
             logger.warning("ROUTERAI_API_KEY not set — embeddings will fail")
+        # Explicit timeout + bounded retries. The OpenAI SDK default is a
+        # 600s timeout with 2 retries — a cold or throttled RouterAI could
+        # then hang a chat request for over a minute. 20s/1-retry fails
+        # fast enough that a degraded embedding doesn't wreck a live demo.
         self._client = OpenAI(
             api_key=api_key,
             base_url=EMBEDDING_API_BASE,
+            timeout=20.0,
+            max_retries=1,
         )
         self._model = EMBEDDING_MODEL_NAME
+
+    def warmup(self) -> bool:
+        """Fire a tiny embedding call to keep the RouterAI TLS connection
+        and any provider-side cold path warm. Called periodically by a
+        background task so the FIRST real query of a session isn't slow."""
+        try:
+            self._client.embeddings.create(
+                model=self._model, input="warmup", encoding_format="float",
+            )
+            return True
+        except Exception as e:
+            logger.warning(f"Embedding warmup failed: {type(e).__name__}: {e}")
+            return False
 
     def __call__(self, input: Documents) -> Embeddings:
         """Embed a batch of documents. Batches in groups of 20 to stay within API limits."""
@@ -591,6 +610,23 @@ _RAG_INSTANCE: StartupRAG | None = None
 async def init_rag() -> None:
     global _RAG_INSTANCE
     _RAG_INSTANCE = await StartupRAG.build_async()
+
+
+async def run_embedding_keepwarm_loop(interval_seconds: int = 90) -> None:
+    """Background task: ping the embedding endpoint every `interval_seconds`
+    so the RouterAI TLS connection (and any provider cold path) never goes
+    stale. The first embedding after an idle gap was measured at ~30s on
+    prod — unacceptable for a live demo. A warm connection keeps it ~1s.
+    """
+    while True:
+        try:
+            await asyncio.sleep(interval_seconds)
+            if _RAG_INSTANCE is not None:
+                await asyncio.to_thread(_RAG_INSTANCE.embedding_fn.warmup)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.warning(f"Embedding keep-warm loop error: {type(e).__name__}: {e}")
 
 
 @observe(name="rag_retrieval")
