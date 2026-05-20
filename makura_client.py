@@ -138,11 +138,16 @@ async def _stream_makura_attempt(model: str, payload_messages: list, headers: di
                             continue
                         delta = choices[0].get("delta", {})
 
-                        # Handle native Z-AI/GLM reasoning_content
-                        if "reasoning_content" in delta and delta["reasoning_content"]:
-                            yield {"__thinking__": delta["reasoning_content"]}
+                        # Native GLM reasoning. Makura's glm-5:cloud (Ollama)
+                        # streams the chain-of-thought under "reasoning";
+                        # other GLM/Z-AI builds use "reasoning_content".
+                        # Accept both — missing it left the user staring at a
+                        # blank screen for ~7s until the first content token.
+                        reasoning = delta.get("reasoning") or delta.get("reasoning_content")
+                        if reasoning:
+                            yield {"__thinking__": reasoning}
 
-                        if "content" in delta:
+                        if delta.get("content"):
                             yield delta["content"]
                     except json.JSONDecodeError as e:
                         logger.error(f"Error parsing Makura stream chunk: {e}")
@@ -199,9 +204,10 @@ async def _stream_routerai_attempt(model: str, payload_messages: list):
                         if not choices:
                             continue
                         delta = choices[0].get("delta", {})
-                        if "reasoning_content" in delta and delta["reasoning_content"]:
-                            yield {"__thinking__": delta["reasoning_content"]}
-                        if "content" in delta and delta["content"]:
+                        reasoning = delta.get("reasoning") or delta.get("reasoning_content")
+                        if reasoning:
+                            yield {"__thinking__": reasoning}
+                        if delta.get("content"):
                             yield delta["content"]
                     except json.JSONDecodeError as e:
                         logger.error(f"Error parsing RouterAI stream chunk: {e}")
