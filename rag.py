@@ -50,10 +50,19 @@ class GeminiEmbeddingFunction(EmbeddingFunction):
     Uses OpenAI-compatible /v1/embeddings endpoint.
     """
     def __init__(self):
+        import httpx
         from openai import OpenAI
         api_key = os.getenv("ROUTERAI_API_KEY", "")
         if not api_key:
             logger.warning("ROUTERAI_API_KEY not set — embeddings will fail")
+        # Custom httpx client with a long keepalive_expiry (default is 5s —
+        # so a connection idle >5s gets dropped and the next call pays full
+        # TLS + provider cold-start, ~30s on prod). 300s keepalive means the
+        # 60s keep-warm loop below actually holds a live pooled connection.
+        http_client = httpx.Client(
+            timeout=httpx.Timeout(20.0, connect=10.0),
+            limits=httpx.Limits(max_keepalive_connections=4, keepalive_expiry=300.0),
+        )
         # Explicit timeout + bounded retries. The OpenAI SDK default is a
         # 600s timeout with 2 retries — a cold or throttled RouterAI could
         # then hang a chat request for over a minute. 20s/1-retry fails
@@ -63,6 +72,7 @@ class GeminiEmbeddingFunction(EmbeddingFunction):
             base_url=EMBEDDING_API_BASE,
             timeout=20.0,
             max_retries=1,
+            http_client=http_client,
         )
         self._model = EMBEDDING_MODEL_NAME
 
@@ -612,12 +622,21 @@ async def init_rag() -> None:
     _RAG_INSTANCE = await StartupRAG.build_async()
 
 
-async def run_embedding_keepwarm_loop(interval_seconds: int = 90) -> None:
+async def run_embedding_keepwarm_loop(interval_seconds: int = 60) -> None:
     """Background task: ping the embedding endpoint every `interval_seconds`
     so the RouterAI TLS connection (and any provider cold path) never goes
     stale. The first embedding after an idle gap was measured at ~30s on
     prod — unacceptable for a live demo. A warm connection keeps it ~1s.
+
+    Interval is well under the client's 300s keepalive_expiry, so the
+    pooled connection is reused rather than re-established each time.
     """
+    # Warm immediately on startup so the very first user query is fast.
+    if _RAG_INSTANCE is not None:
+        try:
+            await asyncio.to_thread(_RAG_INSTANCE.embedding_fn.warmup)
+        except Exception:
+            pass
     while True:
         try:
             await asyncio.sleep(interval_seconds)
