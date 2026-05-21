@@ -263,6 +263,11 @@ except Exception as e:
 configure_logging()
 logger = logging.getLogger("app")
 
+# Langfuse SDK logs "No trace found in the current context" at WARNING for
+# every span created outside a trace — harmless but ~160 lines/day of noise
+# that buries real warnings. Lift its threshold to ERROR.
+logging.getLogger("langfuse").setLevel(logging.ERROR)
+
 
 async def sync_redis_to_pg():
     """Background task to sync hot Redis state to PostgreSQL every 5 mins."""
@@ -778,11 +783,14 @@ async def _check_tcp(host: str, port: int, timeout: float = 5.0) -> dict:
 
 async def _gather_health() -> dict:
     """Gather all health checks. Pure data — both /health (JSON) and the
-    HTML view share this builder."""
-    # --- core checks (these decide top-level status) ---
-    db_ok = _db_healthcheck()
-    redis_ok = _redis_healthcheck()
-    rag_ok = rag.healthcheck()
+    HTML view share this builder.
+
+    Every synchronous probe (DB / Redis / RAG / alembic / /proc reads) is
+    dispatched to a worker thread via asyncio.to_thread. Running them
+    inline would block the uvicorn event loop for the 2-3s the checks
+    take — and since the HTML view auto-refreshes every 30s, that froze
+    the whole site on a 30s cadence.
+    """
 
     # --- alembic revision matches HEAD? ---
     def _alembic_state() -> dict:
@@ -842,7 +850,22 @@ async def _gather_health() -> dict:
                   else asyncio.sleep(0, result={"state": "skipped", "ok": False,
                                                 "note": "SMTP_HOST/PORT not configured"}))
 
-    probes = await asyncio.gather(
+    # Sync checks run in worker threads; async probes run as coroutines.
+    # Everything is awaited together so /health never blocks the loop.
+    async def _safe_thread(fn, default):
+        try:
+            return await asyncio.to_thread(fn)
+        except Exception as e:
+            logger.warning(f"health check {getattr(fn,'__name__',fn)} failed: {e}")
+            return default
+
+    (db_ok, redis_ok, rag_ok, alembic_check, sys_info,
+     makura_check, exa_check, jina_check, smtp_check) = await asyncio.gather(
+        _safe_thread(_db_healthcheck, False),
+        _safe_thread(_redis_healthcheck, False),
+        _safe_thread(rag.healthcheck, False),
+        _safe_thread(_alembic_state, {"ok": False, "error": "timeout"}),
+        _safe_thread(_system_info, {}),
         _check_http("https://api.makura.ai/v1/models",
                     headers={"Authorization": f"Bearer {makura_key}"} if makura_key else None,
                     method="GET"),
@@ -851,7 +874,6 @@ async def _gather_health() -> dict:
         smtp_probe,
         return_exceptions=False,
     )
-    makura_check, exa_check, jina_check, smtp_check = probes
 
     # Friendlier annotations for known states ----
     # jina is geo-blocked from RU servers; we have an internal fallback,
@@ -872,10 +894,9 @@ async def _gather_health() -> dict:
         makura_check["state"] = "skipped"
         makura_check["note"] = "MAKURA_API_KEY not set"
 
-    alembic_check = _alembic_state()
+    # alembic_check + sys_info were already computed in the gather above.
     if "state" not in alembic_check:
         alembic_check["state"] = "healthy" if alembic_check.get("ok") else "warning"
-    sys_info = _system_info()
 
     # top-level status: ok if db is alive; degraded otherwise
     status = "ok" if db_ok else "degraded"
