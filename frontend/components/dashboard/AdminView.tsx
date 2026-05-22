@@ -6,6 +6,7 @@ import { Button, GlassCard } from "@/components/shared";
 import { getToken } from "@/lib/auth";
 import { AreaChart } from "@mantine/charts";
 import { notifyError, confirmAction } from "@/lib/ui";
+import { adminDate } from "@/lib/utils";
 
 // Temporary Types mapping what API returns
 type PromoCode = {
@@ -725,20 +726,20 @@ export function AdminView() {
                                                             <span className="text-[10px] font-mono-label uppercase tracking-widest bg-[#0A0A0A] border border-white/10 text-white/50 px-2 py-0.5">Юзер</span>
                                                         )}
                                                         {u.deleted_at ? (
-                                                            <span className="text-[10px] font-mono-label uppercase tracking-widest bg-red-500/20 text-red-300 px-2 py-0.5 border border-red-500/30 mt-1" title={`Удалён ${new Date(u.deleted_at).toLocaleString('ru-RU')}`}>Удалён</span>
+                                                            <span className="text-[10px] font-mono-label uppercase tracking-widest bg-red-500/20 text-red-300 px-2 py-0.5 border border-red-500/30 mt-1" title={`Удалён ${adminDate(u.deleted_at)?.toLocaleString('ru-RU') ?? '—'}`}>Удалён</span>
                                                         ) : !u.is_active && (
                                                             <span className="text-[10px] font-mono-label uppercase tracking-widest bg-red-500/10 text-red-400 px-2 py-0.5 border border-red-500/20 mt-1">Заблокирован</span>
                                                         )}
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4 text-white/70 text-[13px]">
-                                                    {u.created_at ? new Date(u.created_at).toLocaleDateString("ru-RU", { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : "—"}
+                                                    {u.created_at ? adminDate(u.created_at)!.toLocaleDateString("ru-RU", { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : "—"}
                                                 </td>
                                                 <td className="px-6 py-4 text-center text-white/70 font-mono-label uppercase text-[11px]">
                                                     {u.subscription_tier}
                                                 </td>
                                                 <td className="px-6 py-4 text-center">
-                                                    <div className="flex justify-center gap-1.5" title={`Политика: ${u.privacy_consent_at ? new Date(u.privacy_consent_at).toLocaleString('ru-RU') : '—'}\nCookies: ${u.cookies_consent_at ? new Date(u.cookies_consent_at).toLocaleString('ru-RU') : '—'}`}>
+                                                    <div className="flex justify-center gap-1.5" title={`Политика: ${adminDate(u.privacy_consent_at)?.toLocaleString('ru-RU') ?? '—'}\nCookies: ${adminDate(u.cookies_consent_at)?.toLocaleString('ru-RU') ?? '—'}`}>
                                                         <span className={`text-[10px] font-mono-label uppercase tracking-widest px-1.5 py-0.5 border ${u.privacy_consent_at ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-white/5 text-white/30 border-white/10'}`}>П</span>
                                                         <span className={`text-[10px] font-mono-label uppercase tracking-widest px-1.5 py-0.5 border ${u.cookies_consent_at ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-white/5 text-white/30 border-white/10'}`}>C</span>
                                                     </div>
@@ -1017,7 +1018,7 @@ export function AdminView() {
                                                 {ragLogs.map((log) => (
                                                     <tr key={log.id} className="border-b border-white/5 hover:bg-white/5 transition-colors group">
                                                         <td className="py-4 pr-4 text-white/50 text-[11px] font-mono whitespace-nowrap">
-                                                            {new Date(log.created_at).toLocaleString("ru-RU", {
+                                                            {adminDate(log.created_at)!.toLocaleString("ru-RU", {
                                                                 day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
                                                             })}
                                                         </td>

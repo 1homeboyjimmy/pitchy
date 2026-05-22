@@ -39,3 +39,11 @@ export function stripThoughts(content: string): string {
 export function cn(...inputs: (string | undefined | null | boolean)[]) {
     return inputs.filter(Boolean).join(" ");
 }
+
+// Backend returns naive UTC timestamps without timezone; admin viewers in MSK expect +3h.
+export function adminDate(value: string | null | undefined): Date | null {
+    if (!value) return null;
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return null;
+    return new Date(d.getTime() + 3 * 60 * 60 * 1000);
+}
