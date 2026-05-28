@@ -3983,13 +3983,20 @@ async def send_chat_message(
                 
                 final_slides = []
                 async for item in _handle_presentation_in_chat(payload.content, history_text, context_text):
-                    if item["type"] == "thought":
+                    t = item["type"]
+                    if t == "thought":
                         full_thoughts += item["content"]
                         yield format_sse(item)
-                    elif item["type"] == "presentation":
+                    elif t == "slide":
+                        # Progressive streaming: each slide appears in the
+                        # preview pane as soon as the model finishes it.
+                        final_slides.append(item["data"])
+                        yield format_sse(item)
+                    elif t == "presentation":
+                        # Consolidated end-of-stream event (legacy consumers).
                         final_slides = item["data"]
                         yield format_sse(item)
-                    elif item["type"] == "chunk":
+                    elif t == "chunk":
                         full_response += item["content"]
                         yield format_sse(item)
                 
@@ -4142,69 +4149,180 @@ async def send_chat_message(
     return EventSourceResponse(_with_heartbeat(session_chat_generator()), headers=headers)
 
 
-async def _handle_presentation_in_chat(user_message: str, history_text: str, rag_context: str):
+def _extract_project_context_from_history(history_text: str) -> str:
+    """Pull the structured ProjectContext that /chat/import-context stashes as
+    a system message (prefix "Пользователь импортировал данные ..."). Falling
+    back to an empty string is fine — the LLM still has full chat history.
     """
-    Acts as a Slide Agent. Uses streaming to provide thoughts and then yields the slides.
-    Following Z.AI Agent Task patterns.
-    """
-    system_prompt = (
-        "Ты — GLM Slide Agent, эксперт по созданию профессиональных инвестиционных презентаций (Pitch Decks). "
-        "Твоя задача — проанализировать проект и создать структуру и контент для 6-10 слайдов.\n\n"
-        "ПРОТОКОЛ РАБОТЫ:\n"
-        "1. Тебе будет включен Thinking Mode. СНАЧАЛА детально проанализируй проект, выдели УТП, боли рынка и решение.\n"
-        "2. Сформируй структуру презентации, следуя стандартам Sequoia Capital или Y Combinator.\n"
-        "3. Генерируй контент для каждого слайда в формате JSON.\n\n"
-        "ОБЯЗАТЕЛЬНЫЕ ТРЕБОВАНИЯ К КОНТЕНТУ:\n"
-        "- Тексты должны быть на русском языке, в профессиональном бизнес-стиле.\n"
-        "- content должен быть массивом из 3-5 четких тезисов.\n\n"
-        "ФОРМАТ ВЫВОДА (ТОЛЬКО JSON):\n"
-        "[\n"
-        "  {\"type\": \"Hero\", \"title\": \"Название\", \"subtitle\": \"Слоган\", \"content\": [\"Тезис 1\"]},\n"
-        "  ...\n"
-        "]\n\n"
-        "Допустимые типы: 'Hero', 'Problem', 'Solution', 'Market', 'BusinessModel', 'Team', 'CallToAction'."
-    )
-    
-    prompt = (
-        f"ЗАПРОС ПОЛЬЗОВАТЕЛЯ: {user_message}\n\n"
-        f"ИСТОРИЯ ДИАЛОГА:\n{history_text}\n\n"
-        f"КОНТЕКСТ ИЗ БАЗЫ ЗНАНИЙ (RAG):\n{rag_context}\n\n"
-        "Создай презентацию прямо сейчас."
-    )
-    
-    full_content = ""
     try:
-        # We use stream_makura here to capture reasoning_content and content
+        marker = "Пользователь импортировал данные из внешней сессии. Основные тезисы:"
+        idx = history_text.find(marker)
+        if idx < 0:
+            return ""
+        tail = history_text[idx + len(marker):]
+        # The JSON dump runs to end of the message; bound it by a newline+role
+        # marker if present.
+        for stop in ("\nuser:", "\nassistant:", "\nsystem:"):
+            cut = tail.find(stop)
+            if cut > 0:
+                tail = tail[:cut]
+                break
+        return tail.strip()
+    except Exception:
+        return ""
+
+
+def _try_extract_slide(buffer: str):
+    """Best-effort: find the first complete top-level JSON object in `buffer`
+    and return (slide_dict, remaining_buffer). Returns (None, buffer) when no
+    complete object yet."""
+    start = buffer.find("{")
+    if start < 0:
+        return None, buffer
+    depth = 0
+    in_str = False
+    esc = False
+    for i in range(start, len(buffer)):
+        ch = buffer[i]
+        if esc:
+            esc = False
+            continue
+        if ch == "\\" and in_str:
+            esc = True
+            continue
+        if ch == '"':
+            in_str = not in_str
+            continue
+        if in_str:
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                blob = buffer[start:i + 1]
+                try:
+                    obj = json.loads(blob)
+                    return obj, buffer[i + 1:]
+                except Exception:
+                    return None, buffer  # malformed, wait for more
+    return None, buffer
+
+
+async def _handle_presentation_in_chat(user_message: str, history_text: str, rag_context: str):
+    """Slide-agent flow. Streams thinking, then yields slides ONE-BY-ONE as
+    soon as each is parseable from the model output — the UI can render them
+    progressively instead of waiting for the whole deck.
+
+    Provider preference, in order:
+      1. Z.AI native slides_glm_agent (when ZAI_API_KEY is set) — purpose-
+         built, returns styled HTML per slide.
+      2. Makura glm-5 + our JSONL prompt — fallback when Z.AI isn't
+         configured or its first attempt fails before any output.
+    """
+    project_context = _extract_project_context_from_history(history_text)
+
+    # ── Path 1: Z.AI native slide agent ────────────────────────────
+    try:
+        import zai_slide_agent
+        if zai_slide_agent.is_configured():
+            produced = False
+            try:
+                async for ev in zai_slide_agent.stream_slides(
+                    user_message=user_message,
+                    history_text=history_text,
+                    rag_context=rag_context,
+                    project_context=project_context,
+                ):
+                    produced = True
+                    yield ev
+                if produced:
+                    return
+            except Exception as e:
+                logger.warning(f"Z.AI slide agent failed before output, falling back to Makura: "
+                               f"{type(e).__name__}: {e}")
+                # fall through to Makura path
+    except Exception as e:
+        logger.warning(f"Z.AI slide agent module unavailable: {e}")
+    # ── Path 2: Makura GLM-5 with JSONL streaming ─────────────────────────
+
+    system_prompt = (
+        "Ты — GLM Slide Agent, эксперт по инвестиционным презентациям (Pitch Decks). "
+        "Создай 6-10 слайдов на русском в профессиональном бизнес-стиле.\n\n"
+        "СТРОГИЕ ПРАВИЛА:\n"
+        "1. Каждый элемент `content` — это КОРОТКАЯ ФРАЗА (3-8 слов), а НЕ предложение. "
+        "Без вводных, без 'мы делаем', без причастных оборотов.\n"
+        "2. ХОРОШО: \"До 60% времени уходит на оформление\"\n"
+        "   ПЛОХО: \"Стартапы тратят слишком много времени на оформление, потому что...\"\n"
+        "3. `title` — 1-5 слов. `subtitle` (только в Hero) — 5-12 слов.\n"
+        "4. Опирайся на структуру Sequoia / YC: Hero → Problem → Solution → Market → "
+        "BusinessModel → Team → CallToAction. Можно добавлять Traction, Competition.\n\n"
+        "ФОРМАТ ВЫВОДА — НЕ JSON-массив, а ПОТОК отдельных объектов через `\\n` "
+        "(по одному объекту на строку, без обёртки []):\n"
+        '{"type":"Hero","title":"...","subtitle":"...","content":["..."]}\n'
+        '{"type":"Problem","title":"...","content":["...","...","..."]}\n'
+        "...\n\n"
+        "Допустимые `type`: Hero, Problem, Solution, Market, BusinessModel, Team, "
+        "Traction, Competition, CallToAction.\n"
+        "НЕ оборачивай в markdown-fences (```), не пиши лишнего текста ни до ни после."
+    )
+
+    user_prompt_parts = [f"ЗАПРОС ПОЛЬЗОВАТЕЛЯ: {user_message}"]
+    if project_context:
+        user_prompt_parts.append(f"\nСТРУКТУРИРОВАННЫЙ КОНТЕКСТ ПРОЕКТА (импортированный):\n{project_context}")
+    if history_text and history_text.strip():
+        user_prompt_parts.append(f"\nИСТОРИЯ ДИАЛОГА:\n{history_text}")
+    if rag_context and rag_context.strip():
+        user_prompt_parts.append(f"\nКОНТЕКСТ ИЗ БАЗЫ ЗНАНИЙ (RAG):\n{rag_context}")
+    user_prompt_parts.append("\nГенерируй слайды СЕЙЧАС, по одному JSON-объекту на строку.")
+    prompt = "\n".join(user_prompt_parts)
+
+    buffer = ""
+    all_slides: list[dict] = []
+    try:
         async for chunk in stream_makura(system_prompt, prompt):
             if isinstance(chunk, dict):
                 if "__thinking__" in chunk:
                     yield {"type": "thought", "content": chunk["__thinking__"]}
-                elif "__usage__" in chunk:
-                    # Ignore usage for now or handle if needed
-                    pass
                 continue
-            
-            # This is normal content (the JSON slides)
-            full_content += chunk
-            
-        # At the end, parse the full_content as JSON
-        cleaned = full_content.strip()
+
+            buffer += chunk
+
+            # Try to pull as many complete slides as we can from the buffer.
+            while True:
+                slide, buffer = _try_extract_slide(buffer)
+                if slide is None:
+                    break
+                if isinstance(slide, dict) and slide.get("type"):
+                    all_slides.append(slide)
+                    yield {"type": "slide", "data": slide, "position": len(all_slides)}
+
+        # Final consolidated event for any legacy consumers expecting the full
+        # array (the inline slide events above are the primary channel).
+        if all_slides:
+            yield {"type": "presentation", "data": all_slides}
+            return
+
+        # Fallback: if streaming-parse found nothing, try the legacy "one big
+        # JSON array" parse on whatever's in the buffer.
+        cleaned = buffer.strip()
         if "```json" in cleaned:
-            cleaned = cleaned.split("```json")[1].split("```")[0].strip()
+            cleaned = cleaned.split("```json", 1)[1].split("```", 1)[0].strip()
         elif "```" in cleaned:
-            cleaned = cleaned.split("```")[1].split("```")[0].strip()
-            
-        start = cleaned.find('[')
-        end = cleaned.rfind(']')
-        if start != -1 and end != -1:
-            cleaned = cleaned[start:end+1]
-            
-        slides = json.loads(cleaned)
-        if isinstance(slides, list):
-            yield {"type": "presentation", "data": slides}
-            
+            cleaned = cleaned.split("```", 1)[1].split("```", 1)[0].strip()
+        start, end = cleaned.find("["), cleaned.rfind("]")
+        if 0 <= start < end:
+            slides = json.loads(cleaned[start:end + 1])
+            if isinstance(slides, list):
+                for i, s in enumerate(slides, 1):
+                    yield {"type": "slide", "data": s, "position": i}
+                yield {"type": "presentation", "data": slides}
+                return
+
+        yield {"type": "chunk", "content": "\nНе удалось собрать слайды — модель вернула неструктурированный ответ."}
+
     except Exception as e:
-        logger.error(f"Failed Slide Agent Flow: {e}")
+        logger.error(f"Failed Slide Agent Flow: {e}", exc_info=True)
         yield {"type": "chunk", "content": f"\nОшибка при сборке слайдов: {str(e)}"}
 
 async def _generate_interviewer_response(session: ChatSession, db: AsyncSession) -> str:

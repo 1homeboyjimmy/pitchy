@@ -507,6 +507,25 @@ export function ChatInterface({
                         setMessages((prev) =>
                             prev.map(m => m.client_id === assistantClientId ? { ...m, sources: chunk.data, isResearch: true } : m)
                         );
+                    } else if (chunk.type === "slide") {
+                        // Progressive streaming: each slide appears in the
+                        // side-pane as soon as the model finishes it. We
+                        // insert at the supplied `position` (1-indexed) so
+                        // out-of-order Z.AI events still land correctly.
+                        const pos = (chunk as { position?: number }).position;
+                        setPresentationSlides((prev) => {
+                            const next = (prev ? [...prev] : []) as PresentationSlide[];
+                            if (typeof pos === "number" && pos > 0) {
+                                while (next.length < pos) next.push(null as unknown as PresentationSlide);
+                                next[pos - 1] = chunk.data as PresentationSlide;
+                            } else {
+                                next.push(chunk.data as PresentationSlide);
+                            }
+                            return next.filter(Boolean) as PresentationSlide[];
+                        });
+                        // Keep the loading shimmer until the consolidated
+                        // "presentation" event arrives — that signals the deck
+                        // is fully built.
                     } else if (chunk.type === "presentation") {
                         setPresentationSlides(chunk.data);
                         setIsGeneratingSlides(false);
@@ -591,8 +610,18 @@ export function ChatInterface({
         }
     };
 
+    // Split-pane mode kicks in on md+ as soon as a presentation is in
+    // flight OR ready. The chat shrinks left, the preview docks right —
+    // both visible at once so the user can iterate on slides without
+    // closing/reopening a modal. The "during generation" half is what
+    // lets the loading shimmer live in the side pane instead of popping
+    // an overlay over the chat first.
+    const hasSlides = !!(presentationSlides && presentationSlides.length > 0);
+    const useInlinePanel = hasSlides || isGeneratingSlides;
+
     return (
-        <div className="flex flex-col flex-1 h-full min-h-0 bg-black relative overflow-hidden">
+        <div className="flex flex-1 h-full min-h-0 bg-black relative overflow-hidden">
+            <div className={`flex flex-col h-full min-h-0 relative overflow-hidden flex-1 min-w-0 ${useInlinePanel ? "md:max-w-[60%]" : ""}`}>
             {/* Messages Area */}
             <div
                 ref={scrollViewportRef}
@@ -1021,10 +1050,13 @@ export function ChatInterface({
                     />
                     
                     {presentationSlides && presentationSlides.length > 0 && (
-                        <motion.div 
+                        // Hidden on md+ because the inline preview pane is
+                        // already visible there. On mobile the button still
+                        // opens the overlay drawer.
+                        <motion.div
                             initial={{ opacity: 0, scale: 0.95 }}
                             animate={{ opacity: 1, scale: 1 }}
-                            className="mt-6 flex justify-center"
+                            className="md:hidden mt-6 flex justify-center"
                         >
                             <button
                                 onClick={() => setIsPresentationOpen(true)}
@@ -1037,14 +1069,37 @@ export function ChatInterface({
                     )}
                 </div>
             </div>
+            </div> {/* end of chat column (flex-1 with optional md:max-w-[60%]) */}
 
-            <PresentationDrawer 
-                isOpen={isPresentationOpen} 
-                onClose={() => setIsPresentationOpen(false)} 
-                slides={presentationSlides || []} 
-                isLoading={isGeneratingSlides}
-                statusText={generationStatus}
-            />
+            {/* Inline preview pane — sits beside the chat on md+ as soon as
+                the deck has its first slide. Hidden below md so the legacy
+                overlay drawer takes over on mobile. */}
+            {useInlinePanel && (
+                <div className="hidden md:block flex-1 min-w-0 border-l border-white/10 h-full overflow-hidden">
+                    <PresentationDrawer
+                        mode="inline"
+                        isOpen={true}
+                        onClose={() => setPresentationSlides(null)}
+                        slides={presentationSlides || []}
+                        isLoading={isGeneratingSlides}
+                        statusText={generationStatus}
+                    />
+                </div>
+            )}
+
+            {/* Overlay drawer kept for mobile and for the "Открыть презентацию"
+                button. On desktop with the inline pane already open this is a
+                no-op unless the user explicitly toggled isPresentationOpen. */}
+            <div className={useInlinePanel ? "md:hidden" : ""}>
+                <PresentationDrawer
+                    mode="overlay"
+                    isOpen={isPresentationOpen}
+                    onClose={() => setIsPresentationOpen(false)}
+                    slides={presentationSlides || []}
+                    isLoading={isGeneratingSlides}
+                    statusText={generationStatus}
+                />
+            </div>
 
             {/* Context Import Modal */}
             <ContextImportModal
