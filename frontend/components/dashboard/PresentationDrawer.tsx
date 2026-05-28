@@ -1,8 +1,8 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Download, FileText, RefreshCw } from "react-feather";
+import { X, Download, FileText, RefreshCw, ChevronDown } from "react-feather";
 import { PresentationSlide } from "@/lib/api";
 import { SlideRenderer } from "./SlideRenderer";
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 
 interface PresentationDrawerProps {
   isOpen: boolean;
@@ -33,11 +33,85 @@ export function PresentationDrawer({
   onRegenerate,
 }: PresentationDrawerProps) {
   const [viewMode, setViewMode] = useState<"preview" | "html">("preview");
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
 
-  const handlePrint = () => {
-    // Basic client-side PDF generation via print dialog
+  // Close export menu on outside-click.
+  useEffect(() => {
+    if (!exportMenuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setExportMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [exportMenuOpen]);
+
+  const downloadBlob = (filename: string, content: string, mime: string) => {
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const exportPDF = () => {
+    // Print dialog — user picks "Save as PDF". The @media print rules in
+    // globals.css preserve the dark theme and put one slide per page.
     window.print();
+    setExportMenuOpen(false);
+  };
+
+  const exportHTML = () => {
+    // Standalone HTML: embed each rendered slide's HTML (or fall back to
+    // the slide's title + bullets when only structured data is available).
+    const slidesHtml = slides
+      .map((s) => {
+        const inner = s.html
+          ? s.html
+          : `<div style="padding:48px;color:#fff;font-family:Inter,sans-serif">
+               <h1 style="font-size:42px;margin:0 0 16px">${(s.title || s.type || "").toString()}</h1>
+               ${(s.subtitle ? `<h2 style="color:#a78bfa;font-weight:400;margin:0 0 24px">${s.subtitle}</h2>` : "")}
+               <ul style="font-size:18px;line-height:1.5;list-style:none;padding:0">
+                 ${(Array.isArray(s.content) ? s.content : []).map((c) => `<li style="margin:8px 0">— ${c}</li>`).join("")}
+               </ul>
+             </div>`;
+        return `<section style="background:#0a0a0a;color:#fff;width:100vw;height:100vh;display:flex;align-items:center;page-break-after:always">${inner}</section>`;
+      })
+      .join("");
+    const doc = `<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><title>Pitchy — презентация</title><style>html,body{margin:0;background:#0a0a0a;font-family:Inter,sans-serif}@page{size:landscape;margin:0;background:#0a0a0a}</style></head><body>${slidesHtml}</body></html>`;
+    downloadBlob(`pitchy-deck-${Date.now()}.html`, doc, "text/html;charset=utf-8");
+    setExportMenuOpen(false);
+  };
+
+  const exportJSON = () => {
+    downloadBlob(`pitchy-deck-${Date.now()}.json`, JSON.stringify(slides, null, 2), "application/json");
+    setExportMenuOpen(false);
+  };
+
+  const exportMarkdown = () => {
+    // Plain markdown — handy for sharing the structure without styling.
+    const md = slides
+      .map((s, i) => {
+        const lines: string[] = [];
+        lines.push(`## ${i + 1}. ${s.title || s.type || "Slide"}`);
+        if (s.subtitle) lines.push(`_${s.subtitle}_`);
+        if (Array.isArray(s.content)) {
+          lines.push(...s.content.map((c) => `- ${c}`));
+        } else if (s.content) {
+          lines.push(String(s.content));
+        }
+        return lines.join("\n");
+      })
+      .join("\n\n---\n\n");
+    downloadBlob(`pitchy-deck-${Date.now()}.md`, md, "text/markdown;charset=utf-8");
+    setExportMenuOpen(false);
   };
 
   // Shared inner body so we don't duplicate markup between inline + overlay.
@@ -94,14 +168,61 @@ export function PresentationDrawer({
               </button>
             </div>
           )}
-          <button
-            onClick={handlePrint}
-            disabled={slides.length === 0}
-            className="flex items-center gap-2 px-3 md:px-4 py-2 bg-gradient-to-r from-pitchy-violet to-purple-600 hover:opacity-90 text-white rounded-lg transition-opacity text-xs md:text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <Download className="w-4 h-4" />
-            <span className="hidden sm:inline">PDF / Печать</span>
-          </button>
+          <div className="relative" ref={exportMenuRef}>
+            <button
+              onClick={() => setExportMenuOpen((v) => !v)}
+              disabled={slides.length === 0}
+              className="flex items-center gap-2 px-3 md:px-4 py-2 bg-white text-black hover:bg-white/90 rounded-lg transition-colors text-xs md:text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Download className="w-4 h-4" />
+              <span className="hidden sm:inline">Экспорт</span>
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${exportMenuOpen ? "rotate-180" : ""}`} />
+            </button>
+            {exportMenuOpen && (
+              <div className="absolute right-0 top-full mt-2 w-56 bg-[#0f0f0f] border border-white/10 rounded-xl shadow-2xl z-50 overflow-hidden">
+                <button
+                  onClick={exportPDF}
+                  className="w-full text-left px-4 py-3 text-sm text-white/90 hover:bg-white/5 transition-colors flex items-start gap-3"
+                >
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-white/40 mt-1 w-10">PDF</span>
+                  <span className="flex-1">
+                    <span className="block">Печать / PDF</span>
+                    <span className="block text-[11px] text-white/40">Системный диалог печати</span>
+                  </span>
+                </button>
+                <button
+                  onClick={exportHTML}
+                  className="w-full text-left px-4 py-3 text-sm text-white/90 hover:bg-white/5 transition-colors border-t border-white/5 flex items-start gap-3"
+                >
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-white/40 mt-1 w-10">HTML</span>
+                  <span className="flex-1">
+                    <span className="block">Standalone HTML</span>
+                    <span className="block text-[11px] text-white/40">Один файл с тёмной темой</span>
+                  </span>
+                </button>
+                <button
+                  onClick={exportMarkdown}
+                  className="w-full text-left px-4 py-3 text-sm text-white/90 hover:bg-white/5 transition-colors border-t border-white/5 flex items-start gap-3"
+                >
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-white/40 mt-1 w-10">MD</span>
+                  <span className="flex-1">
+                    <span className="block">Markdown</span>
+                    <span className="block text-[11px] text-white/40">Структура и текст без стилей</span>
+                  </span>
+                </button>
+                <button
+                  onClick={exportJSON}
+                  className="w-full text-left px-4 py-3 text-sm text-white/90 hover:bg-white/5 transition-colors border-t border-white/5 flex items-start gap-3"
+                >
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-white/40 mt-1 w-10">JSON</span>
+                  <span className="flex-1">
+                    <span className="block">Исходные данные</span>
+                    <span className="block text-[11px] text-white/40">Бэкап или импорт в другой инструмент</span>
+                  </span>
+                </button>
+              </div>
+            )}
+          </div>
           <button
             onClick={onClose}
             className="p-2 text-white/50 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
