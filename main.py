@@ -3981,29 +3981,75 @@ async def send_chat_message(
                 history_text = "\n".join([f"{m.role}: {m.content[:200]}" for m in history[-10:]])
                 context_text = "\n".join([c["text"] if isinstance(c, dict) else c for c in context_chunks[:3]])
                 
+                # `regenerate` flag is set when the user explicitly asks for
+                # a fresh deck from scratch (we surface it as a UI button).
+                regenerate_flag = bool(getattr(payload, "regenerate_deck", False))
+
                 final_slides = []
-                async for item in _handle_presentation_in_chat(payload.content, history_text, context_text):
-                    t = item["type"]
-                    if t == "thought":
-                        full_thoughts += item["content"]
-                        yield format_sse(item)
-                    elif t == "slide":
-                        # Progressive streaming: each slide appears in the
-                        # preview pane as soon as the model finishes it.
-                        final_slides.append(item["data"])
-                        yield format_sse(item)
-                    elif t == "presentation":
-                        # Consolidated end-of-stream event (legacy consumers).
-                        final_slides = item["data"]
-                        yield format_sse(item)
-                    elif t == "chunk":
-                        full_response += item["content"]
-                        yield format_sse(item)
+                provider_used = None
+                try:
+                    async for item in _handle_presentation_in_chat(
+                        payload.content, history_text, context_text,
+                        session_id=session.id,
+                        user_id=user.id,
+                        regenerate=regenerate_flag,
+                    ):
+                        t = item["type"]
+                        if t == "thought":
+                            full_thoughts += item["content"]
+                            yield format_sse(item)
+                        elif t == "provider":
+                            provider_used = item.get("name")
+                            yield format_sse(item)
+                        elif t == "slide":
+                            # Progressive streaming: each slide appears in the
+                            # preview pane as soon as the model finishes it.
+                            final_slides.append(item["data"])
+                            yield format_sse(item)
+                        elif t == "presentation":
+                            # Consolidated end-of-stream event (legacy consumers).
+                            final_slides = item["data"]
+                            yield format_sse(item)
+                        elif t == "chunk":
+                            full_response += item["content"]
+                            yield format_sse(item)
+                except HTTPException as he:
+                    # Rate-limit / similar — surface to client cleanly.
+                    yield format_sse({"type": "chunk", "content": f"\n⚠ {he.detail}"})
+                    full_response += f"\n⚠ {he.detail}"
                 
                 if final_slides:
                     msg = "Презентация успешно сгенерирована! Открываю панель просмотра."
                     yield format_sse({"type": "chunk", "content": msg})
                     full_response += msg
+
+                    # Sync the slide-agent output into the chat history as a
+                    # system breadcrumb. Without this, a follow-up like "сделай
+                    # 3-й слайд короче" routes through Makura — which never
+                    # saw the slides and replies "о каких слайдах речь?". With
+                    # the breadcrumb in history_text, Makura now knows the
+                    # deck shape (titles + provider) and can either edit
+                    # inline or recommend re-running the presentation intent.
+                    try:
+                        summary_lines = []
+                        for i, s in enumerate(final_slides[:20], 1):
+                            if not isinstance(s, dict):
+                                continue
+                            title = s.get("title") or s.get("type") or "Slide"
+                            summary_lines.append(f"  {i}. [{s.get('type','?')}] {title}")
+                        breadcrumb_body = (
+                            f"[Слайд-агент сгенерировал презентацию "
+                            f"({len(final_slides)} слайдов, провайдер: "
+                            f"{provider_used or 'unknown'}).]\n" + "\n".join(summary_lines)
+                        )
+                        db.add(DbChatMessage(
+                            session_id=session.id,
+                            role="system",
+                            content=breadcrumb_body,
+                        ))
+                        # commit happens with the assistant message at end of stream
+                    except Exception as e:
+                        logger.warning(f"Failed to write slide-agent breadcrumb: {e}")
                 else:
                     msg = "К сожалению, не удалось сгенерировать правильный формат презентации. Попробуйте еще раз или уточните запрос."
                     yield format_sse({"type": "chunk", "content": msg})
@@ -4209,7 +4255,70 @@ def _try_extract_slide(buffer: str):
     return None, buffer
 
 
-async def _handle_presentation_in_chat(user_message: str, history_text: str, rag_context: str):
+def _pres_state_key(session_id: int | None) -> str | None:
+    """Redis key for per-session presentation state (z.ai conversation_id
+    + last slides snapshot). None for anonymous/no-session callers."""
+    return f"pres:state:{session_id}" if session_id else None
+
+
+def _pres_get_state(session_id: int | None) -> dict:
+    """Load persisted presentation state for a chat session, or {} if none."""
+    key = _pres_state_key(session_id)
+    if not key:
+        return {}
+    r = get_redis()
+    if not r:
+        return {}
+    try:
+        raw = r.get(key)
+        return json.loads(raw) if raw else {}
+    except Exception:
+        return {}
+
+
+def _pres_save_state(session_id: int | None, state: dict) -> None:
+    """Persist presentation state for 24h. Safe no-op without Redis."""
+    key = _pres_state_key(session_id)
+    if not key:
+        return
+    r = get_redis()
+    if not r:
+        return
+    try:
+        r.setex(key, 86400, json.dumps(state, ensure_ascii=False))
+    except Exception as e:
+        logger.warning(f"Failed to persist presentation state: {e}")
+
+
+def _pres_rate_limit_check(user_id: int | None) -> None:
+    """30s cooldown per user_id on presentation generation. Raises 429.
+    Best-effort — silently allows when Redis is down."""
+    if not user_id:
+        return
+    r = get_redis()
+    if not r:
+        return
+    try:
+        key = f"pres:rl:{user_id}"
+        # SET NX EX 30 = first call within window succeeds, others fail.
+        ok = r.set(key, "1", nx=True, ex=30)
+        if not ok:
+            ttl = r.ttl(key)
+            raise HTTPException(
+                status_code=429,
+                detail=f"Слишком часто. Подождите {max(ttl, 1)}с перед следующим запросом презентации.",
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        pass
+
+
+async def _handle_presentation_in_chat(user_message: str, history_text: str,
+                                        rag_context: str,
+                                        session_id: int | None = None,
+                                        user_id: int | None = None,
+                                        regenerate: bool = False):
     """Slide-agent flow. Streams thinking, then yields slides ONE-BY-ONE as
     soon as each is parseable from the model output — the UI can render them
     progressively instead of waiting for the whole deck.
@@ -4219,24 +4328,52 @@ async def _handle_presentation_in_chat(user_message: str, history_text: str, rag
          built, returns styled HTML per slide.
       2. Makura glm-5 + our JSONL prompt — fallback when Z.AI isn't
          configured or its first attempt fails before any output.
+
+    Conversation continuity: if `session_id` is supplied AND a previous deck
+    exists in Redis state, we resume the z.ai conversation so follow-ups
+    ("сделай 3-й слайд короче") edit the existing deck instead of starting
+    over. Pass `regenerate=True` to drop the saved conversation_id and
+    rebuild from scratch.
     """
+    _pres_rate_limit_check(user_id)
     project_context = _extract_project_context_from_history(history_text)
+
+    saved = _pres_get_state(session_id) if not regenerate else {}
+    saved_conv_id = saved.get("zai_conversation_id")
 
     # ── Path 1: Z.AI native slide agent ────────────────────────────
     try:
         import zai_slide_agent
         if zai_slide_agent.is_configured():
+            yield {"type": "provider", "name": "zai"}
             produced = False
+            new_conv_id = saved_conv_id
+            collected: list[dict] = []
             try:
                 async for ev in zai_slide_agent.stream_slides(
                     user_message=user_message,
                     history_text=history_text,
                     rag_context=rag_context,
                     project_context=project_context,
+                    conversation_id=saved_conv_id,
                 ):
+                    if ev.get("type") == "zai_conversation_id":
+                        new_conv_id = ev.get("id") or new_conv_id
+                        continue  # internal, don't surface to client
+                    if ev.get("type") in ("slide", "presentation"):
+                        data = ev.get("data")
+                        if ev["type"] == "slide" and isinstance(data, dict):
+                            collected.append(data)
+                        elif ev["type"] == "presentation" and isinstance(data, list):
+                            collected = data
                     produced = True
                     yield ev
                 if produced:
+                    _pres_save_state(session_id, {
+                        "provider": "zai",
+                        "zai_conversation_id": new_conv_id,
+                        "slides": collected,
+                    })
                     return
             except Exception as e:
                 logger.warning(f"Z.AI slide agent failed before output, falling back to Makura: "
@@ -4244,7 +4381,9 @@ async def _handle_presentation_in_chat(user_message: str, history_text: str, rag
                 # fall through to Makura path
     except Exception as e:
         logger.warning(f"Z.AI slide agent module unavailable: {e}")
+
     # ── Path 2: Makura GLM-5 with JSONL streaming ─────────────────────────
+    yield {"type": "provider", "name": "makura"}
 
     system_prompt = (
         "Ты — GLM Slide Agent, эксперт по инвестиционным презентациям (Pitch Decks). "
@@ -4301,6 +4440,7 @@ async def _handle_presentation_in_chat(user_message: str, history_text: str, rag
         # array (the inline slide events above are the primary channel).
         if all_slides:
             yield {"type": "presentation", "data": all_slides}
+            _pres_save_state(session_id, {"provider": "makura", "slides": all_slides})
             return
 
         # Fallback: if streaming-parse found nothing, try the legacy "one big
@@ -4317,6 +4457,7 @@ async def _handle_presentation_in_chat(user_message: str, history_text: str, rag
                 for i, s in enumerate(slides, 1):
                     yield {"type": "slide", "data": s, "position": i}
                 yield {"type": "presentation", "data": slides}
+                _pres_save_state(session_id, {"provider": "makura", "slides": slides})
                 return
 
         yield {"type": "chunk", "content": "\nНе удалось собрать слайды — модель вернула неструктурированный ответ."}

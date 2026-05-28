@@ -318,22 +318,30 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
   }
 }
 
-/* ─── Presentation Print Styles ─── */
+/* ─── Presentation Print Styles ───────────────────────────────────────
+ * We want PDF/print to look identical to the dark-themed preview: black
+ * background, light type, gradients preserved. The previous CSS forced
+ * every color to black-on-white which destroyed Z.AI's HTML slides.
+ *
+ * Key tricks:
+ *  - `print-color-adjust: exact` keeps backgrounds & accent colors.
+ *  - Hide everything outside the print container.
+ *  - One slide per page via `print:page-break-after-always` on slide cards.
+ */
 @media print {
+  html, body {
+    background: #0a0a0a !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
   body * {
     visibility: hidden;
   }
-  .presentation-print-container, .presentation-print-container * {
+  .presentation-print-container,
+  .presentation-print-container * {
     visibility: visible;
-    color: black !important;
-  }
-  .presentation-print-container .text-white,
-  .presentation-print-container .text-white\/80,
-  .presentation-print-container .text-white\/90,
-  .presentation-print-container h1,
-  .presentation-print-container h2 {
-    color: #131313 !important;
-    -webkit-text-fill-color: #131313 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
   .presentation-print-container {
     position: absolute;
@@ -341,21 +349,22 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
     top: 0;
     width: 100%;
     margin: 0;
-    padding: 0;
-    background: white !important;
+    padding: 0 !important;
+    background: #0a0a0a !important;
   }
-  .presentation-print-container > div > div {
-    border: none !important;
-    border-radius: 0 !important;
+  /* Cards keep their dark glass styling — no forced borders/bg flip. */
+  .presentation-print-container > div > div,
+  .presentation-print-container > div {
     box-shadow: none !important;
-    background: transparent !important;
   }
   .print\:page-break-after-always {
     page-break-after: always;
+    break-after: page;
   }
   @page {
     size: landscape;
     margin: 0;
+    background: #0a0a0a;
   }
 }
 

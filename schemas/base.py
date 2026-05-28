@@ -173,6 +173,10 @@ class ChatMessageCreateRequest(BaseModel):
     use_deep_search: bool = False
     use_research: bool = False
     intent: str | None = None
+    # Set to True from the "Регенерировать" button so the backend drops the
+    # saved z.ai conversation_id and rebuilds the deck from scratch instead
+    # of editing the existing one.
+    regenerate_deck: bool = False
 
 
 class ProjectContext(BaseModel):

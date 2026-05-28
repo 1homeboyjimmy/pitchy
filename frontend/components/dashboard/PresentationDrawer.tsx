@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Download, FileText } from "react-feather";
+import { X, Download, FileText, RefreshCw } from "react-feather";
 import { PresentationSlide } from "@/lib/api";
 import { SlideRenderer } from "./SlideRenderer";
 import { useRef, useState } from "react";
@@ -14,6 +14,12 @@ interface PresentationDrawerProps {
    *  no animation). "overlay" keeps the legacy modal behaviour for mobile.
    *  When unset the component picks per-viewport: inline on md+, overlay below. */
   mode?: "inline" | "overlay";
+  /** Which provider built the current deck — surfaced as a small pill. */
+  provider?: string | null;
+  /** Optional re-generate handler — when supplied, a refresh button appears
+   *  in the header that drops the saved z.ai conversation_id and rebuilds
+   *  the deck from scratch. */
+  onRegenerate?: () => void;
 }
 
 export function PresentationDrawer({
@@ -23,6 +29,8 @@ export function PresentationDrawer({
   isLoading,
   statusText,
   mode,
+  provider,
+  onRegenerate,
 }: PresentationDrawerProps) {
   const [viewMode, setViewMode] = useState<"preview" | "html">("preview");
   const contentRef = useRef<HTMLDivElement>(null);
@@ -40,6 +48,18 @@ export function PresentationDrawer({
         <h2 className="text-base md:text-xl font-bold text-white flex items-center gap-2 min-w-0">
           <FileText className="w-5 h-5 text-pitchy-violet shrink-0" />
           <span className="truncate">Презентация</span>
+          {provider && (
+            <span
+              className={`ml-2 px-2 py-0.5 text-[10px] font-mono uppercase tracking-widest rounded-md border shrink-0 ${
+                provider === "zai"
+                  ? "bg-pitchy-violet/15 text-pitchy-violet border-pitchy-violet/30"
+                  : "bg-white/5 text-white/60 border-white/10"
+              }`}
+              title={provider === "zai" ? "Native Z.AI slides_glm_agent" : "Fallback на Makura GLM-5"}
+            >
+              {provider === "zai" ? "Z.AI" : "Makura"}
+            </span>
+          )}
           {isLoading && slides.length > 0 && (
             <span className="ml-2 text-[10px] uppercase tracking-widest text-pitchy-violet/80 font-mono shrink-0">
               слайд {slides.length}…
@@ -47,6 +67,17 @@ export function PresentationDrawer({
           )}
         </h2>
         <div className="flex items-center gap-2 md:gap-4">
+          {onRegenerate && (
+            <button
+              onClick={onRegenerate}
+              disabled={!!isLoading}
+              className="flex items-center gap-2 px-3 md:px-4 py-2 bg-white/5 hover:bg-white/10 text-white/80 hover:text-white rounded-lg transition-colors text-xs md:text-sm font-medium border border-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Сгенерировать презентацию с чистого листа"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span className="hidden sm:inline">Регенерировать</span>
+            </button>
+          )}
           {slides.length > 0 && (
             <div className="hidden md:flex bg-white/5 rounded-lg p-1 mr-2 border border-white/10">
               <button

@@ -124,6 +124,12 @@ async def stream_slides(user_message: str,
                 except json.JSONDecodeError:
                     continue
 
+                # Z.AI returns conversation_id at the envelope level. Bubble
+                # it up to the orchestrator so it can persist for follow-ups.
+                env_conv = event.get("conversation_id")
+                if env_conv:
+                    yield {"type": "zai_conversation_id", "id": env_conv}
+
                 for choice in event.get("choices", []):
                     msg = choice.get("message") or {}
                     if isinstance(msg, list):

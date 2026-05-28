@@ -122,6 +122,14 @@ export function ChatInterface({
     const [presentationSlides, setPresentationSlides] = useState<PresentationSlide[] | null>(null);
     const [isPresentationOpen, setIsPresentationOpen] = useState(false);
     const [isGeneratingSlides, setIsGeneratingSlides] = useState(false);
+    const [slideProvider, setSlideProvider] = useState<string | null>(null);
+    // Width of the chat column in % when split-pane is active. Persists
+    // across sessions via localStorage so user's preference survives reloads.
+    const [chatWidthPct, setChatWidthPct] = useState<number>(() => {
+        if (typeof window === "undefined") return 60;
+        const saved = parseFloat(window.localStorage.getItem("pitchy_split_pct") || "");
+        return Number.isFinite(saved) && saved >= 30 && saved <= 80 ? saved : 60;
+    });
     const [generationStatus, setGenerationStatus] = useState<string | null>(null);
 
     // Import Modal state
@@ -344,7 +352,7 @@ export function ChatInterface({
         return safeFull;
     }, [typingMessageId, displayedLength, getSafeKey]);
 
-    const handleSendMessage = async (text?: string, forceIntent?: string, silent: boolean = false) => {
+    const handleSendMessage = async (text?: string, forceIntent?: string, silent: boolean = false, opts: { regenerateDeck?: boolean } = {}) => {
         const content = typeof text === 'string' ? text : inputValue.trim();
         if (!content || isLoading) return;
 
@@ -385,10 +393,11 @@ export function ChatInterface({
         const isPresentationRequest = intentToSend === 'presentation' || isPresentationMode;
 
         if (isPresentationRequest) {
-            setPresentationSlides(null); 
+            setPresentationSlides(null);
             setGenerationStatus(null);
             setIsGeneratingSlides(true);
             setIsPresentationOpen(true);
+            setSlideProvider(null);
         }
 
         const abortController = new AbortController();
@@ -470,15 +479,16 @@ export function ChatInterface({
 
             try {
                 for await (const chunk of sendChatMessageStream(
-                    session.id, 
-                    content, 
-                    token, 
-                    abortController.signal, 
-                    userClientId, 
-                    assistantClientId, 
+                    session.id,
+                    content,
+                    token,
+                    abortController.signal,
+                    userClientId,
+                    assistantClientId,
                     useDeepSearch,
                     isResearchMode,
-                    isPresentationRequest ? 'presentation' : (intentToSend || undefined)
+                    isPresentationRequest ? 'presentation' : (intentToSend || undefined),
+                    !!opts.regenerateDeck,
                 )) {
                     resetWatchdog();
                     if (chunk.type === "ping") {
@@ -507,6 +517,10 @@ export function ChatInterface({
                         setMessages((prev) =>
                             prev.map(m => m.client_id === assistantClientId ? { ...m, sources: chunk.data, isResearch: true } : m)
                         );
+                    } else if (chunk.type === "provider") {
+                        // Surface which provider ended up generating the deck —
+                        // PresentationDrawer renders it as a small pill.
+                        setSlideProvider((chunk as { name?: string }).name || null);
                     } else if (chunk.type === "slide") {
                         // Progressive streaming: each slide appears in the
                         // side-pane as soon as the model finishes it. We
@@ -619,9 +633,35 @@ export function ChatInterface({
     const hasSlides = !!(presentationSlides && presentationSlides.length > 0);
     const useInlinePanel = hasSlides || isGeneratingSlides;
 
+    // Vertical drag-handle that lets the user resize the chat/preview split.
+    // mousedown on the divider → listen on document → live-update chatWidthPct
+    // while dragging → persist on mouseup.
+    const startDrag = (e: React.MouseEvent) => {
+        e.preventDefault();
+        const startX = e.clientX;
+        const root = (e.currentTarget.parentElement as HTMLElement) || document.body;
+        const totalWidth = root.getBoundingClientRect().width;
+        const startPct = chatWidthPct;
+        const onMove = (ev: MouseEvent) => {
+            const dx = ev.clientX - startX;
+            const next = Math.max(30, Math.min(80, startPct + (dx / totalWidth) * 100));
+            setChatWidthPct(next);
+        };
+        const onUp = () => {
+            document.removeEventListener("mousemove", onMove);
+            document.removeEventListener("mouseup", onUp);
+            try { window.localStorage.setItem("pitchy_split_pct", String(chatWidthPct)); } catch {}
+        };
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp);
+    };
+
     return (
         <div className="flex flex-1 h-full min-h-0 bg-black relative overflow-hidden">
-            <div className={`flex flex-col h-full min-h-0 relative overflow-hidden flex-1 min-w-0 ${useInlinePanel ? "md:max-w-[60%]" : ""}`}>
+            <div
+                className="flex flex-col h-full min-h-0 relative overflow-hidden flex-1 min-w-0"
+                style={useInlinePanel ? { maxWidth: `${chatWidthPct}%` } : undefined}
+            >
             {/* Messages Area */}
             <div
                 ref={scrollViewportRef}
@@ -1071,18 +1111,37 @@ export function ChatInterface({
             </div>
             </div> {/* end of chat column (flex-1 with optional md:max-w-[60%]) */}
 
+            {/* Draggable divider — desktop only. 6px wide hit area with a
+                subtle 1px visual line. Cursor + hover state hint that it can
+                be dragged. */}
+            {useInlinePanel && (
+                <div
+                    onMouseDown={startDrag}
+                    className="hidden md:block w-1.5 cursor-col-resize bg-white/5 hover:bg-white/15 active:bg-white/25 transition-colors relative group"
+                    title="Перетащите, чтобы изменить ширину"
+                >
+                    <div className="absolute inset-y-0 left-1/2 w-px bg-white/10 group-hover:bg-white/30 -translate-x-1/2" />
+                </div>
+            )}
+
             {/* Inline preview pane — sits beside the chat on md+ as soon as
                 the deck has its first slide. Hidden below md so the legacy
                 overlay drawer takes over on mobile. */}
             {useInlinePanel && (
-                <div className="hidden md:block flex-1 min-w-0 border-l border-white/10 h-full overflow-hidden">
+                <div className="hidden md:block flex-1 min-w-0 h-full overflow-hidden">
                     <PresentationDrawer
                         mode="inline"
                         isOpen={true}
-                        onClose={() => setPresentationSlides(null)}
+                        onClose={() => { setPresentationSlides(null); setSlideProvider(null); }}
                         slides={presentationSlides || []}
                         isLoading={isGeneratingSlides}
                         statusText={generationStatus}
+                        provider={slideProvider}
+                        onRegenerate={() => {
+                            setPresentationSlides(null);
+                            setSlideProvider(null);
+                            handleSendMessage("Сгенерируй презентацию заново с чистого листа.", "presentation", false, { regenerateDeck: true });
+                        }}
                     />
                 </div>
             )}
@@ -1098,6 +1157,12 @@ export function ChatInterface({
                     slides={presentationSlides || []}
                     isLoading={isGeneratingSlides}
                     statusText={generationStatus}
+                    provider={slideProvider}
+                    onRegenerate={() => {
+                        setPresentationSlides(null);
+                        setSlideProvider(null);
+                        handleSendMessage("Сгенерируй презентацию заново с чистого листа.", "presentation", false, { regenerateDeck: true });
+                    }}
                 />
             </div>
 
