@@ -38,6 +38,57 @@ class User(Base):
     payments: Mapped[list["Payment"]] = relationship(back_populates="user", cascade="all, delete-orphan", passive_deletes=True)
     project_trees: Mapped[list["ProjectTree"]] = relationship(back_populates="user", cascade="all, delete-orphan", passive_deletes=True)
     tool_results: Mapped[list["ToolResult"]] = relationship(back_populates="user", cascade="all, delete-orphan", passive_deletes=True)
+    projects: Mapped[list["Project"]] = relationship(back_populates="user", cascade="all, delete-orphan", passive_deletes=True)
+
+
+class Project(Base):
+    """Папка проекта (паспорт проекта).
+
+    Контейнер для всех чатов одного проекта. Хранит структурированный
+    паспорт (passport JSONB) — золотой источник истины, который читают и
+    дозаполняют все фичи (презентации, custdev, дорожная карта, гранты).
+    Память между чатами скоупится по project_id, поэтому контекст из
+    другого проекта не протекает.
+    """
+    __tablename__ = "projects"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(200), default="Новый проект")
+    # Структурированный паспорт. Схема секций (core/market/metrics/team/
+    # custdev/legal/assets/custom) описана в schemas.base.PassportData.
+    # Каждое поле может нести метаданные источника (manual|ai|grant) —
+    # хранятся в passport["_meta"][field_path].
+    passport: Mapped[dict] = mapped_column(JSON, default=dict)
+    # 0..100 — процент заполненности ключевых полей паспорта.
+    readiness_index: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    status: Mapped[str] = mapped_column(String(30), default="active")  # active, archived
+    passport_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="projects")
+    memories: Mapped[list["ProjectMemory"]] = relationship(back_populates="project", cascade="all, delete-orphan", passive_deletes=True)
+
+
+class ProjectMemory(Base):
+    """Извлечённый факт о проекте (активная память).
+
+    Фоновый SLM-проход после значимого чата кладёт сюда 1–5 фактов.
+    Перед новым ответом делаем RAG-выборку по project_id, поэтому память
+    не пересекается между проектами.
+    """
+    __tablename__ = "project_memory"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(30), default="fact")  # fact, decision, metric, risk, persona
+    content: Mapped[str] = mapped_column(Text)
+    source_session_id: Mapped[int | None] = mapped_column(ForeignKey("chat_sessions.id", ondelete="SET NULL"), nullable=True)
+    confidence: Mapped[float] = mapped_column(Numeric(3, 2), default=0.5)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    project: Mapped["Project"] = relationship(back_populates="memories")
 
 
 class Payment(Base):
@@ -111,6 +162,9 @@ class ChatSession(Base):
     title: Mapped[str] = mapped_column(String(200))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     analysis_id: Mapped[int | None] = mapped_column(ForeignKey("analyses.id"), nullable=True)
+    # Папка проекта, к которой привязан чат. NULL = чат вне проекта
+    # (память папки на него не распространяется).
+    project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True)
 
     user: Mapped["User"] = relationship(back_populates="chat_sessions")
     messages: Mapped[list["ChatMessage"]] = relationship(back_populates="session", cascade="all, delete-orphan")

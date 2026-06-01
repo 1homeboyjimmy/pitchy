@@ -106,6 +106,63 @@ class SLMClient:
             "search_query": data.get("search_query", query)
         }
 
+    @observe(name="extract_project_facts")
+    async def extract_project_facts(self, user_text: str, assistant_text: str) -> Dict[str, Any]:
+        """Извлекает из одной пары реплик (user+assistant) устойчивые факты о
+        проекте для активной памяти паспорта.
+
+        Возвращает:
+          {
+            "facts": [{"kind": "fact|decision|metric|risk|persona",
+                       "content": "...", "confidence": 0.0-1.0}],
+            "passport": {"core.problem": "...", "metrics.mrr": 200000}  # плоская карта
+          }
+
+        Жёсткие правила в промпте: только факты о ПРОЕКТЕ (не о платформе, не
+        болтовня), короткие формулировки, пустой результат — это норма.
+        """
+        system_prompt = (
+            "Ты извлекаешь устойчивые факты о СТАРТАП-ПРОЕКТЕ пользователя из диалога "
+            "для долговременной памяти. Извлекай ТОЛЬКО конкретику о самом проекте: "
+            "проблема, решение, аудитория, бизнес-модель, метрики, конкуренты, риски, "
+            "решения команды, персоны custdev, юр. форма.\n"
+            "НЕ извлекай: вопросы пользователя, рассуждения ассистента, общие советы, "
+            "инструкции по платформе, вежливость. Если фактов нет — верни пустые списки.\n"
+            "Формулируй факты коротко (одна фраза), на русском.\n"
+            "Для passport используй плоские ключи из набора: "
+            "core.name, core.problem, core.solution, core.target_audience, core.stage, "
+            "core.business_model, core.geo, market.size, metrics.mrr, metrics.users, "
+            "metrics.cac, legal.entity_type. Заполняй passport-ключ только если значение "
+            "явно и уверенно прозвучало.\n"
+            "Верни JSON: {\"facts\": [{\"kind\": \"fact\", \"content\": \"...\", "
+            "\"confidence\": 0.8}], \"passport\": {\"core.problem\": \"...\"}}"
+        )
+        user_prompt = (
+            f"СООБЩЕНИЕ ПОЛЬЗОВАТЕЛЯ:\n{user_text[:2000]}\n\n"
+            f"ОТВЕТ АССИСТЕНТА:\n{assistant_text[:2000]}"
+        )
+        data = await self._call_json(system_prompt, user_prompt)
+        facts = data.get("facts") or []
+        passport = data.get("passport") or {}
+        # Защита от мусора: оставляем только валидные записи.
+        clean_facts = []
+        allowed_kinds = {"fact", "decision", "metric", "risk", "persona"}
+        for f in facts if isinstance(facts, list) else []:
+            if not isinstance(f, dict):
+                continue
+            content = (f.get("content") or "").strip()
+            if not content:
+                continue
+            kind = f.get("kind") if f.get("kind") in allowed_kinds else "fact"
+            try:
+                conf = float(f.get("confidence", 0.5))
+            except (TypeError, ValueError):
+                conf = 0.5
+            clean_facts.append({"kind": kind, "content": content[:500],
+                                "confidence": max(0.0, min(1.0, conf))})
+        clean_passport = passport if isinstance(passport, dict) else {}
+        return {"facts": clean_facts[:5], "passport": clean_passport}
+
     @observe(name="generate_chat_title")
     async def generate_chat_title(self, first_message: str) -> str:
         """Generates a concise 2-4 word title for the chat."""

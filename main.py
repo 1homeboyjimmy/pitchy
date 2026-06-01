@@ -408,6 +408,9 @@ app.include_router(billing.router)
 import tree_router
 app.include_router(tree_router.router)
 
+import projects_router
+app.include_router(projects_router.router)
+
 from routers import contact as contact_router
 app.include_router(contact_router.router)
 
@@ -3821,6 +3824,19 @@ async def send_chat_message(
             history = sorted(session.messages, key=lambda m: m.created_at)
             chat_history = [ChatMessage(role=m.role, content=m.content) for m in history]
 
+            # Пассивная память папки: если чат живёт в папке проекта, тянем
+            # дамп паспорта + релевантные факты, чтобы заземлить любой ответ.
+            # Скоуп строго по project_id — контекст чужого проекта не протекает.
+            project_ctx = ""
+            if getattr(session, "project_id", None):
+                try:
+                    from project_memory_service import load_project_context
+                    project_ctx = await load_project_context(
+                        db, session.project_id, query=payload.content
+                    )
+                except Exception as e:
+                    logger.warning(f"load_project_context failed: {e}")
+
             use_deep_search_flag = getattr(payload, "use_deep_search", False)
             use_research_flag = getattr(payload, "use_research", False)
             is_pres_request = payload.intent == "presentation"
@@ -3972,6 +3988,11 @@ async def send_chat_message(
             if search_ctx and not swarm_facts:
                 compiled_rag += f"ДАННЫЕ ИЗ ИНТЕРНЕТА:\n{search_ctx[:2500]}\n\n"
 
+            # Паспорт + память папки идут первыми — это самый авторитетный
+            # контекст о проекте, важнее общих фрагментов из базы знаний.
+            if project_ctx:
+                compiled_rag = project_ctx + "\n\n" + compiled_rag
+
             # 3.1 MODE: PRESENTATION GENERATION
             if is_pres_request:
                 yield format_sse({"type": "chunk", "content": "Начинаю сборку вашей презентации...\n\n"})
@@ -3980,6 +4001,9 @@ async def send_chat_message(
                 # Use history and context to build slides
                 history_text = "\n".join([f"{m.role}: {m.content[:200]}" for m in history[-10:]])
                 context_text = "\n".join([c["text"] if isinstance(c, dict) else c for c in context_chunks[:3]])
+                # Паспорт папки — приоритетный контекст для слайд-агента.
+                if project_ctx:
+                    context_text = project_ctx + ("\n\n" + context_text if context_text else "")
                 
                 # `regenerate` flag is set when the user explicitly asks for
                 # a fresh deck from scratch (we surface it as a UI button).
@@ -4135,6 +4159,22 @@ async def send_chat_message(
                         sources=sources if getattr(payload, "use_deep_search", False) else None
                     )
                 )
+
+            # Активная память: если чат в папке проекта, фоном извлекаем
+            # факты из этого обмена и аккуратно дозаполняем паспорт. Запускаем
+            # после сохранения ответа, чтобы не задерживать стрим. Ошибки
+            # внутри проглатываются — память не должна ломать чат.
+            if full_response and getattr(session, "project_id", None):
+                try:
+                    from project_memory_service import extract_and_store_facts
+                    asyncio.create_task(extract_and_store_facts(
+                        project_id=session.project_id,
+                        user_text=payload.content,
+                        assistant_text=full_response,
+                        source_session_id=session.id,
+                    ))
+                except Exception as e:
+                    logger.warning(f"schedule project memory extraction failed: {e}")
 
             # =======================================================
             # STAGE 6/6 — Background Semantic Cache write

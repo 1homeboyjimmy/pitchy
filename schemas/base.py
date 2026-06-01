@@ -196,6 +196,78 @@ class ImportContextResponse(BaseModel):
     summary: ProjectContext | None = None
     message: str | None = None
 
+# ——— Project Passport (Паспорт проекта) Schemas ———
+
+class ProjectCreateRequest(BaseModel):
+    name: str = Field(default="Новый проект", min_length=2, max_length=200)
+    # Опциональный стартовый паспорт (например, из импорта контекста).
+    passport: dict[str, Any] | None = None
+    # Если задан — привязываем существующий чат к новой папке.
+    attach_session_id: int | None = None
+
+
+class ProjectUpdateRequest(BaseModel):
+    name: str | None = Field(None, min_length=2, max_length=200)
+    status: str | None = None  # active, archived
+
+
+class PassportPatchRequest(BaseModel):
+    """Частичный апдейт паспорта.
+
+    `fields` — плоская карта "section.field" -> value (например
+    {"core.problem": "...", "metrics.mrr": 200000}). Бэкенд мерджит в
+    JSONB и проставляет source=manual для затронутых полей, чтобы ИИ
+    не перезаписывал их молча.
+    """
+    fields: dict[str, Any] = Field(default_factory=dict)
+
+
+class ProjectMemoryItemResponse(BaseModel):
+    id: int
+    kind: str
+    content: str
+    confidence: float
+    source_session_id: int | None = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ProjectResponse(BaseModel):
+    id: int
+    name: str
+    passport: dict[str, Any] = {}
+    readiness_index: int = 0
+    status: str = "active"
+    passport_updated_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ProjectListItemResponse(BaseModel):
+    id: int
+    name: str
+    readiness_index: int = 0
+    status: str = "active"
+    session_count: int = 0
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class PassportResponse(BaseModel):
+    """Ответ модалки редактирования паспорта: данные + индекс готовности +
+    список незаполненных ключевых секций (для подсветки «не хватает»)."""
+    passport: dict[str, Any] = {}
+    readiness_index: int = 0
+    missing_sections: list[str] = Field(default_factory=list)
+
+
 class UserUpdateRequest(BaseModel):
     name: str | None = Field(None, min_length=2)
     email: EmailStr | None = None
