@@ -30,12 +30,21 @@ const nextConfig: NextConfig = {
       { source: "/admin/:path*", destination: `${BACKEND_URL}/admin/:path*` },
       { source: "/chat/:path*", destination: `${BACKEND_URL}/chat/:path*` },
       { source: "/me", destination: `${BACKEND_URL}/me` },
+      // /me/usage и прочие подпути /me/* (раньше проксировался только точный /me).
+      { source: "/me/:path*", destination: `${BACKEND_URL}/me/:path*` },
       { source: "/analyze", destination: `${BACKEND_URL}/analyze` },
       { source: "/analyze/:path*", destination: `${BACKEND_URL}/analyze/:path*` },
       { source: "/health", destination: `${BACKEND_URL}/health` },
       { source: "/dev/:path*", destination: `${BACKEND_URL}/dev/:path*` },
       { source: "/tree/:path*", destination: `${BACKEND_URL}/tree/:path*` },
       { source: "/contact-form", destination: `${BACKEND_URL}/contact-form` },
+      // Паспорт проекта. Коллизий со страницами нет — проксируем напрямую.
+      { source: "/projects", destination: `${BACKEND_URL}/projects` },
+      { source: "/projects/:path*", destination: `${BACKEND_URL}/projects/:path*` },
+      // Гранты: страница /grants и /grants/[id] заняли эти URL, поэтому API
+      // грантов идёт через /api/grants и переписывается на бэкендовый /grants.
+      { source: "/api/grants", destination: `${BACKEND_URL}/grants` },
+      { source: "/api/grants/:path*", destination: `${BACKEND_URL}/grants/:path*` },
     ];
   },
 };
