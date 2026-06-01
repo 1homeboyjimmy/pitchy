@@ -199,44 +199,89 @@ export function GrantsPageClient() {
           </div>
         )}
 
-        {/* Сейчас идёт */}
-        {openGrants.length > 0 && (
-          <section className="mb-12">
-            <div className="flex items-center gap-2 mb-4 text-emerald-400">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
-              </span>
-              <span className="font-mono text-[10px] uppercase tracking-[0.2em] font-bold">Сейчас идёт приём</span>
-            </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              {openGrants.slice(0, 4).map((g) => {
-                const dl = daysLeft(g.deadline);
-                return (
-                  <Link key={g.id} href={grantHref(g.id)}
-                    className="lovable-glass rounded-2xl p-5 border border-white/10 hover:border-white/20 transition-all group">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="font-display text-lg text-white truncate group-hover:text-white">{g.name}</p>
-                        {g.organization && <p className="text-white/40 text-sm truncate">{g.organization}</p>}
-                      </div>
-                      <ArrowUpRight className="text-white/30 group-hover:text-white shrink-0" size={18} />
-                    </div>
-                    <div className="flex items-center gap-3 mt-4 text-xs flex-wrap">
-                      {formatAmount(g.amount_min, g.amount_max) && (
-                        <span className="text-white/70 font-medium">{formatAmount(g.amount_min, g.amount_max)}</span>
-                      )}
-                      {dl != null && dl >= 0 && (
-                        <span className={`flex items-center gap-1 ${dl <= 7 ? "text-amber-400" : "text-white/40"}`}>
-                          <Clock size={12} /> {dl === 0 ? "сегодня" : `${dl} дн.`}
-                        </span>
-                      )}
-                    </div>
-                  </Link>
-                );
-              })}
-            </div>
-          </section>
+        {/* Верхний блок: слева — текущие программы, справа — календарь */}
+        {(openGrants.length > 0 || calendar.length > 0) && (
+          <div className="grid lg:grid-cols-2 gap-6 mb-12">
+            {/* Слева: сейчас идёт приём */}
+            <section>
+              <div className="flex items-center gap-2 mb-4 text-emerald-400">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
+                </span>
+                <span className="font-mono text-[10px] uppercase tracking-[0.2em] font-bold">Сейчас идёт приём</span>
+              </div>
+              {openGrants.length > 0 ? (
+                <div className="space-y-3">
+                  {openGrants.slice(0, 5).map((g) => {
+                    const dl = daysLeft(g.deadline);
+                    return (
+                      <Link key={g.id} href={grantHref(g.id)}
+                        className="block lovable-glass rounded-2xl p-5 border border-white/10 hover:border-white/20 transition-all group">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="font-display text-lg text-white truncate group-hover:text-white">{g.name}</p>
+                            {g.organization && <p className="text-white/40 text-sm truncate">{g.organization}</p>}
+                          </div>
+                          <ArrowUpRight className="text-white/30 group-hover:text-white shrink-0" size={18} />
+                        </div>
+                        <div className="flex items-center gap-3 mt-4 text-xs flex-wrap">
+                          {formatAmount(g.amount_min, g.amount_max) && (
+                            <span className="text-white/70 font-medium">{formatAmount(g.amount_min, g.amount_max)}</span>
+                          )}
+                          {dl != null && dl >= 0 && (
+                            <span className={`flex items-center gap-1 ${dl <= 7 ? "text-amber-400" : "text-white/40"}`}>
+                              <Clock size={12} /> {dl === 0 ? "сегодня" : `${dl} дн.`}
+                            </span>
+                          )}
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="lovable-glass rounded-2xl p-6 text-white/40 text-sm border border-white/10">
+                  Сейчас нет программ с открытым приёмом.
+                </div>
+              )}
+            </section>
+
+            {/* Справа: календарь дедлайнов */}
+            <section>
+              <div className="flex items-center gap-2 mb-4 text-white/70">
+                <Calendar size={16} />
+                <span className="font-mono text-[10px] uppercase tracking-[0.2em] font-bold">Календарь дедлайнов</span>
+              </div>
+              {calendar.length > 0 ? (
+                <div className="lovable-glass rounded-3xl border border-white/10 divide-y divide-white/5 overflow-hidden">
+                  {calendar.map((g) => {
+                    const dl = daysLeft(g.deadline);
+                    return (
+                      <Link key={g.id} href={grantHref(g.id)}
+                        className="flex items-center gap-4 px-5 py-4 hover:bg-white/[0.03] transition-colors group">
+                        <div className="text-center shrink-0 w-16">
+                          <div className="text-sm font-mono text-white/70">{formatDate(g.deadline)?.replace(/ \d{4} г\.?$/, "")}</div>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white truncate group-hover:text-white font-display">{g.name}</p>
+                          {g.organization && <p className="text-white/35 text-xs truncate">{g.organization}</p>}
+                        </div>
+                        {dl != null && (
+                          <span className={`text-xs shrink-0 ${dl <= 7 ? "text-amber-400" : "text-white/35"}`}>
+                            {dl < 0 ? "завершён" : dl === 0 ? "сегодня" : `${dl} дн.`}
+                          </span>
+                        )}
+                      </Link>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="lovable-glass rounded-2xl p-6 text-white/40 text-sm border border-white/10">
+                  Ближайших дедлайнов нет.
+                </div>
+              )}
+            </section>
+          </div>
         )}
 
         {/* Автоподбор */}
@@ -302,38 +347,6 @@ export function GrantsPageClient() {
                 ))}
               </div>
             )}
-          </section>
-        )}
-
-        {/* Календарь дедлайнов */}
-        {calendar.length > 0 && (
-          <section className="mb-12">
-            <div className="flex items-center gap-2 mb-4 text-white/70">
-              <Calendar size={16} />
-              <span className="font-mono text-[10px] uppercase tracking-[0.2em] font-bold">Календарь дедлайнов</span>
-            </div>
-            <div className="lovable-glass rounded-3xl border border-white/10 divide-y divide-white/5 overflow-hidden">
-              {calendar.map((g) => {
-                const dl = daysLeft(g.deadline);
-                return (
-                  <Link key={g.id} href={grantHref(g.id)}
-                    className="flex items-center gap-4 px-5 py-4 hover:bg-white/[0.03] transition-colors group">
-                    <div className="text-center shrink-0 w-16">
-                      <div className="text-sm font-mono text-white/70">{formatDate(g.deadline)?.replace(/ \d{4} г\.?$/, "")}</div>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-white truncate group-hover:text-white font-display">{g.name}</p>
-                      {g.organization && <p className="text-white/35 text-xs truncate">{g.organization}</p>}
-                    </div>
-                    {dl != null && (
-                      <span className={`text-xs shrink-0 ${dl <= 7 ? "text-amber-400" : "text-white/35"}`}>
-                        {dl < 0 ? "завершён" : dl === 0 ? "сегодня" : `${dl} дн.`}
-                      </span>
-                    )}
-                  </Link>
-                );
-              })}
-            </div>
           </section>
         )}
 
