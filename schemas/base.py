@@ -268,6 +268,80 @@ class PassportResponse(BaseModel):
     missing_sections: list[str] = Field(default_factory=list)
 
 
+# ——— Grants (Гранты) Schemas ———
+
+class GrantResponse(BaseModel):
+    id: int
+    name: str
+    organization: str | None = None
+    description: str | None = None
+    url: str | None = None
+    amount_min: float | None = None
+    amount_max: float | None = None
+    geo: str | None = None
+    stages: list[str] = []
+    sectors: list[str] = []
+    entity_types: list[str] = []
+    requirements: dict[str, Any] | None = None
+    opens_at: datetime | None = None
+    deadline: datetime | None = None
+    status: str = "open"
+
+    class Config:
+        from_attributes = True
+
+
+class GrantMatchResponse(BaseModel):
+    """Грант + результат матчинга с паспортом проекта (для списка автоподбора)."""
+    grant: GrantResponse
+    score: int = 0
+    hard_pass: bool = False
+    reasons: dict[str, Any] = Field(default_factory=dict)
+
+
+class GrantCreateRequest(BaseModel):
+    """Создание гранта (админ/парсер)."""
+    name: str = Field(..., min_length=2, max_length=300)
+    organization: str | None = None
+    description: str | None = None
+    url: str | None = None
+    amount_min: float | None = None
+    amount_max: float | None = None
+    geo: str | None = None
+    stages: list[str] = []
+    sectors: list[str] = []
+    entity_types: list[str] = []
+    requirements: dict[str, Any] | None = None
+    opens_at: datetime | None = None
+    deadline: datetime | None = None
+    status: str = "open"
+
+
+class GrantApplicationGenerateRequest(BaseModel):
+    project_id: int
+    extra_context: str | None = None
+
+
+class GrantApplicationResponse(BaseModel):
+    id: int
+    project_id: int
+    grant_id: int
+    status: str = "draft"
+    content: dict[str, Any] = {}
+    match_score: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class GrantApplicationUpdateRequest(BaseModel):
+    """Ручная правка секций заявки пользователем."""
+    content: dict[str, Any] | None = None
+    status: str | None = None
+
+
 class UserUpdateRequest(BaseModel):
     name: str | None = Field(None, min_length=2)
     email: EmailStr | None = None

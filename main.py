@@ -411,6 +411,9 @@ app.include_router(tree_router.router)
 import projects_router
 app.include_router(projects_router.router)
 
+import grants_router
+app.include_router(grants_router.router)
+
 from routers import contact as contact_router
 app.include_router(contact_router.router)
 

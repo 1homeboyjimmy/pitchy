@@ -275,6 +275,75 @@ class ToolResult(Base):
     user: Mapped["User"] = relationship(back_populates="tool_results")
 
 
+class Grant(Base):
+    """Каталог грантовых/акселерационных программ.
+
+    Поля geo/stages/sectors/entity_types — критерии для матчинга с
+    паспортом проекта (hard-фильтры). amount/deadline — для карточки и
+    блока «сейчас идёт».
+    """
+    __tablename__ = "grants"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(300))
+    organization: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    amount_min: Mapped[float | None] = mapped_column(Numeric(14, 2), nullable=True)
+    amount_max: Mapped[float | None] = mapped_column(Numeric(14, 2), nullable=True)
+    # Гео-охват: "RF" (вся Россия) или код региона ("MSK", "SPB", ...).
+    geo: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # JSON-списки критериев. Пустой список = «без ограничений по критерию».
+    stages: Mapped[list[str]] = mapped_column(JSON, default=list)          # pre-seed, seed, ...
+    sectors: Mapped[list[str]] = mapped_column(JSON, default=list)         # it, biotech, ...
+    entity_types: Mapped[list[str]] = mapped_column(JSON, default=list)    # ИП, ООО, самозанятый, физлицо
+    requirements: Mapped[dict | None] = mapped_column(JSON, nullable=True) # доп. условия / поля заявки
+    opens_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    deadline: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(30), default="open")  # open, upcoming, closed
+    source: Mapped[str] = mapped_column(String(50), default="manual")  # manual, parsed
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    applications: Mapped[list["GrantApplication"]] = relationship(back_populates="grant", cascade="all, delete-orphan", passive_deletes=True)
+
+
+class GrantApplication(Base):
+    """Сгенерированная заявка проекта на грант.
+
+    content — секции заявки (JSON: {"problem": "...", "budget": "..."}).
+    Генерируется из паспорта; после генерации часть полей (legal/реквизиты)
+    может писаться обратно в паспорт.
+    """
+    __tablename__ = "grant_applications"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    grant_id: Mapped[int] = mapped_column(ForeignKey("grants.id", ondelete="CASCADE"), index=True)
+    status: Mapped[str] = mapped_column(String(30), default="draft")  # draft, generated, submitted
+    content: Mapped[dict] = mapped_column(JSON, default=dict)
+    match_score: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    grant: Mapped["Grant"] = relationship(back_populates="applications")
+
+
+class GrantMatchCache(Base):
+    """Кэш результата матчинга паспорт↔грант, чтобы не пересчитывать на
+    каждый рендер списка. Инвалидируется при изменении паспорта."""
+    __tablename__ = "grant_match_cache"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    grant_id: Mapped[int] = mapped_column(ForeignKey("grants.id", ondelete="CASCADE"), index=True)
+    score: Mapped[int] = mapped_column(Integer, default=0)        # 0..100
+    hard_pass: Mapped[bool] = mapped_column(Boolean, default=False)
+    reasons: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # {"matched": [...], "missing": [...]}
+    computed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class AdminAuditLog(Base):
     """Append-only record of admin actions.
 
