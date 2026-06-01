@@ -353,7 +353,7 @@ export function AccountPageClient() {
                   href="/pricing"
                   className="shrink-0 px-4 sm:px-8 py-2 sm:py-3 bg-white text-black font-mono text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.15em] sm:tracking-[0.2em] rounded-full hover:opacity-90 transition-opacity active:scale-[0.98] text-center"
                 >
-                  {isActiveSub ? "Продлить" : "Оформить"}
+                  {isActiveSub ? "Продлить" : isFree ? "Улучшить тариф" : "Оформить"}
                 </Link>
               </div>
 
