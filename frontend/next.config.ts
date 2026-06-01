@@ -22,11 +22,14 @@ const nextConfig: NextConfig = {
     ];
   },
   async rewrites() {
-    // Условие «есть заголовок Authorization». Наши клиентские fetch к API
-    // всегда шлют `Authorization: Bearer …`, а навигация в браузере по
-    // ссылке/адресной строке — нет. Это позволяет странице Next и API
-    // бэкенда сосуществовать на одном пути (/grants) без коллизии.
-    const hasAuth = [{ type: "header" as const, key: "authorization" }];
+    // Условие «есть Bearer-токен в Authorization». Наши клиентские fetch к API
+    // всегда шлют `Authorization: Bearer …`, а навигация в браузере — нет.
+    // ВАЖНО: на дев-стенде весь сайт за Caddy Basic Auth, и браузер шлёт
+    // `Authorization: Basic …` даже при обычной навигации по странице. Поэтому
+    // матчим строго `Bearer …`, иначе Basic-навигация на /grants улетала бы на
+    // бэкенд-API вместо рендера страницы (→ 500). Это позволяет странице Next и
+    // API бэкенда сосуществовать на одном пути (/grants) без коллизии.
+    const hasAuth = [{ type: "header" as const, key: "authorization", value: "Bearer .+" }];
     return {
       // beforeFiles выполняется ДО проверки файловых маршрутов (страниц).
       // Гранты: URL /grants и /grants/[id] заняты страницами Next. Поэтому
