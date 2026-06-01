@@ -686,3 +686,172 @@ export async function toolQuickSearch(query: string, token: string): Promise<Too
 export async function toolDeepResearch(query: string, token: string): Promise<ToolResultResponse> {
   return postAuthJson<ToolResultResponse>("/api/tools/deep-research", { query }, token);
 }
+
+/* ——— Projects (Паспорт проекта) ——— */
+
+export type PassportData = Record<string, unknown>;
+
+export type Project = {
+  id: number;
+  name: string;
+  passport: PassportData;
+  readiness_index: number;
+  status: "active" | "archived";
+  passport_updated_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProjectListItem = {
+  id: number;
+  name: string;
+  readiness_index: number;
+  status: "active" | "archived";
+  session_count: number;
+  updated_at: string;
+};
+
+export type PassportView = {
+  passport: PassportData;
+  readiness_index: number;
+  missing_sections: string[];
+};
+
+export async function getProjects(token: string, includeArchived = false): Promise<ProjectListItem[]> {
+  return getAuthJson<ProjectListItem[]>(`/projects?include_archived=${includeArchived}`, token);
+}
+
+export async function getProject(id: number, token: string): Promise<Project> {
+  return getAuthJson<Project>(`/projects/${id}`, token);
+}
+
+export async function createProject(
+  data: { name: string; passport?: PassportData; attach_session_id?: number },
+  token: string
+): Promise<Project> {
+  return postAuthJson<Project>("/projects", data, token);
+}
+
+export async function updateProject(
+  id: number,
+  data: { name?: string; status?: "active" | "archived" },
+  token: string
+): Promise<Project> {
+  return patchAuthJson<Project>(`/projects/${id}`, data, token);
+}
+
+export async function deleteProject(id: number, token: string): Promise<{ status: string }> {
+  return request<{ status: string }>(`/projects/${id}`, undefined, token, "DELETE");
+}
+
+export async function getPassport(id: number, token: string): Promise<PassportView> {
+  return getAuthJson<PassportView>(`/projects/${id}/passport`, token);
+}
+
+export async function patchPassport(
+  id: number,
+  fields: Record<string, unknown>,
+  token: string
+): Promise<PassportView> {
+  return patchAuthJson<PassportView>(`/projects/${id}/passport`, { fields }, token);
+}
+
+export async function getProjectSessions(id: number, token: string): Promise<ChatSessionResponse[]> {
+  return getAuthJson<ChatSessionResponse[]>(`/projects/${id}/sessions`, token);
+}
+
+export async function attachSessionToProject(
+  projectId: number,
+  sessionId: number,
+  token: string
+): Promise<ChatSessionResponse> {
+  return postAuthJson<ChatSessionResponse>(`/projects/${projectId}/sessions/${sessionId}`, {}, token);
+}
+
+/* ——— Grants (Гранты) ——— */
+
+export type Grant = {
+  id: number;
+  name: string;
+  organization: string | null;
+  description: string | null;
+  url: string | null;
+  amount_min: number | null;
+  amount_max: number | null;
+  geo: string | null;
+  stages: string[];
+  sectors: string[];
+  entity_types: string[];
+  requirements: Record<string, unknown> | null;
+  opens_at: string | null;
+  deadline: string | null;
+  status: "open" | "upcoming" | "closed";
+};
+
+export type GrantMatch = {
+  grant: Grant;
+  score: number;
+  hard_pass: boolean;
+  reasons: { matched?: string[]; missing?: string[]; conflict?: boolean };
+};
+
+export type GrantApplication = {
+  id: number;
+  project_id: number;
+  grant_id: number;
+  status: "draft" | "generated" | "submitted";
+  content: { sections?: Record<string, string>; gaps?: string[] };
+  match_score: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export async function getGrants(token: string, status?: string): Promise<Grant[]> {
+  const q = status ? `?status=${status}` : "";
+  return getAuthJson<Grant[]>(`/grants${q}`, token);
+}
+
+export async function getGrant(id: number, token: string): Promise<Grant> {
+  return getAuthJson<Grant>(`/grants/${id}`, token);
+}
+
+export async function matchGrants(
+  projectId: number,
+  token: string,
+  opts?: { includeClosed?: boolean; onlyEligible?: boolean }
+): Promise<GrantMatch[]> {
+  const params = new URLSearchParams({ project_id: String(projectId) });
+  if (opts?.includeClosed) params.set("include_closed", "true");
+  if (opts?.onlyEligible) params.set("only_eligible", "true");
+  return getAuthJson<GrantMatch[]>(`/grants/match?${params.toString()}`, token);
+}
+
+export async function generateGrantApplication(
+  grantId: number,
+  projectId: number,
+  token: string,
+  extraContext?: string
+): Promise<GrantApplication> {
+  return postAuthJson<GrantApplication>(
+    `/grants/${grantId}/apply`,
+    { project_id: projectId, extra_context: extraContext },
+    token
+  );
+}
+
+export async function getGrantApplications(token: string, projectId?: number): Promise<GrantApplication[]> {
+  const q = projectId != null ? `?project_id=${projectId}` : "";
+  return getAuthJson<GrantApplication[]>(`/grants/applications${q}`, token);
+}
+
+export async function getGrantApplication(appId: number, token: string): Promise<GrantApplication> {
+  return getAuthJson<GrantApplication>(`/grants/applications/${appId}`, token);
+}
+
+export async function updateGrantApplication(
+  appId: number,
+  data: { content?: Record<string, unknown>; status?: string },
+  token: string
+): Promise<GrantApplication> {
+  return patchAuthJson<GrantApplication>(`/grants/applications/${appId}`, data, token);
+}

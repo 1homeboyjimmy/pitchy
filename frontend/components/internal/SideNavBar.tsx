@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { LayoutDashboard, MessageSquare, GitBranch, Users, Shield, HelpCircle, Star, X, ChevronLeft, ChevronRight, Lock } from "lucide-react";
+import { LayoutDashboard, MessageSquare, GitBranch, Users, Shield, HelpCircle, Star, X, ChevronLeft, ChevronRight, Lock, Banknote } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { PitchyLogo } from "../shared/PitchyLogo";
 
@@ -38,6 +38,7 @@ export function SideNavBar({
     { id: "overview", label: "Обзор", icon: LayoutDashboard, locked: false },
     { id: "chat", label: "Чат", icon: MessageSquare, locked: false },
     { id: "tree", label: "Дорожная карта", icon: GitBranch, locked: !canUseTree },
+    { id: "grants", label: "Гранты", icon: Banknote, href: "/grants", locked: false },
     {
       id: "custdev",
       label: "Кастдев",
