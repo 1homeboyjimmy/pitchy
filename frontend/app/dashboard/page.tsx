@@ -4,6 +4,8 @@ import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader, Activity, RefreshCcw, ArrowUpRight, MessageSquare, Plus, Microscope, Map, Users, ChevronRight, ChevronLeft, Trash2, Calendar } from "lucide-react";
 import { ChatInterface } from "@/components/dashboard/ChatInterface";
+import { ProjectFolders } from "@/components/dashboard/ProjectFolders";
+import { SessionFolderMenu } from "@/components/dashboard/SessionFolderMenu";
 import { AdminView } from "@/components/dashboard/AdminView";
 import { TreeView } from "@/components/dashboard/TreeView";
 import { SideNavBar } from "@/components/internal/SideNavBar";
@@ -353,6 +355,9 @@ function DashboardContent() {
                 />
               </div>
 
+              {/* Project folders — passport, scoped memory, grants */}
+              {token && <ProjectFolders token={token} />}
+
               {/* Recent Sessions — horizontal row list */}
               <div>
                 <h3 className="font-display text-xl sm:text-2xl text-white/40 mb-4 sm:mb-6 ml-2">Последние сессии</h3>
@@ -419,6 +424,16 @@ function DashboardContent() {
                         </div>
 
                         <div className="flex items-center gap-2 shrink-0">
+                          {token && (
+                            <SessionFolderMenu
+                              token={token}
+                              sessionId={session.id}
+                              projectId={session.project_id}
+                              onAttached={(sid, pid) =>
+                                setSessions((prev) => prev.map((s) => (s.id === sid ? { ...s, project_id: pid } : s)))
+                              }
+                            />
+                          )}
                           <button
                             type="button"
                             onClick={(e) => handleDeleteSession(e, session.id, session.title)}

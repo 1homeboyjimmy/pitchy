@@ -142,6 +142,7 @@ class ChatSessionResponse(BaseModel):
     title: str
     created_at: datetime
     analysis_id: int | None = None
+    project_id: int | None = None
 
     class Config:
         from_attributes = True

@@ -213,6 +213,7 @@ export type ChatSessionResponse = {
   title: string;
   created_at: string;
   analysis_id?: number;
+  project_id?: number | null;
 };
 
 export type AnalysisResponse = {
