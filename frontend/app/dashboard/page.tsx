@@ -109,7 +109,9 @@ function DashboardContent() {
 
   useEffect(() => {
     const tab = searchParams.get("tab");
-    if (tab === "chat") setActiveTab("chat");
+    if (tab === "chat" || tab === "tree" || tab === "admin" || tab === "overview") {
+      setActiveTab(tab);
+    }
 
     const urlToken = searchParams.get("token");
     if (urlToken) {

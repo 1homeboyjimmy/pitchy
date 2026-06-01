@@ -807,15 +807,17 @@ export type GrantApplication = {
   updated_at: string;
 };
 
-// Гранты ходят через /api/grants: URL /grants/* заняты страницами Next,
-// поэтому next.config переписывает /api/grants/* → бэкендовый /grants/*.
+// Гранты ходят на /grants. URL /grants/* заняты страницами Next, поэтому
+// next.config переписывает их на бэкенд ТОЛЬКО для запросов с заголовком
+// Authorization (наши fetch его шлют, навигация в браузере — нет), так что
+// страница и API живут на одном пути без коллизии.
 export async function getGrants(token: string, status?: string): Promise<Grant[]> {
   const q = status ? `?status=${status}` : "";
-  return getAuthJson<Grant[]>(`/api/grants${q}`, token);
+  return getAuthJson<Grant[]>(`/grants${q}`, token);
 }
 
 export async function getGrant(id: number, token: string): Promise<Grant> {
-  return getAuthJson<Grant>(`/api/grants/${id}`, token);
+  return getAuthJson<Grant>(`/grants/${id}`, token);
 }
 
 export async function matchGrants(
@@ -826,7 +828,7 @@ export async function matchGrants(
   const params = new URLSearchParams({ project_id: String(projectId) });
   if (opts?.includeClosed) params.set("include_closed", "true");
   if (opts?.onlyEligible) params.set("only_eligible", "true");
-  return getAuthJson<GrantMatch[]>(`/api/grants/match?${params.toString()}`, token);
+  return getAuthJson<GrantMatch[]>(`/grants/match?${params.toString()}`, token);
 }
 
 export async function generateGrantApplication(
@@ -836,7 +838,7 @@ export async function generateGrantApplication(
   extraContext?: string
 ): Promise<GrantApplication> {
   return postAuthJson<GrantApplication>(
-    `/api/grants/${grantId}/apply`,
+    `/grants/${grantId}/apply`,
     { project_id: projectId, extra_context: extraContext },
     token
   );
@@ -844,11 +846,11 @@ export async function generateGrantApplication(
 
 export async function getGrantApplications(token: string, projectId?: number): Promise<GrantApplication[]> {
   const q = projectId != null ? `?project_id=${projectId}` : "";
-  return getAuthJson<GrantApplication[]>(`/api/grants/applications${q}`, token);
+  return getAuthJson<GrantApplication[]>(`/grants/applications${q}`, token);
 }
 
 export async function getGrantApplication(appId: number, token: string): Promise<GrantApplication> {
-  return getAuthJson<GrantApplication>(`/api/grants/applications/${appId}`, token);
+  return getAuthJson<GrantApplication>(`/grants/applications/${appId}`, token);
 }
 
 export async function updateGrantApplication(
@@ -856,5 +858,5 @@ export async function updateGrantApplication(
   data: { content?: Record<string, unknown>; status?: string },
   token: string
 ): Promise<GrantApplication> {
-  return patchAuthJson<GrantApplication>(`/api/grants/applications/${appId}`, data, token);
+  return patchAuthJson<GrantApplication>(`/grants/applications/${appId}`, data, token);
 }

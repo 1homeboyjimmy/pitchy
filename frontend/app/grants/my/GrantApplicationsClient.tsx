@@ -3,8 +3,6 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Loader, ChevronLeft, FileText, Banknote } from "lucide-react";
-import { TopNavBar } from "@/components/shared/TopNavBar";
-import { SiteFooter } from "@/components/shared/SiteFooter";
 import { getToken } from "@/lib/auth";
 import { notifyError } from "@/lib/ui";
 import {
@@ -52,18 +50,14 @@ export function GrantApplicationsClient() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
+      <div className="h-full bg-black flex items-center justify-center">
         <Loader className="animate-spin text-white/40" size={28} />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-black text-white flex flex-col antialiased">
-      <div className="absolute top-[-20%] left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-white/5 blur-[120px] rounded-full pointer-events-none" />
-      <TopNavBar />
-
-      <div className="flex-1 w-full max-w-4xl mx-auto px-4 md:px-8 py-10 relative z-10">
+    <div className="w-full max-w-4xl mx-auto px-4 md:px-8 pt-24 pb-10 relative z-10">
         <Link href="/grants" className="flex items-center gap-2 text-white/40 hover:text-white text-sm mb-8 transition-colors">
           <ChevronLeft size={16} /> Гранты
         </Link>
@@ -105,9 +99,6 @@ export function GrantApplicationsClient() {
             })}
           </div>
         )}
-      </div>
-
-      <SiteFooter />
     </div>
   );
 }

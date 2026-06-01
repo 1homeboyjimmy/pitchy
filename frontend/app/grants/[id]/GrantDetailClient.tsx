@@ -7,8 +7,6 @@ import {
   Loader, ChevronLeft, Banknote, MapPin, Building2, Clock, Sparkles,
   ExternalLink, CheckCircle2, AlertTriangle, FileText,
 } from "lucide-react";
-import { TopNavBar } from "@/components/shared/TopNavBar";
-import { SiteFooter } from "@/components/shared/SiteFooter";
 import { getToken } from "@/lib/auth";
 import { notifyError } from "@/lib/ui";
 import {
@@ -92,7 +90,7 @@ export function GrantDetailClient() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
+      <div className="h-full bg-black flex items-center justify-center">
         <Loader className="animate-spin text-white/40" size={28} />
       </div>
     );
@@ -100,10 +98,7 @@ export function GrantDetailClient() {
 
   if (!grant) {
     return (
-      <div className="min-h-screen bg-black flex flex-col">
-        <TopNavBar />
-        <div className="flex-1 flex items-center justify-center text-white/40">Грант не найден</div>
-      </div>
+      <div className="h-full flex items-center justify-center text-white/40">Грант не найден</div>
     );
   }
 
@@ -112,11 +107,7 @@ export function GrantDetailClient() {
   const sectionKeys = Object.keys(SECTION_LABELS).filter((k) => sections[k]);
 
   return (
-    <div className="min-h-screen bg-black text-white flex flex-col antialiased">
-      <div className="absolute top-[-20%] left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-white/5 blur-[120px] rounded-full pointer-events-none" />
-      <TopNavBar />
-
-      <div className="flex-1 w-full max-w-4xl mx-auto px-4 md:px-8 py-10 relative z-10">
+    <div className="w-full max-w-4xl mx-auto px-4 md:px-8 pt-24 pb-10 relative z-10">
         <Link href="/grants" className="flex items-center gap-2 text-white/40 hover:text-white text-sm mb-8 transition-colors">
           <ChevronLeft size={16} /> Все гранты
         </Link>
@@ -260,9 +251,6 @@ export function GrantDetailClient() {
             </div>
           </section>
         )}
-      </div>
-
-      <SiteFooter />
     </div>
   );
 }

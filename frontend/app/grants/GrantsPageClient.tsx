@@ -8,8 +8,6 @@ import {
   Banknote, Calendar, Sparkles, Loader, ChevronLeft, AlertCircle,
   CheckCircle2, XCircle, Clock, ArrowUpRight, FolderOpen, FileText,
 } from "lucide-react";
-import { TopNavBar } from "@/components/shared/TopNavBar";
-import { SiteFooter } from "@/components/shared/SiteFooter";
 import { getToken } from "@/lib/auth";
 import { notifyError } from "@/lib/ui";
 import {
@@ -112,7 +110,7 @@ export function GrantsPageClient() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
+      <div className="h-full bg-black flex items-center justify-center">
         <Loader className="animate-spin text-white/40" size={28} />
       </div>
     );
@@ -120,26 +118,19 @@ export function GrantsPageClient() {
 
   if (!token) {
     return (
-      <div className="min-h-screen bg-black flex flex-col">
-        <TopNavBar />
-        <div className="flex-1 flex flex-col items-center justify-center px-4 text-center">
-          <h1 className="text-4xl text-white mb-4" style={{ fontFamily: "'Instrument Serif', serif" }}>
-            Войдите, чтобы подбирать гранты
-          </h1>
-          <Link href="/login" className="bg-white text-black font-semibold text-sm px-8 py-3 rounded-full mt-4">
-            Войти ›
-          </Link>
-        </div>
+      <div className="h-full flex flex-col items-center justify-center px-4 text-center">
+        <h1 className="text-4xl text-white mb-4" style={{ fontFamily: "'Instrument Serif', serif" }}>
+          Войдите, чтобы подбирать гранты
+        </h1>
+        <Link href="/login" className="bg-white text-black font-semibold text-sm px-8 py-3 rounded-full mt-4">
+          Войти ›
+        </Link>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-black text-white flex flex-col antialiased">
-      <div className="absolute top-[-20%] left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-white/5 blur-[120px] rounded-full pointer-events-none" />
-      <TopNavBar />
-
-      <div className="flex-1 w-full max-w-6xl mx-auto px-4 md:px-8 py-10 relative z-10">
+    <div className="w-full max-w-6xl mx-auto px-4 md:px-8 pt-24 pb-10 relative z-10">
         <div className="flex items-center justify-between gap-4 mb-8">
           <Link href="/dashboard" className="flex items-center gap-2 text-white/40 hover:text-white text-sm transition-colors">
             <ChevronLeft size={16} /> Дашборд
@@ -355,9 +346,6 @@ export function GrantsPageClient() {
             Каталог грантов пока пуст. Скоро здесь появятся актуальные программы.
           </div>
         )}
-      </div>
-
-      <SiteFooter />
     </div>
   );
 }

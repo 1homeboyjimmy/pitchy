@@ -37,6 +37,7 @@ export function InternalTopNavBar({ activeTab }: Props) {
       case "overview": return "Обзор";
       case "chat": return "Чат";
       case "tree": return "Дорожная карта";
+      case "grants": return "Гранты";
       case "admin": return "Админ";
       default: return tab;
     }
