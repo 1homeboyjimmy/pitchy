@@ -130,6 +130,11 @@ async function request<T>(
   if (token && token !== COOKIE_SESSION_MARKER) {
     headers.Authorization = `Bearer ${token}`;
   }
+  // Маркер «это API-вызов клиента». Next.js страницы и API бэкенда делят пути
+  // (/grants, /projects), а cookie-session-юзеры НЕ шлют Authorization. Поэтому
+  // навигацию браузера (нет заголовка) рендерим страницей, а fetch из api.ts
+  // (есть заголовок) проксируем на бэкенд. Работает и за Caddy Basic Auth.
+  headers["x-pitchy-api"] = "1";
   const res = await fetch(`${API_BASE}${path}`, {
     method,
     headers,
@@ -302,6 +307,11 @@ export async function* sendChatMessageStream(
   if (token && token !== COOKIE_SESSION_MARKER) {
     headers.Authorization = `Bearer ${token}`;
   }
+  // Маркер «это API-вызов клиента». Next.js страницы и API бэкенда делят пути
+  // (/grants, /projects), а cookie-session-юзеры НЕ шлют Authorization. Поэтому
+  // навигацию браузера (нет заголовка) рендерим страницей, а fetch из api.ts
+  // (есть заголовок) проксируем на бэкенд. Работает и за Caddy Basic Auth.
+  headers["x-pitchy-api"] = "1";
   const res = await fetch(`${API_BASE}/chat/sessions/${sessionId}/messages`, {
     method: "POST",
     headers,
@@ -590,6 +600,11 @@ export async function* postTreeChatStream(
   if (token && token !== COOKIE_SESSION_MARKER) {
     headers.Authorization = `Bearer ${token}`;
   }
+  // Маркер «это API-вызов клиента». Next.js страницы и API бэкенда делят пути
+  // (/grants, /projects), а cookie-session-юзеры НЕ шлют Authorization. Поэтому
+  // навигацию браузера (нет заголовка) рендерим страницей, а fetch из api.ts
+  // (есть заголовок) проксируем на бэкенд. Работает и за Caddy Basic Auth.
+  headers["x-pitchy-api"] = "1";
   const res = await fetch(`${API_BASE}/tree/${treeId}/chat`, {
     method: "POST",
     headers,

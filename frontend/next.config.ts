@@ -22,14 +22,15 @@ const nextConfig: NextConfig = {
     ];
   },
   async rewrites() {
-    // Условие «есть Bearer-токен в Authorization». Наши клиентские fetch к API
-    // всегда шлют `Authorization: Bearer …`, а навигация в браузере — нет.
-    // ВАЖНО: на дев-стенде весь сайт за Caddy Basic Auth, и браузер шлёт
-    // `Authorization: Basic …` даже при обычной навигации по странице. Поэтому
-    // матчим строго `Bearer …`, иначе Basic-навигация на /grants улетала бы на
-    // бэкенд-API вместо рендера страницы (→ 500). Это позволяет странице Next и
-    // API бэкенда сосуществовать на одном пути (/grants) без коллизии.
-    const hasAuth = [{ type: "header" as const, key: "authorization", value: "Bearer .+" }];
+    // Условие «это API-вызов клиента». Наши fetch из lib/api.ts всегда шлют
+    // заголовок `x-pitchy-api: 1`, а навигация в браузере — нет.
+    // ПОЧЕМУ не по Authorization: приложение работает на httpOnly cookie-сессиях,
+    // getToken() возвращает маркер "cookie-session", а не JWT, поэтому реальные
+    // юзеры НЕ шлют `Authorization: Bearer …` вовсе — Bearer-условие не срабатывало
+    // и /grants-fetch получал HTML страницы (→ SyntaxError при JSON.parse).
+    // Кастомный заголовок надёжен в обоих режимах (cookie и Bearer) и переживает
+    // Caddy Basic Auth: браузерная навигация его никогда не шлёт, а fetch — всегда.
+    const hasAuth = [{ type: "header" as const, key: "x-pitchy-api" }];
     return {
       // beforeFiles выполняется ДО проверки файловых маршрутов (страниц).
       // Гранты: URL /grants и /grants/[id] заняты страницами Next. Поэтому

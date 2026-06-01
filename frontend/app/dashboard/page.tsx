@@ -358,7 +358,16 @@ function DashboardContent() {
               </div>
 
               {/* Project folders — passport, scoped memory, grants */}
-              {token && <ProjectFolders token={token} />}
+              {token && (
+                <ProjectFolders
+                  token={token}
+                  onOpenSession={handleSelectSession}
+                  onSessionCreated={(s) => setSessions((prev) => [s, ...prev])}
+                  onAttached={(sid, pid) =>
+                    setSessions((prev) => prev.map((s) => (s.id === sid ? { ...s, project_id: pid } : s)))
+                  }
+                />
+              )}
 
               {/* Recent Sessions — horizontal row list */}
               <div>

@@ -2,22 +2,30 @@
 
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { FolderOpen, FolderPlus, Loader, Gauge, MessageSquare, Pencil, X, Check } from "lucide-react";
-import { getProjects, createProject, type ProjectListItem } from "@/lib/api";
+import { FolderOpen, FolderPlus, Loader, Gauge, MessageSquare, X, Check, ChevronRight } from "lucide-react";
+import { getProjects, createProject, type ProjectListItem, type ChatSessionResponse } from "@/lib/api";
 import { notifyError } from "@/lib/ui";
 import { PassportModal } from "./PassportModal";
+import { FolderModal } from "./FolderModal";
 
 interface Props {
   token: string;
+  /** Открыть чат в дашборде (переключить активную сессию + таб). */
+  onOpenSession?: (sessionId: number) => void;
+  /** Новый чат создан внутри папки — добавить в общий список сессий дашборда. */
+  onSessionCreated?: (session: ChatSessionResponse) => void;
+  /** Чат привязан к папке — синхронизировать project_id в списке дашборда. */
+  onAttached?: (sessionId: number, projectId: number) => void;
 }
 
-export function ProjectFolders({ token }: Props) {
+export function ProjectFolders({ token, onOpenSession, onSessionCreated, onAttached }: Props) {
   const [loading, setLoading] = useState(true);
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
   const [creating, setCreating] = useState(false);
   const [showInput, setShowInput] = useState(false);
   const [name, setName] = useState("");
   const [editProject, setEditProject] = useState<ProjectListItem | null>(null);
+  const [openFolder, setOpenFolder] = useState<ProjectListItem | null>(null);
 
   useEffect(() => {
     getProjects(token)
@@ -104,10 +112,12 @@ export function ProjectFolders({ token }: Props) {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           {projects.map((p) => (
-            <motion.div
+            <motion.button
               key={p.id}
+              type="button"
               whileHover={{ y: -2 }}
-              className="lovable-glass-strong border border-white/5 hover:border-white/15 rounded-2xl p-5 bg-white/[0.02] transition-all"
+              onClick={() => setOpenFolder(p)}
+              className="text-left lovable-glass-strong border border-white/5 hover:border-white/15 rounded-2xl p-5 bg-white/[0.02] transition-all group"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
@@ -121,6 +131,7 @@ export function ProjectFolders({ token }: Props) {
                     </div>
                   </div>
                 </div>
+                <ChevronRight className="w-4 h-4 text-white/20 group-hover:text-white/60 transition-colors shrink-0 mt-3" />
               </div>
 
               {/* Readiness bar */}
@@ -137,15 +148,26 @@ export function ProjectFolders({ token }: Props) {
                 </div>
               </div>
 
-              <button
-                onClick={() => setEditProject(p)}
-                className="mt-4 w-full flex items-center justify-center gap-2 text-sm text-white/60 hover:text-white border border-white/10 hover:border-white/25 rounded-xl py-2.5 transition-all"
-              >
-                <Pencil size={14} /> Редактировать паспорт
-              </button>
-            </motion.div>
+              <div className="mt-4 w-full flex items-center justify-center gap-2 text-sm text-white/50 group-hover:text-white border border-white/10 group-hover:border-white/25 rounded-xl py-2.5 transition-all">
+                <FolderOpen size={14} /> Открыть папку
+              </div>
+            </motion.button>
           ))}
         </div>
+      )}
+
+      {openFolder && (
+        <FolderModal
+          project={openFolder}
+          onClose={() => setOpenFolder(null)}
+          onOpenSession={(sid) => onOpenSession?.(sid)}
+          onSessionCreated={(s) => onSessionCreated?.(s)}
+          onAttached={(sid, pid) => onAttached?.(sid, pid)}
+          onCountChange={(pid, count) =>
+            setProjects((prev) => prev.map((p) => (p.id === pid ? { ...p, session_count: count } : p)))
+          }
+          onEditPassport={() => { setEditProject(openFolder); setOpenFolder(null); }}
+        />
       )}
 
       {editProject && (
