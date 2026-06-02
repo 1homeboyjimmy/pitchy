@@ -1219,6 +1219,18 @@ export function AdminView() {
                                             <input type="url" value={grantDraft.url ?? ""} onChange={(e) => updateDraft({ url: e.target.value })}
                                                 className="mt-1 w-full bg-black border border-white/10 px-4 py-2 text-white outline-none focus:border-white/30 font-code text-[13px]" />
                                         </label>
+                                        <label className="block sm:col-span-2">
+                                            <span className="text-white/40 font-mono-label text-[10px] uppercase tracking-widest">URL логотипа (прозрачный PNG/SVG)</span>
+                                            <div className="mt-1 flex items-center gap-3">
+                                                <input type="url" value={grantDraft.logo_url ?? ""} onChange={(e) => updateDraft({ logo_url: e.target.value || null })}
+                                                    placeholder="https://… или /logos/org.svg"
+                                                    className="flex-1 bg-black border border-white/10 px-4 py-2 text-white outline-none focus:border-white/30 font-code text-[13px]" />
+                                                {grantDraft.logo_url && (
+                                                    // eslint-disable-next-line @next/next/no-img-element
+                                                    <img src={grantDraft.logo_url} alt="" className="h-10 w-auto max-w-[120px] object-contain bg-white rounded-lg px-2 py-1 border border-white/10" />
+                                                )}
+                                            </div>
+                                        </label>
                                     </div>
 
                                     {/* Направления */}
