@@ -79,12 +79,12 @@ function OrgLogo({ grant, size = 52 }: { grant: Grant; size?: number }) {
   const fav = faviconFor(grant.url);
   const initial = (grant.organization || grant.name || "?").trim().charAt(0).toUpperCase();
 
-  // Полная эмблема — высота фикс., ширина по контенту (до 2.8× высоты).
+  // Полная эмблема — фикс. высота картинки, ширина по контенту (до 2.8× высоты).
   if (logo && isFullLogo(logo)) {
     return (
       <div
         style={{ height: size, maxWidth: size * 2.8 }}
-        className="shrink-0 rounded-2xl bg-white border border-white/10 flex items-center justify-center px-3 shadow-sm overflow-hidden"
+        className="shrink-0 rounded-2xl bg-white border border-white/10 inline-flex items-center justify-center px-3 shadow-sm overflow-hidden"
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
@@ -93,8 +93,8 @@ function OrgLogo({ grant, size = 52 }: { grant: Grant; size?: number }) {
           referrerPolicy="no-referrer"
           loading="lazy"
           onError={() => setErrored(true)}
-          style={{ maxHeight: size * 0.64 }}
-          className="w-auto object-contain"
+          style={{ height: Math.round(size * 0.58), width: "auto", maxWidth: size * 2.4 }}
+          className="block object-contain"
         />
       </div>
     );
