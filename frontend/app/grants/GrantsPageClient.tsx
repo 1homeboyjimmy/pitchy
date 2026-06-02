@@ -54,55 +54,120 @@ const STATUS_META: Record<Grant["status"], { label: string; cls: string }> = {
   closed: { label: "Завершён", cls: "text-white/40 bg-white/5 border-white/10" },
 };
 
+/** Favicon домена как запасной логотип, если у гранта нет явного logo_url. */
+function faviconFor(url: string | null): string | null {
+  if (!url) return null;
+  try {
+    const host = new URL(url.includes("://") ? url : `https://${url}`).hostname;
+    return `https://www.google.com/s2/favicons?domain=${host}&sz=128`;
+  } catch {
+    return null;
+  }
+}
+
+/** Логотип организации-грантодателя: logo_url → favicon → монограмма. */
+function OrgLogo({ grant, size = 52 }: { grant: Grant; size?: number }) {
+  const [errored, setErrored] = useState(false);
+  const src = grant.logo_url || faviconFor(grant.url);
+  const initial = (grant.organization || grant.name || "?").trim().charAt(0).toUpperCase();
+  const box = { width: size, height: size };
+
+  if (!src || errored) {
+    return (
+      <div
+        style={box}
+        className="shrink-0 rounded-2xl bg-gradient-to-br from-white/[0.14] to-white/[0.04] border border-white/10 flex items-center justify-center font-display text-white/80"
+      >
+        <span style={{ fontSize: size * 0.42 }}>{initial}</span>
+      </div>
+    );
+  }
+  return (
+    <div
+      style={box}
+      className="shrink-0 rounded-2xl bg-white border border-white/10 flex items-center justify-center overflow-hidden p-2 shadow-sm"
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={grant.organization || grant.name}
+        referrerPolicy="no-referrer"
+        loading="lazy"
+        onError={() => setErrored(true)}
+        className="w-full h-full object-contain"
+      />
+    </div>
+  );
+}
+
 /** Карточка меры поддержки — основной строительный блок витрины грантов. */
 function SupportMeasureCard({ grant, match, href }: { grant: Grant; match?: GrantMatch; href: string }) {
   const dl = daysLeft(grant.deadline);
   const amount = formatAmount(grant.amount_min, grant.amount_max);
   const st = STATUS_META[grant.status];
   const matched = (match?.reasons.matched || []).slice(0, 3);
+  const urgent = dl != null && dl >= 0 && dl <= 7 && grant.status !== "closed";
+
   return (
     <Link
       href={href}
-      className="group flex flex-col h-full lovable-glass rounded-3xl border border-white/10 hover:border-white/25 hover:bg-white/[0.04] p-5 transition-all"
+      className="group relative flex flex-col h-full lovable-glass rounded-3xl border border-white/10 hover:border-white/25 hover:bg-white/[0.04] p-5 transition-all overflow-hidden"
     >
-      <div className="flex items-center justify-between gap-2 mb-4">
-        <span className={`text-[10px] font-mono uppercase tracking-wider px-2.5 py-1 rounded-full border ${st.cls}`}>
-          {st.label}
-        </span>
+      {/* Шапка: логотип + матч-балл */}
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <OrgLogo grant={grant} size={52} />
         {match ? (
-          <span className={`text-sm font-mono font-bold ${scoreColor(match.score)}`}>
-            {match.score}
-            <span className="text-[9px] text-white/30 ml-1 uppercase tracking-wider">матч</span>
-          </span>
+          <div className={`flex flex-col items-end leading-none ${scoreColor(match.score)}`}>
+            <span className="font-mono font-bold text-xl tabular-nums">{match.score}</span>
+            <span className="text-[9px] text-white/30 uppercase tracking-[0.16em] mt-1">матч</span>
+          </div>
         ) : (
-          <Banknote size={16} className="text-white/20" />
+          <Banknote size={18} className="text-white/20 mt-1" />
         )}
       </div>
 
+      {/* Статус */}
+      <span className={`self-start text-[10px] font-mono uppercase tracking-wider px-2.5 py-1 rounded-full border mb-2.5 ${st.cls}`}>
+        {st.label}
+      </span>
+
+      {/* Название + организация */}
       <h3 className="font-display text-lg text-white leading-snug line-clamp-2">{grant.name}</h3>
-      {grant.organization && <p className="text-white/40 text-sm truncate mt-1">{grant.organization}</p>}
+      {grant.organization && <p className="text-white/40 text-[13px] truncate mt-1">{grant.organization}</p>}
+
+      {/* Описание */}
       {grant.description && (
-        <p className="text-white/45 text-sm leading-relaxed line-clamp-3 mt-3">{grant.description}</p>
+        <p className="text-white/45 text-sm leading-relaxed line-clamp-2 mt-2.5">{grant.description}</p>
       )}
 
+      {/* Совпадения по паспорту */}
       {matched.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mt-4">
+        <div className="flex flex-wrap gap-1.5 mt-3.5">
           {matched.map((r) => (
-            <span key={r} className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300/80">{r}</span>
+            <span key={r} className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300/80 border border-emerald-500/15">
+              {r}
+            </span>
           ))}
         </div>
       )}
 
+      {/* Подвал: сумма + дедлайн */}
       <div className="mt-auto flex items-end justify-between gap-3 pt-4 mt-4 border-t border-white/5">
         <div className="min-w-0">
-          {amount && <div className="text-white font-medium text-sm truncate">{amount}</div>}
+          {amount ? (
+            <div className="text-white font-semibold text-sm truncate">{amount}</div>
+          ) : (
+            <div className="text-white/30 text-sm">Сумма не указана</div>
+          )}
           {dl != null && grant.status !== "closed" && (
-            <div className={`flex items-center gap-1 text-xs mt-0.5 ${dl <= 7 && dl >= 0 ? "text-amber-400" : "text-white/40"}`}>
+            <div className={`flex items-center gap-1 text-xs mt-1 ${urgent ? "text-amber-400" : "text-white/40"}`}>
               <Clock size={11} /> {dl < 0 ? "приём завершён" : dl === 0 ? "дедлайн сегодня" : `осталось ${dl} дн.`}
             </div>
           )}
         </div>
-        <ArrowUpRight className="text-white/30 group-hover:text-white shrink-0 transition-colors" size={18} />
+        <div className="shrink-0 w-9 h-9 rounded-full border border-white/10 flex items-center justify-center text-white/40 group-hover:text-black group-hover:bg-white group-hover:border-white transition-all">
+          <ArrowUpRight size={16} />
+        </div>
       </div>
     </Link>
   );
@@ -264,8 +329,9 @@ export function GrantsPageClient() {
                     return (
                       <Link key={g.id} href={grantHref(g.id)}
                         className="block lovable-glass rounded-2xl p-5 border border-white/10 hover:border-white/20 transition-all group">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
+                        <div className="flex items-start gap-3">
+                          <OrgLogo grant={g} size={44} />
+                          <div className="min-w-0 flex-1">
                             <p className="font-display text-lg text-white truncate group-hover:text-white">{g.name}</p>
                             {g.organization && <p className="text-white/40 text-sm truncate">{g.organization}</p>}
                           </div>

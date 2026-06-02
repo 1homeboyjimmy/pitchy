@@ -216,7 +216,11 @@ async def create_grant(
     """Создание гранта в каталоге. Только админ (ручное наполнение/парсер)."""
     if not user.is_admin:
         raise HTTPException(status_code=403, detail="Только для администратора")
-    grant = Grant(**payload.model_dump())
+    data = payload.model_dump()
+    # Парсер/админка могут не присылать логотип — выводим его из домена сайта.
+    if not data.get("logo_url"):
+        data["logo_url"] = grants_service.derive_logo_url(data.get("url"))
+    grant = Grant(**data)
     db.add(grant)
     await db.commit()
     await db.refresh(grant)

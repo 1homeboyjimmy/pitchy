@@ -289,6 +289,9 @@ class Grant(Base):
     organization: Mapped[str | None] = mapped_column(String(300), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Логотип организации-грантодателя. Заполняется парсером/админкой; если не
+    # задан явно — выводится из домена сайта программы (favicon).
+    logo_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     amount_min: Mapped[float | None] = mapped_column(Numeric(14, 2), nullable=True)
     amount_max: Mapped[float | None] = mapped_column(Numeric(14, 2), nullable=True)
     # Гео-охват: "RF" (вся Россия) или код региона ("MSK", "SPB", ...).

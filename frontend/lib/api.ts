@@ -813,6 +813,7 @@ export type Grant = {
   organization: string | null;
   description: string | null;
   url: string | null;
+  logo_url: string | null;
   amount_min: number | null;
   amount_max: number | null;
   geo: string | null;

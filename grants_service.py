@@ -18,8 +18,28 @@ from __future__ import annotations
 import json
 import logging
 import re
+from urllib.parse import urlparse
 
 logger = logging.getLogger("app")
+
+
+def derive_logo_url(url: str | None) -> str | None:
+    """Логотип организации-грантодателя по домену её сайта.
+
+    Используется парсером и ручным созданием гранта: если явный логотип не
+    задан, берём favicon домена через Google S2 — это работает для любого
+    источника без ручной выгрузки картинок. Явный logo_url всегда в приоритете.
+    """
+    if not url:
+        return None
+    try:
+        host = urlparse(url if "://" in url else f"https://{url}").hostname
+        if not host:
+            return None
+        host = host.lstrip(".")
+        return f"https://www.google.com/s2/favicons?domain={host}&sz=128"
+    except Exception:
+        return None
 
 # Веса soft-критериев. Сумма применимых весов нормируется к 100.
 _WEIGHTS = {

@@ -277,6 +277,7 @@ class GrantResponse(BaseModel):
     organization: str | None = None
     description: str | None = None
     url: str | None = None
+    logo_url: str | None = None
     amount_min: float | None = None
     amount_max: float | None = None
     geo: str | None = None
@@ -306,6 +307,7 @@ class GrantCreateRequest(BaseModel):
     organization: str | None = None
     description: str | None = None
     url: str | None = None
+    logo_url: str | None = None
     amount_min: float | None = None
     amount_max: float | None = None
     geo: str | None = None
