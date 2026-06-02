@@ -54,77 +54,42 @@ const STATUS_META: Record<Grant["status"], { label: string; cls: string }> = {
   closed: { label: "Завершён", cls: "text-white/40 bg-white/5 border-white/10" },
 };
 
-/** Favicon домена как запасной логотип, если у гранта нет явного logo_url. */
-function faviconFor(url: string | null): string | null {
-  if (!url) return null;
-  try {
-    const host = new URL(url.includes("://") ? url : `https://${url}`).hostname;
-    return `https://www.google.com/s2/favicons?domain=${host}&sz=256`;
-  } catch {
-    return null;
-  }
-}
-
 /** Полноценный логотип (а не маленький favicon) — показываем крупно. */
 function isFullLogo(src: string | null): boolean {
   return !!src && !src.includes("google.com/s2/favicons");
 }
 
-/** Логотип организации-грантодателя: logo_url → favicon → монограмма.
- *  Полные эмблемы (часто горизонтальные) показываем крупно на светлой плитке;
- *  favicon — мелким квадратом; иначе — монограмма. */
+/** Логотип организации-грантодателя.
+ *  Настоящий логотип рисуем крупным белым силуэтом прямо на тёмной карточке —
+ *  filter brightness(0) invert(1) превращает любой прозрачный лого (любого цвета)
+ *  в чистый белый, который читается на тёмном фоне без подложки.
+ *  Если настоящего лого нет (только favicon) — монограмма. */
 function OrgLogo({ grant, size = 52 }: { grant: Grant; size?: number }) {
   const [errored, setErrored] = useState(false);
   const logo = grant.logo_url && !errored ? grant.logo_url : null;
-  const fav = faviconFor(grant.url);
-  const initial = (grant.organization || grant.name || "?").trim().charAt(0).toUpperCase();
 
-  // Полная эмблема — фикс. высота картинки, ширина по контенту (до 2.8× высоты).
   if (logo && isFullLogo(logo)) {
     return (
-      <div
-        style={{ height: size, maxWidth: size * 2.8 }}
-        className="shrink-0 rounded-2xl bg-white border border-white/10 inline-flex items-center justify-center px-3 shadow-sm overflow-hidden"
-      >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={logo}
-          alt={grant.organization || grant.name}
-          referrerPolicy="no-referrer"
-          loading="lazy"
-          onError={() => setErrored(true)}
-          style={{ height: Math.round(size * 0.58), width: "auto", maxWidth: size * 2.4 }}
-          className="block object-contain"
-        />
-      </div>
-    );
-  }
-
-  const sq = logo || fav;
-  if (!sq) {
-    return (
-      <div
-        style={{ width: size, height: size }}
-        className="shrink-0 rounded-2xl bg-gradient-to-br from-white/[0.14] to-white/[0.04] border border-white/10 flex items-center justify-center font-display text-white/80"
-      >
-        <span style={{ fontSize: size * 0.42 }}>{initial}</span>
-      </div>
-    );
-  }
-  return (
-    <div
-      style={{ width: size, height: size }}
-      className="shrink-0 rounded-2xl bg-white border border-white/10 flex items-center justify-center overflow-hidden p-2 shadow-sm"
-    >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
+      // eslint-disable-next-line @next/next/no-img-element
       <img
-        src={sq}
+        src={logo}
         alt={grant.organization || grant.name}
         referrerPolicy="no-referrer"
         loading="lazy"
         onError={() => setErrored(true)}
-        className="w-full h-full object-contain"
+        style={{ height: size, width: "auto", maxWidth: size * 3, filter: "brightness(0) invert(1)" }}
+        className="block object-contain object-left shrink-0"
       />
+    );
+  }
+
+  const initial = (grant.organization || grant.name || "?").trim().charAt(0).toUpperCase();
+  return (
+    <div
+      style={{ width: size, height: size }}
+      className="shrink-0 rounded-2xl bg-gradient-to-br from-white/[0.14] to-white/[0.04] border border-white/10 flex items-center justify-center font-display text-white/80"
+    >
+      <span style={{ fontSize: size * 0.42 }}>{initial}</span>
     </div>
   );
 }

@@ -119,15 +119,14 @@ export function GrantDetailClient() {
             </span>
           )}
           {grant.logo_url && !grant.logo_url.includes("google.com/s2/favicons") && (
-            <div className="inline-flex items-center bg-white rounded-2xl border border-white/10 px-5 py-3 mb-5 shadow-sm">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={grant.logo_url}
-                alt={grant.organization || grant.name}
-                referrerPolicy="no-referrer"
-                className="h-9 md:h-11 w-auto object-contain"
-              />
-            </div>
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={grant.logo_url}
+              alt={grant.organization || grant.name}
+              referrerPolicy="no-referrer"
+              className="h-12 md:h-16 w-auto max-w-[280px] object-contain object-left mb-5"
+              style={{ filter: "brightness(0) invert(1)" }}
+            />
           )}
           <h1 className="text-3xl md:text-4xl tracking-tight mb-2" style={{ fontFamily: "'Instrument Serif', serif" }}>
             {grant.name}
