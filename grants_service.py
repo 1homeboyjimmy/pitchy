@@ -37,6 +37,12 @@ def derive_logo_url(url: str | None) -> str | None:
         if not host:
             return None
         host = host.lstrip(".")
+        # Кириллические (IDN) домены кодируем в punycode — иначе favicon-сервис
+        # по ним не находит иконку.
+        try:
+            host = host.encode("idna").decode("ascii")
+        except Exception:
+            pass
         return f"https://www.google.com/s2/favicons?domain={host}&sz=128"
     except Exception:
         return None
