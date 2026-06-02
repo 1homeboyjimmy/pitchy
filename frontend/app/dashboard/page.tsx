@@ -366,6 +366,9 @@ function DashboardContent() {
                   onAttached={(sid, pid) =>
                     setSessions((prev) => prev.map((s) => (s.id === sid ? { ...s, project_id: pid } : s)))
                   }
+                  onDeleted={(pid) =>
+                    setSessions((prev) => prev.map((s) => (s.project_id === pid ? { ...s, project_id: null } : s)))
+                  }
                 />
               )}
 

@@ -16,9 +16,11 @@ interface Props {
   onSessionCreated?: (session: ChatSessionResponse) => void;
   /** Чат привязан к папке — синхронизировать project_id в списке дашборда. */
   onAttached?: (sessionId: number, projectId: number) => void;
+  /** Папка удалена — открепить её чаты в списке дашборда (project_id → null). */
+  onDeleted?: (projectId: number) => void;
 }
 
-export function ProjectFolders({ token, onOpenSession, onSessionCreated, onAttached }: Props) {
+export function ProjectFolders({ token, onOpenSession, onSessionCreated, onAttached, onDeleted }: Props) {
   const [loading, setLoading] = useState(true);
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
   const [creating, setCreating] = useState(false);
@@ -112,12 +114,14 @@ export function ProjectFolders({ token, onOpenSession, onSessionCreated, onAttac
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           {projects.map((p) => (
-            <motion.button
+            <motion.div
               key={p.id}
-              type="button"
+              role="button"
+              tabIndex={0}
               whileHover={{ y: -2 }}
               onClick={() => setOpenFolder(p)}
-              className="text-left lovable-glass-strong border border-white/5 hover:border-white/15 rounded-2xl p-5 bg-white/[0.02] transition-all group"
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpenFolder(p); } }}
+              className="cursor-pointer text-left lovable-glass-strong border border-white/5 hover:border-white/15 rounded-2xl p-5 bg-white/[0.02] transition-all group"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
@@ -151,7 +155,7 @@ export function ProjectFolders({ token, onOpenSession, onSessionCreated, onAttac
               <div className="mt-4 w-full flex items-center justify-center gap-2 text-sm text-white/50 group-hover:text-white border border-white/10 group-hover:border-white/25 rounded-xl py-2.5 transition-all">
                 <FolderOpen size={14} /> Открыть папку
               </div>
-            </motion.button>
+            </motion.div>
           ))}
         </div>
       )}
@@ -167,6 +171,10 @@ export function ProjectFolders({ token, onOpenSession, onSessionCreated, onAttac
             setProjects((prev) => prev.map((p) => (p.id === pid ? { ...p, session_count: count } : p)))
           }
           onEditPassport={() => { setEditProject(openFolder); setOpenFolder(null); }}
+          onDeleted={(pid) => {
+            setProjects((prev) => prev.filter((p) => p.id !== pid));
+            onDeleted?.(pid);
+          }}
         />
       )}
 

@@ -2,11 +2,10 @@
 
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
-  Banknote, Calendar, Sparkles, Loader, ChevronLeft, AlertCircle,
-  CheckCircle2, XCircle, Clock, ArrowUpRight, FolderOpen, FileText,
+  Banknote, Calendar, Sparkles, Loader, AlertCircle,
+  Clock, ArrowUpRight, FolderOpen, FileText,
 } from "lucide-react";
 import { getToken } from "@/lib/auth";
 import { notifyError } from "@/lib/ui";
@@ -49,8 +48,67 @@ function scoreColor(score: number): string {
   return "text-white/40";
 }
 
+const STATUS_META: Record<Grant["status"], { label: string; cls: string }> = {
+  open: { label: "Приём открыт", cls: "text-emerald-300 bg-emerald-500/10 border-emerald-500/20" },
+  upcoming: { label: "Скоро приём", cls: "text-sky-300 bg-sky-500/10 border-sky-500/20" },
+  closed: { label: "Завершён", cls: "text-white/40 bg-white/5 border-white/10" },
+};
+
+/** Карточка меры поддержки — основной строительный блок витрины грантов. */
+function SupportMeasureCard({ grant, match, href }: { grant: Grant; match?: GrantMatch; href: string }) {
+  const dl = daysLeft(grant.deadline);
+  const amount = formatAmount(grant.amount_min, grant.amount_max);
+  const st = STATUS_META[grant.status];
+  const matched = (match?.reasons.matched || []).slice(0, 3);
+  return (
+    <Link
+      href={href}
+      className="group flex flex-col h-full lovable-glass rounded-3xl border border-white/10 hover:border-white/25 hover:bg-white/[0.04] p-5 transition-all"
+    >
+      <div className="flex items-center justify-between gap-2 mb-4">
+        <span className={`text-[10px] font-mono uppercase tracking-wider px-2.5 py-1 rounded-full border ${st.cls}`}>
+          {st.label}
+        </span>
+        {match ? (
+          <span className={`text-sm font-mono font-bold ${scoreColor(match.score)}`}>
+            {match.score}
+            <span className="text-[9px] text-white/30 ml-1 uppercase tracking-wider">матч</span>
+          </span>
+        ) : (
+          <Banknote size={16} className="text-white/20" />
+        )}
+      </div>
+
+      <h3 className="font-display text-lg text-white leading-snug line-clamp-2">{grant.name}</h3>
+      {grant.organization && <p className="text-white/40 text-sm truncate mt-1">{grant.organization}</p>}
+      {grant.description && (
+        <p className="text-white/45 text-sm leading-relaxed line-clamp-3 mt-3">{grant.description}</p>
+      )}
+
+      {matched.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mt-4">
+          {matched.map((r) => (
+            <span key={r} className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300/80">{r}</span>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-auto flex items-end justify-between gap-3 pt-4 mt-4 border-t border-white/5">
+        <div className="min-w-0">
+          {amount && <div className="text-white font-medium text-sm truncate">{amount}</div>}
+          {dl != null && grant.status !== "closed" && (
+            <div className={`flex items-center gap-1 text-xs mt-0.5 ${dl <= 7 && dl >= 0 ? "text-amber-400" : "text-white/40"}`}>
+              <Clock size={11} /> {dl < 0 ? "приём завершён" : dl === 0 ? "дедлайн сегодня" : `осталось ${dl} дн.`}
+            </div>
+          )}
+        </div>
+        <ArrowUpRight className="text-white/30 group-hover:text-white shrink-0 transition-colors" size={18} />
+      </div>
+    </Link>
+  );
+}
+
 export function GrantsPageClient() {
-  const router = useRouter();
   const [token, setTok] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
@@ -131,10 +189,7 @@ export function GrantsPageClient() {
 
   return (
     <div className="w-full max-w-6xl mx-auto px-4 md:px-8 pt-24 pb-10 relative z-10">
-        <div className="flex items-center justify-between gap-4 mb-8">
-          <Link href="/dashboard" className="flex items-center gap-2 text-white/40 hover:text-white text-sm transition-colors">
-            <ChevronLeft size={16} /> Дашборд
-          </Link>
+        <div className="flex items-center justify-end gap-4 mb-8">
           <Link href="/grants/my" className="flex items-center gap-2 text-white/60 hover:text-white text-sm transition-colors">
             <FileText size={16} /> Мои заявки
           </Link>
@@ -275,77 +330,65 @@ export function GrantsPageClient() {
           </div>
         )}
 
-        {/* Автоподбор */}
-        {activeProject != null && (
-          <section className="mb-12">
-            <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
-              <div className="flex items-center gap-2 text-white/70">
-                <Sparkles size={16} />
-                <span className="font-mono text-[10px] uppercase tracking-[0.2em] font-bold">Автоподбор под паспорт</span>
-              </div>
+        {/* Основная секция: карточки мер поддержки */}
+        <section className="mb-12">
+          <div className="flex items-center justify-between gap-4 mb-5 flex-wrap">
+            <div className="flex items-center gap-2 text-white/70">
+              <Sparkles size={16} />
+              <span className="font-mono text-[10px] uppercase tracking-[0.2em] font-bold">
+                {activeProject != null ? "Меры поддержки под ваш проект" : "Все меры поддержки"}
+              </span>
+            </div>
+            {activeProject != null && (
               <label className="flex items-center gap-2 text-sm text-white/50 cursor-pointer select-none">
                 <input type="checkbox" checked={onlyEligible}
                   onChange={(e) => setOnlyEligible(e.target.checked)}
                   className="accent-white w-4 h-4" />
                 Только подходящие
               </label>
-            </div>
+            )}
+          </div>
 
-            {matchLoading ? (
+          {activeProject != null ? (
+            matchLoading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader className="animate-spin text-white/30" size={22} />
               </div>
             ) : matches.length === 0 ? (
-              <div className="lovable-glass rounded-2xl p-6 text-white/40 text-sm">
-                Нет грантов по текущим условиям. Попробуйте снять фильтр «только подходящие».
+              <div className="lovable-glass rounded-2xl p-6 text-white/40 text-sm border border-white/10">
+                Нет мер поддержки по текущим условиям. Попробуйте снять фильтр «только подходящие».
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
                 {matches.map((m, i) => (
                   <motion.div
                     key={m.grant.id}
                     initial={{ opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0, transition: { duration: 0.4, ease: EASE, delay: i * 0.03 } }}
                   >
-                    <Link href={grantHref(m.grant.id)}
-                      className="lovable-glass rounded-2xl p-5 border border-white/10 hover:border-white/20 transition-all group flex items-start gap-5">
-                      <div className="text-center shrink-0 w-14">
-                        <div className={`text-2xl font-mono font-bold ${scoreColor(m.score)}`}>{m.score}</div>
-                        <div className="text-[9px] uppercase tracking-wider text-white/30 mt-0.5">матч</div>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="font-display text-lg text-white truncate">{m.grant.name}</p>
-                          {m.hard_pass ? (
-                            <CheckCircle2 className="text-emerald-400 shrink-0" size={15} />
-                          ) : (
-                            <XCircle className="text-white/30 shrink-0" size={15} />
-                          )}
-                        </div>
-                        {m.grant.organization && <p className="text-white/40 text-sm truncate">{m.grant.organization}</p>}
-                        <div className="flex items-center gap-2 mt-2 flex-wrap">
-                          {(m.reasons.matched || []).slice(0, 3).map((r) => (
-                            <span key={r} className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300/80">{r}</span>
-                          ))}
-                          {(m.reasons.missing || []).slice(0, 2).map((r) => (
-                            <span key={r} className="text-[11px] px-2 py-0.5 rounded-full bg-white/5 text-white/40">нет: {r}</span>
-                          ))}
-                        </div>
-                      </div>
-                      <ArrowUpRight className="text-white/30 group-hover:text-white shrink-0 mt-1" size={18} />
-                    </Link>
+                    <SupportMeasureCard grant={m.grant} match={m} href={grantHref(m.grant.id)} />
                   </motion.div>
                 ))}
               </div>
-            )}
-          </section>
-        )}
-
-        {grants.length === 0 && (
-          <div className="lovable-glass rounded-3xl p-10 text-center text-white/40">
-            Каталог грантов пока пуст. Скоро здесь появятся актуальные программы.
-          </div>
-        )}
+            )
+          ) : grants.length === 0 ? (
+            <div className="lovable-glass rounded-3xl p-10 text-center text-white/40 border border-white/10">
+              Каталог мер поддержки пока пуст. Скоро здесь появятся актуальные программы.
+            </div>
+          ) : (
+            <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
+              {grants.map((g, i) => (
+                <motion.div
+                  key={g.id}
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0, transition: { duration: 0.4, ease: EASE, delay: i * 0.03 } }}
+                >
+                  <SupportMeasureCard grant={g} href={grantHref(g.id)} />
+                </motion.div>
+              ))}
+            </div>
+          )}
+        </section>
     </div>
   );
 }

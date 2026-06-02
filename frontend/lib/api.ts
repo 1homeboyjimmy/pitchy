@@ -120,6 +120,21 @@ export type ChatSearchItem = {
 const API_BASE = "";
 const COOKIE_SESSION_MARKER = "cookie-session";
 
+// Перевод известных серверных сообщений (англ.) на русский для понятных ошибок
+// входа/регистрации. Неизвестные строки отдаём как есть.
+function translateAuthDetail(msg: string): string {
+  const map: Record<string, string> = {
+    "Invalid credentials": "Неверный email или пароль",
+    "Invalid token": "Сессия истекла, войдите снова",
+    "User is blocked": "Аккаунт заблокирован",
+    "User is temporarily locked": "Слишком много попыток входа. Попробуйте через 15 минут.",
+    "Email is not verified": "Email не подтверждён — проверьте почту",
+    "Email already registered": "Этот email уже зарегистрирован",
+    "Too many requests": "Слишком много запросов, попробуйте позже",
+  };
+  return map[msg] || msg;
+}
+
 async function request<T>(
   path: string,
   body?: unknown,
@@ -142,8 +157,14 @@ async function request<T>(
     credentials: "include",
   });
   if (!res.ok) {
+    // 401 на самих auth-эндпоинтах (/auth/login и т.п.) — это «неверный
+    // логин/пароль», а НЕ «протухла сессия». Глобальный авто-логаут с подменой
+    // текста на "Invalid token" к ним применять нельзя: пользователь должен
+    // увидеть реальную причину. Поэтому глобальную обработку 401 пропускаем для
+    // /auth/* и отдаём настоящий detail (с переводом на русский ниже).
+    const isAuthEndpoint = path.startsWith("/auth/");
     // Handle expired/invalid token globally
-    if (res.status === 401 && typeof window !== "undefined") {
+    if (res.status === 401 && !isAuthEndpoint && typeof window !== "undefined") {
       window.localStorage.removeItem("vi_auth_state");
       // Avoid redirect loops on auth pages
       if (!window.location.pathname.startsWith("/login")) {
@@ -155,7 +176,7 @@ async function request<T>(
     const d = err?.detail;
     let detail = "Request failed";
     if (typeof d === "string") {
-      detail = d;
+      detail = translateAuthDetail(d);
     } else if (Array.isArray(d)) {
       // FastAPI 422 returns detail as an array of { loc, msg, type, ... }.
       // Translate common pydantic messages so users see something useful

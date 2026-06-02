@@ -5,10 +5,10 @@ import { createPortal } from "react-dom";
 import { useMounted } from "@mantine/hooks";
 import {
   X, Loader, FolderOpen, MessageSquare, Plus, Calendar,
-  Gauge, BrainCircuit, ChevronRight, FolderInput, Pencil,
+  Gauge, BrainCircuit, ChevronRight, FolderInput, Pencil, Trash2, AlertTriangle,
 } from "lucide-react";
 import {
-  getProjectSessions, getChatSessions, createChatSession, attachSessionToProject,
+  getProjectSessions, getChatSessions, createChatSession, attachSessionToProject, deleteProject,
   type ProjectListItem, type ChatSessionResponse,
 } from "@/lib/api";
 import { getToken } from "@/lib/auth";
@@ -27,6 +27,8 @@ interface Props {
   onCountChange: (projectId: number, count: number) => void;
   /** Открыть редактор паспорта этой папки. */
   onEditPassport: () => void;
+  /** Папка удалена — убрать карточку из дашборда. */
+  onDeleted: (projectId: number) => void;
 }
 
 function formatDate(s: string): string {
@@ -38,7 +40,7 @@ function formatDate(s: string): string {
 }
 
 export function FolderModal({
-  project, onClose, onOpenSession, onSessionCreated, onAttached, onCountChange, onEditPassport,
+  project, onClose, onOpenSession, onSessionCreated, onAttached, onCountChange, onEditPassport, onDeleted,
 }: Props) {
   const mounted = useMounted();
   const [loading, setLoading] = useState(true);
@@ -47,6 +49,8 @@ export function FolderModal({
   const [creating, setCreating] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     const t = getToken();
@@ -119,6 +123,22 @@ export function FolderModal({
       notifyError("Не удалось переместить чат");
     } finally {
       setBusyId(null);
+    }
+  };
+
+  const handleDelete = async () => {
+    const t = getToken();
+    if (!t) return;
+    setDeleting(true);
+    try {
+      await deleteProject(project.id, t);
+      onDeleted(project.id);
+      notifySuccess("Папка удалена");
+      onClose();
+    } catch (e) {
+      console.error(e);
+      notifyError("Не удалось удалить папку");
+      setDeleting(false);
     }
   };
 
@@ -253,14 +273,48 @@ export function FolderModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-white/10">
-          <button
-            onClick={onEditPassport}
-            className="flex items-center gap-2 text-sm text-white/60 hover:text-white border border-white/10 hover:border-white/25 rounded-full px-5 py-2.5 transition-all"
-          >
-            <Pencil size={14} /> Редактировать паспорт
-          </button>
-        </div>
+        {confirmDelete ? (
+          <div className="px-6 py-4 border-t border-white/10 bg-red-500/[0.04]">
+            <div className="flex items-start gap-2.5 mb-3">
+              <AlertTriangle size={16} className="text-red-400/80 shrink-0 mt-0.5" />
+              <p className="text-white/60 text-xs leading-relaxed">
+                Удалить папку «{project.name}»? Паспорт и общая память проекта будут удалены безвозвратно.
+                Сами чаты сохранятся — они просто открепятся от папки.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-3">
+              <button
+                onClick={() => setConfirmDelete(false)}
+                disabled={deleting}
+                className="text-sm text-white/50 hover:text-white px-4 py-2 rounded-full transition-all disabled:opacity-40"
+              >
+                Отмена
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex items-center gap-2 text-sm text-white bg-red-500/90 hover:bg-red-500 rounded-full px-5 py-2.5 transition-all disabled:opacity-50"
+              >
+                {deleting ? <Loader className="animate-spin" size={14} /> : <Trash2 size={14} />} Удалить папку
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-white/10">
+            <button
+              onClick={() => setConfirmDelete(true)}
+              className="flex items-center gap-2 text-sm text-white/40 hover:text-red-400 border border-white/10 hover:border-red-500/30 rounded-full px-4 py-2.5 transition-all"
+            >
+              <Trash2 size={14} /> Удалить
+            </button>
+            <button
+              onClick={onEditPassport}
+              className="flex items-center gap-2 text-sm text-white/60 hover:text-white border border-white/10 hover:border-white/25 rounded-full px-5 py-2.5 transition-all"
+            >
+              <Pencil size={14} /> Редактировать паспорт
+            </button>
+          </div>
+        )}
       </div>
     </div>,
     document.body
