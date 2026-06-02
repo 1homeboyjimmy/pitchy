@@ -320,6 +320,11 @@ class GrantCreateRequest(BaseModel):
     status: str = "open"
 
 
+class GrantExtractRequest(BaseModel):
+    """Извлечение черновика гранта по ссылке (админ-парсер)."""
+    url: str = Field(..., min_length=4)
+
+
 class GrantApplicationGenerateRequest(BaseModel):
     project_id: int
     extra_context: str | None = None

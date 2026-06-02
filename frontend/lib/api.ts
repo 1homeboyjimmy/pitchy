@@ -857,6 +857,35 @@ export async function getGrant(id: number, token: string): Promise<Grant> {
   return getAuthJson<Grant>(`/grants/${id}`, token);
 }
 
+// Черновик гранта, извлечённый парсером по ссылке (поля GrantCreateRequest).
+export type GrantDraft = {
+  name: string;
+  organization: string | null;
+  description: string | null;
+  url: string | null;
+  logo_url: string | null;
+  amount_min: number | null;
+  amount_max: number | null;
+  geo: string | null;
+  stages: string[];
+  sectors: string[];
+  entity_types: string[];
+  requirements: Record<string, unknown> | null;
+  opens_at: string | null;
+  deadline: string | null;
+  status: string;
+};
+
+// Парсер: извлечь черновик по ссылке (НЕ сохраняет). Только админ.
+export async function extractGrantFromUrl(url: string, token: string): Promise<GrantDraft> {
+  return postAuthJson<GrantDraft>(`/grants/extract`, { url }, token);
+}
+
+// Сохранить грант в каталог (после правки черновика). Только админ.
+export async function createGrant(payload: Partial<GrantDraft>, token: string): Promise<Grant> {
+  return postAuthJson<Grant>(`/grants`, payload, token);
+}
+
 export async function matchGrants(
   projectId: number,
   token: string,

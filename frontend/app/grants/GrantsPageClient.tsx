@@ -140,8 +140,8 @@ function SupportMeasureCard({ grant, match, href }: { grant: Grant; match?: Gran
         <p className="text-white/45 text-sm leading-relaxed line-clamp-2 mt-2.5">{grant.description}</p>
       )}
 
-      {/* Совпадения по паспорту */}
-      {matched.length > 0 && (
+      {/* Совпадения по паспорту, либо направления гранта */}
+      {matched.length > 0 ? (
         <div className="flex flex-wrap gap-1.5 mt-3.5">
           {matched.map((r) => (
             <span key={r} className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300/80 border border-emerald-500/15">
@@ -149,7 +149,15 @@ function SupportMeasureCard({ grant, match, href }: { grant: Grant; match?: Gran
             </span>
           ))}
         </div>
-      )}
+      ) : grant.sectors.length > 0 ? (
+        <div className="flex flex-wrap gap-1.5 mt-3.5">
+          {grant.sectors.slice(0, 3).map((s) => (
+            <span key={s} className="text-[11px] px-2 py-0.5 rounded-full bg-white/5 text-white/50 border border-white/10">
+              {s}
+            </span>
+          ))}
+        </div>
+      ) : null}
 
       {/* Подвал: сумма + дедлайн */}
       <div className="mt-auto flex items-end justify-between gap-3 pt-4 mt-4 border-t border-white/5">

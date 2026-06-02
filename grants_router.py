@@ -32,6 +32,7 @@ from schemas import (
     GrantResponse,
     GrantMatchResponse,
     GrantCreateRequest,
+    GrantExtractRequest,
     GrantApplicationGenerateRequest,
     GrantApplicationResponse,
     GrantApplicationUpdateRequest,
@@ -225,3 +226,25 @@ async def create_grant(
     await db.commit()
     await db.refresh(grant)
     return GrantResponse.model_validate(grant)
+
+
+@router.post("/extract")
+async def extract_grant(
+    payload: GrantExtractRequest,
+    user: User = Depends(get_async_current_user),
+) -> dict:
+    """Извлечь черновик гранта по ссылке (LLM-парсер). Только админ.
+
+    Возвращает draft-словарь с полями GrantCreateRequest — НЕ сохраняет.
+    Админ правит черновик и сохраняет отдельным POST /grants.
+    """
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Только для администратора")
+    try:
+        draft = await grants_service.extract_grant_from_url(payload.url)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:  # noqa: BLE001
+        logger.exception("grant extract failed for %s", payload.url)
+        raise HTTPException(status_code=502, detail=f"Не удалось разобрать страницу: {e}")
+    return draft

@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import dayjs from "dayjs";
-import { Users, Tag, BarChart2, Plus, Trash2, Shield, Loader, CreditCard } from "react-feather";
+import { Users, Tag, BarChart2, Plus, Trash2, Shield, Loader, CreditCard, Award, Link as LinkIcon } from "react-feather";
 import { Button, GlassCard } from "@/components/shared";
 import { getToken } from "@/lib/auth";
 import { AreaChart } from "@mantine/charts";
-import { notifyError, confirmAction } from "@/lib/ui";
+import { notifyError, notifySuccess, confirmAction } from "@/lib/ui";
 import { adminDate } from "@/lib/utils";
+import { getGrants, extractGrantFromUrl, createGrant, type Grant, type GrantDraft } from "@/lib/api";
 
 // Temporary Types mapping what API returns
 type PromoCode = {
@@ -72,7 +73,7 @@ type RagLog = {
 };
 
 export function AdminView() {
-    const [activeTab, setActiveTab] = useState<"analytics" | "promocodes" | "users" | "subscriptions" | "rag">("users");
+    const [activeTab, setActiveTab] = useState<"analytics" | "promocodes" | "users" | "subscriptions" | "rag" | "grants">("users");
     const [loading, setLoading] = useState(true);
     const [promocodes, setPromocodes] = useState<PromoCode[]>([]);
     const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
@@ -98,6 +99,13 @@ export function AdminView() {
 
     // New Promo Form
     const [newPromo, setNewPromo] = useState({ code: "", discount_percent: 10, max_uses: "", target_tier: "", fixed_price: "" });
+
+    // Grants (парсер) State
+    const [grants, setGrants] = useState<Grant[]>([]);
+    const [grantUrl, setGrantUrl] = useState("");
+    const [grantExtracting, setGrantExtracting] = useState(false);
+    const [grantSaving, setGrantSaving] = useState(false);
+    const [grantDraft, setGrantDraft] = useState<GrantDraft | null>(null);
 
     // Use relative paths so Next.js rewrites proxy to backend
     const API_BASE = "";
@@ -152,6 +160,13 @@ export function AdminView() {
                         return;
                     }
                     if (res.ok) setSubscriptions(await res.json());
+                } else if (activeTab === "grants") {
+                    try {
+                        const list = await getGrants(token);
+                        setGrants(list);
+                    } catch (e) {
+                        console.error("Grants fetch error", e);
+                    }
                 } else if (activeTab === "rag") {
                     fetchVizStatus();
                     const res = await fetch(`${API_BASE}/admin/rag/logs`, {
@@ -418,6 +433,65 @@ export function AdminView() {
         }
     };
 
+    // --- Парсер грантов ---
+    const handleExtractGrant = async () => {
+        const url = grantUrl.trim();
+        if (!url) { notifyError("Вставьте ссылку на страницу гранта."); return; }
+        const token = getToken();
+        if (!token) return;
+        setGrantExtracting(true);
+        try {
+            const draft = await extractGrantFromUrl(url, token);
+            setGrantDraft(draft);
+            notifySuccess("Черновик извлечён. Проверьте поля и сохраните.");
+        } catch (e) {
+            console.error("extract grant error", e);
+            notifyError(e instanceof Error ? e.message : "Не удалось разобрать страницу.");
+        } finally {
+            setGrantExtracting(false);
+        }
+    };
+
+    const updateDraft = (patch: Partial<GrantDraft>) => {
+        setGrantDraft((d) => (d ? { ...d, ...patch } : d));
+    };
+
+    const toggleDraftList = (key: "stages" | "sectors" | "entity_types", value: string) => {
+        setGrantDraft((d) => {
+            if (!d) return d;
+            const cur = d[key] || [];
+            const next = cur.includes(value) ? cur.filter((v) => v !== value) : [...cur, value];
+            return { ...d, [key]: next };
+        });
+    };
+
+    const handleSaveGrant = async () => {
+        if (!grantDraft) return;
+        if (!grantDraft.name || grantDraft.name.trim().length < 2) {
+            notifyError("Укажите название гранта (минимум 2 символа).");
+            return;
+        }
+        const token = getToken();
+        if (!token) return;
+        setGrantSaving(true);
+        try {
+            const created = await createGrant(grantDraft, token);
+            setGrants((prev) => [created, ...prev]);
+            setGrantDraft(null);
+            setGrantUrl("");
+            notifySuccess("Грант добавлен в каталог.");
+        } catch (e) {
+            console.error("save grant error", e);
+            notifyError(e instanceof Error ? e.message : "Не удалось сохранить грант.");
+        } finally {
+            setGrantSaving(false);
+        }
+    };
+
+    const GRANT_STAGES = ["pre-seed", "seed", "growth", "scale"];
+    const GRANT_SECTORS = ["it", "ai", "biotech", "medtech", "hardware", "energy", "agro", "fintech", "edtech", "creative", "media", "education", "ecommerce", "industry"];
+    const GRANT_ENTITIES = ["ООО", "ИП", "самозанятый", "физлицо", "НКО"];
+
     return (
         <div className="space-y-6">
             <div className="flex gap-2 border-b border-white/10 pb-4 overflow-x-auto thin-scrollbar">
@@ -455,6 +529,13 @@ export function AdminView() {
                         }`}
                 >
                     <Shield className="w-3.5 h-3.5" /> RAG База
+                </button>
+                <button
+                    onClick={() => setActiveTab("grants")}
+                    className={`flex items-center gap-2 px-4 py-2 font-mono-label text-[10px] uppercase font-bold tracking-widest transition-all whitespace-nowrap ${activeTab === "grants" ? "bg-white text-black" : "border border-white/10 text-white/50 hover:text-white bg-[#111111]"
+                        }`}
+                >
+                    <Award className="w-3.5 h-3.5" /> Гранты
                 </button>
             </div>
 
@@ -1052,6 +1133,167 @@ export function AdminView() {
                                             </tbody>
                                         </table>
                                     </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === "grants" && (
+                        <div className="space-y-6">
+                            {/* Парсер: ссылка → черновик */}
+                            <div className="p-6 bg-[#111111] border border-white/10">
+                                <h3 className="text-xl font-display font-bold text-white mb-2 uppercase tracking-tight">Добавить грант по ссылке</h3>
+                                <p className="text-white/40 font-code text-[13px] mb-5">Вставьте ссылку на страницу программы — парсер извлечёт описание, направления, суммы и даты. Затем проверьте поля и сохраните.</p>
+                                <div className="flex flex-col sm:flex-row gap-3">
+                                    <div className="flex items-center gap-2 flex-1 bg-black border border-white/10 px-4 focus-within:border-white/30">
+                                        <LinkIcon className="w-4 h-4 text-white/30 shrink-0" />
+                                        <input
+                                            type="url"
+                                            placeholder="https://fasie.ru/programs/..."
+                                            value={grantUrl}
+                                            onChange={(e) => setGrantUrl(e.target.value)}
+                                            onKeyDown={(e) => { if (e.key === "Enter" && !grantExtracting) handleExtractGrant(); }}
+                                            className="flex-1 bg-transparent py-2.5 text-white outline-none font-code text-[13px]"
+                                        />
+                                    </div>
+                                    <Button onClick={handleExtractGrant} disabled={grantExtracting}>
+                                        {grantExtracting ? (
+                                            <span className="flex items-center gap-2"><Loader className="w-4 h-4 animate-spin" /> Извлекаю…</span>
+                                        ) : "Извлечь"}
+                                    </Button>
+                                </div>
+                            </div>
+
+                            {/* Черновик: правка перед сохранением */}
+                            {grantDraft && (
+                                <div className="p-6 bg-[#111111] border border-white/10 space-y-5">
+                                    <div className="flex items-center justify-between">
+                                        <h3 className="text-lg font-display font-bold text-white uppercase tracking-tight">Черновик гранта</h3>
+                                        <button onClick={() => setGrantDraft(null)} className="text-white/40 hover:text-white text-[12px] font-code">Отмена</button>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        <label className="block sm:col-span-2">
+                                            <span className="text-white/40 font-mono-label text-[10px] uppercase tracking-widest">Название *</span>
+                                            <input type="text" value={grantDraft.name ?? ""} onChange={(e) => updateDraft({ name: e.target.value })}
+                                                className="mt-1 w-full bg-black border border-white/10 px-4 py-2 text-white outline-none focus:border-white/30 font-code text-[13px]" />
+                                        </label>
+                                        <label className="block">
+                                            <span className="text-white/40 font-mono-label text-[10px] uppercase tracking-widest">Организация</span>
+                                            <input type="text" value={grantDraft.organization ?? ""} onChange={(e) => updateDraft({ organization: e.target.value })}
+                                                className="mt-1 w-full bg-black border border-white/10 px-4 py-2 text-white outline-none focus:border-white/30 font-code text-[13px]" />
+                                        </label>
+                                        <label className="block">
+                                            <span className="text-white/40 font-mono-label text-[10px] uppercase tracking-widest">География</span>
+                                            <input type="text" value={grantDraft.geo ?? ""} onChange={(e) => updateDraft({ geo: e.target.value })}
+                                                placeholder="RF или регион"
+                                                className="mt-1 w-full bg-black border border-white/10 px-4 py-2 text-white outline-none focus:border-white/30 font-code text-[13px]" />
+                                        </label>
+                                        <label className="block sm:col-span-2">
+                                            <span className="text-white/40 font-mono-label text-[10px] uppercase tracking-widest">Описание</span>
+                                            <textarea value={grantDraft.description ?? ""} onChange={(e) => updateDraft({ description: e.target.value })} rows={5}
+                                                className="mt-1 w-full bg-black border border-white/10 px-4 py-2 text-white outline-none focus:border-white/30 font-code text-[13px] resize-y" />
+                                        </label>
+                                        <label className="block">
+                                            <span className="text-white/40 font-mono-label text-[10px] uppercase tracking-widest">Сумма от, ₽</span>
+                                            <input type="number" value={grantDraft.amount_min ?? ""} onChange={(e) => updateDraft({ amount_min: e.target.value === "" ? null : Number(e.target.value) })}
+                                                className="mt-1 w-full bg-black border border-white/10 px-4 py-2 text-white outline-none focus:border-white/30 font-code text-[13px]" />
+                                        </label>
+                                        <label className="block">
+                                            <span className="text-white/40 font-mono-label text-[10px] uppercase tracking-widest">Сумма до, ₽</span>
+                                            <input type="number" value={grantDraft.amount_max ?? ""} onChange={(e) => updateDraft({ amount_max: e.target.value === "" ? null : Number(e.target.value) })}
+                                                className="mt-1 w-full bg-black border border-white/10 px-4 py-2 text-white outline-none focus:border-white/30 font-code text-[13px]" />
+                                        </label>
+                                        <label className="block">
+                                            <span className="text-white/40 font-mono-label text-[10px] uppercase tracking-widest">Старт приёма</span>
+                                            <input type="date" value={(grantDraft.opens_at ?? "").slice(0, 10)} onChange={(e) => updateDraft({ opens_at: e.target.value || null })}
+                                                className="mt-1 w-full bg-black border border-white/10 px-4 py-2 text-white outline-none focus:border-white/30 font-code text-[13px]" />
+                                        </label>
+                                        <label className="block">
+                                            <span className="text-white/40 font-mono-label text-[10px] uppercase tracking-widest">Дедлайн</span>
+                                            <input type="date" value={(grantDraft.deadline ?? "").slice(0, 10)} onChange={(e) => updateDraft({ deadline: e.target.value || null })}
+                                                className="mt-1 w-full bg-black border border-white/10 px-4 py-2 text-white outline-none focus:border-white/30 font-code text-[13px]" />
+                                        </label>
+                                        <label className="block sm:col-span-2">
+                                            <span className="text-white/40 font-mono-label text-[10px] uppercase tracking-widest">Ссылка</span>
+                                            <input type="url" value={grantDraft.url ?? ""} onChange={(e) => updateDraft({ url: e.target.value })}
+                                                className="mt-1 w-full bg-black border border-white/10 px-4 py-2 text-white outline-none focus:border-white/30 font-code text-[13px]" />
+                                        </label>
+                                    </div>
+
+                                    {/* Направления */}
+                                    <div>
+                                        <span className="text-white/40 font-mono-label text-[10px] uppercase tracking-widest">Направления</span>
+                                        <div className="flex flex-wrap gap-2 mt-2">
+                                            {GRANT_SECTORS.map((s) => (
+                                                <button key={s} onClick={() => toggleDraftList("sectors", s)}
+                                                    className={`px-3 py-1 text-[11px] font-code border transition-all ${grantDraft.sectors?.includes(s) ? "bg-white text-black border-white" : "border-white/15 text-white/50 hover:text-white"}`}>{s}</button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    {/* Стадии */}
+                                    <div>
+                                        <span className="text-white/40 font-mono-label text-[10px] uppercase tracking-widest">Стадии</span>
+                                        <div className="flex flex-wrap gap-2 mt-2">
+                                            {GRANT_STAGES.map((s) => (
+                                                <button key={s} onClick={() => toggleDraftList("stages", s)}
+                                                    className={`px-3 py-1 text-[11px] font-code border transition-all ${grantDraft.stages?.includes(s) ? "bg-white text-black border-white" : "border-white/15 text-white/50 hover:text-white"}`}>{s}</button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    {/* Кому подходит */}
+                                    <div>
+                                        <span className="text-white/40 font-mono-label text-[10px] uppercase tracking-widest">Кому подходит</span>
+                                        <div className="flex flex-wrap gap-2 mt-2">
+                                            {GRANT_ENTITIES.map((s) => (
+                                                <button key={s} onClick={() => toggleDraftList("entity_types", s)}
+                                                    className={`px-3 py-1 text-[11px] font-code border transition-all ${grantDraft.entity_types?.includes(s) ? "bg-white text-black border-white" : "border-white/15 text-white/50 hover:text-white"}`}>{s}</button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-3 pt-2">
+                                        <Button onClick={handleSaveGrant} disabled={grantSaving}>
+                                            {grantSaving ? (
+                                                <span className="flex items-center gap-2"><Loader className="w-4 h-4 animate-spin" /> Сохраняю…</span>
+                                            ) : (
+                                                <span className="flex items-center gap-2"><Plus className="w-4 h-4" /> Сохранить грант</span>
+                                            )}
+                                        </Button>
+                                        {grantDraft.logo_url && (
+                                            <span className="flex items-center gap-2 text-white/40 text-[12px] font-code">
+                                                <img src={grantDraft.logo_url} alt="" className="w-5 h-5 rounded bg-white" /> логотип определён
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Каталог грантов */}
+                            <div className="p-6 bg-[#111111] border border-white/10">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className="text-lg font-display font-bold text-white uppercase tracking-tight">Каталог ({grants.length})</h3>
+                                </div>
+                                <div className="space-y-2">
+                                    {grants.map((g) => (
+                                        <div key={g.id} className="flex items-center gap-3 p-3 bg-black border border-white/10">
+                                            {g.logo_url ? (
+                                                <img src={g.logo_url} alt="" className="w-9 h-9 rounded bg-white shrink-0 object-contain" />
+                                            ) : (
+                                                <div className="w-9 h-9 rounded bg-white/10 shrink-0 flex items-center justify-center text-white/40 font-bold text-[13px]">{(g.name || "?").slice(0, 1)}</div>
+                                            )}
+                                            <div className="min-w-0 flex-1">
+                                                <div className="text-white text-[13px] font-medium truncate">{g.name}</div>
+                                                <div className="text-white/40 text-[11px] font-code truncate">{g.organization || "—"}</div>
+                                            </div>
+                                            <span className={`px-2 py-0.5 text-[10px] font-mono-label uppercase tracking-widest border ${g.status === "open" ? "border-emerald-400/40 text-emerald-300" : g.status === "upcoming" ? "border-amber-400/40 text-amber-300" : "border-white/15 text-white/40"}`}>
+                                                {g.status === "open" ? "приём" : g.status === "upcoming" ? "скоро" : "закрыт"}
+                                            </span>
+                                        </div>
+                                    ))}
+                                    {grants.length === 0 && (
+                                        <div className="py-8 text-center text-white/30 font-code">Каталог пуст</div>
+                                    )}
                                 </div>
                             </div>
                         </div>

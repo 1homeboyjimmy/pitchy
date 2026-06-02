@@ -47,6 +47,169 @@ def derive_logo_url(url: str | None) -> str | None:
     except Exception:
         return None
 
+
+# ── Извлечение гранта из ссылки (админ-парсер) ──────────────────────────────
+# Словари нормированы под матчинг (см. match_grant): значения сравниваются в
+# нижнем регистре, поэтому LLM просим выбирать строго из этих наборов.
+_ALLOWED_STAGES = ["pre-seed", "seed", "growth", "scale"]
+_ALLOWED_SECTORS = [
+    "it", "ai", "biotech", "medtech", "hardware", "energy", "agro",
+    "fintech", "edtech", "creative", "media", "education", "ecommerce", "industry",
+]
+_ALLOWED_ENTITIES = ["ООО", "ИП", "самозанятый", "физлицо", "НКО"]
+
+
+async def fetch_page_text(url: str, max_chars: int = 14000) -> str:
+    """Скачивает страницу и вытаскивает читаемый текст (title + meta + body)."""
+    import httpx
+    from bs4 import BeautifulSoup
+
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; PitchyGrantsBot/1.0)"}
+    timeout = httpx.Timeout(25.0, connect=10.0, read=20.0)
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True, headers=headers) as c:
+        r = await c.get(url if "://" in url else f"https://{url}")
+        r.raise_for_status()
+        html = r.text
+
+    soup = BeautifulSoup(html, "html.parser")
+    for tag in soup(["script", "style", "noscript", "svg", "header", "footer", "nav", "form"]):
+        tag.decompose()
+
+    parts: list[str] = []
+    if soup.title and soup.title.string:
+        parts.append(soup.title.string.strip())
+    md = soup.find("meta", attrs={"name": "description"})
+    if md and md.get("content"):
+        parts.append(md["content"].strip())
+    parts.append(soup.get_text("\n", strip=True))
+
+    full = re.sub(r"\n{3,}", "\n\n", "\n".join(p for p in parts if p))
+    return full[:max_chars]
+
+
+def _parse_iso_date(s):
+    from datetime import datetime
+    if not s or not isinstance(s, str):
+        return None
+    s = s.strip()[:10]
+    for fmt in ("%Y-%m-%d", "%d.%m.%Y", "%Y/%m/%d"):
+        try:
+            return datetime.strptime(s, fmt)
+        except Exception:
+            continue
+    return None
+
+
+def _status_from_dates(opens_at, deadline) -> str:
+    from datetime import datetime
+    now = datetime.utcnow()
+    if deadline and deadline < now:
+        return "closed"
+    if opens_at and opens_at > now:
+        return "upcoming"
+    return "open"
+
+
+def _coerce_list(values, allowed: list[str] | None = None) -> list[str]:
+    if isinstance(values, str):
+        values = [values]
+    out: list[str] = []
+    allowed_low = {a.lower(): a for a in (allowed or [])}
+    for v in values or []:
+        v = str(v).strip()
+        if not v:
+            continue
+        if allowed_low:
+            canon = allowed_low.get(v.lower())
+            if canon:
+                out.append(canon)
+        else:
+            out.append(v)
+    # без дублей, сохраняя порядок
+    seen: set[str] = set()
+    return [x for x in out if not (x in seen or seen.add(x))]
+
+
+def _normalize_extracted(data: dict, url: str) -> dict:
+    """Приводит сырой ответ LLM к черновику гранта (поля GrantCreateRequest)."""
+    def num(v):
+        try:
+            return float(v) if v not in (None, "", "?") else None
+        except Exception:
+            return None
+
+    opens_at = _parse_iso_date(data.get("opens_at"))
+    deadline = _parse_iso_date(data.get("deadline"))
+    status = (data.get("status") or "").strip().lower()
+    if status not in ("open", "upcoming", "closed"):
+        status = _status_from_dates(opens_at, deadline)
+
+    geo = (data.get("geo") or "").strip() or "RF"
+
+    return {
+        "name": (data.get("name") or "").strip()[:300],
+        "organization": (data.get("organization") or "").strip()[:300] or None,
+        "description": (data.get("description") or "").strip() or None,
+        "url": url,
+        "logo_url": derive_logo_url(url),
+        "amount_min": num(data.get("amount_min")),
+        "amount_max": num(data.get("amount_max")),
+        "geo": geo,
+        "stages": _coerce_list(data.get("stages"), _ALLOWED_STAGES),
+        "sectors": _coerce_list(data.get("sectors"), _ALLOWED_SECTORS),
+        "entity_types": _coerce_list(data.get("entity_types"), _ALLOWED_ENTITIES),
+        "requirements": data.get("requirements") if isinstance(data.get("requirements"), dict) else None,
+        "opens_at": opens_at.isoformat() if opens_at else None,
+        "deadline": deadline.isoformat() if deadline else None,
+        "status": status,
+    }
+
+
+async def extract_grant_from_url(url: str) -> dict:
+    """Скачивает страницу гранта и извлекает поля через LLM. Возвращает
+    черновик (НЕ сохраняет) — админ проверяет и правит перед сохранением."""
+    from datetime import datetime
+    text = await fetch_page_text(url)
+    if not text.strip():
+        raise ValueError("Не удалось прочитать содержимое страницы")
+
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    system_prompt = (
+        "Ты — аналитик грантовых программ для российских стартапов. По тексту "
+        "страницы извлеки структурированные данные о грантовой/акселерационной "
+        "программе. Не выдумывай: если поля нет на странице — ставь null (или []). "
+        "Описание (description) делай максимально полным и точным: суть программы, "
+        "кому подходит, условия, что финансируется, как подать.\n"
+        "Даты возвращай в формате YYYY-MM-DD. Суммы — числом в рублях без пробелов "
+        "и символов (если в тексте «млн» — переведи в рубли).\n"
+        f"stages выбирай ТОЛЬКО из: {_ALLOWED_STAGES}.\n"
+        f"sectors (направления) выбирай ТОЛЬКО из: {_ALLOWED_SECTORS}.\n"
+        f"entity_types (кому подходит) выбирай ТОЛЬКО из: {_ALLOWED_ENTITIES}.\n"
+        "geo: 'RF' для всей России или код/название региона.\n"
+        "Верни СТРОГО JSON с ключами: name, organization, description, amount_min, "
+        "amount_max, geo, stages (массив), sectors (массив), entity_types (массив), "
+        "opens_at, deadline, requirements (объект ключ→значение доп. условий), status "
+        "(open/upcoming/closed). Без markdown, только JSON."
+    )
+    user_prompt = f"URL: {url}\nСЕГОДНЯ: {today}\n\nТЕКСТ СТРАНИЦЫ:\n{text}"
+
+    from makura_client import call_makura
+    import os
+    model = os.getenv("GRANTS_MODEL") or os.getenv("MAKURA_MODEL")
+    raw, _, _usage = await call_makura(system_prompt, user_prompt, model=model)
+
+    parsed: dict = {}
+    if raw:
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            s, e = raw.find("{"), raw.rfind("}")
+            parsed = json.loads(raw[s:e + 1]) if s >= 0 and e > s else {}
+    if not isinstance(parsed, dict) or not (parsed.get("name") or "").strip():
+        raise ValueError("Не удалось извлечь данные гранта со страницы")
+
+    return _normalize_extracted(parsed, url)
+
 # Веса soft-критериев. Сумма применимых весов нормируется к 100.
 _WEIGHTS = {
     "stage": 30,

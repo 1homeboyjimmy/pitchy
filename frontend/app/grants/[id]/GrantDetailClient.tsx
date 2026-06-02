@@ -140,9 +140,17 @@ export function GrantDetailClient() {
               <div className="text-white font-medium text-sm">{grant.geo}</div>
             </div>
           )}
+          {grant.opens_at && (
+            <div className="lovable-glass rounded-2xl p-4 border border-white/10">
+              <Clock size={16} className="text-white/40 mb-2" />
+              <div className="text-white/40 text-[10px] font-mono uppercase tracking-wider mb-0.5">Старт приёма</div>
+              <div className="text-white font-medium text-sm">{formatDate(grant.opens_at)}</div>
+            </div>
+          )}
           {grant.deadline && (
             <div className="lovable-glass rounded-2xl p-4 border border-white/10">
               <Clock size={16} className="text-white/40 mb-2" />
+              <div className="text-white/40 text-[10px] font-mono uppercase tracking-wider mb-0.5">Дедлайн</div>
               <div className="text-white font-medium text-sm">{formatDate(grant.deadline)}</div>
             </div>
           )}
@@ -162,10 +170,45 @@ export function GrantDetailClient() {
         )}
 
         {(grant.stages.length > 0 || grant.sectors.length > 0 || grant.entity_types.length > 0) && (
-          <div className="flex flex-wrap gap-2 mb-10">
-            {grant.stages.map((s) => <span key={s} className="text-xs px-3 py-1 rounded-full bg-white/5 text-white/50">{s}</span>)}
-            {grant.sectors.map((s) => <span key={s} className="text-xs px-3 py-1 rounded-full bg-white/5 text-white/50">{s}</span>)}
-            {grant.entity_types.map((s) => <span key={s} className="text-xs px-3 py-1 rounded-full bg-white/5 text-white/50">{s}</span>)}
+          <div className="grid sm:grid-cols-3 gap-5 mb-10">
+            {grant.sectors.length > 0 && (
+              <div>
+                <h3 className="text-white/40 text-[10px] font-mono uppercase tracking-wider mb-2.5">Направления</h3>
+                <div className="flex flex-wrap gap-2">
+                  {grant.sectors.map((s) => <span key={s} className="text-xs px-3 py-1 rounded-full bg-white/5 text-white/70 border border-white/10">{s}</span>)}
+                </div>
+              </div>
+            )}
+            {grant.entity_types.length > 0 && (
+              <div>
+                <h3 className="text-white/40 text-[10px] font-mono uppercase tracking-wider mb-2.5">Кому подходит</h3>
+                <div className="flex flex-wrap gap-2">
+                  {grant.entity_types.map((s) => <span key={s} className="text-xs px-3 py-1 rounded-full bg-white/5 text-white/70 border border-white/10">{s}</span>)}
+                </div>
+              </div>
+            )}
+            {grant.stages.length > 0 && (
+              <div>
+                <h3 className="text-white/40 text-[10px] font-mono uppercase tracking-wider mb-2.5">Стадии</h3>
+                <div className="flex flex-wrap gap-2">
+                  {grant.stages.map((s) => <span key={s} className="text-xs px-3 py-1 rounded-full bg-white/5 text-white/70 border border-white/10">{s}</span>)}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {grant.requirements && Object.keys(grant.requirements).length > 0 && (
+          <div className="lovable-glass rounded-2xl p-6 border border-white/10 mb-10">
+            <h3 className="text-white/40 text-[10px] font-mono uppercase tracking-wider mb-3">Требования и условия</h3>
+            <ul className="space-y-2">
+              {Object.entries(grant.requirements).map(([k, v]) => (
+                <li key={k} className="flex gap-2 text-sm text-white/70">
+                  <CheckCircle2 size={15} className="text-emerald-400/70 shrink-0 mt-0.5" />
+                  <span>{typeof v === "string" || typeof v === "number" ? `${k}: ${v}` : k}</span>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
 
