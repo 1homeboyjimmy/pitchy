@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Cpu, User, Loader, Star, X, ChevronDown, ChevronUp, Activity, FileText, MessageSquare, CheckCircle, AlertTriangle, Edit3, Globe, Link2 } from "react-feather";
+import { Cpu, User, Loader, Star, X, ChevronDown, ChevronUp, Activity, FileText, MessageSquare, CheckCircle, AlertTriangle, Edit3, Globe } from "react-feather";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { getToken } from "@/lib/auth";
@@ -9,7 +9,7 @@ import { getTreeChatHistory, evaluateNode, type TreeNodeResponse, type TreeEdgeR
 import { motion, AnimatePresence } from "framer-motion";
 import { ChatInput } from "@/components/chat/ChatInput";
 import { CollapsibleUserMessage } from "@/components/chat/CollapsibleUserMessage";
-import { stripThoughts } from "@/lib/utils";
+import { stripThoughts, hostFromUrl } from "@/lib/utils";
 
 interface Message {
   role: "user" | "assistant";
@@ -460,23 +460,24 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
                                   className="overflow-hidden mt-2"
                                 >
                                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-2 bg-white/5 border border-white/10 rounded-xl">
-                                    {msg.sources.map((s, i) => (
+                                    {msg.sources.map((s, i) => {
+                                      const host = hostFromUrl(s.url);
+                                      return (
                                       <a
                                         key={i}
                                         href={s.url}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="flex flex-col p-3 rounded-lg bg-black/20 hover:bg-white/5 border border-transparent hover:border-white/10 transition-all group"
+                                        className="flex items-start gap-2 p-3 rounded-lg bg-black/20 hover:bg-white/5 border border-transparent hover:border-white/10 transition-all group"
                                       >
-                                        <div className="flex items-center gap-2 mb-1">
-                                          <div className="w-5 h-5 rounded bg-white/10 flex items-center justify-center shrink-0">
-                                            <Link2 className="w-3 h-3 text-white/50 group-hover:text-white" />
-                                          </div>
-                                          <span className="text-[12px] text-white/80 font-medium line-clamp-1">{s.title || "Источник"}</span>
+                                        <div className="w-5 h-5 rounded bg-white/10 flex items-center justify-center shrink-0 font-mono text-[10px] font-bold text-white/50 group-hover:text-white">{i + 1}</div>
+                                        <div className="min-w-0 flex-1">
+                                          <span className="text-[12px] text-white/80 font-medium line-clamp-2 leading-snug block">{s.title || host || "Источник"}</span>
+                                          {host && <span className="text-[10px] text-white/40 line-clamp-1 truncate block mt-0.5 font-mono">{host}</span>}
                                         </div>
-                                        <span className="text-[10px] text-white/40 line-clamp-1 truncate block ml-7">{s.url}</span>
                                       </a>
-                                    ))}
+                                      );
+                                    })}
                                   </div>
                                 </motion.div>
                               )}

@@ -40,6 +40,17 @@ export function cn(...inputs: (string | undefined | null | boolean)[]) {
     return inputs.filter(Boolean).join(" ");
 }
 
+// Достаёт домен из URL для подписи карточек-источников (как в Perplexity/Qwen).
+// Возвращает "" если URL битый — карточка просто покажет заголовок.
+export function hostFromUrl(url: string | undefined | null): string {
+    if (!url) return "";
+    try {
+        return new URL(url).hostname.replace(/^www\./, "");
+    } catch {
+        return "";
+    }
+}
+
 // Backend returns naive UTC timestamps without timezone; admin viewers in MSK expect +3h.
 export function adminDate(value: string | null | undefined): Date | null {
     if (!value) return null;

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Cpu, Loader, Star, Zap, Users, Grid, HelpCircle, ThumbsUp, ThumbsDown, ChevronDown, ChevronUp, Activity, Globe, Link2, FileText, ArrowRight, Lock } from "lucide-react";
+import { Cpu, Loader, Star, Zap, Users, Grid, HelpCircle, ThumbsUp, ThumbsDown, ChevronDown, ChevronUp, Activity, Globe, FileText, ArrowRight, Lock } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ChatMessageResponse, ChatSessionDetailResponse, sendChatMessageFeedback } from "@/lib/api";
@@ -14,7 +14,7 @@ import { PresentationSlide, importContext } from "@/lib/api";
 import { ContextImportModal } from "@/components/chat/ContextImportModal";
 import { UpgradeModal } from "@/components/chat/UpgradeModal";
 import { notifyError } from "@/lib/ui";
-import { stripThoughts } from "@/lib/utils";
+import { stripThoughts, hostFromUrl } from "@/lib/utils";
 
 function CollapsibleUserBubble({ content }: { content: string }) {
     const [isExpanded, setIsExpanded] = useState(false);
@@ -870,23 +870,24 @@ export function ChatInterface({
                                                 className="overflow-hidden mt-4"
                                                 >
                                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-white/[0.01] border border-white/5 rounded-3xl">
-                                                    {msg.sources.map((s, i) => (
+                                                    {msg.sources.map((s, i) => {
+                                                    const host = hostFromUrl(s.url);
+                                                    return (
                                                     <a
                                                         key={i}
                                                         href={s.url}
                                                         target="_blank"
                                                         rel="noopener noreferrer"
-                                                        className="flex flex-col p-5 rounded-2xl bg-white/[0.02] hover:bg-white/[0.05] border border-transparent hover:border-white/10 transition-all group/source"
+                                                        className="flex items-start gap-3 p-5 rounded-2xl bg-white/[0.02] hover:bg-white/[0.05] border border-transparent hover:border-white/10 transition-all group/source"
                                                     >
-                                                        <div className="flex items-center gap-3 mb-2">
-                                                        <div className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center shrink-0 group-hover/source:scale-110 transition-transform">
-                                                            <Link2 className="w-3.5 h-3.5 text-white/20 group-hover/source:text-white" strokeWidth={1.5} />
+                                                        <div className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center shrink-0 font-mono text-[11px] font-bold text-white/30 group-hover/source:text-white group-hover/source:scale-110 transition-all">{i + 1}</div>
+                                                        <div className="min-w-0 flex-1">
+                                                            <span className="text-[13px] text-white/70 font-medium line-clamp-2 group-hover/source:text-white transition-colors block leading-snug">{s.title || host || "Источник"}</span>
+                                                            {host && <span className="text-[10px] text-white/20 line-clamp-1 truncate block mt-1 font-mono tracking-tight group-hover/source:text-white/40 transition-colors">{host}</span>}
                                                         </div>
-                                                        <span className="text-[13px] text-white/70 font-medium line-clamp-1 group-hover/source:text-white transition-colors">{s.title || "Источник"}</span>
-                                                        </div>
-                                                        <span className="text-[10px] text-white/10 line-clamp-1 truncate block ml-10 font-mono tracking-tight group-hover/source:text-white/20 transition-colors">{s.url}</span>
                                                     </a>
-                                                    ))}
+                                                    );
+                                                    })}
                                                 </div>
                                                 </motion.div>
                                             )}
