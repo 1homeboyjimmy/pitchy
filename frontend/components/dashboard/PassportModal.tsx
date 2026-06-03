@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useMounted } from "@mantine/hooks";
-import { X, Loader, Plus, Save, Hand, Sparkles, Award, Gauge } from "lucide-react";
+import { X, Loader, Plus, Save, Hand, Sparkles, Award, Gauge, Wand2, ChevronLeft, ChevronRight, Check, SkipForward } from "lucide-react";
 import { getPassport, patchPassport, type PassportData } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import { notifyError, notifySuccess } from "@/lib/ui";
@@ -53,6 +53,31 @@ const SOURCE_BADGE: Record<string, { label: string; cls: string; icon: typeof Ha
   grant: { label: "грант", cls: "text-amber-300/80 bg-amber-500/10", icon: Award },
 };
 
+// Зеркало KEY_FIELDS из passport.py: путь, вес (важность для индекса
+// готовности) и подсказка для мастера заполнения. Сумма весов = 24.
+type WizardField = {
+  path: string; section: string; label: string; hint: string;
+  weight: number; multiline?: boolean; list?: boolean;
+};
+const WIZARD_FIELDS: WizardField[] = [
+  { path: "core.name", section: "Основное", label: "Название проекта", hint: "Как называется ваш стартап?", weight: 3 },
+  { path: "core.problem", section: "Основное", label: "Проблема", hint: "Какую боль клиента вы решаете? 1–2 предложения.", weight: 3, multiline: true },
+  { path: "core.solution", section: "Основное", label: "Решение", hint: "Как ваш продукт закрывает эту боль?", weight: 3, multiline: true },
+  { path: "core.target_audience", section: "Основное", label: "Целевая аудитория", hint: "Кто платит и пользуется? Сегмент, гео, размер.", weight: 2, multiline: true },
+  { path: "core.stage", section: "Основное", label: "Стадия", hint: "Идея / прототип / первые продажи / рост.", weight: 1 },
+  { path: "core.business_model", section: "Основное", label: "Бизнес-модель", hint: "Как зарабатываете: подписка, комиссия, разовые продажи?", weight: 2 },
+  { path: "core.geo", section: "Основное", label: "География", hint: "Основной рынок: Россия, СНГ, конкретные регионы.", weight: 1 },
+  { path: "market.size", section: "Рынок", label: "Объём рынка", hint: "Оценка рынка (TAM/SAM) в деньгах или числе клиентов.", weight: 2 },
+  { path: "market.competitors", section: "Рынок", label: "Конкуренты", hint: "Перечислите по одному в строке.", weight: 1, list: true },
+  { path: "metrics.mrr", section: "Метрики", label: "MRR", hint: "Ежемесячная выручка, если уже есть продажи.", weight: 1 },
+  { path: "metrics.users", section: "Метрики", label: "Пользователи", hint: "Сколько активных пользователей или клиентов.", weight: 1 },
+  { path: "team", section: "Команда", label: "Команда", hint: "Участники и роли — по одному в строке.", weight: 2, list: true },
+  { path: "custdev.personas", section: "CustDev", label: "Персоны / CustDev", hint: "Кого интервьюировали? Ключевые персоны — по одной в строке.", weight: 1, list: true },
+  { path: "legal.entity_type", section: "Юр. данные", label: "Юр. форма", hint: "ООО, ИП, самозанятый — или пока не оформлено.", weight: 1 },
+];
+const WIZARD_TOTAL = WIZARD_FIELDS.reduce((s, f) => s + f.weight, 0);
+const LIST_PATHS = new Set(WIZARD_FIELDS.filter((f) => f.list).map((f) => f.path));
+
 function getMeta(passport: PassportData): Record<string, { source?: string }> {
   return (passport?._meta as Record<string, { source?: string }>) || {};
 }
@@ -87,11 +112,14 @@ export function PassportModal({ projectId, projectName, onClose, onSaved }: Prop
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [passport, setPassport] = useState<PassportData>({});
-  const [readiness, setReadiness] = useState(0);
   const [missing, setMissing] = useState<string[]>([]);
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [newKey, setNewKey] = useState("");
   const [newVal, setNewVal] = useState("");
+  // Мастер заполнения: пошаговый проход по пустым ключевым полям.
+  const [wizard, setWizard] = useState(false);
+  const [wizardPaths, setWizardPaths] = useState<string[]>([]);
+  const [step, setStep] = useState(0);
 
   useEffect(() => {
     const t = getToken();
@@ -99,7 +127,6 @@ export function PassportModal({ projectId, projectName, onClose, onSaved }: Prop
     getPassport(projectId, t)
       .then((v) => {
         setPassport(v.passport || {});
-        setReadiness(v.readiness_index);
         setMissing(v.missing_sections || []);
       })
       .catch((e) => { console.error(e); notifyError("Не удалось загрузить паспорт"); })
@@ -113,12 +140,46 @@ export function PassportModal({ projectId, projectName, onClose, onSaved }: Prop
 
   const setValue = (path: string, v: string) => setEdits((p) => ({ ...p, [path]: v }));
 
+  // Живой индекс готовности: считаем локально по тем же весам, что и бэкенд,
+  // чтобы шкала реагировала на ввод сразу, не дожидаясь сохранения.
+  const localReadiness = useMemo(() => {
+    const filled = (path: string) => {
+      const raw = path in edits ? edits[path] : asText(getPath(passport, path));
+      return !!raw && raw.trim().length > 0;
+    };
+    let got = 0;
+    for (const f of WIZARD_FIELDS) if (filled(f.path)) got += f.weight;
+    return Math.round((got * 100) / WIZARD_TOTAL);
+  }, [passport, edits]);
+
+  const startWizard = () => {
+    const empty = WIZARD_FIELDS.filter((f) => {
+      const raw = f.path in edits ? edits[f.path] : asText(getPath(passport, f.path));
+      return !raw || !raw.trim();
+    }).map((f) => f.path);
+    setWizardPaths(empty);
+    setStep(0);
+    setWizard(true);
+  };
+
+  const wizardDefs = wizardPaths
+    .map((p) => WIZARD_FIELDS.find((f) => f.path === p))
+    .filter((f): f is WizardField => !!f);
+  const wizardCurrent = wizardDefs[step];
+  const wizardLast = step >= wizardDefs.length - 1;
+
+  const wizardNext = () => {
+    if (wizardLast) handleSave();
+    else setStep((s) => Math.min(wizardDefs.length - 1, s + 1));
+  };
+  const wizardBack = () => setStep((s) => Math.max(0, s - 1));
+
   const handleSave = async () => {
     const t = getToken();
     if (!t) return;
     const fields: Record<string, unknown> = {};
     for (const [path, raw] of Object.entries(edits)) {
-      const isList = path === "market.competitors" || path === "custdev.personas";
+      const isList = LIST_PATHS.has(path);
       if (isList) {
         const arr = raw.split("\n").map((s) => s.trim()).filter(Boolean);
         fields[path] = arr;
@@ -130,7 +191,6 @@ export function PassportModal({ projectId, projectName, onClose, onSaved }: Prop
     setSaving(true);
     try {
       const res = await patchPassport(projectId, fields, t);
-      setReadiness(res.readiness_index);
       setMissing(res.missing_sections || []);
       onSaved?.(res.readiness_index);
       notifySuccess("Паспорт обновлён");
@@ -181,23 +241,88 @@ export function PassportModal({ projectId, projectName, onClose, onSaved }: Prop
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between gap-4 px-6 py-5 border-b border-white/10">
-          <div className="min-w-0">
-            <h2 className="font-display text-xl text-white truncate">Паспорт · {projectName}</h2>
-            <div className="flex items-center gap-2 mt-1 text-white/40 text-xs">
-              <Gauge size={13} /> Готовность {readiness}%
-              {missing.length > 0 && <span className="text-white/30">· не хватает: {missing.join(", ")}</span>}
-            </div>
+        <div className="px-6 py-5 border-b border-white/10">
+          <div className="flex items-start justify-between gap-4">
+            <h2 className="font-display text-xl text-white truncate min-w-0">Паспорт · {projectName}</h2>
+            <button onClick={onClose} className="shrink-0 text-white/40 hover:text-white p-2 -mr-2 rounded-xl hover:bg-white/5 transition-all">
+              <X size={18} />
+            </button>
           </div>
-          <button onClick={onClose} className="text-white/40 hover:text-white p-2 rounded-xl hover:bg-white/5 transition-all">
-            <X size={18} />
-          </button>
+          {/* Живая шкала готовности */}
+          <div className="mt-3">
+            <div className="flex items-center gap-2 text-xs mb-1.5">
+              <Gauge size={13} className="text-white/40" />
+              <span className="text-white/50">Готовность паспорта</span>
+              <span className={`ml-auto font-mono font-bold tabular-nums ${localReadiness >= 70 ? "text-emerald-300" : localReadiness >= 40 ? "text-amber-300" : "text-white/60"}`}>{localReadiness}%</span>
+            </div>
+            <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${localReadiness >= 70 ? "bg-emerald-400/70" : localReadiness >= 40 ? "bg-amber-400/70" : "bg-white/40"}`}
+                style={{ width: `${localReadiness}%` }}
+              />
+            </div>
+            {missing.length > 0 && (
+              <p className="text-white/30 text-[11px] mt-1.5">Не хватает: {missing.join(", ")}</p>
+            )}
+          </div>
         </div>
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-8">
           {loading ? (
             <div className="flex justify-center py-12"><Loader className="animate-spin text-white/30" size={24} /></div>
+          ) : wizard ? (
+            wizardDefs.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mb-4">
+                  <Check className="text-emerald-300" size={26} />
+                </div>
+                <h3 className="font-display text-lg text-white mb-1">Ключевые поля заполнены</h3>
+                <p className="text-white/40 text-sm max-w-xs">Паспорт готов для подбора грантов. Вернитесь в обычный режим, чтобы дополнить детали.</p>
+                <button onClick={() => setWizard(false)} className="mt-5 text-sm text-white/60 hover:text-white px-4 py-2 rounded-full border border-white/10 hover:bg-white/5 transition-all">
+                  К обычному режиму
+                </button>
+              </div>
+            ) : wizardCurrent ? (
+              <div>
+                {/* Прогресс по шагам */}
+                <div className="flex items-center gap-1.5 mb-6">
+                  {wizardDefs.map((_, i) => (
+                    <div key={i} className={`h-1 flex-1 rounded-full transition-all ${i < step ? "bg-emerald-400/60" : i === step ? "bg-white/50" : "bg-white/[0.08]"}`} />
+                  ))}
+                </div>
+                <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-white/30 mb-2">
+                  {wizardCurrent.section} · шаг {step + 1} из {wizardDefs.length}
+                </p>
+                <h3 className="font-display text-xl text-white mb-1.5 flex items-center gap-2 flex-wrap">
+                  {wizardCurrent.label} {sourceBadge(wizardCurrent.path)}
+                </h3>
+                <p className="text-white/40 text-sm mb-4 leading-relaxed">{wizardCurrent.hint}</p>
+                {wizardCurrent.multiline || wizardCurrent.list ? (
+                  <textarea
+                    autoFocus
+                    value={valueFor(wizardCurrent.path, wizardCurrent.list)}
+                    onChange={(e) => setValue(wizardCurrent.path, e.target.value)}
+                    rows={wizardCurrent.list ? 4 : 3}
+                    placeholder={wizardCurrent.list ? "По одному в строке…" : "Введите ответ…"}
+                    className="w-full bg-white/[0.03] rounded-xl p-3.5 text-white text-sm border border-white/10 focus:border-white/30 outline-none resize-none placeholder:text-white/20"
+                  />
+                ) : (
+                  <input
+                    autoFocus
+                    value={valueFor(wizardCurrent.path)}
+                    onChange={(e) => setValue(wizardCurrent.path, e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") wizardNext(); }}
+                    placeholder="Введите ответ…"
+                    className="w-full bg-white/[0.03] rounded-xl px-3.5 py-3 text-white text-sm border border-white/10 focus:border-white/30 outline-none placeholder:text-white/20"
+                  />
+                )}
+                <p className="text-white/25 text-[11px] mt-3 flex items-start gap-1.5">
+                  <Sparkles size={11} className="text-violet-300/50 shrink-0 mt-0.5" />
+                  Поля с пометкой «ИИ» уже заполнены из ваших чатов — мастер ведёт только по тому, что осталось.
+                </p>
+              </div>
+            ) : null
           ) : (
             <>
               {SECTIONS.map((sec) => (
@@ -301,15 +426,56 @@ export function PassportModal({ projectId, projectName, onClose, onSaved }: Prop
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between gap-4 px-6 py-4 border-t border-white/10">
-          <p className="text-white/30 text-xs">Поля «вручную» ИИ не перезаписывает без вашего согласия.</p>
-          <button
-            onClick={handleSave}
-            disabled={saving || loading}
-            className="bg-white text-black font-semibold text-sm px-6 py-2.5 rounded-full hover:bg-neutral-200 transition-all flex items-center gap-2 disabled:opacity-40"
-          >
-            {saving ? <Loader className="animate-spin" size={15} /> : <Save size={15} />} Сохранить
-          </button>
+        <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-white/10">
+          {wizard ? (
+            <>
+              <button
+                onClick={wizardBack}
+                disabled={step === 0}
+                className="text-white/50 hover:text-white text-sm px-3 py-2 rounded-full hover:bg-white/5 transition-all disabled:opacity-30 flex items-center gap-1.5"
+              >
+                <ChevronLeft size={16} /> Назад
+              </button>
+              <button onClick={() => setWizard(false)} className="text-white/30 hover:text-white/60 text-xs transition-all">
+                выйти из мастера
+              </button>
+              <div className="flex items-center gap-2">
+                {!wizardLast && wizardDefs.length > 0 && (
+                  <button
+                    onClick={() => setStep((s) => Math.min(wizardDefs.length - 1, s + 1))}
+                    className="text-white/40 hover:text-white text-sm px-3 py-2 rounded-full hover:bg-white/5 transition-all flex items-center gap-1.5"
+                  >
+                    <SkipForward size={14} /> Пропустить
+                  </button>
+                )}
+                <button
+                  onClick={wizardNext}
+                  disabled={saving}
+                  className="bg-white text-black font-semibold text-sm px-5 py-2.5 rounded-full hover:bg-neutral-200 transition-all flex items-center gap-2 disabled:opacity-40"
+                >
+                  {wizardLast ? (saving ? <Loader className="animate-spin" size={15} /> : <Check size={15} />) : <ChevronRight size={15} />}
+                  {wizardLast ? "Готово" : "Далее"}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={startWizard}
+                disabled={loading}
+                className="flex items-center gap-2 text-sm text-white/60 hover:text-white px-3.5 py-2 rounded-full border border-white/10 hover:bg-white/5 transition-all disabled:opacity-40"
+              >
+                <Wand2 size={15} /> Мастер заполнения
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={saving || loading}
+                className="bg-white text-black font-semibold text-sm px-6 py-2.5 rounded-full hover:bg-neutral-200 transition-all flex items-center gap-2 disabled:opacity-40"
+              >
+                {saving ? <Loader className="animate-spin" size={15} /> : <Save size={15} />} Сохранить
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>,
