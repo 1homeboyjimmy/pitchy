@@ -347,6 +347,8 @@ class GrantApplicationResponse(BaseModel):
     project_id: int
     grant_id: int
     status: str = "draft"
+    # CRM-стадия воронки: interested → preparing → submitted → won / rejected.
+    stage: str = "preparing"
     content: dict[str, Any] = {}
     match_score: int = 0
     created_at: datetime
@@ -357,9 +359,10 @@ class GrantApplicationResponse(BaseModel):
 
 
 class GrantApplicationUpdateRequest(BaseModel):
-    """Ручная правка секций заявки пользователем."""
+    """Ручная правка секций заявки или перемещение по канбану."""
     content: dict[str, Any] | None = None
     status: str | None = None
+    stage: str | None = None
 
 
 class UserUpdateRequest(BaseModel):

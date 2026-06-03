@@ -843,12 +843,16 @@ export type GrantMatch = {
   reasons: { matched?: string[]; missing?: string[]; conflict?: boolean };
 };
 
+// Стадия воронки CRM «Мои гранты» (канбан). Порядок = порядок колонок.
+export type CrmStage = "interested" | "preparing" | "submitted" | "won" | "rejected";
+
 export type GrantApplication = {
   id: number;
   project_id: number;
   grant_id: number;
   status: "draft" | "generated" | "submitted";
-  content: { sections?: Record<string, string>; gaps?: string[] };
+  stage: CrmStage;
+  content: { sections?: Record<string, string>; gaps?: string[]; checklist?: string[] };
   match_score: number;
   created_at: string;
   updated_at: string;
@@ -931,8 +935,22 @@ export async function getGrantApplication(appId: number, token: string): Promise
 
 export async function updateGrantApplication(
   appId: number,
-  data: { content?: Record<string, unknown>; status?: string },
+  data: { content?: Record<string, unknown>; status?: string; stage?: CrmStage },
   token: string
 ): Promise<GrantApplication> {
   return patchAuthJson<GrantApplication>(`/grants/applications/${appId}`, data, token);
+}
+
+// Добавить грант на канбан «Мои гранты» без генерации заявки (стадия «Интересует»).
+// Идемпотентно: повторный вызов вернёт уже существующую карточку.
+export async function trackGrant(
+  grantId: number,
+  projectId: number,
+  token: string
+): Promise<GrantApplication> {
+  return postAuthJson<GrantApplication>(
+    `/grants/${grantId}/track`,
+    { project_id: projectId },
+    token
+  );
 }

@@ -325,6 +325,9 @@ class GrantApplication(Base):
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
     grant_id: Mapped[int] = mapped_column(ForeignKey("grants.id", ondelete="CASCADE"), index=True)
     status: Mapped[str] = mapped_column(String(30), default="draft")  # draft, generated, submitted
+    # CRM-стадия воронки «Мои гранты», отдельно от content-lifecycle `status`:
+    # interested → preparing → submitted → won / rejected.
+    stage: Mapped[str] = mapped_column(String(30), default="preparing", server_default="preparing")
     content: Mapped[dict] = mapped_column(JSON, default=dict)
     match_score: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

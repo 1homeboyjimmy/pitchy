@@ -5,12 +5,12 @@ import Link from "next/link";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import {
   Loader, ChevronLeft, Banknote, MapPin, Building2, Clock, Sparkles,
-  ExternalLink, CheckCircle2, AlertTriangle, FileText,
+  ExternalLink, CheckCircle2, AlertTriangle, FileText, LayoutGrid, Check,
 } from "lucide-react";
 import { getToken } from "@/lib/auth";
 import { notifyError } from "@/lib/ui";
 import {
-  getGrant, getProjects, generateGrantApplication, matchGrants,
+  getGrant, getProjects, generateGrantApplication, trackGrant, matchGrants,
   type Grant, type ProjectListItem, type GrantApplication, type GrantMatch,
 } from "@/lib/api";
 
@@ -55,6 +55,8 @@ export function GrantDetailClient() {
   const [generating, setGenerating] = useState(false);
   const [result, setResult] = useState<GrantApplication | null>(null);
   const [match, setMatch] = useState<GrantMatch | null>(null);
+  const [tracking, setTracking] = useState(false);
+  const [tracked, setTracked] = useState(false);
 
   useEffect(() => {
     const t = getToken();
@@ -93,11 +95,26 @@ export function GrantDetailClient() {
     try {
       const app = await generateGrantApplication(grantId, projectId, token, extra || undefined);
       setResult(app);
+      setTracked(true); // заявка попала на канбан «Мои гранты» (стадия «Готовлю»)
     } catch (e) {
       console.error(e);
       notifyError("Не удалось сгенерировать заявку");
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const handleTrack = async () => {
+    if (!token || projectId == null) return;
+    setTracking(true);
+    try {
+      await trackGrant(grantId, projectId, token);
+      setTracked(true);
+    } catch (e) {
+      console.error(e);
+      notifyError("Не удалось добавить в «Мои гранты»");
+    } finally {
+      setTracking(false);
     }
   };
 
@@ -312,13 +329,35 @@ export function GrantDetailClient() {
                 className="w-full lovable-glass rounded-2xl p-4 text-white text-sm border border-white/10 focus:border-white/30 outline-none resize-none mb-4 placeholder:text-white/25"
               />
 
-              <button
-                onClick={handleGenerate}
-                disabled={generating || projectId == null}
-                className="bg-white text-black font-semibold text-sm px-7 py-3.5 rounded-full hover:bg-neutral-200 transition-all flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {generating ? <><Loader className="animate-spin" size={16} /> Собираем заявку…</> : <><Sparkles size={16} /> Сгенерировать</>}
-              </button>
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  onClick={handleGenerate}
+                  disabled={generating || projectId == null}
+                  className="bg-white text-black font-semibold text-sm px-7 py-3.5 rounded-full hover:bg-neutral-200 transition-all flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {generating ? <><Loader className="animate-spin" size={16} /> Собираем заявку…</> : <><Sparkles size={16} /> Сгенерировать</>}
+                </button>
+
+                {tracked ? (
+                  <Link
+                    href="/grants/my"
+                    className="lovable-glass text-emerald-300/90 font-medium text-sm px-6 py-3.5 rounded-full border border-emerald-500/25 hover:border-emerald-500/40 transition-all flex items-center gap-2"
+                  >
+                    <Check size={16} /> В вашей воронке — открыть
+                  </Link>
+                ) : (
+                  <button
+                    onClick={handleTrack}
+                    disabled={tracking || projectId == null}
+                    className="lovable-glass text-white/70 font-medium text-sm px-6 py-3.5 rounded-full border border-white/15 hover:border-white/30 hover:text-white transition-all flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {tracking ? <Loader className="animate-spin" size={16} /> : <LayoutGrid size={16} />} В мои гранты
+                  </button>
+                )}
+              </div>
+              <p className="text-white/30 text-xs mt-3">
+                «В мои гранты» добавит программу на канбан без генерации — отслеживайте статус и требования в разделе «Мои гранты».
+              </p>
             </>
           )}
         </section>
@@ -331,7 +370,7 @@ export function GrantDetailClient() {
                 <CheckCircle2 size={18} /> <span className="font-display text-lg text-white">Заявка готова</span>
               </div>
               <Link href="/grants/my" className="flex items-center gap-2 text-white/60 hover:text-white text-sm">
-                <FileText size={15} /> Все мои заявки
+                <FileText size={15} /> Мои гранты
               </Link>
             </div>
 

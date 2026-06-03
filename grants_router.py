@@ -6,9 +6,10 @@ REST API:
 - GET    /grants/match                    — автоподбор под паспорт проекта
 - GET    /grants/{id}                     — карточка гранта (+ матч, если задан project_id)
 - POST   /grants/{id}/apply               — сгенерировать заявку из паспорта
+- POST   /grants/{id}/track               — добавить грант на канбан (без LLM)
 - GET    /grants/applications             — мои заявки (/grants/my)
 - GET    /grants/applications/{app_id}    — одна заявка
-- PATCH  /grants/applications/{app_id}    — правка секций/статуса
+- PATCH  /grants/applications/{app_id}    — правка секций/статуса/стадии канбана
 - POST   /grants                          — создать грант (только админ)
 
 Матчинг живёт в grants_service и читает Project.passport. Скоринг
@@ -42,6 +43,9 @@ import grants_service
 logger = logging.getLogger("app")
 
 router = APIRouter(prefix="/grants", tags=["Grants"])
+
+# Стадии воронки CRM «Мои гранты» (канбан). Порядок = порядок колонок.
+CRM_STAGES = ("interested", "preparing", "submitted", "won", "rejected")
 
 
 async def _get_owned_project(project_id: int, user: User, db: AsyncSession) -> Project:
@@ -156,6 +160,10 @@ async def update_application(
         if payload.status not in ("draft", "generated", "submitted"):
             raise HTTPException(status_code=400, detail="Недопустимый статус")
         app.status = payload.status
+    if payload.stage is not None:
+        if payload.stage not in CRM_STAGES:
+            raise HTTPException(status_code=400, detail="Недопустимая стадия")
+        app.stage = payload.stage
     await db.commit()
     await db.refresh(app)
     return GrantApplicationResponse.model_validate(app)
@@ -181,7 +189,11 @@ async def generate_application(
     user: User = Depends(get_async_current_user),
     db: AsyncSession = Depends(get_async_db),
 ) -> GrantApplicationResponse:
-    """Генерирует унифицированную заявку из паспорта проекта под грант."""
+    """Генерирует унифицированную заявку из паспорта проекта под грант.
+
+    Upsert по (user, project, grant): если карточка уже есть на канбане
+    (например, добавлена как «Интересует»), наполняем её содержимым вместо
+    создания дубля и подвигаем стадию interested → preparing."""
     res = await db.execute(select(Grant).where(Grant.id == grant_id))
     grant = res.scalar_one_or_none()
     if not grant:
@@ -194,12 +206,71 @@ async def generate_application(
         project.passport or {}, grant, extra_context=payload.extra_context or ""
     )
 
+    existing = await db.execute(
+        select(GrantApplication).where(
+            GrantApplication.user_id == user.id,
+            GrantApplication.project_id == project.id,
+            GrantApplication.grant_id == grant.id,
+        )
+    )
+    app = existing.scalar_one_or_none()
+    if app is None:
+        app = GrantApplication(
+            user_id=user.id,
+            project_id=project.id,
+            grant_id=grant.id,
+            stage="preparing",
+        )
+        db.add(app)
+    elif app.stage == "interested":
+        app.stage = "preparing"
+    app.status = "generated"
+    app.content = {"sections": result["sections"], "gaps": result["gaps"]}
+    app.match_score = score
+    flag_modified(app, "content")
+    await db.commit()
+    await db.refresh(app)
+    return GrantApplicationResponse.model_validate(app)
+
+
+@router.post("/{grant_id}/track", response_model=GrantApplicationResponse)
+async def track_grant(
+    grant_id: int,
+    payload: GrantApplicationGenerateRequest,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+) -> GrantApplicationResponse:
+    """Добавить грант на канбан «Мои гранты» без генерации заявки (без LLM).
+
+    Создаёт карточку в стадии «Интересует». Идемпотентно по (user, project,
+    grant): повторный вызов возвращает существующую карточку, не плодя дубли —
+    чтобы кнопка «В мои гранты» была безопасна при повторных кликах."""
+    res = await db.execute(select(Grant).where(Grant.id == grant_id))
+    grant = res.scalar_one_or_none()
+    if not grant:
+        raise HTTPException(status_code=404, detail="Грант не найден")
+
+    project = await _get_owned_project(payload.project_id, user, db)
+
+    existing = await db.execute(
+        select(GrantApplication).where(
+            GrantApplication.user_id == user.id,
+            GrantApplication.project_id == project.id,
+            GrantApplication.grant_id == grant.id,
+        )
+    )
+    app = existing.scalar_one_or_none()
+    if app is not None:
+        return GrantApplicationResponse.model_validate(app)
+
+    score, _hard_pass, _reasons = grants_service.match_grant(project.passport or {}, grant)
     app = GrantApplication(
         user_id=user.id,
         project_id=project.id,
         grant_id=grant.id,
-        status="generated",
-        content={"sections": result["sections"], "gaps": result["gaps"]},
+        status="draft",
+        stage="interested",
+        content={},
         match_score=score,
     )
     db.add(app)

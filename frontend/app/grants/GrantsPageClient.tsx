@@ -298,7 +298,7 @@ export function GrantsPageClient() {
     <div className="w-full max-w-6xl mx-auto px-4 md:px-8 pt-24 pb-10 relative z-10">
         <div className="flex items-center justify-end gap-4 mb-8">
           <Link href="/grants/my" className="flex items-center gap-2 text-white/60 hover:text-white text-sm transition-colors">
-            <FileText size={16} /> Мои заявки
+            <FileText size={16} /> Мои гранты
           </Link>
         </div>
 
