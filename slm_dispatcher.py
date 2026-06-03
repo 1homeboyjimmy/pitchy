@@ -163,6 +163,48 @@ class SLMClient:
         clean_passport = passport if isinstance(passport, dict) else {}
         return {"facts": clean_facts[:5], "passport": clean_passport}
 
+    @observe(name="draft_passport_from_idea")
+    async def draft_passport_from_idea(self, idea: str) -> Dict[str, Any]:
+        """Черновик паспорта из короткого описания идеи — для онбординга
+        «2 минуты до матча».
+
+        Возвращает {"name": str, "summary": str, "passport": {flat keys}}.
+        Заполняет только то, что явно следует из описания; не выдумывает
+        метрики и цифры. Все значения паспорта — строки (source=ai на стороне
+        вызывающего, поэтому пользователь сможет их поправить).
+        """
+        system_prompt = (
+            "Ты — аналитик стартапов. По короткому описанию идеи составь ЧЕРНОВИК "
+            "паспорта проекта для подбора грантов. НЕ выдумывай метрики, выручку и "
+            "цифры, которых нет в тексте — заполняй только то, что явно сказано или "
+            "однозначно выводится.\n"
+            "Ключи passport (плоские, значения — строки): core.name, core.problem, "
+            "core.solution, core.target_audience, core.stage, core.business_model, "
+            "core.geo, market.size, legal.entity_type.\n"
+            "core.stage выбери из: идея, прототип, первые продажи, рост. "
+            "core.geo по умолчанию 'Россия', если не указано иное.\n"
+            "Также верни: name — короткое название (2–4 слова); summary — 2–3 "
+            "предложения: что это, сильная сторона и на что обратить внимание при "
+            "подаче на гранты. Всё на русском.\n"
+            "Верни JSON: {\"name\": \"...\", \"summary\": \"...\", "
+            "\"passport\": {\"core.problem\": \"...\"}}"
+        )
+        data = await self._call_json(system_prompt, f"ОПИСАНИЕ ИДЕИ:\n{idea[:3000]}")
+        name = (data.get("name") or "").strip()
+        summary = (data.get("summary") or "").strip()
+        raw = data.get("passport")
+        passport = raw if isinstance(raw, dict) else {}
+        allowed = {
+            "core.name", "core.problem", "core.solution", "core.target_audience",
+            "core.stage", "core.business_model", "core.geo", "market.size",
+            "legal.entity_type",
+        }
+        clean: Dict[str, Any] = {}
+        for k, v in passport.items():
+            if k in allowed and isinstance(v, str) and v.strip():
+                clean[k] = v.strip()[:1000]
+        return {"name": name[:120], "summary": summary[:600], "passport": clean}
+
     @observe(name="generate_chat_title")
     async def generate_chat_title(self, first_message: str) -> str:
         """Generates a concise 2-4 word title for the chat."""

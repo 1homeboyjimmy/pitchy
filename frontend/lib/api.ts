@@ -777,6 +777,16 @@ export async function updateProject(
   return patchAuthJson<Project>(`/projects/${id}`, data, token);
 }
 
+export type OnboardResult = {
+  project: Project;
+  summary: string;
+};
+
+// Онбординг «2 минуты до матча»: описание идеи → папка с черновиком паспорта.
+export async function onboardProject(idea: string, token: string): Promise<OnboardResult> {
+  return postAuthJson<OnboardResult>("/projects/onboard", { idea }, token);
+}
+
 export async function deleteProject(id: number, token: string): Promise<{ status: string }> {
   return request<{ status: string }>(`/projects/${id}`, undefined, token, "DELETE");
 }

@@ -269,6 +269,18 @@ class PassportResponse(BaseModel):
     missing_sections: list[str] = Field(default_factory=list)
 
 
+class ProjectOnboardRequest(BaseModel):
+    """Онбординг «2 минуты до матча»: одно описание идеи на входе."""
+    idea: str = Field(min_length=12, max_length=4000)
+
+
+class ProjectOnboardResponse(BaseModel):
+    """Результат онбординга: созданная папка с черновиком паспорта (source=ai)
+    и короткий разбор идеи. Дальше фронт грузит матч по project.id."""
+    project: ProjectResponse
+    summary: str = ""
+
+
 # ——— Grants (Гранты) Schemas ———
 
 class GrantResponse(BaseModel):

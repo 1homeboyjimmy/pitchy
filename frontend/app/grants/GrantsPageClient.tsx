@@ -4,13 +4,13 @@ import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
-  Banknote, Calendar, Sparkles, Loader, AlertCircle,
-  Clock, ArrowUpRight, FolderOpen, FileText,
+  Banknote, Calendar, Sparkles, Loader,
+  Clock, ArrowUpRight, FolderOpen, FileText, Rocket, ArrowRight,
 } from "lucide-react";
 import { getToken } from "@/lib/auth";
 import { notifyError } from "@/lib/ui";
 import {
-  getProjects, getGrants, matchGrants,
+  getProjects, getGrants, matchGrants, onboardProject,
   type ProjectListItem, type Grant, type GrantMatch,
 } from "@/lib/api";
 
@@ -193,6 +193,10 @@ export function GrantsPageClient() {
   const [matches, setMatches] = useState<GrantMatch[]>([]);
   const [matchLoading, setMatchLoading] = useState(false);
   const [onlyEligible, setOnlyEligible] = useState(false);
+  // Онбординг «2 минуты до матча»: описание идеи → папка с черновиком паспорта.
+  const [idea, setIdea] = useState("");
+  const [onboarding, setOnboarding] = useState(false);
+  const [onboardSummary, setOnboardSummary] = useState<string | null>(null);
 
   useEffect(() => {
     const t = getToken();
@@ -230,6 +234,33 @@ export function GrantsPageClient() {
       .finally(() => { if (!cancelled) setMatchLoading(false); });
     return () => { cancelled = true; };
   }, [token, activeProject, onlyEligible]);
+
+  const handleOnboard = async () => {
+    const t = token || getToken();
+    if (!t || idea.trim().length < 12 || onboarding) return;
+    setOnboarding(true);
+    try {
+      const res = await onboardProject(idea.trim(), t);
+      const p = res.project;
+      const item: ProjectListItem = {
+        id: p.id,
+        name: p.name,
+        readiness_index: p.readiness_index,
+        status: p.status,
+        session_count: 0,
+        updated_at: p.updated_at,
+      };
+      setProjects([item]);
+      setActiveProject(p.id); // запускает эффект автоподбора
+      setOnboardSummary(res.summary || null);
+      setIdea("");
+    } catch (e) {
+      console.error(e);
+      notifyError("Не удалось разобрать идею. Попробуйте ещё раз или создайте папку вручную.");
+    } finally {
+      setOnboarding(false);
+    }
+  };
 
   const openGrants = useMemo(() => grants.filter((g) => g.status === "open"), [grants]);
   const calendar = useMemo(() => {
@@ -285,13 +316,37 @@ export function GrantsPageClient() {
 
         {/* Выбор проекта */}
         {projects.length === 0 ? (
-          <div className="lovable-glass rounded-3xl p-8 mb-10 flex items-start gap-4 border border-amber-500/20">
-            <AlertCircle className="text-amber-400 shrink-0 mt-1" size={22} />
-            <div>
-              <p className="text-white font-medium mb-1">Нужна папка проекта</p>
-              <p className="text-white/50 text-sm leading-relaxed">
-                Подбор грантов работает на основе паспорта проекта. Создайте папку проекта в дашборде и заполните паспорт — тогда мы оценим соответствие каждой программы.
+          <div className="lovable-glass rounded-3xl p-7 md:p-9 mb-10 border border-white/10">
+            <div className="flex items-center gap-2 mb-3 text-white/40">
+              <Rocket size={15} className="text-white/60" />
+              <span className="font-mono text-[10px] uppercase tracking-[0.2em] font-bold">2 минуты до подбора</span>
+            </div>
+            <h2 className="font-display text-2xl text-white mb-2">Опишите идею — подберём гранты</h2>
+            <p className="text-white/50 text-sm leading-relaxed mb-5 max-w-2xl">
+              Расскажите в нескольких предложениях, что вы делаете: какую проблему решаете, для кого и на какой вы стадии. Мы создадим папку проекта, соберём черновик паспорта и сразу покажем подходящие программы. Все поля потом можно поправить.
+            </p>
+            <textarea
+              value={idea}
+              onChange={(e) => setIdea(e.target.value)}
+              rows={4}
+              placeholder="Например: платформа для онлайн-репетиторов с ИИ-проверкой домашних заданий. Помогаем школьникам 5–9 классов, экономим время преподавателям. Есть прототип и первые 200 пользователей…"
+              className="w-full bg-white/[0.03] rounded-2xl p-4 text-white text-sm border border-white/10 focus:border-white/30 outline-none resize-none placeholder:text-white/25 leading-relaxed"
+            />
+            <div className="flex items-center justify-between gap-4 mt-4 flex-wrap">
+              <p className="text-white/30 text-xs">
+                Уже есть папка? <Link href="/dashboard" className="text-white/60 hover:text-white underline underline-offset-2">Открыть дашборд</Link>
               </p>
+              <button
+                onClick={handleOnboard}
+                disabled={onboarding || idea.trim().length < 12}
+                className="bg-white text-black font-semibold text-sm px-6 py-3 rounded-full hover:bg-neutral-200 transition-all flex items-center gap-2 disabled:opacity-40"
+              >
+                {onboarding ? (
+                  <><Loader className="animate-spin" size={16} /> Разбираем идею…</>
+                ) : (
+                  <><Sparkles size={16} /> Подобрать гранты</>
+                )}
+              </button>
             </div>
           </div>
         ) : (
@@ -319,6 +374,25 @@ export function GrantsPageClient() {
               ))}
             </div>
           </div>
+        )}
+
+        {/* Мгновенный разбор идеи после онбординга */}
+        {onboardSummary && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, ease: EASE }}
+            className="lovable-glass rounded-2xl p-6 mb-10 border border-violet-500/20"
+          >
+            <div className="flex items-center gap-2 mb-2.5 text-violet-300/70">
+              <Sparkles size={15} />
+              <span className="font-mono text-[10px] uppercase tracking-[0.2em] font-bold">Разбор вашей идеи</span>
+            </div>
+            <p className="text-white/70 text-sm leading-relaxed">{onboardSummary}</p>
+            <p className="text-white/30 text-xs mt-3 flex items-center gap-1.5">
+              <ArrowRight size={12} /> Черновик паспорта собран, ниже — подобранные программы. Уточните детали в паспорте проекта, чтобы повысить точность.
+            </p>
+          </motion.div>
         )}
 
         {/* Верхний блок: слева — текущие программы, справа — календарь */}

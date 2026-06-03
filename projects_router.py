@@ -32,6 +32,8 @@ from schemas import (
     ProjectListItemResponse,
     PassportPatchRequest,
     PassportResponse,
+    ProjectOnboardRequest,
+    ProjectOnboardResponse,
     ChatSessionResponse,
 )
 import passport as passport_lib
@@ -83,6 +85,49 @@ async def create_project(
             await db.commit()
 
     return ProjectResponse.model_validate(project)
+
+
+@router.post("/onboard", response_model=ProjectOnboardResponse)
+async def onboard_project(
+    payload: ProjectOnboardRequest,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+) -> ProjectOnboardResponse:
+    """Онбординг «2 минуты до матча»: из описания идеи создаём папку с
+    черновиком паспорта (source=ai) и возвращаем короткий разбор. Дальше
+    фронт грузит подбор грантов по project.id.
+
+    Паспорт помечается source=ai — пользователь свободно правит его в
+    мастере/модалке, и эти правки уже не перезатираются автоматикой.
+    """
+    from slm_dispatcher import slm_dispatcher
+
+    idea = (payload.idea or "").strip()
+    try:
+        draft = await slm_dispatcher.draft_passport_from_idea(idea)
+    except Exception as e:  # noqa: BLE001 — SLM недоступен: не валим онбординг
+        logger.warning("onboard draft failed: %s", e)
+        draft = {}
+
+    flat = draft.get("passport") or {}
+    passport = passport_lib.merge_patch({}, flat, source="ai") if flat else {}
+    name = (draft.get("name") or "").strip() or "Мой проект"
+
+    project = Project(
+        user_id=user.id,
+        name=name[:120],
+        passport=passport,
+        readiness_index=passport_lib.compute_readiness(passport),
+        passport_updated_at=datetime.utcnow() if passport else None,
+    )
+    db.add(project)
+    await db.commit()
+    await db.refresh(project)
+
+    return ProjectOnboardResponse(
+        project=ProjectResponse.model_validate(project),
+        summary=draft.get("summary") or "",
+    )
 
 
 @router.get("", response_model=list[ProjectListItemResponse])
