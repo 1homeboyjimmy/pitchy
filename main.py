@@ -344,6 +344,12 @@ async def lifespan(app: FastAPI):
     from subscription_notices import run_subscription_notices_loop
     asyncio.create_task(run_subscription_notices_loop())
 
+    # Авто-обнаружение грантов (#20): раз в сутки обходим включённые источники
+    # (админ добавляет их в админке) и кладём найденное в очередь модерации.
+    # Цикл на asyncio (как subscription_notices), без новых зависимостей.
+    from grants_autodiscover import run_autodiscovery_loop
+    asyncio.create_task(run_autodiscovery_loop())
+
     yield
     # Shutdown logic
     try:

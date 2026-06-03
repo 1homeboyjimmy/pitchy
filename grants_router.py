@@ -11,6 +11,13 @@ REST API:
 - GET    /grants/applications/{app_id}    — одна заявка
 - PATCH  /grants/applications/{app_id}    — правка секций/статуса/стадии канбана
 - POST   /grants                          — создать грант (только админ)
+- GET    /grants/sources                  — источники авто-парсера (админ)
+- POST   /grants/sources                  — добавить источник (админ)
+- PATCH  /grants/sources/{id}             — править источник (админ)
+- DELETE /grants/sources/{id}             — удалить источник (админ)
+- POST   /grants/sources/{id}/crawl       — обойти источник сейчас (админ)
+- GET    /grants/moderation               — очередь модерации (админ)
+- POST   /grants/{id}/moderate            — одобрить/отклонить грант (админ)
 
 Матчинг живёт в grants_service и читает Project.passport. Скоринг
 детерминированный; grant_match_cache зарезервирован под будущее
@@ -18,6 +25,7 @@ REST API:
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime
 
@@ -28,7 +36,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from auth import get_async_current_user
 from db_async import get_async_db
-from models import User, Project, Grant, GrantApplication
+from models import User, Project, Grant, GrantApplication, GrantSource
 from schemas import (
     GrantResponse,
     GrantMatchResponse,
@@ -37,8 +45,13 @@ from schemas import (
     GrantApplicationGenerateRequest,
     GrantApplicationResponse,
     GrantApplicationUpdateRequest,
+    GrantSourceResponse,
+    GrantSourceCreateRequest,
+    GrantSourceUpdateRequest,
+    GrantModerateRequest,
 )
 import grants_service
+import grants_autodiscover
 
 logger = logging.getLogger("app")
 
@@ -46,6 +59,14 @@ router = APIRouter(prefix="/grants", tags=["Grants"])
 
 # Стадии воронки CRM «Мои гранты» (канбан). Порядок = порядок колонок.
 CRM_STAGES = ("interested", "preparing", "submitted", "won", "rejected")
+
+# Типы источников авто-обнаружения грантов.
+SOURCE_KINDS = ("listing", "page")
+
+
+def _require_admin(user: User) -> None:
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Только для администратора")
 
 
 async def _get_owned_project(project_id: int, user: User, db: AsyncSession) -> Project:
@@ -65,7 +86,8 @@ async def list_grants(
     db: AsyncSession = Depends(get_async_db),
 ) -> list[GrantResponse]:
     """Каталог грантов для календаря и блока «сейчас идёт»."""
-    q = select(Grant)
+    # Публичный каталог показывает только одобренные модерацией гранты.
+    q = select(Grant).where(Grant.moderation == "approved")
     if status:
         q = q.where(Grant.status == status)
     q = q.order_by(Grant.deadline.is_(None), Grant.deadline.asc()).limit(200)
@@ -85,7 +107,9 @@ async def match_grants(
     """Автоподбор грантов под паспорт проекта."""
     project = await _get_owned_project(project_id, user, db)
 
-    q = select(Grant)
+    # Автоподбор работает только по одобренным грантам (немодерированные
+    # программы не должны попадать в матч паспорта).
+    q = select(Grant).where(Grant.moderation == "approved")
     if not include_closed:
         q = q.where(Grant.status != "closed")
     res = await db.execute(q)
@@ -103,6 +127,126 @@ async def match_grants(
             reasons=item["reasons"],
         ))
     return out
+
+
+# ---------------------------------------------------------------------------
+# Авто-обнаружение грантов: источники + очередь модерации (только админ).
+# Литеральные пути объявлены ВЫШЕ /{grant_id}, иначе FastAPI попытается
+# разобрать "sources"/"moderation" как int grant_id и вернёт 422.
+# ---------------------------------------------------------------------------
+
+@router.get("/sources", response_model=list[GrantSourceResponse])
+async def list_sources(
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+) -> list[GrantSourceResponse]:
+    """Список источников авто-парсера. Только админ."""
+    _require_admin(user)
+    res = await db.execute(select(GrantSource).order_by(GrantSource.created_at.desc()))
+    return [GrantSourceResponse.model_validate(s) for s in res.scalars().all()]
+
+
+@router.post("/sources", response_model=GrantSourceResponse)
+async def create_source(
+    payload: GrantSourceCreateRequest,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+) -> GrantSourceResponse:
+    """Добавить источник для авто-парсера. Только админ."""
+    _require_admin(user)
+    kind = payload.kind if payload.kind in SOURCE_KINDS else "listing"
+    src = GrantSource(
+        name=payload.name.strip(),
+        url=payload.url.strip(),
+        kind=kind,
+        max_items=payload.max_items,
+    )
+    db.add(src)
+    await db.commit()
+    await db.refresh(src)
+    return GrantSourceResponse.model_validate(src)
+
+
+@router.patch("/sources/{source_id}", response_model=GrantSourceResponse)
+async def update_source(
+    source_id: int,
+    payload: GrantSourceUpdateRequest,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+) -> GrantSourceResponse:
+    """Правка источника: вкл/выкл, имя, url, тип, лимит. Только админ."""
+    _require_admin(user)
+    res = await db.execute(select(GrantSource).where(GrantSource.id == source_id))
+    src = res.scalar_one_or_none()
+    if not src:
+        raise HTTPException(status_code=404, detail="Источник не найден")
+    if payload.name is not None:
+        src.name = payload.name.strip()
+    if payload.url is not None:
+        src.url = payload.url.strip()
+    if payload.kind is not None:
+        if payload.kind not in SOURCE_KINDS:
+            raise HTTPException(status_code=400, detail="Тип источника: listing | page")
+        src.kind = payload.kind
+    if payload.enabled is not None:
+        src.enabled = payload.enabled
+    if payload.max_items is not None:
+        src.max_items = payload.max_items
+    await db.commit()
+    await db.refresh(src)
+    return GrantSourceResponse.model_validate(src)
+
+
+@router.delete("/sources/{source_id}")
+async def delete_source(
+    source_id: int,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+) -> dict:
+    """Удалить источник. Найденные им гранты остаются (source_id → NULL). Только админ."""
+    _require_admin(user)
+    res = await db.execute(select(GrantSource).where(GrantSource.id == source_id))
+    src = res.scalar_one_or_none()
+    if not src:
+        raise HTTPException(status_code=404, detail="Источник не найден")
+    await db.delete(src)
+    await db.commit()
+    return {"ok": True}
+
+
+@router.post("/sources/{source_id}/crawl")
+async def crawl_source_now(
+    source_id: int,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+) -> dict:
+    """Запустить обход источника прямо сейчас (в фоне). Только админ.
+
+    Возвращает сразу: парсинг идёт фоном (asyncio.create_task), чтобы не
+    держать HTTP-запрос на десятках LLM-вызовов. Результат — в last_status."""
+    _require_admin(user)
+    res = await db.execute(select(GrantSource).where(GrantSource.id == source_id))
+    src = res.scalar_one_or_none()
+    if not src:
+        raise HTTPException(status_code=404, detail="Источник не найден")
+    asyncio.create_task(grants_autodiscover.crawl_source_by_id(source_id))
+    return {"status": "started", "detail": "Обход запущен в фоне. Обновите список через минуту."}
+
+
+@router.get("/moderation", response_model=list[GrantResponse])
+async def moderation_queue(
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+) -> list[GrantResponse]:
+    """Очередь модерации: гранты, найденные краулером (pending). Только админ."""
+    _require_admin(user)
+    res = await db.execute(
+        select(Grant)
+        .where(Grant.moderation == "pending")
+        .order_by(Grant.created_at.desc())
+        .limit(200)
+    )
+    return [GrantResponse.model_validate(g) for g in res.scalars().all()]
 
 
 @router.get("/applications", response_model=list[GrantApplicationResponse])
@@ -178,6 +322,10 @@ async def get_grant(
     res = await db.execute(select(Grant).where(Grant.id == grant_id))
     grant = res.scalar_one_or_none()
     if not grant:
+        raise HTTPException(status_code=404, detail="Грант не найден")
+    # Непубличные (pending/rejected) видны только админу — прямой переход по
+    # id не должен раскрывать немодерированные программы обычным пользователям.
+    if grant.moderation != "approved" and not user.is_admin:
         raise HTTPException(status_code=404, detail="Грант не найден")
     return GrantResponse.model_validate(grant)
 
@@ -277,6 +425,34 @@ async def track_grant(
     await db.commit()
     await db.refresh(app)
     return GrantApplicationResponse.model_validate(app)
+
+
+@router.post("/{grant_id}/moderate", response_model=GrantResponse)
+async def moderate_grant(
+    grant_id: int,
+    payload: GrantModerateRequest,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+) -> GrantResponse:
+    """Одобрить/отклонить найденный краулером грант. Только админ.
+
+    approve → moderation='approved' (попадает в каталог и матч);
+    reject  → moderation='rejected' (скрыт; дедуп по url не вернёт его снова)."""
+    _require_admin(user)
+    res = await db.execute(select(Grant).where(Grant.id == grant_id))
+    grant = res.scalar_one_or_none()
+    if not grant:
+        raise HTTPException(status_code=404, detail="Грант не найден")
+    action = (payload.action or "").strip().lower()
+    if action == "approve":
+        grant.moderation = "approved"
+    elif action == "reject":
+        grant.moderation = "rejected"
+    else:
+        raise HTTPException(status_code=400, detail="Действие: approve | reject")
+    await db.commit()
+    await db.refresh(grant)
+    return GrantResponse.model_validate(grant)
 
 
 @router.post("", response_model=GrantResponse)

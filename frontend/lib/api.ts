@@ -834,6 +834,8 @@ export type Grant = {
   opens_at: string | null;
   deadline: string | null;
   status: "open" | "upcoming" | "closed";
+  // Статус модерации авто-обнаруженных грантов (для админ-очереди).
+  moderation?: "approved" | "pending" | "rejected";
 };
 
 export type GrantMatch = {
@@ -953,4 +955,71 @@ export async function trackGrant(
     { project_id: projectId },
     token
   );
+}
+
+// ---- Авто-обнаружение грантов: источники + модерация (только админ) ----
+
+// Источник авто-парсера: официальная страница/каталог, который краулер
+// обходит раз в сутки. kind: listing — страница со списком программ,
+// page — одна страница одной программы.
+export type GrantSource = {
+  id: number;
+  name: string;
+  url: string;
+  kind: "listing" | "page";
+  enabled: boolean;
+  max_items: number;
+  last_crawled_at: string | null;
+  last_status: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export async function getGrantSources(token: string): Promise<GrantSource[]> {
+  return getAuthJson<GrantSource[]>(`/grants/sources`, token);
+}
+
+export async function createGrantSource(
+  data: { name: string; url: string; kind?: "listing" | "page"; max_items?: number },
+  token: string
+): Promise<GrantSource> {
+  return postAuthJson<GrantSource>(`/grants/sources`, data, token);
+}
+
+export async function updateGrantSource(
+  sourceId: number,
+  data: { name?: string; url?: string; kind?: "listing" | "page"; enabled?: boolean; max_items?: number },
+  token: string
+): Promise<GrantSource> {
+  return patchAuthJson<GrantSource>(`/grants/sources/${sourceId}`, data, token);
+}
+
+export async function deleteGrantSource(sourceId: number, token: string): Promise<void> {
+  await deleteAuth(`/grants/sources/${sourceId}`, token);
+}
+
+// Запустить обход источника сейчас (парсинг идёт в фоне на бэкенде).
+export async function crawlGrantSource(
+  sourceId: number,
+  token: string
+): Promise<{ status: string; detail: string }> {
+  return postAuthJson<{ status: string; detail: string }>(
+    `/grants/sources/${sourceId}/crawl`,
+    {},
+    token
+  );
+}
+
+// Очередь модерации: гранты, найденные краулером (moderation = pending).
+export async function getGrantModerationQueue(token: string): Promise<Grant[]> {
+  return getAuthJson<Grant[]>(`/grants/moderation`, token);
+}
+
+// Решение модерации: approve — в каталог, reject — скрыть.
+export async function moderateGrant(
+  grantId: number,
+  action: "approve" | "reject",
+  token: string
+): Promise<Grant> {
+  return postAuthJson<Grant>(`/grants/${grantId}/moderate`, { action }, token);
 }

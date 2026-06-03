@@ -300,6 +300,7 @@ class GrantResponse(BaseModel):
     opens_at: datetime | None = None
     deadline: datetime | None = None
     status: str = "open"
+    moderation: str = "approved"
 
     class Config:
         from_attributes = True
@@ -335,6 +336,43 @@ class GrantCreateRequest(BaseModel):
 class GrantExtractRequest(BaseModel):
     """Извлечение черновика гранта по ссылке (админ-парсер)."""
     url: str = Field(..., min_length=4)
+
+
+class GrantSourceResponse(BaseModel):
+    """Источник авто-обнаружения грантов (для админки)."""
+    id: int
+    name: str
+    url: str
+    kind: str = "listing"
+    enabled: bool = True
+    max_items: int = 6
+    last_crawled_at: datetime | None = None
+    last_status: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class GrantSourceCreateRequest(BaseModel):
+    name: str = Field(..., min_length=2, max_length=200)
+    url: str = Field(..., min_length=4)
+    kind: str = "listing"  # listing | page
+    max_items: int = Field(6, ge=1, le=30)
+
+
+class GrantSourceUpdateRequest(BaseModel):
+    name: str | None = Field(None, min_length=2, max_length=200)
+    url: str | None = Field(None, min_length=4)
+    kind: str | None = None
+    enabled: bool | None = None
+    max_items: int | None = Field(None, ge=1, le=30)
+
+
+class GrantModerateRequest(BaseModel):
+    """Решение модерации по найденному гранту."""
+    action: str  # approve | reject
 
 
 class GrantApplicationGenerateRequest(BaseModel):

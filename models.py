@@ -305,6 +305,12 @@ class Grant(Base):
     deadline: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(30), default="open")  # open, upcoming, closed
     source: Mapped[str] = mapped_column(String(50), default="manual")  # manual, parsed
+    # Модерация авто-обнаруженных грантов: approved (виден в каталоге),
+    # pending (в очереди на проверку), rejected (скрыт). Ручные/старые гранты —
+    # approved по умолчанию (server_default в миграции), поэтому не пропадают.
+    moderation: Mapped[str] = mapped_column(String(20), default="approved", server_default="approved", index=True)
+    # Источник авто-обнаружения, если грант найден краулером (provenance, nullable).
+    source_id: Mapped[int | None] = mapped_column(ForeignKey("grant_sources.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -348,6 +354,30 @@ class GrantMatchCache(Base):
     hard_pass: Mapped[bool] = mapped_column(Boolean, default=False)
     reasons: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # {"matched": [...], "missing": [...]}
     computed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class GrantSource(Base):
+    """Источник для авто-обнаружения грантов (#20).
+
+    Админ добавляет официальные страницы/каталоги программ в админке.
+    Фоновый обходчик раз в сутки парсит включённые источники и кладёт
+    найденные программы в очередь модерации (Grant.moderation='pending').
+    """
+    __tablename__ = "grant_sources"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    url: Mapped[str] = mapped_column(Text)
+    # listing — страница со списком программ (обходим ссылки внутри);
+    # page — одна страница одной программы (парсим как есть).
+    kind: Mapped[str] = mapped_column(String(20), default="listing", server_default="listing")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Максимум программ за один проход — защита от взрывного парсинга.
+    max_items: Mapped[int] = mapped_column(Integer, default=6, server_default="6")
+    last_crawled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_status: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class AdminAuditLog(Base):

@@ -1,13 +1,17 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import dayjs from "dayjs";
-import { Users, Tag, BarChart2, Plus, Trash2, Shield, Loader, CreditCard, Award, Link as LinkIcon } from "react-feather";
+import { Users, Tag, BarChart2, Plus, Trash2, Shield, Loader, CreditCard, Award, Link as LinkIcon, RefreshCw, Power, Clock, Check, X } from "react-feather";
 import { Button, GlassCard } from "@/components/shared";
 import { getToken } from "@/lib/auth";
 import { AreaChart } from "@mantine/charts";
 import { notifyError, notifySuccess, confirmAction } from "@/lib/ui";
 import { adminDate } from "@/lib/utils";
-import { getGrants, extractGrantFromUrl, createGrant, type Grant, type GrantDraft } from "@/lib/api";
+import {
+    getGrants, extractGrantFromUrl, createGrant, type Grant, type GrantDraft,
+    getGrantSources, createGrantSource, updateGrantSource, deleteGrantSource,
+    crawlGrantSource, getGrantModerationQueue, moderateGrant, type GrantSource,
+} from "@/lib/api";
 
 // Temporary Types mapping what API returns
 type PromoCode = {
@@ -1308,10 +1312,314 @@ export function AdminView() {
                                     )}
                                 </div>
                             </div>
+
+                            {/* Авто-обнаружение: источники краулера + очередь модерации */}
+                            <SourcesPanel />
+                            <ModerationPanel />
                         </div>
                     )}
                 </motion.div>
             )}
+        </div>
+    );
+}
+
+// ---- Авто-обнаружение грантов: панель источников краулера (только админ) ----
+function SourcesPanel() {
+    const [sources, setSources] = useState<GrantSource[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [name, setName] = useState("");
+    const [url, setUrl] = useState("");
+    const [kind, setKind] = useState<"listing" | "page">("listing");
+    const [maxItems, setMaxItems] = useState(6);
+    const [saving, setSaving] = useState(false);
+    const [busyId, setBusyId] = useState<number | null>(null);
+
+    useEffect(() => {
+        const token = getToken();
+        if (!token) return;
+        getGrantSources(token)
+            .then(setSources)
+            .catch((e) => notifyError(e instanceof Error ? e.message : "Не удалось загрузить источники"))
+            .finally(() => setLoading(false));
+    }, []);
+
+    const handleAdd = async () => {
+        const token = getToken();
+        if (!token) return;
+        if (name.trim().length < 2 || url.trim().length < 4) {
+            notifyError("Укажите название и ссылку источника");
+            return;
+        }
+        setSaving(true);
+        try {
+            const created = await createGrantSource(
+                { name: name.trim(), url: url.trim(), kind, max_items: maxItems },
+                token
+            );
+            setSources((prev) => [created, ...prev]);
+            setName("");
+            setUrl("");
+            setKind("listing");
+            setMaxItems(6);
+            notifySuccess("Источник добавлен");
+        } catch (e) {
+            notifyError(e instanceof Error ? e.message : "Не удалось добавить источник");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const toggleEnabled = async (s: GrantSource) => {
+        const token = getToken();
+        if (!token) return;
+        setBusyId(s.id);
+        try {
+            const upd = await updateGrantSource(s.id, { enabled: !s.enabled }, token);
+            setSources((prev) => prev.map((x) => (x.id === s.id ? upd : x)));
+        } catch (e) {
+            notifyError(e instanceof Error ? e.message : "Не удалось обновить источник");
+        } finally {
+            setBusyId(null);
+        }
+    };
+
+    const handleCrawl = async (s: GrantSource) => {
+        const token = getToken();
+        if (!token) return;
+        setBusyId(s.id);
+        try {
+            const r = await crawlGrantSource(s.id, token);
+            notifySuccess(r.detail || "Обход запущен");
+        } catch (e) {
+            notifyError(e instanceof Error ? e.message : "Не удалось запустить обход");
+        } finally {
+            setBusyId(null);
+        }
+    };
+
+    const handleDelete = async (s: GrantSource) => {
+        const token = getToken();
+        if (!token) return;
+        const ok = await confirmAction({
+            title: "Удалить источник?",
+            message: `Источник «${s.name}» больше не будет обходиться. Уже найденные гранты останутся.`,
+            confirmLabel: "Удалить",
+            danger: true,
+        });
+        if (!ok) return;
+        setBusyId(s.id);
+        try {
+            await deleteGrantSource(s.id, token);
+            setSources((prev) => prev.filter((x) => x.id !== s.id));
+            notifySuccess("Источник удалён");
+        } catch (e) {
+            notifyError(e instanceof Error ? e.message : "Не удалось удалить источник");
+        } finally {
+            setBusyId(null);
+        }
+    };
+
+    return (
+        <div className="p-6 bg-[#111111] border border-white/10">
+            <h3 className="text-lg font-display font-bold text-white uppercase tracking-tight mb-1">Источники авто-парсера</h3>
+            <p className="text-white/40 text-[12px] font-code mb-4">
+                Краулер раз в сутки обходит включённые источники, найденные программы попадают в очередь модерации ниже.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                <input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Название (напр. Фонд содействия инновациям)"
+                    className="px-3 py-2 bg-black border border-white/10 text-white text-[13px] font-code placeholder:text-white/25 focus:border-white/30 outline-none"
+                />
+                <input
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                    placeholder="https://… ссылка на каталог или страницу"
+                    className="px-3 py-2 bg-black border border-white/10 text-white text-[13px] font-code placeholder:text-white/25 focus:border-white/30 outline-none"
+                />
+            </div>
+            <div className="flex flex-wrap items-center gap-3 mb-4">
+                <select
+                    value={kind}
+                    onChange={(e) => setKind(e.target.value as "listing" | "page")}
+                    className="px-3 py-2 bg-black border border-white/10 text-white text-[13px] font-code outline-none focus:border-white/30"
+                >
+                    <option value="listing" className="bg-neutral-900">Каталог (список программ)</option>
+                    <option value="page" className="bg-neutral-900">Одна страница (одна программа)</option>
+                </select>
+                <label className="flex items-center gap-2 text-white/40 text-[12px] font-code">
+                    макс. программ
+                    <input
+                        type="number"
+                        min={1}
+                        max={30}
+                        value={maxItems}
+                        onChange={(e) => setMaxItems(Math.max(1, Math.min(30, Number(e.target.value) || 1)))}
+                        className="w-20 px-2 py-2 bg-black border border-white/10 text-white text-[13px] font-code outline-none focus:border-white/30"
+                    />
+                </label>
+                <Button onClick={handleAdd} disabled={saving} className="ml-auto">
+                    {saving ? <Loader size={14} className="animate-spin" /> : <Plus size={14} />}
+                    Добавить
+                </Button>
+            </div>
+
+            <div className="space-y-2">
+                {loading && <div className="py-6 text-center text-white/30 font-code">Загрузка…</div>}
+                {!loading && sources.length === 0 && (
+                    <div className="py-6 text-center text-white/30 font-code">Источники ещё не добавлены</div>
+                )}
+                {sources.map((s) => (
+                    <div key={s.id} className="flex items-center gap-3 p-3 bg-black border border-white/10">
+                        <span
+                            className={`w-2 h-2 rounded-full shrink-0 ${s.enabled ? "bg-emerald-400" : "bg-white/20"}`}
+                            title={s.enabled ? "Включён" : "Выключен"}
+                        />
+                        <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                                <span className="text-white text-[13px] font-medium truncate">{s.name}</span>
+                                <span className="px-1.5 py-0.5 text-[9px] font-mono-label uppercase tracking-widest border border-white/15 text-white/40 shrink-0">
+                                    {s.kind === "page" ? "страница" : "каталог"}
+                                </span>
+                                <span className="text-white/30 text-[10px] font-code shrink-0">≤{s.max_items}</span>
+                            </div>
+                            <div className="text-white/40 text-[11px] font-code truncate">{s.url}</div>
+                            {s.last_status && (
+                                <div className="text-white/30 text-[11px] font-code truncate mt-0.5">{s.last_status}</div>
+                            )}
+                            {s.last_crawled_at && (
+                                <div className="flex items-center gap-1 text-white/25 text-[10px] font-code mt-0.5">
+                                    <Clock size={10} /> {adminDate(s.last_crawled_at)?.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) ?? "—"}
+                                </div>
+                            )}
+                        </div>
+                        <button
+                            onClick={() => handleCrawl(s)}
+                            disabled={busyId === s.id}
+                            title="Обойти сейчас"
+                            className="p-2 text-white/50 hover:text-white hover:bg-white/5 transition disabled:opacity-40"
+                        >
+                            <RefreshCw size={15} className={busyId === s.id ? "animate-spin" : ""} />
+                        </button>
+                        <button
+                            onClick={() => toggleEnabled(s)}
+                            disabled={busyId === s.id}
+                            title={s.enabled ? "Выключить" : "Включить"}
+                            className={`p-2 hover:bg-white/5 transition disabled:opacity-40 ${s.enabled ? "text-emerald-300/70 hover:text-emerald-300" : "text-white/30 hover:text-white/60"}`}
+                        >
+                            <Power size={15} />
+                        </button>
+                        <button
+                            onClick={() => handleDelete(s)}
+                            disabled={busyId === s.id}
+                            title="Удалить"
+                            className="p-2 text-white/40 hover:text-red-400 hover:bg-white/5 transition disabled:opacity-40"
+                        >
+                            <Trash2 size={15} />
+                        </button>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+// ---- Авто-обнаружение грантов: очередь модерации найденных программ ----
+function ModerationPanel() {
+    const [queue, setQueue] = useState<Grant[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [busyId, setBusyId] = useState<number | null>(null);
+
+    useEffect(() => {
+        const token = getToken();
+        if (!token) return;
+        getGrantModerationQueue(token)
+            .then(setQueue)
+            .catch((e) => notifyError(e instanceof Error ? e.message : "Не удалось загрузить очередь"))
+            .finally(() => setLoading(false));
+    }, []);
+
+    const decide = async (g: Grant, action: "approve" | "reject") => {
+        const token = getToken();
+        if (!token) return;
+        setBusyId(g.id);
+        try {
+            await moderateGrant(g.id, action, token);
+            setQueue((prev) => prev.filter((x) => x.id !== g.id));
+            notifySuccess(action === "approve" ? "Грант одобрен и опубликован" : "Грант отклонён");
+        } catch (e) {
+            notifyError(e instanceof Error ? e.message : "Не удалось обновить статус");
+        } finally {
+            setBusyId(null);
+        }
+    };
+
+    return (
+        <div className="p-6 bg-[#111111] border border-white/10">
+            <div className="flex items-center gap-2 mb-1">
+                <h3 className="text-lg font-display font-bold text-white uppercase tracking-tight">Очередь модерации</h3>
+                {queue.length > 0 && (
+                    <span className="px-2 py-0.5 text-[10px] font-mono-label uppercase tracking-widest border border-amber-400/40 text-amber-300">
+                        {queue.length}
+                    </span>
+                )}
+            </div>
+            <p className="text-white/40 text-[12px] font-code mb-4">
+                Программы, найденные краулером. Одобренные попадают в публичный каталог, отклонённые больше не предлагаются.
+            </p>
+
+            <div className="space-y-2">
+                {loading && <div className="py-6 text-center text-white/30 font-code">Загрузка…</div>}
+                {!loading && queue.length === 0 && (
+                    <div className="py-6 text-center text-white/30 font-code">Очередь пуста</div>
+                )}
+                {queue.map((g) => (
+                    <div key={g.id} className="flex items-start gap-3 p-3 bg-black border border-white/10">
+                        {g.logo_url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={g.logo_url} alt="" className="w-9 h-9 rounded bg-white shrink-0 object-contain" />
+                        ) : (
+                            <div className="w-9 h-9 rounded bg-white/10 shrink-0 flex items-center justify-center text-white/40 font-bold text-[13px]">{(g.name || "?").slice(0, 1)}</div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                            <div className="text-white text-[13px] font-medium truncate">{g.name}</div>
+                            <div className="text-white/40 text-[11px] font-code truncate">{g.organization || "—"}</div>
+                            {g.description && (
+                                <div className="text-white/50 text-[12px] mt-1 line-clamp-2">{g.description}</div>
+                            )}
+                            {g.url && (
+                                <a
+                                    href={g.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1 text-white/40 hover:text-white text-[11px] font-code mt-1 max-w-full truncate"
+                                >
+                                    <LinkIcon size={11} className="shrink-0" /> <span className="truncate">{g.url}</span>
+                                </a>
+                            )}
+                        </div>
+                        <button
+                            onClick={() => decide(g, "approve")}
+                            disabled={busyId === g.id}
+                            title="Одобрить"
+                            className="p-2 text-emerald-300/70 hover:text-emerald-300 hover:bg-white/5 transition disabled:opacity-40"
+                        >
+                            <Check size={16} />
+                        </button>
+                        <button
+                            onClick={() => decide(g, "reject")}
+                            disabled={busyId === g.id}
+                            title="Отклонить"
+                            className="p-2 text-white/40 hover:text-red-400 hover:bg-white/5 transition disabled:opacity-40"
+                        >
+                            <X size={16} />
+                        </button>
+                    </div>
+                ))}
+            </div>
         </div>
     );
 }
