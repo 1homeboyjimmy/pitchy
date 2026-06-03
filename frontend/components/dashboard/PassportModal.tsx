@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useMounted } from "@mantine/hooks";
-import { X, Loader, Plus, Save, Hand, Sparkles, Award, Gauge, Wand2, ChevronLeft, ChevronRight, Check, SkipForward } from "lucide-react";
+import { X, Loader, Plus, Save, Hand, Sparkles, Award, Gauge, Wand2, ChevronLeft, ChevronRight, Check, SkipForward, FileDown } from "lucide-react";
 import { getPassport, patchPassport, type PassportData } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import { notifyError, notifySuccess } from "@/lib/ui";
@@ -244,9 +244,18 @@ export function PassportModal({ projectId, projectName, onClose, onSaved }: Prop
         <div className="px-6 py-5 border-b border-white/10">
           <div className="flex items-start justify-between gap-4">
             <h2 className="font-display text-xl text-white truncate min-w-0">Паспорт · {projectName}</h2>
-            <button onClick={onClose} className="shrink-0 text-white/40 hover:text-white p-2 -mr-2 rounded-xl hover:bg-white/5 transition-all">
-              <X size={18} />
-            </button>
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                onClick={() => window.open(`/passport/${projectId}`, "_blank", "noopener")}
+                className="flex items-center gap-1.5 text-white/50 hover:text-white text-xs px-2.5 py-2 rounded-xl hover:bg-white/5 transition-all"
+                title="Одностраничник для печати / сохранения в PDF"
+              >
+                <FileDown size={15} /> PDF
+              </button>
+              <button onClick={onClose} className="text-white/40 hover:text-white p-2 -mr-2 rounded-xl hover:bg-white/5 transition-all">
+                <X size={18} />
+              </button>
+            </div>
           </div>
           {/* Живая шкала готовности */}
           <div className="mt-3">
