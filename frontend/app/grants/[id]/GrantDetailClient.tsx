@@ -10,8 +10,8 @@ import {
 import { getToken } from "@/lib/auth";
 import { notifyError } from "@/lib/ui";
 import {
-  getGrant, getProjects, generateGrantApplication,
-  type Grant, type ProjectListItem, type GrantApplication,
+  getGrant, getProjects, generateGrantApplication, matchGrants,
+  type Grant, type ProjectListItem, type GrantApplication, type GrantMatch,
 } from "@/lib/api";
 
 const SECTION_LABELS: Record<string, string> = {
@@ -54,6 +54,7 @@ export function GrantDetailClient() {
   const [extra, setExtra] = useState("");
   const [generating, setGenerating] = useState(false);
   const [result, setResult] = useState<GrantApplication | null>(null);
+  const [match, setMatch] = useState<GrantMatch | null>(null);
 
   useEffect(() => {
     const t = getToken();
@@ -73,6 +74,18 @@ export function GrantDetailClient() {
       }
     })();
   }, [grantId]);
+
+  // Объяснение матча: подтягиваем оценку этого гранта под выбранный проект.
+  useEffect(() => {
+    if (!token || projectId == null) { setMatch(null); return; }
+    let cancelled = false;
+    matchGrants(projectId, token)
+      .then((list) => {
+        if (!cancelled) setMatch(list.find((m) => m.grant.id === grantId) ?? null);
+      })
+      .catch((e) => console.error(e));
+    return () => { cancelled = true; };
+  }, [token, projectId, grantId]);
 
   const handleGenerate = async () => {
     if (!token || projectId == null) return;
@@ -172,6 +185,45 @@ export function GrantDetailClient() {
             </a>
           )}
         </div>
+
+        {/* Насколько подходит вам (объяснение матча под выбранный проект) */}
+        {match && (
+          <div className="lovable-glass rounded-2xl p-6 border border-emerald-500/15 mb-8">
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <h3 className="font-display text-lg text-white">Насколько подходит вам</h3>
+              <div className="flex items-baseline gap-1.5">
+                <span className={`font-mono font-bold text-2xl tabular-nums ${match.score >= 70 ? "text-emerald-300" : match.score >= 40 ? "text-amber-300" : "text-white/50"}`}>{match.score}</span>
+                <span className="text-white/30 text-xs">/ 100</span>
+              </div>
+            </div>
+            {(match.reasons.matched?.length ?? 0) > 0 && (
+              <div className="mb-3">
+                <p className="text-[10px] font-mono uppercase tracking-[0.16em] text-emerald-300/50 mb-2">Совпало по паспорту</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {match.reasons.matched!.map((r) => (
+                    <span key={r} className="text-xs px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-300/80 border border-emerald-500/15">{r}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {(match.reasons.missing?.length ?? 0) > 0 && (
+              <div>
+                <p className="text-[10px] font-mono uppercase tracking-[0.16em] text-amber-300/50 mb-2">Чего не хватает в паспорте</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {match.reasons.missing!.map((r) => (
+                    <span key={r} className="text-xs px-3 py-1 rounded-full bg-amber-500/10 text-amber-200/80 border border-amber-500/15">{r}</span>
+                  ))}
+                </div>
+                <p className="text-white/40 text-xs mt-2.5 leading-snug">Заполните эти поля в паспорте проекта — оценка соответствия вырастет, а заявка станет полнее.</p>
+              </div>
+            )}
+            {match.reasons.conflict && (
+              <p className="text-amber-300/70 text-xs mt-3 flex items-start gap-1.5">
+                <AlertTriangle size={13} className="shrink-0 mt-0.5" /> По одному из жёстких критериев (стадия / юр. форма / гео) проект не проходит — грант показан для справки.
+              </p>
+            )}
+          </div>
+        )}
 
         {grant.description && (
           <div className="lovable-glass rounded-2xl p-6 border border-white/10 mb-8">

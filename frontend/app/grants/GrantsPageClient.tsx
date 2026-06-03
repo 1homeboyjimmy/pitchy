@@ -100,6 +100,7 @@ function SupportMeasureCard({ grant, match, href }: { grant: Grant; match?: Gran
   const amount = formatAmount(grant.amount_min, grant.amount_max);
   const st = STATUS_META[grant.status];
   const matched = (match?.reasons.matched || []).slice(0, 3);
+  const missing = (match?.reasons.missing || []).slice(0, 2);
   const urgent = dl != null && dl >= 0 && dl <= 7 && grant.status !== "closed";
 
   return (
@@ -136,12 +137,20 @@ function SupportMeasureCard({ grant, match, href }: { grant: Grant; match?: Gran
 
       {/* Совпадения по паспорту, либо направления гранта */}
       {matched.length > 0 ? (
-        <div className="flex flex-wrap gap-1.5 mt-3.5">
-          {matched.map((r) => (
-            <span key={r} className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300/80 border border-emerald-500/15">
-              {r}
-            </span>
-          ))}
+        <div className="mt-3.5">
+          <p className="text-[9px] font-mono uppercase tracking-[0.18em] text-emerald-300/50 mb-1.5">Совпало по</p>
+          <div className="flex flex-wrap gap-1.5">
+            {matched.map((r) => (
+              <span key={r} className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300/80 border border-emerald-500/15">
+                {r}
+              </span>
+            ))}
+          </div>
+          {missing.length > 0 && (
+            <p className="text-[10px] text-amber-300/60 mt-2 leading-snug">
+              В паспорте не хватает: {missing.join(", ")}
+            </p>
+          )}
         </div>
       ) : grant.sectors.length > 0 ? (
         <div className="flex flex-wrap gap-1.5 mt-3.5">
