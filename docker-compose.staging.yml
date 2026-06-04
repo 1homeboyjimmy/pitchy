@@ -22,6 +22,24 @@ services:
     image: ghcr.io/1homeboyjimmy/pitchy/backend:dev
     environment:
       APP_ENV: staging
+    # Apply migrations at container startup on dev. The base compose sets
+    # `command: uvicorn ...`, which SHADOWS the image's Dockerfile CMD
+    # (`alembic upgrade head && exec uvicorn`) — so on staging the only thing
+    # that ran was uvicorn, and a deploy that shipped a new migration left the
+    # backend serving new code against an un-migrated schema (the grants 500
+    # after grant-autodiscovery). We override the command back here so the dev
+    # backend self-migrates BEFORE uvicorn binds: if a migration fails, uvicorn
+    # never starts, the deploy healthcheck goes red, and we never serve on a
+    # behind schema. `condition: service_healthy` keeps alembic from racing the
+    # database on `up --force-recreate`. Prod keeps its gated deploy.sh step.
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      chroma:
+        condition: service_started
+    command: ["sh", "-c", "python -m alembic upgrade head && exec uvicorn main:app --host 0.0.0.0 --port 8000"]
 
   frontend:
     image: ghcr.io/1homeboyjimmy/pitchy/frontend:dev
