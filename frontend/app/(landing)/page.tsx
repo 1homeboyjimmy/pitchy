@@ -31,6 +31,10 @@ type PersonaReaction = {
   graphLabel: string;
   sentiment: string;
   tone: string;
+  quotes: string[];
+};
+
+type ActivePersonaReaction = PersonaReaction & {
   quote: string;
 };
 
@@ -41,7 +45,11 @@ const personaReactions: PersonaReaction[] = [
     graphLabel: "Маркетолог",
     sentiment: "Фокус",
     tone: "border-white/20 text-white/70",
-    quote: "Оффер цепляет, но сообщение расплывается. Я бы вынес один конкретный результат в первый экран и проверил три креатива на разных сегментах.",
+    quotes: [
+      "Оффер цепляет, но сообщение расплывается. Я бы вынес один конкретный результат в первый экран и проверил три креатива на разных сегментах.",
+      "В коммуникации есть сильная боль, но не хватает языка аудитории. Добавьте формулировки из реальных интервью и уберите общие обещания.",
+      "Каналы продвижения выглядят слишком широкими. Сначала выберите один сегмент, один триггер покупки и один измеримый CTA.",
+    ],
   },
   {
     icon: Landmark,
@@ -49,7 +57,11 @@ const personaReactions: PersonaReaction[] = [
     graphLabel: "Финансист",
     sentiment: "Расчёт",
     tone: "border-white/10 text-white/40",
-    quote: "Экономика сходится только при низкой стоимости привлечения. Нужны сценарии по марже, возвратам и точке безубыточности до масштабирования.",
+    quotes: [
+      "Экономика сходится только при низкой стоимости привлечения. Нужны сценарии по марже, возвратам и точке безубыточности до масштабирования.",
+      "План выручки оптимистичный: CAC растёт быстрее среднего чека. Я бы пересчитал модель через консервативный сценарий и лимит burn rate.",
+      "Подписка может работать, если удержание выше второго месяца. Без cohort-анализа сейчас сложно понять реальную окупаемость.",
+    ],
   },
   {
     icon: Briefcase,
@@ -57,7 +69,23 @@ const personaReactions: PersonaReaction[] = [
     graphLabel: "Инвестор",
     sentiment: "Скепсис",
     tone: "border-white/10 text-white/40",
-    quote: "Рынок большой, но где защита от копирования? Покажите retention за три месяца — тогда поверю в юнит-экономику.",
+    quotes: [
+      "Рынок большой, но где защита от копирования? Покажите retention за три месяца — тогда поверю в юнит-экономику.",
+      "Мне нравится скорость команды, но пока не вижу moat. Докажите, что данные и процесс улучшаются с каждым новым клиентом.",
+      "Питч звучит убедительно, но нужен фокус: кто покупает первым, почему сейчас и какой сигнал покажет готовность к раунду.",
+    ],
+  },
+  {
+    icon: BarChart3,
+    role: "Аналитик",
+    graphLabel: "Аналитик",
+    sentiment: "Нейтрально",
+    tone: "border-white/20 text-white/70",
+    quotes: [
+      "Спрос подтверждается: три из пяти сегментов реагируют на оффер. В B2B цена выглядит завышенной.",
+      "Данные говорят, что проблема частая, но платёжная готовность неоднородная. Нужен разрез по размеру команды и срочности задачи.",
+      "Сравнение конкурентов неполное: у двух игроков слабее UX, но сильнее дистрибуция. Это стоит учесть в go-to-market.",
+    ],
   },
   {
     icon: GraduationCap,
@@ -65,7 +93,35 @@ const personaReactions: PersonaReaction[] = [
     graphLabel: "Акселератор",
     sentiment: "Отбор",
     tone: "border-white/20 text-white/70",
-    quote: "Команда выглядит сильной, но заявка пока слишком продуктовая. Добавьте научно-технологическую новизну и понятный план пилота с кафедрой.",
+    quotes: [
+      "Команда выглядит сильной, но заявка пока слишком продуктовая. Добавьте научно-технологическую новизну и понятный план пилота с кафедрой.",
+      "Для акселератора важно показать образовательный эффект: кто из студентов вовлечён, какие компетенции растут и что можно масштабировать.",
+      "Проект проходит по тематике, если усилить исследовательскую часть. Нужны гипотеза, методика проверки и измеримый результат пилота.",
+    ],
+  },
+  {
+    icon: Users,
+    role: "Пользователь №1",
+    graphLabel: "Пользователь №1",
+    sentiment: "Боль",
+    tone: "border-white/10 text-white/40",
+    quotes: [
+      "Не понял ценность за первые тридцать секунд. Онбординг перегружен — я бы закрыл вкладку.",
+      "Мне нужно быстрее увидеть результат. Сейчас слишком много объяснений до первого полезного действия.",
+      "Если сервис сам подскажет следующий шаг, я останусь. Но вручную разбираться в логике продукта не хочется.",
+    ],
+  },
+  {
+    icon: UserCheck,
+    role: "Пользователь №2",
+    graphLabel: "Пользователь №2",
+    sentiment: "Восторг",
+    tone: "bg-white text-black border-white",
+    quotes: [
+      "Именно это я искал. Готов платить уже сейчас, если добавите интеграцию с таблицами.",
+      "Мне нравится, что результат можно показать команде сразу. Добавьте экспорт в PDF — и это станет рабочим инструментом.",
+      "Ценность понятна после первого примера. Я бы хотел шаблоны под разные типы проектов, чтобы стартовать быстрее.",
+    ],
   },
   {
     icon: Users,
@@ -73,7 +129,11 @@ const personaReactions: PersonaReaction[] = [
     graphLabel: "Саша",
     sentiment: "Боль",
     tone: "border-white/10 text-white/40",
-    quote: "Я быстро понял проблему, но не увидел, чем это лучше моего текущего процесса. Дайте пример результата за минуту — тогда останусь.",
+    quotes: [
+      "Я быстро понял проблему, но не увидел, чем это лучше моего текущего процесса. Дайте пример результата за минуту — тогда останусь.",
+      "Сервис выглядит полезным, но мне страшно доверять весь проект ИИ. Покажите, где я могу проверить источники и выводы.",
+      "Если вы сократите первый сценарий до трёх шагов, я попробую. Сейчас ощущение, что надо заранее всё подготовить.",
+    ],
   },
   {
     icon: UserCheck,
@@ -81,7 +141,11 @@ const personaReactions: PersonaReaction[] = [
     graphLabel: "Егор",
     sentiment: "Восторг",
     tone: "bg-white text-black border-white",
-    quote: "Именно это я искал. Готов платить уже сейчас, если добавите интеграцию с таблицами и экспорт короткого отчёта для команды.",
+    quotes: [
+      "Именно это я искал. Готов платить уже сейчас, если добавите интеграцию с таблицами и экспорт короткого отчёта для команды.",
+      "Главная ценность — быстро понять, где идея слабая. Я бы использовал это перед каждой встречей с ментором.",
+      "Если можно сохранять версии гипотез, продукт станет частью еженедельной работы, а не разовой проверки.",
+    ],
   },
   {
     icon: BarChart3,
@@ -89,7 +153,11 @@ const personaReactions: PersonaReaction[] = [
     graphLabel: "Руслан",
     sentiment: "Проверка",
     tone: "border-white/20 text-white/70",
-    quote: "Идея сильная, но мне нужны доказательства на моём сегменте. Покажите сравнение с конкурентами и источники по рынку.",
+    quotes: [
+      "Идея сильная, но мне нужны доказательства на моём сегменте. Покажите сравнение с конкурентами и источники по рынку.",
+      "Я бы не платил до тестового отчёта. Если первый вывод окажется точным, дальше готов обсуждать подписку.",
+      "Хорошо, что есть критика идеи. Но мне важно видеть не только проблемы, а приоритеты: что исправлять первым.",
+    ],
   },
   {
     icon: MessageSquare,
@@ -97,7 +165,11 @@ const personaReactions: PersonaReaction[] = [
     graphLabel: "Вероника",
     sentiment: "Ясность",
     tone: "border-white/20 text-white/70",
-    quote: "Текст стал понятнее, когда появились конкретные сценарии. Я бы добавила больше человеческого языка и меньше терминов в онбординг.",
+    quotes: [
+      "Текст стал понятнее, когда появились конкретные сценарии. Я бы добавила больше человеческого языка и меньше терминов в онбординг.",
+      "Мне важна уверенность, что я не упущу важный пункт. Хорошо бы видеть чеклист после каждого анализа.",
+      "В интерфейсе хочется больше подсказок по контексту. Не обучающих текстов, а коротких вопросов в нужный момент.",
+    ],
   },
   {
     icon: Rocket,
@@ -105,7 +177,11 @@ const personaReactions: PersonaReaction[] = [
     graphLabel: "Слава",
     sentiment: "Скорость",
     tone: "bg-white text-black border-white",
-    quote: "Мне нравится, что можно быстро собрать первую гипотезу и сразу увидеть слабые места. Главное — не перегрузить интерфейс настройками.",
+    quotes: [
+      "Мне нравится, что можно быстро собрать первую гипотезу и сразу увидеть слабые места. Главное — не перегрузить интерфейс настройками.",
+      "Я бы использовал продукт как быстрый стресс-тест перед запуском рекламы. Нужен режим короткого отчёта на одну страницу.",
+      "Скорость впечатляет. Если ответы будут сохранять историю решений, команда перестанет спорить по кругу.",
+    ],
   },
   {
     icon: FileText,
@@ -113,11 +189,135 @@ const personaReactions: PersonaReaction[] = [
     graphLabel: "Полина",
     sentiment: "Доверие",
     tone: "border-white/10 text-white/40",
-    quote: "Я бы попробовала сервис, если увижу прозрачные источники и примеры готовых документов. Без этого сложно доверять рекомендациям ИИ.",
+    quotes: [
+      "Я бы попробовала сервис, если увижу прозрачные источники и примеры готовых документов. Без этого сложно доверять рекомендациям ИИ.",
+      "Мне нужен аккуратный результат, который не стыдно отправить партнёру. Черновик должен быть ближе к финальному документу.",
+      "Если сервис объясняет, почему предлагает именно такие шаги, доверия становится больше. Просто список советов не убедит.",
+    ],
+  },
+  {
+    icon: Briefcase,
+    role: "Основатель",
+    graphLabel: "Основатель",
+    sentiment: "Приоритет",
+    tone: "bg-white text-black border-white",
+    quotes: [
+      "Мне нужен не красивый отчёт, а решение, что делать завтра. Хорошо, если система сразу ранжирует гипотезы по влиянию.",
+      "Продукт экономит время, если снимает неопределённость перед встречами. Добавьте режим подготовки к питчу и список слабых мест.",
+      "Я готов платить за скорость принятия решений. Но хочу видеть, какие выводы основаны на данных, а какие являются предположениями.",
+    ],
+  },
+  {
+    icon: Landmark,
+    role: "Грантовый эксперт",
+    graphLabel: "Грантовый эксперт",
+    sentiment: "Форма",
+    tone: "border-white/20 text-white/70",
+    quotes: [
+      "Проект можно упаковать под грант, но сейчас не хватает общественной значимости и измеримых результатов для комиссии.",
+      "Формулировки должны звучать языком конкурса. Добавьте цели, KPI и календарный план без маркетинговых обещаний.",
+      "Сильная часть — команда и рынок. Слабая — обоснование бюджета: каждая статья должна быть связана с результатом.",
+    ],
+  },
+  {
+    icon: BarChart3,
+    role: "Продакт-менеджер",
+    graphLabel: "Продакт",
+    sentiment: "MVP",
+    tone: "border-white/20 text-white/70",
+    quotes: [
+      "MVP стоит сузить до одного повторяемого сценария. Сейчас продукт пытается закрыть слишком много задач одновременно.",
+      "Хорошая гипотеза для первой версии — отчёт за десять минут. Всё, что не ведёт к этому результату, можно убрать.",
+      "Нужны события аналитики: активация, возврат к отчёту, экспорт и повторная проверка идеи. Без этого не поймём ценность.",
+    ],
+  },
+  {
+    icon: MessageSquare,
+    role: "UX-исследователь",
+    graphLabel: "UX-исследователь",
+    sentiment: "Инсайт",
+    tone: "border-white/20 text-white/70",
+    quotes: [
+      "Пользователь хочет не анализ, а уверенность. В интерфейсе стоит показать прогресс от сырой идеи к понятному плану.",
+      "Первое впечатление перегружено терминами. Лучше начать с вопроса о цели пользователя, а не со списка возможностей.",
+      "Самый сильный момент — когда система спорит с идеей. Это надо подать как пользу, а не как ошибку пользователя.",
+    ],
+  },
+  {
+    icon: UserCheck,
+    role: "B2B-клиент",
+    graphLabel: "B2B-клиент",
+    sentiment: "Закупка",
+    tone: "border-white/10 text-white/40",
+    quotes: [
+      "Для компании важны права доступа, история изменений и экспорт. Без этого сервис останется личным инструментом.",
+      "Цена приемлема, если отчёты экономят часы аналитика. Нужны примеры внедрения и понятный SLA.",
+      "Я бы купил пилот на команду, но сначала хочу увидеть безопасность данных и возможность выгрузить результат в наши шаблоны.",
+    ],
+  },
+  {
+    icon: Rocket,
+    role: "Ментор стартапов",
+    graphLabel: "Ментор",
+    sentiment: "Рывок",
+    tone: "bg-white text-black border-white",
+    quotes: [
+      "Инструмент полезен, если основатель приходит на встречу уже с гипотезами и цифрами. Тогда менторство становится предметным.",
+      "Сильный эффект будет в подготовке к демо-дню: сервис быстро вытаскивает слабые аргументы из презентации.",
+      "Я бы рекомендовал продукт командам на ранней стадии, если он помогает формулировать не только идею, но и следующий эксперимент.",
+    ],
+  },
+  {
+    icon: FileText,
+    role: "Юрист",
+    graphLabel: "Юрист",
+    sentiment: "Риски",
+    tone: "border-white/10 text-white/40",
+    quotes: [
+      "Проверьте пользовательские данные, договоры и права на контент. Если продукт работает с ИИ, юридическая рамка нужна сразу.",
+      "В питче не хватает блока про риски регулирования. Инвестор всё равно спросит, лучше подготовить ответ заранее.",
+      "Если сервис генерирует документы, важно явно разделить рекомендацию и юридически значимое решение.",
+    ],
+  },
+  {
+    icon: Megaphone,
+    role: "PR-специалист",
+    graphLabel: "PR",
+    sentiment: "Позиция",
+    tone: "border-white/20 text-white/70",
+    quotes: [
+      "История проекта есть, но её нужно упростить. Медиа зацепит конкретный конфликт: почему стартапам больно запускаться сейчас.",
+      "Лучший инфоповод — кейс команды, которая изменила идею после анализа и сэкономила бюджет на запуск.",
+      "Тон коммуникации должен быть уверенным, но не магическим. Обещайте ясность и скорость, а не замену предпринимателю.",
+    ],
+  },
+  {
+    icon: Landmark,
+    role: "Корпоративный партнёр",
+    graphLabel: "Партнёр",
+    sentiment: "Пилот",
+    tone: "border-white/20 text-white/70",
+    quotes: [
+      "Для пилота нужен понятный периметр: команда, сроки, метрики успеха и ответственный с обеих сторон.",
+      "Нам интересно, если продукт ускоряет внутренние инновации. Покажите, как он фильтрует идеи до траты бюджета.",
+      "Решение может зайти в корпоративный акселератор, если есть контроль качества выводов и отчётность для руководителя.",
+    ],
+  },
+  {
+    icon: Users,
+    role: "Студент-предприниматель",
+    graphLabel: "Студент",
+    sentiment: "Старт",
+    tone: "bg-white text-black border-white",
+    quotes: [
+      "Мне нужен простой маршрут: идея, проверка, презентация, грант. Если это в одном месте, я быстрее начну действовать.",
+      "Сервис снижает страх первого шага. Главное, чтобы он не говорил сложным языком и показывал примеры похожих проектов.",
+      "Я бы пользовался перед хакатоном: быстро проверить идею, собрать аргументы и понять, где команда ошибается.",
+    ],
   },
 ];
 
-const initialPersonaIndexes = [2, 6, 4, 5];
+const initialPersonaIndexes = [2, 3, 5, 6];
 
 const namedAgentPositions = [
   { x: 70, y: 82, labelY: 64 },
@@ -151,7 +351,7 @@ const SectionHeading = ({ eyebrow, title, text, centered = false }: { eyebrow?: 
   </motion.div>
 );
 
-const PersonaReactionCard = ({ persona, index }: { persona: PersonaReaction; index: number }) => {
+const PersonaReactionCard = ({ persona, index }: { persona: ActivePersonaReaction; index: number }) => {
   const Icon = persona.icon;
 
   return (
@@ -192,23 +392,41 @@ const PersonaReactionCard = ({ persona, index }: { persona: PersonaReaction; ind
 export default function LandingPage() {
   const { isAuthenticated } = useAuth();
   const ctaHref = isAuthenticated ? "/dashboard" : "/signup";
-  const [rotation, setRotation] = useState({ step: 0, indexes: initialPersonaIndexes });
-  const activePersonas = rotation.indexes.map((personaIndex) => personaReactions[personaIndex]);
+  const [rotation, setRotation] = useState({
+    step: 0,
+    indexes: initialPersonaIndexes,
+    quoteIndexes: initialPersonaIndexes.map(() => 0),
+  });
+  const activePersonas = rotation.indexes.map((personaIndex, index) => {
+    const persona = personaReactions[personaIndex];
+    const quoteIndex = rotation.quoteIndexes[index] % persona.quotes.length;
+
+    return {
+      ...persona,
+      quote: persona.quotes[quoteIndex],
+    };
+  });
   const namedAgents = activePersonas.map((persona, index) => ({
     ...namedAgentPositions[index],
     label: persona.graphLabel,
   }));
+  const graphKey = namedAgents.map((agent) => agent.label).join("|");
 
   useEffect(() => {
     const interval = window.setInterval(() => {
-      setRotation(({ step, indexes }) => {
+      setRotation(({ step, indexes, quoteIndexes }) => {
         const slot = step % initialPersonaIndexes.length;
+        const nextPersonaIndex = step % personaReactions.length;
+        const nextPersona = personaReactions[nextPersonaIndex];
         const nextIndexes = [...indexes];
-        nextIndexes[slot] = step % personaReactions.length;
+        const nextQuoteIndexes = [...quoteIndexes];
+        nextIndexes[slot] = nextPersonaIndex;
+        nextQuoteIndexes[slot] = Math.floor(step / personaReactions.length) % nextPersona.quotes.length;
 
         return {
           step: step + 1,
           indexes: nextIndexes,
+          quoteIndexes: nextQuoteIndexes,
         };
       });
     }, 7000);
@@ -486,20 +704,22 @@ export default function LandingPage() {
 
                 <svg viewBox="0 0 400 400" className="w-full h-full" preserveAspectRatio="xMidYMid meet">
                   {/* edges */}
-                  {namedAgents.map((a, i) => (
-                    <motion.line
-                      key={`edge-${i}-${a.label}`}
-                      x1={a.x}
-                      y1={a.y}
-                      x2={200}
-                      y2={200}
-                      stroke="rgba(255,255,255,0.18)"
-                      strokeWidth={1}
-                      initial={{ pathLength: 0, opacity: 0 }}
-                      animate={{ pathLength: 1, opacity: 1 }}
-                      transition={{ duration: 0.55, delay: 0.45 + i * 0.04, ease: "easeInOut" }}
-                    />
-                  ))}
+                  <g key={`named-edges-${graphKey}`}>
+                    {namedAgents.map((a, i) => (
+                      <motion.line
+                        key={`edge-${i}-${a.label}`}
+                        x1={a.x}
+                        y1={a.y}
+                        x2={200}
+                        y2={200}
+                        stroke="rgba(255,255,255,0.18)"
+                        strokeWidth={1}
+                        initial={{ pathLength: 0, opacity: 0 }}
+                        animate={{ pathLength: 1, opacity: 1 }}
+                        transition={{ duration: 0.55, delay: 0.45 + i * 0.04, ease: "easeInOut" }}
+                      />
+                    ))}
+                  </g>
 
                   {backgroundAgents.map((a, i) => (
                     <motion.line
@@ -518,31 +738,35 @@ export default function LandingPage() {
                   ))}
 
                   {/* signal dots flowing agent -> product */}
-                  {namedAgents.map((a, i) => (
-                    <motion.circle
-                      key={`signal-${i}-${a.label}`}
-                      r={2.5}
-                      fill="rgba(255,255,255,0.9)"
-                      initial={{ cx: a.x, cy: a.y, opacity: 0 }}
-                      animate={{ cx: [a.x, 200], cy: [a.y, 200], opacity: [0, 1, 0] }}
-                      transition={{ duration: 2.4, repeat: Infinity, delay: 0.45 + i * 0.45, ease: "easeInOut" }}
-                    />
-                  ))}
+                  <g key={`named-signals-${graphKey}`}>
+                    {namedAgents.map((a, i) => (
+                      <motion.circle
+                        key={`signal-${i}-${a.label}`}
+                        r={2.5}
+                        fill="rgba(255,255,255,0.9)"
+                        initial={{ cx: a.x, cy: a.y, opacity: 0 }}
+                        animate={{ cx: [a.x, 200], cy: [a.y, 200], opacity: [0, 1, 0] }}
+                        transition={{ duration: 2.4, repeat: Infinity, delay: 0.45 + i * 0.45, ease: "easeInOut" }}
+                      />
+                    ))}
+                  </g>
 
                   {/* agent nodes */}
-                  {namedAgents.map((a, i) => (
-                    <motion.circle
-                      key={`node-${i}-${a.label}`}
-                      cx={a.x}
-                      cy={a.y}
-                      fill="rgba(255,255,255,0.85)"
-                      stroke="rgba(255,255,255,0.4)"
-                      strokeWidth={1}
-                      initial={{ r: 0 }}
-                      animate={{ r: 7 }}
-                      transition={{ duration: 0.35, delay: i * 0.04 }}
-                    />
-                  ))}
+                  <g key={`named-nodes-${graphKey}`}>
+                    {namedAgents.map((a, i) => (
+                      <motion.circle
+                        key={`node-${i}-${a.label}`}
+                        cx={a.x}
+                        cy={a.y}
+                        fill="rgba(255,255,255,0.85)"
+                        stroke="rgba(255,255,255,0.4)"
+                        strokeWidth={1}
+                        initial={{ r: 0 }}
+                        animate={{ r: 7 }}
+                        transition={{ duration: 0.35, delay: i * 0.04 }}
+                      />
+                    ))}
+                  </g>
 
                   {backgroundAgents.map((a, i) => (
                     <motion.circle
@@ -560,22 +784,26 @@ export default function LandingPage() {
                   ))}
 
                   {/* labels for named agents */}
-                  {namedAgents.map((a, i) => (
-                    <motion.text
-                      key={`label-${i}-${a.label}`}
-                      x={a.x}
-                      y={a.labelY}
-                      textAnchor="middle"
-                      fill="rgba(255,255,255,0.45)"
-                      fontSize="10"
-                      fontFamily="monospace"
-                      initial={{ opacity: 0, y: a.labelY + 4 }}
-                      animate={{ opacity: 1, y: a.labelY }}
-                      transition={{ duration: 0.35, delay: 0.45 + i * 0.04, ease: "easeOut" }}
-                    >
-                      {a.label}
-                    </motion.text>
-                  ))}
+                  <motion.g
+                    key={`named-labels-${graphKey}`}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.35, delay: 0.45, ease: "easeOut" }}
+                  >
+                    {namedAgents.map((a) => (
+                      <text
+                        key={`label-${a.label}`}
+                        x={a.x}
+                        y={a.labelY}
+                        textAnchor="middle"
+                        fill="rgba(255,255,255,0.45)"
+                        fontSize="10"
+                        fontFamily="monospace"
+                      >
+                        {a.label}
+                      </text>
+                    ))}
+                  </motion.g>
 
                   {/* center product node */}
                   <motion.circle
