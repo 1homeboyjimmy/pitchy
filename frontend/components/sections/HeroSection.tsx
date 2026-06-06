@@ -90,7 +90,7 @@ export function HeroSection() {
                 </h1>
 
                 <p className="text-white/70 text-lg md:text-2xl max-w-3xl mx-auto mb-12 font-light leading-relaxed">
-                    От анализа идеи и проведения синтетических CustDev интервью <br className="hidden md:block" /> до подбора и получения грантов.
+                    От идеи до финансирования.
                 </p>
 
                 <div className="flex justify-center w-full">
