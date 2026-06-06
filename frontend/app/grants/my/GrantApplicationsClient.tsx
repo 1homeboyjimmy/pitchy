@@ -22,6 +22,16 @@ const STAGES: { key: CrmStage; label: string; accent: string; dot: string }[] = 
   { key: "rejected",   label: "Отказ",      accent: "text-white/30",      dot: "bg-white/15" },
 ];
 
+const SECTION_LABELS: Record<string, string> = {
+  summary: "Резюме проекта",
+  problem: "Проблема",
+  solution: "Решение",
+  market: "Рынок",
+  team: "Команда",
+  budget: "Бюджет",
+  impact: "Эффект и значимость",
+};
+
 function scoreColor(s: number): string {
   if (s >= 70) return "text-emerald-300/90";
   if (s >= 40) return "text-amber-300/90";
@@ -55,6 +65,25 @@ function requirementItems(requirements: Record<string, unknown> | null): string[
   return out.slice(0, 20);
 }
 
+function applicationSectionEntries(app: GrantApplication): [string, string][] {
+  const sections = app.content.sections ?? {};
+  return Object.entries(sections)
+    .filter(([, value]) => typeof value === "string" && value.trim().length > 0)
+    .sort(([a], [b]) => {
+      const ai = Object.keys(SECTION_LABELS).indexOf(a);
+      const bi = Object.keys(SECTION_LABELS).indexOf(b);
+      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+    });
+}
+
+function formatUpdatedAt(value: string): string {
+  try {
+    return new Date(value).toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" });
+  } catch {
+    return value;
+  }
+}
+
 export function GrantApplicationsClient() {
   const [token, setTok] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -63,6 +92,7 @@ export function GrantApplicationsClient() {
   // matchByProject[projectId][grantId] = матч паспорта с грантом (gap-анализ).
   const [matchByProject, setMatchByProject] = useState<Record<number, Record<number, GrantMatch>>>({});
   const [expanded, setExpanded] = useState<number | null>(null);
+  const [expandedDraft, setExpandedDraft] = useState<number | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
 
   useEffect(() => {
@@ -139,6 +169,8 @@ export function GrantApplicationsClient() {
     }
   };
 
+  const generatedApplications = apps.filter((app) => applicationSectionEntries(app).length > 0);
+
   if (loading) {
     return (
       <div className="h-full bg-black flex items-center justify-center">
@@ -171,36 +203,134 @@ export function GrantApplicationsClient() {
           </Link>
         </div>
       ) : (
-        <div className="flex gap-4 overflow-x-auto pb-4 -mx-1 px-1">
-          {STAGES.map((col) => {
-            const cards = apps.filter((a) => a.stage === col.key);
-            return (
-              <div key={col.key} className="shrink-0 w-72 flex flex-col">
-                <div className="flex items-center justify-between mb-3 px-1">
-                  <div className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${col.dot}`} />
-                    <span className={`text-sm font-medium ${col.accent}`}>{col.label}</span>
-                  </div>
-                  <span className="text-xs text-white/30 font-mono">{cards.length}</span>
+        <>
+          {generatedApplications.length > 0 && (
+            <section className="mb-10">
+              <div className="flex items-end justify-between gap-4 mb-4">
+                <div>
+                  <h2 className="font-display text-2xl text-white tracking-tight">Сохранённые заявки</h2>
+                  <p className="text-white/35 text-sm mt-1">Горизонтальные карточки с текстами, которые были собраны из паспорта проекта.</p>
                 </div>
+                <span className="hidden sm:inline text-xs font-mono text-white/30">{generatedApplications.length}</span>
+              </div>
 
-                <div className="space-y-3">
-                  {cards.length === 0 && (
-                    <div className="rounded-2xl border border-dashed border-white/10 py-8 text-center text-white/20 text-xs">
-                      —
+              <div className="space-y-3">
+                {generatedApplications.map((app) => {
+                  const g = grants[app.grant_id];
+                  const sections = applicationSectionEntries(app);
+                  const preview = sections[0]?.[1] ?? "";
+                  const isOpen = expandedDraft === app.id;
+
+                  return (
+                    <article
+                      key={`generated-${app.id}`}
+                      className="lovable-glass rounded-2xl border border-white/10 bg-white/[0.015] p-4 sm:p-5 transition-all hover:border-white/20"
+                    >
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2 mb-2">
+                            <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-emerald-300/80">
+                              Заявка
+                            </span>
+                            <span className={`text-[11px] font-mono ${scoreColor(app.match_score)}`}>
+                              матч {app.match_score}
+                            </span>
+                            <span className="text-[11px] text-white/30">обновлено {formatUpdatedAt(app.updated_at)}</span>
+                          </div>
+                          <h3 className="font-display text-lg text-white leading-snug truncate">
+                            {g?.name || `Грант #${app.grant_id}`}
+                          </h3>
+                          {g?.organization && (
+                            <p className="text-white/40 text-xs truncate mt-0.5">{g.organization}</p>
+                          )}
+                          {!isOpen && (
+                            <p className="text-white/45 text-sm leading-relaxed line-clamp-2 mt-2">
+                              {preview}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="flex shrink-0 items-center gap-2">
+                          <Link
+                            href={`/grants/${app.grant_id}?project=${app.project_id}`}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-white/10 px-4 py-2 text-xs text-white/55 transition-all hover:border-white/25 hover:text-white"
+                          >
+                            Грант <ExternalLink size={12} />
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => setExpandedDraft(isOpen ? null : app.id)}
+                            className="inline-flex items-center gap-1.5 rounded-full bg-white px-4 py-2 text-xs font-semibold text-black transition-all hover:bg-neutral-200"
+                          >
+                            {isOpen ? "Свернуть" : "Читать"} {isOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                          </button>
+                        </div>
+                      </div>
+
+                      {isOpen && (
+                        <div className="mt-5 border-t border-white/10 pt-5">
+                          {app.content.gaps && app.content.gaps.length > 0 && (
+                            <div className="mb-5 rounded-2xl border border-amber-500/15 bg-amber-500/[0.04] p-4">
+                              <p className="flex items-center gap-2 text-sm font-medium text-amber-300/90">
+                                <AlertTriangle size={15} /> Нужно дозаполнить
+                              </p>
+                              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-white/55">
+                                {app.content.gaps.map((gap, index) => (
+                                  <li key={index}>{gap}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          <div className="grid gap-4">
+                            {sections.map(([key, value]) => (
+                              <section key={key} className="rounded-2xl border border-white/10 bg-black/20 p-5">
+                                <h4 className="font-mono text-[10px] uppercase tracking-[0.2em] text-white/35 mb-3">
+                                  {SECTION_LABELS[key] ?? humanizeKey(key)}
+                                </h4>
+                                <p className="text-white/75 leading-relaxed whitespace-pre-wrap">{value}</p>
+                              </section>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          <div className="flex gap-4 overflow-x-auto pb-4 -mx-1 px-1">
+            {STAGES.map((col) => {
+              const cards = apps.filter((a) => a.stage === col.key);
+              return (
+                <div key={col.key} className="shrink-0 w-72 flex flex-col">
+                  <div className="flex items-center justify-between mb-3 px-1">
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${col.dot}`} />
+                      <span className={`text-sm font-medium ${col.accent}`}>{col.label}</span>
                     </div>
-                  )}
-                  {cards.map((app) => {
-                    const g = grants[app.grant_id];
-                    const match = matchByProject[app.project_id]?.[app.grant_id];
-                    const missing = match?.reasons.missing ?? [];
-                    const matched = match?.reasons.matched ?? [];
-                    const conflict = match?.reasons.conflict ?? false;
-                    const reqs = requirementItems(g?.requirements ?? null);
-                    const done = new Set(app.content.checklist ?? []);
-                    const isOpen = expanded === app.id;
-                    return (
-                      <div key={app.id} className="lovable-glass rounded-2xl border border-white/10 hover:border-white/20 transition-all p-4">
+                    <span className="text-xs text-white/30 font-mono">{cards.length}</span>
+                  </div>
+
+                  <div className="space-y-3">
+                    {cards.length === 0 && (
+                      <div className="rounded-2xl border border-dashed border-white/10 py-8 text-center text-white/20 text-xs">
+                        —
+                      </div>
+                    )}
+                    {cards.map((app) => {
+                      const g = grants[app.grant_id];
+                      const match = matchByProject[app.project_id]?.[app.grant_id];
+                      const missing = match?.reasons.missing ?? [];
+                      const matched = match?.reasons.matched ?? [];
+                      const conflict = match?.reasons.conflict ?? false;
+                      const reqs = requirementItems(g?.requirements ?? null);
+                      const done = new Set(app.content.checklist ?? []);
+                      const isOpen = expanded === app.id;
+                      return (
+                        <div key={app.id} className="lovable-glass rounded-2xl border border-white/10 hover:border-white/20 transition-all p-4">
                         <button
                           onClick={() => setExpanded(isOpen ? null : app.id)}
                           className="w-full text-left"
@@ -309,13 +439,14 @@ export function GrantApplicationsClient() {
                           </div>
                         )}
                       </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        </>
       )}
     </div>
   );

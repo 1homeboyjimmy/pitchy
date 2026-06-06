@@ -75,7 +75,7 @@ export function SideNavBar({
         initial={false}
         animate={{ width: !isMobileOpen && isCollapsed ? 80 : 256 }}
         transition={{ duration: 0.45, ease: EASE }}
-        className={`h-screen border-r border-white/5 bg-black flex flex-col py-8 z-50 ${
+        className={`h-screen min-h-0 overflow-y-auto overflow-x-hidden border-r border-white/5 bg-black flex flex-col py-8 z-50 ${
           isMobileOpen ? "fixed inset-y-0 left-0" : "hidden md:flex"
         }`}
       >
@@ -92,7 +92,7 @@ export function SideNavBar({
           </button>
         </div>
 
-        <nav className="flex-1 px-3 space-y-1 overflow-hidden">
+        <nav className="flex-1 min-h-0 px-3 space-y-1 overflow-y-auto overflow-x-hidden overscroll-contain pr-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/10">
           {topNavItems.map((item) => {
             const isActive = activeTab === item.id;
             const locked = item.locked;
@@ -157,27 +157,27 @@ export function SideNavBar({
           })}
         </nav>
 
-        <AnimatePresence initial={false}>
-          {!isCollapsed && (
-            <motion.div
-              key="tip-card"
-              initial={{ y: 40, opacity: 0 }}
-              animate={{ y: 0, opacity: 1, transition: { duration: 0.45, ease: EASE, delay: 0.25 } }}
-              exit={{ y: 40, opacity: 0, transition: { duration: 0.25, ease: EASE } }}
-              className="hidden md:flex mx-5 mb-6 lovable-glass rounded-3xl p-5 flex-col gap-3 border border-white/5 bg-gradient-to-br from-white/[0.02] to-transparent"
-            >
-              <div className="flex items-center gap-2 text-white/40">
-                <Star size={14} strokeWidth={2} />
-                <span className="font-mono text-[9px] uppercase tracking-[0.2em] font-bold">СОВЕТ</span>
-              </div>
-              <p className="font-sans text-[12px] text-white/40 leading-relaxed font-medium italic">
-                «Чем подробнее вы опишете проект в начале, тем точнее будет анализ.»
-              </p>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        <div className={`shrink-0 px-3 border-t border-white/5 pt-4 transition-all duration-500 ${isCollapsed ? "flex flex-col items-center" : ""}`}>
+          <AnimatePresence initial={false}>
+            {!isCollapsed && (
+              <motion.div
+                key="tip-card"
+                initial={{ y: 16, opacity: 0 }}
+                animate={{ y: 0, opacity: 1, transition: { duration: 0.35, ease: EASE, delay: 0.12 } }}
+                exit={{ y: 16, opacity: 0, transition: { duration: 0.2, ease: EASE } }}
+                className="hidden md:flex mb-3 lovable-glass rounded-2xl p-4 flex-col gap-2 border border-white/5 bg-gradient-to-br from-white/[0.02] to-transparent"
+              >
+                <div className="flex items-center gap-2 text-white/40">
+                  <Star size={14} strokeWidth={2} />
+                  <span className="font-mono text-[9px] uppercase tracking-[0.2em] font-bold">СОВЕТ</span>
+                </div>
+                <p className="font-sans text-[11px] text-white/40 leading-relaxed font-medium italic">
+                  «Чем подробнее вы опишете проект в начале, тем точнее будет анализ.»
+                </p>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-        <div className={`px-3 border-t border-white/5 pt-6 transition-all duration-500 ${isCollapsed ? "flex flex-col items-center" : ""}`}>
           <Link
             href="/contact"
             onClick={onMobileClose}
