@@ -302,7 +302,7 @@ export function GrantApplicationsClient() {
             </section>
           )}
 
-          <div className="order-1 flex gap-4 overflow-x-auto pb-4 -mx-1 px-1">
+          <div className="pitchy-muted-x-scroll order-1 flex gap-4 overflow-x-auto pb-3 -mx-1 px-1">
             {STAGES.map((col) => {
               const cards = apps.filter((a) => a.stage === col.key);
               return (
