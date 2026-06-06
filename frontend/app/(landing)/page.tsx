@@ -1,11 +1,13 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ArrowUpRight, Users, FileText, MessageSquare, Map,
-  Briefcase, BarChart3, UserCheck
+  Briefcase, BarChart3, UserCheck, Megaphone, Landmark, Rocket, GraduationCap
 } from "lucide-react";
-import { motion } from "framer-motion";
+import type { LucideIcon } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
 import { LandingFooter } from "@/components/landing/LandingFooter";
 import { HeroSection } from "@/components/sections/HeroSection";
 import { TopNavBar } from "@/components/shared/TopNavBar";
@@ -23,17 +25,112 @@ const organizationSchema = {
   ]
 };
 
-// Декоративный граф «живого кастдева»: центр — продукт, вокруг — ИИ-агенты
-// (виртуальная фокус-группа). 4 именованных узла + фоновые точки-агенты.
-const custdevAgents = [
-  { x: 70, y: 82, label: "Инвестор", labelY: 64, strong: true },
-  { x: 330, y: 98, label: "Аналитик", labelY: 80, strong: true },
-  { x: 58, y: 300, label: "Юзер №1", labelY: 324, strong: true },
-  { x: 342, y: 300, label: "Юзер №2", labelY: 324, strong: true },
-  { x: 150, y: 44, label: "", labelY: 0, strong: false },
-  { x: 364, y: 198, label: "", labelY: 0, strong: false },
-  { x: 40, y: 188, label: "", labelY: 0, strong: false },
-  { x: 250, y: 358, label: "", labelY: 0, strong: false },
+type PersonaReaction = {
+  icon: LucideIcon;
+  role: string;
+  graphLabel: string;
+  sentiment: string;
+  tone: string;
+  quote: string;
+};
+
+const personaReactions: PersonaReaction[] = [
+  {
+    icon: Megaphone,
+    role: "Маркетолог",
+    graphLabel: "Маркетолог",
+    sentiment: "Фокус",
+    tone: "border-white/20 text-white/70",
+    quote: "Оффер цепляет, но сообщение расплывается. Я бы вынес один конкретный результат в первый экран и проверил три креатива на разных сегментах.",
+  },
+  {
+    icon: Landmark,
+    role: "Финансист",
+    graphLabel: "Финансист",
+    sentiment: "Расчёт",
+    tone: "border-white/10 text-white/40",
+    quote: "Экономика сходится только при низкой стоимости привлечения. Нужны сценарии по марже, возвратам и точке безубыточности до масштабирования.",
+  },
+  {
+    icon: Briefcase,
+    role: "Инвестор",
+    graphLabel: "Инвестор",
+    sentiment: "Скепсис",
+    tone: "border-white/10 text-white/40",
+    quote: "Рынок большой, но где защита от копирования? Покажите retention за три месяца — тогда поверю в юнит-экономику.",
+  },
+  {
+    icon: GraduationCap,
+    role: "Акселератор вуза",
+    graphLabel: "Акселератор",
+    sentiment: "Отбор",
+    tone: "border-white/20 text-white/70",
+    quote: "Команда выглядит сильной, но заявка пока слишком продуктовая. Добавьте научно-технологическую новизну и понятный план пилота с кафедрой.",
+  },
+  {
+    icon: Users,
+    role: "Пользователь Саша",
+    graphLabel: "Саша",
+    sentiment: "Боль",
+    tone: "border-white/10 text-white/40",
+    quote: "Я быстро понял проблему, но не увидел, чем это лучше моего текущего процесса. Дайте пример результата за минуту — тогда останусь.",
+  },
+  {
+    icon: UserCheck,
+    role: "Пользователь Егор",
+    graphLabel: "Егор",
+    sentiment: "Восторг",
+    tone: "bg-white text-black border-white",
+    quote: "Именно это я искал. Готов платить уже сейчас, если добавите интеграцию с таблицами и экспорт короткого отчёта для команды.",
+  },
+  {
+    icon: BarChart3,
+    role: "Пользователь Руслан",
+    graphLabel: "Руслан",
+    sentiment: "Проверка",
+    tone: "border-white/20 text-white/70",
+    quote: "Идея сильная, но мне нужны доказательства на моём сегменте. Покажите сравнение с конкурентами и источники по рынку.",
+  },
+  {
+    icon: MessageSquare,
+    role: "Пользователь Вероника",
+    graphLabel: "Вероника",
+    sentiment: "Ясность",
+    tone: "border-white/20 text-white/70",
+    quote: "Текст стал понятнее, когда появились конкретные сценарии. Я бы добавила больше человеческого языка и меньше терминов в онбординг.",
+  },
+  {
+    icon: Rocket,
+    role: "Пользователь Слава",
+    graphLabel: "Слава",
+    sentiment: "Скорость",
+    tone: "bg-white text-black border-white",
+    quote: "Мне нравится, что можно быстро собрать первую гипотезу и сразу увидеть слабые места. Главное — не перегрузить интерфейс настройками.",
+  },
+  {
+    icon: FileText,
+    role: "Пользователь Полина",
+    graphLabel: "Полина",
+    sentiment: "Доверие",
+    tone: "border-white/10 text-white/40",
+    quote: "Я бы попробовала сервис, если увижу прозрачные источники и примеры готовых документов. Без этого сложно доверять рекомендациям ИИ.",
+  },
+];
+
+const initialPersonaIndexes = [2, 6, 4, 5];
+
+const namedAgentPositions = [
+  { x: 70, y: 82, labelY: 64 },
+  { x: 330, y: 98, labelY: 80 },
+  { x: 58, y: 300, labelY: 324 },
+  { x: 342, y: 300, labelY: 324 },
+];
+
+const backgroundAgents = [
+  { x: 150, y: 44 },
+  { x: 364, y: 198 },
+  { x: 40, y: 188 },
+  { x: 250, y: 358 },
 ];
 
 const SectionHeading = ({ eyebrow, title, text, centered = false }: { eyebrow?: string; title: string; text: string; centered?: boolean }) => (
@@ -54,9 +151,71 @@ const SectionHeading = ({ eyebrow, title, text, centered = false }: { eyebrow?: 
   </motion.div>
 );
 
+const PersonaReactionCard = ({ persona, index }: { persona: PersonaReaction; index: number }) => {
+  const Icon = persona.icon;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, delay: index * 0.08 }}
+      viewport={{ once: true }}
+      className="lovable-glass lovable-liquid-outline rounded-2xl sm:rounded-[1.5rem] p-5 sm:p-6 border-white/5 shadow-[0_0_40px_-10px_rgba(255,255,255,0.05)] bg-black/40 flex min-h-[220px] flex-col overflow-hidden"
+    >
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={persona.role}
+          initial={{ opacity: 0, y: 16, filter: "blur(6px)" }}
+          animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+          exit={{ opacity: 0, y: -16, filter: "blur(6px)" }}
+          transition={{ duration: 0.45, ease: "easeOut" }}
+          className="flex h-full flex-col"
+        >
+          <div className="flex items-center justify-between gap-2 mb-3 sm:mb-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <Icon className="h-4 w-4 text-white/60 shrink-0" />
+              <h3 className="text-sm sm:text-base text-white font-medium leading-tight truncate">{persona.role}</h3>
+            </div>
+            <span className={`shrink-0 text-[9px] sm:text-[10px] font-mono uppercase tracking-wider px-2.5 py-1 rounded-full border ${persona.tone}`}>
+              {persona.sentiment}
+            </span>
+          </div>
+          <p className="text-[13px] sm:text-sm text-white/50 font-light italic leading-relaxed">
+            «{persona.quote}»
+          </p>
+        </motion.div>
+      </AnimatePresence>
+    </motion.div>
+  );
+};
+
 export default function LandingPage() {
   const { isAuthenticated } = useAuth();
   const ctaHref = isAuthenticated ? "/dashboard" : "/signup";
+  const [rotation, setRotation] = useState({ step: 0, indexes: initialPersonaIndexes });
+  const activePersonas = rotation.indexes.map((personaIndex) => personaReactions[personaIndex]);
+  const namedAgents = activePersonas.map((persona, index) => ({
+    ...namedAgentPositions[index],
+    label: persona.graphLabel,
+  }));
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setRotation(({ step, indexes }) => {
+        const slot = step % initialPersonaIndexes.length;
+        const nextIndexes = [...indexes];
+        nextIndexes[slot] = step % personaReactions.length;
+
+        return {
+          step: step + 1,
+          indexes: nextIndexes,
+        };
+      });
+    }, 7000);
+
+    return () => window.clearInterval(interval);
+  }, []);
+
   return (
     <div className="antialiased min-h-screen flex flex-col overflow-x-hidden bg-black text-white selection:bg-white/10">
       <script
@@ -306,57 +465,8 @@ export default function LandingPage() {
             <div className="mt-10 sm:mt-20 grid gap-6 lg:gap-8 lg:grid-cols-2 lg:items-stretch">
               {/* Left: persona reactions */}
               <div className="grid gap-3 sm:gap-4 sm:grid-cols-2">
-                {[
-                  {
-                    icon: Briefcase,
-                    role: "Инвестор",
-                    sentiment: "Скепсис",
-                    tone: "border-white/10 text-white/40",
-                    quote: "Рынок большой, но где защита от копирования? Покажите retention за три месяца — тогда поверю в юнит-экономику.",
-                  },
-                  {
-                    icon: BarChart3,
-                    role: "Аналитик",
-                    sentiment: "Нейтрально",
-                    tone: "border-white/20 text-white/70",
-                    quote: "Спрос подтверждается: три из пяти сегментов реагируют на оффер. В B2B цена выглядит завышенной.",
-                  },
-                  {
-                    icon: Users,
-                    role: "Пользователь №1",
-                    sentiment: "Боль",
-                    tone: "border-white/10 text-white/40",
-                    quote: "Не понял ценность за первые тридцать секунд. Онбординг перегружен — я бы закрыл вкладку.",
-                  },
-                  {
-                    icon: UserCheck,
-                    role: "Пользователь №2",
-                    sentiment: "Восторг",
-                    tone: "bg-white text-black border-white",
-                    quote: "Именно это я искал. Готов платить уже сейчас, если добавите интеграцию с таблицами.",
-                  },
-                ].map((p, index) => (
-                  <motion.div
-                    key={p.role}
-                    initial={{ opacity: 0, y: 20 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5, delay: index * 0.08 }}
-                    viewport={{ once: true }}
-                    className="lovable-glass lovable-liquid-outline rounded-2xl sm:rounded-[1.5rem] p-5 sm:p-6 border-white/5 shadow-[0_0_40px_-10px_rgba(255,255,255,0.05)] bg-black/40 flex flex-col"
-                  >
-                    <div className="flex items-center justify-between gap-2 mb-3 sm:mb-4">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <p.icon className="h-4 w-4 text-white/60 shrink-0" />
-                        <h3 className="text-sm sm:text-base text-white font-medium leading-tight truncate">{p.role}</h3>
-                      </div>
-                      <span className={`shrink-0 text-[9px] sm:text-[10px] font-mono uppercase tracking-wider px-2.5 py-1 rounded-full border ${p.tone}`}>
-                        {p.sentiment}
-                      </span>
-                    </div>
-                    <p className="text-[13px] sm:text-sm text-white/50 font-light italic leading-relaxed">
-                      «{p.quote}»
-                    </p>
-                  </motion.div>
+                {activePersonas.map((persona, index) => (
+                  <PersonaReactionCard key={`persona-slot-${index}`} persona={persona} index={index} />
                 ))}
               </div>
 
@@ -376,9 +486,24 @@ export default function LandingPage() {
 
                 <svg viewBox="0 0 400 400" className="w-full h-full" preserveAspectRatio="xMidYMid meet">
                   {/* edges */}
-                  {custdevAgents.map((a, i) => (
+                  {namedAgents.map((a, i) => (
                     <motion.line
-                      key={`edge-${i}`}
+                      key={`edge-${i}-${a.label}`}
+                      x1={a.x}
+                      y1={a.y}
+                      x2={200}
+                      y2={200}
+                      stroke="rgba(255,255,255,0.18)"
+                      strokeWidth={1}
+                      initial={{ pathLength: 0, opacity: 0 }}
+                      animate={{ pathLength: 1, opacity: 1 }}
+                      transition={{ duration: 0.55, delay: 0.45 + i * 0.04, ease: "easeInOut" }}
+                    />
+                  ))}
+
+                  {backgroundAgents.map((a, i) => (
+                    <motion.line
+                      key={`background-edge-${i}`}
                       x1={a.x}
                       y1={a.y}
                       x2={200}
@@ -387,52 +512,69 @@ export default function LandingPage() {
                       strokeWidth={1}
                       initial={{ pathLength: 0, opacity: 0 }}
                       whileInView={{ pathLength: 1, opacity: 1 }}
-                      transition={{ duration: 1, delay: 0.2 + i * 0.1 }}
+                      transition={{ duration: 1, delay: 0.6 + i * 0.1 }}
                       viewport={{ once: true }}
                     />
                   ))}
 
                   {/* signal dots flowing agent -> product */}
-                  {custdevAgents.map((a, i) => (
+                  {namedAgents.map((a, i) => (
                     <motion.circle
-                      key={`signal-${i}`}
+                      key={`signal-${i}-${a.label}`}
                       r={2.5}
                       fill="rgba(255,255,255,0.9)"
                       initial={{ cx: a.x, cy: a.y, opacity: 0 }}
                       animate={{ cx: [a.x, 200], cy: [a.y, 200], opacity: [0, 1, 0] }}
-                      transition={{ duration: 2.4, repeat: Infinity, delay: i * 0.45, ease: "easeInOut" }}
+                      transition={{ duration: 2.4, repeat: Infinity, delay: 0.45 + i * 0.45, ease: "easeInOut" }}
                     />
                   ))}
 
                   {/* agent nodes */}
-                  {custdevAgents.map((a, i) => (
+                  {namedAgents.map((a, i) => (
                     <motion.circle
-                      key={`node-${i}`}
+                      key={`node-${i}-${a.label}`}
                       cx={a.x}
                       cy={a.y}
-                      fill={a.strong ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.25)"}
+                      fill="rgba(255,255,255,0.85)"
                       stroke="rgba(255,255,255,0.4)"
                       strokeWidth={1}
                       initial={{ r: 0 }}
-                      whileInView={{ r: a.strong ? 7 : 4.5 }}
-                      transition={{ duration: 0.5, delay: 0.3 + i * 0.1 }}
+                      animate={{ r: 7 }}
+                      transition={{ duration: 0.35, delay: i * 0.04 }}
+                    />
+                  ))}
+
+                  {backgroundAgents.map((a, i) => (
+                    <motion.circle
+                      key={`background-node-${i}`}
+                      cx={a.x}
+                      cy={a.y}
+                      fill="rgba(255,255,255,0.25)"
+                      stroke="rgba(255,255,255,0.4)"
+                      strokeWidth={1}
+                      initial={{ r: 0 }}
+                      whileInView={{ r: 4.5 }}
+                      transition={{ duration: 0.5, delay: 0.7 + i * 0.1 }}
                       viewport={{ once: true }}
                     />
                   ))}
 
                   {/* labels for named agents */}
-                  {custdevAgents.filter((a) => a.label).map((a, i) => (
-                    <text
-                      key={`label-${i}`}
+                  {namedAgents.map((a, i) => (
+                    <motion.text
+                      key={`label-${i}-${a.label}`}
                       x={a.x}
                       y={a.labelY}
                       textAnchor="middle"
                       fill="rgba(255,255,255,0.45)"
                       fontSize="10"
                       fontFamily="monospace"
+                      initial={{ opacity: 0, y: a.labelY + 4 }}
+                      animate={{ opacity: 1, y: a.labelY }}
+                      transition={{ duration: 0.35, delay: 0.45 + i * 0.04, ease: "easeOut" }}
                     >
                       {a.label}
-                    </text>
+                    </motion.text>
                   ))}
 
                   {/* center product node */}
