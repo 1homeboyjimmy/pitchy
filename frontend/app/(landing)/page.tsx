@@ -24,7 +24,7 @@ const organizationSchema = {
   ]
 };
 
-const SectionHeading = ({ eyebrow, title, text, centered = false }: { eyebrow: string; title: string; text: string; centered?: boolean }) => (
+const SectionHeading = ({ eyebrow, title, text, centered = false }: { eyebrow?: string; title: string; text: string; centered?: boolean }) => (
   <motion.div
     initial={{ opacity: 0, y: 20 }}
     whileInView={{ opacity: 1, y: 0 }}
@@ -32,7 +32,7 @@ const SectionHeading = ({ eyebrow, title, text, centered = false }: { eyebrow: s
     viewport={{ once: true, margin: "-100px" }}
     className={`max-w-4xl ${centered ? "mx-auto text-center" : ""}`}
   >
-    <div className="font-mono text-white/50 mb-4 tracking-[0.2em] text-xs uppercase">{eyebrow}</div>
+    {eyebrow ? <div className="font-mono text-white/50 mb-4 tracking-[0.2em] text-xs uppercase">{eyebrow}</div> : null}
     <h2 className="text-4xl leading-[1.1] text-white md:text-6xl mb-6" style={{ fontFamily: "'Instrument Serif', serif" }}>
       {title}
     </h2>
@@ -68,7 +68,6 @@ export default function LandingPage() {
           <div className="mx-auto max-w-7xl">
             <SectionHeading
               centered
-              eyebrow="ОБЗОР СИСТЕМЫ"
               title="Единая система для стартапа"
               text="Мы собрали все инструменты в одном интерфейсе: от первичного анализа идеи до полной подготовки к инвестициям. Никаких лишних переключений между вкладками."
             />
@@ -146,11 +145,6 @@ export default function LandingPage() {
                     Начать анализ
                   </button>
                 </Link>
-                <Link href="/dashboard">
-                  <button className="lovable-glass text-white px-8 py-4 rounded-full font-medium hover:bg-white/5 transition-all font-mono tracking-tight uppercase text-xs">
-                    Посмотреть демо
-                  </button>
-                </Link>
               </div>
             </motion.div>
 
@@ -193,35 +187,40 @@ export default function LandingPage() {
               whileInView={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.8 }}
               viewport={{ once: true }}
-              className="lovable-glass-strong lovable-liquid-outline rounded-[2.5rem] p-10 relative overflow-hidden shadow-[0_0_80px_-20px_rgba(255,255,255,0.1)] bg-black/40"
+              className="lovable-glass-strong lovable-liquid-outline rounded-[2.5rem] p-8 md:p-10 relative overflow-hidden shadow-[0_0_80px_-20px_rgba(255,255,255,0.1)] bg-black/40"
             >
-              <div className="flex items-center gap-4 mb-10">
-                <div className="h-12 w-12 rounded-full border border-white/10 flex items-center justify-center bg-white/[0.03]">
-                  <Sparkles className="h-5 w-5 text-white/50" />
-                </div>
-                <div>
-                  <div className="font-semibold text-white">Умный ассистент</div>
-                  <div className="text-sm text-white/30 italic font-mono uppercase tracking-tighter">online / context aware</div>
-                </div>
+              <div className="flex items-center justify-between mb-2">
+                <div className="font-semibold text-white text-lg">Путь запроса</div>
+                <span className="rounded-full border border-white/20 bg-white/[0.06] px-3 py-1 text-[10px] font-mono uppercase tracking-wider text-white/70">Инновация</span>
               </div>
-
-              <div className="space-y-6">
-                <div className="ml-auto w-fit max-w-[80%] rounded-[1.5rem] bg-white/[0.92] px-5 py-4 text-sm text-black shadow-2xl">
-                  Сделай расчёт unit-экономики для B2B SaaS и покажи, где стоит усиливать каналы роста.
-                </div>
-                <div className="lovable-glass rounded-[1.5rem] p-6 text-sm text-white/60 border-white/5">
-                  <div className="mb-4 text-white font-medium flex items-center gap-2">
-                     Результат анализа
-                  </div>
-                  <ul className="space-y-3">
-                    <li className="flex items-center gap-3"><span className="h-1 w-1 rounded-full bg-white/40" /> Payback period: ~3.3 месяца</li>
-                    <li className="flex items-center gap-3"><span className="h-1 w-1 rounded-full bg-white/40" /> LTV / CAC: 3.6 — в безопасной зоне роста</li>
-                    <li className="flex items-center gap-3"><span className="h-1 w-1 rounded-full bg-white/40" /> 12-месячный LTV: ~18 000 ₽</li>
-                  </ul>
-                  <p className="mt-6 pt-4 border-t border-white/10 text-white font-light">
-                    Экономика сходится. Масштабирование можно ускорять.
-                  </p>
-                </div>
+              <p className="text-sm text-white/40 font-light leading-relaxed mb-8">
+                Каждый ваш вопрос за секунды проходит шесть умных шагов — поэтому ответ точный, быстрый и со ссылками на источники.
+              </p>
+              <div className="space-y-3">
+                {[
+                  { t: "Мгновенная проверка", d: "Сразу смотрим, есть ли готовый проверенный ответ", s: "0 сек" },
+                  { t: "Поиск по всем источникам", d: "Параллельно поднимаем всё, что относится к вашему вопросу", s: "0.2 сек" },
+                  { t: "Отбор самого точного", d: "Оставляем только самые релевантные данные", s: "0.8 сек" },
+                  { t: "Команда ИИ-моделей", d: "Несколько нейросетей разбирают задачу с разных сторон", s: "1.5 сек" },
+                  { t: "Готовый ответ со ссылками", d: "Собираем понятный ответ с источниками", s: "2.0 сек" },
+                  { t: "Самопроверка", d: "ИИ перепроверяет себя, прежде чем ответить", s: "3.0 сек" },
+                ].map((step, i) => (
+                  <motion.div
+                    key={step.t}
+                    initial={{ opacity: 0, x: -20 }}
+                    whileInView={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.4, delay: i * 0.08 }}
+                    viewport={{ once: true }}
+                    className="lovable-glass rounded-2xl p-4 flex items-center gap-4 border-white/5"
+                  >
+                    <div className="h-7 w-7 shrink-0 rounded-full border border-white/10 bg-white/[0.05] flex items-center justify-center font-mono text-[11px] text-white/70">{i + 1}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm text-white font-medium leading-tight">{step.t}</div>
+                      <div className="text-[12px] text-white/40 font-light leading-snug mt-0.5">{step.d}</div>
+                    </div>
+                    <span className="font-mono text-[10px] text-white/30 shrink-0">{step.s}</span>
+                  </motion.div>
+                ))}
               </div>
             </motion.div>
 
@@ -231,53 +230,52 @@ export default function LandingPage() {
               transition={{ duration: 0.8 }}
               viewport={{ once: true }}
             >
-              <div className="font-mono text-white/50 mb-4 tracking-[0.2em] text-xs uppercase">СЛОЙ ИИ</div>
               <h2 className="text-5xl md:text-7xl text-white leading-[1.1] mb-8" style={{ fontFamily: "'Instrument Serif', serif" }}>
                 Интеллект в каждом действии.
               </h2>
               <p className="text-white/40 text-lg font-light leading-relaxed mb-10">
                 Слой живого ИИ не просто отвечает на вопросы, а анализирует контекст проекта, подбирает релевантные гранты и помогает структурировать юридические аспекты.
               </p>
-              
-              <div className="space-y-4">
-                {[
-                  {
-                    icon: Radar,
-                    title: "Анализ ЦА",
-                    text: "Выявляйте боли, сигналы спроса и скрытые мотивы аудитории.",
-                    module: "MODULE 01",
-                  },
-                  {
-                    icon: Layers,
-                    title: "RAG-контекст",
-                    text: "Подтягивайте документы, исследования и внутреннюю базу знаний в один ответ.",
-                    module: "MODULE 02",
-                  },
-                  {
-                    icon: Scale,
-                    title: "Юридический слой",
-                    text: "Базовые проверки, структура документов и быстрые сценарии согласования.",
-                    module: "MODULE 03",
-                  },
-                ].map((mod, idx) => (
-                  <motion.div
-                    key={mod.title}
-                    initial={{ opacity: 0, y: 20 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5, delay: idx * 0.1 }}
-                    viewport={{ once: true }}
-                    className="lovable-glass rounded-[1.5rem] p-6 flex items-start gap-5 border-white/5"
-                  >
-                    <div className="mt-1 h-10 w-10 rounded-xl border border-white/10 flex items-center justify-center bg-white/[0.03] shrink-0">
-                      <mod.icon className="h-4 w-4" />
+
+              <div className="lovable-glass lovable-liquid-outline rounded-[2rem] p-6 sm:p-8 border-white/5 bg-black/40">
+                <div className="text-xs font-mono uppercase tracking-[0.2em] text-white/40 mb-8">Качество ответов · Pitchy против других моделей</div>
+                <div className="grid grid-cols-4 gap-2 sm:gap-4">
+                  {[
+                    { name: "Pitchy", logo: "/icons/logotip.png", value: 100, delta: "эталон", best: true },
+                    { name: "Qwen", logo: "/logos/llm/qwen.svg", value: 80, delta: "−20%", best: false },
+                    { name: "DeepSeek", logo: "/logos/llm/deepseek.svg", value: 70, delta: "−30%", best: false },
+                    { name: "GLM-5", logo: "/logos/llm/glm.svg", value: 50, delta: "−50%", best: false },
+                  ].map((bar, i) => (
+                    <div key={bar.name} className="flex flex-col items-center gap-3">
+                      <div className="h-7 flex items-center justify-center">
+                        <img
+                          src={bar.logo}
+                          alt={bar.name}
+                          className="h-6 w-auto max-w-[72px] object-contain"
+                          onError={(e) => {
+                            e.currentTarget.style.display = "none";
+                            const fb = e.currentTarget.nextElementSibling as HTMLElement | null;
+                            if (fb) fb.style.display = "block";
+                          }}
+                        />
+                        <span className="hidden text-xs font-semibold text-white/80">{bar.name}</span>
+                      </div>
+                      <div className="w-full h-44 flex items-end">
+                        <motion.div
+                          initial={{ height: 0 }}
+                          whileInView={{ height: `${bar.value}%` }}
+                          transition={{ duration: 0.9, delay: i * 0.12, ease: "easeOut" }}
+                          viewport={{ once: true }}
+                          className={bar.best ? "w-full rounded-t-xl bg-white shadow-[0_0_30px_-4px_rgba(255,255,255,0.5)]" : "w-full rounded-t-xl bg-white/20"}
+                        />
+                      </div>
+                      <div className="text-center">
+                        <div className="text-[13px] text-white font-medium leading-tight">{bar.name}</div>
+                        <div className={bar.best ? "text-[11px] font-mono text-white/70" : "text-[11px] font-mono text-white/30"}>{bar.delta}</div>
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="text-xl text-white font-medium mb-2">{mod.title}</h3>
-                      <p className="text-sm text-white/40 font-light">{mod.text}</p>
-                      <div className="font-mono mt-4 text-white/20 text-[10px] tracking-widest uppercase">{mod.module}</div>
-                    </div>
-                  </motion.div>
-                ))}
+                  ))}
+                </div>
               </div>
             </motion.div>
           </div>
