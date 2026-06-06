@@ -77,7 +77,7 @@ function OrgLogo({ grant, size = 52 }: { grant: Grant; size?: number }) {
         referrerPolicy="no-referrer"
         loading="lazy"
         onError={() => setErrored(true)}
-        style={{ height: size, width: "auto", maxWidth: size * 3, filter: "brightness(0) invert(1)" }}
+        style={{ height: size, width: "auto", maxWidth: size * 2.35, filter: "brightness(0) invert(1)" }}
         className="block object-contain object-left shrink-0"
       />
     );
@@ -106,7 +106,7 @@ function SupportMeasureCard({ grant, match, href }: { grant: Grant; match?: Gran
   return (
     <Link
       href={href}
-      className="group relative flex flex-col h-full lovable-glass rounded-3xl border border-white/10 hover:border-white/25 hover:bg-white/[0.04] p-5 transition-all overflow-hidden"
+      className="group relative flex min-w-0 flex-col h-full lovable-glass rounded-3xl border border-white/10 hover:border-white/25 hover:bg-white/[0.04] p-4 sm:p-5 transition-all overflow-hidden"
     >
       {/* Шапка: логотип + матч-балл */}
       <div className="flex items-start justify-between gap-3 mb-4">
@@ -127,7 +127,7 @@ function SupportMeasureCard({ grant, match, href }: { grant: Grant; match?: Gran
       </span>
 
       {/* Название + организация */}
-      <h3 className="font-display text-lg text-white leading-snug line-clamp-2">{grant.name}</h3>
+      <h3 className="font-display text-lg text-white leading-snug line-clamp-2 break-words">{grant.name}</h3>
       {grant.organization && <p className="text-white/40 text-[13px] truncate mt-1">{grant.organization}</p>}
 
       {/* Описание */}
@@ -163,10 +163,10 @@ function SupportMeasureCard({ grant, match, href }: { grant: Grant; match?: Gran
       ) : null}
 
       {/* Подвал: сумма + дедлайн */}
-      <div className="mt-auto flex items-end justify-between gap-3 pt-4 mt-4 border-t border-white/5">
+      <div className="mt-auto flex items-end justify-between gap-3 pt-4 mt-4 border-t border-white/5 min-w-0">
         <div className="min-w-0">
           {amount ? (
-            <div className="text-white font-semibold text-sm truncate">{amount}</div>
+            <div className="text-white font-semibold text-sm break-words">{amount}</div>
           ) : (
             <div className="text-white/30 text-sm">Сумма не указана</div>
           )}
@@ -295,7 +295,7 @@ export function GrantsPageClient() {
   }
 
   return (
-    <div className="w-full max-w-6xl mx-auto px-4 md:px-8 pt-24 pb-10 relative z-10">
+    <div className="w-full max-w-6xl mx-auto px-4 md:px-8 pt-24 pb-10 relative z-10 overflow-hidden">
         <div className="flex items-center justify-end gap-4 mb-8">
           <Link href="/grants/my" className="flex items-center gap-2 text-white/60 hover:text-white text-sm transition-colors">
             <FileText size={16} /> Мои гранты
@@ -413,11 +413,11 @@ export function GrantsPageClient() {
                     const dl = daysLeft(g.deadline);
                     return (
                       <Link key={g.id} href={grantHref(g.id)}
-                        className="block lovable-glass rounded-2xl p-5 border border-white/10 hover:border-white/20 transition-all group">
-                        <div className="flex items-start gap-3">
-                          <OrgLogo grant={g} size={44} />
+                        className="block min-w-0 lovable-glass rounded-2xl p-4 sm:p-5 border border-white/10 hover:border-white/20 transition-all group">
+                        <div className="flex min-w-0 items-start gap-3">
+                          <OrgLogo grant={g} size={40} />
                           <div className="min-w-0 flex-1">
-                            <p className="font-display text-lg text-white truncate group-hover:text-white">{g.name}</p>
+                            <p className="font-display text-lg text-white leading-snug line-clamp-2 break-words group-hover:text-white">{g.name}</p>
                             {g.organization && <p className="text-white/40 text-sm truncate">{g.organization}</p>}
                           </div>
                           <ArrowUpRight className="text-white/30 group-hover:text-white shrink-0" size={18} />
@@ -455,16 +455,16 @@ export function GrantsPageClient() {
                     const dl = daysLeft(g.deadline);
                     return (
                       <Link key={g.id} href={grantHref(g.id)}
-                        className="flex items-center gap-4 px-5 py-4 hover:bg-white/[0.03] transition-colors group">
-                        <div className="text-center shrink-0 w-16">
-                          <div className="text-sm font-mono text-white/70">{formatDate(g.deadline)?.replace(/ \d{4} г\.?$/, "")}</div>
+                        className="flex min-w-0 items-center gap-3 sm:gap-4 px-4 sm:px-5 py-4 hover:bg-white/[0.03] transition-colors group">
+                        <div className="text-center shrink-0 w-14 sm:w-16">
+                          <div className="text-xs sm:text-sm font-mono text-white/70">{formatDate(g.deadline)?.replace(/ \d{4} г\.?$/, "")}</div>
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-white truncate group-hover:text-white font-display">{g.name}</p>
+                          <p className="text-white leading-snug line-clamp-2 break-words group-hover:text-white font-display">{g.name}</p>
                           {g.organization && <p className="text-white/35 text-xs truncate">{g.organization}</p>}
                         </div>
                         {dl != null && (
-                          <span className={`text-xs shrink-0 ${dl <= 7 ? "text-amber-400" : "text-white/35"}`}>
+                          <span className={`text-xs shrink-0 whitespace-nowrap ${dl <= 7 ? "text-amber-400" : "text-white/35"}`}>
                             {dl < 0 ? "завершён" : dl === 0 ? "сегодня" : `${dl} дн.`}
                           </span>
                         )}

@@ -204,8 +204,9 @@ export function GrantApplicationsClient() {
         </div>
       ) : (
         <>
+          <div className="flex flex-col">
           {generatedApplications.length > 0 && (
-            <section className="mb-10">
+            <section className="order-2 mt-10">
               <div className="flex items-end justify-between gap-4 mb-4">
                 <div>
                   <h2 className="font-display text-2xl text-white tracking-tight">Сохранённые заявки</h2>
@@ -250,7 +251,7 @@ export function GrantApplicationsClient() {
                           )}
                         </div>
 
-                        <div className="flex shrink-0 items-center gap-2">
+                        <div className="flex shrink-0 flex-wrap items-center gap-2">
                           <Link
                             href={`/grants/${app.grant_id}?project=${app.project_id}`}
                             className="inline-flex items-center gap-1.5 rounded-full border border-white/10 px-4 py-2 text-xs text-white/55 transition-all hover:border-white/25 hover:text-white"
@@ -301,7 +302,7 @@ export function GrantApplicationsClient() {
             </section>
           )}
 
-          <div className="flex gap-4 overflow-x-auto pb-4 -mx-1 px-1">
+          <div className="order-1 flex gap-4 overflow-x-auto pb-4 -mx-1 px-1">
             {STAGES.map((col) => {
               const cards = apps.filter((a) => a.stage === col.key);
               return (
@@ -445,6 +446,7 @@ export function GrantApplicationsClient() {
                 </div>
               );
             })}
+          </div>
           </div>
         </>
       )}
