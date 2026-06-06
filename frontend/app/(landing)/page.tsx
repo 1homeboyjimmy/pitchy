@@ -1,10 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { 
-  ArrowUpRight, BarChart3, Users, FileText, Sparkles,
-  MessageSquare, Radar, Zap, Layers, Scale,
-  Target, Briefcase, Code, ShieldCheck, UserCheck, Search, Map
+import {
+  ArrowUpRight, Users, FileText, MessageSquare, Map,
+  Briefcase, BarChart3, UserCheck
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { LandingFooter } from "@/components/landing/LandingFooter";
@@ -23,6 +22,19 @@ const organizationSchema = {
     "https://t.me/pitchy_pro"
   ]
 };
+
+// Декоративный граф «живого кастдева»: центр — продукт, вокруг — ИИ-агенты
+// (виртуальная фокус-группа). 4 именованных узла + фоновые точки-агенты.
+const custdevAgents = [
+  { x: 70, y: 82, label: "Инвестор", labelY: 64, strong: true },
+  { x: 330, y: 98, label: "Аналитик", labelY: 80, strong: true },
+  { x: 58, y: 300, label: "Юзер №1", labelY: 324, strong: true },
+  { x: 342, y: 300, label: "Юзер №2", labelY: 324, strong: true },
+  { x: 150, y: 44, label: "", labelY: 0, strong: false },
+  { x: 364, y: 198, label: "", labelY: 0, strong: false },
+  { x: 40, y: 188, label: "", labelY: 0, strong: false },
+  { x: 250, y: 358, label: "", labelY: 0, strong: false },
+];
 
 const SectionHeading = ({ eyebrow, title, text, centered = false }: { eyebrow?: string; title: string; text: string; centered?: boolean }) => (
   <motion.div
@@ -281,42 +293,164 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* Signal Map Section */}
+        {/* Deep CustDev Section — virtual focus group */}
         <section className="relative section-line px-6 py-32 md:px-12 pb-48">
           <div className="mx-auto max-w-7xl">
             <SectionHeading
               centered
-              eyebrow="КАРТА СИГНАЛОВ"
-              title="Карта рыночных сигналов"
-              text="Визуализация спроса, болей аудитории и конкурентной среды в реальном времени."
+              eyebrow="ВИРТУАЛЬНАЯ ФОКУС-ГРУППА"
+              title="Кастдев ещё до первого пользователя"
+              text="Общество ИИ-агентов с разными ролями и характерами реагирует на ваш продукт, как реальный рынок: вы видите возражения, спрос и точки роста до релиза."
             />
 
-            <div className="mt-10 sm:mt-20 grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-3">
-              {[
-                { icon: Target, title: "Инвестор" },
-                { icon: Search, title: "Маркетолог" },
-                { icon: Code, title: "Разработчик" },
-                { icon: Briefcase, title: "HR" },
-                { icon: ShieldCheck, title: "Юрист" },
-                { icon: UserCheck, title: "Аналитик" },
-              ].map((item, index) => (
-                <motion.div
-                  key={item.title}
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.5, delay: index * 0.05 }}
-                  viewport={{ once: true }}
-                  className="lovable-glass lovable-liquid-outline rounded-2xl sm:rounded-[1.5rem] p-4 sm:p-6 group cursor-default border-white/5 shadow-[0_0_40px_-10px_rgba(255,255,255,0.05)] bg-black/40"
-                >
-                  <div className="flex items-center gap-3 sm:gap-4 mb-3 sm:mb-6">
-                    <span className="h-2 w-2 rounded-full bg-white/40 animate-pulse shrink-0" />
-                    <h3 className="text-base sm:text-xl text-white font-medium leading-tight">{item.title}</h3>
-                  </div>
-                  <div className="pt-3 sm:pt-4 border-t border-white/10 italic text-[12px] sm:text-sm text-white/30 font-light leading-relaxed line-clamp-3 sm:line-clamp-none">
-                    &ldquo;Сигнал уже виден, но теперь интерфейс не спорит с контентом — он усиливает его.&rdquo;
-                  </div>
-                </motion.div>
-              ))}
+            <div className="mt-10 sm:mt-20 grid gap-6 lg:gap-8 lg:grid-cols-2 lg:items-stretch">
+              {/* Left: persona reactions */}
+              <div className="grid gap-3 sm:gap-4 sm:grid-cols-2">
+                {[
+                  {
+                    icon: Briefcase,
+                    role: "Инвестор",
+                    sentiment: "Скепсис",
+                    tone: "border-white/10 text-white/40",
+                    quote: "Рынок большой, но где защита от копирования? Покажите retention за три месяца — тогда поверю в юнит-экономику.",
+                  },
+                  {
+                    icon: BarChart3,
+                    role: "Аналитик",
+                    sentiment: "Нейтрально",
+                    tone: "border-white/20 text-white/70",
+                    quote: "Спрос подтверждается: три из пяти сегментов реагируют на оффер. В B2B цена выглядит завышенной.",
+                  },
+                  {
+                    icon: Users,
+                    role: "Пользователь №1",
+                    sentiment: "Боль",
+                    tone: "border-white/10 text-white/40",
+                    quote: "Не понял ценность за первые тридцать секунд. Онбординг перегружен — я бы закрыл вкладку.",
+                  },
+                  {
+                    icon: UserCheck,
+                    role: "Пользователь №2",
+                    sentiment: "Восторг",
+                    tone: "bg-white text-black border-white",
+                    quote: "Именно это я искал. Готов платить уже сейчас, если добавите интеграцию с таблицами.",
+                  },
+                ].map((p, index) => (
+                  <motion.div
+                    key={p.role}
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5, delay: index * 0.08 }}
+                    viewport={{ once: true }}
+                    className="lovable-glass lovable-liquid-outline rounded-2xl sm:rounded-[1.5rem] p-5 sm:p-6 border-white/5 shadow-[0_0_40px_-10px_rgba(255,255,255,0.05)] bg-black/40 flex flex-col"
+                  >
+                    <div className="flex items-center justify-between gap-2 mb-3 sm:mb-4">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <p.icon className="h-4 w-4 text-white/60 shrink-0" />
+                        <h3 className="text-sm sm:text-base text-white font-medium leading-tight truncate">{p.role}</h3>
+                      </div>
+                      <span className={`shrink-0 text-[9px] sm:text-[10px] font-mono uppercase tracking-wider px-2.5 py-1 rounded-full border ${p.tone}`}>
+                        {p.sentiment}
+                      </span>
+                    </div>
+                    <p className="text-[13px] sm:text-sm text-white/50 font-light italic leading-relaxed">
+                      «{p.quote}»
+                    </p>
+                  </motion.div>
+                ))}
+              </div>
+
+              {/* Right: live CustDev graph */}
+              <motion.div
+                initial={{ opacity: 0, scale: 0.97 }}
+                whileInView={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.8 }}
+                viewport={{ once: true }}
+                className="relative rounded-[2rem] border border-white/10 bg-[#0A0A0A] overflow-hidden min-h-[380px] lg:min-h-0"
+                style={{ backgroundImage: "radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px)", backgroundSize: "22px 22px" }}
+              >
+                <div className="absolute top-4 left-4 z-10 flex items-center gap-2 rounded-full border border-white/10 bg-black/60 px-3 py-1.5">
+                  <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-white/60">Идёт кастдев · live</span>
+                </div>
+
+                <svg viewBox="0 0 400 400" className="w-full h-full" preserveAspectRatio="xMidYMid meet">
+                  {/* edges */}
+                  {custdevAgents.map((a, i) => (
+                    <motion.line
+                      key={`edge-${i}`}
+                      x1={a.x}
+                      y1={a.y}
+                      x2={200}
+                      y2={200}
+                      stroke="rgba(255,255,255,0.18)"
+                      strokeWidth={1}
+                      initial={{ pathLength: 0, opacity: 0 }}
+                      whileInView={{ pathLength: 1, opacity: 1 }}
+                      transition={{ duration: 1, delay: 0.2 + i * 0.1 }}
+                      viewport={{ once: true }}
+                    />
+                  ))}
+
+                  {/* signal dots flowing agent -> product */}
+                  {custdevAgents.map((a, i) => (
+                    <motion.circle
+                      key={`signal-${i}`}
+                      r={2.5}
+                      fill="rgba(255,255,255,0.9)"
+                      initial={{ cx: a.x, cy: a.y, opacity: 0 }}
+                      animate={{ cx: [a.x, 200], cy: [a.y, 200], opacity: [0, 1, 0] }}
+                      transition={{ duration: 2.4, repeat: Infinity, delay: i * 0.45, ease: "easeInOut" }}
+                    />
+                  ))}
+
+                  {/* agent nodes */}
+                  {custdevAgents.map((a, i) => (
+                    <motion.circle
+                      key={`node-${i}`}
+                      cx={a.x}
+                      cy={a.y}
+                      fill={a.strong ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.25)"}
+                      stroke="rgba(255,255,255,0.4)"
+                      strokeWidth={1}
+                      initial={{ r: 0 }}
+                      whileInView={{ r: a.strong ? 7 : 4.5 }}
+                      transition={{ duration: 0.5, delay: 0.3 + i * 0.1 }}
+                      viewport={{ once: true }}
+                    />
+                  ))}
+
+                  {/* labels for named agents */}
+                  {custdevAgents.filter((a) => a.label).map((a, i) => (
+                    <text
+                      key={`label-${i}`}
+                      x={a.x}
+                      y={a.labelY}
+                      textAnchor="middle"
+                      fill="rgba(255,255,255,0.45)"
+                      fontSize="10"
+                      fontFamily="monospace"
+                    >
+                      {a.label}
+                    </text>
+                  ))}
+
+                  {/* center product node */}
+                  <motion.circle
+                    cx={200}
+                    cy={200}
+                    fill="none"
+                    stroke="rgba(255,255,255,0.15)"
+                    strokeWidth={1}
+                    animate={{ r: [30, 40, 30], opacity: [0.4, 0.08, 0.4] }}
+                    transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+                  />
+                  <circle cx={200} cy={200} r={24} fill="#ffffff" />
+                  <text x={200} y={204} textAnchor="middle" fill="#000000" fontSize="11" fontWeight="600">
+                    Продукт
+                  </text>
+                </svg>
+              </motion.div>
             </div>
           </div>
         </section>
