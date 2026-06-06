@@ -254,9 +254,9 @@ export default function LandingPage() {
                 <div className="grid grid-cols-4 gap-2 sm:gap-4">
                   {[
                     { name: "Pitchy", logo: "/icons/logotip.png", value: 100, delta: "эталон", best: true },
-                    { name: "Qwen", logo: "/logos/llm/qwen.jpg", value: 80, delta: "−20%", best: false },
-                    { name: "DeepSeek", logo: "/logos/llm/deepseek.jpg", value: 70, delta: "−30%", best: false },
-                    { name: "GLM-5", logo: "/logos/llm/glm.jpg", value: 50, delta: "−50%", best: false },
+                    { name: "Qwen", logo: "/logos/llm/qwen.svg", value: 80, delta: "−20%", best: false },
+                    { name: "DeepSeek", logo: "/logos/llm/deepseek.svg", value: 70, delta: "−30%", best: false },
+                    { name: "GLM-5", logo: "/logos/llm/glm.svg", value: 50, delta: "−50%", best: false },
                   ].map((bar, i) => (
                     <div key={bar.name} className="flex flex-col items-center gap-3">
                       <div className="h-7 flex items-center justify-center">
