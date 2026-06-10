@@ -15,7 +15,24 @@ const nextConfig: NextConfig = {
         headers: [
           {
             key: "Content-Security-Policy",
-            value: "default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval'; media-src 'self' blob: https://stream.mux.com https: data:; worker-src 'self' blob:; connect-src 'self' https://stream.mux.com https: wss:;",
+            // script-src без wildcard https: — иначе инъектированный
+            // <script src="https://evil/x.js"> прошёл бы. 'unsafe-inline'/eval
+            // пока оставлены (Next инлайнит бутстрап без nonce); следующий шаг —
+            // nonce через middleware. Остальные источники широкие осознанно
+            // (видео с CloudFront, шрифты, картинки грантов).
+            value: [
+              "default-src 'self'",
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+              "style-src 'self' 'unsafe-inline' https:",
+              "img-src 'self' data: blob: https:",
+              "font-src 'self' data: https:",
+              "media-src 'self' blob: https://stream.mux.com https: data:",
+              "worker-src 'self' blob:",
+              "connect-src 'self' https://stream.mux.com https: wss:",
+              "frame-ancestors 'none'",
+              "base-uri 'self'",
+              "object-src 'none'",
+            ].join("; "),
           },
         ],
       },

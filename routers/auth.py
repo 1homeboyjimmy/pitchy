@@ -81,6 +81,53 @@ def _safe_next_path(value: str | None) -> str | None:
     return value
 
 
+# Перебор 6-значных кодов (сброс пароля / верификация email). Кроме
+# IP-rate-limit считаем попытки per-(scope, email): после лимита код
+# инвалидируется, чтобы 1 млн вариантов нельзя было перебрать за время
+# жизни кода. Redis — основное хранилище счётчика, in-memory — fallback.
+CODE_MAX_ATTEMPTS = int(os.getenv("AUTH_CODE_MAX_ATTEMPTS", "5"))
+CODE_ATTEMPT_TTL = 900  # 15 минут — не дольше жизни кода
+
+
+def _bump_code_attempts(scope: str, identity: str) -> int:
+    from redis_client import get_redis
+
+    key = f"codetry:{scope}:{(identity or '').lower()}"
+    redis_client = get_redis()
+    if redis_client:
+        try:
+            count = int(redis_client.incr(key))
+            if count == 1:
+                redis_client.expire(key, CODE_ATTEMPT_TTL)
+            return count
+        except Exception:
+            pass
+    bucket = getattr(_bump_code_attempts, "_mem", None)
+    if bucket is None:
+        from cachetools import TTLCache
+
+        bucket = TTLCache(maxsize=10000, ttl=CODE_ATTEMPT_TTL)
+        _bump_code_attempts._mem = bucket
+    count = int(bucket.get(key, 0)) + 1
+    bucket[key] = count
+    return count
+
+
+def _reset_code_attempts(scope: str, identity: str) -> None:
+    from redis_client import get_redis
+
+    key = f"codetry:{scope}:{(identity or '').lower()}"
+    redis_client = get_redis()
+    if redis_client:
+        try:
+            redis_client.delete(key)
+        except Exception:
+            pass
+    bucket = getattr(_bump_code_attempts, "_mem", None)
+    if bucket is not None:
+        bucket.pop(key, None)
+
+
 def _set_session_cookie(response: Response, token: str) -> None:
     response.set_cookie(
         key=get_access_token_cookie_name(),
@@ -167,9 +214,15 @@ async def register(
 @router.post("/auth/verify-email", response_model=TokenResponse)
 async def verify_email_code(
     payload: EmailCodeVerifyRequest,
+    request: Request,
     response: Response,
     db: AsyncSession = Depends(get_async_db),
 ) -> TokenResponse:
+    from main import _check_rate_limit
+
+    ip = request.client.host if request.client else "unknown"
+    _check_rate_limit(ip)
+
     result = await db.execute(
         select(User).where(User.email == payload.email, User.deleted_at.is_(None))
     )
@@ -186,6 +239,13 @@ async def verify_email_code(
             raise HTTPException(status_code=400, detail="Verification code expired")
 
         if not verify_token(payload.code, user.email_verify_code_hash):
+            if _bump_code_attempts("verify", payload.email) > CODE_MAX_ATTEMPTS:
+                # Перебор — гасим код, чтобы нельзя было довести до угадывания.
+                user.email_verify_token_hash = None
+                user.email_verify_code_hash = None
+                user.email_verify_expires_at = None
+                await db.commit()
+                raise HTTPException(status_code=429, detail="Слишком много попыток. Запросите код заново.")
             raise HTTPException(status_code=400, detail="Invalid verification code")
 
         user.email_verified = True
@@ -193,6 +253,7 @@ async def verify_email_code(
         user.email_verify_code_hash = None
         user.email_verify_expires_at = None
         await db.commit()
+        _reset_code_attempts("verify", payload.email)
 
     token = create_access_token(user.id)
     _set_session_cookie(response, token)
@@ -389,8 +450,14 @@ async def request_password_reset(
 @router.post("/auth/reset-password")
 async def reset_password(
     payload: PasswordResetConfirm,
+    request: Request,
     db: AsyncSession = Depends(get_async_db),
 ) -> dict:
+    from main import _check_rate_limit
+
+    ip = request.client.host if request.client else "unknown"
+    _check_rate_limit(ip)
+
     res = await db.execute(
         select(User).where(User.email == payload.email, User.deleted_at.is_(None))
     )
@@ -404,13 +471,20 @@ async def reset_password(
     ):
         raise HTTPException(status_code=400, detail="Код недействителен или истёк")
 
-    if hash_token(payload.code) != user.password_reset_token_hash:
+    if not secrets.compare_digest(hash_token(payload.code), user.password_reset_token_hash):
+        if _bump_code_attempts("reset", payload.email) > CODE_MAX_ATTEMPTS:
+            # Перебор — инвалидируем код сброса, заставляем перезапросить.
+            user.password_reset_token_hash = None
+            user.password_reset_expires_at = None
+            await db.commit()
+            raise HTTPException(status_code=429, detail="Слишком много попыток. Запросите код заново.")
         raise HTTPException(status_code=400, detail="Код недействителен или истёк")
 
     user.password_hash = hash_password(payload.new_password)
     user.password_reset_token_hash = None
     user.password_reset_expires_at = None
     await db.commit()
+    _reset_code_attempts("reset", payload.email)
     return {"status": "ok"}
 
 
@@ -528,7 +602,10 @@ async def sso_callback(
     frontend_url = os.getenv("APP_PUBLIC_URL", "http://localhost:3000")
 
     sso_next = _safe_next_path(request.cookies.get("sso_next"))
-    target = f"{frontend_url}/dashboard?token={token}"
+    # НЕ кладём JWT в URL: он осел бы в истории браузера, логах прокси и
+    # Referer. Сессия — в httpOnly-cookie (ставится ниже). Фронту нужен лишь
+    # необсекретный флаг ?sso=1, чтобы выставить маркер «я залогинен».
+    target = f"{frontend_url}/dashboard?sso=1"
     if sso_next:
         target += f"&next={urllib.parse.quote(sso_next, safe='/')}"
 

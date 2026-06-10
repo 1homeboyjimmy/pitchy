@@ -114,11 +114,15 @@ function DashboardContent() {
     }
 
     const urlToken = searchParams.get("token");
-    if (urlToken) {
-      setToken(urlToken);
+    const ssoFlag = searchParams.get("sso");
+    if (urlToken || ssoFlag) {
+      // После SSO бэкенд ставит httpOnly-cookie и редиректит с ?sso=1.
+      // JWT в URL больше не приходит — выставляем только маркер сессии.
+      setToken(urlToken || "");
       const params = new URLSearchParams(searchParams.toString());
       const nextParam = params.get("next");
       params.delete("token");
+      params.delete("sso");
       params.delete("next");
       // If the SSO callback forwarded a `next` (post-login destination),
       // honour it — only local paths to avoid open-redirect.

@@ -8,6 +8,10 @@ from fastapi_sso.sso.gitlab import GitlabSSO
 
 load_dotenv()
 
+# OAuth обязан ходить по https в проде. allow_insecure_http=True допустим
+# только локально/на dev (http-редиректы). На APP_ENV=prod выключаем.
+_ALLOW_INSECURE_HTTP = os.getenv("APP_ENV", "dev").lower() != "prod"
+
 
 class YandexSSO(SSOBase):
     """Class providing login via Yandex OAuth"""
@@ -42,26 +46,26 @@ google_sso = GoogleSSO(
     client_id=os.getenv("GOOGLE_CLIENT_ID"),
     client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
     redirect_uri=f"{os.getenv('APP_PUBLIC_URL')}/auth/google/callback",
-    allow_insecure_http=True,
+    allow_insecure_http=_ALLOW_INSECURE_HTTP,
 )
 
 github_sso = GithubSSO(
     client_id=os.getenv("GITHUB_CLIENT_ID"),
     client_secret=os.getenv("GITHUB_CLIENT_SECRET"),
     redirect_uri=f"{os.getenv('APP_PUBLIC_URL')}/auth/github/callback",
-    allow_insecure_http=True,
+    allow_insecure_http=_ALLOW_INSECURE_HTTP,
 )
 
 gitlab_sso = GitlabSSO(
     client_id=os.getenv("GITLAB_CLIENT_ID"),
     client_secret=os.getenv("GITLAB_CLIENT_SECRET"),
     redirect_uri=f"{os.getenv('APP_PUBLIC_URL')}/auth/gitlab/callback",
-    allow_insecure_http=True,
+    allow_insecure_http=_ALLOW_INSECURE_HTTP,
 )
 
 yandex_sso = YandexSSO(
     client_id=os.getenv("YANDEX_CLIENT_ID"),
     client_secret=os.getenv("YANDEX_CLIENT_SECRET"),
     redirect_uri=f"{os.getenv('APP_PUBLIC_URL')}/auth/yandex/callback",
-    allow_insecure_http=True,
+    allow_insecure_http=_ALLOW_INSECURE_HTTP,
 )

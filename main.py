@@ -1072,7 +1072,18 @@ async def health(request: Request):
 
 
 @app.get("/metrics")
-def metrics():
+def metrics(request: Request):
+    # Prometheus-метрики раскрывают внутреннюю кухню — не отдаём публично.
+    # Если задан METRICS_TOKEN, требуем его (Bearer или ?token=). Если токен
+    # не задан: на проде закрываем наглухо (404), на dev оставляем открытым.
+    expected = os.getenv("METRICS_TOKEN")
+    if expected:
+        auth = request.headers.get("Authorization", "")
+        provided = auth[7:] if auth.startswith("Bearer ") else request.query_params.get("token", "")
+        if not secrets.compare_digest(provided, expected):
+            raise HTTPException(status_code=404, detail="Not found")
+    elif os.getenv("APP_ENV", "dev").lower() == "prod":
+        raise HTTPException(status_code=404, detail="Not found")
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 

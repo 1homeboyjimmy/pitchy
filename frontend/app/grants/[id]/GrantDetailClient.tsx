@@ -194,7 +194,7 @@ export function GrantDetailClient() {
               <div className="text-white font-medium text-sm">{formatDate(grant.deadline)}</div>
             </div>
           )}
-          {grant.url && (
+          {grant.url && /^https?:\/\//i.test(grant.url) && (
             <a href={grant.url} target="_blank" rel="noopener noreferrer"
               className="lovable-glass rounded-2xl p-4 border border-white/10 hover:border-white/20 transition-all">
               <ExternalLink size={16} className="text-white/40 mb-2" />

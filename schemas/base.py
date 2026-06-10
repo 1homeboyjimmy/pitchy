@@ -332,6 +332,25 @@ class GrantCreateRequest(BaseModel):
     deadline: datetime | None = None
     status: str = "open"
 
+    @field_validator("url", "logo_url")
+    @classmethod
+    def _safe_grant_url(cls, v: str | None) -> str | None:
+        """URL гранта попадает на фронт как <a href>. Краулер тащит ссылки из
+        чужого HTML, поэтому режем всё, кроме http(s) и локальных путей
+        (/logos/…). Так javascript:/data:/scheme-relative не дойдут до DOM."""
+        if v is None:
+            return None
+        s = v.strip()
+        if not s:
+            return None
+        # локальный ассет вида /logos/fsi.svg — ок (но не //host и не /\)
+        if s.startswith("/") and not s.startswith("//") and not s.startswith("/\\"):
+            return s
+        low = s.lower()
+        if low.startswith("http://") or low.startswith("https://"):
+            return s
+        raise ValueError("URL должен быть http(s) или локальным путём")
+
 
 class GrantExtractRequest(BaseModel):
     """Извлечение черновика гранта по ссылке (админ-парсер)."""
