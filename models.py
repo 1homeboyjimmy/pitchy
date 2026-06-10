@@ -301,6 +301,9 @@ class Grant(Base):
     sectors: Mapped[list[str]] = mapped_column(JSON, default=list)         # it, biotech, ...
     entity_types: Mapped[list[str]] = mapped_column(JSON, default=list)    # ИП, ООО, самозанятый, физлицо
     requirements: Mapped[dict | None] = mapped_column(JSON, nullable=True) # доп. условия / поля заявки
+    # Шаблон заявки под этот грант (структура разделов: static/generated/user_input).
+    # NULL → дефолт из grant_templates.select_application_template (по названию/орг).
+    application_template: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     opens_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     deadline: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(30), default="open")  # open, upcoming, closed

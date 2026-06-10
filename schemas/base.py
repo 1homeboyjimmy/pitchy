@@ -297,6 +297,7 @@ class GrantResponse(BaseModel):
     sectors: list[str] = []
     entity_types: list[str] = []
     requirements: dict[str, Any] | None = None
+    application_template: dict[str, Any] | None = None
     opens_at: datetime | None = None
     deadline: datetime | None = None
     status: str = "open"
@@ -304,6 +305,11 @@ class GrantResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class GrantTemplateUpdateRequest(BaseModel):
+    """Админ: задать/сбросить шаблон заявки гранта. template=None → дефолт из кода."""
+    template: dict[str, Any] | None = None
 
 
 class GrantMatchResponse(BaseModel):

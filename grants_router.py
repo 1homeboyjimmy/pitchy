@@ -49,9 +49,11 @@ from schemas import (
     GrantSourceCreateRequest,
     GrantSourceUpdateRequest,
     GrantModerateRequest,
+    GrantTemplateUpdateRequest,
 )
 import grants_service
 import grants_autodiscover
+import grant_templates
 
 logger = logging.getLogger("app")
 
@@ -450,6 +452,50 @@ async def moderate_grant(
         grant.moderation = "rejected"
     else:
         raise HTTPException(status_code=400, detail="Действие: approve | reject")
+    await db.commit()
+    await db.refresh(grant)
+    return GrantResponse.model_validate(grant)
+
+
+@router.get("/{grant_id}/template")
+async def get_grant_template(
+    grant_id: int,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+) -> dict:
+    """Эффективный шаблон заявки для гранта (override из БД или дефолт из кода).
+
+    Поле `source`: custom — задан админом в БД; default — выбран по названию/орг."""
+    res = await db.execute(select(Grant).where(Grant.id == grant_id))
+    grant = res.scalar_one_or_none()
+    if not grant:
+        raise HTTPException(status_code=404, detail="Грант не найден")
+    if grant.moderation != "approved" and not user.is_admin:
+        raise HTTPException(status_code=404, detail="Грант не найден")
+    template = grant_templates.select_application_template(grant)
+    source = "custom" if grant.application_template else "default"
+    return {"source": source, "template": template}
+
+
+@router.patch("/{grant_id}/template", response_model=GrantResponse)
+async def update_grant_template(
+    grant_id: int,
+    payload: GrantTemplateUpdateRequest,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+) -> GrantResponse:
+    """Задать/сбросить шаблон заявки гранта. Только админ.
+
+    template=None → сброс к дефолту из кода. Иначе сохраняем override в БД."""
+    _require_admin(user)
+    res = await db.execute(select(Grant).where(Grant.id == grant_id))
+    grant = res.scalar_one_or_none()
+    if not grant:
+        raise HTTPException(status_code=404, detail="Грант не найден")
+    if payload.template is not None and not payload.template.get("groups"):
+        raise HTTPException(status_code=400, detail="Шаблон должен содержать groups[]")
+    grant.application_template = payload.template
+    flag_modified(grant, "application_template")
     await db.commit()
     await db.refresh(grant)
     return GrantResponse.model_validate(grant)
