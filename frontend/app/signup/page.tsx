@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, Suspense } from "react";
-import { UserRound, Mail, KeyRound, ArrowRight, ShieldCheck, Github, Chrome, ShieldAlert, Check } from "lucide-react";
+import { UserRound, Mail, KeyRound, ArrowRight, ShieldCheck, Github, ShieldAlert, Check } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { PitchyLogo } from "@/components/shared/PitchyLogo";
@@ -363,18 +363,12 @@ function SignUpContent() {
         </div>
 
         {/* SSO Options */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 relative z-10">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 relative z-10">
           <a
             href="/auth/yandex/login"
             className="flex items-center justify-center gap-3 bg-white/5 border border-white/10 text-white py-4 rounded-full hover:bg-white/10 hover:border-white/20 transition-all font-sans text-xs font-bold uppercase tracking-tight"
           >
             <YandexIcon size={16} /> Yandex
-          </a>
-          <a
-            href="/auth/google/login"
-            className="flex items-center justify-center gap-3 bg-white/5 border border-white/10 text-white py-4 rounded-full hover:bg-white/10 hover:border-white/20 transition-all font-sans text-xs font-bold uppercase tracking-tight"
-          >
-            <Chrome size={16} /> Google
           </a>
           <a
             href="/auth/github/login"
