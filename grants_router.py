@@ -104,10 +104,16 @@ async def list_grants(
         if category not in GRANT_CATEGORIES:
             raise HTTPException(status_code=400, detail="Неизвестная категория")
         q = q.where(Grant.category == category)
-    # Прошедшие по дате подачи автоматически пропадают: дедлайн в прошлом
-    # скрывается (без дедлайна — постоянные программы — остаются).
+    # Прошедшие по дате подачи автоматически пропадают — но только для
+    # запарсенных программ (мероприятия/акселераторы/питчи с unicornroad).
+    # Курируемые вручную гранты (source='manual') не скрываем по устаревшей
+    # дате — ими управляет админ (у ФСИ-программ даты подачи плавающие).
     if not include_expired:
-        q = q.where(or_(Grant.deadline.is_(None), Grant.deadline >= datetime.utcnow()))
+        q = q.where(or_(
+            Grant.source == "manual",
+            Grant.deadline.is_(None),
+            Grant.deadline >= datetime.utcnow(),
+        ))
     q = q.order_by(Grant.deadline.is_(None), Grant.deadline.asc()).limit(200)
     res = await db.execute(q)
     grants = res.scalars().all()
@@ -130,8 +136,13 @@ async def match_grants(
     q = select(Grant).where(Grant.moderation == "approved")
     if not include_closed:
         q = q.where(Grant.status != "closed")
-        # Прошедшие по дедлайну не подбираем (без дедлайна — остаются).
-        q = q.where(or_(Grant.deadline.is_(None), Grant.deadline >= datetime.utcnow()))
+        # Прошедшие по дедлайну не подбираем — но только запарсенные; курируемые
+        # вручную гранты (source='manual') не отсекаем по устаревшей дате.
+        q = q.where(or_(
+            Grant.source == "manual",
+            Grant.deadline.is_(None),
+            Grant.deadline >= datetime.utcnow(),
+        ))
     res = await db.execute(q)
     grants = res.scalars().all()
 
