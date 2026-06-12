@@ -414,13 +414,13 @@ const GrantSupportSection = () => (
     <div className="absolute inset-x-0 top-20 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
     <div className="mx-auto max-w-7xl grid gap-14 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
       <motion.div
-        initial={{ opacity: 0, x: -24 }}
-        whileInView={{ opacity: 1, x: 0 }}
+        initial={{ opacity: 0 }}
+        whileInView={{ opacity: 1 }}
         transition={{ duration: 0.8, ease: "easeOut" }}
         viewport={{ once: true, margin: "-100px" }}
       >
         <div className="font-mono text-white/50 mb-4 tracking-[0.2em] text-xs uppercase">
-          ГРАНТЫ И СУБСИДИИ
+          МЕРЫ ПОДДЕРЖКИ
         </div>
         <h2 className="text-5xl md:text-7xl text-white leading-[1.05] mb-8" style={{ fontFamily: "'Instrument Serif', serif" }}>
           Автоматический подбор мер поддержки
@@ -517,7 +517,7 @@ const GrantSupportSection = () => (
                     </div>
                   </div>
                   <div className="rounded-full border border-white/15 bg-black/30 px-3 py-1 text-[11px] font-mono text-white/70">
-                    {match.value} match
+                    Подходит на {match.value}
                   </div>
                 </div>
               </motion.div>
