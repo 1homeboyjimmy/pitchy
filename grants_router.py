@@ -54,6 +54,7 @@ from schemas import (
 import grants_service
 import grants_autodiscover
 import grant_templates
+import unicornroad_parser
 
 logger = logging.getLogger("app")
 
@@ -481,6 +482,24 @@ async def moderate_grant(
     await db.commit()
     await db.refresh(grant)
     return GrantResponse.model_validate(grant)
+
+
+@router.post("/parse-unicornroad")
+async def parse_unicornroad(
+    sections: list[str] | None = None,
+    max_per_section: int = Query(40, ge=1, le=200),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+) -> dict:
+    """Импорт программ с unicornroad.ru в каталог (moderation='pending'). Только админ.
+
+    sections — список разделов (event/accelerator/competition/pitch/fund);
+    по умолчанию все. Дедуп по url. Программы попадают в очередь модерации."""
+    _require_admin(user)
+    result = await unicornroad_parser.crawl_unicornroad(
+        sections=sections, max_per_section=max_per_section
+    )
+    return {"result": result}
 
 
 @router.get("/{grant_id}/template")
