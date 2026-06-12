@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ArrowUpRight, Users, FileText, MessageSquare, Map,
-  Briefcase, BarChart3, UserCheck, Megaphone, Landmark, Rocket, GraduationCap
+  Briefcase, BarChart3, UserCheck, Megaphone, Landmark, Rocket, GraduationCap, CheckCircle2, Sparkles
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -333,6 +333,26 @@ const backgroundAgents = [
   { x: 250, y: 358 },
 ];
 
+const grantProjectSignals = [
+  { label: "Стадия", value: "MVP" },
+  { label: "Отрасль", value: "EdTech" },
+  { label: "Регион", value: "Москва" },
+  { label: "Цель", value: "Разработка" },
+];
+
+const grantMatches = [
+  { title: "Грант на развитие IT", value: "92%", amount: "до 5 млн ₽", deadline: "12 дней" },
+  { title: "Субсидия для МСП", value: "84%", amount: "до 2 млн ₽", deadline: "21 день" },
+  { title: "Акселератор с финансированием", value: "76%", amount: "пилот + грант", deadline: "34 дня" },
+];
+
+const grantApplicationFields = [
+  "Описание проекта",
+  "Цель финансирования",
+  "План работ",
+  "Бюджет заявки",
+];
+
 const SectionHeading = ({ eyebrow, title, text, centered = false }: { eyebrow?: string; title: string; text: string; centered?: boolean }) => (
   <motion.div
     initial={{ opacity: 0, y: 20 }}
@@ -388,6 +408,165 @@ const PersonaReactionCard = ({ persona, index }: { persona: ActivePersonaReactio
     </motion.div>
   );
 };
+
+const GrantSupportSection = () => (
+  <section className="relative section-line px-6 py-32 md:px-12 overflow-hidden">
+    <div className="absolute inset-x-0 top-20 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+    <div className="mx-auto max-w-7xl grid gap-14 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
+      <motion.div
+        initial={{ opacity: 0, x: -24 }}
+        whileInView={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.8, ease: "easeOut" }}
+        viewport={{ once: true, margin: "-100px" }}
+      >
+        <div className="font-mono text-white/50 mb-4 tracking-[0.2em] text-xs uppercase">
+          ГРАНТЫ И СУБСИДИИ
+        </div>
+        <h2 className="text-5xl md:text-7xl text-white leading-[1.05] mb-8" style={{ fontFamily: "'Instrument Serif', serif" }}>
+          Автоматический подбор мер поддержки
+        </h2>
+        <p className="text-white/40 text-lg font-light leading-relaxed mb-10 max-w-2xl">
+          Не тратьте недели на поиск грантов и разбор требований. Pitchy подбирает меры поддержки под ваш проект и подготавливает заявку с помощью ИИ.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-3">
+          {[
+            "Поиск по грантам и программам",
+            "Оценка соответствия требованиям",
+            "Черновик заявки под конкурс",
+          ].map((item) => (
+            <div key={item} className="lovable-glass rounded-2xl p-4 border-white/5 bg-black/30">
+              <CheckCircle2 className="mb-3 h-4 w-4 text-white/70" />
+              <p className="text-[13px] leading-relaxed text-white/45 font-light">{item}</p>
+            </div>
+          ))}
+        </div>
+      </motion.div>
+
+      <motion.div
+        initial={{ opacity: 0, x: 24, scale: 0.98 }}
+        whileInView={{ opacity: 1, x: 0, scale: 1 }}
+        transition={{ duration: 0.8, ease: "easeOut" }}
+        viewport={{ once: true, margin: "-100px" }}
+        className="lovable-glass-strong lovable-liquid-outline rounded-[2.5rem] p-5 sm:p-8 bg-black/50 shadow-[0_0_100px_-24px_rgba(255,255,255,0.18)] overflow-hidden"
+      >
+        <div className="flex items-center justify-between gap-4 mb-6">
+          <div>
+            <div className="text-sm font-semibold text-white">Навигатор мер поддержки</div>
+            <div className="mt-1 text-[11px] font-mono uppercase tracking-[0.18em] text-white/35">live matching</div>
+          </div>
+          <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
+            <span className="text-[10px] font-mono uppercase tracking-wider text-white/60">ИИ ищет</span>
+          </div>
+        </div>
+
+        <div className="space-y-5">
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.55 }}
+            viewport={{ once: true }}
+            className="relative overflow-hidden rounded-[1.75rem] border border-white/10 bg-[#0A0A0A] p-5"
+          >
+            <motion.div
+              className="absolute inset-y-0 w-28 bg-gradient-to-r from-transparent via-white/20 to-transparent blur-sm"
+              animate={{ x: ["-140%", "520%"] }}
+              transition={{ duration: 3.2, repeat: Infinity, ease: "easeInOut", repeatDelay: 0.6 }}
+            />
+            <div className="relative flex items-start justify-between gap-4">
+              <div>
+                <div className="text-[11px] font-mono uppercase tracking-[0.2em] text-white/35 mb-2">Проект</div>
+                <h3 className="text-xl text-white font-medium leading-tight">EdTech-платформа для студентов</h3>
+              </div>
+              <Sparkles className="h-5 w-5 text-white/50 shrink-0" />
+            </div>
+            <div className="relative mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {grantProjectSignals.map((signal, index) => (
+                <motion.div
+                  key={signal.label}
+                  initial={{ opacity: 0, y: 10 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.35, delay: 0.15 + index * 0.08 }}
+                  viewport={{ once: true }}
+                  className="rounded-2xl border border-white/10 bg-white/[0.04] p-3"
+                >
+                  <div className="text-[10px] font-mono uppercase tracking-wider text-white/30">{signal.label}</div>
+                  <div className="mt-1 text-sm text-white/75">{signal.value}</div>
+                </motion.div>
+              ))}
+            </div>
+          </motion.div>
+
+          <div className="grid gap-3">
+            {grantMatches.map((match, index) => (
+              <motion.div
+                key={match.title}
+                initial={{ opacity: 0, x: -18 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.45, delay: 0.45 + index * 0.15 }}
+                viewport={{ once: true }}
+                className={`rounded-2xl border p-4 transition-all ${index === 0 ? "border-white/25 bg-white/[0.08] shadow-[0_0_36px_-18px_rgba(255,255,255,0.6)]" : "border-white/10 bg-white/[0.035]"}`}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-white leading-tight">{match.title}</div>
+                    <div className="mt-1 flex flex-wrap gap-2 text-[11px] font-mono text-white/35">
+                      <span>{match.amount}</span>
+                      <span>·</span>
+                      <span>дедлайн: {match.deadline}</span>
+                    </div>
+                  </div>
+                  <div className="rounded-full border border-white/15 bg-black/30 px-3 py-1 text-[11px] font-mono text-white/70">
+                    {match.value} match
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 22, height: 96 }}
+            whileInView={{ opacity: 1, y: 0, height: "auto" }}
+            transition={{ duration: 0.65, delay: 0.95, ease: "easeOut" }}
+            viewport={{ once: true }}
+            className="rounded-[1.75rem] border border-white/15 bg-white/[0.07] p-5 overflow-hidden"
+          >
+            <div className="flex items-center justify-between gap-4 mb-5">
+              <div>
+                <div className="text-[11px] font-mono uppercase tracking-[0.2em] text-white/35">Заявка</div>
+                <div className="mt-1 text-base font-medium text-white">Грант на развитие IT</div>
+              </div>
+              <span className="rounded-full bg-white px-3 py-1 text-[10px] font-mono uppercase tracking-wider text-black">
+                готовится
+              </span>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {grantApplicationFields.map((field, index) => (
+                <div key={field} className="rounded-2xl border border-white/10 bg-black/25 p-3">
+                  <div className="mb-3 text-[11px] text-white/55">{field}</div>
+                  <motion.div
+                    initial={{ width: "18%" }}
+                    whileInView={{ width: index === 3 ? "58%" : "86%" }}
+                    transition={{ duration: 0.9, delay: 1.15 + index * 0.12, ease: "easeOut" }}
+                    viewport={{ once: true }}
+                    className="h-2 rounded-full bg-white/70"
+                  />
+                  <motion.div
+                    initial={{ width: "8%" }}
+                    whileInView={{ width: index === 1 ? "72%" : "46%" }}
+                    transition={{ duration: 0.75, delay: 1.3 + index * 0.12, ease: "easeOut" }}
+                    viewport={{ once: true }}
+                    className="mt-2 h-2 rounded-full bg-white/20"
+                  />
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        </div>
+      </motion.div>
+    </div>
+  </section>
+);
 
 export default function LandingPage() {
   const { isAuthenticated } = useAuth();
@@ -620,7 +799,7 @@ export default function LandingPage() {
               viewport={{ once: true }}
             >
               <h2 className="text-5xl md:text-7xl text-white leading-[1.1] mb-8" style={{ fontFamily: "'Instrument Serif', serif" }}>
-                Интеллект в каждом действии.
+                Интеллект в каждом действии
               </h2>
               <p className="text-white/40 text-lg font-light leading-relaxed mb-10">
                 Слой живого ИИ не просто отвечает на вопросы, а анализирует контекст проекта, подбирает релевантные гранты и помогает структурировать юридические аспекты.
@@ -669,6 +848,8 @@ export default function LandingPage() {
             </motion.div>
           </div>
         </section>
+
+        <GrantSupportSection />
 
         {/* Deep CustDev Section — virtual focus group */}
         <section className="relative section-line px-6 py-32 md:px-12 pb-48">
