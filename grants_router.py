@@ -30,7 +30,7 @@ import logging
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -91,6 +91,7 @@ async def _get_owned_project(project_id: int, user: User, db: AsyncSession) -> P
 async def list_grants(
     status: str | None = Query(None, description="open | upcoming | closed"),
     category: str | None = Query(None, description="grant | contest | accelerator | event | pitch | support_measure | investor"),
+    include_expired: bool = Query(False, description="показывать программы с прошедшим дедлайном"),
     user: User = Depends(get_async_current_user),
     db: AsyncSession = Depends(get_async_db),
 ) -> list[GrantResponse]:
@@ -103,6 +104,10 @@ async def list_grants(
         if category not in GRANT_CATEGORIES:
             raise HTTPException(status_code=400, detail="Неизвестная категория")
         q = q.where(Grant.category == category)
+    # Прошедшие по дате подачи автоматически пропадают: дедлайн в прошлом
+    # скрывается (без дедлайна — постоянные программы — остаются).
+    if not include_expired:
+        q = q.where(or_(Grant.deadline.is_(None), Grant.deadline >= datetime.utcnow()))
     q = q.order_by(Grant.deadline.is_(None), Grant.deadline.asc()).limit(200)
     res = await db.execute(q)
     grants = res.scalars().all()
@@ -125,6 +130,8 @@ async def match_grants(
     q = select(Grant).where(Grant.moderation == "approved")
     if not include_closed:
         q = q.where(Grant.status != "closed")
+        # Прошедшие по дедлайну не подбираем (без дедлайна — остаются).
+        q = q.where(or_(Grant.deadline.is_(None), Grant.deadline >= datetime.utcnow()))
     res = await db.execute(q)
     grants = res.scalars().all()
 

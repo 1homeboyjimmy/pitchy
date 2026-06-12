@@ -90,11 +90,15 @@ def _post_to_draft(post: dict, category: str) -> dict | None:
     if directlink.lower().startswith("http"):
         requirements["Первоисточник"] = directlink
 
+    # Инвесторы/фонды — постоянные программы без «даты подачи»; дата в фиде
+    # там заглушка, поэтому дедлайн не ставим, чтобы их не скрывало автоскрытие.
+    deadline = None if category == "investor" else _parse_date(post.get("date"))
+
     return {
         "name": title[:300],
         "description": description,
         "url": url,
-        "deadline": _parse_date(post.get("date")),
+        "deadline": deadline,
         "category": category,
         "geo": "RF",
         "requirements": requirements or None,
