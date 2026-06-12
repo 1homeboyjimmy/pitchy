@@ -854,7 +854,17 @@ export type GrantApplication = {
   grant_id: number;
   status: "draft" | "generated" | "submitted";
   stage: CrmStage;
-  content: { sections?: Record<string, string>; gaps?: string[]; checklist?: string[] };
+  content: {
+    sections?: Record<string, string>;
+    gaps?: string[];
+    checklist?: string[];
+    // Структура шаблона под конкретный грант (Кирпич A–C).
+    template_key?: string;
+    template_title?: string;
+    section_meta?: { key: string; label: string; group_id: string; group_title: string }[];
+    static?: Record<string, { label: string; value: string }>;
+    user_input?: { key: string; label: string; hint?: string }[];
+  };
   match_score: number;
   created_at: string;
   updated_at: string;

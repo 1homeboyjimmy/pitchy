@@ -67,6 +67,14 @@ function requirementItems(requirements: Record<string, unknown> | null): string[
 
 function applicationSectionEntries(app: GrantApplication): [string, string][] {
   const sections = app.content.sections ?? {};
+  const meta = app.content.section_meta ?? [];
+  // Новые заявки под шаблон гранта: порядок и состав — из section_meta.
+  if (meta.length) {
+    return meta
+      .filter((m) => typeof sections[m.key] === "string" && sections[m.key].trim().length > 0)
+      .map((m) => [m.key, sections[m.key]] as [string, string]);
+  }
+  // Старые заявки: порядок по фиксированной карте SECTION_LABELS.
   return Object.entries(sections)
     .filter(([, value]) => typeof value === "string" && value.trim().length > 0)
     .sort(([a], [b]) => {
@@ -74,6 +82,12 @@ function applicationSectionEntries(app: GrantApplication): [string, string][] {
       const bi = Object.keys(SECTION_LABELS).indexOf(b);
       return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
     });
+}
+
+// Подпись раздела: из section_meta (под грант) → из карты → humanize.
+function sectionLabel(app: GrantApplication, key: string): string {
+  const m = (app.content.section_meta ?? []).find((x) => x.key === key);
+  return m?.label ?? SECTION_LABELS[key] ?? humanizeKey(key);
 }
 
 function formatUpdatedAt(value: string): string {
@@ -287,7 +301,7 @@ export function GrantApplicationsClient() {
                             {sections.map(([key, value]) => (
                               <section key={key} className="rounded-2xl border border-white/10 bg-black/20 p-5">
                                 <h4 className="font-mono text-[10px] uppercase tracking-[0.2em] text-white/35 mb-3">
-                                  {SECTION_LABELS[key] ?? humanizeKey(key)}
+                                  {sectionLabel(app, key)}
                                 </h4>
                                 <p className="text-white/75 leading-relaxed whitespace-pre-wrap">{value}</p>
                               </section>

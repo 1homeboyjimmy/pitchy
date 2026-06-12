@@ -132,9 +132,29 @@ export function GrantDetailClient() {
     );
   }
 
-  const sections = result?.content?.sections || {};
-  const gaps = result?.content?.gaps || [];
-  const sectionKeys = Object.keys(SECTION_LABELS).filter((k) => sections[k]);
+  const content = result?.content;
+  const sections = content?.sections || {};
+  const gaps = content?.gaps || [];
+  const sectionMeta = content?.section_meta || [];
+  const staticEntries = Object.values(content?.static || {});
+  const userInput = content?.user_input || [];
+  const templateTitle = content?.template_title;
+
+  // Разделы для рендера: из section_meta (новая структура под грант) либо из
+  // старой карты SECTION_LABELS (заявки, сгенерированные до шаблонов).
+  const renderSections = sectionMeta.length
+    ? sectionMeta.filter((m) => sections[m.key])
+    : Object.keys(SECTION_LABELS)
+        .filter((k) => sections[k])
+        .map((k) => ({ key: k, label: SECTION_LABELS[k], group_id: "main", group_title: "" }));
+
+  // Группировка по group_title с сохранением порядка.
+  const groupedSections: { title: string; items: { key: string; label: string }[] }[] = [];
+  for (const m of renderSections) {
+    let g = groupedSections.find((x) => x.title === (m.group_title || ""));
+    if (!g) { g = { title: m.group_title || "", items: [] }; groupedSections.push(g); }
+    g.items.push({ key: m.key, label: m.label });
+  }
 
   return (
     <div className="w-full max-w-4xl mx-auto px-4 md:px-8 pt-24 pb-10 relative z-10">
@@ -374,6 +394,12 @@ export function GrantDetailClient() {
               </Link>
             </div>
 
+            {templateTitle && (
+              <p className="text-white/40 text-xs mb-5 font-mono uppercase tracking-wider">
+                Шаблон: {templateTitle}
+              </p>
+            )}
+
             {gaps.length > 0 && (
               <div className="lovable-glass rounded-2xl p-5 border border-amber-500/20 mb-5">
                 <p className="flex items-center gap-2 text-amber-400 text-sm font-medium mb-2">
@@ -385,14 +411,53 @@ export function GrantDetailClient() {
               </div>
             )}
 
-            <div className="space-y-4">
-              {sectionKeys.map((k) => (
-                <div key={k} className="lovable-glass rounded-2xl p-6 border border-white/10">
-                  <h3 className="font-mono text-[10px] uppercase tracking-[0.2em] text-white/40 mb-3">{SECTION_LABELS[k]}</h3>
-                  <p className="text-white/80 leading-relaxed whitespace-pre-wrap">{sections[k]}</p>
+            {/* Зафиксировано положением — без ИИ */}
+            {staticEntries.length > 0 && (
+              <div className="lovable-glass rounded-2xl p-6 border border-white/10 mb-6">
+                <h3 className="font-mono text-[10px] uppercase tracking-[0.2em] text-white/40 mb-4">Зафиксировано положением</h3>
+                <div className="space-y-3">
+                  {staticEntries.map((f, i) => (
+                    <div key={i} className="flex flex-col sm:flex-row sm:gap-4">
+                      <div className="text-white/50 text-sm sm:w-1/3 shrink-0">{f.label}</div>
+                      <div className="text-white/80 text-sm whitespace-pre-wrap">{f.value}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Сгенерированные разделы — по группам шаблона */}
+            <div className="space-y-6">
+              {groupedSections.map((grp, gi) => (
+                <div key={gi} className="space-y-4">
+                  {grp.title && (
+                    <h2 className="font-display text-white text-base mt-2">{grp.title}</h2>
+                  )}
+                  {grp.items.map((it) => (
+                    <div key={it.key} className="lovable-glass rounded-2xl p-6 border border-white/10">
+                      <h3 className="font-mono text-[10px] uppercase tracking-[0.2em] text-white/40 mb-3">{it.label}</h3>
+                      <p className="text-white/80 leading-relaxed whitespace-pre-wrap">{sections[it.key]}</p>
+                    </div>
+                  ))}
                 </div>
               ))}
             </div>
+
+            {/* Заполняет заявитель сам — ИИ не выдумывает */}
+            {userInput.length > 0 && (
+              <div className="lovable-glass rounded-2xl p-6 border border-amber-500/20 mt-6">
+                <h3 className="font-mono text-[10px] uppercase tracking-[0.2em] text-amber-400 mb-2">Заполните самостоятельно</h3>
+                <p className="text-white/40 text-xs mb-4">Эти поля ИИ не генерирует — внесите реальные данные при подаче.</p>
+                <ul className="space-y-3">
+                  {userInput.map((u) => (
+                    <li key={u.key}>
+                      <div className="text-white/80 text-sm">{u.label}</div>
+                      {u.hint && <div className="text-white/40 text-xs mt-0.5">{u.hint}</div>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </section>
         )}
     </div>
