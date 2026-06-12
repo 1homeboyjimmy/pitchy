@@ -307,6 +307,9 @@ class Grant(Base):
     opens_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     deadline: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(30), default="open")  # open, upcoming, closed
+    # Тип программы для разбивки каталога по категориям:
+    # grant / contest / accelerator / event / pitch / support_measure / investor.
+    category: Mapped[str] = mapped_column(String(30), default="grant", server_default="grant", index=True)
     source: Mapped[str] = mapped_column(String(50), default="manual")  # manual, parsed
     # Модерация авто-обнаруженных грантов: approved (виден в каталоге),
     # pending (в очереди на проверку), rejected (скрыт). Ручные/старые гранты —

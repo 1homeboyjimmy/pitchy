@@ -834,6 +834,8 @@ export type Grant = {
   opens_at: string | null;
   deadline: string | null;
   status: "open" | "upcoming" | "closed";
+  // Категория программы: grant | contest | accelerator | event | pitch | support_measure | investor.
+  category?: string;
   // Статус модерации авто-обнаруженных грантов (для админ-очереди).
   moderation?: "approved" | "pending" | "rejected";
   // Доступна ли генерация заявки (есть реальный шаблон под требования фонда).

@@ -65,6 +65,11 @@ CRM_STAGES = ("interested", "preparing", "submitted", "won", "rejected")
 # Типы источников авто-обнаружения грантов.
 SOURCE_KINDS = ("listing", "page")
 
+# Категории программ в каталоге (тип Grant.category).
+GRANT_CATEGORIES = (
+    "grant", "contest", "accelerator", "event", "pitch", "support_measure", "investor",
+)
+
 
 def _require_admin(user: User) -> None:
     if not user.is_admin:
@@ -84,14 +89,19 @@ async def _get_owned_project(project_id: int, user: User, db: AsyncSession) -> P
 @router.get("", response_model=list[GrantResponse])
 async def list_grants(
     status: str | None = Query(None, description="open | upcoming | closed"),
+    category: str | None = Query(None, description="grant | contest | accelerator | event | pitch | support_measure | investor"),
     user: User = Depends(get_async_current_user),
     db: AsyncSession = Depends(get_async_db),
 ) -> list[GrantResponse]:
-    """Каталог грантов для календаря и блока «сейчас идёт»."""
-    # Публичный каталог показывает только одобренные модерацией гранты.
+    """Каталог программ для календаря и блока «сейчас идёт»."""
+    # Публичный каталог показывает только одобренные модерацией программы.
     q = select(Grant).where(Grant.moderation == "approved")
     if status:
         q = q.where(Grant.status == status)
+    if category:
+        if category not in GRANT_CATEGORIES:
+            raise HTTPException(status_code=400, detail="Неизвестная категория")
+        q = q.where(Grant.category == category)
     q = q.order_by(Grant.deadline.is_(None), Grant.deadline.asc()).limit(200)
     res = await db.execute(q)
     grants = res.scalars().all()

@@ -304,6 +304,7 @@ class GrantResponse(BaseModel):
     opens_at: datetime | None = None
     deadline: datetime | None = None
     status: str = "open"
+    category: str = "grant"
     moderation: str = "approved"
 
     class Config:
@@ -340,6 +341,7 @@ class GrantCreateRequest(BaseModel):
     opens_at: datetime | None = None
     deadline: datetime | None = None
     status: str = "open"
+    category: str = "grant"
 
     @field_validator("url", "logo_url")
     @classmethod
