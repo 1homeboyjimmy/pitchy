@@ -525,8 +525,8 @@ const GrantSupportSection = () => (
           </div>
 
           <motion.div
-            initial={{ opacity: 0, y: 22, height: 96 }}
-            whileInView={{ opacity: 1, y: 0, height: "auto" }}
+            initial={{ opacity: 0 }}
+            whileInView={{ opacity: 1 }}
             transition={{ duration: 0.65, delay: 0.95, ease: "easeOut" }}
             viewport={{ once: true }}
             className="rounded-[1.75rem] border border-white/15 bg-white/[0.07] p-5 overflow-hidden"
