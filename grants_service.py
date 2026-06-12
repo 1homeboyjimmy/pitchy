@@ -15,8 +15,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import os
 import re
 from urllib.parse import urlparse
 
@@ -368,64 +370,117 @@ def _passport_brief(passport: dict | None) -> tuple[str, list[str]]:
     return dump or "(паспорт почти пустой)", gaps
 
 
-async def generate_application(passport: dict | None, grant, extra_context: str = "") -> dict:
-    """Генерирует секции заявки из паспорта. Возвращает
-    {"sections": {key: text}, "gaps": [...], "model": str}.
+async def _generate_group(group: dict, *, fund_guidance: str, grant_facts: str,
+                          brief: str, extra_context: str, model: str | None) -> tuple[dict, dict]:
+    """Один LLM-вызов на группу разделов шаблона. Возвращает (секции, usage)."""
+    from makura_client import call_makura
 
-    Пробелы паспорта НЕ выдумываются: в соответствующих секциях LLM
-    инструктируется явно пометить «[нужно дозаполнить: ...]».
+    spec = "\n".join(
+        f'- "{s["key"]}" — {s["label"]}: {s.get("hint", "")}'.rstrip()
+        for s in group["sections"]
+    )
+    keys_json = ", ".join(f'"{s["key"]}": "..."' for s in group["sections"])
+    system_prompt = (
+        fund_guidance
+        + f"\n\nСейчас заполни ТОЛЬКО раздел заявки «{group['title']}». "
+        "Каждое поле — связный осмысленный текст на основе паспорта проекта, "
+        "без воды. Если данных в паспорте нет — пометка '[нужно дозаполнить: <что>]'.\n"
+        "Верни СТРОГО JSON без markdown: {\"sections\": {" + keys_json + "}}"
+    )
+    user_prompt = (
+        grant_facts
+        + f"ПАСПОРТ ПРОЕКТА:\n{brief}\n\n"
+        + (f"ДОПОЛНИТЕЛЬНО ОТ ПОЛЬЗОВАТЕЛЯ:\n{extra_context}\n\n" if extra_context else "")
+        + f"ПОЛЯ РАЗДЕЛА «{group['title']}» (заполни каждое):\n{spec}"
+    )
+    raw, _, usage = await call_makura(system_prompt, user_prompt, model=model)
+    out: dict[str, str] = {}
+    if raw:
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            s, e = raw.find("{"), raw.rfind("}")
+            parsed = json.loads(raw[s:e + 1]) if s >= 0 and e > s else {}
+        out = parsed.get("sections") or {}
+    return out, (usage or {})
+
+
+async def generate_application(passport: dict | None, grant, extra_context: str = "") -> dict:
+    """Генерирует заявку по шаблону конкретного гранта.
+
+    static — поля из положения (без LLM); содержательные разделы — батчами по
+    группам (параллельные LLM-вызовы, чтобы влезать в лимит токенов и не ждать
+    последовательно); user_input — то, что заполняет сам заявитель.
+
+    Пробелы паспорта НЕ выдумываются: пустые поля помечаются
+    «[нужно дозаполнить: ...]».
     """
+    from grant_templates import select_application_template
+
     def gget(field):
         return getattr(grant, field, None) if not isinstance(grant, dict) else grant.get(field)
 
+    template = select_application_template(grant)
     brief, gaps = _passport_brief(passport)
     grant_name = gget("name") or "грант"
-    grant_org = gget("org") or gget("organization") or ""
+    grant_org = gget("organization") or ""
     requirements = gget("requirements") or {}
-
-    sections_spec = "\n".join(f"- {key}: {label}" for key, label in _APPLICATION_SECTIONS)
-
-    system_prompt = (
-        "Ты — эксперт по грантовым заявкам для российских стартапов. На основе "
-        "паспорта проекта составь унифицированную заявку под конкретный грант. "
-        "Пиши деловым языком, по делу, без воды. Не выдумывай факты: если данных "
-        "в паспорте нет, в тексте секции явно поставь пометку вида "
-        "'[нужно дозаполнить: <что именно>]'. Бюджет указывай в рамках суммы "
-        "гранта, если она задана.\n"
-        "Верни СТРОГО JSON: {\"sections\": {\"summary\": \"...\", \"problem\": \"...\", "
-        "\"solution\": \"...\", \"market\": \"...\", \"team\": \"...\", \"budget\": \"...\", "
-        "\"impact\": \"...\"}}"
-    )
-    user_prompt = (
+    grant_facts = (
         f"ГРАНТ: {grant_name}" + (f" ({grant_org})" if grant_org else "") + "\n"
-        f"СУММА: {gget('amount_min') or '?'}–{gget('amount_max') or '?'} ₽\n"
-        f"ТРЕБОВАНИЯ: {json.dumps(requirements, ensure_ascii=False)}\n\n"
-        f"ПАСПОРТ ПРОЕКТА:\n{brief}\n\n"
-        + (f"ДОПОЛНИТЕЛЬНО:\n{extra_context}\n\n" if extra_context else "")
-        + f"СЕКЦИИ ЗАЯВКИ (заполни каждую):\n{sections_spec}"
+        f"ТРЕБОВАНИЯ ГРАНТА: {json.dumps(requirements, ensure_ascii=False)}\n\n"
     )
 
+    model = os.getenv("GRANTS_MODEL") or os.getenv("MAKURA_MODEL")
     sections: dict[str, str] = {}
-    model_used = None
+    usage_total = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
     try:
-        from makura_client import call_makura
-        import os
-        model = os.getenv("GRANTS_MODEL") or os.getenv("MAKURA_MODEL")
-        raw, _, _usage = await call_makura(system_prompt, user_prompt, model=model)
-        model_used = model
-        if raw:
-            try:
-                parsed = json.loads(raw)
-            except json.JSONDecodeError:
-                s, e = raw.find("{"), raw.rfind("}")
-                parsed = json.loads(raw[s:e + 1]) if s >= 0 and e > s else {}
-            sections = parsed.get("sections") or {}
-    except Exception as e:
+        results = await asyncio.gather(*[
+            _generate_group(
+                g, fund_guidance=template["fund_guidance"], grant_facts=grant_facts,
+                brief=brief, extra_context=extra_context, model=model,
+            )
+            for g in template["groups"]
+        ], return_exceptions=True)
+        for g, res in zip(template["groups"], results):
+            if isinstance(res, Exception):
+                logger.error(f"grant gen group '{g['id']}' failed: {res}")
+                continue
+            part, usage = res
+            if isinstance(part, dict):
+                sections.update(part)
+            for k in usage_total:
+                try:
+                    usage_total[k] += int(usage.get(k) or 0)
+                except Exception:
+                    pass
+    except Exception as e:  # noqa: BLE001
         logger.error(f"grant application generation failed: {e}")
 
-    # Гарантируем наличие всех ключей (пустые → заглушка-пробел).
-    for key, label in _APPLICATION_SECTIONS:
-        if not sections.get(key):
-            sections[key] = f"[нужно дозаполнить: {label.lower()}]"
+    # Порядок и подписи разделов для рендера; заглушки для пустых.
+    section_meta: list[dict] = []
+    for g in template["groups"]:
+        for s in g["sections"]:
+            if not sections.get(s["key"]):
+                sections[s["key"]] = f"[нужно дозаполнить: {s['label'].lower()}]"
+            section_meta.append({
+                "key": s["key"], "label": s["label"],
+                "group_id": g["id"], "group_title": g["title"],
+            })
 
-    return {"sections": sections, "gaps": gaps, "model": model_used}
+    logger.info(
+        f"grant application generated (template={template['key']}, "
+        f"model={model}, tokens={usage_total})"
+    )
+
+    return {
+        "template_key": template["key"],
+        "template_title": template["title"],
+        "sections": sections,
+        "section_meta": section_meta,
+        "static": template.get("static", {}),
+        "user_input": template.get("user_input", []),
+        "gaps": gaps,
+        "model": model,
+        "usage": usage_total,
+    }

@@ -375,7 +375,15 @@ async def generate_application(
     elif app.stage == "interested":
         app.stage = "preparing"
     app.status = "generated"
-    app.content = {"sections": result["sections"], "gaps": result["gaps"]}
+    app.content = {
+        "template_key": result.get("template_key"),
+        "template_title": result.get("template_title"),
+        "sections": result["sections"],
+        "section_meta": result.get("section_meta", []),
+        "static": result.get("static", {}),
+        "user_input": result.get("user_input", []),
+        "gaps": result["gaps"],
+    }
     app.match_score = score
     flag_modified(app, "content")
     await db.commit()
