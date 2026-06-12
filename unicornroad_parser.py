@@ -94,10 +94,16 @@ def _post_to_draft(post: dict, category: str) -> dict | None:
     # там заглушка, поэтому дедлайн не ставим, чтобы их не скрывало автоскрытие.
     deadline = None if category == "investor" else _parse_date(post.get("date"))
 
+    # Обложка поста (CDN Tilda) — визуал карточки. Фронт отличает обложку от
+    # белого лого по домену tildacdn и рисует её цветной миниатюрой.
+    image = (post.get("image") or "").strip()
+    logo_url = image if image.lower().startswith("http") else None
+
     return {
         "name": title[:300],
         "description": description,
         "url": url,
+        "logo_url": logo_url,
         "deadline": deadline,
         "category": category,
         "geo": "RF",

@@ -54,21 +54,63 @@ const STATUS_META: Record<Grant["status"], { label: string; cls: string }> = {
   closed: { label: "Завершён", cls: "text-white/40 bg-white/5 border-white/10" },
 };
 
-/** Полноценный логотип (а не маленький favicon) — показываем крупно. */
-function isFullLogo(src: string | null): boolean {
-  return !!src && !src.includes("google.com/s2/favicons");
+/** Маленький favicon (Google S2) — не показываем крупно, используем монограмму. */
+function isFavicon(src: string | null): boolean {
+  return !!src && src.includes("google.com/s2/favicons");
+}
+/** Обложка с CDN Tilda (запарсенные программы) — цветная картинка-превью. */
+function isCoverImage(src: string | null): boolean {
+  return !!src && src.includes("tildacdn.com");
 }
 
-/** Логотип организации-грантодателя.
- *  Настоящий логотип рисуем крупным белым силуэтом прямо на тёмной карточке —
- *  filter brightness(0) invert(1) превращает любой прозрачный лого (любого цвета)
- *  в чистый белый, который читается на тёмном фоне без подложки.
- *  Если настоящего лого нет (только favicon) — монограмма. */
+// Палитра монограмм по категории — чтобы у программ без картинки всё равно был
+// узнаваемый цветной значок (логотип есть «у всех», без дыр в сетке).
+const CATEGORY_BADGE: Record<string, string> = {
+  grant: "from-emerald-500/30 to-emerald-500/5 text-emerald-200",
+  contest: "from-amber-500/30 to-amber-500/5 text-amber-200",
+  accelerator: "from-violet-500/30 to-violet-500/5 text-violet-200",
+  event: "from-sky-500/30 to-sky-500/5 text-sky-200",
+  pitch: "from-rose-500/30 to-rose-500/5 text-rose-200",
+  investor: "from-cyan-500/30 to-cyan-500/5 text-cyan-200",
+  support_measure: "from-teal-500/30 to-teal-500/5 text-teal-200",
+};
+
+// Вкладки каталога по категориям программ. Порядок = порядок вкладок.
+const CATEGORY_TABS: { key: string; label: string }[] = [
+  { key: "grant", label: "Гранты" },
+  { key: "support_measure", label: "Меры поддержки" },
+  { key: "contest", label: "Конкурсы" },
+  { key: "accelerator", label: "Акселераторы" },
+  { key: "event", label: "Мероприятия" },
+  { key: "pitch", label: "Питчи" },
+  { key: "investor", label: "Инвесторы" },
+];
+
+/** Значок программы. Грамотная стратегия «лого у всех»:
+ *  1) обложка Tilda (запарсенные) — цветная картинка-превью;
+ *  2) настоящий лого организации (прозрачный) — белым силуэтом на тёмном фоне;
+ *  3) иначе (favicon/пусто) — цветная монограмма по категории.
+ *  Так в сетке нет пустых/битых логотипов. */
 function OrgLogo({ grant, size = 52 }: { grant: Grant; size?: number }) {
   const [errored, setErrored] = useState(false);
   const logo = grant.logo_url && !errored ? grant.logo_url : null;
 
-  if (logo && isFullLogo(logo)) {
+  if (logo && isCoverImage(logo)) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={logo}
+        alt={grant.name}
+        referrerPolicy="no-referrer"
+        loading="lazy"
+        onError={() => setErrored(true)}
+        style={{ width: size, height: size }}
+        className="block object-cover rounded-2xl shrink-0 border border-white/10"
+      />
+    );
+  }
+
+  if (logo && !isFavicon(logo)) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
@@ -84,10 +126,11 @@ function OrgLogo({ grant, size = 52 }: { grant: Grant; size?: number }) {
   }
 
   const initial = (grant.organization || grant.name || "?").trim().charAt(0).toUpperCase();
+  const badge = CATEGORY_BADGE[grant.category || "grant"] || CATEGORY_BADGE.grant;
   return (
     <div
       style={{ width: size, height: size }}
-      className="shrink-0 rounded-2xl bg-gradient-to-br from-white/[0.14] to-white/[0.04] border border-white/10 flex items-center justify-center font-display text-white/80"
+      className={`shrink-0 rounded-2xl bg-gradient-to-br ${badge} border border-white/10 flex items-center justify-center font-display`}
     >
       <span style={{ fontSize: size * 0.42 }}>{initial}</span>
     </div>
@@ -193,6 +236,7 @@ export function GrantsPageClient() {
   const [matches, setMatches] = useState<GrantMatch[]>([]);
   const [matchLoading, setMatchLoading] = useState(false);
   const [onlyEligible, setOnlyEligible] = useState(false);
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
   // Онбординг «2 минуты до матча»: описание идеи → папка с черновиком паспорта.
   const [idea, setIdea] = useState("");
   const [onboarding, setOnboarding] = useState(false);
@@ -272,6 +316,22 @@ export function GrantsPageClient() {
 
   const grantHref = (id: number) =>
     activeProject != null ? `/grants/${id}?project=${activeProject}` : `/grants/${id}`;
+
+  const catOf = (g: Grant) => g.category || "grant";
+  // Какие вкладки реально показывать (только непустые категории).
+  const availableTabs = useMemo(() => {
+    const present = new Set(grants.map(catOf));
+    return CATEGORY_TABS.filter((t) => present.has(t.key));
+  }, [grants]);
+  // Сетка каталога/матчей, отфильтрованная активной вкладкой.
+  const visibleGrants = useMemo(
+    () => (activeCategory ? grants.filter((g) => catOf(g) === activeCategory) : grants),
+    [grants, activeCategory],
+  );
+  const visibleMatches = useMemo(
+    () => (activeCategory ? matches.filter((m) => catOf(m.grant) === activeCategory) : matches),
+    [matches, activeCategory],
+  );
 
   if (loading) {
     return (
@@ -481,6 +541,35 @@ export function GrantsPageClient() {
           </div>
         )}
 
+        {/* Вкладки категорий программ */}
+        {availableTabs.length > 1 && (
+          <div className="pitchy-muted-x-scroll mb-6 flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+            <button
+              onClick={() => setActiveCategory(null)}
+              className={`shrink-0 px-4 py-2 rounded-full text-sm transition-all border ${
+                activeCategory === null
+                  ? "bg-white text-black border-white font-medium"
+                  : "lovable-glass text-white/60 hover:text-white border-white/10"
+              }`}
+            >
+              Все
+            </button>
+            {availableTabs.map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setActiveCategory(t.key)}
+                className={`shrink-0 px-4 py-2 rounded-full text-sm transition-all border ${
+                  activeCategory === t.key
+                    ? "bg-white text-black border-white font-medium"
+                    : "lovable-glass text-white/60 hover:text-white border-white/10"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Основная секция: карточки мер поддержки */}
         <section className="mb-12">
           <div className="flex items-center justify-between gap-4 mb-5 flex-wrap">
@@ -505,13 +594,13 @@ export function GrantsPageClient() {
               <div className="flex items-center justify-center py-12">
                 <Loader className="animate-spin text-white/30" size={22} />
               </div>
-            ) : matches.length === 0 ? (
+            ) : visibleMatches.length === 0 ? (
               <div className="lovable-glass rounded-2xl p-6 text-white/40 text-sm border border-white/10">
-                Нет мер поддержки по текущим условиям. Попробуйте снять фильтр «только подходящие».
+                Нет программ по текущим условиям. Попробуйте другую категорию или снимите фильтр «только подходящие».
               </div>
             ) : (
               <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                {matches.map((m, i) => (
+                {visibleMatches.map((m, i) => (
                   <motion.div
                     key={m.grant.id}
                     initial={{ opacity: 0, y: 12 }}
@@ -522,13 +611,15 @@ export function GrantsPageClient() {
                 ))}
               </div>
             )
-          ) : grants.length === 0 ? (
+          ) : visibleGrants.length === 0 ? (
             <div className="lovable-glass rounded-3xl p-10 text-center text-white/40 border border-white/10">
-              Каталог мер поддержки пока пуст. Скоро здесь появятся актуальные программы.
+              {grants.length === 0
+                ? "Каталог пока пуст. Скоро здесь появятся актуальные программы."
+                : "В этой категории пока нет программ."}
             </div>
           ) : (
             <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
-              {grants.map((g, i) => (
+              {visibleGrants.map((g, i) => (
                 <motion.div
                   key={g.id}
                   initial={{ opacity: 0, y: 12 }}
