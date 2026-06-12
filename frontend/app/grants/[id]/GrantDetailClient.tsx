@@ -315,8 +315,20 @@ export function GrantDetailClient() {
         <section className="border-t border-white/10 pt-8">
           <div className="flex items-center gap-2 mb-4 text-white/70">
             <Sparkles size={18} />
-            <h2 className="font-display text-xl">Сгенерировать заявку из паспорта</h2>
+            <h2 className="font-display text-xl">
+              {grant.has_template ? "Сгенерировать заявку из паспорта" : "Добавить программу в работу"}
+            </h2>
           </div>
+
+          {!grant.has_template && (
+            <div className="lovable-glass rounded-2xl p-4 border border-white/10 mb-4 flex items-start gap-3">
+              <AlertTriangle className="text-white/40 shrink-0 mt-0.5" size={16} />
+              <p className="text-white/55 text-sm">
+                Генерация заявки для этой программы пока недоступна — мы готовим шаблон под требования фонда.
+                Программу можно добавить в «Мои гранты» и отслеживать статус.
+              </p>
+            </div>
+          )}
 
           {projects.length === 0 ? (
             <div className="lovable-glass rounded-2xl p-6 border border-amber-500/20 flex items-start gap-3">
@@ -341,22 +353,26 @@ export function GrantDetailClient() {
                 </div>
               </div>
 
-              <textarea
-                value={extra}
-                onChange={(e) => setExtra(e.target.value)}
-                placeholder="Дополнительный контекст под этот грант (необязательно)…"
-                rows={3}
-                className="w-full lovable-glass rounded-2xl p-4 text-white text-sm border border-white/10 focus:border-white/30 outline-none resize-none mb-4 placeholder:text-white/25"
-              />
+              {grant.has_template && (
+                <textarea
+                  value={extra}
+                  onChange={(e) => setExtra(e.target.value)}
+                  placeholder="Дополнительный контекст под этот грант (необязательно)…"
+                  rows={3}
+                  className="w-full lovable-glass rounded-2xl p-4 text-white text-sm border border-white/10 focus:border-white/30 outline-none resize-none mb-4 placeholder:text-white/25"
+                />
+              )}
 
               <div className="flex flex-wrap items-center gap-3">
-                <button
-                  onClick={handleGenerate}
-                  disabled={generating || projectId == null}
-                  className="bg-white text-black font-semibold text-sm px-7 py-3.5 rounded-full hover:bg-neutral-200 transition-all flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {generating ? <><Loader className="animate-spin" size={16} /> Собираем заявку…</> : <><Sparkles size={16} /> Сгенерировать</>}
-                </button>
+                {grant.has_template && (
+                  <button
+                    onClick={handleGenerate}
+                    disabled={generating || projectId == null}
+                    className="bg-white text-black font-semibold text-sm px-7 py-3.5 rounded-full hover:bg-neutral-200 transition-all flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {generating ? <><Loader className="animate-spin" size={16} /> Собираем заявку…</> : <><Sparkles size={16} /> Сгенерировать</>}
+                  </button>
+                )}
 
                 {tracked ? (
                   <Link

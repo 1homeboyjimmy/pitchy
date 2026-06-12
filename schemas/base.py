@@ -298,6 +298,9 @@ class GrantResponse(BaseModel):
     entity_types: list[str] = []
     requirements: dict[str, Any] | None = None
     application_template: dict[str, Any] | None = None
+    # Доступна ли генерация заявки под этот грант (есть реальный шаблон фонда).
+    # Заполняется в роутере; в ORM такого поля нет, поэтому дефолт False.
+    has_template: bool = False
     opens_at: datetime | None = None
     deadline: datetime | None = None
     status: str = "open"

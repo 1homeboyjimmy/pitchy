@@ -836,6 +836,8 @@ export type Grant = {
   status: "open" | "upcoming" | "closed";
   // Статус модерации авто-обнаруженных грантов (для админ-очереди).
   moderation?: "approved" | "pending" | "rejected";
+  // Доступна ли генерация заявки (есть реальный шаблон под требования фонда).
+  has_template?: boolean;
 };
 
 export type GrantMatch = {

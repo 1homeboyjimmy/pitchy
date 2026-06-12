@@ -329,7 +329,9 @@ async def get_grant(
     # id не должен раскрывать немодерированные программы обычным пользователям.
     if grant.moderation != "approved" and not user.is_admin:
         raise HTTPException(status_code=404, detail="Грант не найден")
-    return GrantResponse.model_validate(grant)
+    resp = GrantResponse.model_validate(grant)
+    resp.has_template = grant_templates.has_real_template(grant)
+    return resp
 
 
 @router.post("/{grant_id}/apply", response_model=GrantApplicationResponse)
@@ -348,6 +350,12 @@ async def generate_application(
     grant = res.scalar_one_or_none()
     if not grant:
         raise HTTPException(status_code=404, detail="Грант не найден")
+    # Генерацию включаем только для грантов с реальным шаблоном фонда.
+    if not grant_templates.has_real_template(grant):
+        raise HTTPException(
+            status_code=400,
+            detail="Для этой программы пока нет шаблона заявки — генерация недоступна.",
+        )
 
     project = await _get_owned_project(payload.project_id, user, db)
 

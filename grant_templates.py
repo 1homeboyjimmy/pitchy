@@ -230,3 +230,11 @@ def select_application_template(grant) -> dict:
 
 def template_by_key(key: str) -> dict | None:
     return _TEMPLATES_BY_KEY.get(key)
+
+
+def has_real_template(grant) -> bool:
+    """True, если у гранта есть НЕ-универсальный шаблон (реальная форма фонда).
+
+    Пока генерацию заявок включаем только для таких грантов (честно: под
+    остальные у нас нет структуры под требования фонда)."""
+    return select_application_template(grant).get("key") != GENERIC_TEMPLATE["key"]
