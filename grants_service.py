@@ -25,6 +25,38 @@ from urllib.parse import urlparse
 logger = logging.getLogger("app")
 
 
+# Официальные логотипы известных организаторов (чёткие ассеты в /public/logos).
+# Ключ — подстрока в названии организации (в нижнем регистре).
+_OFFICIAL_LOGOS: list[tuple[tuple[str, ...], str]] = [
+    (("фонд содействия", "фси", "fasie", "содействия инновациям"), "/logos/fsi.svg"),
+    (("фрии", "интернет-инициатив", "frii"), "/logos/frii.svg"),
+    (("сколково", "skolkovo"), "/logos/skolkovo.svg"),
+    (("рфрит", "развития информационных технологий"), "/logos/rfrit.png"),
+]
+
+
+def official_logo_for(organization: str | None) -> str | None:
+    """Официальный логотип организатора по названию (для известных фондов).
+
+    Возвращает путь к локальному ассету или None, если организатор неизвестен —
+    тогда вызывающий код берёт favicon сайта (derive_logo_url)."""
+    if not organization:
+        return None
+    org = organization.strip().lower()
+    for keys, path in _OFFICIAL_LOGOS:
+        if any(k in org for k in keys):
+            return path
+    return None
+
+
+def resolve_logo(organization: str | None, url: str | None, explicit: str | None = None) -> str | None:
+    """Единая логика выбора логотипа: явный → официальный по организатору →
+    favicon сайта программы."""
+    if explicit:
+        return explicit
+    return official_logo_for(organization) or derive_logo_url(url)
+
+
 def derive_logo_url(url: str | None) -> str | None:
     """Логотип организации-грантодателя по домену её сайта.
 

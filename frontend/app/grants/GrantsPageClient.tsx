@@ -125,6 +125,28 @@ function OrgLogo({ grant, size = 52 }: { grant: Grant; size?: number }) {
     );
   }
 
+  // Favicon официального сайта организатора — реальная иконка «как на сайте».
+  // Рисуем на светлой подложке, чтобы цветные иконки читались на тёмной карточке.
+  if (logo && isFavicon(logo)) {
+    return (
+      <div
+        style={{ width: size, height: size }}
+        className="shrink-0 rounded-2xl bg-white border border-white/10 flex items-center justify-center overflow-hidden p-2"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={logo}
+          alt={grant.organization || grant.name}
+          referrerPolicy="no-referrer"
+          loading="lazy"
+          onError={() => setErrored(true)}
+          style={{ maxWidth: "100%", maxHeight: "100%" }}
+          className="object-contain"
+        />
+      </div>
+    );
+  }
+
   const initial = (grant.organization || grant.name || "?").trim().charAt(0).toUpperCase();
   const badge = CATEGORY_BADGE[grant.category || "grant"] || CATEGORY_BADGE.grant;
   return (
@@ -306,10 +328,16 @@ export function GrantsPageClient() {
     }
   };
 
-  const openGrants = useMemo(() => grants.filter((g) => g.status === "open"), [grants]);
+  // «Сейчас идёт приём» — открытые и ещё не прошедшие по дате (без дедлайна
+  // считаем активными: постоянные программы/инвесторы).
+  const openGrants = useMemo(
+    () => grants.filter((g) => g.status === "open" && (daysLeft(g.deadline) ?? 0) >= 0),
+    [grants],
+  );
+  // Календарь — только будущие дедлайны (завершённые сюда не попадают).
   const calendar = useMemo(() => {
     return grants
-      .filter((g) => g.deadline && g.status !== "closed")
+      .filter((g) => g.deadline && (daysLeft(g.deadline) ?? -1) >= 0)
       .sort((a, b) => new Date(a.deadline!).getTime() - new Date(b.deadline!).getTime())
       .slice(0, 12);
   }, [grants]);

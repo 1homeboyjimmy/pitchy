@@ -574,9 +574,10 @@ async def create_grant(
     if not user.is_admin:
         raise HTTPException(status_code=403, detail="Только для администратора")
     data = payload.model_dump()
-    # Парсер/админка могут не присылать логотип — выводим его из домена сайта.
-    if not data.get("logo_url"):
-        data["logo_url"] = grants_service.derive_logo_url(data.get("url"))
+    # Логотип: явный → официальный по организатору → favicon домена.
+    data["logo_url"] = grants_service.resolve_logo(
+        data.get("organization"), data.get("url"), data.get("logo_url")
+    )
     grant = Grant(**data)
     db.add(grant)
     await db.commit()
