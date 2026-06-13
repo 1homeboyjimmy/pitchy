@@ -61,16 +61,6 @@ CHECKPOINTS: list[dict] = [
         ],
     },
     {
-        "id": "custdev",
-        "title": "CustDev",
-        "subtitle": "Проверка гипотез на людях",
-        "reward": "Подтверждённые гипотезы — крепче позиция в заявках",
-        "fields": [
-            ("custdev.personas", "Персоны/сегменты", "list"),
-            ("custdev.interviews_done", "Проведено интервью", "number"),
-        ],
-    },
-    {
         "id": "legal",
         "title": "Юр. данные",
         "subtitle": "Форма и реквизиты",
