@@ -156,6 +156,10 @@ export function GrantDetailClient() {
     g.items.push({ key: m.key, label: m.label });
   }
 
+  // Подача заявки/трекинг и блок «Требования» — только у applyable-категорий
+  // (грант/акселератор/мера поддержки). Остальное — справочные карточки.
+  const isApplyable = ["grant", "accelerator", "support_measure"].includes(grant.category || "grant");
+
   return (
     <div className="w-full max-w-4xl mx-auto px-4 md:px-8 pt-24 pb-10 relative z-10">
         <Link href="/grants" className="flex items-center gap-2 text-white/40 hover:text-white text-sm mb-8 transition-colors">
@@ -223,8 +227,8 @@ export function GrantDetailClient() {
           )}
         </div>
 
-        {/* Насколько подходит вам (объяснение матча под выбранный проект) */}
-        {match && (
+        {/* Насколько подходит вам (объяснение соответствия под выбранный проект) */}
+        {isApplyable && match && (
           <div className="lovable-glass rounded-2xl p-6 border border-emerald-500/15 mb-8">
             <div className="flex items-center justify-between gap-3 mb-4">
               <h3 className="font-display text-lg text-white">Насколько подходит вам</h3>
@@ -297,7 +301,7 @@ export function GrantDetailClient() {
           </div>
         )}
 
-        {grant.requirements && Object.keys(grant.requirements).length > 0 && (
+        {isApplyable && grant.requirements && Object.keys(grant.requirements).length > 0 && (
           <div className="lovable-glass rounded-2xl p-6 border border-white/10 mb-10">
             <h3 className="text-white/40 text-[10px] font-mono uppercase tracking-wider mb-3">Требования и условия</h3>
             <ul className="space-y-2">
@@ -311,7 +315,8 @@ export function GrantDetailClient() {
           </div>
         )}
 
-        {/* Генерация заявки */}
+        {/* Генерация заявки / трекинг — только для applyable-категорий */}
+        {isApplyable && (
         <section className="border-t border-white/10 pt-8">
           <div className="flex items-center gap-2 mb-4 text-white/70">
             <Sparkles size={18} />
@@ -397,6 +402,7 @@ export function GrantDetailClient() {
             </>
           )}
         </section>
+        )}
 
         {/* Результат */}
         {result && (

@@ -75,6 +75,11 @@ const CATEGORY_BADGE: Record<string, string> = {
   support_measure: "from-teal-500/30 to-teal-500/5 text-teal-200",
 };
 
+// Категории, на которые подаётся заявка (грант/акселератор/мера поддержки):
+// у них показываем «соответствие» проекту, требования и блок работы с заявкой.
+// Остальные (конкурсы/мероприятия/питчи/инвесторы) — только информация.
+const APPLYABLE_CATEGORIES = new Set(["grant", "accelerator", "support_measure"]);
+
 // Вкладки каталога по категориям программ. Порядок = порядок вкладок.
 const CATEGORY_TABS: { key: string; label: string }[] = [
   { key: "grant", label: "Гранты" },
@@ -167,6 +172,8 @@ function SupportMeasureCard({ grant, match, href }: { grant: Grant; match?: Gran
   const matched = (match?.reasons.matched || []).slice(0, 3);
   const missing = (match?.reasons.missing || []).slice(0, 2);
   const urgent = dl != null && dl >= 0 && dl <= 7 && grant.status !== "closed";
+  const isApplyable = APPLYABLE_CATEGORIES.has(grant.category || "grant");
+  const showScore = isApplyable && !!match;
 
   return (
     <Link
@@ -176,14 +183,14 @@ function SupportMeasureCard({ grant, match, href }: { grant: Grant; match?: Gran
       {/* Шапка: логотип + матч-балл */}
       <div className="flex items-start justify-between gap-3 mb-4">
         <OrgLogo grant={grant} size={52} />
-        {match ? (
-          <div className={`flex flex-col items-end leading-none ${scoreColor(match.score)}`}>
-            <span className="font-mono font-bold text-xl tabular-nums">{match.score}</span>
-            <span className="text-[9px] text-white/30 uppercase tracking-[0.16em] mt-1">матч</span>
+        {showScore ? (
+          <div className={`flex flex-col items-end leading-none ${scoreColor(match!.score)}`}>
+            <span className="font-mono font-bold text-xl tabular-nums">{match!.score}</span>
+            <span className="text-[9px] text-white/30 uppercase tracking-[0.16em] mt-1">соответствие</span>
           </div>
-        ) : (
+        ) : isApplyable ? (
           <Banknote size={18} className="text-white/20 mt-1" />
-        )}
+        ) : null}
       </div>
 
       {/* Статус */}
@@ -201,7 +208,7 @@ function SupportMeasureCard({ grant, match, href }: { grant: Grant; match?: Gran
       )}
 
       {/* Совпадения по паспорту, либо направления гранта */}
-      {matched.length > 0 ? (
+      {isApplyable && matched.length > 0 ? (
         <div className="mt-3.5">
           <p className="text-[9px] font-mono uppercase tracking-[0.18em] text-emerald-300/50 mb-1.5">Совпало по</p>
           <div className="flex flex-wrap gap-1.5">
@@ -232,9 +239,9 @@ function SupportMeasureCard({ grant, match, href }: { grant: Grant; match?: Gran
         <div className="min-w-0">
           {amount ? (
             <div className="text-white font-semibold text-sm break-words">{amount}</div>
-          ) : (
+          ) : isApplyable ? (
             <div className="text-white/30 text-sm">Сумма не указана</div>
-          )}
+          ) : null}
           {dl != null && grant.status !== "closed" && (
             <div className={`flex items-center gap-1 text-xs mt-1 ${urgent ? "text-amber-400" : "text-white/40"}`}>
               <Clock size={11} /> {dl < 0 ? "приём завершён" : dl === 0 ? "дедлайн сегодня" : `осталось ${dl} дн.`}
