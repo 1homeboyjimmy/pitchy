@@ -293,6 +293,7 @@ class GrantResponse(BaseModel):
     amount_min: float | None = None
     amount_max: float | None = None
     geo: str | None = None
+    location: str | None = None
     stages: list[str] = []
     sectors: list[str] = []
     entity_types: list[str] = []
@@ -334,6 +335,7 @@ class GrantCreateRequest(BaseModel):
     amount_min: float | None = None
     amount_max: float | None = None
     geo: str | None = None
+    location: str | None = None
     stages: list[str] = []
     sectors: list[str] = []
     entity_types: list[str] = []

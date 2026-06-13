@@ -827,6 +827,8 @@ export type Grant = {
   amount_min: number | null;
   amount_max: number | null;
   geo: string | null;
+  // Локация программы: точный адрес очного мероприятия или город/формат.
+  location?: string | null;
   stages: string[];
   sectors: string[];
   entity_types: string[];

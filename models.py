@@ -296,6 +296,9 @@ class Grant(Base):
     amount_max: Mapped[float | None] = mapped_column(Numeric(14, 2), nullable=True)
     # Гео-охват: "RF" (вся Россия) или код региона ("MSK", "SPB", ...).
     geo: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # Локация программы: точный адрес очного мероприятия или город/формат
+    # («Москва», «Онлайн»). Для справочных категорий (мероприятия/питчи).
+    location: Mapped[str | None] = mapped_column(Text, nullable=True)
     # JSON-списки критериев. Пустой список = «без ограничений по критерию».
     stages: Mapped[list[str]] = mapped_column(JSON, default=list)          # pre-seed, seed, ...
     sectors: Mapped[list[str]] = mapped_column(JSON, default=list)         # it, biotech, ...

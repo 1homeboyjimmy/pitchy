@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
-  Banknote, Calendar, Sparkles, Loader,
+  Banknote, Calendar, Sparkles, Loader, MapPin,
   Clock, ArrowUpRight, FolderOpen, FileText, Rocket, ArrowRight,
 } from "lucide-react";
 import { getToken } from "@/lib/auth";
@@ -245,6 +245,11 @@ function SupportMeasureCard({ grant, match, href }: { grant: Grant; match?: Gran
           {dl != null && grant.status !== "closed" && (
             <div className={`flex items-center gap-1 text-xs mt-1 ${urgent ? "text-amber-400" : "text-white/40"}`}>
               <Clock size={11} /> {dl < 0 ? "приём завершён" : dl === 0 ? "дедлайн сегодня" : `осталось ${dl} дн.`}
+            </div>
+          )}
+          {grant.location && (
+            <div className="flex items-center gap-1 text-xs mt-1 text-white/40 min-w-0">
+              <MapPin size={11} className="shrink-0" /> <span className="truncate">{grant.location}</span>
             </div>
           )}
         </div>

@@ -198,10 +198,13 @@ export function GrantDetailClient() {
               <div className="text-white font-medium text-sm">{formatAmount(grant.amount_min, grant.amount_max)}</div>
             </div>
           )}
-          {grant.geo && (
+          {(grant.location || grant.geo) && (
             <div className="lovable-glass rounded-2xl p-4 border border-white/10">
               <MapPin size={16} className="text-white/40 mb-2" />
-              <div className="text-white font-medium text-sm">{grant.geo}</div>
+              {grant.location && (
+                <div className="text-white/40 text-[10px] font-mono uppercase tracking-wider mb-0.5">Место</div>
+              )}
+              <div className="text-white font-medium text-sm">{grant.location || grant.geo}</div>
             </div>
           )}
           {grant.opens_at && (
