@@ -818,7 +818,6 @@ export type RoadmapCheckpoint = {
   title: string;
   subtitle: string;
   reward: string;
-  unlocks: { key: string; label: string } | null;
   status: "done" | "current" | "locked";
   filled: number;
   total: number;
@@ -829,7 +828,6 @@ export type Roadmap = {
   readiness: number;
   checkpoints: RoadmapCheckpoint[];
   next: string | null;
-  unlocked: string[];
   completed: number;
   total: number;
 };

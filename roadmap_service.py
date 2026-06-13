@@ -5,8 +5,8 @@ generic). Здесь она вычисляется из Project.passport: чек
 секциям паспорта, заполнение узла пишется обратно в паспорт через
 PATCH /projects/{id}/passport (source=manual, с защитой ручных полей).
 
-Каждый чекпоинт даёт конкретную «награду» (что разблокирует заполнение) —
-чтобы у прохождения был осязаемый результат, а не просто галочки.
+Награда за этап — про РЕЗУЛЬТАТ и готовность (точнее подбор грантов, сильнее
+заявка, выше индекс готовности), а НЕ бесплатный доступ к платным функциям.
 """
 
 from __future__ import annotations
@@ -14,12 +14,13 @@ from __future__ import annotations
 import passport as plib
 
 # Чекпоинты карты. Поля: (path, label, type). type — для рендера формы на фронте.
+# reward — что улучшается в РЕЗУЛЬТАТЕ (не раздача платного).
 CHECKPOINTS: list[dict] = [
     {
         "id": "idea",
         "title": "Идея и проблема",
         "subtitle": "С чего начинается проект",
-        "reward": "Чёткая суть проекта + доступ к виртуальному кастдеву",
+        "reward": "Чёткая суть проекта — основа всех материалов и заявок",
         "fields": [
             ("core.name", "Название проекта", "text"),
             ("core.problem", "Какую проблему решаете", "textarea"),
@@ -31,7 +32,7 @@ CHECKPOINTS: list[dict] = [
         "id": "market",
         "title": "Рынок",
         "subtitle": "Объём и конкуренты",
-        "reward": "Точный подбор грантов под проект",
+        "reward": "Точнее подбор грантов под ваш проект",
         "fields": [
             ("core.geo", "География", "text"),
             ("market.size", "Объём рынка (TAM/SAM/SOM)", "textarea"),
@@ -42,7 +43,7 @@ CHECKPOINTS: list[dict] = [
         "id": "model",
         "title": "Модель и метрики",
         "subtitle": "Как зарабатываете и где находитесь",
-        "reward": "Скоринг идеи и расчёт юнит-экономики",
+        "reward": "Корректная юнит-экономика и точный скоринг идеи",
         "fields": [
             ("core.stage", "Стадия проекта", "text"),
             ("core.business_model", "Бизнес-модель", "text"),
@@ -54,7 +55,7 @@ CHECKPOINTS: list[dict] = [
         "id": "team",
         "title": "Команда",
         "subtitle": "Кто делает проект",
-        "reward": "Сильный блок «Команда» в заявках",
+        "reward": "Сильнее блок «Команда» в грантовых заявках",
         "fields": [
             ("team", "Участники команды", "list"),
         ],
@@ -63,7 +64,7 @@ CHECKPOINTS: list[dict] = [
         "id": "custdev",
         "title": "CustDev",
         "subtitle": "Проверка гипотез на людях",
-        "reward": "Доступ к глубокому кастдеву с ИИ-фокус-группой",
+        "reward": "Подтверждённые гипотезы — крепче позиция в заявках",
         "fields": [
             ("custdev.personas", "Персоны/сегменты", "list"),
             ("custdev.interviews_done", "Проведено интервью", "number"),
@@ -73,26 +74,17 @@ CHECKPOINTS: list[dict] = [
         "id": "legal",
         "title": "Юр. данные",
         "subtitle": "Форма и реквизиты",
-        "reward": "Генерация заявок на гранты под ваш профиль",
+        "reward": "Полная готовность подавать заявки на гранты",
         "fields": [
             ("legal.entity_type", "Юр. форма (ООО/ИП/физлицо)", "text"),
         ],
     },
 ]
 
-# Что разблокирует завершение чекпоинта (для блока «что открылось»).
-_UNLOCKS = {
-    "idea": {"key": "custdev", "label": "Виртуальная фокус-группа (кастдев)"},
-    "market": {"key": "grants", "label": "Точный подбор грантов"},
-    "model": {"key": "scoring", "label": "Скоринг и юнит-экономика"},
-    "legal": {"key": "applications", "label": "Генерация заявок на гранты"},
-}
-
 
 def _field_state(passport: dict, path: str, label: str, ftype: str) -> dict:
     value = plib._get_path(passport, path)
     filled = plib._is_filled(value)
-    # Для рендера: списки/словари не суём целиком — отдаём флаг и краткое превью.
     if isinstance(value, list):
         preview = f"{len(value)} шт." if value else None
         out_value = value
@@ -132,13 +124,11 @@ def build_roadmap(passport: dict | None) -> dict:
             status = "current"
         else:
             status = "locked"
-        unlock = _UNLOCKS.get(cp["id"])
         checkpoints.append({
             "id": cp["id"],
             "title": cp["title"],
             "subtitle": cp["subtitle"],
             "reward": cp["reward"],
-            "unlocks": unlock,
             "status": status,
             "filled": filled,
             "total": total,
@@ -148,17 +138,11 @@ def build_roadmap(passport: dict | None) -> dict:
         prev_done = prev_done and done
 
     next_id = next((c["id"] for c in checkpoints if c["status"] == "current"), None)
-    unlocked = [
-        _UNLOCKS[c["id"]]["key"]
-        for c in checkpoints
-        if c["status"] == "done" and c["id"] in _UNLOCKS
-    ]
 
     return {
         "readiness": plib.compute_readiness(passport),
         "checkpoints": checkpoints,
         "next": next_id,
-        "unlocked": unlocked,
         "completed": sum(1 for c in checkpoints if c["status"] == "done"),
         "total": len(checkpoints),
     }
