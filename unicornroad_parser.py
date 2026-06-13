@@ -23,6 +23,8 @@ from models import Grant
 from schemas import GrantCreateRequest
 from sqlalchemy import select
 
+import grants_service
+
 logger = logging.getLogger("app")
 
 FEED_API = "https://feeds.tildacdn.com/api/getfeed/"
@@ -94,10 +96,15 @@ def _post_to_draft(post: dict, category: str) -> dict | None:
     # там заглушка, поэтому дедлайн не ставим, чтобы их не скрывало автоскрытие.
     deadline = None if category == "investor" else _parse_date(post.get("date"))
 
-    # Обложка поста (CDN Tilda) — визуал карточки. Фронт отличает обложку от
-    # белого лого по домену tildacdn и рисует её цветной миниатюрой.
+    # У unicornroad нет логотипов/обложек в фиде. Но если в названии программы
+    # упомянут известный фонд (Сколково/ФСИ/ФРИИ/РФРИТ) — ставим официальный лого;
+    # обложку из поста берём, только если она вдруг есть. Иначе — None (фронт
+    # покажет цветную монограмму по категории).
     image = (post.get("image") or "").strip()
-    logo_url = image if image.lower().startswith("http") else None
+    logo_url = (
+        grants_service.official_logo_for(title)
+        or (image if image.lower().startswith("http") else None)
+    )
 
     return {
         "name": title[:300],
