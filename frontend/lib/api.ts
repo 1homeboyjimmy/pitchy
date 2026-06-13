@@ -803,6 +803,41 @@ export async function patchPassport(
   return patchAuthJson<PassportView>(`/projects/${id}/passport`, { fields }, token);
 }
 
+// ——— Дорожная карта (из паспорта) ———
+export type RoadmapField = {
+  path: string;
+  label: string;
+  type: "text" | "textarea" | "number" | "list";
+  filled: boolean;
+  value: unknown;
+  preview: string | number | null;
+  source: string;
+};
+export type RoadmapCheckpoint = {
+  id: string;
+  title: string;
+  subtitle: string;
+  reward: string;
+  unlocks: { key: string; label: string } | null;
+  status: "done" | "current" | "locked";
+  filled: number;
+  total: number;
+  progress: number;
+  fields: RoadmapField[];
+};
+export type Roadmap = {
+  readiness: number;
+  checkpoints: RoadmapCheckpoint[];
+  next: string | null;
+  unlocked: string[];
+  completed: number;
+  total: number;
+};
+
+export async function getRoadmap(projectId: number, token: string): Promise<Roadmap> {
+  return getAuthJson<Roadmap>(`/projects/${projectId}/roadmap`, token);
+}
+
 export async function getProjectSessions(id: number, token: string): Promise<ChatSessionResponse[]> {
   return getAuthJson<ChatSessionResponse[]>(`/projects/${id}/sessions`, token);
 }

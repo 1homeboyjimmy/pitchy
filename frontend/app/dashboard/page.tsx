@@ -7,7 +7,7 @@ import { ChatInterface } from "@/components/dashboard/ChatInterface";
 import { ProjectFolders } from "@/components/dashboard/ProjectFolders";
 import { SessionFolderMenu } from "@/components/dashboard/SessionFolderMenu";
 import { AdminView } from "@/components/dashboard/AdminView";
-import { TreeView } from "@/components/dashboard/TreeView";
+import { RoadmapView } from "@/components/dashboard/RoadmapView";
 import { SideNavBar } from "@/components/internal/SideNavBar";
 import { InternalTopNavBar } from "@/components/internal/InternalTopNavBar";
 import { TopNavBar } from "@/components/shared/TopNavBar";
@@ -523,7 +523,7 @@ function DashboardContent() {
 
           {activeTab === "tree" && (
             <div className={`h-full w-full pb-8 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${isSidebarCollapsed ? '' : 'max-w-6xl mx-auto'}`}>
-               <TreeView onSwitchToChat={(ctx) => { if(ctx) handleCreateEmptySession(); setActiveTab("chat"); }} />
+               <RoadmapView />
             </div>
           )}
 
