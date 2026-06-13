@@ -241,6 +241,19 @@ async def patch_passport(
     )
 
 
+@router.get("/{project_id}/roadmap")
+async def get_roadmap(
+    project_id: int,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+) -> dict:
+    """Дорожная карта проекта, вычисленная из паспорта: чекпоинты со статусами,
+    прогрессом и наградами. Заполнение узлов идёт через PATCH .../passport."""
+    import roadmap_service
+    project = await _get_owned_project(project_id, user, db)
+    return roadmap_service.build_roadmap(project.passport or {})
+
+
 @router.get("/{project_id}/sessions", response_model=list[ChatSessionResponse])
 async def list_project_sessions(
     project_id: int,
