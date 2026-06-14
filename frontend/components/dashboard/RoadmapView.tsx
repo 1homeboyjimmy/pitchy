@@ -3,12 +3,12 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Loader, CheckCircle2, Sparkles, Trophy } from "lucide-react";
+import { Loader, CheckCircle2, Sparkles, Trophy, Brain, ExternalLink } from "lucide-react";
 import { getToken } from "@/lib/auth";
 import { notifyError } from "@/lib/ui";
 import {
-  getProjects, getRoadmap, patchPassport,
-  type ProjectListItem, type Roadmap, type RoadmapCheckpoint, type RoadmapField,
+  getProjects, getRoadmap, patchPassport, analyzeRoadmapStep, analyzeRoadmapOverall,
+  type ProjectListItem, type Roadmap, type RoadmapCheckpoint, type RoadmapField, type RoadmapOverall,
 } from "@/lib/api";
 
 // Геометрия извилистого пути (в координатах viewBox; узлы позиционируются в %).
@@ -95,11 +95,13 @@ function WindingMap({
 
 /** Форма выбранного этапа — пишет поля в паспорт. */
 function CheckpointEditor({
-  cp, onSave, saving,
+  cp, onSave, saving, analysis, analyzing,
 }: {
   cp: RoadmapCheckpoint;
   onSave: (fields: Record<string, unknown>) => void;
   saving: boolean;
+  analysis?: string;
+  analyzing?: boolean;
 }) {
   const [draft, setDraft] = useState<Record<string, string>>({});
 
@@ -177,6 +179,21 @@ function CheckpointEditor({
       >
         {saving ? <Loader className="animate-spin" size={15} /> : <CheckCircle2 size={15} />} Сохранить шаг
       </button>
+
+      {/* ИИ-разбор шага (тот же пайплайн, что у основного чата) */}
+      {(analyzing || analysis) && (
+        <div className="mt-5 rounded-2xl border border-violet-500/20 bg-violet-500/[0.04] p-4">
+          <div className="flex items-center gap-2 mb-2 text-violet-300/80">
+            <Brain size={15} />
+            <span className="font-mono text-[10px] uppercase tracking-[0.2em] font-bold">ИИ-разбор шага</span>
+          </div>
+          {analyzing ? (
+            <div className="flex items-center gap-2 text-white/50 text-sm"><Loader className="animate-spin" size={14} /> Анализирую…</div>
+          ) : (
+            <p className="text-white/75 text-sm leading-relaxed whitespace-pre-wrap">{analysis}</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -188,6 +205,10 @@ export function RoadmapView() {
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [stepAnalysis, setStepAnalysis] = useState<Record<string, string>>({});
+  const [analyzingStep, setAnalyzingStep] = useState<string | null>(null);
+  const [overall, setOverall] = useState<RoadmapOverall | null>(null);
+  const [analyzingOverall, setAnalyzingOverall] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -217,20 +238,51 @@ export function RoadmapView() {
     }
   }, []);
 
-  useEffect(() => { if (pid != null) loadRoadmap(pid, false); }, [pid, loadRoadmap]);
+  useEffect(() => {
+    if (pid != null) { setOverall(null); setStepAnalysis({}); loadRoadmap(pid, false); }
+  }, [pid, loadRoadmap]);
 
   const handleSave = async (fields: Record<string, unknown>) => {
     if (pid == null || Object.keys(fields).length === 0) return;
     const t = getToken();
     if (!t) return;
+    const cpId = selectedId;
     setSaving(true);
     try {
       await patchPassport(pid, fields, t);
       await loadRoadmap(pid, true);
     } catch {
       notifyError("Не удалось сохранить");
-    } finally {
       setSaving(false);
+      return;
+    }
+    setSaving(false);
+    // ИИ-разбор шага через пайплайн основного чата (RAG + паспорт).
+    if (cpId) {
+      setAnalyzingStep(cpId);
+      try {
+        const res = await analyzeRoadmapStep(pid, cpId, t);
+        setStepAnalysis((m) => ({ ...m, [cpId]: res.analysis }));
+      } catch {
+        notifyError("Не удалось получить разбор шага");
+      } finally {
+        setAnalyzingStep(null);
+      }
+    }
+  };
+
+  const handleOverall = async () => {
+    if (pid == null) return;
+    const t = getToken();
+    if (!t) return;
+    setAnalyzingOverall(true);
+    try {
+      const res = await analyzeRoadmapOverall(pid, t);
+      setOverall(res);
+    } catch {
+      notifyError("Не удалось получить аналитику стартапа");
+    } finally {
+      setAnalyzingOverall(false);
     }
   };
 
@@ -294,8 +346,58 @@ export function RoadmapView() {
 
             <div className="grid gap-6 lg:grid-cols-[340px_1fr] lg:items-start">
               <WindingMap checkpoints={roadmap.checkpoints} selectedId={selectedId} onSelect={setSelectedId} />
-              {selected && <CheckpointEditor cp={selected} onSave={handleSave} saving={saving} />}
+              {selected && (
+                <CheckpointEditor
+                  cp={selected}
+                  onSave={handleSave}
+                  saving={saving}
+                  analysis={stepAnalysis[selected.id]}
+                  analyzing={analyzingStep === selected.id}
+                />
+              )}
             </div>
+
+            {/* Общая аналитика стартапа — после прохождения всей карты */}
+            {roadmap.completed === roadmap.total && (
+              <div className="lovable-glass rounded-3xl border border-violet-500/20 p-6 sm:p-7 mt-6">
+                <div className="flex items-center justify-between gap-4 flex-wrap">
+                  <div>
+                    <div className="flex items-center gap-2 text-violet-300/80 mb-1">
+                      <Brain size={16} />
+                      <span className="font-mono text-[10px] uppercase tracking-[0.2em] font-bold">Полная аналитика стартапа</span>
+                    </div>
+                    <p className="text-white/50 text-sm">Карта пройдена — соберём обширный разбор по паспорту, рынку и источникам.</p>
+                  </div>
+                  <button
+                    onClick={handleOverall}
+                    disabled={analyzingOverall}
+                    className="shrink-0 bg-white text-black font-semibold text-sm px-6 py-3 rounded-full hover:bg-neutral-200 transition-all flex items-center gap-2 disabled:opacity-40"
+                  >
+                    {analyzingOverall ? <><Loader className="animate-spin" size={15} /> Анализирую…</> : <><Sparkles size={15} /> {overall ? "Пересобрать" : "Получить аналитику"}</>}
+                  </button>
+                </div>
+
+                {overall && (
+                  <div className="mt-5 pt-5 border-t border-white/10">
+                    <p className="text-white/80 text-sm leading-relaxed whitespace-pre-wrap">{overall.analysis}</p>
+                    {overall.sources.length > 0 && (
+                      <div className="mt-4">
+                        <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-white/35 mb-2">Источники</p>
+                        <div className="flex flex-col gap-1.5">
+                          {overall.sources.map((s, i) => (
+                            s.url ? (
+                              <a key={i} href={s.url} target="_blank" rel="noopener noreferrer" className="text-violet-300/80 hover:text-violet-200 text-xs flex items-center gap-1.5 truncate">
+                                <ExternalLink size={11} className="shrink-0" /> <span className="truncate">{s.title || s.url}</span>
+                              </a>
+                            ) : null
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </>
         )}
       </div>

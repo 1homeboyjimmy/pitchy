@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
@@ -252,6 +252,46 @@ async def get_roadmap(
     import roadmap_service
     project = await _get_owned_project(project_id, user, db)
     return roadmap_service.build_roadmap(project.passport or {})
+
+
+@router.post("/{project_id}/roadmap/analyze-step")
+async def analyze_roadmap_step(
+    project_id: int,
+    checkpoint_id: str = Query(..., description="id чекпоинта карты"),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+) -> dict:
+    """ИИ-разбор заполненного этапа (паспорт + RAG, тот же пайплайн, что у чата)."""
+    import roadmap_analysis
+    project = await _get_owned_project(project_id, user, db)
+    return await roadmap_analysis.analyze_step(project.passport or {}, checkpoint_id)
+
+
+@router.post("/{project_id}/roadmap/analyze")
+async def analyze_roadmap_overall(
+    project_id: int,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+) -> dict:
+    """Обширная аналитика стартапа после прохождения карты (паспорт + RAG + веб).
+
+    Результат сохраняем в паспорт (assets.roadmap_analysis), чтобы не терялся."""
+    import roadmap_analysis
+    project = await _get_owned_project(project_id, user, db)
+    result = await roadmap_analysis.analyze_overall(project.passport or {})
+
+    passport = dict(project.passport or {})
+    assets = dict(passport.get("assets") or {})
+    assets["roadmap_analysis"] = {
+        "text": result["analysis"],
+        "sources": result.get("sources", []),
+        "generated_at": datetime.utcnow().isoformat(),
+    }
+    passport["assets"] = assets
+    project.passport = passport
+    flag_modified(project, "passport")
+    await db.commit()
+    return result
 
 
 @router.get("/{project_id}/sessions", response_model=list[ChatSessionResponse])

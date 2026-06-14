@@ -836,6 +836,23 @@ export async function getRoadmap(projectId: number, token: string): Promise<Road
   return getAuthJson<Roadmap>(`/projects/${projectId}/roadmap`, token);
 }
 
+export type RoadmapSource = { url?: string; title?: string };
+export type RoadmapStepAnalysis = { checkpoint_id: string; analysis: string };
+export type RoadmapOverall = { analysis: string; sources: RoadmapSource[] };
+
+// ИИ-разбор шага (паспорт + RAG, пайплайн основного чата).
+export async function analyzeRoadmapStep(projectId: number, checkpointId: string, token: string): Promise<RoadmapStepAnalysis> {
+  return postAuthJson<RoadmapStepAnalysis>(
+    `/projects/${projectId}/roadmap/analyze-step?checkpoint_id=${encodeURIComponent(checkpointId)}`,
+    {}, token,
+  );
+}
+
+// Обширная аналитика стартапа после прохождения карты (паспорт + RAG + веб).
+export async function analyzeRoadmapOverall(projectId: number, token: string): Promise<RoadmapOverall> {
+  return postAuthJson<RoadmapOverall>(`/projects/${projectId}/roadmap/analyze`, {}, token);
+}
+
 export async function getProjectSessions(id: number, token: string): Promise<ChatSessionResponse[]> {
   return getAuthJson<ChatSessionResponse[]>(`/projects/${id}/sessions`, token);
 }
