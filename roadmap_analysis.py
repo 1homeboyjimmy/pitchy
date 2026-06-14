@@ -158,7 +158,9 @@ async def stream_overall(passport: dict | None, project_id: int):
     full = ""
     try:
         async for chunk in stream_makura(system_prompt=_OVERALL_SYSTEM, user_message=user_prompt):
-            if chunk:
+            # stream_makura отдаёт строки-контент + dict-сентинелы
+            # (__thinking__/__usage__) — берём только текстовый контент.
+            if isinstance(chunk, str) and chunk:
                 full += chunk
                 yield _sse({"type": "chunk", "content": chunk})
     except Exception as e:  # noqa: BLE001
