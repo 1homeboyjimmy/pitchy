@@ -7,7 +7,7 @@ import { Loader, CheckCircle2, Sparkles, Trophy, Brain, ExternalLink } from "luc
 import { getToken } from "@/lib/auth";
 import { notifyError } from "@/lib/ui";
 import {
-  getProjects, getRoadmap, patchPassport, analyzeRoadmapStep, analyzeRoadmapOverall,
+  getProjects, getRoadmap, patchPassport, analyzeRoadmapStep, streamRoadmapOverall,
   type ProjectListItem, type Roadmap, type RoadmapCheckpoint, type RoadmapField, type RoadmapOverall,
 } from "@/lib/api";
 
@@ -276,9 +276,17 @@ export function RoadmapView() {
     const t = getToken();
     if (!t) return;
     setAnalyzingOverall(true);
+    setOverall({ analysis: "", sources: [] });
     try {
-      const res = await analyzeRoadmapOverall(pid, t);
-      setOverall(res);
+      for await (const ev of streamRoadmapOverall(pid, t)) {
+        if (ev.type === "chunk" && ev.content) {
+          setOverall((o) => ({ analysis: (o?.analysis || "") + ev.content, sources: o?.sources || [] }));
+        } else if (ev.type === "sources" && ev.sources) {
+          setOverall((o) => ({ analysis: o?.analysis || "", sources: ev.sources! }));
+        } else if (ev.type === "error") {
+          notifyError(ev.text || "Ошибка генерации аналитики");
+        }
+      }
     } catch {
       notifyError("Не удалось получить аналитику стартапа");
     } finally {
@@ -379,7 +387,11 @@ export function RoadmapView() {
 
                 {overall && (
                   <div className="mt-5 pt-5 border-t border-white/10">
-                    <p className="text-white/80 text-sm leading-relaxed whitespace-pre-wrap">{overall.analysis}</p>
+                    {overall.analysis ? (
+                      <p className="text-white/80 text-sm leading-relaxed whitespace-pre-wrap">{overall.analysis}</p>
+                    ) : analyzingOverall ? (
+                      <div className="flex items-center gap-2 text-white/50 text-sm"><Loader className="animate-spin" size={14} /> Собираю контекст и анализирую…</div>
+                    ) : null}
                     {overall.sources.length > 0 && (
                       <div className="mt-4">
                         <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-white/35 mb-2">Источники</p>

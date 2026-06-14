@@ -272,26 +272,24 @@ async def analyze_roadmap_overall(
     project_id: int,
     user: User = Depends(get_async_current_user),
     db: AsyncSession = Depends(get_async_db),
-) -> dict:
-    """Обширная аналитика стартапа после прохождения карты (паспорт + RAG + веб).
-
-    Результат сохраняем в паспорт (assets.roadmap_analysis), чтобы не терялся."""
+):
+    """Обширная аналитика стартапа — стримом (SSE), как основной чат: паспорт +
+    RAG + веб-поиск. Стриминг решает таймаут шлюза на длинной генерации; итог
+    сохраняется в passport.assets внутри стрима."""
+    from fastapi.responses import StreamingResponse
     import roadmap_analysis
     project = await _get_owned_project(project_id, user, db)
-    result = await roadmap_analysis.analyze_overall(project.passport or {})
-
-    passport = dict(project.passport or {})
-    assets = dict(passport.get("assets") or {})
-    assets["roadmap_analysis"] = {
-        "text": result["analysis"],
-        "sources": result.get("sources", []),
-        "generated_at": datetime.utcnow().isoformat(),
-    }
-    passport["assets"] = assets
-    project.passport = passport
-    flag_modified(project, "passport")
-    await db.commit()
-    return result
+    passport = project.passport or {}
+    return StreamingResponse(
+        roadmap_analysis.stream_overall(passport, project.id),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+            "Content-Encoding": "identity",
+        },
+    )
 
 
 @router.get("/{project_id}/sessions", response_model=list[ChatSessionResponse])

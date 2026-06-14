@@ -848,9 +848,36 @@ export async function analyzeRoadmapStep(projectId: number, checkpointId: string
   );
 }
 
-// Обширная аналитика стартапа после прохождения карты (паспорт + RAG + веб).
-export async function analyzeRoadmapOverall(projectId: number, token: string): Promise<RoadmapOverall> {
-  return postAuthJson<RoadmapOverall>(`/projects/${projectId}/roadmap/analyze`, {}, token);
+// Обширная аналитика стартапа — стримом (SSE), как основной чат.
+export type RoadmapStreamEvent = { type: string; content?: string; text?: string; sources?: RoadmapSource[] };
+export async function* streamRoadmapOverall(projectId: number, token: string): AsyncGenerator<RoadmapStreamEvent> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token && token !== COOKIE_SESSION_MARKER) headers.Authorization = `Bearer ${token}`;
+  headers["x-pitchy-api"] = "1";
+  const res = await fetch(`${API_BASE}/projects/${projectId}/roadmap/analyze`, {
+    method: "POST", headers, body: "{}", credentials: "include",
+  });
+  if (!res.ok) throw new Error("overall analyze failed");
+  const reader = res.body?.getReader();
+  if (!reader) return;
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const events = buffer.split(/\r?\n\r?\n/);
+    buffer = events.pop() || "";
+    for (const event of events) {
+      for (const line of event.split(/\r?\n/)) {
+        const tl = line.trim();
+        if (!tl || tl.startsWith(":") || !tl.startsWith("data:")) continue;
+        const ds = tl.substring(5).trim();
+        if (!ds || ds === "[DONE]") continue;
+        try { yield JSON.parse(ds) as RoadmapStreamEvent; } catch { /* ignore */ }
+      }
+    }
+  }
 }
 
 export async function getProjectSessions(id: number, token: string): Promise<ChatSessionResponse[]> {
