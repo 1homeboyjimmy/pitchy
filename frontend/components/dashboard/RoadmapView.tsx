@@ -375,14 +375,14 @@ export function RoadmapView() {
                 <span className="font-mono text-[10px] uppercase tracking-[0.2em] font-bold">Дорожная карта проекта</span>
               </div>
               <div className="flex items-end justify-between gap-4 flex-wrap">
-                <h1 className="font-display text-3xl sm:text-4xl text-white">Готовность {roadmap.readiness}%</h1>
+                <h1 className="font-display text-3xl sm:text-4xl text-white">Карта заполнена на {roadmap.progress}%</h1>
                 <span className="text-white/50 text-sm">{roadmap.completed} из {roadmap.total} этапов пройдено</span>
               </div>
               <div className="mt-4 h-2 w-full rounded-full bg-white/10 overflow-hidden">
                 <motion.div
                   className="h-full rounded-full bg-gradient-to-r from-white/70 to-white"
                   initial={{ width: 0 }}
-                  animate={{ width: `${roadmap.readiness}%` }}
+                  animate={{ width: `${roadmap.progress}%` }}
                   transition={{ duration: 0.6, ease: "easeOut" }}
                 />
               </div>

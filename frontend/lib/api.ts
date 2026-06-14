@@ -826,6 +826,7 @@ export type RoadmapCheckpoint = {
 };
 export type Roadmap = {
   readiness: number;
+  progress: number;
   checkpoints: RoadmapCheckpoint[];
   next: string | null;
   completed: number;

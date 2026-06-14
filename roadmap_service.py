@@ -129,6 +129,13 @@ def build_roadmap(passport: dict | None) -> dict:
 
     next_id = next((c["id"] for c in checkpoints if c["status"] == "current"), None)
 
+    # Прогресс ИМЕННО карты (заполнено её полей) — чтобы 5/5 этапов = 100%.
+    # Глобальный readiness паспорта считается отдельно (включает поля вне карты,
+    # напр. CustDev), поэтому здесь используем покрытие карты.
+    total_fields = sum(c["total"] for c in checkpoints)
+    filled_fields = sum(c["filled"] for c in checkpoints)
+    progress = round(filled_fields * 100 / total_fields) if total_fields else 0
+
     # Ранее сгенерированная общая аналитика (чтобы фронт показал её сразу, а не
     # предлагал генерировать заново). Лежит в passport.assets.roadmap_analysis.
     saved = (passport.get("assets") or {}).get("roadmap_analysis")
@@ -142,6 +149,7 @@ def build_roadmap(passport: dict | None) -> dict:
 
     return {
         "readiness": plib.compute_readiness(passport),
+        "progress": progress,
         "checkpoints": checkpoints,
         "next": next_id,
         "completed": sum(1 for c in checkpoints if c["status"] == "done"),
