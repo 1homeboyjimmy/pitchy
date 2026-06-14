@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Loader, CheckCircle2, Sparkles, Trophy, Brain, ExternalLink } from "lucide-react";
 import { getToken } from "@/lib/auth";
 import { notifyError } from "@/lib/ui";
@@ -18,6 +20,29 @@ const TOP = 40;
 const BOTTOM = 56;
 const X_LEFT = 80;
 const X_RIGHT = 200;
+
+/** Красивый рендер markdown-аналитики (заголовки, списки, таблицы). */
+function Markdown({ children }: { children: string }) {
+  return (
+    <div className="prose prose-invert prose-sm max-w-none text-white/80 prose-headings:text-white prose-strong:text-white prose-li:my-0.5">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          table: ({ ...props }) => (
+            <div className="my-3 overflow-x-auto rounded-xl border border-white/10 bg-white/5">
+              <table className="w-full text-left border-collapse" {...props} />
+            </div>
+          ),
+          thead: ({ ...props }) => <thead className="bg-white/10" {...props} />,
+          th: ({ ...props }) => <th className="p-2 text-[11px] font-bold text-white/80 border-b border-white/10 uppercase tracking-wider" {...props} />,
+          td: ({ ...props }) => <td className="p-2 text-[12px] text-white/80 border-b border-white/5 last:border-0" {...props} />,
+        }}
+      >
+        {children}
+      </ReactMarkdown>
+    </div>
+  );
+}
 
 function fieldToText(f: RoadmapField): string {
   if (f.value == null) return "";
@@ -190,7 +215,7 @@ function CheckpointEditor({
           {analyzing ? (
             <div className="flex items-center gap-2 text-white/50 text-sm"><Loader className="animate-spin" size={14} /> Анализирую…</div>
           ) : (
-            <p className="text-white/75 text-sm leading-relaxed whitespace-pre-wrap">{analysis}</p>
+            <Markdown>{analysis || ""}</Markdown>
           )}
         </div>
       )}
@@ -388,7 +413,7 @@ export function RoadmapView() {
                 {overall && (
                   <div className="mt-5 pt-5 border-t border-white/10">
                     {overall.analysis ? (
-                      <p className="text-white/80 text-sm leading-relaxed whitespace-pre-wrap">{overall.analysis}</p>
+                      <Markdown>{overall.analysis}</Markdown>
                     ) : analyzingOverall ? (
                       <div className="flex items-center gap-2 text-white/50 text-sm"><Loader className="animate-spin" size={14} /> Собираю контекст и анализирую…</div>
                     ) : null}
