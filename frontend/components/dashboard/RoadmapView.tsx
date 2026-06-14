@@ -257,7 +257,11 @@ export function RoadmapView() {
     try {
       const r = await getRoadmap(id, t);
       setRoadmap(r);
-      if (!keepSel) setSelectedId(r.next || r.checkpoints[0]?.id || null);
+      if (!keepSel) {
+        setSelectedId(r.next || r.checkpoints[0]?.id || null);
+        // Показываем ранее сгенерированный отчёт сразу (не генерируем заново).
+        setOverall(r.analysis ? { analysis: r.analysis.text, sources: r.analysis.sources || [] } : null);
+      }
     } catch {
       notifyError("Не удалось загрузить карту");
     }

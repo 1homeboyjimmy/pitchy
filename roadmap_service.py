@@ -129,10 +129,22 @@ def build_roadmap(passport: dict | None) -> dict:
 
     next_id = next((c["id"] for c in checkpoints if c["status"] == "current"), None)
 
+    # Ранее сгенерированная общая аналитика (чтобы фронт показал её сразу, а не
+    # предлагал генерировать заново). Лежит в passport.assets.roadmap_analysis.
+    saved = (passport.get("assets") or {}).get("roadmap_analysis")
+    analysis = None
+    if isinstance(saved, dict) and saved.get("text"):
+        analysis = {
+            "text": saved.get("text"),
+            "sources": saved.get("sources") or [],
+            "generated_at": saved.get("generated_at"),
+        }
+
     return {
         "readiness": plib.compute_readiness(passport),
         "checkpoints": checkpoints,
         "next": next_id,
         "completed": sum(1 for c in checkpoints if c["status"] == "done"),
         "total": len(checkpoints),
+        "analysis": analysis,
     }

@@ -830,6 +830,8 @@ export type Roadmap = {
   next: string | null;
   completed: number;
   total: number;
+  // Ранее сгенерированная общая аналитика (если есть) — показываем сразу.
+  analysis?: { text: string; sources: RoadmapSource[]; generated_at?: string } | null;
 };
 
 export async function getRoadmap(projectId: number, token: string): Promise<Roadmap> {
