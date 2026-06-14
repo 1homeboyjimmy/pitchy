@@ -24,7 +24,17 @@ const X_RIGHT = 200;
 /** Красивый рендер markdown-аналитики (заголовки, списки, таблицы). */
 function Markdown({ children }: { children: string }) {
   return (
-    <div className="prose prose-invert prose-sm max-w-none text-white/80 prose-headings:text-white prose-strong:text-white prose-li:my-0.5">
+    <div
+      lang="ru"
+      className="prose prose-invert prose-sm max-w-none text-white/80 hyphens-auto
+                 leading-relaxed
+                 prose-headings:text-white prose-headings:font-semibold prose-headings:mt-6 prose-headings:mb-2.5
+                 prose-h1:text-xl prose-h2:text-lg prose-h3:text-base
+                 prose-p:text-justify prose-p:leading-7 prose-p:my-3
+                 prose-strong:text-white
+                 prose-ul:my-3 prose-ol:my-3 prose-li:my-1 prose-li:leading-relaxed
+                 prose-hr:border-white/10 prose-hr:my-5"
+    >
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
