@@ -373,7 +373,11 @@ def _post_to_draft(post: dict, category: str, enrichment: dict | None = None) ->
     }
 
 
-async def crawl_unicornroad(sections: list[str] | None = None, max_per_section: int = 40) -> dict:
+async def crawl_unicornroad(
+    sections: list[str] | None = None,
+    max_per_section: int = 40,
+    force_refresh: bool = False,
+) -> dict:
     """Импортирует программы с unicornroad в каталог (moderation='pending').
 
     sections — ключи CATEGORY_FEEDS (по умолчанию все). Дедуп по url до getpost
@@ -411,7 +415,7 @@ async def crawl_unicornroad(sections: list[str] | None = None, max_per_section: 
                     needs_refresh = (
                         getattr(grant, "source", None) == "unicornroad"
                         and section in _ENRICH_SECTIONS
-                        and (not grant.source_url or not grant.event_details)
+                        and (force_refresh or not grant.source_url or not grant.event_details)
                     )
                     if not needs_refresh:
                         skipped += 1

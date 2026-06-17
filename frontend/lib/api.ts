@@ -1121,6 +1121,27 @@ export async function crawlGrantSource(
   );
 }
 
+export type UnicornroadParseSectionResult = {
+  new?: number;
+  updated?: number;
+  skipped?: number;
+  errors?: number;
+  category?: string;
+  error?: string;
+};
+
+// Полный повторный импорт мероприятий Unicorn Road. force_refresh заставляет
+// обновить и ранее импортированные записи, не меняя их статус модерации.
+export async function reparseAllUnicornroadEvents(
+  token: string
+): Promise<{ result: Record<string, UnicornroadParseSectionResult> }> {
+  return postAuthJson<{ result: Record<string, UnicornroadParseSectionResult> }>(
+    "/grants/parse-unicornroad?max_per_section=1000&force_refresh=true",
+    ["event"],
+    token
+  );
+}
+
 // Очередь модерации: гранты, найденные краулером (moderation = pending).
 export async function getGrantModerationQueue(token: string): Promise<Grant[]> {
   return getAuthJson<Grant[]>(`/grants/moderation`, token);
