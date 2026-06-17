@@ -288,7 +288,11 @@ class Grant(Base):
     name: Mapped[str] = mapped_column(String(300))
     organization: Mapped[str | None] = mapped_column(String(300), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Для агрегаторов url остаётся страницей обнаружения (и ключом дедупа),
+    # а пользователю показываем внешний первоисточник/регистрацию.
     url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    registration_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Логотип организации-грантодателя. Заполняется парсером/админкой; если не
     # задан явно — выводится из домена сайта программы (favicon).
     logo_url: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -299,6 +303,10 @@ class Grant(Base):
     # Локация программы: точный адрес очного мероприятия или город/формат
     # («Москва», «Онлайн»). Для справочных категорий (мероприятия/питчи).
     location: Mapped[str | None] = mapped_column(Text, nullable=True)
+    event_format: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Структурные данные справочной карточки: agenda, speakers,
+    # participation_terms. JSON позволяет расширять карточку без потери данных.
+    event_details: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     # JSON-списки критериев. Пустой список = «без ограничений по критерию».
     stages: Mapped[list[str]] = mapped_column(JSON, default=list)          # pre-seed, seed, ...
     sectors: Mapped[list[str]] = mapped_column(JSON, default=list)         # it, biotech, ...

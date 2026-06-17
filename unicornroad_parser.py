@@ -21,6 +21,7 @@ import html as _html
 import logging
 import re
 from datetime import datetime
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
@@ -50,6 +51,7 @@ _ENRICH_SECTIONS = {"event", "pitch"}
 
 _HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; PitchyBot/1.0)"}
 _GETPOST_CONCURRENCY = 8
+_SOURCE_CONCURRENCY = 3
 
 
 def _parse_date(value: str | None) -> datetime | None:
@@ -87,11 +89,76 @@ def _text_to_lines(text: str | None) -> list[str]:
     return lines
 
 
-def _enrich_from_post(post_full: dict, parts: str | None) -> tuple[str | None, str | None]:
-    """Из детального поста достаём (точная локация, расширенное описание)."""
-    lines = _text_to_lines(post_full.get("text"))
+def _event_format(parts: str | None, location: str | None) -> str | None:
+    value = f"{parts or ''} {location or ''}".lower()
+    online = any(x in value for x in ("онлайн", "online", "вебинар"))
+    offline = any(x in value for x in ("офлайн", "offline", "очно", "москва", "санкт-петербург"))
+    if online and offline:
+        return "hybrid"
+    if online:
+        return "online"
+    if offline or location:
+        return "offline"
+    return None
+
+
+def _external_links(raw_html: str | None, discovery_url: str | None) -> list[tuple[str, str, str]]:
+    """External links from the post body, preserving the visible label."""
+    if not raw_html:
+        return []
+    from bs4 import BeautifulSoup
+
+    base = discovery_url or "https://unicornroad.ru/"
+    out: list[tuple[str, str, str]] = []
+    seen: set[str] = set()
+    for anchor in BeautifulSoup(raw_html, "html.parser").find_all("a", href=True):
+        href = urljoin(base, (anchor.get("href") or "").strip())
+        parsed = urlparse(href)
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            continue
+        host = (parsed.hostname or "").lower()
+        if host == "unicornroad.ru" or host.endswith(".unicornroad.ru"):
+            continue
+        clean = href.split("#", 1)[0]
+        if clean in seen:
+            continue
+        seen.add(clean)
+        label = anchor.get_text(" ", strip=True)
+        previous = anchor.previous_sibling
+        nearby = previous.get_text(" ", strip=True) if hasattr(previous, "get_text") else str(previous or "")
+        out.append((label, clean, f"{nearby[-120:]} {label}".strip()))
+    return out
+
+
+def _section_name(line: str) -> str | None:
+    value = line.strip().lower().rstrip(":")
+    if value in {"ключевые тезисы", "тезисы", "программа", "в программе", "темы", "о чем поговорим"}:
+        return "agenda"
+    if value in {"спикер", "спикеры", "эксперт", "эксперты"}:
+        return "speakers"
+    if value in {"условия участия", "участие", "стоимость", "для кого"}:
+        return "participation"
+    return None
+
+
+def _split_speaker(value: str) -> dict[str, str | None]:
+    chunks = re.split(r"\s+[—–-]\s+", value.strip(), maxsplit=1)
+    name = chunks[0].strip()
+    rest = chunks[1].strip() if len(chunks) > 1 else None
+    return {"name": name, "role": rest, "organization": None, "bio": None}
+
+
+def _enrich_from_post(post_full: dict, parts: str | None) -> dict:
+    """Parse a Tilda post without flattening useful event structure."""
+    raw_html = post_full.get("text") or ""
+    lines = _text_to_lines(raw_html)
     location = None
     body: list[str] = []
+    agenda: list[str] = []
+    speaker_lines: list[str] = []
+    participation: list[str] = []
+    section = None
+
     for line in lines:
         low = line.lower()
         if low.startswith("место проведения") and ":" in line:
@@ -99,11 +166,107 @@ def _enrich_from_post(post_full: dict, parts: str | None) -> tuple[str | None, s
             continue
         if low.startswith("дата:"):
             continue
-        body.append(line)
+        found_section = _section_name(line)
+        if found_section:
+            section = found_section
+            continue
+        if low.startswith(("регистрация по ", "зарегистрироваться", "регистрация:")):
+            section = None
+            continue
+        cleaned = re.sub(r"^[\-–—•·]\s*", "", line).strip()
+        if section == "agenda":
+            agenda.append(cleaned)
+        elif section == "speakers":
+            speaker_lines.append(cleaned)
+        elif section == "participation":
+            participation.append(cleaned)
+        else:
+            body.append(line)
+
     if not location:
         location = _location_from_parts(parts)
-    description = "\n".join(body).strip()[:3000] or None
-    return location, description
+    links = _external_links(raw_html, post_full.get("url"))
+    registration_url = next(
+        (href for _label, href, context in links if re.search(r"регист|участ|подать|заяв", context, re.I)),
+        None,
+    )
+    # The primary action is conventionally the last outbound link in Unicorn
+    # Road posts. A detected registration link is even stronger evidence.
+    source_url = registration_url or (links[-1][1] if links else None)
+    if not registration_url and len(links) == 1:
+        registration_url = links[0][1]
+
+    details = {
+        "agenda": agenda,
+        "speakers": [_split_speaker(x) for x in speaker_lines if x],
+        "participation_terms": "\n".join(participation).strip() or None,
+    }
+    return {
+        "location": location,
+        "description": "\n\n".join(body).strip()[:12000] or None,
+        "event_format": _event_format(parts, location),
+        "source_url": source_url,
+        "registration_url": registration_url,
+        "event_details": details,
+        "aggregator_text": "\n".join(lines),
+    }
+
+
+def _merge_source_details(base: dict, source: dict) -> dict:
+    """Fill gaps from the canonical page; deterministic Tilda facts win."""
+    if not isinstance(source, dict):
+        return base
+    for key in ("location", "event_format", "description"):
+        if not base.get(key) and isinstance(source.get(key), str):
+            base[key] = source[key].strip() or None
+    if not base.get("registration_url"):
+        candidate = source.get("registration_url")
+        if isinstance(candidate, str) and candidate.lower().startswith(("http://", "https://")):
+            base["registration_url"] = candidate.strip()
+
+    details = base.setdefault("event_details", {})
+    if not details.get("agenda") and isinstance(source.get("agenda"), list):
+        details["agenda"] = [
+            str(item).strip() for item in source["agenda"]
+            if isinstance(item, (str, int, float)) and str(item).strip()
+        ][:30]
+    if not details.get("speakers") and isinstance(source.get("speakers"), list):
+        details["speakers"] = [
+            {
+                "name": str(item.get("name") or "").strip(),
+                "role": str(item.get("role") or "").strip() or None,
+                "organization": str(item.get("organization") or "").strip() or None,
+                "bio": str(item.get("bio") or "").strip() or None,
+            }
+            for item in source["speakers"]
+            if isinstance(item, dict) and str(item.get("name") or "").strip()
+        ][:20]
+    if not details.get("participation_terms") and isinstance(source.get("participation_terms"), str):
+        details["participation_terms"] = source["participation_terms"].strip() or None
+    if not base.get("organization") and isinstance(source.get("organization"), str):
+        base["organization"] = source["organization"].strip()[:300] or None
+    return base
+
+
+async def _enrich_from_source(data: dict) -> dict:
+    """Use the canonical source only when the aggregator left meaningful gaps."""
+    source_url = data.get("source_url")
+    details = data.get("event_details") or {}
+    if not source_url or (
+        details.get("agenda") and details.get("speakers")
+        and details.get("participation_terms") and data.get("description")
+    ):
+        return data
+    try:
+        source_text = await grants_service.fetch_page_text(source_url, max_chars=18000, include_links=True)
+        if not source_text.strip():
+            return data
+        from slm_dispatcher import slm_dispatcher
+        extracted = await slm_dispatcher.extract_event_details(source_text, data.get("aggregator_text") or "")
+        return _merge_source_details(data, extracted)
+    except Exception as e:  # noqa: BLE001
+        logger.info("unicornroad source enrichment skipped (%s): %s", source_url, e)
+        return data
 
 
 async def _fetch_feed(feeduid: str, max_posts: int) -> list[dict]:
@@ -136,10 +299,11 @@ async def _fetch_post(client: httpx.AsyncClient, feeduid: str, postuid: str) -> 
         return {}
 
 
-async def _enrich_posts(feeduid: str, posts: list[dict]) -> dict[str, tuple[str | None, str | None]]:
-    """Параллельно тянет детальные посты и извлекает (локация, описание) по uid."""
+async def _enrich_posts(feeduid: str, posts: list[dict]) -> dict[str, dict]:
+    """Fetch detailed Tilda posts, then fill gaps from canonical sources."""
     sem = asyncio.Semaphore(_GETPOST_CONCURRENCY)
-    out: dict[str, tuple[str | None, str | None]] = {}
+    source_sem = asyncio.Semaphore(_SOURCE_CONCURRENCY)
+    out: dict[str, dict] = {}
     timeout = httpx.Timeout(25.0, connect=10.0, read=20.0)
 
     async with httpx.AsyncClient(timeout=timeout, headers=_HEADERS) as client:
@@ -149,20 +313,26 @@ async def _enrich_posts(feeduid: str, posts: list[dict]) -> dict[str, tuple[str 
                 return
             async with sem:
                 full = await _fetch_post(client, feeduid, uid)
-            out[uid] = _enrich_from_post(full, post.get("parts"))
+            data = _enrich_from_post(full, post.get("parts"))
+            async with source_sem:
+                data = await _enrich_from_source(data)
+            data.pop("aggregator_text", None)
+            out[uid] = data
 
         await asyncio.gather(*[work(p) for p in posts], return_exceptions=True)
     return out
 
 
-def _post_to_draft(post: dict, category: str, location: str | None, description: str | None) -> dict | None:
+def _post_to_draft(post: dict, category: str, enrichment: dict | None = None) -> dict | None:
     """Пост Tilda Feed → черновик полей GrantCreateRequest. None — мусорный пост."""
     title = (post.get("title") or "").strip()
     url = (post.get("url") or "").strip()
     if not title or not url or not url.lower().startswith("http"):
         return None
 
-    description = description or (post.get("descr") or "").strip() or None
+    enrichment = enrichment or {}
+    description = enrichment.get("description") or (post.get("descr") or "").strip() or None
+    location = enrichment.get("location")
     if location is None:
         location = _location_from_parts(post.get("parts"))
 
@@ -170,6 +340,7 @@ def _post_to_draft(post: dict, category: str, location: str | None, description:
     directlink = (post.get("directlink") or "").strip()
     if directlink.lower().startswith("http"):
         requirements["Первоисточник"] = directlink
+    source_url = enrichment.get("source_url") or (directlink if directlink.lower().startswith("http") else None)
 
     # Инвесторы/фонды — постоянные программы без «даты подачи»; дата в фиде там
     # заглушка, поэтому дедлайн не ставим, чтобы их не скрывало автоскрытие.
@@ -187,11 +358,17 @@ def _post_to_draft(post: dict, category: str, location: str | None, description:
         "name": title[:300],
         "description": description,
         "url": url,
+        "source_url": source_url,
+        "registration_url": enrichment.get("registration_url"),
+        "organization": enrichment.get("organization"),
         "logo_url": logo_url,
         "deadline": deadline,
+        "status": grants_service._status_from_dates(None, deadline),
         "category": category,
         "geo": "RF",
         "location": location,
+        "event_format": enrichment.get("event_format"),
+        "event_details": enrichment.get("event_details") or None,
         "requirements": requirements or None,
     }
 
@@ -212,29 +389,38 @@ async def crawl_unicornroad(sections: list[str] | None = None, max_per_section: 
                 result[section] = {"error": "неизвестный раздел"}
                 continue
             feeduid, category = feed
-            new = skipped = errors = 0
+            new = updated = skipped = errors = 0
             try:
                 posts = await _fetch_feed(feeduid, max_per_section)
             except Exception as e:  # noqa: BLE001
                 result[section] = {"error": f"фид не открылся: {e}"}
                 continue
 
-            # Сначала отсекаем уже существующие (дедуп по url) — чтобы getpost
-            # делать только для новых постов.
+            # Existing Unicorn Road rows created by older parser versions are
+            # refreshed once so rich fields and canonical links are backfilled.
             fresh: list[dict] = []
+            existing_by_url: dict[str, Grant] = {}
             for post in posts:
                 url = (post.get("url") or "").strip()
                 if not url or not url.lower().startswith("http"):
                     skipped += 1
                     continue
-                exists = await db.execute(select(Grant.id).where(Grant.url == url))
-                if exists.scalar_one_or_none() is not None:
-                    skipped += 1
-                    continue
+                exists = await db.execute(select(Grant).where(Grant.url == url))
+                grant = exists.scalar_one_or_none()
+                if grant is not None:
+                    needs_refresh = (
+                        getattr(grant, "source", None) == "unicornroad"
+                        and section in _ENRICH_SECTIONS
+                        and (not grant.source_url or not grant.event_details)
+                    )
+                    if not needs_refresh:
+                        skipped += 1
+                        continue
+                    existing_by_url[url] = grant
                 fresh.append(post)
 
             # Обогащение (точный адрес + описание) — только для нужных разделов.
-            enriched: dict[str, tuple[str | None, str | None]] = {}
+            enriched: dict[str, dict] = {}
             if section in _ENRICH_SECTIONS and fresh:
                 try:
                     enriched = await _enrich_posts(feeduid, fresh)
@@ -242,8 +428,7 @@ async def crawl_unicornroad(sections: list[str] | None = None, max_per_section: 
                     logger.warning(f"unicornroad enrich failed ({section}): {e}")
 
             for post in fresh:
-                loc, desc = enriched.get(post.get("uid", ""), (None, None))
-                draft = _post_to_draft(post, category, loc, desc)
+                draft = _post_to_draft(post, category, enriched.get(post.get("uid", "")))
                 if not draft:
                     skipped += 1
                     continue
@@ -253,11 +438,29 @@ async def crawl_unicornroad(sections: list[str] | None = None, max_per_section: 
                     errors += 1
                     logger.warning(f"unicornroad draft invalid ({draft.get('url')}): {e}")
                     continue
-                db.add(Grant(**payload.model_dump(), source="unicornroad", moderation="pending"))
-                new += 1
+                data = payload.model_dump()
+                existing = existing_by_url.get(draft["url"])
+                if existing is not None:
+                    # Only parser-owned content is refreshed. Moderation and
+                    # user-facing workflow state remain untouched.
+                    for field in (
+                        "organization", "description", "source_url", "registration_url",
+                        "deadline", "status", "category", "geo", "location", "event_format",
+                        "event_details", "requirements", "logo_url",
+                    ):
+                        value = data.get(field)
+                        if value not in (None, "", [], {}):
+                            setattr(existing, field, value)
+                    updated += 1
+                else:
+                    db.add(Grant(**data, source="unicornroad", moderation="pending"))
+                    new += 1
 
-            if new:
+            if new or updated:
                 await db.commit()
-            result[section] = {"new": new, "skipped": skipped, "errors": errors, "category": category}
+            result[section] = {
+                "new": new, "updated": updated, "skipped": skipped,
+                "errors": errors, "category": category,
+            }
 
     return result
