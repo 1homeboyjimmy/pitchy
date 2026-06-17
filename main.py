@@ -112,8 +112,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models import (
     Analysis, ChatMessage as DbChatMessage, ChatSession, ErrorLog,
     User, PromoCode, Payment, RagLog, ToolResult, SocialAccount, ProjectTree,
-    AdminAuditLog,
+    AdminAuditLog, Project,
 )
+import passport as passport_lib
 from sqlalchemy import select, func as sa_func
 from schemas import (
     AnalysisCreateRequest,
@@ -1527,6 +1528,59 @@ async def rag_search_endpoint(
     ]
     context = "" if payload.chunks_only else "\n\n".join(ch.text for ch in structured if ch.text)
     return RagSearchResponse(context=context, chunks=structured, count=len(structured))
+
+
+@app.get("/api/rag/projects")
+async def rag_list_projects(
+    user_id: int,
+    token: str = Depends(verify_rag_token),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Cross-service: список проектов пользователя (для импорта паспорта в CustDev).
+
+    Авторизация — статичный Bearer RAG_API_KEY (как /api/rag/search). user_id
+    приходит из общего JWT на стороне CustDev (sub). Возвращает только не
+    архивированные папки этого пользователя.
+    """
+    res = await db.execute(
+        select(Project)
+        .where(Project.user_id == user_id, Project.status != "archived")
+        .order_by(Project.created_at.desc())
+    )
+    projects = res.scalars().all()
+    return {
+        "projects": [
+            {
+                "id": p.id,
+                "name": p.name,
+                "readiness_index": getattr(p, "readiness_index", None),
+                "updated_at": p.passport_updated_at.isoformat() if getattr(p, "passport_updated_at", None) else None,
+            }
+            for p in projects
+        ]
+    }
+
+
+@app.get("/api/rag/projects/{project_id}/passport")
+async def rag_get_project_passport(
+    project_id: int,
+    user_id: int,
+    token: str = Depends(verify_rag_token),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Cross-service: паспорт конкретного проекта пользователя (для CustDev)."""
+    res = await db.execute(
+        select(Project).where(Project.id == project_id, Project.user_id == user_id)
+    )
+    project = res.scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    passport = project.passport or {}
+    return {
+        "name": project.name,
+        "passport": passport,
+        "readiness_index": passport_lib.compute_readiness(passport),
+    }
 
 
 @app.post("/analyze-startup", response_model=AnalyzeResponse)
