@@ -1459,7 +1459,7 @@ function SourcesPanel() {
                 <div className="min-w-0 flex-1">
                     <div className="text-white text-[13px] font-medium">Мероприятия Unicorn Road</div>
                     <div className="text-white/40 text-[11px] font-code mt-1">
-                        Повторно читает все карточки и первоисточники: программу, спикеров, формат, место и ссылки регистрации.
+                        Повторно читает все актуальные карточки и первоисточники: программу, спикеров, формат, место и ссылки регистрации.
                     </div>
                     {unicornroadResult && (
                         <div className="text-emerald-300/70 text-[11px] font-code mt-2">{unicornroadResult}</div>

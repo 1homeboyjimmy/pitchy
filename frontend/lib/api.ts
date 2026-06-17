@@ -1136,7 +1136,7 @@ export async function reparseAllUnicornroadEvents(
   token: string
 ): Promise<{ result: Record<string, UnicornroadParseSectionResult> }> {
   return postAuthJson<{ result: Record<string, UnicornroadParseSectionResult> }>(
-    "/grants/parse-unicornroad?max_per_section=1000&force_refresh=true",
+    "/grants/parse-unicornroad?max_per_section=1000&force_refresh=true&active_only=true",
     ["event"],
     token
   );

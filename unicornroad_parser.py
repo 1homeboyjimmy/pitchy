@@ -20,7 +20,7 @@ import asyncio
 import html as _html
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from urllib.parse import urljoin, urlparse
 
 import httpx
@@ -377,6 +377,7 @@ async def crawl_unicornroad(
     sections: list[str] | None = None,
     max_per_section: int = 40,
     force_refresh: bool = False,
+    active_only: bool = False,
 ) -> dict:
     """Импортирует программы с unicornroad в каталог (moderation='pending').
 
@@ -399,6 +400,12 @@ async def crawl_unicornroad(
             except Exception as e:  # noqa: BLE001
                 result[section] = {"error": f"фид не открылся: {e}"}
                 continue
+            if active_only and section in _ENRICH_SECTIONS:
+                # Tilda keeps a deep archive in the same feed. Manual refresh
+                # is meant for what users can still attend, not 1000+ expired
+                # events. A one-day grace window avoids timezone edge cases.
+                cutoff = datetime.utcnow() - timedelta(days=1)
+                posts = [p for p in posts if (_parse_date(p.get("date")) or datetime.min) >= cutoff]
 
             # Existing Unicorn Road rows created by older parser versions are
             # refreshed once so rich fields and canonical links are backfilled.

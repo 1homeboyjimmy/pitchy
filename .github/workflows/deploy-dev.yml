@@ -161,6 +161,20 @@ jobs:
           fi
           echo "Migrations OK — alembic at $CURRENT_REV"
 
+          # One-time rich-event backfill for the parser rollout. The marker is
+          # kept outside Git tracking on the staging host, so future deploys do
+          # not repeat paid source extraction. Admins can rerun it from the UI.
+          mkdir -p .deploy-state
+          if [ ! -f .deploy-state/unicornroad-rich-events-v1.done ]; then
+            echo "Running one-time Unicorn Road event backfill..."
+            if ! timeout 900 docker compose exec -T backend python -c "import asyncio, json; from unicornroad_parser import crawl_unicornroad; print(json.dumps(asyncio.run(crawl_unicornroad(sections=['event'], max_per_section=1000, force_refresh=True, active_only=True)), ensure_ascii=False))"; then
+              echo "ERROR: Unicorn Road event backfill failed"
+              exit 1
+            fi
+            touch .deploy-state/unicornroad-rich-events-v1.done
+            echo "Unicorn Road event backfill complete."
+          fi
+
           # Healthcheck
           health_ok="false"
           for i in $(seq 1 30); do
