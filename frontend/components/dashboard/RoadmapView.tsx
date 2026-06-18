@@ -353,19 +353,18 @@ export function RoadmapView() {
   return (
     <div className="h-full overflow-y-auto pb-10">
       <div className="max-w-5xl mx-auto pt-2">
-        {projects.length > 1 && (
-          <div className="flex flex-wrap gap-2 mb-5">
-            {projects.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => setPid(p.id)}
-                className={`px-4 py-2 rounded-2xl text-sm border transition-all ${pid === p.id ? "bg-white text-black border-white font-medium" : "lovable-glass text-white/60 border-white/10 hover:text-white"}`}
-              >
-                {p.name}
-              </button>
-            ))}
-          </div>
-        )}
+        <div className="flex items-center flex-wrap gap-2 mb-5">
+          <span className="text-white/40 text-[11px] uppercase tracking-[0.15em] font-bold mr-1">Заполняем паспорт:</span>
+          {projects.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => setPid(p.id)}
+              className={`px-4 py-2 rounded-2xl text-sm border transition-all ${pid === p.id ? "bg-white text-black border-white font-medium" : "lovable-glass text-white/60 border-white/10 hover:text-white"}`}
+            >
+              {p.name}
+            </button>
+          ))}
+        </div>
 
         {roadmap && (
           <>
