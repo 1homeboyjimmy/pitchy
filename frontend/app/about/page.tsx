@@ -16,23 +16,23 @@ const stats = [
 const values = [
   {
     icon: <Zap size={24} strokeWidth={1.5} />,
-    title: "Молниеносный анализ",
-    description: "Обработка данных и выдача результатов занимает секунды, экономя часы ручной работы.",
+    title: "Скорость без потери глубины",
+    description: "Собираем ключевые выводы за минуты, сохраняя контекст проекта и логику анализа.",
   },
   {
     icon: <Search size={24} strokeWidth={1.5} />,
-    title: "Точная оценка",
-    description: "Алгоритмы обучены на тысячах успешных презентаций для максимальной релевантности.",
+    title: "Объективность в решениях",
+    description: "Сверяем гипотезы с данными, метриками и рыночными сигналами, показывая не только потенциал, но и риски.",
   },
   {
     icon: <Shield size={24} strokeWidth={1.5} />,
-    title: "Защита данных",
-    description: "Абсолютная конфиденциальность. Ваши идеи остаются только вашими. Шифрование на всех уровнях.",
+    title: "Конфиденциальность по умолчанию",
+    description: "Защищаем данные проекта на каждом этапе работы. Идеи, документы и результаты анализа остаются под вашим контролем.",
   },
   {
     icon: <ScanSearch size={24} strokeWidth={1.5} />,
-    title: "Детализация",
-    description: "Разбор каждого слайда с конкретными рекомендациями по улучшению структуры и подачи.",
+    title: "Конкретика вместо общих советов",
+    description: "Даём понятные рекомендации по продукту, аудитории, экономике и следующим шагам — без размытых формулировок.",
   },
 ];
 
@@ -42,6 +42,7 @@ type TeamMember = {
   image: string;
   competencies: string[];
   imagePosition?: string;
+  preservePortrait?: boolean;
   accent: string;
 };
 
@@ -79,6 +80,7 @@ const leadership: TeamMember[] = [
     name: "Руслан Романов",
     role: "Ментор",
     image: "/team/ruslan-romanov.jpg",
+    preservePortrait: true,
     accent: "from-amber-300/55 via-yellow-300/15 to-transparent",
     competencies: [
       "Валидатор расчета unit-экономики",
@@ -91,6 +93,7 @@ const leadership: TeamMember[] = [
     name: "Александр Углов",
     role: "Директор по развитию",
     image: "/team/alexander-uglov.jpg",
+    preservePortrait: true,
     accent: "from-emerald-400/55 via-teal-300/15 to-transparent",
     competencies: [
       "Серийный предприниматель,",
@@ -156,14 +159,28 @@ function TeamCard({ member, featured = false }: { member: TeamMember; featured?:
           featured ? "h-72 md:absolute md:inset-y-0 md:left-0 md:h-full md:w-[44%]" : "h-64"
         }`}
       >
-        <Image
-          src={member.image}
-          alt={member.name}
-          fill
-          sizes={featured ? "(max-width: 768px) 100vw, 44vw" : "(max-width: 768px) 100vw, 33vw"}
-          className="object-cover saturate-[0.88] transition duration-700 group-hover:scale-[1.025] group-hover:saturate-100"
-          style={{ objectPosition: member.imagePosition ?? "50% 35%" }}
-        />
+        {member.preservePortrait && (
+          <Image
+            src={member.image}
+            alt=""
+            fill
+            sizes="(max-width: 768px) 100vw, 50vw"
+            aria-hidden="true"
+            className="scale-110 object-cover opacity-25 blur-2xl"
+          />
+        )}
+        <div className={member.preservePortrait ? "absolute inset-3 md:inset-4" : "absolute inset-0"}>
+          <Image
+            src={member.image}
+            alt={member.name}
+            fill
+            sizes={featured ? "(max-width: 768px) 100vw, 44vw" : "(max-width: 768px) 100vw, 33vw"}
+            className={`${
+              member.preservePortrait ? "object-contain" : "object-cover"
+            } saturate-[0.88] transition duration-700 group-hover:scale-[1.025] group-hover:saturate-100`}
+            style={{ objectPosition: member.imagePosition ?? "50% 35%" }}
+          />
+        </div>
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/5 to-transparent md:bg-gradient-to-r md:from-transparent md:via-transparent md:to-black/35" />
       </div>
 
@@ -208,13 +225,13 @@ export default function AboutPage() {
             О <PitchyLogo size="none" />
           </h1>
           <p className="font-body-lg text-xl text-foreground/60 max-w-2xl leading-relaxed">
-            Платформа для глубокого анализа и оптимизации питч-деков на базе искусственного интеллекта. Мы переводим идеи в метрики.
+            Pitchy помогает основателям проверить бизнес-идею, увидеть точки роста и превратить гипотезы в понятный план развития.
           </p>
         </header>
 
         {/* Team */}
         <section className="mb-24 md:mb-32" aria-labelledby="team-title">
-          <div className="mb-10 flex flex-col gap-5 md:mb-14 md:flex-row md:items-end md:justify-between">
+          <div className="mb-10 flex flex-col gap-5 md:mb-14 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="font-mono-label text-[10px] uppercase tracking-[0.3em] text-white/35">
                 Команда Pitchy
@@ -223,7 +240,7 @@ export default function AboutPage() {
                 Команда
               </h2>
             </div>
-            <p className="max-w-md text-sm leading-relaxed text-white/45 md:text-right">
+            <p className="max-w-md text-sm leading-relaxed text-white/45 lg:text-right">
               Технический фундамент и венчурная экспертиза
             </p>
           </div>
@@ -265,7 +282,7 @@ export default function AboutPage() {
             </div>
             <div className="max-w-2xl">
               <p className="font-body-lg text-2xl text-foreground/80 leading-relaxed tracking-tight">
-                Предоставить фаундерам мощные AI-инструменты для объективной оценки и структурирования бизнес-идей. Мы устраняем неопределенность на ранних стадиях, заменяя догадки на данные, а эмоции — на расчеты.
+                Сделать запуск и развитие проектов более быстрыми и доступными. Pitchy объединяет анализ, экспертизу и AI-инструменты, чтобы основатели могли быстрее проверять гипотезы, принимать решения на данных и двигаться от идеи к результату.
               </p>
             </div>
             {/* Stats */}
