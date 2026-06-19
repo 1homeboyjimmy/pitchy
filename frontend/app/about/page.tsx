@@ -48,18 +48,6 @@ type TeamMember = {
 
 const founders: TeamMember[] = [
   {
-    name: "Александр Николенко",
-    role: "Co-Founder",
-    image: "/team/alexander-nikolenko.jpg",
-    imagePosition: "50% 38%",
-    accent: "from-violet-400/60 via-fuchsia-400/20 to-transparent",
-    competencies: [
-      "Веб-разработка и UI/UX",
-      "1 курс РТУ МИРЭА (Инфраструктура ИТ)",
-      "Победитель стартап-интенсива МТУСИ и МГУ",
-    ],
-  },
-  {
     name: "Егор Фигурняк",
     role: "CEO",
     image: "/team/egor-figurnyak.jpg",
@@ -71,6 +59,18 @@ const founders: TeamMember[] = [
       "Большой опыт в создании/разворачивании ML моделей и оценки их эффективности",
       "Победитель стартап-интенсива МТУСИ и МГУ",
       "Участник акселератора МТУСИ x Skolkovo",
+    ],
+  },
+  {
+    name: "Александр Николенко",
+    role: "Co-Founder",
+    image: "/team/alexander-nikolenko.jpg",
+    imagePosition: "50% 38%",
+    accent: "from-violet-400/60 via-fuchsia-400/20 to-transparent",
+    competencies: [
+      "Веб-разработка и UI/UX",
+      "1 курс РТУ МИРЭА (Инфраструктура ИТ)",
+      "Победитель стартап-интенсива МТУСИ и МГУ",
     ],
   },
 ];
