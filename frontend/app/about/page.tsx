@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { Zap, Search, Shield, ScanSearch, Rocket } from "lucide-react";
 import { TopNavBar } from "@/components/shared/TopNavBar";
 import { SiteFooter } from "@/components/shared/SiteFooter";
@@ -35,6 +36,162 @@ const values = [
   },
 ];
 
+type TeamMember = {
+  name: string;
+  role: string;
+  image: string;
+  competencies: string[];
+  imagePosition?: string;
+  accent: string;
+};
+
+const founders: TeamMember[] = [
+  {
+    name: "Александр Николенко",
+    role: "Co-Founder",
+    image: "/team/alexander-nikolenko.jpg",
+    imagePosition: "50% 38%",
+    accent: "from-violet-400/60 via-fuchsia-400/20 to-transparent",
+    competencies: [
+      "Веб-разработка и UI/UX",
+      "1 курс РТУ МИРЭА (Инфраструктура ИТ)",
+      "Победитель стартап-интенсива МТУСИ и МГУ",
+    ],
+  },
+  {
+    name: "Егор Фигурняк",
+    role: "CEO",
+    image: "/team/egor-figurnyak.jpg",
+    imagePosition: "50% 34%",
+    accent: "from-blue-400/60 via-cyan-400/20 to-transparent",
+    competencies: [
+      "Опыт работы: Ростелеком",
+      "3 курс МТУСИ (ИБ), ML и Backend архитектура",
+      "Большой опыт в создании/разворачивании ML моделей и оценки их эффективности",
+      "Победитель стартап-интенсива МТУСИ и МГУ",
+      "Участник акселератора МТУСИ x Skolkovo",
+    ],
+  },
+];
+
+const leadership: TeamMember[] = [
+  {
+    name: "Руслан Романов",
+    role: "Ментор",
+    image: "/team/ruslan-romanov.jpg",
+    accent: "from-amber-300/55 via-yellow-300/15 to-transparent",
+    competencies: [
+      "Валидатор расчета unit-экономики",
+      "15 лет опыта: МТС, Мишлен, МТС Юрент, Philips, Gett, Транснефть, Gibson, Advertu",
+      "Эксперт по развитию продуктов",
+      "Кандидат экономических наук",
+    ],
+  },
+  {
+    name: "Александр Углов",
+    role: "Директор по развитию",
+    image: "/team/alexander-uglov.jpg",
+    accent: "from-emerald-400/55 via-teal-300/15 to-transparent",
+    competencies: [
+      "Серийный предприниматель,",
+      "Основатель акселератора Global Pilots (совместно с Microsoft, EY, Startupbootcamp) и The Gate Club (совместно с правительством Москвы),",
+      "Управляющий партнер АНО \"Рубежи Науки\"",
+      "партнер корпоративной венчурной студии Founders Lane (Берлин).",
+      "Директор по развитию инвестиционного фонда Altergate (Сингапур) и \"Орбитальный экспресс\" (Сколково).",
+    ],
+  },
+];
+
+const specialists: TeamMember[] = [
+  {
+    name: "Елена Чиркова",
+    role: "Ментор",
+    image: "/team/elena-chirkova.jpg",
+    imagePosition: "50% 28%",
+    accent: "from-amber-300/50 via-orange-300/15 to-transparent",
+    competencies: [
+      "Валидатор анализа ЦА и синтетических CustDev",
+      "Трекер Сколково, Газпром Нефть, Scrum Master",
+      "100+ проектов до финансирования",
+    ],
+  },
+  {
+    name: "Вероника Ланичкина",
+    role: "Юрист",
+    image: "/team/veronika-lanichkina.jpg",
+    imagePosition: "50% 30%",
+    accent: "from-pink-400/50 via-fuchsia-300/15 to-transparent",
+    competencies: [
+      "Legal & Compliance",
+      "2 курс МГУ (Юриспруденция)",
+      "Победительница стартап-интенсива МТУСИ и МГУ",
+      "Валидация юридических ответов ИИ",
+    ],
+  },
+  {
+    name: "Вячеслав Харламов",
+    role: "BizDev & Backend Engineer",
+    image: "/team/vyacheslav-kharlamov.jpg",
+    imagePosition: "50% 26%",
+    accent: "from-orange-300/50 via-amber-300/15 to-transparent",
+    competencies: [
+      "4 года опыта: amoCrm, МЧС России, Эволента",
+      "1 место Хакатон СПбГУ («Лидеры перемен»)",
+      "2 место IFBEST (технический лидер)",
+      "Топ-10 Блокчейн-хакатон Сбера",
+      "3 место МТУСИ «Путь к успеху»",
+    ],
+  },
+];
+
+function TeamCard({ member, featured = false }: { member: TeamMember; featured?: boolean }) {
+  return (
+    <article
+      className={`lovable-glass group relative overflow-hidden rounded-3xl transition-transform duration-500 hover:-translate-y-1 ${
+        featured ? "min-h-[540px] md:min-h-[430px]" : "min-h-[500px]"
+      }`}
+    >
+      <div
+        className={`relative overflow-hidden ${
+          featured ? "h-72 md:absolute md:inset-y-0 md:left-0 md:h-full md:w-[44%]" : "h-64"
+        }`}
+      >
+        <Image
+          src={member.image}
+          alt={member.name}
+          fill
+          sizes={featured ? "(max-width: 768px) 100vw, 44vw" : "(max-width: 768px) 100vw, 33vw"}
+          className="object-cover saturate-[0.88] transition duration-700 group-hover:scale-[1.025] group-hover:saturate-100"
+          style={{ objectPosition: member.imagePosition ?? "50% 35%" }}
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/5 to-transparent md:bg-gradient-to-r md:from-transparent md:via-transparent md:to-black/35" />
+      </div>
+
+      <div
+        className={`relative flex h-full flex-col p-7 md:p-8 ${
+          featured ? "md:ml-[44%] md:min-h-[430px] md:justify-center md:p-10" : ""
+        }`}
+      >
+        <div className={`mb-6 h-px w-20 bg-gradient-to-r ${member.accent}`} />
+        <h3 className={`${featured ? "text-3xl md:text-4xl" : "text-2xl"} font-display tracking-tight text-white`}>
+          {member.name}
+        </h3>
+        <p className="mt-3 font-mono-label text-[10px] uppercase tracking-[0.22em] text-white/45">
+          {member.role}
+        </p>
+        <ul className="mt-7 space-y-3 text-sm leading-relaxed text-white/60">
+          {member.competencies.map((competency) => (
+            <li key={competency} className="flex gap-3">
+              <span className="mt-[0.65em] h-1 w-1 shrink-0 rounded-full bg-white/35" />
+              <span>{competency}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </article>
+  );
+}
+
 export default function AboutPage() {
   return (
     <div className="bg-black text-foreground antialiased min-h-screen flex flex-col relative overflow-hidden">
@@ -54,6 +211,43 @@ export default function AboutPage() {
             Платформа для глубокого анализа и оптимизации питч-деков на базе искусственного интеллекта. Мы переводим идеи в метрики.
           </p>
         </header>
+
+        {/* Team */}
+        <section className="mb-24 md:mb-32" aria-labelledby="team-title">
+          <div className="mb-10 flex flex-col gap-5 md:mb-14 md:flex-row md:items-end md:justify-between">
+            <div>
+              <p className="font-mono-label text-[10px] uppercase tracking-[0.3em] text-white/35">
+                Команда Pitchy
+              </p>
+              <h2 id="team-title" className="mt-4 font-display text-5xl tracking-tighter text-white md:text-7xl">
+                Команда
+              </h2>
+            </div>
+            <p className="max-w-md text-sm leading-relaxed text-white/45 md:text-right">
+              Технический фундамент и венчурная экспертиза
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-12">
+            {founders.map((member) => (
+              <div key={member.name} className="md:col-span-6">
+                <TeamCard member={member} featured />
+              </div>
+            ))}
+
+            {leadership.map((member) => (
+              <div key={member.name} className="md:col-span-6">
+                <TeamCard member={member} />
+              </div>
+            ))}
+
+            {specialists.map((member) => (
+              <div key={member.name} className="md:col-span-4">
+                <TeamCard member={member} />
+              </div>
+            ))}
+          </div>
+        </section>
 
         {/* Bento Grid */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
