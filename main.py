@@ -1071,6 +1071,22 @@ async def health(request: Request):
     return data
 
 
+@app.get("/public/metrics")
+async def public_metrics(
+    response: Response,
+    db: AsyncSession = Depends(get_async_db),
+) -> dict[str, int]:
+    """Small, non-sensitive aggregate counters for public pages."""
+    users_result = await db.execute(select(sa_func.count()).select_from(User))
+    sessions_result = await db.execute(select(sa_func.count()).select_from(ChatSession))
+
+    response.headers["Cache-Control"] = "public, max-age=300"
+    return {
+        "users": int(users_result.scalar() or 0),
+        "chat_sessions": int(sessions_result.scalar() or 0),
+    }
+
+
 @app.get("/metrics")
 def metrics(request: Request):
     # Prometheus-метрики раскрывают внутреннюю кухню — не отдаём публично.

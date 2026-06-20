@@ -448,8 +448,8 @@ export default function FAQPage() {
           </section>
 
           <section className="mt-16 sm:mt-32 py-12 sm:py-20 border-t border-white/5">
-            <div className="lovable-glass p-6 sm:p-12 rounded-3xl sm:rounded-[40px] flex flex-col md:flex-row md:items-center justify-between gap-8 sm:gap-10">
-              <div className="w-full md:max-w-md text-center md:text-left">
+            <div className="lovable-glass grid grid-cols-1 items-center gap-8 rounded-3xl p-6 sm:gap-10 sm:p-12 sm:rounded-[40px] lg:grid-cols-[minmax(0,1fr)_auto]">
+              <div className="min-w-0 max-w-lg text-center lg:text-left">
                 <h3 className="text-white font-display tracking-tight text-3xl sm:text-4xl mb-3 sm:mb-4">
                   Остались вопросы?
                 </h3>
@@ -460,7 +460,7 @@ export default function FAQPage() {
               </div>
               <a
                 href="mailto:support@pitchy.pro"
-                className="bg-white text-black px-6 sm:px-10 py-3 sm:py-4 rounded-full font-mono-label text-[11px] uppercase tracking-[0.2em] font-black hover:scale-105 transition-all text-center whitespace-nowrap"
+                className="w-full bg-white text-black px-6 sm:px-10 py-3 sm:py-4 rounded-full font-mono-label text-[11px] uppercase tracking-[0.2em] font-black hover:scale-105 transition-all text-center whitespace-nowrap sm:w-auto lg:justify-self-end"
               >
                 Связаться с нами
               </a>

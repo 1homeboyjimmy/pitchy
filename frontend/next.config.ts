@@ -70,6 +70,7 @@ const nextConfig: NextConfig = {
         { source: "/analyze", destination: `${BACKEND_URL}/analyze` },
         { source: "/analyze/:path*", destination: `${BACKEND_URL}/analyze/:path*` },
         { source: "/health", destination: `${BACKEND_URL}/health` },
+        { source: "/public/:path*", destination: `${BACKEND_URL}/public/:path*` },
         { source: "/dev/:path*", destination: `${BACKEND_URL}/dev/:path*` },
         { source: "/tree/:path*", destination: `${BACKEND_URL}/tree/:path*` },
         { source: "/contact-form", destination: `${BACKEND_URL}/contact-form` },

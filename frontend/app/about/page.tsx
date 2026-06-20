@@ -1,17 +1,11 @@
 "use client";
 
 import Image from "next/image";
+import { useEffect, useState } from "react";
 import { Zap, Search, Shield, ScanSearch, Rocket } from "lucide-react";
 import { TopNavBar } from "@/components/shared/TopNavBar";
 import { SiteFooter } from "@/components/shared/SiteFooter";
 import { PitchyLogo } from "@/components/shared/PitchyLogo";
-
-const stats = [
-  { value: "100+", label: "Стартапов" },
-  { value: "5+", label: "Инвесторов" },
-  { value: "30s", label: "Анализ" },
-  { value: "92%", label: "Точность" },
-];
 
 const values = [
   {
@@ -150,7 +144,7 @@ const specialists: TeamMember[] = [
 function TeamCard({ member, featured = false }: { member: TeamMember; featured?: boolean }) {
   return (
     <article
-      className={`lovable-glass group relative overflow-hidden rounded-3xl transition-transform duration-500 hover:-translate-y-1 ${
+      className={`lovable-glass group relative h-full overflow-hidden rounded-3xl transition-transform duration-500 hover:-translate-y-1 ${
         featured ? "min-h-[540px] md:min-h-[430px]" : "min-h-[500px]"
       }`}
     >
@@ -210,6 +204,36 @@ function TeamCard({ member, featured = false }: { member: TeamMember; featured?:
 }
 
 export default function AboutPage() {
+  const [metrics, setMetrics] = useState<{ users: number; chat_sessions: number } | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    fetch("/public/metrics", { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error("Failed to load public metrics");
+        return response.json() as Promise<{ users: number; chat_sessions: number }>;
+      })
+      .then(setMetrics)
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        console.error("Unable to load public metrics", error);
+      });
+
+    return () => controller.abort();
+  }, []);
+
+  const stats = [
+    {
+      value: metrics ? new Intl.NumberFormat("ru-RU").format(metrics.users) : "—",
+      label: "Пользователей",
+    },
+    {
+      value: metrics ? new Intl.NumberFormat("ru-RU").format(metrics.chat_sessions) : "—",
+      label: "Чат-сессий",
+    },
+  ];
+
   return (
     <div className="bg-black text-foreground antialiased min-h-screen flex flex-col relative overflow-hidden">
       {/* Decorative Orbs */}
@@ -231,7 +255,7 @@ export default function AboutPage() {
 
         {/* Team */}
         <section className="mb-24 md:mb-32" aria-labelledby="team-title">
-          <div className="mb-10 flex flex-col gap-5 md:mb-14 lg:flex-row lg:items-end lg:justify-between">
+          <div className="mb-10 md:mb-14">
             <div>
               <p className="font-mono-label text-[10px] uppercase tracking-[0.3em] text-white/35">
                 Команда Pitchy
@@ -240,26 +264,23 @@ export default function AboutPage() {
                 Команда
               </h2>
             </div>
-            <p className="max-w-md text-sm leading-relaxed text-white/45 lg:text-right">
-              Технический фундамент и венчурная экспертиза
-            </p>
           </div>
 
           <div className="grid grid-cols-1 gap-6 md:grid-cols-12">
             {founders.map((member) => (
-              <div key={member.name} className="md:col-span-6">
+              <div key={member.name} className="h-full md:col-span-6">
                 <TeamCard member={member} featured />
               </div>
             ))}
 
             {leadership.map((member) => (
-              <div key={member.name} className="md:col-span-6">
+              <div key={member.name} className="h-full md:col-span-6">
                 <TeamCard member={member} />
               </div>
             ))}
 
             {specialists.map((member) => (
-              <div key={member.name} className="md:col-span-4">
+              <div key={member.name} className="h-full md:col-span-4">
                 <TeamCard member={member} />
               </div>
             ))}
@@ -286,7 +307,7 @@ export default function AboutPage() {
               </p>
             </div>
             {/* Stats */}
-            <div className="mt-16 grid grid-cols-2 md:grid-cols-4 gap-8 border-t border-white/5 pt-10">
+            <div className="mt-16 grid grid-cols-1 gap-8 border-t border-white/5 pt-10 sm:grid-cols-2">
               {stats.map((stat) => (
                 <div key={stat.label}>
                   <div className="font-display text-4xl text-white tracking-tighter">{stat.value}</div>
