@@ -447,9 +447,9 @@ export default function FAQPage() {
             </motion.div>
           </section>
 
-          <section className="mt-16 sm:mt-32 py-12 sm:py-20 border-t border-white/5">
-            <div className="lovable-glass grid grid-cols-1 items-center gap-8 rounded-3xl p-6 sm:gap-10 sm:p-12 sm:rounded-[40px] lg:grid-cols-[minmax(0,1fr)_auto]">
-              <div className="min-w-0 max-w-lg text-center lg:text-left">
+          <section className="mt-16 border-t border-white/5 py-10 sm:mt-24 sm:py-14">
+            <div className="lovable-glass grid grid-cols-1 items-center gap-8 rounded-3xl p-6 sm:rounded-[40px] sm:px-10 sm:py-8 lg:grid-cols-[minmax(0,1fr)_auto] lg:px-12">
+              <div className="min-w-0 max-w-[760px] text-center lg:text-left">
                 <h3 className="text-white font-display tracking-tight text-3xl sm:text-4xl mb-3 sm:mb-4">
                   Остались вопросы?
                 </h3>
