@@ -196,20 +196,30 @@ async def create_configurable_subscription_payment(
     if is_active(existing_subscription):
         raise HTTPException(status_code=409, detail="Активную подписку изменяйте в профиле — новая конфигурация применится при продлении")
     setup_yookassa()
-    result = YookassaPayment.create({
-        "amount": {"value": f"{amount:.2f}", "currency": "RUB"},
-        "confirmation": {
-            "type": "redirect",
-            "return_url": os.getenv("APP_PUBLIC_URL", "http://localhost:3000") + "/account?payment=return",
-        },
-        "capture": True,
-        "save_payment_method": True,
-        "description": "Pitchy: ежемесячная настраиваемая подписка",
-        "metadata": {
-            "user_id": str(user.id),
-            "kind": "subscription_initial",
-        },
-    }, str(uuid.uuid4()))
+    try:
+        result = YookassaPayment.create({
+            "amount": {"value": f"{amount:.2f}", "currency": "RUB"},
+            "confirmation": {
+                "type": "redirect",
+                "return_url": os.getenv("APP_PUBLIC_URL", "http://localhost:3000") + "/account?payment=return",
+            },
+            "capture": True,
+            "save_payment_method": True,
+            "description": "Pitchy: ежемесячная настраиваемая подписка",
+            "metadata": {
+                "user_id": str(user.id),
+                "kind": "subscription_initial",
+            },
+        }, str(uuid.uuid4()))
+    except Exception as exc:
+        msg = str(exc)
+        logger.error("YooKassa subscription payment failed: %s", msg)
+        if "recurring" in msg.lower() or "save_payment_method" in msg.lower():
+            raise HTTPException(
+                status_code=503,
+                detail="Автоплатежи у платёжного провайдера ещё подключаются. Пожалуйста, попробуйте чуть позже.",
+            ) from exc
+        raise HTTPException(status_code=502, detail="Не удалось создать платёж. Попробуйте позже.") from exc
 
     payment_method = getattr(result, "payment_method", None)
     db.add(Payment(
@@ -288,6 +298,24 @@ async def cancel_auto_renewal(
     subscription.auto_renew = False
     await db.commit()
     return {"status": "ok", "auto_renew": False}
+
+
+@router.post("/subscription/detach-method")
+async def detach_payment_method(
+    db: AsyncSession = Depends(get_async_db),
+    user: User = Depends(get_async_current_user),
+):
+    """Самостоятельная отвязка способа оплаты: пользователь удаляет сохранённую
+    карту и отключает автопродление сам, без обращения в поддержку (требование YooKassa)."""
+    subscription = await get_subscription(db, user.id, for_update=True)
+    if subscription is None:
+        # Нечего отвязывать — карты нет. Не ошибка: возвращаем спокойный статус.
+        return {"status": "ok", "payment_method_saved": False, "auto_renew": False}
+    subscription.payment_method_id = None
+    subscription.auto_renew = False
+    await db.commit()
+    await db.refresh(subscription)
+    return {"mode": "custom", **subscription_snapshot(subscription), "base_config": BASE_CONFIG}
 
 
 @router.post("/usage/consume")

@@ -1067,6 +1067,11 @@ export async function cancelConfigurableSubscription(token: string) {
   return postAuthJson<{ status: string; auto_renew: boolean }>("/billing/subscription/cancel", {}, token);
 }
 
+// Самостоятельная отвязка карты: удаляет сохранённый способ оплаты и выключает автопродление.
+export async function detachConfigurableSubscriptionMethod(token: string) {
+  return postAuthJson<ConfigurableSubscription>("/billing/subscription/detach-method", {}, token);
+}
+
 export async function getGrantApplications(token: string, projectId?: number): Promise<GrantApplication[]> {
   const q = projectId != null ? `?project_id=${projectId}` : "";
   return getAuthJson<GrantApplication[]>(`/grants/applications${q}`, token);
