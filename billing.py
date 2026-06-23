@@ -196,21 +196,27 @@ async def create_configurable_subscription_payment(
     if is_active(existing_subscription):
         raise HTTPException(status_code=409, detail="Активную подписку изменяйте в профиле — новая конфигурация применится при продлении")
     setup_yookassa()
+    # Пока YooKassa не включила рекуррентные платежи (1-2 дня на согласование),
+    # держим флаг ВЫКЛ → первый платёж разовый (без save_payment_method), проходит без 403.
+    # Когда включат — ставим BILLING_RECURRING_ENABLED=1, и автосписание заработает без правок кода.
+    recurring_enabled = os.getenv("BILLING_RECURRING_ENABLED", "").strip().lower() in ("1", "true", "yes")
+    payload = {
+        "amount": {"value": f"{amount:.2f}", "currency": "RUB"},
+        "confirmation": {
+            "type": "redirect",
+            "return_url": os.getenv("APP_PUBLIC_URL", "http://localhost:3000") + "/account?payment=return",
+        },
+        "capture": True,
+        "description": "Pitchy: ежемесячная настраиваемая подписка",
+        "metadata": {
+            "user_id": str(user.id),
+            "kind": "subscription_initial",
+        },
+    }
+    if recurring_enabled:
+        payload["save_payment_method"] = True
     try:
-        result = YookassaPayment.create({
-            "amount": {"value": f"{amount:.2f}", "currency": "RUB"},
-            "confirmation": {
-                "type": "redirect",
-                "return_url": os.getenv("APP_PUBLIC_URL", "http://localhost:3000") + "/account?payment=return",
-            },
-            "capture": True,
-            "save_payment_method": True,
-            "description": "Pitchy: ежемесячная настраиваемая подписка",
-            "metadata": {
-                "user_id": str(user.id),
-                "kind": "subscription_initial",
-            },
-        }, str(uuid.uuid4()))
+        result = YookassaPayment.create(payload, str(uuid.uuid4()))
     except Exception as exc:
         msg = str(exc)
         logger.error("YooKassa subscription payment failed: %s", msg)
