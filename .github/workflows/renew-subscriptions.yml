@@ -13,7 +13,10 @@ jobs:
         env:
           BILLING_CRON_SECRET: ${{ secrets.BILLING_CRON_SECRET }}
         run: |
-          test -n "$BILLING_CRON_SECRET"
+          if [ -z "$BILLING_CRON_SECRET" ]; then
+            echo "BILLING_CRON_SECRET is not set in GitHub Secrets; skipping. Server cron can run renewals instead."
+            exit 0
+          fi
           curl --fail-with-body --retry 2 --max-time 60 \
             -X POST https://pitchy.pro/billing/renewals/run \
             -H "X-Cron-Secret: $BILLING_CRON_SECRET"
