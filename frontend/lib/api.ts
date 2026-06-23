@@ -150,6 +150,10 @@ async function request<T>(
   // навигацию браузера (нет заголовка) рендерим страницей, а fetch из api.ts
   // (есть заголовок) проксируем на бэкенд. Работает и за Caddy Basic Auth.
   headers["x-pitchy-api"] = "1";
+  if (method === "POST") {
+    headers["X-Idempotency-Key"] = globalThis.crypto?.randomUUID?.()
+      || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
   const res = await fetch(`${API_BASE}${path}`, {
     method,
     headers,
@@ -1017,9 +1021,50 @@ export async function generateGrantApplication(
 ): Promise<GrantApplication> {
   return postAuthJson<GrantApplication>(
     `/grants/${grantId}/apply`,
-    { project_id: projectId, extra_context: extraContext },
+    { project_id: projectId, extra_context: extraContext, request_id: crypto.randomUUID() },
     token
   );
+}
+
+export type SubscriptionConfig = {
+  messages: number;
+  roadmaps: number;
+  custdev: number;
+  grants: number;
+};
+
+export type ConfigurableSubscription = {
+  mode: "none" | "legacy" | "custom";
+  legacy_tier?: string;
+  legacy_expires_at?: string | null;
+  status?: string;
+  auto_renew?: boolean;
+  payment_method_saved?: boolean;
+  current_period_start?: string | null;
+  current_period_end?: string | null;
+  current_config?: SubscriptionConfig;
+  next_config?: SubscriptionConfig;
+  used?: SubscriptionConfig;
+  remaining?: SubscriptionConfig;
+  current_price?: number;
+  next_price?: number;
+  base_config: SubscriptionConfig;
+};
+
+export async function createConfigurableSubscription(config: SubscriptionConfig, token: string) {
+  return postAuthJson<{ confirmation_url: string }>("/billing/subscription/create-payment", config, token);
+}
+
+export async function getConfigurableSubscription(token: string) {
+  return getAuthJson<ConfigurableSubscription>("/billing/subscription", token);
+}
+
+export async function updateConfigurableSubscription(config: SubscriptionConfig, autoRenew: boolean, token: string) {
+  return patchAuthJson<ConfigurableSubscription>("/billing/subscription", { config, auto_renew: autoRenew }, token);
+}
+
+export async function cancelConfigurableSubscription(token: string) {
+  return postAuthJson<{ status: string; auto_renew: boolean }>("/billing/subscription/cancel", {}, token);
 }
 
 export async function getGrantApplications(token: string, projectId?: number): Promise<GrantApplication[]> {

@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
@@ -56,9 +56,18 @@ async def _get_owned_project(project_id: int, user: User, db: AsyncSession) -> P
 @router.post("", response_model=ProjectResponse)
 async def create_project(
     payload: ProjectCreateRequest,
+    request: Request,
     user: User = Depends(get_async_current_user),
     db: AsyncSession = Depends(get_async_db),
 ) -> ProjectResponse:
+    from subscription_service import consume_quota, require_legacy_access
+    handled = await consume_quota(
+        db, user, "roadmaps",
+        idempotency_key=request.headers.get("X-Idempotency-Key") or f"roadmap:project:{user.id}:{hash((payload.name, str(payload.passport)))}",
+        reference_type="project",
+    )
+    if not handled:
+        require_legacy_access(user, "roadmaps")
     passport = payload.passport or {}
     project = Project(
         user_id=user.id,
@@ -90,6 +99,7 @@ async def create_project(
 @router.post("/onboard", response_model=ProjectOnboardResponse)
 async def onboard_project(
     payload: ProjectOnboardRequest,
+    request: Request,
     user: User = Depends(get_async_current_user),
     db: AsyncSession = Depends(get_async_db),
 ) -> ProjectOnboardResponse:
@@ -101,6 +111,14 @@ async def onboard_project(
     мастере/модалке, и эти правки уже не перезатираются автоматикой.
     """
     from slm_dispatcher import slm_dispatcher
+    from subscription_service import consume_quota, require_legacy_access
+    handled = await consume_quota(
+        db, user, "roadmaps",
+        idempotency_key=request.headers.get("X-Idempotency-Key") or f"roadmap:onboard:{user.id}:{hash(payload.idea)}",
+        reference_type="project_onboard",
+    )
+    if not handled:
+        require_legacy_access(user, "roadmaps")
 
     idea = (payload.idea or "").strip()
     try:

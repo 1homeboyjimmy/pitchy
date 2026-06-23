@@ -12,6 +12,7 @@ import { postAuthJson, patchAuthJson, getMyPayments, UserProfile, MyPaymentsResp
 import { notifyError, notifySuccess } from "@/lib/ui";
 import { LogOut, User, Shield, CheckCircle2, ChevronLeft, Check, CreditCard } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { SubscriptionConfigurator } from "@/components/billing/SubscriptionConfigurator";
 
 export function AccountPageClient() {
   const router = useRouter();
@@ -288,10 +289,14 @@ export function AccountPageClient() {
           </section>
         )}
 
-        {/* Subscription & Payments Section — self-service so users
-            can see current plan, expiry date, and history of payments
-            without writing to support. Cancellation isn't needed: each
-            payment buys a fixed period that simply doesn't renew. */}
+        <section className="flex flex-col gap-6">
+          <h3 className="font-display text-2xl sm:text-[28px] font-medium text-white border-b border-white/10 pb-4 sm:pb-6">
+            Настройка подписки
+          </h3>
+          <SubscriptionConfigurator account />
+        </section>
+
+        {/* Current period and payment history. */}
         {billing && (() => {
           const sub = billing.current_subscription;
           const tierLabel =
@@ -299,6 +304,7 @@ export function AccountPageClient() {
             sub.tier === "starter" ? "Starter" :
             sub.tier === "tester" ? "Tester" :
             sub.tier === "premium" ? "Premium" :
+            sub.tier === "custom" ? "Персональный" :
             "Бесплатный";
           const fmtDate = (iso: string | null) => {
             if (!iso) return "—";

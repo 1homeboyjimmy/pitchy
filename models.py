@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, JSON, Numeric
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, JSON, Numeric, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db import Base
@@ -39,6 +39,12 @@ class User(Base):
     project_trees: Mapped[list["ProjectTree"]] = relationship(back_populates="user", cascade="all, delete-orphan", passive_deletes=True)
     tool_results: Mapped[list["ToolResult"]] = relationship(back_populates="user", cascade="all, delete-orphan", passive_deletes=True)
     projects: Mapped[list["Project"]] = relationship(back_populates="user", cascade="all, delete-orphan", passive_deletes=True)
+    custom_subscription: Mapped["CustomSubscription | None"] = relationship(
+        back_populates="user", cascade="all, delete-orphan", passive_deletes=True, uselist=False
+    )
+    usage_events: Mapped[list["SubscriptionUsageEvent"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan", passive_deletes=True
+    )
 
 
 class Project(Base):
@@ -103,11 +109,65 @@ class Payment(Base):
     tier: Mapped[str] = mapped_column(String(50))  # pro, premium
     is_annual: Mapped[bool] = mapped_column(Boolean, default=False)
     promo_code_id: Mapped[int | None] = mapped_column(ForeignKey("promocodes.id"), nullable=True)
+    kind: Mapped[str] = mapped_column(String(50), default="legacy", server_default="legacy")
+    quota_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    payment_method_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    period_start: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    period_end: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     user: Mapped["User"] = relationship(back_populates="payments")
     promo_code: Mapped["PromoCode | None"] = relationship(back_populates="payments")
+
+
+class CustomSubscription(Base):
+    """Monthly configurable subscription used by the 2490 RUB billing model."""
+
+    __tablename__ = "custom_subscriptions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    status: Mapped[str] = mapped_column(String(30), default="pending", server_default="pending")
+    auto_renew: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    payment_method_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    current_period_start: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    current_period_end: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    current_config: Mapped[dict] = mapped_column(JSON, default=dict)
+    next_config: Mapped[dict] = mapped_column(JSON, default=dict)
+    used: Mapped[dict] = mapped_column(JSON, default=dict)
+    renewal_attempted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    renewal_retry_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="custom_subscription")
+
+
+class SubscriptionUsageEvent(Base):
+    """Immutable ledger entry for every quota credit/reset/debit."""
+
+    __tablename__ = "subscription_usage_events"
+    __table_args__ = (UniqueConstraint("idempotency_key", name="uq_usage_event_idempotency_key"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    subscription_id: Mapped[int | None] = mapped_column(
+        ForeignKey("custom_subscriptions.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    resource: Mapped[str] = mapped_column(String(30), index=True)
+    quantity: Mapped[int] = mapped_column(Integer)
+    event_type: Mapped[str] = mapped_column(String(20))  # debit | period_reset
+    idempotency_key: Mapped[str] = mapped_column(String(255))
+    reference_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    reference_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    event_metadata: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+    user: Mapped["User"] = relationship(back_populates="usage_events")
 
 class PromoCode(Base):
     __tablename__ = "promocodes"
