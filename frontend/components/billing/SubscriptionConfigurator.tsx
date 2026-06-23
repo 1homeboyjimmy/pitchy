@@ -91,6 +91,16 @@ export function SubscriptionConfigurator({ account = false }: { account?: boolea
     );
   }
 
+  if (account && subscription?.mode !== "custom") {
+    return (
+      <section className="rounded-3xl border border-white/10 bg-white/[0.025] p-6 sm:p-8 text-center">
+        <p className="text-sm text-white/55">У вас нет активной подписки.</p>
+        <p className="mt-2 text-sm text-white/35">Оформите подписку, чтобы получить доступ к лимитам чата, дорожным картам, CustDev и грантам.</p>
+        <a href="/pricing" className="mt-5 inline-block rounded-full bg-white text-black px-7 py-3 font-semibold">Оформить подписку</a>
+      </section>
+    );
+  }
+
   const editable = !account || subscription?.mode === "custom";
   return (
     <section className="rounded-[2rem] border border-white/10 bg-gradient-to-br from-white/[0.05] to-white/[0.015] p-6 sm:p-9">

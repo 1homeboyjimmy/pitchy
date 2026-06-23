@@ -21,6 +21,7 @@ export function AccountPageClient() {
   const [loading, setLoading] = useState(true);
   const [billing, setBilling] = useState<MyPaymentsResponse | null>(null);
   const [pmSaved, setPmSaved] = useState(false);
+  const [hasSub, setHasSub] = useState(false);
   const [confirmDetach, setConfirmDetach] = useState(false);
   const [detaching, setDetaching] = useState(false);
   const [pmMsg, setPmMsg] = useState<string | null>(null);
@@ -59,6 +60,7 @@ export function AccountPageClient() {
         }
         try {
           const sub = await getConfigurableSubscription(token);
+          setHasSub(sub.mode === "custom");
           setPmSaved(!!sub.payment_method_saved);
         } catch (se) {
           console.error("Failed to load subscription", se);
@@ -326,6 +328,7 @@ export function AccountPageClient() {
           <SubscriptionConfigurator account />
         </section>
 
+        {hasSub && (
         <section className="flex flex-col gap-4">
           <h3 className="font-display text-2xl sm:text-[28px] font-medium text-white border-b border-white/10 pb-4 sm:pb-6 flex items-center gap-3">
             <CreditCard size={22} /> Способ оплаты
@@ -356,6 +359,7 @@ export function AccountPageClient() {
             {pmMsg && <p className="mt-4 text-sm text-white/60">{pmMsg}</p>}
           </div>
         </section>
+        )}
 
         {/* Current period and payment history. */}
         {billing && (() => {
