@@ -170,7 +170,7 @@ export function PassportOnePager() {
   const hasMetrics = metricRows.length > 0;
   const hasTeam = team.length > 0;
   const hasCustdev = personas.length > 0 || !!txt(custdev.interviews_done);
-  const hasLegal = !!(txt(legal.entity_type) || txt(legal.inn) || txt(legal.requisites));
+  const hasLegal = !!(txt(legal.entity_type) || txt(legal.requisites));
   const anything = hasCore || hasMarket || hasMetrics || hasTeam || hasCustdev || hasLegal;
 
   return (
@@ -287,7 +287,6 @@ export function PassportOnePager() {
             <Section title="Юридические данные">
               <div className="grid grid-cols-2 gap-4">
                 <Inline label="Юр. форма" value={txt(legal.entity_type)} />
-                <Inline label="ИНН" value={txt(legal.inn)} />
               </div>
               <Block label="Реквизиты" value={txt(legal.requisites)} />
             </Section>

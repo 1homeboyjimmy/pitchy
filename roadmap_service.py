@@ -63,7 +63,7 @@ CHECKPOINTS: list[dict] = [
     {
         "id": "legal",
         "title": "Юр. данные",
-        "subtitle": "Форма и реквизиты",
+        "subtitle": "Юридическая форма проекта",
         "reward": "Полная готовность подавать заявки на гранты",
         "fields": [
             ("legal.entity_type", "Юр. форма (ООО/ИП/физлицо)", "text"),

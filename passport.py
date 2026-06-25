@@ -9,7 +9,7 @@
       "metrics": {"mrr", "users", "cac", "growth"},
       "team":    [...],                 # список участников
       "custdev": {"personas": [...], "interviews_done"},
-      "legal":   {"entity_type", "inn", "requisites"},
+      "legal":   {"entity_type", "requisites"},
       "assets":  {"deck_session_id", "roadmap_id"},
       "custom":  {...},                 # свободные пары ключ-значение
       "_meta":   {"core.problem": {"source": "ai", "confidence": 0.8,
