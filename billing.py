@@ -67,6 +67,11 @@ class QuotaConfigRequest(BaseModel):
     grants: int = BASE_CONFIG["grants"]
 
 
+class CreateConfigurablePaymentRequest(QuotaConfigRequest):
+    # Промокод применяется к итоговой сумме подписки (база + все доп-функции).
+    promo_code: str | None = None
+
+
 class UpdateSubscriptionRequest(BaseModel):
     config: QuotaConfigRequest
     auto_renew: bool = True
@@ -181,17 +186,39 @@ async def create_payment(
 
 @router.post("/subscription/create-payment", response_model=CreatePaymentResponse)
 async def create_configurable_subscription_payment(
-    config: QuotaConfigRequest,
+    config: CreateConfigurablePaymentRequest,
     db: AsyncSession = Depends(get_async_db),
     user: User = Depends(get_async_current_user),
 ):
     """Create the first monthly payment and ask YooKassa to save the method."""
+    data = config.model_dump()
+    promo_code_value = data.pop("promo_code", None)
     try:
-        quota_config = normalize_config(config.model_dump())
+        quota_config = normalize_config(data)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     amount = calculate_price(quota_config)
+
+    # Промокод действует на любую итоговую сумму подписки (база + доп-функции).
+    promo_id = None
+    if promo_code_value and promo_code_value.strip():
+        code = promo_code_value.strip().upper()
+        res = await db.execute(select(PromoCode).where(PromoCode.code == code))
+        promo = res.scalar_one_or_none()
+        valid = (
+            promo is not None
+            and (not promo.expires_at or promo.expires_at > datetime.utcnow())
+            and (not promo.max_uses or promo.current_uses < promo.max_uses)
+        )
+        if not valid:
+            raise HTTPException(status_code=400, detail="Промокод недействителен или истёк")
+        if promo.fixed_price is not None:
+            amount = float(promo.fixed_price)
+        else:
+            amount = round(amount * (100 - promo.discount_percent) / 100, 2)
+        promo_id = promo.id
+
     existing_subscription = await get_subscription(db, user.id, for_update=True)
     if is_active(existing_subscription):
         raise HTTPException(status_code=409, detail="Активную подписку изменяйте в профиле — новая конфигурация применится при продлении")
@@ -239,6 +266,7 @@ async def create_configurable_subscription_payment(
         kind="subscription_initial",
         quota_config=quota_config,
         payment_method_id=getattr(payment_method, "id", None),
+        promo_code_id=promo_id,
     ))
     subscription = existing_subscription
     if subscription is None:

@@ -10,6 +10,7 @@ import {
   createConfigurableSubscription,
   getConfigurableSubscription,
   updateConfigurableSubscription,
+  validatePromoCode,
 } from "@/lib/api";
 
 const BASE: SubscriptionConfig = { messages: 50, roadmaps: 3, custdev: 2, grants: 0 };
@@ -34,7 +35,56 @@ export function SubscriptionConfigurator({ account = false }: { account?: boolea
   const [autoRenew, setAutoRenew] = useState(true);
   const [acceptedRecurring, setAcceptedRecurring] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [promoOpen, setPromoOpen] = useState(false);
+  const [promoInput, setPromoInput] = useState("");
+  const [promoApplied, setPromoApplied] = useState<string | null>(null);
+  const [discountPercent, setDiscountPercent] = useState(0);
+  const [fixedPrice, setFixedPrice] = useState<number | null>(null);
+  const [promoMsg, setPromoMsg] = useState<string | null>(null);
+  const [checkingPromo, setCheckingPromo] = useState(false);
   const price = useMemo(() => totalPrice(config), [config]);
+  const finalPrice = useMemo(() => {
+    if (fixedPrice !== null) return fixedPrice;
+    if (discountPercent > 0) return Math.round(price * (100 - discountPercent) / 100);
+    return price;
+  }, [price, discountPercent, fixedPrice]);
+
+  const applyPromo = async () => {
+    const code = promoInput.trim().toUpperCase();
+    if (!code) return;
+    setCheckingPromo(true);
+    setPromoMsg(null);
+    try {
+      const result = await validatePromoCode(code);
+      if (!result.valid) {
+        setPromoApplied(null);
+        setDiscountPercent(0);
+        setFixedPrice(null);
+        setPromoMsg(result.detail || "Промокод недействителен");
+        return;
+      }
+      setPromoApplied(code);
+      setDiscountPercent(result.discount_percent || 0);
+      setFixedPrice(result.fixed_price ?? null);
+      setPromoMsg(
+        result.fixed_price != null
+          ? `Промокод применён: фиксированная цена ${result.fixed_price.toLocaleString("ru-RU")} ₽`
+          : `Промокод применён: −${result.discount_percent}%`
+      );
+    } catch {
+      setPromoMsg("Не удалось проверить промокод. Попробуйте ещё раз.");
+    } finally {
+      setCheckingPromo(false);
+    }
+  };
+
+  const clearPromo = () => {
+    setPromoApplied(null);
+    setDiscountPercent(0);
+    setFixedPrice(null);
+    setPromoInput("");
+    setPromoMsg(null);
+  };
 
   useEffect(() => {
     if (!account) return;
@@ -69,7 +119,7 @@ export function SubscriptionConfigurator({ account = false }: { account?: boolea
         setSubscription(updated);
         setMessage("Конфигурация следующего месяца сохранена");
       } else {
-        const result = await createConfigurableSubscription(config, token);
+        const result = await createConfigurableSubscription(config, token, promoApplied);
         window.location.href = result.confirmation_url;
       }
     } catch (error) {
@@ -107,7 +157,15 @@ export function SubscriptionConfigurator({ account = false }: { account?: boolea
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-5 mb-8">
         <div>
           <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-white/35">{account ? "Следующий платёж" : "Базовая подписка"}</p>
-          <h2 className="mt-2 font-display text-3xl sm:text-5xl text-white">{price.toLocaleString("ru-RU")} ₽ <span className="text-lg text-white/35">/ месяц</span></h2>
+          <h2 className="mt-2 font-display text-3xl sm:text-5xl text-white">
+            {finalPrice.toLocaleString("ru-RU")} ₽ <span className="text-lg text-white/35">/ месяц</span>
+            {!account && promoApplied && finalPrice !== price && (
+              <span className="ml-3 text-lg text-white/35 line-through">{price.toLocaleString("ru-RU")} ₽</span>
+            )}
+          </h2>
+          {!account && promoApplied && (
+            <p className="mt-2 text-xs text-emerald-300">Промокод {promoApplied} применён{discountPercent > 0 ? ` · −${discountPercent}%` : ""}</p>
+          )}
           <p className="mt-3 text-sm text-white/45">Остатки сгорают при продлении. Выбранная конфигурация повторяется автоматически.</p>
         </div>
         <label className="flex items-start gap-2 text-xs text-white/60 cursor-pointer max-w-sm">
@@ -155,8 +213,35 @@ export function SubscriptionConfigurator({ account = false }: { account?: boolea
         })}
       </div>
 
+      {!account && (
+        <div className="mt-6">
+          {!promoOpen && !promoApplied && (
+            <button onClick={() => setPromoOpen(true)} className="text-xs text-white/45 underline underline-offset-2 hover:text-white/70">У меня есть промокод</button>
+          )}
+          {(promoOpen || promoApplied) && (
+            <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+              <input
+                value={promoInput}
+                onChange={(e) => setPromoInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && applyPromo()}
+                disabled={!!promoApplied}
+                placeholder="Промокод"
+                className="flex-1 rounded-full border border-white/15 bg-black/30 px-5 py-3 text-sm uppercase tracking-wider placeholder:text-white/25 placeholder:normal-case placeholder:tracking-normal focus:border-white/40 outline-none disabled:opacity-60"
+              />
+              {promoApplied ? (
+                <button onClick={clearPromo} className="rounded-full border border-white/15 px-6 py-3 text-sm hover:bg-white/10">Убрать</button>
+              ) : (
+                <button onClick={applyPromo} disabled={checkingPromo || !promoInput.trim()} className="rounded-full border border-white/15 px-6 py-3 text-sm hover:bg-white/10 disabled:opacity-40">{checkingPromo ? "Проверяем…" : "Применить"}</button>
+              )}
+            </div>
+          )}
+          {promoMsg && <p className={`mt-2 text-xs ${promoApplied ? "text-emerald-300" : "text-white/50"}`}>{promoMsg}</p>}
+          <p className="mt-2 text-[11px] text-white/25">Промокод применяется ко всей сумме подписки, включая выбранные дополнительные функции.</p>
+        </div>
+      )}
+
       {message && <p className="mt-5 text-sm text-white/60">{message}</p>}
-      {editable && <button onClick={submit} disabled={saving || (!account && !acceptedRecurring)} className="mt-7 w-full rounded-full bg-white text-black py-4 font-semibold disabled:opacity-50 hover:scale-[1.01] transition-transform">{saving ? "Сохраняем…" : account ? "Сохранить на следующий месяц" : "Оформить подписку"}</button>}
+      {editable && <button onClick={submit} disabled={saving || (!account && !acceptedRecurring)} className="mt-7 w-full rounded-full bg-white text-black py-4 font-semibold disabled:opacity-50 hover:scale-[1.01] transition-transform">{saving ? "Сохраняем…" : account ? "Сохранить на следующий месяц" : `Оформить подписку${!account ? ` · ${finalPrice.toLocaleString("ru-RU")} ₽` : ""}`}</button>}
       {account && subscription?.mode === "none" && <a href="/pricing" className="mt-7 block w-full rounded-full bg-white text-black py-4 font-semibold text-center">Настроить подписку</a>}
     </section>
   );

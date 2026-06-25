@@ -1051,8 +1051,8 @@ export type ConfigurableSubscription = {
   base_config: SubscriptionConfig;
 };
 
-export async function createConfigurableSubscription(config: SubscriptionConfig, token: string) {
-  return postAuthJson<{ confirmation_url: string }>("/billing/subscription/create-payment", config, token);
+export async function createConfigurableSubscription(config: SubscriptionConfig, token: string, promoCode?: string | null) {
+  return postAuthJson<{ confirmation_url: string }>("/billing/subscription/create-payment", { ...config, promo_code: promoCode ?? null }, token);
 }
 
 export async function getConfigurableSubscription(token: string) {
