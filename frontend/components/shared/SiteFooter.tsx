@@ -36,7 +36,8 @@ export function SiteFooter() {
             <h4 className="text-white text-sm font-medium uppercase tracking-tighter font-sans">Правовая информация</h4>
             <ul className="space-y-3">
               <li><Link className="text-sm text-white/50 hover:text-white transition-colors font-sans font-medium tracking-tight whitespace-nowrap" href="/privacy">Конфиденциальность</Link></li>
-              <li><Link className="text-sm text-white/50 hover:text-white transition-colors font-sans font-medium tracking-tight whitespace-nowrap" href="/terms">Условия</Link></li>
+              <li><Link className="text-sm text-white/50 hover:text-white transition-colors font-sans font-medium tracking-tight whitespace-nowrap" href="/terms">Условия (Оферта)</Link></li>
+              <li><Link className="text-sm text-white/50 hover:text-white transition-colors font-sans font-medium tracking-tight whitespace-nowrap" href="/cookies">Политика cookie</Link></li>
               <li><Link className="text-sm text-white/50 hover:text-white transition-colors font-sans font-medium tracking-tight whitespace-nowrap" href="/security">Безопасность</Link></li>
             </ul>
           </div>

@@ -110,14 +110,22 @@ export function SubscriptionConfigurator({ account = false }: { account?: boolea
           <h2 className="mt-2 font-display text-3xl sm:text-5xl text-white">{price.toLocaleString("ru-RU")} ₽ <span className="text-lg text-white/35">/ месяц</span></h2>
           <p className="mt-3 text-sm text-white/45">Остатки сгорают при продлении. Выбранная конфигурация повторяется автоматически.</p>
         </div>
-        <label className="flex items-center gap-2 text-xs text-white/60 cursor-pointer">
+        <label className="flex items-start gap-2 text-xs text-white/60 cursor-pointer max-w-sm">
           <input
             type="checkbox"
             checked={account ? autoRenew : acceptedRecurring}
             onChange={(e) => account ? setAutoRenew(e.target.checked) : setAcceptedRecurring(e.target.checked)}
-            className="accent-white"
+            className="accent-white mt-0.5"
           />
-          {account ? "Автопродление на следующий месяц" : "Согласен на ежемесячное автопродление и сохранение способа оплаты"}
+          {account ? (
+            <span>Автопродление на следующий месяц</span>
+          ) : (
+            <span>
+              Согласен на ежемесячное автопродление и сохранение способа оплаты, принимаю{" "}
+              <a href="/terms" target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="underline underline-offset-2 hover:text-white">Оферту</a>{" "}и{" "}
+              <a href="/privacy" target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="underline underline-offset-2 hover:text-white">Политику конфиденциальности</a>
+            </span>
+          )}
         </label>
       </div>
 

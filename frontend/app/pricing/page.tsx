@@ -33,7 +33,20 @@ export default function PricingPage() {
 
         <SubscriptionConfigurator />
 
-        <p className="mt-6 text-center text-xs text-white/30">При оплате вы разрешаете ежемесячное автопродление. Конфигурацию следующего месяца можно изменить в профиле.</p>
+        <div className="mt-6 text-center text-xs text-white/30 max-w-2xl mx-auto space-y-2">
+          <p>
+            Оформляя подписку, вы соглашаетесь на <span className="text-white/45">ежемесячное автопродление</span> и сохранение способа оплаты.
+            Списание происходит раз в месяц по выбранной конфигурации. Отменить автопродление и отвязать карту можно в любой момент в профиле.
+          </p>
+          <p>
+            Нажимая «Оформить подписку», вы принимаете{" "}
+            <a href="/terms" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-white/70">Оферту</a>{" "}и{" "}
+            <a href="/privacy" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-white/70">Политику конфиденциальности</a>.
+            Условия возврата — в Оферте. Использование cookie описано в{" "}
+            <a href="/cookies" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-white/70">Политике cookie</a>.
+          </p>
+          <p className="text-white/25">Самозанятый Фигурняк Егор Сергеевич, ИНН 400700088347.</p>
+        </div>
       </main>
       <SiteFooter />
     </div>
