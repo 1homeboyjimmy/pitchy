@@ -154,37 +154,18 @@ export function SubscriptionConfigurator({ account = false }: { account?: boolea
   const editable = !account || subscription?.mode === "custom";
   return (
     <section className="rounded-[2rem] border border-white/10 bg-gradient-to-br from-white/[0.05] to-white/[0.015] p-6 sm:p-9">
-      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-5 mb-8">
-        <div>
-          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-white/35">{account ? "Следующий платёж" : "Базовая подписка"}</p>
-          <h2 className="mt-2 font-display text-3xl sm:text-5xl text-white">
-            {finalPrice.toLocaleString("ru-RU")} ₽ <span className="text-lg text-white/35">/ месяц</span>
-            {!account && promoApplied && finalPrice !== price && (
-              <span className="ml-3 text-lg text-white/35 line-through">{price.toLocaleString("ru-RU")} ₽</span>
-            )}
-          </h2>
-          {!account && promoApplied && (
-            <p className="mt-2 text-xs text-emerald-300">Промокод {promoApplied} применён{discountPercent > 0 ? ` · −${discountPercent}%` : ""}</p>
+      <div className="mb-8">
+        <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-white/35">{account ? "Следующий платёж" : "Базовая подписка"}</p>
+        <h2 className="mt-2 font-display text-3xl sm:text-5xl text-white">
+          {finalPrice.toLocaleString("ru-RU")} ₽ <span className="text-lg text-white/35">/ месяц</span>
+          {!account && promoApplied && finalPrice !== price && (
+            <span className="ml-3 text-lg text-white/35 line-through">{price.toLocaleString("ru-RU")} ₽</span>
           )}
-          <p className="mt-3 text-sm text-white/45">Остатки сгорают при продлении. Выбранная конфигурация повторяется автоматически.</p>
-        </div>
-        <label className="flex items-start gap-2 text-xs text-white/60 cursor-pointer max-w-sm">
-          <input
-            type="checkbox"
-            checked={account ? autoRenew : acceptedRecurring}
-            onChange={(e) => account ? setAutoRenew(e.target.checked) : setAcceptedRecurring(e.target.checked)}
-            className="accent-white mt-0.5"
-          />
-          {account ? (
-            <span>Автопродление на следующий месяц</span>
-          ) : (
-            <span>
-              Согласен на ежемесячное автопродление и сохранение способа оплаты, принимаю{" "}
-              <a href="/terms" target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="underline underline-offset-2 hover:text-white">Оферту</a>{" "}и{" "}
-              <a href="/privacy" target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="underline underline-offset-2 hover:text-white">Политику конфиденциальности</a>
-            </span>
-          )}
-        </label>
+        </h2>
+        {!account && promoApplied && (
+          <p className="mt-2 text-xs text-emerald-300">Промокод {promoApplied} применён{discountPercent > 0 ? ` · −${discountPercent}%` : ""}</p>
+        )}
+        <p className="mt-3 text-sm text-white/45">Остатки сгорают при продлении. Выбранная конфигурация повторяется автоматически.</p>
       </div>
 
       {account && subscription?.mode === "custom" && subscription.remaining && (
@@ -240,8 +221,26 @@ export function SubscriptionConfigurator({ account = false }: { account?: boolea
         </div>
       )}
 
+      <label className="mt-7 flex items-start gap-3 text-sm text-white/60 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={account ? autoRenew : acceptedRecurring}
+          onChange={(e) => account ? setAutoRenew(e.target.checked) : setAcceptedRecurring(e.target.checked)}
+          className="accent-white mt-1 shrink-0"
+        />
+        {account ? (
+          <span>Автопродление на следующий месяц</span>
+        ) : (
+          <span className="leading-relaxed">
+            Согласен на ежемесячное автопродление и сохранение способа оплаты, принимаю{" "}
+            <a href="/offer" target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="underline underline-offset-2 hover:text-white">Оферту</a>{" "}и{" "}
+            <a href="/privacy" target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="underline underline-offset-2 hover:text-white">Политику конфиденциальности</a>
+          </span>
+        )}
+      </label>
+
       {message && <p className="mt-5 text-sm text-white/60">{message}</p>}
-      {editable && <button onClick={submit} disabled={saving || (!account && !acceptedRecurring)} className="mt-7 w-full rounded-full bg-white text-black py-4 font-semibold disabled:opacity-50 hover:scale-[1.01] transition-transform">{saving ? "Сохраняем…" : account ? "Сохранить на следующий месяц" : `Оформить подписку${!account ? ` · ${finalPrice.toLocaleString("ru-RU")} ₽` : ""}`}</button>}
+      {editable && <button onClick={submit} disabled={saving || (!account && !acceptedRecurring)} className="mt-5 w-full rounded-full bg-white text-black py-4 font-semibold disabled:opacity-50 hover:scale-[1.01] transition-transform">{saving ? "Сохраняем…" : account ? "Сохранить на следующий месяц" : `Оформить подписку${!account ? ` · ${finalPrice.toLocaleString("ru-RU")} ₽` : ""}`}</button>}
       {account && subscription?.mode === "none" && <a href="/pricing" className="mt-7 block w-full rounded-full bg-white text-black py-4 font-semibold text-center">Настроить подписку</a>}
     </section>
   );

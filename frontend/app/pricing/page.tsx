@@ -40,7 +40,7 @@ export default function PricingPage() {
           </p>
           <p>
             Нажимая «Оформить подписку», вы принимаете{" "}
-            <a href="/terms" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-white/70">Оферту</a>{" "}и{" "}
+            <a href="/offer" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-white/70">Оферту</a>{" "}и{" "}
             <a href="/privacy" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-white/70">Политику конфиденциальности</a>.
             Условия возврата — в Оферте. Использование cookie описано в{" "}
             <a href="/cookies" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-white/70">Политике cookie</a>.
