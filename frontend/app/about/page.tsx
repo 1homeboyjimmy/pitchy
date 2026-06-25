@@ -1,41 +1,239 @@
 "use client";
 
+import Image from "next/image";
+import { useEffect, useState } from "react";
 import { Zap, Search, Shield, ScanSearch, Rocket } from "lucide-react";
 import { TopNavBar } from "@/components/shared/TopNavBar";
 import { SiteFooter } from "@/components/shared/SiteFooter";
 import { PitchyLogo } from "@/components/shared/PitchyLogo";
 
-const stats = [
-  { value: "100+", label: "Стартапов" },
-  { value: "5+", label: "Инвесторов" },
-  { value: "30s", label: "Анализ" },
-  { value: "92%", label: "Точность" },
-];
-
 const values = [
   {
     icon: <Zap size={24} strokeWidth={1.5} />,
-    title: "Молниеносный анализ",
-    description: "Обработка данных и выдача результатов занимает секунды, экономя часы ручной работы.",
+    title: "Скорость без потери глубины",
+    description: "Собираем ключевые выводы за минуты, сохраняя контекст проекта и логику анализа.",
   },
   {
     icon: <Search size={24} strokeWidth={1.5} />,
-    title: "Точная оценка",
-    description: "Алгоритмы обучены на тысячах успешных презентаций для максимальной релевантности.",
+    title: "Объективность в решениях",
+    description: "Сверяем гипотезы с данными, метриками и рыночными сигналами, показывая не только потенциал, но и риски.",
   },
   {
     icon: <Shield size={24} strokeWidth={1.5} />,
-    title: "Защита данных",
-    description: "Абсолютная конфиденциальность. Ваши идеи остаются только вашими. Шифрование на всех уровнях.",
+    title: "Конфиденциальность по умолчанию",
+    description: "Защищаем данные проекта на каждом этапе работы. Идеи, документы и результаты анализа остаются под вашим контролем.",
   },
   {
     icon: <ScanSearch size={24} strokeWidth={1.5} />,
-    title: "Детализация",
-    description: "Разбор каждого слайда с конкретными рекомендациями по улучшению структуры и подачи.",
+    title: "Конкретика вместо общих советов",
+    description: "Даём понятные рекомендации по продукту, аудитории, экономике и следующим шагам — без размытых формулировок.",
   },
 ];
 
+type TeamMember = {
+  name: string;
+  role: string;
+  image: string;
+  competencies: string[];
+  imagePosition?: string;
+  preservePortrait?: boolean;
+  accent: string;
+};
+
+const founders: TeamMember[] = [
+  {
+    name: "Егор Фигурняк",
+    role: "CEO",
+    image: "/team/egor-figurnyak.jpg",
+    imagePosition: "50% 34%",
+    accent: "from-blue-400/60 via-cyan-400/20 to-transparent",
+    competencies: [
+      "Опыт работы: Ростелеком",
+      "3 курс МТУСИ (ИБ), ML и Backend архитектура",
+      "Большой опыт в создании/разворачивании ML моделей и оценки их эффективности",
+      "Победитель стартап-интенсива МТУСИ и МГУ",
+      "Участник акселератора МТУСИ x Skolkovo",
+    ],
+  },
+  {
+    name: "Александр Николенко",
+    role: "Co-Founder",
+    image: "/team/alexander-nikolenko.jpg",
+    imagePosition: "50% 38%",
+    accent: "from-violet-400/60 via-fuchsia-400/20 to-transparent",
+    competencies: [
+      "Веб-разработка и UI/UX",
+      "1 курс РТУ МИРЭА (Инфраструктура ИТ)",
+      "Победитель стартап-интенсива МТУСИ и МГУ",
+    ],
+  },
+];
+
+const leadership: TeamMember[] = [
+  {
+    name: "Руслан Романов",
+    role: "Ментор",
+    image: "/team/ruslan-romanov.jpg",
+    preservePortrait: true,
+    accent: "from-amber-300/55 via-yellow-300/15 to-transparent",
+    competencies: [
+      "Валидатор расчета unit-экономики",
+      "15 лет опыта: МТС, Мишлен, МТС Юрент, Philips, Gett, Транснефть, Gibson, Advertu",
+      "Эксперт по развитию продуктов",
+      "Кандидат экономических наук",
+    ],
+  },
+  {
+    name: "Александр Углов",
+    role: "Директор по развитию",
+    image: "/team/alexander-uglov.jpg",
+    preservePortrait: true,
+    accent: "from-emerald-400/55 via-teal-300/15 to-transparent",
+    competencies: [
+      "Серийный предприниматель,",
+      "Основатель акселератора Global Pilots (совместно с Microsoft, EY, Startupbootcamp) и The Gate Club (совместно с правительством Москвы),",
+      "Управляющий партнер АНО \"Рубежи Науки\"",
+      "партнер корпоративной венчурной студии Founders Lane (Берлин).",
+      "Директор по развитию инвестиционного фонда Altergate (Сингапур) и \"Орбитальный экспресс\" (Сколково).",
+    ],
+  },
+];
+
+const specialists: TeamMember[] = [
+  {
+    name: "Елена Чиркова",
+    role: "Ментор",
+    image: "/team/elena-chirkova.jpg",
+    imagePosition: "50% 28%",
+    accent: "from-amber-300/50 via-orange-300/15 to-transparent",
+    competencies: [
+      "Валидатор анализа ЦА и синтетических CustDev",
+      "Трекер Сколково, Газпром Нефть, Scrum Master",
+      "100+ проектов до финансирования",
+    ],
+  },
+  {
+    name: "Вероника Ланичкина",
+    role: "Юрист",
+    image: "/team/veronika-lanichkina.jpg",
+    imagePosition: "50% 30%",
+    accent: "from-pink-400/50 via-fuchsia-300/15 to-transparent",
+    competencies: [
+      "Legal & Compliance",
+      "2 курс МГУ (Юриспруденция)",
+      "Победительница стартап-интенсива МТУСИ и МГУ",
+      "Валидация юридических ответов ИИ",
+    ],
+  },
+  {
+    name: "Вячеслав Харламов",
+    role: "BizDev & Backend Engineer",
+    image: "/team/vyacheslav-kharlamov.jpg",
+    imagePosition: "50% 26%",
+    accent: "from-orange-300/50 via-amber-300/15 to-transparent",
+    competencies: [
+      "4 года опыта: amoCrm, МЧС России, Эволента",
+      "1 место Хакатон СПбГУ («Лидеры перемен»)",
+      "2 место IFBEST (технический лидер)",
+      "Топ-10 Блокчейн-хакатон Сбера",
+      "3 место МТУСИ «Путь к успеху»",
+    ],
+  },
+];
+
+function TeamCard({ member, featured = false }: { member: TeamMember; featured?: boolean }) {
+  return (
+    <article
+      className={`lovable-glass group relative h-full overflow-hidden rounded-3xl transition-transform duration-500 hover:-translate-y-1 ${
+        featured ? "min-h-[540px] md:min-h-[430px]" : "min-h-[500px]"
+      }`}
+    >
+      <div
+        className={`relative overflow-hidden ${
+          featured ? "h-72 md:absolute md:inset-y-0 md:left-0 md:h-full md:w-[44%]" : "h-64"
+        }`}
+      >
+        {member.preservePortrait && (
+          <Image
+            src={member.image}
+            alt=""
+            fill
+            sizes="(max-width: 768px) 100vw, 50vw"
+            aria-hidden="true"
+            className="scale-110 object-cover opacity-25 blur-2xl"
+          />
+        )}
+        <div className={member.preservePortrait ? "absolute inset-3 md:inset-4" : "absolute inset-0"}>
+          <Image
+            src={member.image}
+            alt={member.name}
+            fill
+            sizes={featured ? "(max-width: 768px) 100vw, 44vw" : "(max-width: 768px) 100vw, 33vw"}
+            className={`${
+              member.preservePortrait ? "object-contain" : "object-cover"
+            } saturate-[0.88] transition duration-700 group-hover:scale-[1.025] group-hover:saturate-100`}
+            style={{ objectPosition: member.imagePosition ?? "50% 35%" }}
+          />
+        </div>
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/5 to-transparent md:bg-gradient-to-r md:from-transparent md:via-transparent md:to-black/35" />
+      </div>
+
+      <div
+        className={`relative flex h-full flex-col p-7 md:p-8 ${
+          featured ? "md:ml-[44%] md:min-h-[430px] md:justify-center md:p-10" : ""
+        }`}
+      >
+        <div className={`mb-6 h-px w-20 bg-gradient-to-r ${member.accent}`} />
+        <h3 className={`${featured ? "text-3xl md:text-4xl" : "text-2xl"} font-display tracking-tight text-white`}>
+          {member.name}
+        </h3>
+        <p className="mt-3 font-mono-label text-[10px] uppercase tracking-[0.22em] text-white/45">
+          {member.role}
+        </p>
+        <ul className="mt-7 space-y-3 text-sm leading-relaxed text-white/60">
+          {member.competencies.map((competency) => (
+            <li key={competency} className="flex gap-3">
+              <span className="mt-[0.65em] h-1 w-1 shrink-0 rounded-full bg-white/35" />
+              <span>{competency}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </article>
+  );
+}
+
 export default function AboutPage() {
+  const [metrics, setMetrics] = useState<{ users: number; chat_sessions: number } | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    fetch("/public/metrics", { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error("Failed to load public metrics");
+        return response.json() as Promise<{ users: number; chat_sessions: number }>;
+      })
+      .then(setMetrics)
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        console.error("Unable to load public metrics", error);
+      });
+
+    return () => controller.abort();
+  }, []);
+
+  const stats = [
+    {
+      value: metrics ? new Intl.NumberFormat("ru-RU").format(metrics.users) : "—",
+      label: "Пользователей",
+    },
+    {
+      value: metrics ? new Intl.NumberFormat("ru-RU").format(metrics.chat_sessions) : "—",
+      label: "Чат-сессий",
+    },
+  ];
+
   return (
     <div className="bg-black text-foreground antialiased min-h-screen flex flex-col relative overflow-hidden">
       {/* Decorative Orbs */}
@@ -51,9 +249,43 @@ export default function AboutPage() {
             О <PitchyLogo size="none" />
           </h1>
           <p className="font-body-lg text-xl text-foreground/60 max-w-2xl leading-relaxed">
-            Платформа для глубокого анализа и оптимизации питч-деков на базе искусственного интеллекта. Мы переводим идеи в метрики.
+            Pitchy помогает основателям проверить бизнес-идею, увидеть точки роста и превратить гипотезы в понятный план развития.
           </p>
         </header>
+
+        {/* Team */}
+        <section className="mb-24 md:mb-32" aria-labelledby="team-title">
+          <div className="mb-10 md:mb-14">
+            <div>
+              <p className="font-mono-label text-[10px] uppercase tracking-[0.3em] text-white/35">
+                Команда Pitchy
+              </p>
+              <h2 id="team-title" className="mt-4 font-display text-5xl tracking-tighter text-white md:text-7xl">
+                Команда
+              </h2>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-12">
+            {founders.map((member) => (
+              <div key={member.name} className="h-full md:col-span-6">
+                <TeamCard member={member} featured />
+              </div>
+            ))}
+
+            {leadership.map((member) => (
+              <div key={member.name} className="h-full md:col-span-6">
+                <TeamCard member={member} />
+              </div>
+            ))}
+
+            {specialists.map((member) => (
+              <div key={member.name} className="h-full md:col-span-4">
+                <TeamCard member={member} />
+              </div>
+            ))}
+          </div>
+        </section>
 
         {/* Bento Grid */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
@@ -71,11 +303,11 @@ export default function AboutPage() {
             </div>
             <div className="max-w-2xl">
               <p className="font-body-lg text-2xl text-foreground/80 leading-relaxed tracking-tight">
-                Предоставить фаундерам мощные AI-инструменты для объективной оценки и структурирования бизнес-идей. Мы устраняем неопределенность на ранних стадиях, заменяя догадки на данные, а эмоции — на расчеты.
+                Сделать запуск и развитие проектов более быстрыми и доступными. Pitchy объединяет анализ, экспертизу и AI-инструменты, чтобы основатели могли быстрее проверять гипотезы, принимать решения на данных и двигаться от идеи к результату.
               </p>
             </div>
             {/* Stats */}
-            <div className="mt-16 grid grid-cols-2 md:grid-cols-4 gap-8 border-t border-white/5 pt-10">
+            <div className="mt-16 grid grid-cols-1 gap-8 border-t border-white/5 pt-10 sm:grid-cols-2">
               {stats.map((stat) => (
                 <div key={stat.label}>
                   <div className="font-display text-4xl text-white tracking-tighter">{stat.value}</div>
