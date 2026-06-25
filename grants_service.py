@@ -20,7 +20,7 @@ import json
 import logging
 import os
 import re
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 logger = logging.getLogger("app")
 
@@ -93,7 +93,7 @@ _ALLOWED_SECTORS = [
 _ALLOWED_ENTITIES = ["ООО", "ИП", "самозанятый", "физлицо", "НКО"]
 
 
-async def fetch_page_text(url: str, max_chars: int = 14000) -> str:
+async def fetch_page_text(url: str, max_chars: int = 14000, include_links: bool = False) -> str:
     """Скачивает страницу и вытаскивает читаемый текст (title + meta + body)."""
     import httpx
     from bs4 import BeautifulSoup
@@ -108,6 +108,15 @@ async def fetch_page_text(url: str, max_chars: int = 14000) -> str:
     soup = BeautifulSoup(html, "html.parser")
     for tag in soup(["script", "style", "noscript", "svg", "header", "footer", "nav", "form"]):
         tag.decompose()
+
+    if include_links:
+        # Preserve actionable URLs for structured extractors. get_text() alone
+        # turns “Регистрация по ссылке” into plain text and loses the href.
+        for anchor in soup.find_all("a", href=True):
+            href = urljoin(str(r.url), (anchor.get("href") or "").strip())
+            if href.lower().startswith(("http://", "https://")):
+                label = anchor.get_text(" ", strip=True) or "Ссылка"
+                anchor.replace_with(f"{label} [{href}]")
 
     parts: list[str] = []
     if soup.title and soup.title.string:

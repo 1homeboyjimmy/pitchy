@@ -246,4 +246,31 @@ class SLMClient:
             
         return results[:len(chunks)]
 
+    @observe(name="extract_event_details")
+    async def extract_event_details(self, source_text: str, aggregator_text: str = "") -> Dict[str, Any]:
+        """Extract rich event fields from a canonical page with aggregator fallback.
+
+        This intentionally lives in the SLM layer: the task is bounded JSON
+        extraction, not open-ended synthesis. Callers must still validate URLs
+        and prefer deterministic values parsed from the aggregator HTML.
+        """
+        system_prompt = (
+            "Ты извлекаешь факты о мероприятии из двух документов. Первый — "
+            "официальный первоисточник, второй — карточка агрегатора. Не выдумывай "
+            "и не сокращай полезные детали. При конфликте предпочитай первоисточник. "
+            "Верни JSON: {\"organization\": string|null, \"description\": string|null, "
+            "\"event_format\": \"online\"|\"offline\"|\"hybrid\"|null, "
+            "\"location\": string|null, \"agenda\": [string], "
+            "\"speakers\": [{\"name\": string, \"role\": string|null, "
+            "\"organization\": string|null, \"bio\": string|null}], "
+            "\"participation_terms\": string|null, \"registration_url\": string|null}. "
+            "Описание должно сохранять суть, аудиторию и пользу; пункты программы "
+            "возвращай раздельно. Только факты из документов."
+        )
+        user_prompt = (
+            f"ПЕРВОИСТОЧНИК:\n{source_text[:14000]}\n\n"
+            f"КАРТОЧКА АГРЕГАТОРА:\n{aggregator_text[:8000]}"
+        )
+        return await self._call_json(system_prompt, user_prompt)
+
 slm_dispatcher = SLMClient()

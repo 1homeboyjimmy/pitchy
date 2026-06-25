@@ -289,11 +289,15 @@ class GrantResponse(BaseModel):
     organization: str | None = None
     description: str | None = None
     url: str | None = None
+    source_url: str | None = None
+    registration_url: str | None = None
     logo_url: str | None = None
     amount_min: float | None = None
     amount_max: float | None = None
     geo: str | None = None
     location: str | None = None
+    event_format: str | None = None
+    event_details: dict[str, Any] | None = None
     stages: list[str] = []
     sectors: list[str] = []
     entity_types: list[str] = []
@@ -331,11 +335,15 @@ class GrantCreateRequest(BaseModel):
     organization: str | None = None
     description: str | None = None
     url: str | None = None
+    source_url: str | None = None
+    registration_url: str | None = None
     logo_url: str | None = None
     amount_min: float | None = None
     amount_max: float | None = None
     geo: str | None = None
     location: str | None = None
+    event_format: str | None = None
+    event_details: dict[str, Any] | None = None
     stages: list[str] = []
     sectors: list[str] = []
     entity_types: list[str] = []
@@ -345,7 +353,7 @@ class GrantCreateRequest(BaseModel):
     status: str = "open"
     category: str = "grant"
 
-    @field_validator("url", "logo_url")
+    @field_validator("url", "source_url", "registration_url", "logo_url")
     @classmethod
     def _safe_grant_url(cls, v: str | None) -> str | None:
         """URL гранта попадает на фронт как <a href>. Краулер тащит ссылки из

@@ -10,7 +10,8 @@ import { adminDate } from "@/lib/utils";
 import {
     getGrants, extractGrantFromUrl, createGrant, type Grant, type GrantDraft,
     getGrantSources, createGrantSource, updateGrantSource, deleteGrantSource,
-    crawlGrantSource, getGrantModerationQueue, moderateGrant, type GrantSource,
+    crawlGrantSource, reparseAllUnicornroadEvents, getGrantModerationQueue,
+    moderateGrant, type GrantSource,
 } from "@/lib/api";
 
 // Temporary Types mapping what API returns
@@ -1334,6 +1335,8 @@ function SourcesPanel() {
     const [maxItems, setMaxItems] = useState(6);
     const [saving, setSaving] = useState(false);
     const [busyId, setBusyId] = useState<number | null>(null);
+    const [unicornroadBusy, setUnicornroadBusy] = useState(false);
+    const [unicornroadResult, setUnicornroadResult] = useState<string | null>(null);
 
     useEffect(() => {
         const token = getToken();
@@ -1420,12 +1423,53 @@ function SourcesPanel() {
         }
     };
 
+    const handleUnicornroadReparse = async () => {
+        const token = getToken();
+        if (!token || unicornroadBusy) return;
+        const ok = await confirmAction({
+            title: "Перепарсить все мероприятия?",
+            message: "Pitchy заново прочитает карточки Unicorn Road и их первоисточники. Существующие решения модерации сохранятся.",
+            confirmLabel: "Запустить",
+        });
+        if (!ok) return;
+        setUnicornroadBusy(true);
+        setUnicornroadResult(null);
+        try {
+            const response = await reparseAllUnicornroadEvents(token);
+            const event = response.result.event;
+            if (event?.error) throw new Error(event.error);
+            const summary = `Обновлено: ${event?.updated ?? 0}, новых: ${event?.new ?? 0}, пропущено: ${event?.skipped ?? 0}, ошибок: ${event?.errors ?? 0}`;
+            setUnicornroadResult(summary);
+            notifySuccess(`Перепарсинг завершён. ${summary}`);
+        } catch (e) {
+            notifyError(e instanceof Error ? e.message : "Не удалось перепарсить мероприятия Unicorn Road");
+        } finally {
+            setUnicornroadBusy(false);
+        }
+    };
+
     return (
         <div className="p-6 bg-[#111111] border border-white/10">
             <h3 className="text-lg font-display font-bold text-white uppercase tracking-tight mb-1">Источники авто-парсера</h3>
             <p className="text-white/40 text-[12px] font-code mb-4">
                 Краулер раз в сутки обходит включённые источники, найденные программы попадают в очередь модерации ниже.
             </p>
+
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 mb-5 bg-sky-500/[0.06] border border-sky-400/20">
+                <div className="min-w-0 flex-1">
+                    <div className="text-white text-[13px] font-medium">Мероприятия Unicorn Road</div>
+                    <div className="text-white/40 text-[11px] font-code mt-1">
+                        Повторно читает все актуальные карточки и первоисточники: программу, спикеров, формат, место и ссылки регистрации.
+                    </div>
+                    {unicornroadResult && (
+                        <div className="text-emerald-300/70 text-[11px] font-code mt-2">{unicornroadResult}</div>
+                    )}
+                </div>
+                <Button onClick={handleUnicornroadReparse} disabled={unicornroadBusy} className="shrink-0">
+                    <RefreshCw size={14} className={unicornroadBusy ? "animate-spin" : ""} />
+                    {unicornroadBusy ? "Перепарсинг…" : "Перепарсить все"}
+                </Button>
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
                 <input

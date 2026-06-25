@@ -907,12 +907,21 @@ export type Grant = {
   organization: string | null;
   description: string | null;
   url: string | null;
+  source_url: string | null;
+  registration_url: string | null;
   logo_url: string | null;
   amount_min: number | null;
   amount_max: number | null;
   geo: string | null;
   // Локация программы: точный адрес очного мероприятия или город/формат.
   location?: string | null;
+  event_format?: "online" | "offline" | "hybrid" | null;
+  event_details?: {
+    agenda?: string[];
+    speakers?: Array<{ name?: string; role?: string; organization?: string; bio?: string }>;
+    participation_terms?: string | null;
+    topic?: string | null;
+  } | null;
   stages: string[];
   sectors: string[];
   entity_types: string[];
@@ -979,10 +988,15 @@ export type GrantDraft = {
   organization: string | null;
   description: string | null;
   url: string | null;
+  source_url?: string | null;
+  registration_url?: string | null;
   logo_url: string | null;
   amount_min: number | null;
   amount_max: number | null;
   geo: string | null;
+  location?: string | null;
+  event_format?: "online" | "offline" | "hybrid" | null;
+  event_details?: Grant["event_details"];
   stages: string[];
   sectors: string[];
   entity_types: string[];
@@ -990,6 +1004,7 @@ export type GrantDraft = {
   opens_at: string | null;
   deadline: string | null;
   status: string;
+  category?: string;
 };
 
 // Парсер: извлечь черновик по ссылке (НЕ сохраняет). Только админ.
@@ -1152,6 +1167,27 @@ export async function crawlGrantSource(
   return postAuthJson<{ status: string; detail: string }>(
     `/grants/sources/${sourceId}/crawl`,
     {},
+    token
+  );
+}
+
+export type UnicornroadParseSectionResult = {
+  new?: number;
+  updated?: number;
+  skipped?: number;
+  errors?: number;
+  category?: string;
+  error?: string;
+};
+
+// Полный повторный импорт мероприятий Unicorn Road. force_refresh заставляет
+// обновить и ранее импортированные записи, не меняя их статус модерации.
+export async function reparseAllUnicornroadEvents(
+  token: string
+): Promise<{ result: Record<string, UnicornroadParseSectionResult> }> {
+  return postAuthJson<{ result: Record<string, UnicornroadParseSectionResult> }>(
+    "/grants/parse-unicornroad?max_per_section=1000&force_refresh=true&active_only=true",
+    ["event"],
     token
   );
 }

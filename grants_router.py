@@ -517,7 +517,9 @@ async def moderate_grant(
 @router.post("/parse-unicornroad")
 async def parse_unicornroad(
     sections: list[str] | None = None,
-    max_per_section: int = Query(40, ge=1, le=200),
+    max_per_section: int = Query(40, ge=1, le=1000),
+    force_refresh: bool = Query(False),
+    active_only: bool = Query(False),
     user: User = Depends(get_async_current_user),
     db: AsyncSession = Depends(get_async_db),
 ) -> dict:
@@ -527,7 +529,10 @@ async def parse_unicornroad(
     по умолчанию все. Дедуп по url. Программы попадают в очередь модерации."""
     _require_admin(user)
     result = await unicornroad_parser.crawl_unicornroad(
-        sections=sections, max_per_section=max_per_section
+        sections=sections,
+        max_per_section=max_per_section,
+        force_refresh=force_refresh,
+        active_only=active_only,
     )
     return {"result": result}
 

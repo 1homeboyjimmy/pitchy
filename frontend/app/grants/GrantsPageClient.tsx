@@ -173,6 +173,7 @@ function SupportMeasureCard({ grant, match, href }: { grant: Grant; match?: Gran
   const missing = (match?.reasons.missing || []).slice(0, 2);
   const urgent = dl != null && dl >= 0 && dl <= 7 && grant.status !== "closed";
   const isApplyable = APPLYABLE_CATEGORIES.has(grant.category || "grant");
+  const isEventLike = ["event", "pitch"].includes(grant.category || "grant");
   const showScore = isApplyable && !!match;
 
   return (
@@ -195,7 +196,7 @@ function SupportMeasureCard({ grant, match, href }: { grant: Grant; match?: Gran
 
       {/* Статус */}
       <span className={`self-start text-[10px] font-mono uppercase tracking-wider px-2.5 py-1 rounded-full border mb-2.5 ${st.cls}`}>
-        {st.label}
+        {isEventLike && grant.status === "open" ? "Предстоит" : st.label}
       </span>
 
       {/* Название + организация */}
@@ -244,7 +245,9 @@ function SupportMeasureCard({ grant, match, href }: { grant: Grant; match?: Gran
           ) : null}
           {dl != null && grant.status !== "closed" && (
             <div className={`flex items-center gap-1 text-xs mt-1 ${urgent ? "text-amber-400" : "text-white/40"}`}>
-              <Clock size={11} /> {dl < 0 ? "приём завершён" : dl === 0 ? "дедлайн сегодня" : `осталось ${dl} дн.`}
+              <Clock size={11} /> {isEventLike
+                ? (dl < 0 ? "завершено" : dl === 0 ? "сегодня" : formatDate(grant.deadline))
+                : (dl < 0 ? "приём завершён" : dl === 0 ? "дедлайн сегодня" : `осталось ${dl} дн.`)}
             </div>
           )}
           {grant.location && (

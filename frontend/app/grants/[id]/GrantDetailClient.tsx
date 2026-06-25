@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { useParams, useSearchParams, useRouter } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import {
   Loader, ChevronLeft, Banknote, MapPin, Building2, Clock, Sparkles,
   ExternalLink, CheckCircle2, AlertTriangle, FileText, LayoutGrid, Check,
+  CalendarDays, Users, ListChecks, TicketCheck, Wifi,
 } from "lucide-react";
 import { getToken } from "@/lib/auth";
 import { notifyError } from "@/lib/ui";
@@ -39,10 +40,31 @@ function formatDate(s: string | null): string | null {
   } catch { return s; }
 }
 
+function formatDateTime(s: string | null): string | null {
+  if (!s) return null;
+  try {
+    const d = new Date(s);
+    const hasTime = d.getHours() !== 0 || d.getMinutes() !== 0 || /T\d{2}:\d{2}| \d{2}:\d{2}/.test(s);
+    return d.toLocaleString("ru-RU", {
+      day: "numeric", month: "long", year: "numeric",
+      ...(hasTime ? { hour: "2-digit", minute: "2-digit" } : {}),
+    });
+  } catch { return s; }
+}
+
+const CATEGORY_LABELS: Record<string, string> = {
+  grant: "Грант", support_measure: "Мера поддержки", contest: "Конкурс",
+  accelerator: "Акселератор", event: "Мероприятие", pitch: "Питч",
+  investor: "Инвестор",
+};
+
+const FORMAT_LABELS: Record<string, string> = {
+  online: "Онлайн", offline: "Офлайн", hybrid: "Гибридный формат",
+};
+
 export function GrantDetailClient() {
   const params = useParams();
   const search = useSearchParams();
-  const router = useRouter();
   const grantId = Number(params.id);
   const projectParam = search.get("project");
 
@@ -67,7 +89,7 @@ export function GrantDetailClient() {
         const [g, pj] = await Promise.all([getGrant(grantId, t), getProjects(t)]);
         setGrant(g);
         setProjects(pj);
-        if (projectId == null && pj.length > 0) setProjectId(pj[0].id);
+        setProjectId((current) => current == null && pj.length > 0 ? pj[0].id : current);
       } catch (e) {
         console.error(e);
         notifyError("Не удалось загрузить грант");
@@ -159,6 +181,14 @@ export function GrantDetailClient() {
   // Подача заявки/трекинг и блок «Требования» — только у applyable-категорий
   // (грант/акселератор/мера поддержки). Остальное — справочные карточки.
   const isApplyable = ["grant", "accelerator", "support_measure"].includes(grant.category || "grant");
+  const isEventLike = ["event", "pitch"].includes(grant.category || "grant");
+  const categoryLabel = CATEGORY_LABELS[grant.category || "grant"] || "Программа";
+  const details = grant.event_details || {};
+  const agenda = details.agenda || [];
+  const speakers = details.speakers || [];
+  const publicSourceUrl = grant.source_url || grant.registration_url || grant.url;
+  const showSeparateRegistration = !!grant.registration_url && grant.registration_url !== publicSourceUrl;
+  const displayGeo = grant.geo === "RF" ? "РФ" : grant.geo;
 
   return (
     <div className="w-full max-w-4xl mx-auto px-4 md:px-8 pt-24 pb-10 relative z-10">
@@ -167,11 +197,16 @@ export function GrantDetailClient() {
         </Link>
 
         <div className="mb-8">
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            <span className="inline-flex px-2.5 py-1 rounded-full border border-sky-400/20 bg-sky-400/10 text-sky-200 text-[10px] font-mono uppercase tracking-wider">
+              {categoryLabel}
+            </span>
           {grant.status === "open" && (
-            <span className="inline-flex items-center gap-1.5 text-emerald-400 text-xs font-mono uppercase tracking-wider mb-3">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Приём открыт
+            <span className="inline-flex items-center gap-1.5 text-emerald-400 text-xs font-mono uppercase tracking-wider">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> {isEventLike ? "Предстоит" : "Приём открыт"}
             </span>
           )}
+          </div>
           {grant.logo_url && !grant.logo_url.includes("google.com/s2/favicons") && (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -204,7 +239,14 @@ export function GrantDetailClient() {
               {grant.location && (
                 <div className="text-white/40 text-[10px] font-mono uppercase tracking-wider mb-0.5">Место</div>
               )}
-              <div className="text-white font-medium text-sm">{grant.location || grant.geo}</div>
+              <div className="text-white font-medium text-sm">{grant.location || displayGeo}</div>
+            </div>
+          )}
+          {grant.event_format && (
+            <div className="lovable-glass rounded-2xl p-4 border border-white/10">
+              <Wifi size={16} className="text-white/40 mb-2" />
+              <div className="text-white/40 text-[10px] font-mono uppercase tracking-wider mb-0.5">Формат</div>
+              <div className="text-white font-medium text-sm">{FORMAT_LABELS[grant.event_format] || grant.event_format}</div>
             </div>
           )}
           {grant.opens_at && (
@@ -216,16 +258,23 @@ export function GrantDetailClient() {
           )}
           {grant.deadline && (
             <div className="lovable-glass rounded-2xl p-4 border border-white/10">
-              <Clock size={16} className="text-white/40 mb-2" />
-              <div className="text-white/40 text-[10px] font-mono uppercase tracking-wider mb-0.5">Дедлайн</div>
-              <div className="text-white font-medium text-sm">{formatDate(grant.deadline)}</div>
+              {isEventLike ? <CalendarDays size={16} className="text-white/40 mb-2" /> : <Clock size={16} className="text-white/40 mb-2" />}
+              <div className="text-white/40 text-[10px] font-mono uppercase tracking-wider mb-0.5">{isEventLike ? "Дата и время" : "Дедлайн"}</div>
+              <div className="text-white font-medium text-sm">{isEventLike ? formatDateTime(grant.deadline) : formatDate(grant.deadline)}</div>
             </div>
           )}
-          {grant.url && /^https?:\/\//i.test(grant.url) && (
-            <a href={grant.url} target="_blank" rel="noopener noreferrer"
+          {publicSourceUrl && /^https?:\/\//i.test(publicSourceUrl) && (
+            <a href={publicSourceUrl} target="_blank" rel="noopener noreferrer"
               className="lovable-glass rounded-2xl p-4 border border-white/10 hover:border-white/20 transition-all">
               <ExternalLink size={16} className="text-white/40 mb-2" />
-              <div className="text-white font-medium text-sm">Сайт программы</div>
+              <div className="text-white font-medium text-sm">{isEventLike ? "Первоисточник" : "Сайт программы"}</div>
+            </a>
+          )}
+          {showSeparateRegistration && (
+            <a href={grant.registration_url!} target="_blank" rel="noopener noreferrer"
+              className="lovable-glass rounded-2xl p-4 border border-emerald-400/20 hover:border-emerald-400/40 transition-all">
+              <TicketCheck size={16} className="text-emerald-300/70 mb-2" />
+              <div className="text-white font-medium text-sm">Регистрация</div>
             </a>
           )}
         </div>
@@ -271,7 +320,55 @@ export function GrantDetailClient() {
 
         {grant.description && (
           <div className="lovable-glass rounded-2xl p-6 border border-white/10 mb-8">
+            {isEventLike && <h2 className="font-display text-xl text-white mb-3">О мероприятии</h2>}
             <p className="text-white/70 leading-relaxed whitespace-pre-wrap">{grant.description}</p>
+          </div>
+        )}
+
+        {agenda.length > 0 && (
+          <div className="lovable-glass rounded-2xl p-6 border border-white/10 mb-8">
+            <div className="flex items-center gap-2 mb-4 text-white">
+              <ListChecks size={18} className="text-sky-300/70" />
+              <h2 className="font-display text-xl">Программа и ключевые тезисы</h2>
+            </div>
+            <ul className="space-y-3">
+              {agenda.map((item, index) => (
+                <li key={`${item}-${index}`} className="flex gap-3 text-sm text-white/70 leading-relaxed">
+                  <span className="font-mono text-sky-300/60 text-xs mt-0.5">{String(index + 1).padStart(2, "0")}</span>
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {speakers.length > 0 && (
+          <div className="mb-8">
+            <div className="flex items-center gap-2 mb-4 text-white/70">
+              <Users size={18} />
+              <h2 className="font-display text-xl">Спикеры</h2>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              {speakers.map((speaker, index) => (
+                <div key={`${speaker.name || "speaker"}-${index}`} className="lovable-glass rounded-2xl p-5 border border-white/10">
+                  <div className="text-white font-medium">{speaker.name || "Спикер"}</div>
+                  {(speaker.role || speaker.organization) && (
+                    <div className="text-white/50 text-sm mt-1">{[speaker.role, speaker.organization].filter(Boolean).join(", ")}</div>
+                  )}
+                  {speaker.bio && <p className="text-white/45 text-sm leading-relaxed mt-3">{speaker.bio}</p>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {details.participation_terms && (
+          <div className="lovable-glass rounded-2xl p-6 border border-white/10 mb-8">
+            <div className="flex items-center gap-2 mb-3 text-white">
+              <TicketCheck size={18} className="text-emerald-300/70" />
+              <h2 className="font-display text-xl">Условия участия</h2>
+            </div>
+            <p className="text-white/70 leading-relaxed whitespace-pre-wrap">{details.participation_terms}</p>
           </div>
         )}
 
