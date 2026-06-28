@@ -291,7 +291,8 @@ export function GrantsPageClient() {
         const [pj, gr] = await Promise.all([getProjects(t), getGrants(t)]);
         setProjects(pj);
         setGrants(gr);
-        if (pj.length > 0) setActiveProject(pj[0].id);
+        // Не выбираем проект автоматически: сначала показываем ВСЕ программы,
+        // подбор под паспорт — по желанию пользователя (клик по проекту ниже).
       } catch (e) {
         console.error(e);
         notifyError("Не удалось загрузить гранты");
@@ -454,15 +455,20 @@ export function GrantsPageClient() {
           </div>
         ) : (
           <div className="mb-10">
-            <div className="flex items-center gap-2 mb-3 text-white/40">
+            <div className="flex items-center gap-2 mb-1.5 text-white/40">
               <FolderOpen size={15} />
-              <span className="font-mono text-[10px] uppercase tracking-[0.2em] font-bold">Проект для подбора</span>
+              <span className="font-mono text-[10px] uppercase tracking-[0.2em] font-bold">Подобрать под проект</span>
             </div>
+            <p className="text-white/30 text-xs mb-3">
+              {activeProject != null
+                ? "Показаны программы под выбранный паспорт. Нажмите проект ещё раз, чтобы вернуться ко всем."
+                : "Необязательно. Выберите проект, чтобы оценить соответствие программ его паспорту."}
+            </p>
             <div className="flex flex-wrap gap-2">
               {projects.map((p) => (
                 <button
                   key={p.id}
-                  onClick={() => setActiveProject(p.id)}
+                  onClick={() => setActiveProject(activeProject === p.id ? null : p.id)}
                   className={`px-4 py-2.5 rounded-2xl text-sm transition-all border ${
                     activeProject === p.id
                       ? "bg-white text-black border-white font-medium"
