@@ -1,3 +1,4 @@
+import /config/conf.d/*.caddy
 # Staging: dev.pitchy.pro
 # HTTP Basic Auth закрывает весь сайт от публичного доступа
 
