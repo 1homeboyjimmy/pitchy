@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader, Activity, RefreshCcw, ArrowUpRight, MessageSquare, Plus, Microscope, Map, Users, ChevronRight, ChevronLeft, Trash2, Calendar } from "lucide-react";
+import { Loader, Activity, RefreshCcw, ArrowUpRight, MessageSquare, Plus, Map, Users, ChevronRight, ChevronLeft, Trash2, Calendar, Banknote } from "lucide-react";
 import { ChatInterface } from "@/components/dashboard/ChatInterface";
 import { ProjectFolders } from "@/components/dashboard/ProjectFolders";
 import { SessionFolderMenu } from "@/components/dashboard/SessionFolderMenu";
@@ -94,9 +94,9 @@ function DashboardContent() {
     usageCounts.messages,
     liveLimits ? liveLimits.messages : quotas.messages,
   );
-  const researchSnap = buildSnapshot(
-    "deep_research" in usageCounts ? usageCounts.deep_research : usageCounts.deepResearch,
-    liveLimits ? liveLimits.deep_research : quotas.deepResearch,
+  const grantsSnap = buildSnapshot(
+    "grants" in usageCounts ? usageCounts.grants : 0,
+    liveLimits && "grants" in liveLimits ? liveLimits.grants : quotas.grants,
   );
   const roadmapsSnap = buildSnapshot(
     usageCounts.roadmaps,
@@ -342,10 +342,10 @@ function DashboardContent() {
                   snapshot={messagesSnap}
                 />
                 <QuotaCard
-                  label="Глубокие исследования"
+                  label="Грантовые заявки"
                   caption="ОСТАЛОСЬ"
-                  icon={Microscope}
-                  snapshot={researchSnap}
+                  icon={Banknote}
+                  snapshot={grantsSnap}
                 />
                 <QuotaCard
                   label="Дорожные карты"

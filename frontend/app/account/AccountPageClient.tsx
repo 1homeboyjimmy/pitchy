@@ -8,10 +8,11 @@ import { TopNavBar } from "@/components/shared/TopNavBar";
 import { SiteFooter } from "@/components/shared/SiteFooter";
 import Link from "next/link";
 import { clearToken, getToken } from "@/lib/auth";
-import { postAuthJson, patchAuthJson, getMyPayments, UserProfile, MyPaymentsResponse } from "@/lib/api";
+import { postAuthJson, patchAuthJson, getMyPayments, getConfigurableSubscription, detachConfigurableSubscriptionMethod, UserProfile, MyPaymentsResponse } from "@/lib/api";
 import { notifyError, notifySuccess } from "@/lib/ui";
 import { LogOut, User, Shield, CheckCircle2, ChevronLeft, Check, CreditCard } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { SubscriptionConfigurator } from "@/components/billing/SubscriptionConfigurator";
 
 export function AccountPageClient() {
   const router = useRouter();
@@ -19,6 +20,11 @@ export function AccountPageClient() {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [billing, setBilling] = useState<MyPaymentsResponse | null>(null);
+  const [pmSaved, setPmSaved] = useState(false);
+  const [hasSub, setHasSub] = useState(false);
+  const [confirmDetach, setConfirmDetach] = useState(false);
+  const [detaching, setDetaching] = useState(false);
+  const [pmMsg, setPmMsg] = useState<string | null>(null);
 
   // Modal states
   const [isAddEmailOpen, setIsAddEmailOpen] = useState(false);
@@ -52,6 +58,13 @@ export function AccountPageClient() {
         } catch (be) {
           console.error("Failed to load payments", be);
         }
+        try {
+          const sub = await getConfigurableSubscription(token);
+          setHasSub(sub.mode === "custom");
+          setPmSaved(!!sub.payment_method_saved);
+        } catch (se) {
+          console.error("Failed to load subscription", se);
+        }
       } catch (e) {
         console.error(e);
       } finally {
@@ -60,6 +73,26 @@ export function AccountPageClient() {
     };
     fetchUser();
   }, []);
+
+  const handleDetachCard = async () => {
+    const token = getToken();
+    if (!token || !confirmDetach || detaching) return;
+    setDetaching(true);
+    setPmMsg(null);
+    try {
+      await detachConfigurableSubscriptionMethod(token);
+      setPmSaved(false);
+      setConfirmDetach(false);
+      setPmMsg("Карта отвязана. Автопродление отключено.");
+      notifySuccess("Карта отвязана");
+    } catch (e) {
+      console.error(e);
+      setPmMsg("Не удалось отвязать карту. Попробуйте ещё раз.");
+      notifyError("Не удалось отвязать карту");
+    } finally {
+      setDetaching(false);
+    }
+  };
 
   const handleLogout = async () => {
     await clearToken();
@@ -288,10 +321,47 @@ export function AccountPageClient() {
           </section>
         )}
 
-        {/* Subscription & Payments Section — self-service so users
-            can see current plan, expiry date, and history of payments
-            without writing to support. Cancellation isn't needed: each
-            payment buys a fixed period that simply doesn't renew. */}
+        <section className="flex flex-col gap-6">
+          <h3 className="font-display text-2xl sm:text-[28px] font-medium text-white border-b border-white/10 pb-4 sm:pb-6">
+            Настройка подписки
+          </h3>
+          <SubscriptionConfigurator account />
+        </section>
+
+        {hasSub && (
+        <section className="flex flex-col gap-4">
+          <h3 className="font-display text-2xl sm:text-[28px] font-medium text-white border-b border-white/10 pb-4 sm:pb-6 flex items-center gap-3">
+            <CreditCard size={22} /> Способ оплаты
+          </h3>
+          <div className="lovable-glass rounded-3xl border border-white/10 bg-white/[0.025] p-6 sm:p-8">
+            <p className="text-sm text-white/60 mb-1">
+              {pmSaved ? "К вашей подписке привязана карта для автопродления." : "Сейчас к подписке не привязана карта."}
+            </p>
+            <p className="text-xs text-white/35 mb-5">
+              Вы можете отвязать карту самостоятельно в любой момент — без обращения в поддержку. После отвязки автопродление отключается, и подписка не продлевается автоматически.
+            </p>
+            <label className="flex items-center gap-3 text-sm text-white/70 cursor-pointer mb-4">
+              <input
+                type="checkbox"
+                checked={confirmDetach}
+                onChange={(e) => setConfirmDetach(e.target.checked)}
+                className="accent-white w-4 h-4"
+              />
+              Подтверждаю, что хочу отвязать карту и отключить автопродление
+            </label>
+            <button
+              onClick={handleDetachCard}
+              disabled={!confirmDetach || detaching}
+              className="rounded-full border border-red-500/40 text-red-300 px-6 py-3 text-sm font-medium disabled:opacity-40 hover:bg-red-500/10 transition-colors"
+            >
+              {detaching ? "Отвязываем…" : "Отвязать карту"}
+            </button>
+            {pmMsg && <p className="mt-4 text-sm text-white/60">{pmMsg}</p>}
+          </div>
+        </section>
+        )}
+
+        {/* Current period and payment history. */}
         {billing && (() => {
           const sub = billing.current_subscription;
           const tierLabel =
@@ -299,6 +369,7 @@ export function AccountPageClient() {
             sub.tier === "starter" ? "Starter" :
             sub.tier === "tester" ? "Tester" :
             sub.tier === "premium" ? "Premium" :
+            sub.tier === "custom" ? "Персональный" :
             "Бесплатный";
           const fmtDate = (iso: string | null) => {
             if (!iso) return "—";

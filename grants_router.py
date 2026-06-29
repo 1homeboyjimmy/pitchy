@@ -388,6 +388,18 @@ async def generate_application(
 
     project = await _get_owned_project(payload.project_id, user, db)
 
+    from subscription_service import consume_quota, require_legacy_access
+    handled = await consume_quota(
+        db,
+        user,
+        "grants",
+        idempotency_key=f"grant:{user.id}:{payload.request_id or f'{grant.id}:{project.id}:{datetime.utcnow().isoformat()}'}",
+        reference_type="grant_application",
+        reference_id=f"{grant.id}:{project.id}",
+    )
+    if not handled:
+        require_legacy_access(user, "grants")
+
     score, _hard_pass, _reasons = grants_service.match_grant(project.passport or {}, grant)
     result = await grants_service.generate_application(
         project.passport or {}, grant, extra_context=payload.extra_context or ""

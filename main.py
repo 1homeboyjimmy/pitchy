@@ -112,8 +112,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models import (
     Analysis, ChatMessage as DbChatMessage, ChatSession, ErrorLog,
     User, PromoCode, Payment, RagLog, ToolResult, SocialAccount, ProjectTree,
-    AdminAuditLog,
+    AdminAuditLog, Project,
 )
+import passport as passport_lib
 from sqlalchemy import select, func as sa_func
 from schemas import (
     AnalysisCreateRequest,
@@ -1187,6 +1188,28 @@ async def me_usage(
     reset on the 1st. Admins get a synthetic "unlimited" view.
     Frontend uses this to render QuotaCard and feature locks.
     """
+    from subscription_service import get_subscription, subscription_snapshot
+    custom_subscription = await get_subscription(db, user.id)
+    if custom_subscription is not None:
+        snapshot = subscription_snapshot(custom_subscription)
+        custom_limits = {
+            **snapshot["current_config"], "deep_research": -1,
+            "can_use_deep_search": True, "can_use_research": True,
+            "can_use_presentation": True, "can_use_import_context": True,
+            "can_use_tree": True, "can_use_custdev": True,
+        }
+        return {
+            "tier": "custom",
+            "limits": custom_limits,
+            "usage": {**snapshot["used"], "deep_research": 0},
+            "remaining": {**snapshot["remaining"], "deep_research": None},
+            "period_start": snapshot["current_period_start"],
+            "period_end": snapshot["current_period_end"],
+            "auto_renew": snapshot["auto_renew"],
+            "next_config": snapshot["next_config"],
+            "next_price": snapshot["next_price"],
+        }
+
     from plan_limits import (
         PLAN_LIMITS,
         UNLIMITED,
@@ -1545,6 +1568,59 @@ async def rag_search_endpoint(
     return RagSearchResponse(context=context, chunks=structured, count=len(structured))
 
 
+@app.get("/api/rag/projects")
+async def rag_list_projects(
+    user_id: int,
+    token: str = Depends(verify_rag_token),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Cross-service: список проектов пользователя (для импорта паспорта в CustDev).
+
+    Авторизация — статичный Bearer RAG_API_KEY (как /api/rag/search). user_id
+    приходит из общего JWT на стороне CustDev (sub). Возвращает только не
+    архивированные папки этого пользователя.
+    """
+    res = await db.execute(
+        select(Project)
+        .where(Project.user_id == user_id, Project.status != "archived")
+        .order_by(Project.created_at.desc())
+    )
+    projects = res.scalars().all()
+    return {
+        "projects": [
+            {
+                "id": p.id,
+                "name": p.name,
+                "readiness_index": getattr(p, "readiness_index", None),
+                "updated_at": p.passport_updated_at.isoformat() if getattr(p, "passport_updated_at", None) else None,
+            }
+            for p in projects
+        ]
+    }
+
+
+@app.get("/api/rag/projects/{project_id}/passport")
+async def rag_get_project_passport(
+    project_id: int,
+    user_id: int,
+    token: str = Depends(verify_rag_token),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Cross-service: паспорт конкретного проекта пользователя (для CustDev)."""
+    res = await db.execute(
+        select(Project).where(Project.id == project_id, Project.user_id == user_id)
+    )
+    project = res.scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    passport = project.passport or {}
+    return {
+        "name": project.name,
+        "passport": passport,
+        "readiness_index": passport_lib.compute_readiness(passport),
+    }
+
+
 @app.post("/analyze-startup", response_model=AnalyzeResponse)
 async def analyze_startup(payload: AnalyzeRequest) -> AnalyzeResponse:
     try:
@@ -1649,6 +1725,7 @@ async def async_check_subscription_limits(
     session_id: int = None,
     feature: str = None,
     is_search: bool = False,
+    idempotency_key: str | None = None,
 ):
     """Authorize a user action against their subscription plan.
 
@@ -1661,6 +1738,30 @@ async def async_check_subscription_limits(
         "presentation" | "import"
     """
     if user.is_admin:
+        return
+
+    # New configurable subscriptions use an atomic ledger instead of counting
+    # rows heuristically. Legacy plans continue through the old logic below.
+    from subscription_service import consume_quota, get_subscription
+    custom_subscription = await get_subscription(db, user.id)
+    if custom_subscription is not None:
+        resource = None
+        if resource_type == "message":
+            resource = "messages"
+        elif resource_type == "project" and feature == "custdev":
+            resource = "custdev"
+        elif resource_type == "project" and feature in ("tree", "roadmap"):
+            resource = "roadmaps"
+        if resource:
+            await consume_quota(
+                db,
+                user,
+                resource,
+                idempotency_key=idempotency_key or f"{resource}:{user.id}:{uuid.uuid4()}",
+                reference_type=feature or resource_type,
+                reference_id=str(session_id) if session_id is not None else None,
+            )
+        # Chat modes are included in a message; no separate paid resource.
         return
 
     from plan_limits import (
@@ -3455,6 +3556,10 @@ async def create_chat_session(
     messages_response = []
 
     if payload.initial_message:
+        await async_check_subscription_limits(
+            user, db, "message",
+            idempotency_key=f"chat:{user.id}:{payload.client_id or uuid.uuid4()}",
+        )
         # Save user message
         user_msg = DbChatMessage(
             session_id=session.id,
@@ -3565,6 +3670,10 @@ async def create_chat_session_from_intent(
     ]
 
     if initial_message not in QUICK_ACTIONS:
+        await async_check_subscription_limits(
+            user, db, "message",
+            idempotency_key=f"chat:{user.id}:{client_id or payload.intent_id}",
+        )
         # Save user message
         user_msg = DbChatMessage(
             session_id=session.id,
@@ -3627,7 +3736,11 @@ async def create_chat_session_auto(
     await db.refresh(session)
 
     messages_response = []
-    
+
+    await async_check_subscription_limits(
+        user, db, "message",
+        idempotency_key=f"chat:{user.id}:{payload.client_id or uuid.uuid4()}",
+    )
     # Save user message
     user_msg = DbChatMessage(
         session_id=session.id,
@@ -3809,6 +3922,7 @@ async def send_chat_message(
         session.id,
         feature=requested_feature,
         is_search=getattr(payload, "use_deep_search", False),
+        idempotency_key=f"chat:{user.id}:{payload.client_id or payload.assistant_client_id or uuid.uuid4()}",
     )
 
     # 1. Save User Message

@@ -5,13 +5,14 @@
 
 import { getAuthJson } from "@/lib/api";
 
-export type SubscriptionTier = "free" | "starter" | "pro" | "tester" | "premium";
+export type SubscriptionTier = "free" | "starter" | "pro" | "tester" | "premium" | "custom";
 
 export interface PlanQuotas {
   messages: number;        // -1 = unlimited
   deepResearch: number;
   roadmaps: number;
   deepCustdev: number;
+  grants: number;
   // Feature gates
   canUseDeepSearch: boolean;
   canUseResearch: boolean;
@@ -26,7 +27,7 @@ export const PLAN_QUOTAS: Record<SubscriptionTier, PlanQuotas> = {
     messages: 3,
     deepResearch: 0,
     roadmaps: 0,
-    deepCustdev: 0,
+    deepCustdev: 0, grants: 0,
     canUseDeepSearch: false,
     canUseResearch: false,
     canUsePresentation: false,
@@ -38,7 +39,7 @@ export const PLAN_QUOTAS: Record<SubscriptionTier, PlanQuotas> = {
     messages: 100,
     deepResearch: 20,
     roadmaps: 5,
-    deepCustdev: 2,
+    deepCustdev: 2, grants: 0,
     canUseDeepSearch: true,
     canUseResearch: true,
     canUsePresentation: true,
@@ -50,7 +51,7 @@ export const PLAN_QUOTAS: Record<SubscriptionTier, PlanQuotas> = {
     messages: 500,
     deepResearch: -1,
     roadmaps: -1,
-    deepCustdev: -1,
+    deepCustdev: -1, grants: -1,
     canUseDeepSearch: true,
     canUseResearch: true,
     canUsePresentation: true,
@@ -62,7 +63,7 @@ export const PLAN_QUOTAS: Record<SubscriptionTier, PlanQuotas> = {
     messages: -1,
     deepResearch: -1,
     roadmaps: -1,
-    deepCustdev: -1,
+    deepCustdev: -1, grants: -1,
     canUseDeepSearch: true,
     canUseResearch: true,
     canUsePresentation: true,
@@ -74,13 +75,18 @@ export const PLAN_QUOTAS: Record<SubscriptionTier, PlanQuotas> = {
     messages: 25,
     deepResearch: 0,
     roadmaps: 0,
-    deepCustdev: 0,
+    deepCustdev: 0, grants: 0,
     canUseDeepSearch: false,
     canUseResearch: false,
     canUsePresentation: false,
     canUseImportContext: false,
     canUseTree: false,
     canUseCustdev: false,
+  },
+  custom: {
+    messages: 50, deepResearch: -1, roadmaps: 3, deepCustdev: 2, grants: 0,
+    canUseDeepSearch: true, canUseResearch: true, canUsePresentation: true,
+    canUseImportContext: true, canUseTree: true, canUseCustdev: true,
   },
 };
 
@@ -89,6 +95,7 @@ export interface QuotaUsage {
   deepResearch: number;
   roadmaps: number;
   deepCustdev: number;
+  grants: number;
 }
 
 export function getQuotas(tier?: string | null): PlanQuotas {
@@ -103,6 +110,7 @@ export function getTierLabel(tier?: string | null): string {
   if (t === "pro") return "Pro";
   if (t === "premium") return "Premium";
   if (t === "tester") return "Tester";
+  if (t === "custom") return "Персональный";
   return t;
 }
 
@@ -134,6 +142,7 @@ export interface UsageResponse {
     custdev: number;
     roadmaps: number;
     deep_research: number;
+    grants: number;
     can_use_deep_search: boolean;
     can_use_research: boolean;
     can_use_presentation: boolean;
@@ -146,12 +155,14 @@ export interface UsageResponse {
     custdev: number;
     roadmaps: number;
     deep_research: number;
+    grants: number;
   };
   remaining: {
     messages: number | null;       // null = unlimited
     custdev: number | null;
     roadmaps: number | null;
     deep_research: number | null;
+    grants: number | null;
   };
   period_start: string;            // ISO timestamp, first day of current month
 }
@@ -163,7 +174,7 @@ export async function fetchUsage(token: string): Promise<UsageResponse> {
 // Legacy placeholder kept for fallback rendering when the network call
 // hasn't completed yet. Returns zero usage so the bars start at 0.
 export function getPlaceholderUsage(_sessionsCount: number): QuotaUsage {
-  return { messages: 0, deepResearch: 0, roadmaps: 0, deepCustdev: 0 };
+  return { messages: 0, deepResearch: 0, roadmaps: 0, deepCustdev: 0, grants: 0 };
 }
 
 // Helper for upgrade-required error detection from API responses.

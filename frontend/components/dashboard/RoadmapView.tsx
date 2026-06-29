@@ -1,15 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import Link from "next/link";
 import { motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Loader, CheckCircle2, Sparkles, Trophy, Brain, ExternalLink } from "lucide-react";
+import { Loader, CheckCircle2, Sparkles, Brain, ExternalLink, ArrowLeft, Plus } from "lucide-react";
 import { getToken } from "@/lib/auth";
 import { notifyError } from "@/lib/ui";
 import {
-  getProjects, getRoadmap, patchPassport, analyzeRoadmapStep, streamRoadmapOverall,
+  getProjects, getRoadmap, patchPassport, analyzeRoadmapStep, streamRoadmapOverall, createProject,
   type ProjectListItem, type Roadmap, type RoadmapCheckpoint, type RoadmapField, type RoadmapOverall,
 } from "@/lib/api";
 
@@ -240,6 +239,8 @@ export function RoadmapView() {
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [creating, setCreating] = useState(false);
   const [stepAnalysis, setStepAnalysis] = useState<Record<string, string>>({});
   const [analyzingStep, setAnalyzingStep] = useState<string | null>(null);
   const [overall, setOverall] = useState<RoadmapOverall | null>(null);
@@ -252,7 +253,7 @@ export function RoadmapView() {
       try {
         const pj = await getProjects(t);
         setProjects(pj);
-        if (pj.length > 0) setPid(pj[0].id);
+        // Не выбираем проект автоматически — стартуем с хаба карт (выбор/создание).
       } catch {
         notifyError("Не удалось загрузить проекты");
       } finally {
@@ -280,6 +281,25 @@ export function RoadmapView() {
   useEffect(() => {
     if (pid != null) { setOverall(null); setStepAnalysis({}); loadRoadmap(pid, false); }
   }, [pid, loadRoadmap]);
+
+  const handleCreate = async () => {
+    const name = newName.trim();
+    if (!name || creating) return;
+    const t = getToken();
+    if (!t) return;
+    setCreating(true);
+    try {
+      const proj = await createProject({ name }, t);
+      const pj = await getProjects(t);
+      setProjects(pj);
+      setNewName("");
+      setPid(proj.id);
+    } catch {
+      notifyError("Не удалось создать проект");
+    } finally {
+      setCreating(false);
+    }
+  };
 
   const handleSave = async (fields: Record<string, unknown>) => {
     if (pid == null || Object.keys(fields).length === 0) return;
@@ -339,13 +359,54 @@ export function RoadmapView() {
     return <div className="h-full flex items-center justify-center"><Loader className="animate-spin text-white/40" size={26} /></div>;
   }
 
-  if (projects.length === 0) {
+  // ХАБ дорожных карт: выбор проекта или создание нового.
+  if (pid === null) {
     return (
-      <div className="h-full flex flex-col items-center justify-center text-center px-4">
-        <Trophy className="text-white/30 mb-4" size={36} />
-        <h2 className="font-display text-2xl text-white mb-2">Сначала создайте проект</h2>
-        <p className="text-white/40 max-w-md mb-5">Дорожная карта ведёт по заполнению паспорта проекта шаг за шагом.</p>
-        <Link href="/dashboard?tab=overview" className="bg-white text-black font-semibold text-sm px-7 py-3 rounded-full">Создать проект</Link>
+      <div className="h-full overflow-y-auto pb-10">
+        <div className="max-w-5xl mx-auto pt-2">
+          <div className="flex items-center gap-2 mb-1 text-white/40">
+            <Sparkles size={15} />
+            <span className="font-mono text-[10px] uppercase tracking-[0.2em] font-bold">Дорожные карты</span>
+          </div>
+          <h1 className="font-display text-3xl sm:text-4xl text-white mb-2">Ваши проекты</h1>
+          <p className="text-white/40 mb-6">Каждая карта ведёт по заполнению паспорта своего проекта. Выберите карту или создайте новую.</p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {projects.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => setPid(p.id)}
+                className="lovable-glass rounded-3xl border border-white/10 p-5 text-left hover:border-white/30 transition-all"
+              >
+                <div className="text-white font-medium text-lg mb-3 truncate">{p.name}</div>
+                <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden mb-2">
+                  <div className="h-full bg-white rounded-full transition-all" style={{ width: `${p.readiness_index}%` }} />
+                </div>
+                <div className="flex items-center justify-between text-white/40 text-xs">
+                  <span>{p.readiness_index}% готовности</span>
+                  <span>{p.session_count} чатов</span>
+                </div>
+              </button>
+            ))}
+
+            <div className="rounded-3xl border border-dashed border-white/15 p-5 flex flex-col gap-3 justify-center">
+              <input
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); }}
+                placeholder="Название нового проекта"
+                className="bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white placeholder:text-white/30 outline-none focus:border-white/30"
+              />
+              <button
+                onClick={handleCreate}
+                disabled={creating || !newName.trim()}
+                className="bg-white text-black font-semibold text-sm px-4 py-2 rounded-full disabled:opacity-40 inline-flex items-center justify-center gap-2"
+              >
+                {creating ? <Loader className="animate-spin" size={15} /> : <Plus size={15} />} Создать карту
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -353,19 +414,15 @@ export function RoadmapView() {
   return (
     <div className="h-full overflow-y-auto pb-10">
       <div className="max-w-5xl mx-auto pt-2">
-        {projects.length > 1 && (
-          <div className="flex flex-wrap gap-2 mb-5">
-            {projects.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => setPid(p.id)}
-                className={`px-4 py-2 rounded-2xl text-sm border transition-all ${pid === p.id ? "bg-white text-black border-white font-medium" : "lovable-glass text-white/60 border-white/10 hover:text-white"}`}
-              >
-                {p.name}
-              </button>
-            ))}
-          </div>
-        )}
+        <div className="flex items-center gap-3 mb-5">
+          <button onClick={() => setPid(null)} className="inline-flex items-center gap-1.5 text-white/50 hover:text-white text-sm">
+            <ArrowLeft size={16} /> Все карты
+          </button>
+          <span className="text-white/20">·</span>
+          <span className="text-white/40 text-[11px] uppercase tracking-[0.15em] font-bold">
+            Паспорт: <span className="text-white/70 normal-case">{projects.find((p) => p.id === pid)?.name}</span>
+          </span>
+        </div>
 
         {roadmap && (
           <>

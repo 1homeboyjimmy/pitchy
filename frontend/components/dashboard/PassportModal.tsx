@@ -42,7 +42,6 @@ const SECTIONS: SectionDef[] = [
     key: "legal", label: "Юр. данные",
     fields: [
       { k: "entity_type", label: "Юр. форма" },
-      { k: "inn", label: "ИНН" },
     ],
   },
 ];

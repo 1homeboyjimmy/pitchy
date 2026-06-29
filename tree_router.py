@@ -19,7 +19,7 @@ import json
 import logging
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy import select
@@ -59,12 +59,21 @@ router = APIRouter(prefix="/tree", tags=["Smart Roadmap"])
 @observe(name="Smart Roadmap Quick Create")
 async def create_tree(
     payload: TreeCreateRequest,
+    request: Request,
     user: User = Depends(get_async_current_user),
     db: AsyncSession = Depends(get_async_db),
 ) -> TreeResponse:
     """Create a Smart Roadmap starting with Universal Base Nodes."""
     if user.subscription_tier == "tester":
         raise HTTPException(status_code=403, detail="Интерактивная дорожная карта недоступна в тарифе Tester. Оформите подписку.")
+    from subscription_service import consume_quota, require_legacy_access
+    handled = await consume_quota(
+        db, user, "roadmaps",
+        idempotency_key=request.headers.get("X-Idempotency-Key") or f"roadmap:text:{user.id}:{hash(payload.description)}",
+        reference_type="project_tree",
+    )
+    if not handled:
+        require_legacy_access(user, "roadmaps")
     
     from core_tree import UNIVERSAL_BASE_NODES
     import copy
@@ -100,6 +109,7 @@ async def create_tree(
 @router.post("/upload-pdf", response_model=TreeResponse)
 @observe(name="Smart Roadmap PDF Upload")
 async def upload_pdf(
+    request: Request,
     file: UploadFile = File(...),
     user: User = Depends(get_async_current_user),
     db: AsyncSession = Depends(get_async_db),
@@ -113,6 +123,14 @@ async def upload_pdf(
 
     # Read file
     content = await file.read()
+    from subscription_service import consume_quota, require_legacy_access
+    handled = await consume_quota(
+        db, user, "roadmaps",
+        idempotency_key=request.headers.get("X-Idempotency-Key") or f"roadmap:pdf:{user.id}:{hash(content)}",
+        reference_type="project_tree_pdf",
+    )
+    if not handled:
+        require_legacy_access(user, "roadmaps")
     if len(content) > 20 * 1024 * 1024:  # 20MB limit
         raise HTTPException(status_code=400, detail="Файл слишком большой (макс. 20 МБ)")
 

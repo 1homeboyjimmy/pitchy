@@ -418,6 +418,7 @@ class GrantModerateRequest(BaseModel):
 class GrantApplicationGenerateRequest(BaseModel):
     project_id: int
     extra_context: str | None = None
+    request_id: str | None = Field(default=None, max_length=100)
 
 
 class GrantApplicationResponse(BaseModel):

@@ -8,6 +8,8 @@
 - `APP_PUBLIC_URL`: Public URL used in email links.
 - `FRONTEND_ORIGINS`: Comma-separated CORS origins.
 - `DATABASE_URL`: SQLAlchemy URL (PostgreSQL in prod).
+- `YOOKASSA_SHOP_ID`, `YOOKASSA_SECRET_KEY`: YooKassa credentials for billing.
+- `BILLING_CRON_SECRET`: shared secret for the subscription renewal cron endpoint and GitHub Actions workflow.
 - `REDIS_URL`: Redis connection URL for rate limiting.
 - `CHROMA_PERSIST_DIR`: Filesystem path for Chroma persistent data.
 - `CHROMA_COLLECTION`: Chroma collection name.
