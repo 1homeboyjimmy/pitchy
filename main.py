@@ -1136,6 +1136,7 @@ async def me(user: User = Depends(get_async_current_user)) -> UserResponse:
         subscription_tier=user.subscription_tier,
         subscription_expires_at=user.subscription_expires_at,
         cookie_consent=user.cookie_consent,
+        onboarding_completed_at=user.onboarding_completed_at,
     )
 
 
@@ -1306,6 +1307,9 @@ async def update_me(
     if payload.cookie_consent is not None:
         user.cookie_consent = payload.cookie_consent
 
+    if payload.onboarding_completed is True and user.onboarding_completed_at is None:
+        user.onboarding_completed_at = datetime.utcnow()
+
     if payload.email and payload.email != user.email:
         result = await db.execute(select(User).where(User.email == payload.email))
         exists = result.scalar_one_or_none()
@@ -1348,6 +1352,7 @@ async def update_me(
         subscription_tier=user.subscription_tier,
         subscription_expires_at=user.subscription_expires_at,
         cookie_consent=user.cookie_consent,
+        onboarding_completed_at=user.onboarding_completed_at,
     )
 
 
@@ -2651,6 +2656,7 @@ async def admin_users(
             created_at=u.created_at,
             subscription_tier=u.subscription_tier,
             subscription_expires_at=u.subscription_expires_at,
+            onboarding_completed_at=u.onboarding_completed_at,
         )
         for u in users
     ]

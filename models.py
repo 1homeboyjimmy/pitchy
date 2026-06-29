@@ -29,6 +29,7 @@ class User(Base):
     cookie_consent: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     privacy_consent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     cookies_consent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    onboarding_completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 

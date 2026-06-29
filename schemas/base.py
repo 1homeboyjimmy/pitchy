@@ -59,6 +59,7 @@ class UserResponse(BaseModel):
     cookie_consent: bool | None = None
     privacy_consent_at: datetime | None = None
     cookies_consent_at: datetime | None = None
+    onboarding_completed_at: datetime | None = None
     deleted_at: datetime | None = None
 
     class Config:
@@ -448,6 +449,7 @@ class UserUpdateRequest(BaseModel):
     name: str | None = Field(None, min_length=2)
     email: EmailStr | None = None
     cookie_consent: bool | None = None
+    onboarding_completed: bool | None = None
 
 
 class PasswordChangeRequest(BaseModel):

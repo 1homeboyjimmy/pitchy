@@ -59,6 +59,7 @@ export type UserProfile = {
   is_social?: boolean;
   subscription_tier?: string;
   cookie_consent?: boolean | null;
+  onboarding_completed_at?: string | null;
   created_at: string;
 };
 
@@ -441,6 +442,7 @@ export type UserResponse = {
   subscription_tier: string;
   subscription_expires_at: string | null;
   cookie_consent?: boolean | null;
+  onboarding_completed_at?: string | null;
 };
 
 export async function getMe(token: string): Promise<UserResponse> {

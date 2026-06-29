@@ -2,12 +2,13 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader, Activity, RefreshCcw, ArrowUpRight, MessageSquare, Plus, Map, Users, ChevronRight, ChevronLeft, Trash2, Calendar, Banknote } from "lucide-react";
+import { Loader, Activity, RefreshCcw, MessageSquare, Plus, Map, Users, ChevronRight, ChevronLeft, Trash2, Calendar, Banknote } from "lucide-react";
 import { ChatInterface } from "@/components/dashboard/ChatInterface";
 import { ProjectFolders } from "@/components/dashboard/ProjectFolders";
 import { SessionFolderMenu } from "@/components/dashboard/SessionFolderMenu";
 import { AdminView } from "@/components/dashboard/AdminView";
 import { RoadmapView } from "@/components/dashboard/RoadmapView";
+import { PlatformOnboarding } from "@/components/dashboard/PlatformOnboarding";
 import { SideNavBar } from "@/components/internal/SideNavBar";
 import { InternalTopNavBar } from "@/components/internal/InternalTopNavBar";
 import { TopNavBar } from "@/components/shared/TopNavBar";
@@ -82,6 +83,7 @@ function DashboardContent() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isContextImportOpen, setIsContextImportOpen] = useState(false);
   const [usage, setUsage] = useState<UsageResponse | null>(null);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   // Prefer the live tier returned by /me/usage (server-side resolved,
   // accounts for expired subscriptions); fall back to /me before the
@@ -167,6 +169,7 @@ function DashboardContent() {
         ]);
         setSessions(sessionsList);
         setUserProfile(user);
+        setShowOnboarding(Boolean(user && !user.onboarding_completed_at));
         setUsage(usageData);
       } catch (e) {
         console.error(e);
@@ -260,9 +263,21 @@ function DashboardContent() {
 
   const mainPadTop = isSidebarCollapsed ? "pt-10 sm:pt-14" : "pt-24 sm:pt-32";
   const overviewMaxW = isSidebarCollapsed ? "" : "max-w-6xl";
+  const handleOnboardingComplete = () => {
+    setShowOnboarding(false);
+    setUserProfile((prev) =>
+      prev ? { ...prev, onboarding_completed_at: new Date().toISOString() } : prev,
+    );
+  };
 
   return (
     <div className="bg-black text-white h-screen font-sans flex overflow-hidden">
+      <AnimatePresence>
+        {showOnboarding && token && (
+          <PlatformOnboarding token={token} onComplete={handleOnboardingComplete} />
+        )}
+      </AnimatePresence>
+
       {/* Mobile sidebar toggle — fixed at the dashboard root so it always
           sits above the sidebar's stacking context. Hidden while the
           context-import modal is open so it doesn't sit on top of it. */}
