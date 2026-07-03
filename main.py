@@ -3893,6 +3893,64 @@ async def set_chat_message_feedback(
 
     return {"status": "ok", "feedback": msg.feedback}
 
+@app.post("/chat/uploads")
+async def upload_chat_attachment(
+    file: UploadFile = File(...),
+    user: User = Depends(get_async_current_user),
+):
+    """Processes a chat attachment: extracts document text or describes an
+    image via a vision model. Stateless — the extracted text is returned to
+    the client and travels back with the next chat message payload."""
+    from chat_attachments import (
+        IMAGE_MIMES, MAX_IMAGE_BYTES, MAX_TEXT_CHARS, MAX_UPLOAD_BYTES,
+        describe_image, detect_attachment_kind, extract_document_text, sanitize_filename,
+    )
+
+    raw = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(raw) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail=f"Файл больше {MAX_UPLOAD_BYTES // (1024 * 1024)} МБ.")
+    if not raw:
+        raise HTTPException(status_code=400, detail="Файл пуст.")
+
+    name = sanitize_filename(file.filename or "file")
+    kind = detect_attachment_kind(name, file.content_type)
+    if kind is None:
+        raise HTTPException(
+            status_code=415,
+            detail="Неподдерживаемый формат. Доступны: PDF, DOCX, TXT, MD, CSV и изображения (PNG, JPG, WEBP, GIF).",
+        )
+
+    if kind == "image":
+        if len(raw) > MAX_IMAGE_BYTES:
+            raise HTTPException(status_code=413, detail=f"Изображение больше {MAX_IMAGE_BYTES // (1024 * 1024)} МБ.")
+        mime = (file.content_type or "").lower().split(";")[0]
+        if mime not in IMAGE_MIMES:
+            ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+            mime = {
+                "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+                "webp": "image/webp", "gif": "image/gif",
+            }.get(ext, "image/png")
+        text = await describe_image(raw, mime, name)
+        if not text:
+            raise HTTPException(
+                status_code=502,
+                detail="Не удалось обработать изображение — сервис распознавания временно недоступен.",
+            )
+        text = f"[Автоматическое описание изображения «{name}»]\n{text}"
+    else:
+        try:
+            text = await asyncio.to_thread(extract_document_text, name, kind, raw)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+
+    truncated = len(text) > MAX_TEXT_CHARS
+    logger.info(
+        f"Chat upload processed: user={user.id} name={name!r} kind={kind} "
+        f"bytes={len(raw)} chars={len(text)} truncated={truncated}"
+    )
+    return {"name": name, "kind": kind, "text": text[:MAX_TEXT_CHARS], "truncated": truncated}
+
+
 @app.post("/chat/sessions/{session_id}/messages")
 async def send_chat_message(
     session_id: int,
@@ -3931,11 +3989,25 @@ async def send_chat_message(
         idempotency_key=f"chat:{user.id}:{payload.client_id or payload.assistant_client_id or uuid.uuid4()}",
     )
 
+    # Attachments arrive pre-processed by /chat/uploads. Their extracted text
+    # is embedded into the stored message between FILE markers: the frontend
+    # renders them as chips, and the LLM sees the file contents in the prompt.
+    from chat_attachments import build_attachment_block
+    attachments = payload.attachments or []
+    raw_content = (payload.content or "").strip()
+    if not raw_content and not attachments:
+        raise HTTPException(status_code=422, detail="Сообщение не может быть пустым.")
+    attachment_block = build_attachment_block(attachments) if attachments else ""
+    stored_content = f"{raw_content}\n\n{attachment_block}".strip() if attachment_block else raw_content
+    # Query used for classification/retrieval/web search — the user's question,
+    # not the (potentially huge) attached file contents.
+    query_text = raw_content or "Проанализируй прикреплённые файлы: " + ", ".join(a.name for a in attachments)
+
     # 1. Save User Message
     user_msg = DbChatMessage(
         session_id=session.id,
         role="user",
-        content=payload.content,
+        content=stored_content,
         client_id=payload.client_id
     )
     db.add(user_msg)
@@ -3943,7 +4015,7 @@ async def send_chat_message(
     await db.refresh(session)
 
     if len(session.messages) == 1:
-        background_tasks.add_task(rename_chat_session_background, session.id, payload.content)
+        background_tasks.add_task(rename_chat_session_background, session.id, query_text)
 
     # 2. Generator with Thoughts
     try:
@@ -3988,7 +4060,7 @@ async def send_chat_message(
                 try:
                     from project_memory_service import load_project_context
                     project_ctx = await load_project_context(
-                        db, session.project_id, query=payload.content
+                        db, session.project_id, query=query_text
                     )
                 except Exception as e:
                     logger.warning(f"load_project_context failed: {e}")
@@ -4010,10 +4082,12 @@ async def send_chat_message(
             # ===========================================================
             yield _emit_thought("Проверяю, не отвечал ли я на похожий вопрос недавно.\n")
 
-            if not (use_deep_search_flag or use_research_flag or is_pres_request):
+            # Attachments make the answer depend on file contents — the cache
+            # keyed by question text alone would return misleading hits.
+            if not (use_deep_search_flag or use_research_flag or is_pres_request or attachments):
                 try:
                     from ops.cache.semantic_cache import semantic_cache as _sc
-                    cached = await _sc.get(query=payload.content, project_id=str(session.id))
+                    cached = await _sc.get(query=query_text, project_id=str(session.id))
                     if cached:
                         yield _emit_thought("Нашёл подходящий ответ из памяти — отдаю мгновенно.\n")
                         yield format_sse({"type": "metadata", "model": "Pitchy"})
@@ -4043,9 +4117,9 @@ async def send_chat_message(
             context_chunks: list = []
             try:
                 from slm_dispatcher import slm_dispatcher as _slm
-                slm_task = asyncio.create_task(_slm.classify_query_intent(payload.content))
+                slm_task = asyncio.create_task(_slm.classify_query_intent(query_text))
                 context_task = asyncio.create_task(
-                    asyncio.to_thread(rag.get_relevant_chunks, payload.content, categories=None, top_k=10)
+                    asyncio.to_thread(rag.get_relevant_chunks, query_text, categories=None, top_k=10)
                 )
 
                 yield _emit_thought("Разбираюсь в сути запроса и одновременно поднимаю релевантный контекст из базы знаний.\n")
@@ -4091,7 +4165,7 @@ async def send_chat_message(
                 yield _emit_thought("Запрос требует свежих данных — ищу актуальную информацию в интернете.\n")
                 try:
                     from search_agent import async_search_with_sources
-                    search_sources, search_ctx = await async_search_with_sources(payload.content, use_deep_search=True)
+                    search_sources, search_ctx = await async_search_with_sources(query_text, use_deep_search=True)
                     if search_sources:
                         sources = search_sources
                         yield format_sse({"type": "sources", "data": search_sources})
@@ -4166,10 +4240,12 @@ async def send_chat_message(
                 regenerate_flag = bool(getattr(payload, "regenerate_deck", False))
 
                 final_slides = []
+                # Attached files feed the deck content (question + extracted text).
+                pres_query = stored_content[:24_000] if attachments else payload.content
                 provider_used = None
                 try:
                     async for item in _handle_presentation_in_chat(
-                        payload.content, history_text, context_text,
+                        pres_query, history_text, context_text,
                         session_id=session.id,
                         user_id=user.id,
                         regenerate=regenerate_flag,
@@ -4238,7 +4314,12 @@ async def send_chat_message(
             # 4. MODE: DEEP RESEARCH
             elif getattr(payload, "use_research", False):
                 from search_agent import stream_deep_research
-                async for chunk in stream_deep_research(payload.content):
+                # Research plans web queries from its input — pass the question
+                # plus a bounded excerpt of the files, not the full 75k dump.
+                research_query = query_text
+                if attachment_block:
+                    research_query = f"{query_text}\n\nКонтекст из прикреплённых файлов:\n{attachment_block[:2000]}"
+                async for chunk in stream_deep_research(research_query):
                     if chunk["type"] == "chunk":
                         if ttft is None: ttft = time.time() - start_time
                         full_response += chunk["content"]
@@ -4257,7 +4338,7 @@ async def send_chat_message(
                 user_prompt = (
                     f"{compiled_rag}"
                     f"ИСТОРИЯ ДИАЛОГА:\n{history_text}\n\n"
-                    f"Вопрос пользователя: {payload.content}"
+                    f"Вопрос пользователя: {stored_content}"
                 )
 
                 yield _emit_thought("Готов. Формулирую развёрнутый ответ на основе собранных данных.\n")
@@ -4325,7 +4406,9 @@ async def send_chat_message(
                     from project_memory_service import extract_and_store_facts
                     asyncio.create_task(extract_and_store_facts(
                         project_id=session.project_id,
-                        user_text=payload.content,
+                        # stored_content includes attached-file text, so the
+                        # passport can learn from uploads too (SLM caps input).
+                        user_text=stored_content,
                         assistant_text=full_response,
                         source_session_id=session.id,
                     ))
@@ -4337,11 +4420,11 @@ async def send_chat_message(
             # Cache only successful, non-research, non-presentation
             # responses so future identical queries get the fast path.
             # =======================================================
-            if full_response and not (use_deep_search_flag or use_research_flag or is_pres_request):
+            if full_response and not (use_deep_search_flag or use_research_flag or is_pres_request or attachments):
                 try:
                     from ops.cache.semantic_cache import semantic_cache as _sc
                     asyncio.create_task(_sc.set(
-                        query=payload.content,
+                        query=query_text,
                         response=full_response,
                         project_id=str(session.id),
                     ))

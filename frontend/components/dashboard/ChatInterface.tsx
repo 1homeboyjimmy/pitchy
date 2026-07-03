@@ -1,54 +1,80 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Cpu, Loader, Star, Zap, Users, Grid, HelpCircle, ThumbsUp, ThumbsDown, ChevronDown, ChevronUp, Activity, Globe, FileText, ArrowRight, Lock } from "lucide-react";
+import { Cpu, Loader, Star, Zap, Users, Grid, HelpCircle, ThumbsUp, ThumbsDown, ChevronDown, ChevronUp, Activity, Globe, FileText, ArrowRight, Lock, Image as ImageIcon } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ChatMessageResponse, ChatSessionDetailResponse, sendChatMessageFeedback } from "@/lib/api";
+import { ChatMessageResponse, ChatSessionDetailResponse, sendChatMessageFeedback, uploadChatFile } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import { AnalysisCard } from "@/components/dashboard/AnalysisCard";
 import dayjs from "dayjs";
 import "dayjs/locale/ru";
-import { ChatInput } from "@/components/chat/ChatInput";
+import { ChatInput, type PendingAttachment } from "@/components/chat/ChatInput";
+import { CopyButton } from "@/components/chat/CopyButton";
 import { PresentationDrawer } from "./PresentationDrawer";
 import { PresentationSlide, importContext } from "@/lib/api";
 import { ContextImportModal } from "@/components/chat/ContextImportModal";
 import { UpgradeModal } from "@/components/chat/UpgradeModal";
 import { notifyError } from "@/lib/ui";
-import { stripThoughts, hostFromUrl } from "@/lib/utils";
+import { stripThoughts, hostFromUrl, parseAttachments, type MessageAttachment } from "@/lib/utils";
 
-function CollapsibleUserBubble({ content }: { content: string }) {
+function CollapsibleUserBubble({ content, attachmentsMeta }: { content: string; attachmentsMeta?: MessageAttachment[] }) {
     const [isExpanded, setIsExpanded] = useState(false);
     const [isOverflowing, setIsOverflowing] = useState(false);
     const ref = useRef<HTMLDivElement>(null);
     const COLLAPSED_PX = 144; // ~5 lines
+
+    // Attached files live inside the stored content between FILE markers.
+    // Show them as chips and keep the extracted text out of the bubble.
+    const { text, attachments: parsedAttachments } = parseAttachments(content);
+    const chips = parsedAttachments.length > 0 ? parsedAttachments : (attachmentsMeta || []);
 
     useEffect(() => {
         const el = ref.current;
         if (!el) return;
         const next = el.scrollHeight > COLLAPSED_PX + 4;
         if (next !== isOverflowing) setIsOverflowing(next);
-    }, [content, isOverflowing]);
+    }, [text, isOverflowing]);
 
     return (
         <div className="lovable-glass-strong border border-white/5 p-4 sm:p-6 rounded-2xl sm:rounded-[2rem] rounded-tr-none bg-gradient-to-br from-white/[0.04] to-transparent">
-            <motion.div
-                layout
-                initial={false}
-                animate={{ height: isOverflowing && !isExpanded ? COLLAPSED_PX : "auto" }}
-                transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-                className="relative overflow-hidden"
-            >
-                <div
-                    ref={ref}
-                    className="text-white/90 font-sans text-[16px] leading-[1.6] whitespace-pre-wrap selection:bg-white/20"
-                    style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
-                >
-                    {content}
+            {chips.length > 0 && (
+                <div className={`flex flex-wrap justify-end gap-2 ${text ? "mb-3" : ""}`}>
+                    {chips.map((att, i) => (
+                        <div
+                            key={`${att.name}-${i}`}
+                            title={att.name}
+                            className="flex items-center gap-2 pl-1.5 pr-2.5 py-1.5 rounded-xl border border-white/10 bg-white/[0.05] max-w-[240px]"
+                        >
+                            <div className="w-7 h-7 rounded-lg bg-white/[0.07] flex items-center justify-center shrink-0">
+                                {att.kind === "image"
+                                    ? <ImageIcon className="w-3.5 h-3.5 text-white/50" strokeWidth={1.8} />
+                                    : <FileText className="w-3.5 h-3.5 text-white/50" strokeWidth={1.8} />}
+                            </div>
+                            <span className="text-[12px] text-white/70 font-medium truncate">{att.name}</span>
+                        </div>
+                    ))}
                 </div>
-                {isOverflowing && !isExpanded && (
-                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-black/70 via-black/40 to-transparent" />
-                )}
-            </motion.div>
+            )}
+            {text && (
+                <motion.div
+                    layout
+                    initial={false}
+                    animate={{ height: isOverflowing && !isExpanded ? COLLAPSED_PX : "auto" }}
+                    transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+                    className="relative overflow-hidden"
+                >
+                    <div
+                        ref={ref}
+                        className="text-white/90 font-sans text-[16px] leading-[1.6] whitespace-pre-wrap selection:bg-white/20"
+                        style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
+                    >
+                        {text}
+                    </div>
+                    {isOverflowing && !isExpanded && (
+                        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-black/70 via-black/40 to-transparent" />
+                    )}
+                </motion.div>
+            )}
             {isOverflowing && (
                 <div className="mt-3 flex justify-end">
                     <button
@@ -73,6 +99,9 @@ interface ExtendedChatMessage extends ChatMessageResponse {
     sourcesExpanded?: boolean;
     isResearch?: boolean;
     model_used?: string;
+    // Client-side chips for the optimistic user message; after the server
+    // sync the same data comes embedded in content as FILE markers.
+    attachmentsMeta?: MessageAttachment[];
 }
 
 interface ChatInterfaceProps {
@@ -107,6 +136,7 @@ export function ChatInterface({
     const [modeHint, setModeHint] = useState<string | null>(null);
     const [inputValue, setInputValue] = useState("");
     const [isLoading, setIsLoading] = useState(false);
+    const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
     const [streamingStatus, setStreamingStatus] = useState<string | null>(null);
     const [useDeepSearch, setUseDeepSearch] = useState(false);
     const [isResearchMode, setIsResearchMode] = useState(false);
@@ -159,6 +189,62 @@ export function ChatInterface({
         } catch (error) {
             console.error("Failed to send feedback:", error);
         }
+    };
+
+    const MAX_ATTACHED_FILES = 5;
+
+    const handlePickFiles = (files: File[]) => {
+        const token = getToken();
+        if (!token) {
+            notifyError("Войдите, чтобы прикреплять файлы.");
+            return;
+        }
+        const room = MAX_ATTACHED_FILES - pendingAttachments.length;
+        if (room <= 0) {
+            notifyError(`Можно прикрепить не более ${MAX_ATTACHED_FILES} файлов к одному сообщению.`);
+            return;
+        }
+        if (files.length > room) {
+            notifyError(`Можно прикрепить не более ${MAX_ATTACHED_FILES} файлов — лишние пропущены.`);
+        }
+        files.slice(0, room).forEach((file) => {
+            const isImage = file.type.startsWith("image/");
+            const maxBytes = (isImage ? 10 : 15) * 1024 * 1024;
+            if (file.size > maxBytes) {
+                notifyError(`«${file.name}» больше ${isImage ? 10 : 15} МБ.`);
+                return;
+            }
+            const id = crypto.randomUUID();
+            const previewUrl = isImage ? URL.createObjectURL(file) : undefined;
+            setPendingAttachments((prev) => [...prev, {
+                id,
+                name: file.name,
+                kind: isImage ? "image" : "file",
+                status: "uploading",
+                previewUrl,
+            }]);
+            uploadChatFile(file, token)
+                .then((res) => {
+                    setPendingAttachments((prev) => prev.map((a) =>
+                        a.id === id ? { ...a, name: res.name, kind: res.kind, text: res.text, status: "ready" } : a
+                    ));
+                })
+                .catch((err) => {
+                    const message = err instanceof Error ? err.message : "Не удалось обработать файл";
+                    notifyError(`${file.name}: ${message}`);
+                    setPendingAttachments((prev) => prev.map((a) =>
+                        a.id === id ? { ...a, status: "error", error: message } : a
+                    ));
+                });
+        });
+    };
+
+    const handleRemoveAttachment = (id: string) => {
+        setPendingAttachments((prev) => {
+            const target = prev.find((a) => a.id === id);
+            if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
+            return prev.filter((a) => a.id !== id);
+        });
     };
 
     const getSafeKey = useCallback((m: ExtendedChatMessage) => {
@@ -354,7 +440,10 @@ export function ChatInterface({
 
     const handleSendMessage = async (text?: string, forceIntent?: string, silent: boolean = false, opts: { regenerateDeck?: boolean } = {}) => {
         const content = typeof text === 'string' ? text : inputValue.trim();
-        if (!content || isLoading) return;
+        // Cap defensively: the backend schema rejects payloads with more than 5 files.
+        const readyAttachments = pendingAttachments.filter((a) => a.status === "ready" && a.text).slice(0, MAX_ATTACHED_FILES);
+        if ((!content && readyAttachments.length === 0) || isLoading) return;
+        if (pendingAttachments.some((a) => a.status === "uploading")) return;
 
         // Mode Selector Logic for Empty Chat
         if (messages.length <= 1 && text && !silent && forceIntent) {
@@ -383,6 +472,12 @@ export function ChatInterface({
 
         if (typeof text !== 'string') setInputValue("");
         setIsLoading(true);
+
+        const attachmentsPayload = readyAttachments.map((a) => ({ name: a.name, kind: a.kind, text: a.text as string }));
+        if (pendingAttachments.length > 0) {
+            pendingAttachments.forEach((a) => { if (a.previewUrl) URL.revokeObjectURL(a.previewUrl); });
+            setPendingAttachments([]);
+        }
 
         // Set flag to prevent greeting duplication on next sync
         if (typeof window !== "undefined") {
@@ -420,7 +515,8 @@ export function ChatInterface({
                         role: "user",
                         content,
                         created_at: now.toISOString(),
-                        client_id: userClientId
+                        client_id: userClientId,
+                        attachmentsMeta: attachmentsPayload.map(({ name, kind }) => ({ name, kind }))
                     },
                     {
                         id: now.getTime() + 1,
@@ -489,6 +585,7 @@ export function ChatInterface({
                     isResearchMode,
                     isPresentationRequest ? 'presentation' : (intentToSend || undefined),
                     !!opts.regenerateDeck,
+                    attachmentsPayload
                 )) {
                     resetWatchdog();
                     if (chunk.type === "ping") {
@@ -716,7 +813,7 @@ export function ChatInterface({
                                 <div className="flex items-center justify-end gap-3 mb-3 px-2">
                                     <span className="font-mono text-[9px] text-white/20 uppercase tracking-[0.2em] font-bold group-hover:text-white/40 transition-colors">USER</span>
                                 </div>
-                                <CollapsibleUserBubble content={getDisplayContent(msg)} />
+                                <CollapsibleUserBubble content={getDisplayContent(msg)} attachmentsMeta={msg.attachmentsMeta} />
                             </div>
                         </div>
                     ) : (
@@ -827,6 +924,7 @@ export function ChatInterface({
 
                                         <div className="flex items-center justify-between mt-8 pt-8 border-t border-white/5 w-full opacity-0 group-hover/content:opacity-100 transition-all duration-500">
                                             <div className="flex items-center gap-3">
+                                                <CopyButton text={stripThoughts(msg.content || "")} />
                                                 <button
                                                     onClick={() => handleFeedback(msg.id, msg.feedback === 1 ? 0 : 1)}
                                                     className={`p-2.5 rounded-full transition-all active:scale-90 ${msg.feedback === 1 ? 'text-white bg-white/10 shadow-lg shadow-white/5' : 'text-white/20 hover:text-white hover:bg-white/5'}`}
@@ -1056,6 +1154,9 @@ export function ChatInterface({
                     onSend={() => handleSendMessage()}
                     isLoading={isLoading}
                     onStop={stopGeneration}
+                    attachments={pendingAttachments}
+                    onPickFiles={handlePickFiles}
+                    onRemoveAttachment={handleRemoveAttachment}
                     useDeepSearch={useDeepSearch}
                     onToggleDeepSearch={() => setUseDeepSearch(!useDeepSearch)}
                     isResearchMode={isResearchMode}

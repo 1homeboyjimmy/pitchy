@@ -24,6 +24,7 @@ python-dateutil
 yookassa
 pypdf>=6.9.1
 python-multipart
+python-docx
 duckduckgo-search
 pillow>=12.1.1
 wheel>=0.46.2

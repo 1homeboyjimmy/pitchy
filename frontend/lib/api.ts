@@ -317,6 +317,46 @@ export async function sendChatMessage(sessionId: number, content: string, token:
   return postAuthJson<ChatMessageResponse>(`/chat/sessions/${sessionId}/messages`, { content }, token);
 }
 
+export type UploadedAttachment = {
+  name: string;
+  kind: string;
+  text: string;
+  truncated?: boolean;
+};
+
+export type ChatAttachmentPayload = {
+  name: string;
+  kind: string;
+  text: string;
+};
+
+// Processes a file/photo for the chat: the backend extracts document text or
+// runs images through a vision model, and the result is sent back together
+// with the next chat message (see sendChatMessageStream `attachments`).
+export async function uploadChatFile(file: File, token: string, signal?: AbortSignal): Promise<UploadedAttachment> {
+  const form = new FormData();
+  form.append("file", file);
+  const headers: Record<string, string> = {};
+  if (token && token !== COOKIE_SESSION_MARKER) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  // Маркер API-вызова клиента — см. комментарий в request().
+  headers["x-pitchy-api"] = "1";
+  const res = await fetch(`${API_BASE}/chat/uploads`, {
+    method: "POST",
+    headers,
+    body: form,
+    credentials: "include",
+    signal,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const detail = typeof err?.detail === "string" ? err.detail : "Не удалось загрузить файл";
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
 export async function* sendChatMessageStream(
     sessionId: number,
     content: string,
@@ -327,7 +367,8 @@ export async function* sendChatMessageStream(
     useDeepSearch: boolean = false,
     useResearch: boolean = false,
     intent?: string,
-    regenerateDeck: boolean = false
+    regenerateDeck: boolean = false,
+    attachments?: ChatAttachmentPayload[]
 ) {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token && token !== COOKIE_SESSION_MARKER) {
@@ -349,6 +390,7 @@ export async function* sendChatMessageStream(
       use_research: useResearch,
       intent,
       regenerate_deck: regenerateDeck,
+      attachments: attachments && attachments.length > 0 ? attachments : undefined
     }),
     credentials: "include",
     signal

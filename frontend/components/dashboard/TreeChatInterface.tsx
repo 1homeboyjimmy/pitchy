@@ -9,6 +9,7 @@ import { getTreeChatHistory, evaluateNode, type TreeNodeResponse, type TreeEdgeR
 import { motion, AnimatePresence } from "framer-motion";
 import { ChatInput } from "@/components/chat/ChatInput";
 import { CollapsibleUserMessage } from "@/components/chat/CollapsibleUserMessage";
+import { CopyButton } from "@/components/chat/CopyButton";
 import { stripThoughts, hostFromUrl } from "@/lib/utils";
 
 interface Message {
@@ -434,6 +435,9 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
                                 }}>
                                   {stripThoughts(msg.content)}
                                 </ReactMarkdown>
+                              </div>
+                              <div className="flex justify-end -mb-1 -mr-1">
+                                <CopyButton text={stripThoughts(msg.content)} iconClassName="w-3.5 h-3.5" className="p-1.5" />
                               </div>
                             </div>
                           )

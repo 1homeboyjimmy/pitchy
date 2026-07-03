@@ -167,9 +167,18 @@ class ChatSessionDetailResponse(ChatSessionResponse):
     analysis: AnalysisResponse | None = None
 
 
+class ChatAttachmentIn(BaseModel):
+    """Attachment previously processed by POST /chat/uploads: the client sends
+    back the extracted text so the message endpoint can embed it into context."""
+    name: str = Field(..., min_length=1, max_length=200)
+    kind: str = Field("file", max_length=20)
+    text: str = Field(..., min_length=1, max_length=60_000)
+
+
 class ChatMessageCreateRequest(BaseModel):
     # session_id passed in path usually, but can be here too
-    content: str = Field(..., min_length=1)
+    # content may be empty when attachments are present (validated in endpoint)
+    content: str = ""
     client_id: str | None = None
     assistant_client_id: str | None = None
     use_deep_search: bool = False
@@ -179,6 +188,7 @@ class ChatMessageCreateRequest(BaseModel):
     # saved z.ai conversation_id and rebuilds the deck from scratch instead
     # of editing the existing one.
     regenerate_deck: bool = False
+    attachments: list[ChatAttachmentIn] | None = Field(None, max_length=5)
 
 
 class ProjectContext(BaseModel):

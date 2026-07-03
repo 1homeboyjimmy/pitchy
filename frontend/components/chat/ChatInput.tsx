@@ -4,8 +4,23 @@ import React, { useRef, useEffect, useState, useCallback } from "react";
 import {
   Square, Globe, Activity, FileText, Paperclip,
   ArrowUp, X, Sparkles, Wrench, Check, ChevronDown, Lock,
+  Image as ImageIcon, Loader,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+
+// A file attached in the input: uploaded to /chat/uploads and, once ready,
+// sent along with the next message.
+export type PendingAttachment = {
+  id: string;
+  name: string;
+  kind: string;
+  status: "uploading" | "ready" | "error";
+  text?: string;
+  error?: string;
+  previewUrl?: string;
+};
+
+const FILE_ACCEPT = ".pdf,.docx,.txt,.md,.csv,.tsv,.json,image/png,image/jpeg,image/webp,image/gif";
 
 interface ChatInputProps {
   value: string;
@@ -23,6 +38,11 @@ interface ChatInputProps {
   isPresentationMode?: boolean;
   onTogglePresentationMode?: () => void;
   onCancelPresentationMode?: () => void;
+  // File/photo attachments. The paperclip button renders only when
+  // onPickFiles is provided, so chats without upload support are unchanged.
+  attachments?: PendingAttachment[];
+  onPickFiles?: (files: File[]) => void;
+  onRemoveAttachment?: (id: string) => void;
   // Tools that are visible but locked behind a paid tier. Clicking a
   // locked tool calls `onLockedTool` instead of running the action.
   lockedTools?: {
@@ -50,12 +70,35 @@ export function ChatInput({
   isPresentationMode = false,
   onTogglePresentationMode,
   onCancelPresentationMode,
+  attachments = [],
+  onPickFiles,
+  onRemoveAttachment,
   lockedTools = {},
   onLockedTool,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const toolsRef = useRef<HTMLDivElement>(null);
   const [toolsOpen, setToolsOpen] = useState(false);
+
+  const hasReadyAttachment = attachments.some((a) => a.status === "ready");
+  const isUploadingAttachment = attachments.some((a) => a.status === "uploading");
+  const canSend = !disabled && !isLoading && !isUploadingAttachment && (!!value.trim() || hasReadyAttachment);
+
+  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length > 0) onPickFiles?.(files);
+    e.target.value = ""; // allow re-selecting the same file
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    if (!onPickFiles) return;
+    const files = Array.from(e.clipboardData?.files || []);
+    if (files.length > 0) {
+      e.preventDefault();
+      onPickFiles(files);
+    }
+  };
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -86,7 +129,7 @@ export function ChatInput({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      if (!disabled && value.trim() && !isLoading) {
+      if (canSend) {
         onSend();
       }
     }
@@ -202,40 +245,113 @@ export function ChatInput({
       <div className="px-3 sm:px-6">
         <div className="relative group">
           <div className="absolute -inset-[1px] bg-white/10 rounded-3xl sm:rounded-[2rem] blur-sm opacity-0 group-focus-within:opacity-100 transition duration-700 pointer-events-none" />
-          <div className={`relative bg-black/40 backdrop-blur-3xl border rounded-3xl sm:rounded-[2rem] p-2 sm:p-3 flex items-end gap-2 sm:gap-3 transition-all duration-500 shadow-2xl ${
+          <div className={`relative bg-black/40 backdrop-blur-3xl border rounded-3xl sm:rounded-[2rem] p-2 sm:p-3 flex flex-col transition-all duration-500 shadow-2xl ${
             isPresentationMode ? "border-white/30 bg-white/[0.02]" : "border-white/5 focus-within:border-white/20"
           } ${disabled ? "opacity-40" : ""}`}>
-            <textarea
-              ref={textareaRef}
-              value={value}
-              onChange={onChange}
-              onKeyDown={handleKeyDown}
-              placeholder={isPresentationMode ? "Опишите идею для вашей презентации..." : placeholder}
-              disabled={disabled}
-              className="flex-1 min-w-0 bg-transparent border-none py-3 sm:py-4 px-3 sm:px-5 text-white focus:outline-none focus:ring-0 resize-none font-sans text-[15px] sm:text-[16px] min-h-[52px] sm:min-h-[60px] max-h-48 placeholder:text-white/20 leading-relaxed selection:bg-white/20"
-              rows={1}
-            />
-            <div className="flex items-center gap-2 mb-1.5 sm:mb-2 mr-1 sm:mr-2 shrink-0">
-              {isLoading ? (
-                <button
-                  onClick={onStop}
-                  className="bg-white/10 text-white border border-white/20 h-10 w-10 sm:h-12 sm:w-12 flex items-center justify-center rounded-xl sm:rounded-2xl hover:bg-white/20 active:scale-90 transition-all shadow-lg shadow-black/20"
-                >
-                  <Square className="w-4 h-4 fill-white" />
-                </button>
-              ) : (
-                <button
-                  onClick={onSend}
-                  disabled={disabled || !value.trim()}
-                  className={`h-10 w-10 sm:h-12 sm:w-12 flex items-center justify-center rounded-xl sm:rounded-2xl transition-all shadow-lg ${
-                    value.trim() && !disabled
-                      ? "bg-white text-black hover:scale-105 active:scale-90 shadow-white/5"
-                      : "bg-white/5 text-white/10 cursor-not-allowed border border-white/5"
-                  }`}
-                >
-                  <ArrowUp className="w-5 h-5 sm:w-6 sm:h-6" strokeWidth={2.5} />
-                </button>
+            {/* Attached files/photos */}
+            {attachments.length > 0 && (
+              <div className="flex flex-wrap gap-2 px-2 pt-1.5 pb-1 sm:px-3">
+                {attachments.map((att) => (
+                  <div
+                    key={att.id}
+                    title={att.status === "error" ? (att.error || "Ошибка обработки") : att.name}
+                    className={`flex items-center gap-2 pl-1.5 pr-2 py-1.5 rounded-xl border max-w-[240px] transition-colors ${
+                      att.status === "error"
+                        ? "border-red-500/30 bg-red-500/[0.06]"
+                        : "border-white/10 bg-white/[0.05]"
+                    }`}
+                  >
+                    {att.previewUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={att.previewUrl} alt="" className="w-7 h-7 rounded-lg object-cover shrink-0" />
+                    ) : (
+                      <div className="w-7 h-7 rounded-lg bg-white/[0.07] flex items-center justify-center shrink-0">
+                        {att.kind === "image"
+                          ? <ImageIcon className="w-3.5 h-3.5 text-white/50" strokeWidth={1.8} />
+                          : <FileText className="w-3.5 h-3.5 text-white/50" strokeWidth={1.8} />}
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <div className="text-[11px] text-white/75 font-medium truncate leading-tight">{att.name}</div>
+                      <div className={`text-[9px] uppercase tracking-wider font-mono leading-tight ${
+                        att.status === "error" ? "text-red-400/80" : "text-white/30"
+                      }`}>
+                        {att.status === "uploading" ? "Обработка..." : att.status === "error" ? "Ошибка" : att.kind}
+                      </div>
+                    </div>
+                    {att.status === "uploading" ? (
+                      <Loader className="w-3.5 h-3.5 animate-spin text-white/40 shrink-0" strokeWidth={2} />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => onRemoveAttachment?.(att.id)}
+                        className="shrink-0 p-1 rounded-full text-white/30 hover:text-white hover:bg-white/10 transition-all active:scale-90"
+                        aria-label="Убрать файл"
+                      >
+                        <X className="w-3 h-3" strokeWidth={2} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex items-end gap-2 sm:gap-3 w-full">
+              {onPickFiles && (
+                <>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    hidden
+                    accept={FILE_ACCEPT}
+                    onChange={handleFileInput}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={disabled}
+                    title="Прикрепить файл или фото"
+                    aria-label="Прикрепить файл или фото"
+                    className="shrink-0 h-10 w-10 sm:h-12 sm:w-12 flex items-center justify-center rounded-xl sm:rounded-2xl text-white/35 hover:text-white hover:bg-white/10 transition-all active:scale-90 mb-1.5 sm:mb-2 ml-1 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Paperclip className="w-5 h-5" strokeWidth={1.8} />
+                  </button>
+                </>
               )}
+              <textarea
+                ref={textareaRef}
+                value={value}
+                onChange={onChange}
+                onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
+                placeholder={isPresentationMode ? "Опишите идею для вашей презентации..." : placeholder}
+                disabled={disabled}
+                className="flex-1 min-w-0 bg-transparent border-none py-3 sm:py-4 px-3 sm:px-5 text-white focus:outline-none focus:ring-0 resize-none font-sans text-[15px] sm:text-[16px] min-h-[52px] sm:min-h-[60px] max-h-48 placeholder:text-white/20 leading-relaxed selection:bg-white/20"
+                rows={1}
+              />
+              <div className="flex items-center gap-2 mb-1.5 sm:mb-2 mr-1 sm:mr-2 shrink-0">
+                {isLoading ? (
+                  <button
+                    onClick={onStop}
+                    className="bg-white/10 text-white border border-white/20 h-10 w-10 sm:h-12 sm:w-12 flex items-center justify-center rounded-xl sm:rounded-2xl hover:bg-white/20 active:scale-90 transition-all shadow-lg shadow-black/20"
+                  >
+                    <Square className="w-4 h-4 fill-white" />
+                  </button>
+                ) : (
+                  <button
+                    onClick={onSend}
+                    disabled={!canSend}
+                    className={`h-10 w-10 sm:h-12 sm:w-12 flex items-center justify-center rounded-xl sm:rounded-2xl transition-all shadow-lg ${
+                      canSend
+                        ? "bg-white text-black hover:scale-105 active:scale-90 shadow-white/5"
+                        : "bg-white/5 text-white/10 cursor-not-allowed border border-white/5"
+                    }`}
+                  >
+                    <ArrowUp className="w-5 h-5 sm:w-6 sm:h-6" strokeWidth={2.5} />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>

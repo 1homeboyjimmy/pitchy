@@ -33,6 +33,31 @@ export function stripThoughts(content: string): string {
     return stripped.trim();
 }
 
+export type MessageAttachment = { name: string; kind: string };
+
+// Attachment blocks embedded by the backend into stored user messages.
+// Keep the format in sync with build_attachment_block in chat_attachments.py.
+const FILE_BLOCK_RE = /<<<FILE name="([^"]*)" kind="([^"]*)">>>\n?[\s\S]*?<<<END FILE>>>/g;
+
+/**
+ * Splits a user message into visible text and attached-file chips.
+ * The extracted file text itself is hidden from the bubble — only
+ * name/kind are surfaced.
+ */
+export function parseAttachments(content: string): { text: string; attachments: MessageAttachment[] } {
+    if (!content || !content.includes("<<<FILE ")) {
+        return { text: content, attachments: [] };
+    }
+    const attachments: MessageAttachment[] = [];
+    const text = content
+        .replace(FILE_BLOCK_RE, (_match, name: string, kind: string) => {
+            attachments.push({ name, kind });
+            return "";
+        })
+        .trim();
+    return { text, attachments };
+}
+
 /**
  * Combines multiple class names into a single string.
  */
