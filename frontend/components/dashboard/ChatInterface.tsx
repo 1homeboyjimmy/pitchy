@@ -9,13 +9,15 @@ import { AnalysisCard } from "@/components/dashboard/AnalysisCard";
 import dayjs from "dayjs";
 import "dayjs/locale/ru";
 import { ChatInput, type PendingAttachment } from "@/components/chat/ChatInput";
-import { CopyButton } from "@/components/chat/CopyButton";
+import { CopyButton, serializeMessageHtml } from "@/components/chat/CopyButton";
+import { ExportMenu } from "@/components/chat/ExportMenu";
+import { FileCard } from "@/components/chat/FileCard";
 import { PresentationDrawer } from "./PresentationDrawer";
 import { PresentationSlide, importContext } from "@/lib/api";
 import { ContextImportModal } from "@/components/chat/ContextImportModal";
 import { UpgradeModal } from "@/components/chat/UpgradeModal";
 import { notifyError } from "@/lib/ui";
-import { stripThoughts, hostFromUrl, parseAttachments, type MessageAttachment } from "@/lib/utils";
+import { stripThoughts, hostFromUrl, parseAttachments, parseExports, type MessageAttachment, type MessageExport } from "@/lib/utils";
 
 function CollapsibleUserBubble({ content, attachmentsMeta }: { content: string; attachmentsMeta?: MessageAttachment[] }) {
     const [isExpanded, setIsExpanded] = useState(false);
@@ -102,6 +104,9 @@ interface ExtendedChatMessage extends ChatMessageResponse {
     // Client-side chips for the optimistic user message; after the server
     // sync the same data comes embedded in content as FILE markers.
     attachmentsMeta?: MessageAttachment[];
+    // Файлы-экспорты из живых SSE-событий `file`; после reconcile те же
+    // карточки восстанавливаются из EXPORT-маркеров в content (parseExports).
+    exports?: MessageExport[];
 }
 
 interface ChatInterfaceProps {
@@ -430,13 +435,29 @@ export function ChatInterface({
     }, [isLoading, typingMessageId, messages, getSafeKey, displayedLength]);
 
     const getDisplayContent = useCallback((msg: ChatMessageResponse) => {
-        const cleaned = stripThoughts(msg.content || "");
+        // EXPORT-маркеры (карточки файлов) не должны попадать в ReactMarkdown —
+        // они рендерятся отдельными FileCard под сообщением.
+        const cleaned = parseExports(stripThoughts(msg.content || "")).text;
         const safeFull = cleaned.replace(/\n\|[ \-|]*$/g, "\n");
         if (msg.role === "assistant" && getSafeKey(msg) === typingMessageId?.toString()) {
             return safeFull.slice(0, displayedLength);
         }
         return safeFull;
     }, [typingMessageId, displayedLength, getSafeKey]);
+
+    // Отрендеренные DOM-узлы контента сообщений — для rich-копирования
+    // (CopyButton кладёт в буфер text/html из уже отрисованной разметки).
+    const messageContentRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+    // Карточки файлов сообщения: live SSE-события + персистентные маркеры
+    // из content (после перезагрузки/reconcile), с дедупликацией.
+    const getMessageExports = useCallback((msg: ExtendedChatMessage): MessageExport[] => {
+        const persisted = parseExports(msg.content || "").exports;
+        const live = msg.exports || [];
+        return [...persisted, ...live].filter((e, i, arr) =>
+            arr.findIndex((x) => x.format === e.format && x.name === e.name) === i
+        );
+    }, []);
 
     const handleSendMessage = async (text?: string, forceIntent?: string, silent: boolean = false, opts: { regenerateDeck?: boolean } = {}) => {
         const content = typeof text === 'string' ? text : inputValue.trim();
@@ -661,6 +682,14 @@ export function ChatInterface({
                     } else if (chunk.type === "metadata") {
                         setMessages((prev) =>
                             prev.map(m => m.client_id === assistantClientId ? { ...m, model_used: chunk.model } : m)
+                        );
+                    } else if (chunk.type === "file") {
+                        // Карточка файла-экспорта («сохрани ответ в pdf»).
+                        const fileChunk = chunk as { format: string; name: string; message_id?: number };
+                        setMessages((prev) =>
+                            prev.map(m => m.client_id === assistantClientId
+                                ? { ...m, exports: [...(m.exports || []), { format: fileChunk.format, name: fileChunk.name, message_id: fileChunk.message_id }] }
+                                : m)
                         );
                     }
                 }
@@ -894,7 +923,13 @@ export function ChatInterface({
                                 {shouldRenderMainBubble && (
                                 <div className="space-y-10 pl-1 group/content">
                                     <div className="lovable-glass-strong border border-white/5 p-4 sm:p-6 lg:p-8 rounded-2xl sm:rounded-[2.5rem] rounded-tl-none space-y-4 sm:space-y-6 bg-gradient-to-br from-white/[0.03] to-transparent shadow-xl shadow-black/20">
-                                        <div className="text-white/80 font-sans text-[14px] sm:text-[17px] leading-relaxed sm:leading-[1.8] md:leading-[1.9] [&_p]:mb-4 sm:[&_p]:mb-6 [&_p:last-child]:mb-0 [&_ul]:list-none [&_ul]:pl-0 [&_ul]:mb-6 [&_ul>li]:mb-4 [&_ul>li]:pl-6 [&_ul>li]:relative [&_ul>li:before]:content-[''] [&_ul>li:before]:absolute [&_ul>li:before]:left-0 [&_ul>li:before]:top-[0.8em] [&_ul>li:before]:w-1.5 [&_ul>li:before]:h-px [&_ul>li:before]:bg-white/40 [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:mb-6 [&_ol>li]:mb-4 [&_ol>li]:pl-2 [&_h2]:text-3xl [&_h2]:text-white [&_h2]:mt-12 [&_h2]:mb-6 [&_h2]:tracking-tight [&_h3]:text-xl [&_h3]:font-bold [&_h3]:text-white [&_h3]:mt-10 [&_h3]:mb-4 [&_strong]:text-white [&_strong]:font-bold selection:bg-white/20">
+                                        <div
+                                            ref={(el) => {
+                                                const key = getSafeKey(msg);
+                                                if (el) messageContentRefs.current.set(key, el);
+                                                else messageContentRefs.current.delete(key);
+                                            }}
+                                            className="text-white/80 font-sans text-[14px] sm:text-[17px] leading-relaxed sm:leading-[1.8] md:leading-[1.9] [&_p]:mb-4 sm:[&_p]:mb-6 [&_p:last-child]:mb-0 [&_ul]:list-none [&_ul]:pl-0 [&_ul]:mb-6 [&_ul>li]:mb-4 [&_ul>li]:pl-6 [&_ul>li]:relative [&_ul>li:before]:content-[''] [&_ul>li:before]:absolute [&_ul>li:before]:left-0 [&_ul>li:before]:top-[0.8em] [&_ul>li:before]:w-1.5 [&_ul>li:before]:h-px [&_ul>li:before]:bg-white/40 [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:mb-6 [&_ol>li]:mb-4 [&_ol>li]:pl-2 [&_h2]:text-3xl [&_h2]:text-white [&_h2]:mt-12 [&_h2]:mb-6 [&_h2]:tracking-tight [&_h3]:text-xl [&_h3]:font-bold [&_h3]:text-white [&_h3]:mt-10 [&_h3]:mb-4 [&_strong]:text-white [&_strong]:font-bold selection:bg-white/20">
                                             <ReactMarkdown 
                                                 remarkPlugins={[remarkGfm]}
                                                 components={{
@@ -913,18 +948,44 @@ export function ChatInterface({
                                                 {getDisplayContent(msg)}
                                             </ReactMarkdown>
                                             {getSafeKey(msg) === typingMessageId?.toString() && (
-                                                <motion.span 
+                                                <motion.span
+                                                    data-export-ignore
                                                     initial={{ opacity: 0 }}
                                                     animate={{ opacity: 1 }}
                                                     transition={{ repeat: Infinity, duration: 0.8 }}
-                                                    className="inline-block w-1.5 h-5 bg-white/40 ml-1.5 align-text-bottom rounded-full" 
+                                                    className="inline-block w-1.5 h-5 bg-white/40 ml-1.5 align-text-bottom rounded-full"
                                                 />
                                             )}
                                         </div>
 
+                                        {getMessageExports(msg).length > 0 && (
+                                            <div className="flex flex-wrap gap-3">
+                                                {getMessageExports(msg).map((exp, i) => (
+                                                    <FileCard
+                                                        key={`${exp.format}-${exp.name}-${i}`}
+                                                        format={exp.format}
+                                                        name={exp.name}
+                                                        // message_id есть у маркеров «экспорт прошлого ответа»;
+                                                        // иначе файл лежит в самом сообщении — но только после
+                                                        // reconcile, когда у него настоящий DB id (не Date.now()).
+                                                        messageId={exp.message_id ?? (msg.id < 1_000_000_000_000 ? msg.id : undefined)}
+                                                    />
+                                                ))}
+                                            </div>
+                                        )}
+
                                         <div className="flex items-center justify-between mt-8 pt-8 border-t border-white/5 w-full opacity-0 group-hover/content:opacity-100 transition-all duration-500">
                                             <div className="flex items-center gap-3">
-                                                <CopyButton text={stripThoughts(msg.content || "")} />
+                                                <CopyButton
+                                                    text={parseExports(stripThoughts(msg.content || "")).text}
+                                                    getHtml={() => {
+                                                        const el = messageContentRefs.current.get(getSafeKey(msg));
+                                                        return el ? serializeMessageHtml(el) : null;
+                                                    }}
+                                                />
+                                                {/* Оптимистичные сообщения несут id = Date.now() (эпоха, ~1e12) —
+                                                    экспорт доступен после reconcile, когда придёт настоящий DB id. */}
+                                                <ExportMenu messageId={msg.id} disabled={msg.id >= 1_000_000_000_000} />
                                                 <button
                                                     onClick={() => handleFeedback(msg.id, msg.feedback === 1 ? 0 : 1)}
                                                     className={`p-2.5 rounded-full transition-all active:scale-90 ${msg.feedback === 1 ? 'text-white bg-white/10 shadow-lg shadow-white/5' : 'text-white/20 hover:text-white hover:bg-white/5'}`}

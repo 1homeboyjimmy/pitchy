@@ -9,7 +9,7 @@ import { getTreeChatHistory, evaluateNode, type TreeNodeResponse, type TreeEdgeR
 import { motion, AnimatePresence } from "framer-motion";
 import { ChatInput } from "@/components/chat/ChatInput";
 import { CollapsibleUserMessage } from "@/components/chat/CollapsibleUserMessage";
-import { CopyButton } from "@/components/chat/CopyButton";
+import { CopyButton, serializeMessageHtml } from "@/components/chat/CopyButton";
 import { stripThoughts, hostFromUrl } from "@/lib/utils";
 
 interface Message {
@@ -35,6 +35,8 @@ interface TreeChatInterfaceProps {
 export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }: TreeChatInterfaceProps) {
   const [activeTab, setActiveTab] = useState<"analysis" | "chat">("analysis");
   const [messages, setMessages] = useState<Message[]>([]);
+  // DOM-узлы отрендеренного контента — для rich-копирования (text/html).
+  const messageContentRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [hints, setHints] = useState<string[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -426,7 +428,14 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
                             <CollapsibleUserMessage content={msg.content} />
                           ) : (
                             <div className="p-3 rounded-2xl text-sm leading-relaxed bg-white/[0.03] text-white/90 border border-white/10 rounded-tl-sm relative">
-                              <div className="prose prose-invert prose-sm max-w-none text-white/80">
+                              <div
+                                ref={(el) => {
+                                  const key = String(getMsgKey(msg));
+                                  if (el) messageContentRefs.current.set(key, el);
+                                  else messageContentRefs.current.delete(key);
+                                }}
+                                className="prose prose-invert prose-sm max-w-none text-white/80"
+                              >
                                 <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
                                   table: ({...props}) => (<div className="my-3 overflow-x-auto rounded-xl border border-white/10 bg-white/5"><table className="w-full text-left border-collapse" {...props} /></div>),
                                   thead: ({...props}) => <thead className="bg-white/10" {...props} />,
@@ -437,7 +446,15 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
                                 </ReactMarkdown>
                               </div>
                               <div className="flex justify-end -mb-1 -mr-1">
-                                <CopyButton text={stripThoughts(msg.content)} iconClassName="w-3.5 h-3.5" className="p-1.5" />
+                                <CopyButton
+                                  text={stripThoughts(msg.content)}
+                                  getHtml={() => {
+                                    const el = messageContentRefs.current.get(String(getMsgKey(msg)));
+                                    return el ? serializeMessageHtml(el) : null;
+                                  }}
+                                  iconClassName="w-3.5 h-3.5"
+                                  className="p-1.5"
+                                />
                               </div>
                             </div>
                           )

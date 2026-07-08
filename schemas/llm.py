@@ -16,6 +16,18 @@ class RoadmapEditResponse(BaseModel):
     priority: Optional[int] = Field(None, ge=1, le=5)
     justification: str = Field(..., description="Почему это изменение необходимо для проекта")
 
+class ExportIntent(BaseModel):
+    """Просьба собрать ответ чата в файл (pdf/docx/md/txt) — см. export_service.py.
+
+    Точность важнее полноты: regex-префильтр уже сработал, задача SLM —
+    отсеять ложные срабатывания («сделай таблицу в markdown» — не экспорт).
+    """
+    is_export: bool = Field(..., description="True, если пользователь просит ФАЙЛ с ответом ассистента")
+    formats: List[str] = Field(default_factory=list, description="Запрошенные форматы: pdf, docx, md, txt. Пусто, если формат не назван")
+    target: str = Field("previous", description="previous — сохранить уже данный ответ; current — ответить на вопрос из этого же сообщения и собрать его в файл")
+    reasoning: str = Field("", description="Краткое обоснование решения")
+
+
 class FinanceResponse(BaseModel):
     """Схема для детального финансового анализа Unit-экономики."""
     cac: float = Field(..., description="Customer Acquisition Cost")

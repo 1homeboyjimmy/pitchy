@@ -4,11 +4,11 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Loader, CheckCircle2, Sparkles, Brain, ExternalLink, ArrowLeft, Plus } from "lucide-react";
+import { Loader, CheckCircle2, Sparkles, Brain, ExternalLink, ArrowLeft, Plus, Download } from "lucide-react";
 import { getToken } from "@/lib/auth";
 import { notifyError } from "@/lib/ui";
 import {
-  getProjects, getRoadmap, patchPassport, analyzeRoadmapStep, streamRoadmapOverall, createProject,
+  getProjects, getRoadmap, patchPassport, analyzeRoadmapStep, streamRoadmapOverall, createProject, downloadRoadmapPdf,
   type ProjectListItem, type Roadmap, type RoadmapCheckpoint, type RoadmapField, type RoadmapOverall,
 } from "@/lib/api";
 
@@ -245,6 +245,24 @@ export function RoadmapView() {
   const [analyzingStep, setAnalyzingStep] = useState<string | null>(null);
   const [overall, setOverall] = useState<RoadmapOverall | null>(null);
   const [analyzingOverall, setAnalyzingOverall] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+
+  const handleDownloadPdf = useCallback(async () => {
+    if (!pid || downloadingPdf) return;
+    const token = getToken();
+    if (!token) {
+      notifyError("Войдите, чтобы скачать PDF.");
+      return;
+    }
+    setDownloadingPdf(true);
+    try {
+      await downloadRoadmapPdf(pid, token);
+    } catch (err) {
+      notifyError(err instanceof Error ? err.message : "Не удалось скачать PDF");
+    } finally {
+      setDownloadingPdf(false);
+    }
+  }, [pid, downloadingPdf]);
 
   useEffect(() => {
     (async () => {
@@ -433,7 +451,18 @@ export function RoadmapView() {
               </div>
               <div className="flex items-end justify-between gap-4 flex-wrap">
                 <h1 className="font-display text-3xl sm:text-4xl text-white">Карта заполнена на {roadmap.progress}%</h1>
-                <span className="text-white/50 text-sm">{roadmap.completed} из {roadmap.total} этапов пройдено</span>
+                <div className="flex items-center gap-4">
+                  <span className="text-white/50 text-sm">{roadmap.completed} из {roadmap.total} этапов пройдено</span>
+                  <button
+                    onClick={handleDownloadPdf}
+                    disabled={downloadingPdf}
+                    title="Скачать дорожную карту в PDF"
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white text-black text-[12px] font-bold hover:bg-white/90 transition-all active:scale-95 disabled:opacity-60"
+                  >
+                    {downloadingPdf ? <Loader size={14} className="animate-spin" /> : <Download size={14} />}
+                    Скачать PDF
+                  </button>
+                </div>
               </div>
               <div className="mt-4 h-2 w-full rounded-full bg-white/10 overflow-hidden">
                 <motion.div

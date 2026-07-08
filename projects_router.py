@@ -310,6 +310,40 @@ async def analyze_roadmap_overall(
     )
 
 
+@router.get("/{project_id}/roadmap/export.pdf")
+async def export_roadmap_pdf(
+    project_id: int,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """PDF дорожной карты: шапка с индексом готовности, чекпоинты с полями
+    паспорта, сохранённая ИИ-аналитика с источниками. Генерируется на лету
+    (WeasyPrint), ничего не хранится."""
+    import export_service
+    import roadmap_export
+    import roadmap_service
+    from fastapi.responses import Response
+    from starlette.concurrency import run_in_threadpool
+
+    if not export_service.pdf_available():
+        raise HTTPException(
+            status_code=503,
+            detail="PDF-экспорт временно недоступен в этой среде.",
+        )
+    project = await _get_owned_project(project_id, user, db)
+    roadmap = roadmap_service.build_roadmap(project.passport or {})
+    pdf = await run_in_threadpool(roadmap_export.render_roadmap_pdf, project.name, roadmap)
+    filename = export_service.suggest_filename(f"Дорожная карта — {project.name}", "pdf")
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": export_service.build_content_disposition(filename),
+            "Cache-Control": "no-store",
+        },
+    )
+
+
 @router.get("/{project_id}/sessions", response_model=list[ChatSessionResponse])
 async def list_project_sessions(
     project_id: int,

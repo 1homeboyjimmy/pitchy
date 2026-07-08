@@ -45,20 +45,23 @@ def upgrade() -> None:
     )
     op.create_index("ix_grants_moderation", "grants", ["moderation"])
 
-    op.add_column("grants", sa.Column("source_id", sa.Integer(), nullable=True))
-    op.create_foreign_key(
-        "fk_grants_source_id_grant_sources",
-        "grants",
-        "grant_sources",
-        ["source_id"],
-        ["id"],
-        ondelete="SET NULL",
-    )
+    # batch_alter_table: на postgres — те же ALTER-ы, а sqlite (тестовая БД)
+    # не умеет ALTER ... ADD CONSTRAINT и требует copy-and-move.
+    with op.batch_alter_table("grants", schema=None) as batch_op:
+        batch_op.add_column(sa.Column("source_id", sa.Integer(), nullable=True))
+        batch_op.create_foreign_key(
+            "fk_grants_source_id_grant_sources",
+            "grant_sources",
+            ["source_id"],
+            ["id"],
+            ondelete="SET NULL",
+        )
 
 
 def downgrade() -> None:
-    op.drop_constraint("fk_grants_source_id_grant_sources", "grants", type_="foreignkey")
-    op.drop_column("grants", "source_id")
+    with op.batch_alter_table("grants", schema=None) as batch_op:
+        batch_op.drop_constraint("fk_grants_source_id_grant_sources", type_="foreignkey")
+        batch_op.drop_column("source_id")
     op.drop_index("ix_grants_moderation", table_name="grants")
     op.drop_column("grants", "moderation")
     op.drop_table("grant_sources")

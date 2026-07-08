@@ -2116,20 +2116,25 @@ def save_assistant_message(session_id: int, content: str, thoughts: str | None =
         db.close()
 
 
-async def async_save_assistant_message(session_id: int, content: str, thoughts: str | None = None, client_id: str | None = None, sources: list[dict] | None = None):
+async def async_save_assistant_message(session_id: int, content: str, thoughts: str | None = None, client_id: str | None = None, sources: list[dict] | None = None) -> int:
     from db_async import AsyncSessionLocal
     from models import ChatMessage as DbChatMessage
     async with AsyncSessionLocal() as db:
         msg = DbChatMessage(
-            session_id=session_id, 
-            role="assistant", 
+            session_id=session_id,
+            role="assistant",
             content=content,
             thoughts=thoughts,
             client_id=client_id,
             sources=sources
         )
         db.add(msg)
+        # flush before commit so the PK is readable regardless of the
+        # session's expire_on_commit setting (export flow needs the id).
+        await db.flush()
+        new_id = msg.id
         await db.commit()
+        return new_id
 
 
 @app.post("/chat")
@@ -3830,6 +3835,89 @@ async def get_chat_session(
     )
 
 
+def _export_rate_limit_check(user_id: int | None) -> None:
+    """3s cooldown per user on document export. Rendering runs in the
+    threadpool, so this bounds concurrency. Best-effort without Redis."""
+    if not user_id:
+        return
+    r = get_redis()
+    if not r:
+        return
+    try:
+        ok = r.set(f"export:rl:{user_id}", "1", nx=True, ex=3)
+        if not ok:
+            raise HTTPException(
+                status_code=429,
+                detail="Слишком часто. Подождите пару секунд и повторите экспорт.",
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        pass
+
+
+@app.get("/chat/messages/{message_id}/export")
+async def export_chat_message(
+    message_id: int,
+    format: str = Query(..., description="pdf | docx | md | txt"),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Renders an assistant message as a downloadable document on demand —
+    nothing is stored, so the same endpoint serves the per-message export
+    menu, chat-requested file cards and history reloads. No LLM quota is
+    consumed; the cooldown above is the abuse guard."""
+    import export_service
+
+    fmt = (format or "").lower().strip()
+    if fmt not in export_service.EXPORT_FORMATS:
+        raise HTTPException(status_code=422, detail="Неподдерживаемый формат экспорта.")
+    _export_rate_limit_check(user.id)
+
+    from sqlalchemy.orm import selectinload
+    res = await db.execute(
+        select(DbChatMessage)
+        .options(selectinload(DbChatMessage.session))
+        .join(ChatSession, ChatSession.id == DbChatMessage.session_id)
+        .where(
+            DbChatMessage.id == message_id,
+            ChatSession.user_id == user.id,
+            # Only assistant answers are exportable; 404 (not 403) so foreign
+            # message ids are indistinguishable from missing ones.
+            DbChatMessage.role == "assistant",
+        )
+    )
+    msg = res.scalar_one_or_none()
+    if not msg:
+        raise HTTPException(status_code=404, detail="Сообщение не найдено")
+
+    if fmt == "pdf" and not export_service.pdf_available():
+        raise HTTPException(
+            status_code=503,
+            detail="PDF-экспорт недоступен в этой среде. Скачайте DOCX, MD или TXT.",
+        )
+    content = msg.content or ""
+    if len(content) > export_service.MAX_EXPORT_CHARS:
+        raise HTTPException(status_code=413, detail="Ответ слишком большой для экспорта.")
+
+    title = (msg.session.title if msg.session else "") or "Ответ Pitchy"
+    filename = export_service.suggest_filename(title, fmt)
+    try:
+        data, mime, _ = await run_in_threadpool(
+            export_service.render_message_export, content, fmt, title, msg.sources or []
+        )
+    except export_service.ExportUnavailable:
+        raise HTTPException(status_code=503, detail="PDF-экспорт временно недоступен.")
+    return Response(
+        content=data,
+        media_type=mime,
+        headers={
+            "Content-Disposition": export_service.build_content_disposition(filename),
+            "Cache-Control": "no-store",
+        },
+    )
+
+
 @app.delete("/chat/sessions/{session_id}")
 async def delete_chat_session(
     session_id: int,
@@ -3979,15 +4067,27 @@ async def send_chat_message(
     elif getattr(payload, "intent", None) == "presentation":
         requested_feature = "presentation"
 
-    await async_check_subscription_limits(
-        user,
-        db,
-        "message",
-        session.id,
-        feature=requested_feature,
-        is_search=getattr(payload, "use_deep_search", False),
-        idempotency_key=f"chat:{user.id}:{payload.client_id or payload.assistant_client_id or uuid.uuid4()}",
-    )
+    # Экспорт по запросу словами («сохрани прошлый ответ в pdf»): дешёвый
+    # regex-префильтр, затем SLM-уточнение (export_service). Экспорт УЖЕ
+    # существующего ответа не генерирует ничего нового, поэтому для
+    # target=previous лимит сообщений ниже не списывается.
+    import export_service
+    export_request = None
+    _export_probe = (payload.content or "").strip()
+    if _export_probe and export_service.detect_export_request(_export_probe):
+        export_request = await export_service.classify_export_intent(_export_probe)
+    is_prev_export = bool(export_request and export_request.target == "previous")
+
+    if not is_prev_export:
+        await async_check_subscription_limits(
+            user,
+            db,
+            "message",
+            session.id,
+            feature=requested_feature,
+            is_search=getattr(payload, "use_deep_search", False),
+            idempotency_key=f"chat:{user.id}:{payload.client_id or payload.assistant_client_id or uuid.uuid4()}",
+        )
 
     # Attachments arrive pre-processed by /chat/uploads. Their extracted text
     # is embedded into the stored message between FILE markers: the frontend
@@ -4016,6 +4116,81 @@ async def send_chat_message(
 
     if len(session.messages) == 1:
         background_tasks.add_task(rename_chat_session_background, session.id, query_text)
+
+    # Fast path «сохрани прошлый ответ в файл»: LLM-пайплайн не нужен —
+    # находим последний ответ ассистента, отвечаем подтверждением и отдаём
+    # карточки файлов. Файл генерируется при скачивании
+    # (GET /chat/messages/{id}/export), здесь только маркеры + SSE-события.
+    if is_prev_export:
+        _FMT_LABELS = {"pdf": "PDF", "docx": "DOCX", "md": "Markdown", "txt": "TXT"}
+
+        async def export_previous_generator():
+            yield format_sse({"type": "ping"})
+            yield format_sse({"type": "metadata", "model": "Pitchy"})
+            target_msg = None
+            for m in sorted(session.messages, key=lambda m: m.created_at, reverse=True):
+                if m.role == "assistant" and export_service.strip_llm_markup(m.content or ""):
+                    target_msg = m
+                    break
+            if target_msg is None:
+                note = (
+                    "Пока нечего сохранять — в этом чате ещё нет моего ответа. "
+                    "Задайте вопрос, и я смогу собрать ответ в файл."
+                )
+                yield format_sse({"type": "chunk", "content": note})
+                asyncio.create_task(asyncio.to_thread(
+                    save_assistant_message,
+                    session_id=session.id,
+                    content=note,
+                    client_id=payload.assistant_client_id,
+                ))
+                return
+
+            formats = list(export_request.formats)
+            dropped_pdf = False
+            if "pdf" in formats and not export_service.pdf_available():
+                formats = [f for f in formats if f != "pdf"]
+                dropped_pdf = True
+                if not formats:
+                    formats = ["docx"]
+
+            markers: list[str] = []
+            cards: list[tuple[str, str]] = []
+            for fmt in formats:
+                fname = export_service.suggest_filename(session.title, fmt)
+                markers.append(export_service.build_export_marker(fmt, fname, message_id=target_msg.id))
+                cards.append((fmt, fname))
+
+            pretty = ", ".join(_FMT_LABELS.get(f, f.upper()) for f in formats)
+            note = f"Готово — собрал прошлый ответ в {pretty}. Карточка файла ниже."
+            if dropped_pdf:
+                note += " PDF в этой среде временно недоступен, поэтому предложил другой формат."
+            yield format_sse({"type": "chunk", "content": note})
+            for fmt, fname in cards:
+                yield format_sse({
+                    "type": "file",
+                    "format": fmt,
+                    "message_id": target_msg.id,
+                    "name": fname,
+                    "url": f"/chat/messages/{target_msg.id}/export?format={fmt}",
+                })
+            # Маркеры персистятся в подтверждении, чтобы карточки пережили
+            # перезагрузку страницы (их парсит parseExports во фронте).
+            asyncio.create_task(asyncio.to_thread(
+                save_assistant_message,
+                session_id=session.id,
+                content=note + "\n\n" + "\n".join(markers),
+                client_id=payload.assistant_client_id,
+            ))
+
+        return EventSourceResponse(
+            export_previous_generator(),
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     # 2. Generator with Thoughts
     try:
@@ -4384,7 +4559,39 @@ async def send_chat_message(
                 full_response = apology
 
             # Save assistant response in background using asyncio instead of background_tasks
-            if full_response:
+            if full_response and export_request and export_request.target == "current":
+                # «Ответь и собери в файл»: маркеры экспорта должны попасть в
+                # сохранённый контент, а карточкам нужен настоящий DB id —
+                # сохраняем синхронно (доли секунды в самом конце стрима).
+                exp_formats = [
+                    f for f in export_request.formats
+                    if f != "pdf" or export_service.pdf_available()
+                ] or ["docx"]
+                exp_cards = [(f, export_service.suggest_filename(session.title, f)) for f in exp_formats]
+                stored_response = full_response + "\n\n" + "\n".join(
+                    export_service.build_export_marker(f, name) for f, name in exp_cards
+                )
+                try:
+                    new_msg_id = await async_save_assistant_message(
+                        session_id=session.id,
+                        content=stored_response,
+                        thoughts=full_thoughts.strip() if full_thoughts.strip() else None,
+                        client_id=payload.assistant_client_id,
+                        sources=sources if getattr(payload, "use_deep_search", False) else None,
+                    )
+                    message_saved = True
+                    for f, name in exp_cards:
+                        yield format_sse({
+                            "type": "file",
+                            "format": f,
+                            "message_id": new_msg_id,
+                            "name": name,
+                            "url": f"/chat/messages/{new_msg_id}/export?format={f}",
+                        })
+                except Exception as e:
+                    # Rescue-сохранение в finally подхватит ответ без маркеров.
+                    logger.error(f"Export-aware save failed, falling back to rescue save: {e}")
+            elif full_response:
                 message_saved = True
                 asyncio.create_task(
                     asyncio.to_thread(

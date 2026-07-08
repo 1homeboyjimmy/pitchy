@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <link rel="stylesheet" href="pdf.css">
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <header class="doc-header">
+        <div class="brand-row">
+            <span class="wordmark">PITCHY</span>
+            <span class="doc-kind">{% block kind %}Документ{% endblock %}</span>
+        </div>
+        {% block header %}{% endblock %}
+    </header>
+    <main>
+        {% block body %}{% endblock %}
+    </main>
+</body>
+</html>

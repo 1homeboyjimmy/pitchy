@@ -1,0 +1,197 @@
+{% extends "base_pdf.html" %}
+
+{% block kind %}Дорожная карта{% endblock %}
+
+{% block extra_css %}
+<style>
+    .stats-row {
+        display: flex;
+        gap: 5mm;
+        margin-bottom: 3mm;
+    }
+    .stat {
+        flex: 1;
+        border: 0.6pt solid #d9d9df;
+        border-radius: 3pt;
+        padding: 3.5mm 4mm;
+    }
+    .stat-label {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 7pt;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: #8a8a92;
+        margin-bottom: 1.8mm;
+    }
+    .stat-value {
+        font-size: 16pt;
+        font-weight: 700;
+        color: #0d0d10;
+        margin-bottom: 1.8mm;
+    }
+    .bar {
+        height: 2mm;
+        background: #ececf1;
+        border-radius: 1mm;
+    }
+    .bar-fill {
+        height: 2mm;
+        background: #111114;
+        border-radius: 1mm;
+    }
+
+    .checkpoint {
+        margin-top: 7mm;
+        page-break-inside: avoid;
+    }
+    .cp-head {
+        display: flex;
+        align-items: baseline;
+        gap: 3mm;
+        padding-bottom: 1.8mm;
+        border-bottom: 1.4pt solid #111114;
+    }
+    .cp-num {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 9pt;
+        color: #8a8a92;
+    }
+    .cp-title {
+        font-size: 13pt;
+        font-weight: 700;
+        color: #0d0d10;
+    }
+    .cp-fill {
+        margin-left: auto;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 8pt;
+        color: #8a8a92;
+    }
+    .cp-badge {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 6.8pt;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        border-radius: 2pt;
+        padding: 0.8mm 2mm;
+    }
+    .cp-badge-done { background: #111114; color: #ffffff; }
+    .cp-badge-current { border: 0.8pt solid #111114; color: #111114; }
+    .cp-badge-locked { background: #ececf1; color: #8a8a92; }
+
+    .cp-subtitle {
+        margin-top: 1.6mm;
+        font-size: 9pt;
+        color: #6a6a72;
+    }
+    .cp-reward {
+        margin-top: 1mm;
+        font-size: 8.4pt;
+        color: #8a8a92;
+    }
+    .cp-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 2.6mm;
+        font-size: 9.4pt;
+    }
+    .cp-table td {
+        border-bottom: 0.5pt solid #e9e9ee;
+        padding: 2.2mm 0;
+        vertical-align: top;
+    }
+    .cp-field-label {
+        width: 34%;
+        padding-right: 5mm !important;
+        color: #6a6a72;
+    }
+    .cp-field-value { color: #1a1a1e; }
+    .cp-field-value ul {
+        margin: 0;
+        padding-left: 4.5mm;
+    }
+    .cp-field-value li { margin-bottom: 0.8mm; }
+    .cp-empty { color: #b3b3bc; }
+
+    .analysis {
+        margin-top: 10mm;
+        padding-top: 4mm;
+        border-top: 2.2pt solid #111114;
+    }
+    .analysis-head {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 7.5pt;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: #8a8a92;
+        margin-bottom: 3mm;
+    }
+</style>
+{% endblock %}
+
+{% block header %}
+<div class="doc-title">{{ project_name }}</div>
+<div class="doc-meta">{{ date }} · {{ completed }} из {{ total }} этапов пройдено</div>
+{% endblock %}
+
+{% block body %}
+<div class="stats-row">
+    <div class="stat">
+        <div class="stat-label">Индекс готовности</div>
+        <div class="stat-value">{{ readiness }}%</div>
+        <div class="bar"><div class="bar-fill" style="width: {{ readiness }}%"></div></div>
+    </div>
+    <div class="stat">
+        <div class="stat-label">Карта заполнена</div>
+        <div class="stat-value">{{ progress }}%</div>
+        <div class="bar"><div class="bar-fill" style="width: {{ progress }}%"></div></div>
+    </div>
+</div>
+
+{% for cp in checkpoints %}
+<section class="checkpoint">
+    <div class="cp-head">
+        <span class="cp-num">{{ "%02d" | format(loop.index) }}</span>
+        <span class="cp-title">{{ cp.title }}</span>
+        <span class="cp-badge cp-badge-{{ cp.status }}">{{ cp.status_label }}</span>
+        <span class="cp-fill">{{ cp.filled }} / {{ cp.total }}</span>
+    </div>
+    <div class="cp-subtitle">{{ cp.subtitle }}</div>
+    <div class="cp-reward">→ {{ cp.reward }}</div>
+    <table class="cp-table">
+        {% for f in cp.fields %}
+        <tr>
+            <td class="cp-field-label">{{ f.label }}</td>
+            <td class="cp-field-value">
+                {% if f.list_items %}
+                <ul>{% for it in f.list_items %}<li>{{ it }}</li>{% endfor %}</ul>
+                {% elif f.filled and f.text %}{{ f.text }}
+                {% else %}<span class="cp-empty">— не заполнено</span>{% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+</section>
+{% endfor %}
+
+{% if analysis_html %}
+<section class="analysis">
+    <div class="analysis-head">Полная аналитика стартапа{% if analysis_date %} · {{ analysis_date }}{% endif %}</div>
+    <div class="prose">{{ analysis_html | safe }}</div>
+</section>
+{% endif %}
+
+{% if sources %}
+<section class="sources">
+    <div class="sources-label">Источники</div>
+    <ol>
+        {% for src in sources %}
+        <li>
+            {{ src.title or src.url }}
+            {% if src.url and src.title %}<br><span class="src-url">{{ src.url }}</span>{% endif %}
+        </li>
+        {% endfor %}
+    </ol>
+</section>
+{% endif %}
+{% endblock %}

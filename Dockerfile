@@ -26,9 +26,18 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# Install runtime dependencies (curl for healthchecks)
+# Install runtime dependencies: curl for healthchecks; pango + fonts for
+# WeasyPrint PDF export (export_service.py). Brand fonts and monochrome
+# emoji are bundled in assets/fonts/ via @font-face (WeasyPrint can't render
+# the CBDT-bitmap color emoji font from apt); DejaVu covers fallback glyphs.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    libpango-1.0-0 \
+    libpangoft2-1.0-0 \
+    libharfbuzz-subset0 \
+    fontconfig \
+    shared-mime-info \
+    fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 # Install packages from wheels collected in the builder stage

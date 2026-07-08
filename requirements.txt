@@ -40,7 +40,15 @@ instructor
 pandas
 plotly
 asyncpg
+# Async sqlite driver: db_async.py на тестовой sqlite-БД (conftest.py)
+aiosqlite
 cachetools
 bcrypt
 sse-starlette>=2.0.0
 aioimaplib>=1.0.1
+# Export of chat answers / roadmap to documents (export_service.py).
+# WeasyPrint needs native pango libs — installed in the Dockerfile runner
+# stage; on machines without them PDF degrades gracefully (pdf_available()).
+weasyprint>=63
+markdown>=3.6
+jinja2>=3.1

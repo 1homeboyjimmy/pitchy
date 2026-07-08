@@ -20,21 +20,24 @@ depends_on = None
 
 
 def upgrade():
-    op.alter_column(
-        'rag_logs',
-        'source_url',
-        existing_type=sa.String(length=500),
-        type_=sa.Text(),
-        existing_nullable=False,
-    )
+    # batch_alter_table: на postgres это обычный ALTER, на sqlite (тестовая
+    # БД conftest) — пересоздание таблицы; голый op.alter_column падал там
+    # с "near ALTER: syntax error" и валил весь тестовый прогон.
+    with op.batch_alter_table('rag_logs') as batch_op:
+        batch_op.alter_column(
+            'source_url',
+            existing_type=sa.String(length=500),
+            type_=sa.Text(),
+            existing_nullable=False,
+        )
 
 
 def downgrade():
     # Lossy: rows with source_url > 500 chars will be truncated.
-    op.alter_column(
-        'rag_logs',
-        'source_url',
-        existing_type=sa.Text(),
-        type_=sa.String(length=500),
-        existing_nullable=False,
-    )
+    with op.batch_alter_table('rag_logs') as batch_op:
+        batch_op.alter_column(
+            'source_url',
+            existing_type=sa.Text(),
+            type_=sa.String(length=500),
+            existing_nullable=False,
+        )

@@ -23,8 +23,10 @@ def test_register_and_login():
     }
 
     with TestClient(main.app) as client:
-        # Mock random.randint to returning 5 so code is '555555'
-        with mock.patch('main.random.randint', return_value=5):
+        # Mock random.randint to returning 5 so code is '555555'.
+        # Код генерирует routers/auth.py (после выноса auth из main) —
+        # мок main.random сюда больше не дотягивается.
+        with mock.patch('routers.auth.random.randint', return_value=5):
             res = client.post("/auth/register", json=payload)
             # If email exists from previous failed run, strict check might fail.
             # But with uuid it should be fine.
@@ -51,10 +53,13 @@ def test_register_and_login():
             assert "access_token" in login.json()
             token = login.json()["access_token"]
 
-            # Verify /me endpoint (POST) for frontend compatibility
+            # Verify /me endpoint (POST) for frontend compatibility.
+            # Auth — только httpOnly-cookie (Bearer-фолбэк убран в auth.py);
+            # кука логина имеет domain=.pitchy.pro и не попадает в jar
+            # TestClient, поэтому передаём её явным заголовком.
             me_res = client.post(
                 "/me",
-                headers={"Authorization": f"Bearer {token}"}
+                headers={"Cookie": f"access_token={token}"}
             )
             assert me_res.status_code == 200
             me_data = me_res.json()

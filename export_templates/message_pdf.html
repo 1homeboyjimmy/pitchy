@@ -1,0 +1,26 @@
+{% extends "base_pdf.html" %}
+
+{% block kind %}Ответ ассистента{% endblock %}
+
+{% block header %}
+<div class="doc-title">{{ title }}</div>
+<div class="doc-meta">{{ date }} · Сгенерировано в Pitchy</div>
+{% endblock %}
+
+{% block body %}
+<div class="prose">{{ body_html | safe }}</div>
+
+{% if sources %}
+<section class="sources">
+    <div class="sources-label">Источники</div>
+    <ol>
+        {% for src in sources %}
+        <li>
+            {{ src.title or src.url }}
+            {% if src.url and src.title %}<br><span class="src-url">{{ src.url }}</span>{% endif %}
+        </li>
+        {% endfor %}
+    </ol>
+</section>
+{% endif %}
+{% endblock %}

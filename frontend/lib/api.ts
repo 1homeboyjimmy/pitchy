@@ -453,6 +453,74 @@ export async function* sendChatMessageStream(
   }
 }
 
+export type ExportFormat = "pdf" | "docx" | "md" | "txt";
+
+export const EXPORT_FORMAT_LABELS: Record<ExportFormat, string> = {
+  pdf: "PDF",
+  docx: "Word (DOCX)",
+  md: "Markdown",
+  txt: "Текст (TXT)",
+};
+
+// Filename из Content-Disposition: сперва RFC 5987 filename* (кириллица),
+// затем обычный filename=, иначе фолбэк.
+function filenameFromDisposition(header: string | null, fallback: string): string {
+  if (!header) return fallback;
+  const star = header.match(/filename\*=UTF-8''([^;]+)/i);
+  if (star) {
+    try {
+      return decodeURIComponent(star[1]);
+    } catch {
+      /* игнорируем битую кодировку — ниже возьмём filename= */
+    }
+  }
+  const plain = header.match(/filename="([^"]+)"/i);
+  return plain ? plain[1] : fallback;
+}
+
+async function downloadFileResponse(path: string, token: string, fallbackName: string): Promise<void> {
+  const headers: Record<string, string> = {};
+  if (token && token !== COOKIE_SESSION_MARKER) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  headers["x-pitchy-api"] = "1";
+  const res = await fetch(`${API_BASE}${path}`, { headers, credentials: "include" });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const detail = typeof err?.detail === "string" ? err.detail : "Не удалось скачать файл";
+    throw new Error(translateAuthDetail(detail));
+  }
+  const blob = await res.blob();
+  const filename = filenameFromDisposition(res.headers.get("content-disposition"), fallbackName);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// Скачивает ответ ассистента как документ. Файл генерируется на бэкенде
+// на лету из сохранённого сообщения — см. GET /chat/messages/{id}/export.
+export async function downloadMessageExport(messageId: number, format: ExportFormat, token: string): Promise<void> {
+  await downloadFileResponse(
+    `/chat/messages/${messageId}/export?format=${format}`,
+    token,
+    `pitchy-otvet.${format}`,
+  );
+}
+
+// PDF дорожной карты проекта (GET /projects/{id}/roadmap/export.pdf).
+export async function downloadRoadmapPdf(projectId: number, token: string): Promise<void> {
+  await downloadFileResponse(
+    `/projects/${projectId}/roadmap/export.pdf`,
+    token,
+    "pitchy-roadmap.pdf",
+  );
+}
+
 export async function sendChatMessageFeedback(sessionId: number, messageId: number, feedback: number, token: string): Promise<{ status: string; feedback: number }> {
   return postAuthJson<{ status: string; feedback: number }>(`/chat/sessions/${sessionId}/messages/${messageId}/feedback`, { feedback }, token);
 }

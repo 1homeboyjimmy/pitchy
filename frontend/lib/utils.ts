@@ -58,6 +58,31 @@ export function parseAttachments(content: string): { text: string; attachments: 
     return { text, attachments };
 }
 
+export type MessageExport = { format: string; message_id?: number; name: string };
+
+// Маркеры файлов-экспортов, встроенные бэкендом в ответ ассистента.
+// Формат синхронизирован с build_export_marker в export_service.py.
+// message_id есть только когда маркер указывает на ДРУГОЕ сообщение
+// (экспорт прошлого ответа); без него берётся id сообщения-носителя.
+const EXPORT_MARKER_RE = /<<<EXPORT format="([a-z]+)"(?: message_id="(\d+)")? name="([^"]*)">>>/g;
+
+/**
+ * Splits an assistant message into visible text and export file cards.
+ */
+export function parseExports(content: string): { text: string; exports: MessageExport[] } {
+    if (!content || !content.includes("<<<EXPORT ")) {
+        return { text: content, exports: [] };
+    }
+    const exports: MessageExport[] = [];
+    const text = content
+        .replace(EXPORT_MARKER_RE, (_match, format: string, mid: string | undefined, name: string) => {
+            exports.push({ format, message_id: mid ? Number(mid) : undefined, name });
+            return "";
+        })
+        .trim();
+    return { text, exports };
+}
+
 /**
  * Combines multiple class names into a single string.
  */

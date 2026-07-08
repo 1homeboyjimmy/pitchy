@@ -13,4 +13,6 @@ node_modules/
 model_data/
 .git/
 .github/
+.claude/
+scratch/
 authorized_key*.json

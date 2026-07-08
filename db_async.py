@@ -22,6 +22,10 @@ if "postgresql+asyncpg://" not in DATABASE_URL:
         # Handle cases like postgresql+psycopg2:// -> postgresql+asyncpg://
         import re
         DATABASE_URL = re.sub(r"postgresql\+[^:]+://", "postgresql+asyncpg://", DATABASE_URL, count=1)
+    elif DATABASE_URL.startswith("sqlite:///"):
+        # Tests (conftest.py) pass the sync sqlite scheme — the sync engine in
+        # db.py needs it, the async engine needs the aiosqlite driver.
+        DATABASE_URL = DATABASE_URL.replace("sqlite:///", "sqlite+aiosqlite:///", 1)
 
 # Async engine setup with connection pooling for PostgreSQL
 engine_kwargs = {"pool_pre_ping": True}

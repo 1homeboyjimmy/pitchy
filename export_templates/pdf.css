@@ -1,0 +1,300 @@
+/* Shared WeasyPrint stylesheet for Pitchy document exports.
+   Editorial light theme: echoes the product's black/white identity
+   (uppercase letter-spaced labels, hairline rules, dark table headers). */
+
+@font-face {
+    font-family: "Inter";
+    font-weight: 400;
+    src: url("../assets/fonts/Inter-Regular.otf");
+}
+@font-face {
+    font-family: "Inter";
+    font-weight: 600;
+    src: url("../assets/fonts/Inter-SemiBold.otf");
+}
+@font-face {
+    font-family: "Inter";
+    font-weight: 700;
+    src: url("../assets/fonts/Inter-Bold.otf");
+}
+@font-face {
+    font-family: "JetBrains Mono";
+    font-weight: 400;
+    src: url("../assets/fonts/JetBrainsMono-Regular.ttf");
+}
+/* Monochrome outline emoji: WeasyPrint can't render Debian's CBDT bitmap
+   NotoColorEmoji, and B/W glyphs fit the editorial style anyway. */
+@font-face {
+    font-family: "Noto Emoji";
+    font-weight: 400;
+    src: url("../assets/fonts/NotoEmoji-Regular.ttf");
+}
+
+@page {
+    size: A4;
+    margin: 20mm 16mm 22mm 16mm;
+
+    @bottom-left {
+        content: "Pitchy · pitchy.pro";
+        font-family: "JetBrains Mono", "DejaVu Sans Mono", monospace;
+        font-size: 7pt;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #9a9aa2;
+    }
+    @bottom-right {
+        content: "стр. " counter(page) " из " counter(pages);
+        font-family: "JetBrains Mono", "DejaVu Sans Mono", monospace;
+        font-size: 7pt;
+        letter-spacing: 0.08em;
+        color: #9a9aa2;
+    }
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: "Inter", "Noto Emoji", "DejaVu Sans", sans-serif;
+    font-size: 10pt;
+    line-height: 1.55;
+    color: #1a1a1e;
+}
+
+/* WeasyPrint renders ::marker with its own default font unless told
+   otherwise — ordered-list digits silently disappear without this rule. */
+li::marker {
+    font-family: "Inter", "DejaVu Sans", sans-serif;
+    color: #1a1a1e;
+}
+
+/* ---- Document header ------------------------------------------------- */
+
+.doc-header {
+    margin-bottom: 9mm;
+}
+
+.brand-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding-bottom: 3.5mm;
+    border-bottom: 2.2pt solid #111114;
+    margin-bottom: 6mm;
+}
+
+.wordmark {
+    font-weight: 700;
+    font-size: 12.5pt;
+    letter-spacing: 0.34em;
+    color: #111114;
+}
+
+.doc-kind {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 7.5pt;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: #8a8a92;
+}
+
+.doc-title {
+    font-size: 21pt;
+    font-weight: 700;
+    line-height: 1.22;
+    letter-spacing: -0.015em;
+    color: #0d0d10;
+    margin-bottom: 2.5mm;
+}
+
+.doc-meta {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 8pt;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #8a8a92;
+}
+
+/* ---- Body typography -------------------------------------------------- */
+
+.prose p {
+    margin: 0 0 3.2mm 0;
+}
+
+.prose h1,
+.prose h2 {
+    font-size: 14pt;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: #0d0d10;
+    margin: 8mm 0 3mm 0;
+    padding-bottom: 1.6mm;
+    border-bottom: 0.6pt solid #d9d9df;
+    page-break-after: avoid;
+}
+
+.prose h3 {
+    font-size: 11.5pt;
+    font-weight: 600;
+    color: #0d0d10;
+    margin: 6mm 0 2.2mm 0;
+    page-break-after: avoid;
+}
+
+.prose h4,
+.prose h5,
+.prose h6 {
+    font-size: 10pt;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #3c3c44;
+    margin: 5mm 0 2mm 0;
+    page-break-after: avoid;
+}
+
+.prose ul,
+.prose ol {
+    margin: 0 0 3.5mm 0;
+    padding-left: 5.5mm;
+}
+
+.prose li {
+    margin-bottom: 1.4mm;
+}
+
+.prose li > ul,
+.prose li > ol {
+    margin-top: 1.4mm;
+    margin-bottom: 0;
+}
+
+.prose a {
+    color: #111114;
+    text-decoration: underline;
+    text-decoration-color: #b9b9c2;
+    overflow-wrap: anywhere;
+}
+
+.prose strong {
+    font-weight: 600;
+    color: #0d0d10;
+}
+
+.prose blockquote {
+    border-left: 2pt solid #111114;
+    padding: 1mm 0 1mm 4mm;
+    margin: 0 0 3.5mm 0;
+    color: #4a4a52;
+}
+
+.prose hr {
+    border: none;
+    border-top: 0.6pt solid #d9d9df;
+    margin: 5mm 0;
+}
+
+.prose code {
+    font-family: "JetBrains Mono", "DejaVu Sans Mono", monospace;
+    font-size: 8.6pt;
+    background: #f3f3f6;
+    border-radius: 2pt;
+    padding: 0.4mm 1.2mm;
+}
+
+.prose pre {
+    background: #f3f3f6;
+    border: 0.5pt solid #e3e3e9;
+    border-radius: 3pt;
+    padding: 3mm 3.5mm;
+    margin: 0 0 3.5mm 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.prose pre code {
+    background: none;
+    padding: 0;
+    font-size: 8.3pt;
+    line-height: 1.5;
+}
+
+/* ---- Tables ------------------------------------------------------------
+   Mirrors the chat UI table style: dark uppercase header, hairline rows. */
+
+.prose table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 4mm 0 5mm 0;
+    page-break-inside: auto;
+    font-size: 9pt;
+}
+
+.prose thead {
+    display: table-header-group; /* repeat header on page breaks */
+}
+
+.prose tr {
+    page-break-inside: avoid;
+}
+
+.prose th {
+    background: #111114;
+    color: #ffffff;
+    font-size: 7.4pt;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    text-align: left;
+    padding: 2.6mm 3mm;
+}
+
+.prose td {
+    border-bottom: 0.5pt solid #e3e3e9;
+    padding: 2.4mm 3mm;
+    vertical-align: top;
+    color: #2a2a30;
+}
+
+.prose tbody tr:nth-child(even) td {
+    background: #f7f7f9;
+}
+
+/* ---- Sources ----------------------------------------------------------- */
+
+.sources {
+    margin-top: 8mm;
+    padding-top: 4mm;
+    border-top: 2.2pt solid #111114;
+    page-break-inside: avoid;
+}
+
+.sources-label {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 7.5pt;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: #8a8a92;
+    margin-bottom: 2.5mm;
+}
+
+.sources ol {
+    padding-left: 5mm;
+}
+
+.sources li {
+    font-size: 8.6pt;
+    margin-bottom: 1.6mm;
+    color: #2a2a30;
+}
+
+.sources .src-url {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 7.4pt;
+    color: #8a8a92;
+    overflow-wrap: anywhere;
+    word-break: break-all;
+}
