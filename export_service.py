@@ -598,7 +598,31 @@ formats: перечисли запрошенные форматы строкам
 - «скачал pdf с презентацией, посмотри» → is_export=false"""
 
 
-async def classify_export_intent(query: str, timeout: float = 3.5):
+def _heuristic_export_intent(query: str):
+    """Фолбэк, когда LLM-классификатор недоступен/таймаутит. detect_export_request
+    уже подтвердил намерение экспорта, поэтому формат и target определяем по
+    ключевым словам, а не отбрасываем запрос целиком (иначе фича молча отваливается
+    при каждом таймауте SLM)."""
+    from schemas.llm import ExportIntent
+
+    q = query.lower()
+    fmts: list[str] = []
+    if "pdf" in q or "пдф" in q:
+        fmts.append("pdf")
+    if "docx" in q or "word" in q or "ворд" in q:
+        fmts.append("docx")
+    if "markdown" in q or "маркдаун" in q or re.search(r"\bmd\b", q):
+        fmts.append("md")
+    if "txt" in q or re.search(r"\bтекстов", q):
+        fmts.append("txt")
+    fmts = [f for f in dict.fromkeys(fmts) if f in EXPORT_FORMATS] or ["pdf"]
+    # «сохрани/оформи прошлый (этот, предыдущий, последний) ответ» → previous, иначе current.
+    prev_markers = ("сохран", "прошл", "предыдущ", "последн", "этот ответ", "твой ответ", "ответ выше")
+    target = "previous" if any(m in q for m in prev_markers) else "current"
+    return ExportIntent(is_export=True, target=target, formats=fmts)
+
+
+async def classify_export_intent(query: str, timeout: float = 5.0):
     """SLM precision pass (instructor + Qwen, same stack as dispatch_intent in
     llm_client.py) after detect_export_request(). Returns a normalized
     ExportIntent or None — None always degrades to the regular chat flow."""
@@ -623,8 +647,10 @@ async def classify_export_intent(query: str, timeout: float = 3.5):
             timeout=timeout,
         )
     except Exception as e:
-        logger.warning(f"Export intent classification failed: {type(e).__name__}: {e}")
-        return None
+        # detect_export_request уже подтвердил экспорт — при таймауте/сбое LLM не
+        # отбрасываем запрос, а определяем формат/target эвристикой.
+        logger.warning(f"Export intent classification failed, using heuristic: {type(e).__name__}: {e}")
+        return _heuristic_export_intent(query)
     if not res.is_export:
         return None
     formats = [f.lower().strip() for f in (res.formats or [])]

@@ -4259,7 +4259,7 @@ async def send_chat_message(
 
             # Attachments make the answer depend on file contents — the cache
             # keyed by question text alone would return misleading hits.
-            if not (use_deep_search_flag or use_research_flag or is_pres_request or attachments):
+            if not (use_deep_search_flag or use_research_flag or is_pres_request or attachments or export_request):
                 try:
                     from ops.cache.semantic_cache import semantic_cache as _sc
                     cached = await _sc.get(query=query_text, project_id=str(session.id))
@@ -4627,7 +4627,7 @@ async def send_chat_message(
             # Cache only successful, non-research, non-presentation
             # responses so future identical queries get the fast path.
             # =======================================================
-            if full_response and not (use_deep_search_flag or use_research_flag or is_pres_request or attachments):
+            if full_response and not (use_deep_search_flag or use_research_flag or is_pres_request or attachments or export_request):
                 try:
                     from ops.cache.semantic_cache import semantic_cache as _sc
                     asyncio.create_task(_sc.set(
