@@ -3618,6 +3618,28 @@ def _is_default_chat_title(title: str | None) -> bool:
     return (title or "").strip().lower() in _DEFAULT_CHAT_TITLES or not (title or "").strip()
 
 
+def _build_chat_title_context(messages, fallback: str) -> str:
+    """Дайджест реплик пользователя для генерации названия чата.
+
+    Первая реплика задаёт исходную тему, последние — к чему разговор пришёл:
+    старый чат с дефолтным названием получает заголовок по актуальной теме,
+    а не по давнему первому сообщению. Реплики разделяются '---' — промпт в
+    slm_dispatcher.generate_chat_title опирается на этот формат.
+    """
+    import export_service
+    user_texts = []
+    for m in sorted(messages, key=lambda m: (m.created_at, m.id)):
+        if m.role != "user":
+            continue
+        cleaned = export_service.strip_llm_markup(m.content or "")
+        if cleaned:
+            user_texts.append(cleaned)
+    if not user_texts:
+        return fallback
+    picked = user_texts[:1] + user_texts[1:][-2:]
+    return "\n---\n".join(t[:400] for t in picked)
+
+
 async def rename_chat_session_background(session_id: int, initial_message: str):
     try:
         title = await slm_dispatcher.generate_chat_title(initial_message)
@@ -4130,18 +4152,12 @@ async def send_chat_message(
     await db.refresh(session)
 
     # Авто-название по контексту (как в Claude): пока у чата плейсхолдер,
-    # генерируем заголовок из первой реплики пользователя. Проверка по названию,
+    # генерируем заголовок из реплик пользователя. Проверка по названию,
     # а не по счётчику сообщений: сессии из дашборда создаются сразу с
     # приветствием ассистента, поэтому «len == 1» здесь никогда не выполнялся;
     # заодно старые чаты с дефолтным именем получают название при новой реплике.
     if _is_default_chat_title(session.title):
-        title_context = query_text
-        for m in sorted(session.messages, key=lambda m: (m.created_at, m.id)):
-            if m.role == "user":
-                cleaned = export_service.strip_llm_markup(m.content or "")
-                if cleaned:
-                    title_context = cleaned
-                break
+        title_context = _build_chat_title_context(session.messages, fallback=query_text)
         background_tasks.add_task(rename_chat_session_background, session.id, title_context)
 
     # Fast path «сохрани прошлый ответ в файл»: LLM-пайплайн не нужен —
