@@ -4517,7 +4517,20 @@ async def send_chat_message(
                 )
 
                 yield _emit_thought("Готов. Формулирую развёрнутый ответ на основе собранных данных.\n")
-                raw_gen = stream_makura(SYSTEM_CHAT_PROMPT, user_prompt)
+                # При экспорте (target=current) сообщаем модели, что файл создаётся
+                # автоматически — иначе она дописывает «скопируйте в Word / Ctrl+P».
+                _export_system = SYSTEM_CHAT_PROMPT
+                if export_request and export_request.target == "current":
+                    _fmts = ", ".join(f.upper() for f in export_request.formats)
+                    _export_system = SYSTEM_CHAT_PROMPT + (
+                        f"\n\n[ЭКСПОРТ] Пользователь запросил документ ({_fmts}). Твой ответ будет "
+                        "автоматически преобразован в файл и прикреплён карточкой для скачивания под "
+                        "ответом — файл уже создаётся системой. Поэтому НЕ пиши, что не можешь создавать "
+                        "файлы, и НЕ добавляй инструкций, как сохранить/конвертировать вручную (Ctrl+P, "
+                        "Word, Google Docs и т.п.). Просто выдай полный, качественный, структурированный "
+                        "документ по контексту проекта, без служебных приписок про сохранение."
+                    )
+                raw_gen = stream_makura(_export_system, user_prompt)
 
                 async for sse_item in parse_thought_generator(raw_gen):
                     # sse_item is a dict from format_sse: {"event": "...", "data": "JSON_STRING"}
