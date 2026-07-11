@@ -207,13 +207,28 @@ class SLMClient:
 
     @observe(name="generate_chat_title")
     async def generate_chat_title(self, first_message: str) -> str:
-        """Generates a concise 2-4 word title for the chat."""
+        """Короткое название чата по первой реплике — как в Claude/ChatGPT.
+
+        Возвращает "" при сбое SLM: вызывающий код в этом случае оставляет
+        текущее название вместо бессмысленного плейсхолдера.
+        """
         system_prompt = (
-            "Generate a short (2-4 words) Russian title for this chat based on the first message.\n"
-            "Return JSON: {\"title\": \"...\"}"
+            "Придумай короткое название чата по первому сообщению пользователя — "
+            "как автоназвания диалогов в Claude или ChatGPT.\n"
+            "Правила:\n"
+            "- 2-5 слов: конкретная тема или задача из сообщения, а не общие слова\n"
+            "- тот же язык, что и в сообщении (обычно русский)\n"
+            "- без кавычек, эмодзи и точки в конце\n"
+            "- не начинай со слов «чат», «диалог», «обсуждение», «вопрос», «помощь»\n"
+            "Примеры: «Анализ рынка EdTech», «Юнит-экономика кофейни», «Питч для инвесторов».\n"
+            "Верни JSON: {\"title\": \"...\"}"
         )
-        data = await self._call_json(system_prompt, f"Message: {first_message}")
-        return data.get("title", "Новый диалог")
+        data = await self._call_json(system_prompt, f"Первое сообщение: {first_message[:1500]}")
+        raw = data.get("title")
+        title = raw.strip() if isinstance(raw, str) else ""
+        # SLM иногда оборачивает название в кавычки или добавляет точку.
+        title = title.strip("\"'«»").rstrip(".").strip()
+        return title[:80]
 
     @observe(name="classify_chunks_batch")
     async def classify_chunks_batch(self, chunks: List[str]) -> List[str]:

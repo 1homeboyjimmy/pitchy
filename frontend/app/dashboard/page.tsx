@@ -206,6 +206,15 @@ function DashboardContent() {
     }
   };
 
+  // Бэкенд фоном переименовывает чат по контексту первой реплики (как в
+  // Claude) — когда ChatInterface подтягивает обновлённую сессию, синхронизируем
+  // название и в списке «Последние сессии». Детальный ответ не содержит
+  // project_id, поэтому остальные поля карточки не трогаем.
+  const handleSessionUpdate = (updated: ChatSessionDetailResponse) => {
+    setActiveSession(updated);
+    setSessions((prev) => prev.map((s) => (s.id === updated.id ? { ...s, title: updated.title } : s)));
+  };
+
   const handleSelectSession = async (sessionId: number) => {
     if (activeSession?.id === sessionId) {
       setActiveTab("chat");
@@ -502,7 +511,7 @@ function DashboardContent() {
               {activeSession ? (
                 <ChatInterface
                   session={activeSession}
-                  onUpdate={setActiveSession}
+                  onUpdate={handleSessionUpdate}
                   isSidebarCollapsed={isSidebarCollapsed}
                   onImportModalChange={setIsContextImportOpen}
                   canUseDeepSearch={usage?.limits.can_use_deep_search ?? quotas.canUseDeepSearch}

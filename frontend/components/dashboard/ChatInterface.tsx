@@ -19,6 +19,16 @@ import { UpgradeModal } from "@/components/chat/UpgradeModal";
 import { notifyError } from "@/lib/ui";
 import { stripThoughts, hostFromUrl, parseAttachments, parseExports, type MessageAttachment, type MessageExport } from "@/lib/utils";
 
+// Плейсхолдеры названий чата — держать в синхроне с _DEFAULT_CHAT_TITLES
+// в main.py. Пока сессия так называется, бэкенд генерирует ей название по
+// контексту первой реплики (фоновая задача после отправки сообщения).
+const DEFAULT_CHAT_TITLES = new Set(["чат с аналитиком", "новый чат", "новый диалог", "new chat", "чат"]);
+
+export function isDefaultChatTitle(title?: string | null): boolean {
+    const t = (title || "").trim().toLowerCase();
+    return !t || DEFAULT_CHAT_TITLES.has(t);
+}
+
 function CollapsibleUserBubble({ content, attachmentsMeta }: { content: string; attachmentsMeta?: MessageAttachment[] }) {
     const [isExpanded, setIsExpanded] = useState(false);
     const [isOverflowing, setIsOverflowing] = useState(false);
@@ -152,6 +162,36 @@ export function ChatInterface({
     const inputBarRef = useRef<HTMLDivElement>(null);
     const [inputBarHeight, setInputBarHeight] = useState(280);
     const abortControllerRef = useRef<AbortController | null>(null);
+
+    // Авто-название чата генерирует фоновая задача на бэкенде — к моменту
+    // reconcile-а после стрима оно может быть ещё не готово. Пока у сессии
+    // плейсхолдер, добираем название отложенными запросами, чтобы список
+    // чатов обновился без перезагрузки страницы.
+    const sessionIdRef = useRef(session.id);
+    useEffect(() => { sessionIdRef.current = session.id; }, [session.id]);
+    const titleRefreshTimer = useRef<NodeJS.Timeout | null>(null);
+    useEffect(() => () => {
+        if (titleRefreshTimer.current) clearTimeout(titleRefreshTimer.current);
+    }, []);
+
+    const scheduleTitleRefresh = useCallback((sessionId: number, token: string, attempt = 0) => {
+        if (attempt >= 3) return;
+        if (titleRefreshTimer.current) clearTimeout(titleRefreshTimer.current);
+        titleRefreshTimer.current = setTimeout(async () => {
+            try {
+                const { getChatSession } = await import("@/lib/api");
+                const fresh = await getChatSession(sessionId, token);
+                if (sessionIdRef.current !== sessionId) return; // чат переключили
+                if (isDefaultChatTitle(fresh.title)) {
+                    scheduleTitleRefresh(sessionId, token, attempt + 1);
+                } else {
+                    onUpdate(fresh);
+                }
+            } catch {
+                // фоновое обновление названия — ошибку пользователю не показываем
+            }
+        }, 2500);
+    }, [onUpdate]);
 
     // Presentation state
     const [presentationSlides, setPresentationSlides] = useState<PresentationSlide[] | null>(null);
@@ -400,6 +440,17 @@ export function ChatInterface({
         if (!isLoading && messages.length > 0 && lastUserMessageKeyRef.current === null) {
             scrollToBottom(true);
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [session.id]);
+
+    useEffect(() => {
+        // Чат, созданный с initial_message (интент с лендинга), получает
+        // авто-название фоном — при открытии с плейсхолдером добираем его.
+        // Пустые чаты (только приветствие) не опрашиваем: rename ещё не запущен.
+        const hasUserMessage = (session.messages || []).some((m) => m.role === "user");
+        if (!hasUserMessage || !isDefaultChatTitle(session.title)) return;
+        const token = getToken();
+        if (token) scheduleTitleRefresh(session.id, token);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [session.id]);
 
@@ -711,6 +762,9 @@ export function ChatInterface({
             const updatedSession = await getChatSession(session.id, token);
             onUpdate(updatedSession);
             setMessages((prev) => mergeMessages(prev, updatedSession.messages || []));
+            if (isDefaultChatTitle(updatedSession.title)) {
+                scheduleTitleRefresh(session.id, token);
+            }
 
         } catch (error) {
             console.error(error);

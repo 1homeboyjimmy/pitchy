@@ -3608,16 +3608,31 @@ async def create_chat_session(
         messages=messages_response,
     )
 
+# Плейсхолдеры, которые фронтенд/бэкенд ставят при создании чата. Пока у
+# сессии такое название, её можно безопасно переименовывать автоматически.
+# Держать в синхроне с DEFAULT_CHAT_TITLES в ChatInterface.tsx.
+_DEFAULT_CHAT_TITLES = {"чат с аналитиком", "новый чат", "новый диалог", "new chat", "чат"}
+
+
+def _is_default_chat_title(title: str | None) -> bool:
+    return (title or "").strip().lower() in _DEFAULT_CHAT_TITLES or not (title or "").strip()
+
+
 async def rename_chat_session_background(session_id: int, initial_message: str):
     try:
         title = await slm_dispatcher.generate_chat_title(initial_message)
+        if not title:
+            # SLM не ответил — оставляем текущее название, следующая реплика
+            # пользователя запустит генерацию повторно.
+            return
         logger.info(f"Generated title '{title}' for session {session_id}")
-        
+
         from db_async import AsyncSessionLocal
         async with AsyncSessionLocal() as db:
             res = await db.execute(select(ChatSession).where(ChatSession.id == session_id))
             session = res.scalar_one_or_none()
-            if session:
+            # Название, поставленное пользователем вручную, не перетираем.
+            if session and _is_default_chat_title(session.title):
                 session.title = title
                 await db.commit()
     except Exception as e:
@@ -4114,8 +4129,20 @@ async def send_chat_message(
     await db.commit()
     await db.refresh(session)
 
-    if len(session.messages) == 1:
-        background_tasks.add_task(rename_chat_session_background, session.id, query_text)
+    # Авто-название по контексту (как в Claude): пока у чата плейсхолдер,
+    # генерируем заголовок из первой реплики пользователя. Проверка по названию,
+    # а не по счётчику сообщений: сессии из дашборда создаются сразу с
+    # приветствием ассистента, поэтому «len == 1» здесь никогда не выполнялся;
+    # заодно старые чаты с дефолтным именем получают название при новой реплике.
+    if _is_default_chat_title(session.title):
+        title_context = query_text
+        for m in sorted(session.messages, key=lambda m: (m.created_at, m.id)):
+            if m.role == "user":
+                cleaned = export_service.strip_llm_markup(m.content or "")
+                if cleaned:
+                    title_context = cleaned
+                break
+        background_tasks.add_task(rename_chat_session_background, session.id, title_context)
 
     # Fast path «сохрани прошлый ответ в файл»: LLM-пайплайн не нужен —
     # находим последний ответ ассистента, отвечаем подтверждением и отдаём
