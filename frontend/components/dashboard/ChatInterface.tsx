@@ -974,7 +974,7 @@ export function ChatInterface({
                                             </div>
                                         )}
 
-                                        <div className="flex items-center justify-between mt-8 pt-8 border-t border-white/5 w-full opacity-0 group-hover/content:opacity-100 transition-all duration-500">
+                                        <div className="flex items-center justify-between mt-8 pt-8 border-t border-white/5 w-full transition-all duration-500">
                                             <div className="flex items-center gap-3">
                                                 <CopyButton
                                                     text={parseExports(stripThoughts(msg.content || "")).text}
