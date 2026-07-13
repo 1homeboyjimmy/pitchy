@@ -14,6 +14,17 @@ export function HeroSection() {
         const video = videoRef.current;
         if (!video) return;
 
+        // Уважаем prefers-reduced-motion: не проигрываем видео, оставляем
+        // статичный постер (он всегда виден под видео).
+        const prefersReducedMotion =
+            typeof window !== "undefined" &&
+            window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+        if (prefersReducedMotion) {
+            video.removeAttribute("autoplay");
+            try { video.pause(); } catch {}
+            return;
+        }
+
         let animationFrameId: number;
 
         const checkTime = () => {
@@ -36,10 +47,7 @@ export function HeroSection() {
             video.style.opacity = '0';
             setTimeout(() => {
                 video.currentTime = 0;
-                const playPromise = video.play();
-                if (playPromise !== undefined) {
-                    playPromise.catch((error: unknown) => console.log("Auto-play prevented", error));
-                }
+                video.play().catch(() => {});
                 setTimeout(() => {
                     fadingOutRef.current = false;
                     video.style.opacity = '1';
@@ -47,16 +55,28 @@ export function HeroSection() {
             }, 100);
         };
 
-        const handleLoadedData = () => {
+        // Проявляем видео, как только оно способно показать кадр — НЕ завязываясь
+        // на то, что автоплей реально стартовал. У многих браузеров автоплей
+        // заблокирован (iOS Low Power, data-saver, Brave), но кадр уже загружен;
+        // раньше видео в таком случае оставалось невидимым (чёрным).
+        const reveal = () => {
             video.style.opacity = '1';
+            cancelAnimationFrame(animationFrameId);
             animationFrameId = requestAnimationFrame(checkTime);
         };
 
         video.addEventListener('ended', handleEnded);
-        video.addEventListener('loadeddata', handleLoadedData);
+        video.addEventListener('loadeddata', reveal);
+        video.addEventListener('canplay', reveal);
 
-        if (!video.paused && video.readyState >= 2) {
-            handleLoadedData();
+        // Подтолкнуть автоплей; если заблокирован — кадр всё равно проявится
+        // как статичная картинка (идентична постеру), а не чёрный экран.
+        video.play().catch(() => {});
+
+        // Видео могло забуфериться до запуска эффекта (кэш/тайминг гидрации).
+        // Проявляем сразу, НЕ проверяя !paused — иначе автоплей-блок = чёрный hero.
+        if (video.readyState >= 2) {
+            reveal();
         }
 
         return () => {
@@ -64,21 +84,36 @@ export function HeroSection() {
                 cancelAnimationFrame(animationFrameId);
             }
             video.removeEventListener('ended', handleEnded);
-            video.removeEventListener('loadeddata', handleLoadedData);
+            video.removeEventListener('loadeddata', reveal);
+            video.removeEventListener('canplay', reveal);
         };
     }, []);
 
     return (
         <section className="relative min-h-[115vh] bg-black overflow-hidden flex flex-col justify-between selection:bg-white/20">
-            {/* Background Video Engine */}
-            <video
-                ref={videoRef}
-                autoPlay
-                muted
-                playsInline
-                className="absolute inset-0 w-full h-full object-cover translate-y-[0%] transition-opacity duration-500 opacity-0 pointer-events-none"
-                src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260328_115001_bcdaa3b4-03de-47e7-ad63-ae3e392c32d4.mp4"
-            />
+            {/* Background Video Engine.
+                Статичный постер лежит подложкой и виден ВСЕГДА — поэтому hero
+                никогда не бывает чёрным, пока грузится 20-МБ видео или если
+                автоплей/загрузка заблокированы. Видео плавно проявляется поверх. */}
+            <div className="absolute inset-0 pointer-events-none">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                    src="/hero-poster.jpg"
+                    alt=""
+                    aria-hidden="true"
+                    className="absolute inset-0 w-full h-full object-cover translate-y-[0%]"
+                />
+                <video
+                    ref={videoRef}
+                    autoPlay
+                    muted
+                    playsInline
+                    preload="auto"
+                    poster="/hero-poster.jpg"
+                    className="absolute inset-0 w-full h-full object-cover translate-y-[0%] transition-opacity duration-500 opacity-0"
+                    src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260328_115001_bcdaa3b4-03de-47e7-ad63-ae3e392c32d4.mp4"
+                />
+            </div>
 
             {/* Hero Body */}
             <div className="relative z-10 flex-1 flex flex-col items-center justify-start px-4 w-full max-w-4xl mx-auto text-center pt-[15vh] pb-12">
