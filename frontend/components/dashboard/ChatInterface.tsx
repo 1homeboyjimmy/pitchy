@@ -1162,7 +1162,7 @@ export function ChatInterface({
                                     <ArrowRight className="hidden sm:block w-5 h-5 text-white/10 group-hover:text-white group-hover:translate-x-1 transition-all shrink-0" strokeWidth={1.5} />
                                 </button>
 
-                                <button onClick={() => handleSendMessage("Другой вопрос")} className="flex items-center gap-2 sm:gap-4 p-3 sm:p-4 rounded-2xl sm:rounded-[1.5rem] bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 transition-all duration-500 text-left group hover:border-white/20 hover:shadow-xl hover:shadow-white/5 active:scale-95">
+                                <button onClick={() => handleSendMessage("Другой вопрос", "general")} className="flex items-center gap-2 sm:gap-4 p-3 sm:p-4 rounded-2xl sm:rounded-[1.5rem] bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 transition-all duration-500 text-left group hover:border-white/20 hover:shadow-xl hover:shadow-white/5 active:scale-95">
                                     <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-white/5 flex items-center justify-center text-white shrink-0 group-hover:scale-110 group-hover:bg-white/10 transition-all">
                                         <HelpCircle className="w-4 h-4 sm:w-6 sm:h-6" strokeWidth={1.5} />
                                     </div>
