@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ArrowUpRight, Users, FileText, MessageSquare, Map,
-  Briefcase, BarChart3, UserCheck, Megaphone, Landmark, Rocket, GraduationCap, CheckCircle2, Sparkles
+  Briefcase, BarChart3, UserCheck, Megaphone, Landmark, Rocket, GraduationCap, CheckCircle2, Sparkles, IdCard
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -687,6 +687,71 @@ export default function LandingPage() {
                   </Link>
                 </motion.div>
               ))}
+            </div>
+
+            {/* Project Passport — unified context hub */}
+            <div className="relative mt-4 sm:mt-6">
+              {/* Converging connectors with flowing signals (desktop only) */}
+              <div className="pointer-events-none absolute inset-x-0 top-0 hidden h-[220px] lg:block" aria-hidden="true">
+                <svg viewBox="0 0 1000 220" preserveAspectRatio="none" className="h-full w-full">
+                  {[
+                    { d: "M125,0 C125,120 455,120 470,214", dur: "2.6s", begin: "0s", begin2: "-1.3s" },
+                    { d: "M375,0 C375,132 492,150 492,214", dur: "2.9s", begin: "0.6s", begin2: "-0.85s" },
+                    { d: "M625,0 C625,132 508,150 508,214", dur: "3.1s", begin: "1s", begin2: "-0.55s" },
+                    { d: "M875,0 C875,120 545,120 530,214", dur: "2.7s", begin: "0.3s", begin2: "-1.05s" },
+                  ].map((c, i) => (
+                    <g key={`pp-conn-${i}`}>
+                      <motion.path
+                        d={c.d}
+                        fill="none"
+                        stroke="rgba(255,255,255,0.16)"
+                        strokeWidth={1}
+                        initial={{ pathLength: 0, opacity: 0 }}
+                        whileInView={{ pathLength: 1, opacity: 1 }}
+                        transition={{ duration: 1, delay: 0.3 + i * 0.12, ease: "easeInOut" }}
+                        viewport={{ once: true }}
+                      />
+                      <g className="passport-signal">
+                        {[c.begin, c.begin2].map((b, k) => (
+                          <g key={`pp-ball-${i}-${k}`}>
+                            <circle r={6} fill="rgba(255,255,255,0.12)">
+                              <animateMotion dur={c.dur} begin={b} repeatCount="indefinite" path={c.d} />
+                              <animate attributeName="opacity" values="0;0.5;0.5;0" keyTimes="0;0.15;0.8;1" dur={c.dur} begin={b} repeatCount="indefinite" />
+                            </circle>
+                            <circle r={2.5} fill="rgba(255,255,255,0.92)">
+                              <animateMotion dur={c.dur} begin={b} repeatCount="indefinite" path={c.d} />
+                              <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.12;0.85;1" dur={c.dur} begin={b} repeatCount="indefinite" />
+                            </circle>
+                          </g>
+                        ))}
+                      </g>
+                    </g>
+                  ))}
+                </svg>
+              </div>
+
+              <div className="relative lg:pt-[200px]">
+                <motion.div
+                  initial={{ opacity: 0, y: 24 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.7, ease: "easeOut" }}
+                  viewport={{ once: true }}
+                  className="w-full"
+                >
+                  <div className="lovable-glass-strong lovable-liquid-outline relative overflow-hidden rounded-[2rem] sm:rounded-[2.5rem] bg-black/40 p-8 text-center shadow-[0_0_100px_-24px_rgba(255,255,255,0.18)] sm:p-10">
+                    <div className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.05]">
+                      <IdCard className="h-6 w-6 text-white/80" />
+                    </div>
+                    <div className="mb-4 font-mono text-xs uppercase tracking-[0.2em] text-white/50">Единый контекст</div>
+                    <h3 className="mb-4 text-3xl text-white sm:text-4xl" style={{ fontFamily: "'Instrument Serif', serif" }}>
+                      Паспорт проекта
+                    </h3>
+                    <p className="text-sm font-light leading-relaxed text-white/45 sm:text-base">
+                      Всё, что вы делаете в Pitchy — чат, кастдев, гранты и дорожная карта — стекается в единый паспорт проекта. Контекст переносится между функциями автоматически: каждая функция знает всё о проекте, и вам не нужно объяснять заново.
+                    </p>
+                  </div>
+                </motion.div>
+              </div>
             </div>
           </div>
         </section>

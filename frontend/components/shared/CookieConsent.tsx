@@ -62,7 +62,7 @@ export function CookieConsent() {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 50 }}
           transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-          className="fixed bottom-4 left-4 right-4 md:left-auto md:right-8 md:bottom-8 z-[100] md:max-w-md w-auto"
+          className="fixed bottom-4 left-4 right-4 md:left-auto md:right-8 md:bottom-8 z-[100] md:max-w-[28rem] w-auto"
         >
           <div className="liquid-glass rounded-2xl p-4 sm:p-5 shadow-2xl">
             <div className="flex items-start gap-4 relative z-10">

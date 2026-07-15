@@ -99,6 +99,18 @@
   --animate-gradient-shift: gradient-shift 8s ease infinite;
 }
 
+/* ── Fix: max-w-{sm,md,lg,xl} collapse ──
+   The named --spacing-* tokens (--spacing-sm…xl in @theme) shadow the
+   --container-* scale, so Tailwind's `@layer utilities` resolves
+   max-w-sm/md/lg/xl to spacing values (8/16/24/48px) instead of the intended
+   container widths — collapsing modals and text blocks. These unlayered rules
+   override the layered utilities (unlayered wins over @layer). max-w-2xl+ are
+   fine (no colliding --spacing-2xl); responsive variants use arbitrary values. */
+.max-w-sm { max-width: 24rem; }
+.max-w-md { max-width: 28rem; }
+.max-w-lg { max-width: 32rem; }
+.max-w-xl { max-width: 36rem; }
+
 @layer base {
   body {
     background-color: var(--color-background);
@@ -315,6 +327,12 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .passport-signal {
+    display: none;
   }
 }
 
