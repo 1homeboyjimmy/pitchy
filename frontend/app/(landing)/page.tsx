@@ -867,7 +867,7 @@ export default function LandingPage() {
                 Интеллект в каждом действии
               </h2>
               <p className="text-white/40 text-lg font-light leading-relaxed mb-10">
-                Слой живого ИИ не просто отвечает на вопросы, а анализирует контекст проекта, подбирает релевантные гранты и помогает структурировать юридические аспекты.
+                Команда ИИ-агентов не просто отвечает на вопросы, а анализирует контекст проекта, подбирает релевантные гранты и помогает структурировать юридические аспекты.
               </p>
 
               <div className="lovable-glass lovable-liquid-outline rounded-[2rem] p-6 sm:p-8 border-white/5 bg-black/40">

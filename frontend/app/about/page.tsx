@@ -49,9 +49,10 @@ const founders: TeamMember[] = [
     accent: "from-blue-400/60 via-cyan-400/20 to-transparent",
     competencies: [
       "Опыт работы: Ростелеком",
-      "3 курс МТУСИ (ИБ), ML и Backend архитектура",
+      "4 курс МТУСИ (ИБ), ML и Backend архитектура",
       "Большой опыт в создании/разворачивании ML моделей и оценки их эффективности",
       "Победитель стартап-интенсива МТУСИ и МГУУ",
+      "Победитель конкурса «Студенческий стартап» от Фонда содействия инновациям",
       "Участник акселератора МТУСИ x Skolkovo",
     ],
   },
@@ -63,7 +64,7 @@ const founders: TeamMember[] = [
     accent: "from-violet-400/60 via-fuchsia-400/20 to-transparent",
     competencies: [
       "Веб-разработка и UI/UX",
-      "1 курс РТУ МИРЭА (Инфраструктура ИТ)",
+      "2 курс РТУ МИРЭА (Инфраструктура ИТ)",
       "Победитель стартап-интенсива МТУСИ и МГУУ",
     ],
   },
@@ -81,20 +82,6 @@ const leadership: TeamMember[] = [
       "15 лет опыта: МТС, Мишлен, МТС Юрент, Philips, Gett, Транснефть, Gibson, Advertu",
       "Эксперт по развитию продуктов",
       "Кандидат экономических наук",
-    ],
-  },
-  {
-    name: "Александр Углов",
-    role: "Директор по развитию",
-    image: "/team/alexander-uglov.jpg",
-    preservePortrait: true,
-    accent: "from-emerald-400/55 via-teal-300/15 to-transparent",
-    competencies: [
-      "Серийный предприниматель,",
-      "Основатель акселератора Global Pilots (совместно с Microsoft, EY, Startupbootcamp) и The Gate Club (совместно с правительством Москвы),",
-      "Управляющий партнер АНО \"Рубежи Науки\"",
-      "партнер корпоративной венчурной студии Founders Lane (Берлин).",
-      "Директор по развитию инвестиционного фонда Altergate (Сингапур) и \"Орбитальный экспресс\" (Сколково).",
     ],
   },
 ];
@@ -120,7 +107,7 @@ const specialists: TeamMember[] = [
     accent: "from-pink-400/50 via-fuchsia-300/15 to-transparent",
     competencies: [
       "Legal & Compliance",
-      "2 курс МГУУ (Юриспруденция)",
+      "3 курс МГУУ (Юриспруденция)",
       "Победительница стартап-интенсива МТУСИ и МГУУ",
       "Валидация юридических ответов ИИ",
     ],
@@ -273,14 +260,8 @@ export default function AboutPage() {
               </div>
             ))}
 
-            {leadership.map((member) => (
-              <div key={member.name} className="h-full md:col-span-6">
-                <TeamCard member={member} />
-              </div>
-            ))}
-
-            {specialists.map((member) => (
-              <div key={member.name} className="h-full md:col-span-4">
+            {[...leadership, ...specialists].map((member) => (
+              <div key={member.name} className="h-full md:col-span-6 xl:col-span-3">
                 <TeamCard member={member} />
               </div>
             ))}
