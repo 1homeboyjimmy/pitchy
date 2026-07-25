@@ -45,6 +45,33 @@ def _maybe_fix_mojibake(title: str) -> str:
     return title
 
 
+# Anti-bot / WAF interstitials (Cloudflare "You have been blocked",
+# DDoS-Guard, captcha/"Just a moment" pages) that the search backend
+# sometimes captures instead of the real page. Their boilerplate is useless
+# and was leaking "Cloudflare Ray ID / Your IP" text into research answers,
+# so we detect and drop such sources entirely.
+_BLOCK_PAGE_MARKERS = (
+    "cloudflare ray id",
+    "you have been blocked",
+    "attention required",
+    "cf-error",
+    "captcha-container",
+    "checking your browser before accessing",
+    "enable javascript and cookies to continue",
+    "verify you are human",
+    "ddos-guard",
+    "just a moment...",
+)
+
+
+def _looks_like_block_page(text: str) -> bool:
+    """True if `text` looks like an anti-bot/WAF interstitial, not real content."""
+    if not text:
+        return False
+    low = text.lower()
+    return any(marker in low for marker in _BLOCK_PAGE_MARKERS)
+
+
 def _get_exa_client() -> Exa | None:
     load_dotenv()
     api_key = os.getenv("EXA_API_KEY", "")
@@ -124,8 +151,6 @@ async def async_search_with_sources(query: str, use_deep_search: bool = False, t
             return [], "Поиск не дал результатов."
             
         for idx, r in enumerate(response.results, 1):
-            sources.append({"title": _maybe_fix_mojibake(getattr(r, 'title', 'Источник')), "url": getattr(r, 'url', '')})
-            
             # Use highlights if available, otherwise fallback to text
             content = ""
             if hasattr(r, 'highlights') and r.highlights:
@@ -133,7 +158,15 @@ async def async_search_with_sources(query: str, use_deep_search: bool = False, t
             else:
                 text_attr = getattr(r, 'text', '')
                 content = text_attr[:1000] + "..." if len(text_attr) > 1000 else text_attr
-                
+
+            # Skip anti-bot / WAF interstitials (Cloudflare "You have been
+            # blocked", captcha, "Just a moment") captured instead of the real
+            # page — otherwise their boilerplate pollutes the answer.
+            if _looks_like_block_page(content) or _looks_like_block_page(getattr(r, 'title', '')):
+                logger.info(f"Skipping blocked/anti-bot source: {getattr(r, 'url', '')}")
+                continue
+
+            sources.append({"title": _maybe_fix_mojibake(getattr(r, 'title', 'Источник')), "url": getattr(r, 'url', '')})
             compiled_text += f"### Источник {idx}: {getattr(r, 'url', '')}\nСодержимое:\n{content}\n\n"
             
         return sources, compiled_text.strip()
