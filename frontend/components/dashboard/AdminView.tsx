@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+﻿import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import dayjs from "dayjs";
 import { Users, Tag, BarChart2, Plus, Trash2, Shield, Loader, CreditCard, Award, Link as LinkIcon, RefreshCw, Power, Clock, Check, X } from "react-feather";
@@ -51,6 +51,26 @@ type AnalyticsData = {
     };
     series: Record<string, string | number>[];
 };
+
+// Глубина окна аналитики для каждого пресета переключателя периода.
+// Бэкенд сам переходит на почасовые корзины, когда окно ≤ 3 дней.
+const ANALYTICS_RANGE_DAYS: Record<string, number> = {
+    "24h": 1,
+    "3d": 3,
+    "1w": 7,
+    "1m": 30,
+    "6m": 180,
+    "1y": 365,
+};
+
+const ANALYTICS_PERIODS = [
+    { label: "24 часа", value: "24h" },
+    { label: "3 дня", value: "3d" },
+    { label: "Неделя", value: "1w" },
+    { label: "Месяц", value: "1m" },
+    { label: "Полгода", value: "6m" },
+    { label: "Год", value: "1y" },
+] as const;
 
 type Subscription = {
     user_id: number;
@@ -133,9 +153,12 @@ export function AdminView() {
                     }
                     if (res.ok) setPromocodes(await res.json());
                 } else if (activeTab === "analytics") {
+                    // Раньше диапазон был захардкожен в 30 дней, поэтому
+                    // переключатель периода перезапрашивал те же данные и
+                    // визуально ничего не менял.
                     const endStr = dayjs().format("YYYY-MM-DD");
-                    const startStr = dayjs().subtract(30, "day").format("YYYY-MM-DD");
-                    
+                    const startStr = dayjs().subtract(ANALYTICS_RANGE_DAYS[analyticsTimeFilter], "day").format("YYYY-MM-DD");
+
                     const res = await fetch(`${API_BASE}/admin/analytics?start=${startStr}&end=${endStr}`, {
                         headers: { "Authorization": `Bearer ${token}` }
                     });
@@ -493,13 +516,73 @@ export function AdminView() {
         }
     };
 
+    // Бэкенд отдаёт счётчики «сколько нового в этой корзине». Графики роста
+    // («всего пользователей», «рост подписок») должны быть накопительными,
+    // иначе кривая роста выглядит как шум около нуля. Конверсию тоже считаем
+    // по накопленным значениям: в дневной корзине «1 юзер / 1 подписка»
+    // давало бы 100%.
+    const chartData = React.useMemo(() => {
+        if (!analytics?.series) return [];
+        let cumUsers = 0;
+        let cumSubs = 0;
+        return analytics.series.map((s) => {
+            cumUsers += Number(s.users) || 0;
+            cumSubs += Number(s.subscriptions) || 0;
+            return {
+                date: String(s.date),
+                users: Number(s.users) || 0,
+                chat_sessions: Number(s.chat_sessions) || 0,
+                subscriptions: Number(s.subscriptions) || 0,
+                cum_users: cumUsers,
+                cum_subscriptions: cumSubs,
+                conversion: cumUsers > 0 ? Number(((cumSubs / cumUsers) * 100).toFixed(2)) : 0,
+            };
+        });
+    }, [analytics]);
+
+    const hasChartData = chartData.some(
+        (d) => d.users > 0 || d.chat_sessions > 0 || d.subscriptions > 0,
+    );
+
+    // Общие настройки всех четырёх графиков. Домен по оси Y раньше был
+    // захардкожен (0..80) — при реальных 1-3 регистрациях в день площадь
+    // прижималась к нулевой линии и график выглядел пустым.
+    const chartCommonProps = {
+        h: 240,
+        dataKey: "date",
+        curveType: "linear" as const,
+        withGradient: true,
+        gridAxis: "xy" as const,
+        textColor: "rgba(255, 255, 255, 0.5)",
+        withDots: true,
+        dotProps: { r: 2, strokeWidth: 1 },
+        activeDotProps: { r: 4 },
+        connectNulls: true,
+        yAxisProps: { allowDecimals: false, width: 38 },
+        xAxisProps: { interval: "preserveStartEnd" as const, minTickGap: 24 },
+    };
+
+    // Обычная функция, а не вложенный компонент: у вложенного при каждом
+    // ререндере AdminView менялся бы тип, и Recharts перемонтировал бы графики.
+    const chartCard = (title: string, chart: React.ReactNode) => (
+        <div key={title} className="bg-[#111111] border border-white/10 p-4 sm:p-6">
+            <h4 className="text-white font-mono-label text-[11px] sm:text-[12px] uppercase tracking-widest mb-4 sm:mb-6">{title}</h4>
+            {hasChartData ? chart : (
+                <div className="h-[240px] flex items-center justify-center text-white/30 font-mono-label text-[10px] uppercase tracking-widest text-center px-4">
+                    За выбранный период данных нет
+                </div>
+            )}
+        </div>
+    );
+
     const GRANT_STAGES = ["pre-seed", "seed", "growth", "scale"];
     const GRANT_SECTORS = ["it", "ai", "biotech", "medtech", "hardware", "energy", "agro", "fintech", "edtech", "creative", "media", "education", "ecommerce", "industry"];
     const GRANT_ENTITIES = ["ООО", "ИП", "самозанятый", "физлицо", "НКО"];
 
     return (
         <div className="space-y-6">
-            <div className="flex gap-2 border-b border-white/10 pb-4 overflow-x-auto thin-scrollbar">
+            {/* thin-scrollbar нигде не объявлен — берём существующий класс. */}
+            <div className="flex gap-2 border-b border-white/10 pb-4 overflow-x-auto pitchy-muted-x-scroll">
                 <button
                     onClick={() => setActiveTab("users")}
                     className={`flex items-center gap-2 px-4 py-2 font-mono-label text-[10px] uppercase font-bold tracking-widest transition-all whitespace-nowrap ${activeTab === "users" ? "bg-white text-black" : "border border-white/10 text-white/50 hover:text-white bg-[#111111]"
@@ -606,8 +689,8 @@ export function AdminView() {
                             </div>
 
                             {/* Promo codes list */}
-                            <div className="bg-[#111111] border border-white/10">
-                                <table className="w-full text-left text-sm text-white font-code">
+                            <div className="bg-[#111111] border border-white/10 pitchy-table-scroll [--table-scroll-bg:#111111]">
+                                <table className="w-full text-left text-sm text-white min-w-[640px] font-code">
                                     <thead className="bg-[#0A0A0A] text-white/50 border-b border-white/10 font-mono-label uppercase text-[10px] tracking-widest">
                                         <tr>
                                             <th className="px-6 py-4 font-bold">КОД</th>
@@ -651,21 +734,16 @@ export function AdminView() {
 
                     {activeTab === "analytics" && analytics && (
                         <div className="space-y-6 mt-6">
-                            <div className="flex items-center justify-between">
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                                 <h3 className="text-xl font-display font-bold text-white uppercase tracking-tight">Аналитика платформы</h3>
-                                <div className="flex bg-[#111111] border border-white/10 p-1">
-                                    {[
-                                        { label: "24 часа", value: "24h" },
-                                        { label: "3 дня", value: "3d" },
-                                        { label: "Неделя", value: "1w" },
-                                        { label: "Месяц", value: "1m" },
-                                        { label: "Полгода", value: "6m" },
-                                        { label: "Год", value: "1y" },
-                                    ].map((opt) => (
+                                {/* Шесть кнопок не помещаются в 375px — на мобильном
+                                    ряд скроллится по горизонтали вместо сжатия. */}
+                                <div className="flex bg-[#111111] border border-white/10 p-1 overflow-x-auto pitchy-muted-x-scroll -mx-4 px-4 sm:mx-0 sm:px-1">
+                                    {ANALYTICS_PERIODS.map((opt) => (
                                         <button
                                             key={opt.value}
-                                            onClick={() => setAnalyticsTimeFilter(opt.value as "24h" | "3d" | "1w" | "1m" | "6m" | "1y")}
-                                            className={`px-3 py-1.5 font-mono-label text-[10px] uppercase font-bold tracking-widest transition-colors ${analyticsTimeFilter === opt.value
+                                            onClick={() => setAnalyticsTimeFilter(opt.value)}
+                                            className={`px-3 py-1.5 font-mono-label text-[10px] uppercase font-bold tracking-widest transition-colors whitespace-nowrap shrink-0 ${analyticsTimeFilter === opt.value
                                                 ? "bg-white text-black"
                                                 : "text-white/50 hover:text-white bg-transparent"
                                                 }`}
@@ -676,116 +754,80 @@ export function AdminView() {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                                <div className="bg-[#111111] border border-white/10 p-6">
+                            {/* Две колонки уже на телефоне: одна колонка из четырёх
+                                карточек по p-6 занимала почти весь первый экран. */}
+                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
+                                <div className="bg-[#111111] border border-white/10 p-4 sm:p-6">
                                     <p className="text-white/50 font-mono-label text-[10px] uppercase tracking-widest mb-2">Всего пользователей</p>
-                                    <p className="text-3xl font-mono text-white font-bold">{analytics.totals.users}</p>
+                                    <p className="text-2xl sm:text-3xl font-mono text-white font-bold">{analytics.totals.users}</p>
                                 </div>
-                                <div className="bg-[#111111] border border-white/10 p-6">
+                                <div className="bg-[#111111] border border-white/10 p-4 sm:p-6">
                                     <p className="text-white/50 font-mono-label text-[10px] uppercase tracking-widest mb-2">Чат-сессий</p>
-                                    <p className="text-3xl font-mono text-white font-bold flex items-end gap-2">
+                                    <p className="text-2xl sm:text-3xl font-mono text-white font-bold flex flex-wrap items-end gap-x-2">
                                         {analytics.totals.chat_sessions}
                                         <span className="text-xs text-white/40 mb-1 font-code">(анон: {analytics.totals.chat_sessions_anon})</span>
                                     </p>
                                 </div>
-                                <div className="bg-[#111111] border border-white/10 p-6">
+                                <div className="bg-[#111111] border border-white/10 p-4 sm:p-6">
                                     <p className="text-white/50 font-mono-label text-[10px] uppercase tracking-widest mb-2">Количество подписок</p>
-                                    <p className="text-3xl font-mono text-white font-bold flex items-end gap-2">
+                                    <p className="text-2xl sm:text-3xl font-mono text-white font-bold flex items-end gap-2">
                                         {analytics.totals.subscriptions}
                                     </p>
                                 </div>
-                                <div className="bg-[#111111] border border-white/10 p-6">
+                                <div className="bg-[#111111] border border-white/10 p-4 sm:p-6">
                                     <p className="text-white/50 font-mono-label text-[10px] uppercase tracking-widest mb-2">Конверсия (%)</p>
-                                    <p className="text-3xl font-mono text-white font-bold flex items-end gap-2">
+                                    <p className="text-2xl sm:text-3xl font-mono text-white font-bold flex items-end gap-2">
                                         {analytics.totals.users > 0 ? ((analytics.totals.subscriptions / analytics.totals.users) * 100).toFixed(2) : "0.00"}%
                                     </p>
                                 </div>
                             </div>
 
-                            <div className="bg-[#111111] border border-white/10 p-6">
-                                <h4 className="text-white font-mono-label text-[12px] uppercase tracking-widest mb-6">Динамика регистраций (Всего пользователей)</h4>
+                            {chartCard("Динамика регистраций (накопительно за период)", (
                                 <AreaChart
-                                    h={280}
-                                    data={analytics.series.map(s => ({
-                                        ...s,
-                                        conversion: s.users && Number(s.users) > 0 ? Number(((Number(s.subscriptions) / Number(s.users)) * 100).toFixed(2)) : 0
-                                    }))}
-                                    dataKey="date"
-                                    curveType="linear"
-                                    series={[{ name: "users", color: "gray.5", label: "Пользователи" }]}
-                                    withGradient
-                                    gridAxis="xy"
-                                    textColor="rgba(255, 255, 255, 0.5)"
-                                    withDots={false}
-                                    yAxisProps={{ ticks: [0, 20, 40, 60, 80], domain: [0, 80] }}
-                                    xAxisProps={{ interval: "preserveStartEnd" }}
+                                    {...chartCommonProps}
+                                    data={chartData}
+                                    series={[{ name: "cum_users", color: "gray.5", label: "Всего пользователей" }]}
                                 />
-                            </div>
+                            ))}
 
-                            <div className="bg-[#111111] border border-white/10 p-6">
-                                <h4 className="text-white font-mono-label text-[12px] uppercase tracking-widest mb-6">Активность (Чат-сессии)</h4>
+                            {chartCard("Новые регистрации за период", (
                                 <AreaChart
-                                    h={280}
-                                    data={analytics.series.map(s => ({
-                                        ...s,
-                                        conversion: s.users && Number(s.users) > 0 ? Number(((Number(s.subscriptions) / Number(s.users)) * 100).toFixed(2)) : 0
-                                    }))}
-                                    dataKey="date"
-                                    curveType="linear"
+                                    {...chartCommonProps}
+                                    data={chartData}
+                                    series={[{ name: "users", color: "gray.4", label: "Новые пользователи" }]}
+                                />
+                            ))}
+
+                            {chartCard("Активность (Чат-сессии)", (
+                                <AreaChart
+                                    {...chartCommonProps}
+                                    data={chartData}
                                     series={[{ name: "chat_sessions", color: "gray.5", label: "Сессии" }]}
-                                    withGradient
-                                    gridAxis="xy"
-                                    textColor="rgba(255, 255, 255, 0.5)"
-                                    withDots={false}
-                                    yAxisProps={{ ticks: [0, 50, 100, 150, 200], domain: [0, 200] }}
-                                    xAxisProps={{ interval: "preserveStartEnd" }}
                                 />
-                            </div>
+                            ))}
 
-                            <div className="bg-[#111111] border border-white/10 p-6">
-                                <h4 className="text-white font-mono-label text-[12px] uppercase tracking-widest mb-6">Рост платных подписок</h4>
+                            {chartCard("Рост платных подписок (накопительно)", (
                                 <AreaChart
-                                    h={280}
-                                    data={analytics.series.map(s => ({
-                                        ...s,
-                                        conversion: s.users && Number(s.users) > 0 ? Number(((Number(s.subscriptions) / Number(s.users)) * 100).toFixed(2)) : 0
-                                    }))}
-                                    dataKey="date"
-                                    curveType="linear"
-                                    series={[{ name: "subscriptions", color: "gray.3", label: "Подписки" }]}
-                                    withGradient
-                                    gridAxis="xy"
-                                    textColor="rgba(255, 255, 255, 0.5)"
-                                    withDots={false}
-                                    yAxisProps={{ ticks: [0, 10, 20, 30, 40], domain: [0, 40] }}
-                                    xAxisProps={{ interval: "preserveStartEnd" }}
+                                    {...chartCommonProps}
+                                    data={chartData}
+                                    series={[{ name: "cum_subscriptions", color: "gray.3", label: "Подписки" }]}
                                 />
-                            </div>
+                            ))}
 
-                            <div className="bg-[#111111] border border-white/10 p-6">
-                                <h4 className="text-white font-mono-label text-[12px] uppercase tracking-widest mb-6">Изменение конверсии (%)</h4>
+                            {chartCard("Изменение конверсии (%)", (
                                 <AreaChart
-                                    h={280}
-                                    data={analytics.series.map(s => ({
-                                        ...s,
-                                        conversion: s.users && Number(s.users) > 0 ? Number(((Number(s.subscriptions) / Number(s.users)) * 100).toFixed(2)) : 0
-                                    }))}
-                                    dataKey="date"
-                                    curveType="linear"
+                                    {...chartCommonProps}
+                                    data={chartData}
                                     series={[{ name: "conversion", color: "gray.7", label: "Конверсия (%)" }]}
-                                    withGradient
-                                    gridAxis="xy"
-                                    textColor="rgba(255, 255, 255, 0.5)"
-                                    withDots={false}
-                                    xAxisProps={{ interval: "preserveStartEnd" }}
+                                    yAxisProps={{ width: 38, unit: "%" }}
                                 />
-                            </div>
+                            ))}
                         </div>
                     )}
 
                     {activeTab === "users" && (
                         <div className="space-y-6">
-                            <div className="bg-[#111111] border border-white/10 overflow-hidden overflow-x-auto">
+                            <div className="bg-[#111111] border border-white/10 pitchy-table-scroll [--table-scroll-bg:#111111]">
                                 <table className="w-full text-left text-sm text-white min-w-[800px] font-code">
                                     <thead className="bg-[#0A0A0A] text-white/50 border-b border-white/10 font-mono-label uppercase text-[10px] tracking-widest">
                                         <tr>
@@ -867,8 +909,8 @@ export function AdminView() {
                                     <h3 className="text-xl font-display font-bold text-white uppercase tracking-tight">Платные пользователи</h3>
                                     <span className="font-mono-label text-[10px] uppercase tracking-widest text-white/40">{subscriptions.length} подписок</span>
                                 </div>
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-sm font-code">
+                                <div className="pitchy-table-scroll [--table-scroll-bg:#111111]">
+                                    <table className="w-full text-sm min-w-[900px] font-code">
                                         <thead>
                                             <tr className="text-white/50 border-b border-white/10 font-mono-label uppercase text-[10px] tracking-widest">
                                                 <th className="text-left px-4 py-3 font-bold">Email</th>
@@ -1089,8 +1131,8 @@ export function AdminView() {
                                         <h4 className="text-white font-mono-label text-[12px] uppercase tracking-widest">История загрузок</h4>
                                         <span className="font-mono-label text-[10px] uppercase tracking-widest text-white/40">{ragLogsTotal} записей</span>
                                     </div>
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full text-sm font-code">
+                                    <div className="pitchy-table-scroll [--table-scroll-bg:#111111]">
+                                        <table className="w-full text-sm min-w-[720px] font-code">
                                             <thead>
                                                 <tr className="text-white/50 border-b border-white/10 font-mono-label uppercase text-[10px] tracking-widest">
                                                     <th className="text-left py-3 pr-4 w-32 font-bold">Дата</th>

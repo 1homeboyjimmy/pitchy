@@ -551,3 +551,47 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 .pitchy-muted-x-scroll:hover::-webkit-scrollbar-thumb {
   background-color: rgba(255, 255, 255, 0.2);
 }
+
+/* Horizontally scrollable markdown tables in chat answers.
+   A wide table keeps its natural column widths and scrolls sideways
+   instead of squeezing text into 3-character columns on a phone.
+
+   The edge shadows are the classic background-attachment trick: the
+   `local` gradients scroll with the content and hide the `scroll`
+   shadows once an edge is reached — so the hint that "there is more
+   to the right" appears and disappears on its own, without JS. */
+.pitchy-table-scroll {
+  /* Цвет подложки под таблицей. Маскирующие слои должны совпадать с фоном
+     контейнера, иначе у краёв видна полоса другого оттенка. Переопределяется
+     утилитой Tailwind вида [--table-scroll-bg:#111111]. */
+  --table-scroll-bg: #0a0a0a;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+  background-image:
+    linear-gradient(to right, var(--table-scroll-bg) 25%, transparent),
+    linear-gradient(to left, var(--table-scroll-bg) 25%, transparent),
+    radial-gradient(farthest-side at 0 50%, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0)),
+    radial-gradient(farthest-side at 100% 50%, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0));
+  background-position: 0 0, 100% 0, 0 0, 100% 0;
+  background-repeat: no-repeat;
+  background-size: 44px 100%, 44px 100%, 16px 100%, 16px 100%;
+  background-attachment: local, local, scroll, scroll;
+}
+.pitchy-table-scroll::-webkit-scrollbar {
+  height: 8px;
+}
+.pitchy-table-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.pitchy-table-scroll::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  border: 2px solid rgba(0, 0, 0, 0);
+  background-clip: padding-box;
+}
+.pitchy-table-scroll:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.28);
+}

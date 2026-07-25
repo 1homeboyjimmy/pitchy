@@ -53,12 +53,12 @@ export function UpgradeModal({ isOpen, onClose, message }: UpgradeModalProps) {
             exit={{ opacity: 0, scale: 0.9, y: 20 }}
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
             onClick={(e) => e.stopPropagation()}
-            className="relative w-full max-w-md rounded-3xl overflow-hidden"
+            className="relative w-full max-w-md rounded-3xl overflow-hidden max-h-[88vh] overflow-y-auto"
           >
-            {/* Gradient border effect */}
-            <div className="absolute inset-0 bg-gradient-to-br from-pitchy-violet via-purple-600 to-pitchy-cyan p-[1px] rounded-3xl">
-              <div className="absolute inset-[1px] bg-[#1a1a2e] rounded-3xl" />
-            </div>
+            {/* Панель в фирменной монохромной палитре. Прежний градиент
+                строился на from-pitchy-violet/to-pitchy-cyan — таких токенов
+                в @theme нет, поэтому и рамка, и кнопка уходили в прозрачность. */}
+            <div className="absolute inset-0 rounded-3xl border border-white/12 bg-[#0d0d0d]" />
 
             {/* Content */}
             <div className="relative z-10 p-6 sm:p-8">
@@ -139,7 +139,7 @@ export function UpgradeModal({ isOpen, onClose, message }: UpgradeModalProps) {
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={handleUpgrade}
-                className="w-full py-3.5 rounded-xl font-bold text-white text-base bg-gradient-to-r from-pitchy-violet to-pitchy-cyan hover:shadow-[0_0_30px_rgba(168,85,247,0.4)] transition-shadow flex items-center justify-center gap-2"
+                className="w-full py-3.5 rounded-xl font-mono text-[12px] uppercase tracking-[0.18em] font-bold text-black bg-white hover:bg-neutral-200 transition-colors flex items-center justify-center gap-2"
               >
                 Перейти к тарифам
                 <ArrowRight className="w-5 h-5" />

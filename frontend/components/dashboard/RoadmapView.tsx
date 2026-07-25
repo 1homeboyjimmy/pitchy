@@ -37,14 +37,16 @@ function Markdown({ children }: { children: string }) {
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
+          // Как и в чате: таблица держит естественную ширину колонок и
+          // скроллится вбок, а не ужимается в нечитаемые столбцы.
           table: ({ ...props }) => (
-            <div className="my-3 overflow-x-auto rounded-xl border border-white/10 bg-white/5">
-              <table className="w-full text-left border-collapse" {...props} />
+            <div className="my-3 pitchy-table-scroll rounded-xl border border-white/10 bg-white/5">
+              <table className="w-max min-w-full text-left border-collapse" {...props} />
             </div>
           ),
           thead: ({ ...props }) => <thead className="bg-white/10" {...props} />,
-          th: ({ ...props }) => <th className="p-2 text-[11px] font-bold text-white/80 border-b border-white/10 uppercase tracking-wider" {...props} />,
-          td: ({ ...props }) => <td className="p-2 text-[12px] text-white/80 border-b border-white/5 last:border-0" {...props} />,
+          th: ({ ...props }) => <th className="p-2 text-[11px] font-bold text-white/80 border-b border-white/10 uppercase tracking-wider whitespace-nowrap" {...props} />,
+          td: ({ ...props }) => <td className="p-2 text-[12px] text-white/80 border-b border-white/5 last:border-0 align-top min-w-[7rem] max-w-[18rem]" {...props} />,
         }}
       >
         {children}
