@@ -26,8 +26,20 @@ class YandexSSO(SSOBase):
         }
 
     async def openid_from_response(self, response: dict, session: dict | None = None) -> OpenID:
+        # Yandex может вернуть default_email = "" (пустая строка): например,
+        # когда у приложения нет доступа к почте или у аккаунта не задан
+        # основной адрес. Пустая строка не проходит EmailStr-валидацию и
+        # роняла весь SSO (ValidationError → "SSO Authentication Failed").
+        # Берём email по цепочке фолбэков и никогда не отдаём пустую строку.
+        email = (response.get("default_email") or "").strip() or None
+        if not email:
+            emails = response.get("emails") or []
+            email = next((e for e in emails if e), None)
+        if not email:
+            login = response.get("login")
+            email = f"{login}@yandex.ru" if login else None
         return OpenID(
-            email=response.get("default_email"),
+            email=email,
             provider=self.provider,
             id=response.get("id"),
             display_name=(
