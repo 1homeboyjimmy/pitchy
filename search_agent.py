@@ -172,8 +172,11 @@ async def async_search_with_sources(query: str, use_deep_search: bool = False, t
         return sources, compiled_text.strip()
     
     except Exception as e:
+        # Never surface the raw exception to the user: when Exa's API is
+        # Cloudflare-blocked for our egress IP (403) it raises with the entire
+        # block-page HTML as the message, which was leaking into chat answers.
         logger.error(f"Async Exa search error: {e}")
-        return [], f"Произошла ошибка при поиске в интернете: {str(e)}"
+        return [], "Интернет-поиск временно недоступен."
 
 async def execute_search_agent(query: str) -> str:
     """Оркестратор для обратной совместимости."""
