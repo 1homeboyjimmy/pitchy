@@ -201,7 +201,7 @@ export function GrantApplicationsClient() {
 
       <div className="flex items-center gap-3 mb-3">
         <LayoutGrid className="text-white/70" size={26} strokeWidth={1.5} />
-        <h1 className="text-4xl tracking-tight" style={{ fontFamily: "'Instrument Serif', serif" }}>Мои гранты</h1>
+        <h1 className="text-4xl tracking-tight" style={{ fontFamily: "var(--font-prata), serif" }}>Мои гранты</h1>
       </div>
       <p className="text-white/40 text-sm mb-10 max-w-2xl">
         Воронка заявок: ведите гранты по стадиям, отмечайте выполненные требования и видите,

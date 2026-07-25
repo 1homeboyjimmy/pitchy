@@ -217,7 +217,7 @@ export function GrantDetailClient() {
               style={{ filter: "brightness(0) invert(1)" }}
             />
           )}
-          <h1 className="text-3xl md:text-4xl tracking-tight mb-2" style={{ fontFamily: "'Instrument Serif', serif" }}>
+          <h1 className="text-3xl md:text-4xl tracking-tight mb-2" style={{ fontFamily: "var(--font-prata), serif" }}>
             {grant.name}
           </h1>
           {grant.organization && (

@@ -45,7 +45,7 @@ function UnauthDashboard() {
         <div className="flex flex-col items-center w-full max-w-[800px]">
 
           <div className="text-center w-full mb-12">
-            <h1 className="text-6xl md:text-8xl text-white mb-8 leading-[0.9] tracking-tighter" style={{ fontFamily: "'Instrument Serif', serif" }}>
+            <h1 className="text-6xl md:text-8xl text-white mb-8 leading-[0.9] tracking-tighter" style={{ fontFamily: "var(--font-prata), serif" }}>
               Войдите для <br />
               <span className="text-white/30 italic transition-all duration-700 hover:text-white/50">доступа</span>.
             </h1>

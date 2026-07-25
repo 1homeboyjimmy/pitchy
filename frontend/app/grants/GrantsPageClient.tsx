@@ -388,7 +388,7 @@ export function GrantsPageClient() {
   if (!token) {
     return (
       <div className="h-full flex flex-col items-center justify-center px-4 text-center">
-        <h1 className="text-4xl text-white mb-4" style={{ fontFamily: "'Instrument Serif', serif" }}>
+        <h1 className="text-4xl text-white mb-4" style={{ fontFamily: "var(--font-prata), serif" }}>
           Войдите, чтобы подбирать гранты
         </h1>
         <Link href="/login" className="bg-white text-black font-semibold text-sm px-8 py-3 rounded-full mt-4">
@@ -409,7 +409,7 @@ export function GrantsPageClient() {
         <div className="mb-10">
           <div className="flex items-center gap-3 mb-3">
             <Banknote className="text-white/70" size={28} strokeWidth={1.5} />
-            <h1 className="text-4xl md:text-5xl tracking-tight" style={{ fontFamily: "'Instrument Serif', serif" }}>
+            <h1 className="text-4xl md:text-5xl tracking-tight" style={{ fontFamily: "var(--font-prata), serif" }}>
               Гранты
             </h1>
           </div>

@@ -11,6 +11,7 @@ import { PitchyLogo } from "./PitchyLogo";
 
 const navLinks = [
   { href: "/", label: "Главная" },
+  { href: "/accelerators", label: "Акселераторам" },
   { href: "/dashboard", label: "Дашборд" },
   { href: "/faq", label: "FAQ" },
   { href: "/about", label: "О нас" },

@@ -119,7 +119,7 @@ export function HeroSection() {
             <div className="relative z-10 flex-1 flex flex-col items-center justify-start px-4 w-full max-w-4xl mx-auto text-center pt-[15vh] pb-12">
                 <h1 
                     className="text-4xl md:text-5xl lg:text-6xl text-white mb-8 leading-[1.1] font-normal tracking-tight"
-                    style={{ fontFamily: "'Instrument Serif', serif" }}
+                    style={{ fontFamily: "var(--font-prata), serif" }}
                 >
                     ИИ-экосистема для стартапов
                 </h1>
