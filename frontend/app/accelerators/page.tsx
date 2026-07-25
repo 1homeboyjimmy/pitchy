@@ -16,6 +16,7 @@ import {
   ArrowUpRight,
   Sparkles,
   CheckCircle2,
+  Download,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { TopNavBar } from "@/components/shared/TopNavBar";
@@ -341,17 +342,22 @@ export default function AcceleratorsPage() {
               матчмейкинг, трекинг, аудит и Демо-день — в одном потоке.
             </p>
             <div className="flex flex-wrap items-center justify-center gap-4">
-              <Link href="/contact">
+              <a href="https://t.me/homeboyjimmy" target="_blank" rel="noopener noreferrer">
                 <button className="inline-flex items-center gap-2 rounded-full bg-white px-8 py-3.5 text-sm font-medium text-black transition-all hover:bg-white/90 hover:scale-[1.02]">
                   Запросить демо
                   <ArrowUpRight className="h-4 w-4" />
                 </button>
-              </Link>
-              <Link href="https://t.me/pitchy_pro" target="_blank">
+              </a>
+              <a
+                href="https://disk.yandex.ru/d/zqKIVyyI9CJYIw"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 <button className="inline-flex items-center gap-2 rounded-full border border-white/15 px-8 py-3.5 text-sm font-medium text-white transition-all hover:bg-white/5">
-                  Написать в Telegram
+                  <Download className="h-4 w-4" />
+                  Скачать презентацию
                 </button>
-              </Link>
+              </a>
             </div>
           </motion.div>
         </div>
@@ -472,41 +478,65 @@ export default function AcceleratorsPage() {
               viewport={{ once: true }}
               className="lovable-glass-strong lovable-liquid-outline mt-4 rounded-[2rem] bg-black/40 p-6 sm:p-10"
             >
-              <div className="mb-8 text-center font-mono text-xs uppercase tracking-[0.2em] text-white/40">
+              <div className="mb-3 text-center font-mono text-xs uppercase tracking-[0.2em] text-white/45">
                 Один понятный путь для каждой команды
               </div>
-              <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
-                {bundleFlow.map((f, i) => (
-                  <motion.div
-                    key={f.step}
-                    initial={{ opacity: 0, y: 14 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.45, delay: i * 0.08 }}
-                    viewport={{ once: true }}
-                    className="flex flex-col rounded-2xl border border-white/10 bg-white/[0.03] p-4"
-                  >
-                    <div className="mb-2 font-mono text-[10px] text-white/30">0{i + 1}</div>
-                    <div className="mb-1 text-sm font-medium leading-tight text-white">{f.step}</div>
-                    <div className="mb-3 flex-1 text-[12px] font-light leading-snug text-white/45">
-                      {f.desc}
-                    </div>
-                    {f.by ? (
-                      <span
-                        className={`inline-block w-fit rounded-full border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider ${
-                          f.by === "Вайбли"
-                            ? "border-white/25 bg-white/[0.06] text-white/70"
-                            : "border-white/12 text-white/45"
-                        }`}
-                      >
-                        {f.by}
-                      </span>
-                    ) : (
-                      <span className="inline-block w-fit rounded-full border border-dashed border-white/10 px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-white/30">
-                        общее
-                      </span>
-                    )}
-                  </motion.div>
-                ))}
+              <h3
+                className="mb-12 text-center text-2xl text-white sm:text-3xl"
+                style={{ fontFamily: "var(--font-prata), serif" }}
+              >
+                Дорожная карта резидента
+              </h3>
+
+              <div className="relative">
+                {/* road line + moving signal — desktop */}
+                <div className="pointer-events-none absolute inset-x-10 top-7 hidden h-px bg-gradient-to-r from-transparent via-white/20 to-transparent lg:block" />
+                <motion.div
+                  className="pointer-events-none absolute top-7 hidden h-px w-28 bg-gradient-to-r from-transparent via-white/80 to-transparent lg:block"
+                  animate={{ left: ["0%", "100%"] }}
+                  transition={{ duration: 5.5, repeat: Infinity, ease: "easeInOut" }}
+                />
+                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-6 lg:gap-4">
+                  {bundleFlow.map((f, i) => (
+                    <motion.div
+                      key={f.step}
+                      initial={{ opacity: 0, y: 18 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.45, delay: i * 0.09 }}
+                      viewport={{ once: true }}
+                      className="flex flex-col items-center lg:items-stretch"
+                    >
+                      {/* node on the road */}
+                      <div className="relative z-10 mb-6 flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-white/25 bg-black font-mono text-base text-white shadow-[0_0_24px_-6px_rgba(255,255,255,0.45)]">
+                        {String(i + 1).padStart(2, "0")}
+                      </div>
+                      {/* step card */}
+                      <div className="lovable-glass lovable-liquid-outline flex flex-1 flex-col rounded-[1.5rem] border-white/8 bg-white/[0.03] p-6 text-center lg:text-left">
+                        <div className="mb-2 text-lg font-semibold leading-tight text-white">
+                          {f.step}
+                        </div>
+                        <div className="mb-5 flex-1 text-sm font-light leading-relaxed text-white/55">
+                          {f.desc}
+                        </div>
+                        {f.by ? (
+                          <span
+                            className={`mx-auto inline-block w-fit rounded-full border px-3 py-1 font-mono text-[10px] uppercase tracking-wider lg:mx-0 ${
+                              f.by === "Вайбли"
+                                ? "border-white/30 bg-white/[0.08] text-white/80"
+                                : "border-white/15 text-white/50"
+                            }`}
+                          >
+                            {f.by}
+                          </span>
+                        ) : (
+                          <span className="mx-auto inline-block w-fit rounded-full border border-dashed border-white/15 px-3 py-1 font-mono text-[10px] uppercase tracking-wider text-white/40 lg:mx-0">
+                            общее
+                          </span>
+                        )}
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
               </div>
             </motion.div>
 
