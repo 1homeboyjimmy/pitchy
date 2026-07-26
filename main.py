@@ -312,6 +312,8 @@ async def sync_redis_to_pg():
 async def lifespan(app: FastAPI):
     # Start background sync
     asyncio.create_task(sync_redis_to_pg())
+    from research_service import resume_pending_research_jobs
+    asyncio.create_task(resume_pending_research_jobs())
     
     # Start RAG initialization in background task so server starts immediately
     async def _init_rag_bg():
@@ -426,6 +428,9 @@ app.include_router(contact_router.router)
 
 from routers import auth as auth_router
 app.include_router(auth_router.router)
+
+from routers import research as research_router
+app.include_router(research_router.router)
 
 
 allowed_origins = [

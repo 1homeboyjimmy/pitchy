@@ -157,6 +157,7 @@ class ChatMessageResponse(BaseModel):
     sources: list[dict] | None = None
     created_at: datetime
     client_id: str | None = None
+    research_job_id: int | None = None
 
     class Config:
         from_attributes = True

@@ -39,6 +39,7 @@ class User(Base):
     payments: Mapped[list["Payment"]] = relationship(back_populates="user", cascade="all, delete-orphan", passive_deletes=True)
     project_trees: Mapped[list["ProjectTree"]] = relationship(back_populates="user", cascade="all, delete-orphan", passive_deletes=True)
     tool_results: Mapped[list["ToolResult"]] = relationship(back_populates="user", cascade="all, delete-orphan", passive_deletes=True)
+    research_jobs: Mapped[list["ResearchJob"]] = relationship(back_populates="user", cascade="all, delete-orphan", passive_deletes=True)
     projects: Mapped[list["Project"]] = relationship(back_populates="user", cascade="all, delete-orphan", passive_deletes=True)
     custom_subscription: Mapped["CustomSubscription | None"] = relationship(
         back_populates="user", cascade="all, delete-orphan", passive_deletes=True, uselist=False
@@ -257,6 +258,7 @@ class ChatMessage(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     feedback: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     client_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    research_job_id: Mapped[int | None] = mapped_column(ForeignKey("research_jobs.id", ondelete="SET NULL"), nullable=True, index=True)
 
     session: Mapped["ChatSession"] = relationship(back_populates="messages")
 
@@ -335,6 +337,84 @@ class ToolResult(Base):
 
     user: Mapped["User"] = relationship(back_populates="tool_results")
 
+
+class ResearchJob(Base):
+    __tablename__ = "research_jobs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    session_id: Mapped[int | None] = mapped_column(ForeignKey("chat_sessions.id", ondelete="CASCADE"), nullable=True, index=True)
+    query: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(30), default="queued", index=True)
+    phase: Mapped[str] = mapped_column(String(50), default="planning")
+    progress: Mapped[int] = mapped_column(Integer, default=0)
+    blueprint: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    report: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sources: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
+    events: Mapped[list[dict]] = mapped_column(JSON, default=list)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="research_jobs")
+    research_sources: Mapped[list["ResearchSource"]] = relationship(back_populates="job", cascade="all, delete-orphan", passive_deletes=True)
+    claims: Mapped[list["ResearchClaim"]] = relationship(back_populates="job", cascade="all, delete-orphan", passive_deletes=True)
+
+
+class ResearchSource(Base):
+    __tablename__ = "research_sources"
+    __table_args__ = (UniqueConstraint("job_id", "url", name="uq_research_source_job_url"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("research_jobs.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(Text)
+    url: Mapped[str] = mapped_column(Text)
+    content: Mapped[str] = mapped_column(Text)
+    source_type: Mapped[str] = mapped_column(String(30), default="web")
+    rank: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    relevance_score: Mapped[float | None] = mapped_column(Numeric(8, 6), nullable=True)
+    metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    job: Mapped["ResearchJob"] = relationship(back_populates="research_sources")
+    evidence: Mapped[list["ResearchEvidence"]] = relationship(back_populates="source", cascade="all, delete-orphan", passive_deletes=True)
+
+
+class ResearchClaim(Base):
+    __tablename__ = "research_claims"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("research_jobs.id", ondelete="CASCADE"), index=True)
+    claim: Mapped[str] = mapped_column(Text)
+    value_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    unit: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    period: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    geography: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="unverified")
+    confidence: Mapped[float] = mapped_column(Numeric(4, 3), default=0)
+    is_estimate: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    job: Mapped["ResearchJob"] = relationship(back_populates="claims")
+    evidence: Mapped[list["ResearchEvidence"]] = relationship(back_populates="claim", cascade="all, delete-orphan", passive_deletes=True)
+
+
+class ResearchEvidence(Base):
+    __tablename__ = "research_evidence"
+    __table_args__ = (UniqueConstraint("claim_id", "source_id", name="uq_claim_source_evidence"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    claim_id: Mapped[int] = mapped_column(ForeignKey("research_claims.id", ondelete="CASCADE"), index=True)
+    source_id: Mapped[int] = mapped_column(ForeignKey("research_sources.id", ondelete="CASCADE"), index=True)
+    passage: Mapped[str] = mapped_column(Text)
+    supports: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    claim: Mapped["ResearchClaim"] = relationship(back_populates="evidence")
+    source: Mapped["ResearchSource"] = relationship(back_populates="evidence")
 
 class Grant(Base):
     """Каталог грантовых/акселерационных программ.
