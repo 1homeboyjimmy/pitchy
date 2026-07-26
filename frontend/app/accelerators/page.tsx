@@ -412,19 +412,19 @@ export default function AcceleratorsPage() {
                 <img
                   src="/logos/partners/pitchy.png"
                   alt="Pitchy"
-                  className="h-28 w-auto shrink-0 object-contain sm:h-40"
+                  className="h-[168px] w-auto shrink-0 object-contain sm:h-[240px]"
                   style={{ transform: "translateY(-4.5%)" }}
                 />
-                <span className="relative flex h-14 w-14 shrink-0 items-center justify-center sm:h-16 sm:w-16">
+                <span className="relative flex h-20 w-20 shrink-0 items-center justify-center sm:h-24 sm:w-24">
                   <span className="absolute inset-0 rounded-full bg-white/15 blur-md" />
-                  <span className="relative text-4xl font-light text-white sm:text-5xl">×</span>
+                  <span className="relative text-5xl font-light text-white sm:text-6xl">×</span>
                 </span>
                 {/* Вайбли — white wordmark on black bg, dropped via screen blend */}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src="/logos/partners/vaibly.svg"
                   alt="Вайбли"
-                  className="h-14 w-auto shrink-0 object-contain sm:h-20"
+                  className="-mx-[73px] h-[84px] w-auto shrink-0 object-contain sm:-mx-[105px] sm:h-[120px]"
                   style={{ mixBlendMode: "screen" }}
                 />
               </div>
@@ -592,7 +592,7 @@ export default function AcceleratorsPage() {
               <img
                 src="/logos/partners/mtusi-po.png"
                 alt="Проектный офис МТУСИ"
-                className="h-20 w-auto object-contain opacity-90 sm:h-24"
+                className="h-[120px] w-auto object-contain opacity-90 sm:h-[144px]"
                 style={{ filter: "brightness(0) invert(1)" }}
               />
               {/* Global University — already white on transparent */}
@@ -600,14 +600,14 @@ export default function AcceleratorsPage() {
               <img
                 src="/logos/partners/global-university.webp"
                 alt="Global University by Rybakov"
-                className="h-20 w-auto object-contain opacity-90 sm:h-24"
+                className="h-[120px] w-auto object-contain opacity-90 sm:h-[144px]"
               />
               {/* X10 — white on transparent */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="/logos/partners/x10.svg"
                 alt="X10 — международное движение силы сообществ"
-                className="h-20 w-auto object-contain opacity-90 sm:h-24"
+                className="h-[120px] w-auto object-contain opacity-90 sm:h-[144px]"
               />
             </motion.div>
 
@@ -628,7 +628,7 @@ export default function AcceleratorsPage() {
                 <img
                   src="/logos/partners/fsi.webp"
                   alt="Фонд содействия инновациям"
-                  className="h-16 w-auto object-contain opacity-85 sm:h-20"
+                  className="h-[96px] w-auto object-contain opacity-85 sm:h-[120px]"
                   style={{ filter: "brightness(0) invert(1)" }}
                 />
                 {/* Платформа — white on black bg, dropped via screen blend */}
@@ -636,7 +636,7 @@ export default function AcceleratorsPage() {
                 <img
                   src="/logos/partners/platform.png"
                   alt="Платформа университетского технологического предпринимательства"
-                  className="h-24 w-auto object-contain opacity-90 sm:h-28"
+                  className="h-[144px] w-auto object-contain opacity-90 sm:h-[168px]"
                   style={{ mixBlendMode: "screen" }}
                 />
                 {/* Технологии — федеральный проект. Положите файл
@@ -645,7 +645,7 @@ export default function AcceleratorsPage() {
                 <img
                   src="/logos/partners/tehnologii.png"
                   alt="Технологии — федеральный проект"
-                  className="h-16 w-auto object-contain opacity-90 sm:h-20"
+                  className="h-[96px] w-auto object-contain opacity-90 sm:h-[120px]"
                   style={{ mixBlendMode: "screen" }}
                   onError={(e) => {
                     e.currentTarget.style.display = "none";
