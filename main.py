@@ -4545,22 +4545,59 @@ async def send_chat_message(
 
             # 4. MODE: DEEP RESEARCH
             elif getattr(payload, "use_research", False):
-                from search_agent import stream_deep_research
-                # Research plans web queries from its input — pass the question
-                # plus a bounded excerpt of the files, not the full 75k dump.
-                research_query = query_text
+                # Stage 3 already fetched the evidence. The old implementation
+                # called Exa a second time and streamed its raw source dump
+                # straight to the user. Deep research needs a synthesis phase.
+                if not search_ctx:
+                    from search_agent import async_search_with_sources
+                    sources, search_ctx = await async_search_with_sources(
+                        query_text, use_deep_search=True
+                    )
+                    if sources:
+                        yield format_sse({"type": "sources", "data": sources})
+
+                research_system = SYSTEM_CHAT_PROMPT + """
+
+You are writing a deep research report, not a source-by-source digest.
+Synthesize the evidence into one coherent analytical answer in the user's
+language. Start with a direct executive conclusion, then cover key findings,
+important numbers and trends, contradictions/limitations, and practical
+implications. Compare sources instead of retelling them in sequence.
+Use inline citations like [1] and [2] that match the numbered evidence.
+Never print raw URLs, scraped navigation, long date sequences, or a
+"Source N / Content" catalogue. Do not invent facts absent from the evidence.
+"""
+                research_prompt = (
+                    f"USER QUESTION:\n{stored_content}\n\n"
+                    f"NUMBERED WEB EVIDENCE:\n{search_ctx[:16000]}\n"
+                )
                 if attachment_block:
-                    research_query = f"{query_text}\n\nКонтекст из прикреплённых файлов:\n{attachment_block[:2000]}"
-                async for chunk in stream_deep_research(research_query):
-                    if chunk["type"] == "chunk":
-                        if ttft is None: ttft = time.time() - start_time
-                        full_response += chunk["content"]
-                    elif chunk["type"] == "thought":
-                        full_thoughts += chunk["content"]
-                    elif chunk["type"] == "sources":
-                        sources = chunk.get("data", [])
-                    yield format_sse(chunk)
-            
+                    research_prompt += (
+                        "\nATTACHED MATERIAL EXCERPT:\n"
+                        f"{attachment_block[:4000]}\n"
+                    )
+
+                yield _emit_thought(
+                    "Источники собраны. Сопоставляю факты и формирую аналитический отчёт.\n"
+                )
+                raw_gen = stream_makura(research_system, research_prompt)
+                async for sse_item in parse_thought_generator(raw_gen):
+                    try:
+                        data = json.loads(sse_item.get("data", "{}"))
+                        content = data.get("content", "")
+                        if isinstance(content, list):
+                            content = "".join(str(c) for c in content)
+                        if data.get("type") == "chunk":
+                            if ttft is None:
+                                ttft = time.time() - start_time
+                            full_response += str(content)
+                        elif data.get("type") == "thought":
+                            full_thoughts += str(content)
+                        elif data.get("type") == "metadata" and "usage" in data:
+                            usage_data = data["usage"]
+                    except Exception as e:
+                        logger.error(f"Error processing deep research SSE item: {e}")
+                    yield sse_item
             # 4. MODE: QUICK SEARCH OR REGULAR CHAT
             else:
                 # =======================================================
@@ -4655,7 +4692,7 @@ async def send_chat_message(
                         content=stored_response,
                         thoughts=full_thoughts.strip() if full_thoughts.strip() else None,
                         client_id=payload.assistant_client_id,
-                        sources=sources if getattr(payload, "use_deep_search", False) else None,
+                        sources=sources if (use_deep_search_flag or use_research_flag) else None,
                     )
                     message_saved = True
                     for f, name in exp_cards:
@@ -4678,7 +4715,7 @@ async def send_chat_message(
                         content=full_response,
                         thoughts=full_thoughts.strip() if full_thoughts.strip() else None,
                         client_id=payload.assistant_client_id,
-                        sources=sources if getattr(payload, "use_deep_search", False) else None
+                        sources=sources if (use_deep_search_flag or use_research_flag) else None
                     )
                 )
 
@@ -4728,7 +4765,7 @@ async def send_chat_message(
                         content=full_response,
                         thoughts=full_thoughts.strip() if full_thoughts.strip() else None,
                         client_id=payload.assistant_client_id,
-                        sources=sources if getattr(payload, "use_deep_search", False) else None
+                        sources=sources if (use_deep_search_flag or use_research_flag) else None
                     )
                 )
             if langfuse_context and (full_response or full_thoughts or usage_data):
