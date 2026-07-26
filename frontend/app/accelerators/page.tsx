@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard,
@@ -34,25 +33,25 @@ const modules: CoreModule[] = [
     icon: LayoutDashboard,
     short: "Заявки",
     title: "Дашборд заявок",
-    desc: "Карточки вместо бесконечных таблиц. Приём и отклонение заявок — в один клик, с фильтрами, тегами и статусами.",
+    desc: "Карточки вместо бесконечных таблиц: приём и отклонение заявок в один клик, с фильтрами, тегами и статусами. Каждому подавшему сразу приходит ответ на почту о решении.",
   },
   {
     icon: Users,
     short: "Команды",
     title: "Матчмейкинг команд",
-    desc: "Паспорта участников и внутренняя биржа ролей: сильные команды собираются по компетенциям, а не по знакомству.",
+    desc: "Карточки стартапов с запросом на нужных людей и отдельная вкладка специалистов со своими компетенциями. Стартап пишет подходящему человеку, а человек — понравившемуся стартапу. Сильные команды собираются по компетенциям, а не по знакомству.",
   },
   {
     icon: Activity,
     short: "Трекинг",
     title: "Трекинг прогресса",
-    desc: "Живые статусы ДЗ, рейтинги и «спящие» команды — весь прогресс потока виден на одном экране в реальном времени.",
+    desc: "Организация и автопроверка домашних заданий, живые статусы, рейтинги и «спящие» команды — весь прогресс потока на одном экране в реальном времени.",
   },
   {
     icon: QrCode,
     short: "QR",
     title: "Посещаемость по QR",
-    desc: "Динамический QR-код и явка в реальном времени. Никаких бумажных списков и ручной сверки посещаемости.",
+    desc: "При организации офлайн- и онлайн-мероприятий отслеживаем посещаемость резидентов: динамический QR-код и явка в реальном времени, без бумажных списков и ручной сверки.",
   },
   {
     icon: ScanSearch,
@@ -64,7 +63,7 @@ const modules: CoreModule[] = [
     icon: FileOutput,
     short: "Демо-день",
     title: "Экспорт к Демо-дню",
-    desc: "Единый файл по всему потоку и ИИ-презентация в вашем фирменном стиле — к Демо-дню всё готово автоматически.",
+    desc: "Единый файл по всему потоку и генерация презентации в вашем фирменном стиле — к Демо-дню всё готово автоматически.",
   },
 ];
 
@@ -94,16 +93,15 @@ const bundleBrands: { name: string; serif: boolean; role: string; points: string
 ];
 
 const bundleFlow: { step: string; by: string | null; desc: string }[] = [
-  { step: "Паспорт", by: null, desc: "Идея, аудитория, гипотеза" },
-  { step: "Проверка идеи", by: "Pitchy", desc: "Сигналы рынка + фокус-группа → честный вердикт" },
+  { step: "Паспорт", by: null, desc: "Идея, аудитория, гипотеза, основная информация о проекте" },
+  { step: "Проверка идеи", by: "Pitchy", desc: "Поиск болей, симуляция фокус-группы и честный вердикт" },
   { step: "Сборка продукта", by: "Вайбли", desc: "Из идеи — рабочий прототип за часы" },
   { step: "Аналитика", by: "Pitchy", desc: "Экономика на реальном продукте" },
-  { step: "Демо-день", by: null, desc: "Живой продукт вместо скриншотов" },
-  { step: "Гранты", by: "Pitchy", desc: "Заявка с прототипом как доказательством" },
+  { step: "Демо-день", by: null, desc: "Презентации в стиле акселератора и готовый продукт" },
+  { step: "Гранты", by: "Pitchy", desc: "Генерация готовых заявок на гранты" },
 ];
 
 const bundleTerms = [
-  "Пилот на одном потоке или хакатоне",
   "Полный доступ к Pitchy и Вайбли для всех резидентов",
   "Платформа для организаторов — с первого дня",
   "Совместный разбор результатов после демо-дня",
@@ -117,8 +115,8 @@ const benefits: { icon: LucideIcon; title: string; desc: string }[] = [
   },
   {
     icon: Layers,
-    title: "Одна платформа вместо зоопарка",
-    desc: "Формы, таблицы и мессенджеры заменяются единым цифровым ядром потока.",
+    title: "Одна платформа вместо десятка сервисов",
+    desc: "Формы, таблицы и мессенджеры заменяются единым цифровым решением потока.",
   },
   {
     icon: Rocket,
@@ -210,7 +208,7 @@ function CoreHub() {
           <div className="lovable-glass-strong flex h-20 w-20 flex-col items-center justify-center rounded-2xl border border-white/15 text-center sm:h-24 sm:w-24">
             <span className="font-display text-sm text-white sm:text-base">Pitchy</span>
             <span className="mt-0.5 font-mono text-[9px] uppercase tracking-[0.2em] text-white/40">
-              ядро
+              решение
             </span>
           </div>
         </div>
@@ -335,10 +333,10 @@ export default function AcceleratorsPage() {
               className="mb-8 text-5xl leading-[1.05] text-white md:text-7xl"
               style={{ fontFamily: "var(--font-prata), serif" }}
             >
-              Цифровое ядро <span className="italic text-white/60">вашего акселератора</span>
+              Цифровое решение <span className="italic text-white/60">для вашего акселератора</span>
             </h1>
             <p className="mx-auto mb-10 max-w-2xl text-lg font-light leading-relaxed text-white/50">
-              Готовое цифровое ядро вместо таблиц, форм и ручного учёта. Приём заявок,
+              Готовое цифровое решение вместо таблиц, форм и ручного учёта. Приём заявок,
               матчмейкинг, трекинг, аудит и Демо-день — в одном потоке.
             </p>
             <div className="flex flex-wrap items-center justify-center gap-4">
@@ -375,7 +373,7 @@ export default function AcceleratorsPage() {
               className="mb-16 max-w-3xl"
             >
               <div className="mb-4 font-mono text-xs uppercase tracking-[0.2em] text-white/50">
-                Единое ядро
+                Единая платформа
               </div>
               <h2
                 className="mb-6 text-4xl leading-[1.1] text-white md:text-6xl"
@@ -384,7 +382,7 @@ export default function AcceleratorsPage() {
                 Шесть модулей — один поток
               </h2>
               <p className="max-w-2xl text-lg font-light leading-relaxed text-white/40">
-                Всё, что раньше жило в разрозненных таблицах и чатах, стекается в одно ядро.
+                Всё, что раньше жило в разрозненных таблицах и чатах, стекается в одну платформу.
                 Наведите на модуль, чтобы увидеть, что он делает.
               </p>
             </motion.div>
@@ -518,21 +516,9 @@ export default function AcceleratorsPage() {
                         <div className="mb-5 flex-1 text-sm font-light leading-relaxed text-white/55">
                           {f.desc}
                         </div>
-                        {f.by ? (
-                          <span
-                            className={`mx-auto inline-block w-fit rounded-full border px-3 py-1 font-mono text-[10px] uppercase tracking-wider lg:mx-0 ${
-                              f.by === "Вайбли"
-                                ? "border-white/30 bg-white/[0.08] text-white/80"
-                                : "border-white/15 text-white/50"
-                            }`}
-                          >
-                            {f.by}
-                          </span>
-                        ) : (
-                          <span className="mx-auto inline-block w-fit rounded-full border border-dashed border-white/15 px-3 py-1 font-mono text-[10px] uppercase tracking-wider text-white/40 lg:mx-0">
-                            общее
-                          </span>
-                        )}
+                        <span className="mx-auto inline-block w-fit rounded-full border border-white/20 bg-white/[0.05] px-3 py-1 font-mono text-[10px] uppercase tracking-wider text-white/70 lg:mx-0">
+                          {f.by || "Pitchy + Вайбли"}
+                        </span>
                       </div>
                     </motion.div>
                   ))}
@@ -548,37 +534,38 @@ export default function AcceleratorsPage() {
               viewport={{ once: true }}
               className="lovable-glass lovable-liquid-outline mt-4 rounded-[2rem] border-white/5 bg-black/40 p-8 sm:p-10"
             >
-              <div className="grid gap-8 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
-                <div>
-                  <h3
-                    className="mb-6 text-2xl text-white sm:text-3xl"
-                    style={{ fontFamily: "var(--font-prata), serif" }}
-                  >
-                    Что входит в пилот
-                  </h3>
-                  <ul className="grid gap-3 sm:grid-cols-2">
-                    {bundleTerms.map((t) => (
-                      <li key={t} className="flex items-start gap-3 text-sm font-light text-white/55">
-                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-white/50" />
+              <h3
+                className="mb-8 text-center text-2xl text-white sm:text-left sm:text-3xl"
+                style={{ fontFamily: "var(--font-prata), serif" }}
+              >
+                Что входит в пилот
+              </h3>
+              <div className="grid gap-8 lg:grid-cols-[1fr_auto] lg:items-center">
+                <ul className="grid gap-3">
+                  {bundleTerms.map((t, i) => (
+                    <motion.li
+                      key={t}
+                      initial={{ opacity: 0, x: -14 }}
+                      whileInView={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.45, delay: i * 0.1 }}
+                      viewport={{ once: true }}
+                      className="flex items-center gap-4 rounded-2xl border border-white/15 bg-white/[0.06] px-5 py-4"
+                    >
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-black shadow-[0_0_20px_-4px_rgba(255,255,255,0.6)]">
+                        <CheckCircle2 className="h-5 w-5" strokeWidth={2.2} />
+                      </span>
+                      <span className="text-base font-semibold leading-snug text-white sm:text-lg">
                         {t}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-                <div className="flex flex-col items-start gap-4 lg:items-end">
-                  <Link href="/contact">
-                    <button className="inline-flex items-center gap-2 rounded-full bg-white px-8 py-3.5 text-sm font-medium text-black transition-all hover:scale-[1.02] hover:bg-white/90">
+                      </span>
+                    </motion.li>
+                  ))}
+                </ul>
+                <div className="flex justify-center lg:justify-end">
+                  <a href="https://t.me/homeboyjimmy" target="_blank" rel="noopener noreferrer">
+                    <button className="inline-flex items-center gap-2 rounded-full bg-white px-8 py-4 text-sm font-medium text-black transition-all hover:scale-[1.02] hover:bg-white/90">
                       Запустить пилот
                       <ArrowUpRight className="h-4 w-4" />
                     </button>
-                  </Link>
-                  <a
-                    href="https://vaibly.ru"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="font-mono text-[11px] uppercase tracking-wider text-white/40 transition-colors hover:text-white/70"
-                  >
-                    vaibly.ru →
                   </a>
                 </div>
               </div>
@@ -734,12 +721,12 @@ export default function AcceleratorsPage() {
                   )
                 )}
               </div>
-              <Link href="/contact">
+              <a href="https://t.me/homeboyjimmy" target="_blank" rel="noopener noreferrer">
                 <button className="inline-flex items-center gap-2 rounded-full bg-white px-10 py-4 text-sm font-medium text-black transition-all hover:scale-[1.02] hover:bg-white/90">
                   Подключить акселератор
                   <ArrowUpRight className="h-4 w-4" />
                 </button>
-              </Link>
+              </a>
             </motion.div>
           </div>
         </section>
