@@ -27,6 +27,13 @@
 - `LOG_LEVEL`: Logging level (e.g. `INFO`, `DEBUG`).
 - `AUTH_RATE_WINDOW_SECONDS`: Rate limit window in seconds.
 - `AUTH_RATE_MAX`: Max auth requests per window per IP.
+- `EXA_API_KEY`: Exa key for web search.
+- `EXA_HTTPS_PROXY`: HTTP CONNECT proxy for `api.exa.ai` (`http://user:pass@host:port`).
+  Required on RU hosts — Cloudflare answers 403 there, and the search silently
+  degrades to "Интернет-поиск временно недоступен" without it. `SEARCH_HTTPS_PROXY`
+  is accepted as a fallback so a box also running the media stack can share one value.
+- `EXA_BASE_URL`: Override the Exa API base (default `https://api.exa.ai`).
+- `EXA_TIMEOUT_SECONDS`: Search request timeout (default `30`).
 
 ## Frontend
 

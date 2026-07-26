@@ -104,7 +104,7 @@ import uuid
 from redis_client import get_redis
 from slm_dispatcher import slm_dispatcher
 from makura_client import call_makura, stream_makura
-from search_agent import execute_search_agent, execute_deep_research, async_search_with_sources
+from search_agent import execute_search_agent, execute_deep_research, async_search_with_sources, get_exa_proxy
 from db import SessionLocal, get_db
 from db_async import get_async_db
 from swarm_agent import run_analytical_swarm
@@ -855,6 +855,16 @@ async def _gather_health() -> dict:
     # --- external probes, run in parallel ---
     makura_key = os.getenv("MAKURA_API_KEY", "")
     exa_key = os.getenv("EXA_API_KEY", "")
+    # Search egress: api.exa.ai is Cloudflare-blocked from our RU IP, so when a
+    # proxy is configured the real dependency is the proxy, not Exa directly —
+    # probe whatever the search agent will actually dial.
+    exa_proxy = get_exa_proxy()
+    exa_probe_host, exa_probe_port = "api.exa.ai", 443
+    if exa_proxy:
+        from urllib.parse import urlparse
+        _p = urlparse(exa_proxy)
+        if _p.hostname:
+            exa_probe_host, exa_probe_port = _p.hostname, (_p.port or 8080)
     smtp_host = os.getenv("SMTP_HOST", "")
     smtp_port = int(os.getenv("SMTP_PORT", "0") or 0)
 
@@ -882,7 +892,7 @@ async def _gather_health() -> dict:
         _check_http("https://api.makura.ai/v1/models",
                     headers={"Authorization": f"Bearer {makura_key}"} if makura_key else None,
                     method="GET"),
-        _check_tcp("api.exa.ai", 443, timeout=5.0),
+        _check_tcp(exa_probe_host, exa_probe_port, timeout=5.0),
         _check_http("https://api.jina.ai/v1/rerank"),  # known 451 from RU — visibility only
         smtp_probe,
         return_exceptions=False,
@@ -894,12 +904,16 @@ async def _gather_health() -> dict:
     if jina_check.get("status_code") == 451:
         jina_check["state"] = "warning"
         jina_check["note"] = "geo-blocked from RU (expected, RAG fallback covers it)"
-    # exa: TCP-only probe to api.exa.ai:443 — validates reachability without
-    # burning the search balance. If the key isn't set, we still report reachability
-    # but mark as configured: false in the response.
+    # exa: TCP-only probe — validates reachability without burning the search
+    # balance. Target is the egress proxy when one is configured (that's the hop
+    # that can actually break), otherwise api.exa.ai:443 directly. If the key
+    # isn't set, we still report reachability but mark configured: false.
     if exa_check.get("ok"):
         exa_check["state"] = "healthy"
-        exa_check["note"] = "TCP reachable" + ("" if exa_key else " (no key configured)")
+        exa_check["note"] = (
+            f"TCP reachable via proxy {exa_probe_host}:{exa_probe_port}"
+            if exa_proxy else "TCP reachable (direct — Cloudflare may still 403)"
+        ) + ("" if exa_key else " (no key configured)")
     if not exa_key:
         exa_check.setdefault("note", "EXA_API_KEY not set")
     # makura "configured: false" if no key

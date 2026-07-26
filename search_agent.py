@@ -1,7 +1,6 @@
 import os
-import asyncio
 import logging
-from exa_py import Exa
+import httpx
 from dotenv import load_dotenv
 
 try:
@@ -72,14 +71,69 @@ def _looks_like_block_page(text: str) -> bool:
     return any(marker in low for marker in _BLOCK_PAGE_MARKERS)
 
 
-def _get_exa_client() -> Exa | None:
+DEFAULT_EXA_API_BASE = "https://api.exa.ai"
+DEFAULT_EXA_TIMEOUT_SECONDS = 30.0
+
+
+class ExaSearchError(Exception):
+    """Exa returned a non-2xx response. Carries the status code only — never the
+    body, which for Cloudflare blocks is a full HTML page."""
+
+
+def get_exa_proxy() -> str | None:
+    """HTTP CONNECT proxy used to reach api.exa.ai, or None for direct egress.
+
+    Cloudflare 403s api.exa.ai from our RU egress IP, so the request has to
+    leave through the German node. Same tinyproxy the media subproject uses
+    (`SEARCH_HTTPS_PROXY` there) — `SEARCH_HTTPS_PROXY` is accepted here too so
+    a box running both stacks can share one value. Empty string = no proxy.
+    """
+    proxy = (os.getenv("EXA_HTTPS_PROXY") or os.getenv("SEARCH_HTTPS_PROXY") or "").strip()
+    return proxy or None
+
+
+def _get_exa_api_key() -> str:
     load_dotenv()
     api_key = os.getenv("EXA_API_KEY", "")
     if not api_key:
         logger.warning("EXA_API_KEY is missing. Web search (Exa) is disabled.")
-        return None
-    logger.info(f"Exa client initialized with key starting with {api_key[:5]}...")
-    return Exa(api_key)
+        return ""
+    proxy = get_exa_proxy()
+    logger.info(
+        f"Exa configured with key starting with {api_key[:5]}... "
+        f"(egress: {'proxy' if proxy else 'direct'})"
+    )
+    return api_key
+
+
+async def _exa_search(query: str, num_results: int, api_key: str) -> dict:
+    """POST /search against Exa's REST API through the egress proxy.
+
+    We call the REST endpoint directly instead of the `exa_py` SDK: the SDK
+    builds its requests with bare `requests.request(...)` and exposes no way to
+    attach a proxy, and the only alternative — a container-wide `HTTPS_PROXY` —
+    would push every other outbound integration through Germany too.
+    """
+    body = {
+        "query": query,
+        "type": "auto",
+        "numResults": num_results,
+        # `text` alongside `highlights` so the fallback below has something to
+        # use when Exa returns no highlights for a result.
+        "contents": {"text": True, "highlights": True},
+    }
+    headers = {"x-api-key": api_key, "Content-Type": "application/json"}
+    # Read config here, not at import time: `load_dotenv()` runs on first use.
+    base_url = (os.getenv("EXA_BASE_URL") or DEFAULT_EXA_API_BASE).rstrip("/")
+    try:
+        timeout = float(os.getenv("EXA_TIMEOUT_SECONDS") or DEFAULT_EXA_TIMEOUT_SECONDS)
+    except ValueError:
+        timeout = DEFAULT_EXA_TIMEOUT_SECONDS
+    async with httpx.AsyncClient(proxy=get_exa_proxy(), timeout=timeout) as client:
+        response = await client.post(f"{base_url}/search", json=body, headers=headers)
+    if response.status_code >= 400:
+        raise ExaSearchError(f"Exa returned HTTP {response.status_code}")
+    return response.json()
 
 @observe(name="Deep Search (Exa AI)")
 async def async_search_with_sources(query: str, use_deep_search: bool = False, trace_id: str = None, parent_observation_id: str = None) -> tuple[list[dict], str]:
@@ -96,85 +150,73 @@ async def async_search_with_sources(query: str, use_deep_search: bool = False, t
         
     logger.info(f"Executing async API search using Exa for query: {query}, deep_search: {use_deep_search}")
     
-    # Init client
-    exa_client = None
-    try:
-        exa_client = await asyncio.to_thread(_get_exa_client)
-    except Exception as e:
-        logger.error(f"Failed to initialize Exa client: {e}")
-        
-    if not exa_client:
+    api_key = _get_exa_api_key()
+    if not api_key:
         return [], "Интернет-поиск отключен (отсутствует EXA_API_KEY)."
-    
+
     try:
         num_results = 10 if use_deep_search else 3
-        
-        # exa_py operations are synchronous
-        def _do_search():
-            localized_query = query if "росси" in query.lower() else f"{query} в россии"
-            
-            # Boost Rosstat for statistical queries
-            search_kwargs = {
-                "type": "auto",
-                "num_results": num_results,
-                "highlights": True
-            }
-            
-            # Soft hint toward authoritative sources for statistical queries.
-            # A hard `site:rosstat.gov.ru` operator was returning irrelevant
-            # pages for topics that Rosstat doesn't actually cover (e.g.
-            # МСП register is owned by FNS, not Rosstat) — so we let Exa
-            # rank freely and just nudge the query with factual markers and
-            # the authoritative domain names for each topic.
-            ql = query.lower()
-            if any(w in ql for w in ["статистика", "росстат", "цифр", "мвд", "мсп", "перепис"]):
-                hints = ["официальная статистика", "реестр"]
-                if "мсп" in ql or "малого" in ql or "малый бизнес" in ql:
-                    # МСП registry is published by FNS, not Rosstat
-                    hints.append("rmsp.nalog.ru единый реестр субъектов МСП ФНС")
-                else:
-                    hints.append("rosstat.gov.ru")
-                logger.info(f"Applying soft factual hints: {hints}")
-                localized_query = f"{localized_query} {' '.join(hints)}"
 
-            return exa_client.search_and_contents(
-                localized_query,
-                **search_kwargs
-            )
-            
-        response = await asyncio.to_thread(_do_search)
-        
+        localized_query = query if "росси" in query.lower() else f"{query} в россии"
+
+        # Soft hint toward authoritative sources for statistical queries.
+        # A hard `site:rosstat.gov.ru` operator was returning irrelevant
+        # pages for topics that Rosstat doesn't actually cover (e.g.
+        # МСП register is owned by FNS, not Rosstat) — so we let Exa
+        # rank freely and just nudge the query with factual markers and
+        # the authoritative domain names for each topic.
+        ql = query.lower()
+        if any(w in ql for w in ["статистика", "росстат", "цифр", "мвд", "мсп", "перепис"]):
+            hints = ["официальная статистика", "реестр"]
+            if "мсп" in ql or "малого" in ql or "малый бизнес" in ql:
+                # МСП registry is published by FNS, not Rosstat
+                hints.append("rmsp.nalog.ru единый реестр субъектов МСП ФНС")
+            else:
+                hints.append("rosstat.gov.ru")
+            logger.info(f"Applying soft factual hints: {hints}")
+            localized_query = f"{localized_query} {' '.join(hints)}"
+
+        payload = await _exa_search(localized_query, num_results, api_key)
+
         sources = []
         compiled_text = ""
-        
-        if not response or not response.results:
+
+        results = payload.get("results") or []
+        if not results:
             return [], "Поиск не дал результатов."
-            
-        for idx, r in enumerate(response.results, 1):
+
+        for r in results:
+            url = r.get("url") or ""
+            title = r.get("title") or "Источник"
+
             # Use highlights if available, otherwise fallback to text
-            content = ""
-            if hasattr(r, 'highlights') and r.highlights:
-                content = "\n".join(r.highlights)
+            highlights = r.get("highlights") or []
+            if highlights:
+                content = "\n".join(highlights)
             else:
-                text_attr = getattr(r, 'text', '')
+                text_attr = r.get("text") or ""
                 content = text_attr[:1000] + "..." if len(text_attr) > 1000 else text_attr
 
             # Skip anti-bot / WAF interstitials (Cloudflare "You have been
             # blocked", captcha, "Just a moment") captured instead of the real
             # page — otherwise their boilerplate pollutes the answer.
-            if _looks_like_block_page(content) or _looks_like_block_page(getattr(r, 'title', '')):
-                logger.info(f"Skipping blocked/anti-bot source: {getattr(r, 'url', '')}")
+            if _looks_like_block_page(content) or _looks_like_block_page(title):
+                logger.info(f"Skipping blocked/anti-bot source: {url}")
                 continue
 
-            sources.append({"title": _maybe_fix_mojibake(getattr(r, 'title', 'Источник')), "url": getattr(r, 'url', '')})
-            compiled_text += f"### Источник {idx}: {getattr(r, 'url', '')}\nСодержимое:\n{content}\n\n"
-            
+            sources.append({"title": _maybe_fix_mojibake(title), "url": url})
+            # Number by kept sources, not by position in the raw response: the
+            # skip above used to leave gaps, so "Источник 3" in the context
+            # pointed at a different item than the 3rd entry of `sources`.
+            compiled_text += f"### Источник {len(sources)}: {url}\nСодержимое:\n{content}\n\n"
+
         return sources, compiled_text.strip()
     
     except Exception as e:
-        # Never surface the raw exception to the user: when Exa's API is
-        # Cloudflare-blocked for our egress IP (403) it raises with the entire
-        # block-page HTML as the message, which was leaking into chat answers.
+        # Never surface the raw exception to the user: a Cloudflare block on our
+        # egress IP answers 403 with a full HTML page, which used to leak into
+        # chat answers. `ExaSearchError` carries the status code only, and the
+        # generic message below covers proxy/timeout failures too.
         logger.error(f"Async Exa search error: {e}")
         return [], "Интернет-поиск временно недоступен."
 
