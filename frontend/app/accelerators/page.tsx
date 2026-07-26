@@ -592,7 +592,7 @@ export default function AcceleratorsPage() {
               <img
                 src="/logos/partners/mtusi-po.png"
                 alt="Проектный офис МТУСИ"
-                className="h-[120px] w-auto object-contain opacity-90 sm:h-[144px]"
+                className="h-[90px] w-auto object-contain opacity-90 sm:h-[108px]"
                 style={{ filter: "brightness(0) invert(1)" }}
               />
               {/* Global University — already white on transparent */}
@@ -600,14 +600,14 @@ export default function AcceleratorsPage() {
               <img
                 src="/logos/partners/global-university.webp"
                 alt="Global University by Rybakov"
-                className="h-[120px] w-auto object-contain opacity-90 sm:h-[144px]"
+                className="h-[90px] w-auto object-contain opacity-90 sm:h-[108px]"
               />
               {/* X10 — white on transparent */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="/logos/partners/x10.svg"
                 alt="X10 — международное движение силы сообществ"
-                className="h-[120px] w-auto object-contain opacity-90 sm:h-[144px]"
+                className="h-[90px] w-auto object-contain opacity-90 sm:h-[108px]"
               />
             </motion.div>
 
@@ -628,7 +628,7 @@ export default function AcceleratorsPage() {
                 <img
                   src="/logos/partners/fsi.webp"
                   alt="Фонд содействия инновациям"
-                  className="h-[96px] w-auto object-contain opacity-85 sm:h-[120px]"
+                  className="h-[72px] w-auto object-contain opacity-85 sm:h-[90px]"
                   style={{ filter: "brightness(0) invert(1)" }}
                 />
                 {/* Платформа — white on black bg, dropped via screen blend */}
@@ -636,7 +636,7 @@ export default function AcceleratorsPage() {
                 <img
                   src="/logos/partners/platform.png"
                   alt="Платформа университетского технологического предпринимательства"
-                  className="h-[144px] w-auto object-contain opacity-90 sm:h-[168px]"
+                  className="h-[108px] w-auto object-contain opacity-90 sm:h-[126px]"
                   style={{ mixBlendMode: "screen" }}
                 />
                 {/* Технологии — федеральный проект. Положите файл
@@ -645,7 +645,7 @@ export default function AcceleratorsPage() {
                 <img
                   src="/logos/partners/tehnologii.png"
                   alt="Технологии — федеральный проект"
-                  className="h-[96px] w-auto object-contain opacity-90 sm:h-[120px]"
+                  className="h-[72px] w-auto object-contain opacity-90 sm:h-[90px]"
                   style={{ mixBlendMode: "screen" }}
                   onError={(e) => {
                     e.currentTarget.style.display = "none";
