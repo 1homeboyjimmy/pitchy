@@ -236,3 +236,22 @@ async def stream_deep_research(query: str):
     sources, context = await async_search_with_sources(query, use_deep_search=True)
     yield {"type": "sources", "data": sources}
     yield {"type": "chunk", "content": context}
+
+@observe(name="Research Search (Exa AI)")
+async def research_search_documents(query: str, num_results: int = 8) -> list[dict]:
+    """Return clean source documents for the persistent research pipeline."""
+    api_key = _get_exa_api_key()
+    if not api_key:
+        return []
+    payload = await _exa_search(query, max(1, min(num_results, 20)), api_key)
+    documents = []
+    for result in payload.get("results") or []:
+        title = _maybe_fix_mojibake(result.get("title") or "Источник")
+        url = result.get("url") or ""
+        highlights = result.get("highlights") or []
+        content = "\n".join(highlights) if highlights else (result.get("text") or "")
+        content = content[:12000]
+        if not url or not content or _looks_like_block_page(title) or _looks_like_block_page(content):
+            continue
+        documents.append({"title": title, "url": url, "content": content, "published_date": result.get("publishedDate")})
+    return documents

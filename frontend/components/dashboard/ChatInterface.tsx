@@ -12,8 +12,9 @@ import { ChatInput, type PendingAttachment } from "@/components/chat/ChatInput";
 import { CopyButton, serializeMessageHtml } from "@/components/chat/CopyButton";
 import { ExportMenu } from "@/components/chat/ExportMenu";
 import { FileCard } from "@/components/chat/FileCard";
+import { ResearchProgressCard } from "@/components/chat/ResearchProgressCard";
 import { PresentationDrawer } from "./PresentationDrawer";
-import { PresentationSlide, importContext } from "@/lib/api";
+import { PresentationSlide, importContext, type ResearchJob } from "@/lib/api";
 import { ContextImportModal } from "@/components/chat/ContextImportModal";
 import { UpgradeModal } from "@/components/chat/UpgradeModal";
 import { notifyError } from "@/lib/ui";
@@ -111,6 +112,8 @@ interface ExtendedChatMessage extends ChatMessageResponse {
     sourcesExpanded?: boolean;
     isResearch?: boolean;
     model_used?: string;
+    research_job_id?: number | null;
+    researchJob?: ResearchJob;
     // Client-side chips for the optimistic user message; after the server
     // sync the same data comes embedded in content as FILE markers.
     attachmentsMeta?: MessageAttachment[];
@@ -162,6 +165,24 @@ export function ChatInterface({
     const inputBarRef = useRef<HTMLDivElement>(null);
     const [inputBarHeight, setInputBarHeight] = useState(280);
     const abortControllerRef = useRef<AbortController | null>(null);
+    useEffect(() => {
+        let disposed = false;
+        let timer: NodeJS.Timeout | null = null;
+        const refresh = async () => {
+            const token = getToken();
+            if (!token || disposed) return;
+            const ids = Array.from(new Set((session.messages || []).map(m => m.research_job_id).filter((id): id is number => !!id)));
+            if (!ids.length) return;
+            const { getResearchJob } = await import("@/lib/api");
+            const jobs = await Promise.all(ids.map(id => getResearchJob(id, token).catch(() => null)));
+            if (disposed) return;
+            const byId = new Map(jobs.filter((j): j is ResearchJob => !!j).map(j => [j.id, j]));
+            setMessages(prev => prev.map(m => m.research_job_id && byId.has(m.research_job_id) ? { ...m, researchJob: byId.get(m.research_job_id) } : m));
+            if (jobs.some(j => j && ["queued", "running", "cancelling"].includes(j.status))) timer = setTimeout(refresh, 2500);
+        };
+        refresh();
+        return () => { disposed = true; if (timer) clearTimeout(timer); };
+    }, [session.id, session.messages]);
 
     // Авто-название чата генерирует фоновая задача на бэкенде — к моменту
     // reconcile-а после стрима оно может быть ещё не готово. Пока у сессии
@@ -323,6 +344,7 @@ export function ChatInterface({
                     thoughtExpanded: loc.thoughtExpanded ?? serverMatch.thoughtExpanded,
                     isResearch: loc.isResearch || serverMatch.isResearch,
                     sources: (loc.sources?.length || 0) > (serverMatch.sources?.length || 0) ? loc.sources : serverMatch.sources,
+                    researchJob: loc.researchJob || serverMatch.researchJob,
                 });
             } else {
                 if (isLoading || (loc.content && loc.content.length > 0)) {
@@ -613,6 +635,24 @@ export function ChatInterface({
                 ]);
             }
 
+            if (isResearchMode) {
+                const { createResearchJob, getResearchJob, getChatSession } = await import("@/lib/api");
+                let job = await createResearchJob({ session_id: session.id, query: content, client_id: userClientId, assistant_client_id: assistantClientId }, token);
+                setMessages(prev => prev.map(m => m.client_id === assistantClientId ? { ...m, research_job_id: job.id, researchJob: job, thoughts: undefined } : m));
+                while (["queued", "running", "cancelling"].includes(job.status)) {
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    if (abortController.signal.aborted) break;
+                    job = await getResearchJob(job.id, token);
+                    const trace = job.events.map(e => `› ${e.message}`).join("\n");
+                    setStreamingStatus(job.events.at(-1)?.message || "Pitchy проводит исследование");
+                    setMessages(prev => prev.map(m => m.client_id === assistantClientId ? { ...m, researchJob: job, thoughts: trace, content: job.report || "", sources: job.sources } : m));
+                }
+                if (job.status === "failed") throw new Error(job.error || "Исследование завершилось с ошибкой");
+                const updatedSession = await getChatSession(session.id, token);
+                onUpdate(updatedSession);
+                setMessages(prev => mergeMessages(prev, updatedSession.messages || []));
+                return;
+            }
             setTypingMessageId(assistantClientId);
             setDisplayedLength(0);
 
@@ -916,6 +956,19 @@ export function ChatInterface({
                                     </span>
                                 </div>
 
+                                {msg.researchJob && (
+                                    <ResearchProgressCard
+                                        job={msg.researchJob}
+                                        onCancel={["queued", "running", "cancelling"].includes(msg.researchJob.status) ? async () => {
+                                            const token = getToken();
+                                            if (!token) return;
+                                            const { cancelResearchJob } = await import("@/lib/api");
+                                            const job = await cancelResearchJob(msg.researchJob!.id, token);
+                                            setMessages(prev => prev.map(m => (m.client_id || m.id) === messageKey ? { ...m, researchJob: job } : m));
+                                            abortControllerRef.current?.abort();
+                                        } : undefined}
+                                    />
+                                )}
                                 {/* Thought Process */}
                                 {showThoughts && (
                                     <div className="mb-8 ml-1">
@@ -1287,9 +1340,9 @@ export function ChatInterface({
                     onPickFiles={handlePickFiles}
                     onRemoveAttachment={handleRemoveAttachment}
                     useDeepSearch={useDeepSearch}
-                    onToggleDeepSearch={() => setUseDeepSearch(!useDeepSearch)}
+                    onToggleDeepSearch={() => { setUseDeepSearch(!useDeepSearch); setIsResearchMode(false); }}
                     isResearchMode={isResearchMode}
-                    onToggleResearchMode={() => setIsResearchMode(!isResearchMode)}
+                    onToggleResearchMode={() => { setIsResearchMode(!isResearchMode); setUseDeepSearch(false); }}
                     isPresentationMode={isPresentationMode}
                     onTogglePresentationMode={() => setIsPresentationMode(!isPresentationMode)}
                     onCancelPresentationMode={() => setIsPresentationMode(false)}
@@ -1311,7 +1364,7 @@ export function ChatInterface({
                     onLockedTool={(key) => {
                         const labels: Record<string, string> = {
                             deepSearch: "Поиск в интернете",
-                            research: "Глубокое исследование",
+                            research: "Полное исследование",
                             presentation: "Сгенерировать слайды",
                             importContext: "Импорт контекста",
                         };
