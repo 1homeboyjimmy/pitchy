@@ -986,12 +986,23 @@ export function ChatInterface({
                                                 if (el) messageContentRefs.current.set(key, el);
                                                 else messageContentRefs.current.delete(key);
                                             }}
-                                            className="text-white/80 font-sans text-[14px] sm:text-[17px] leading-relaxed sm:leading-[1.8] md:leading-[1.9] [&_p]:mb-4 sm:[&_p]:mb-6 [&_p:last-child]:mb-0 [&_ul]:list-none [&_ul]:pl-0 [&_ul]:mb-6 [&_ul>li]:mb-4 [&_ul>li]:pl-6 [&_ul>li]:relative [&_ul>li:before]:content-[''] [&_ul>li:before]:absolute [&_ul>li:before]:left-0 [&_ul>li:before]:top-[0.8em] [&_ul>li:before]:w-1.5 [&_ul>li:before]:h-px [&_ul>li:before]:bg-white/40 [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:mb-6 [&_ol>li]:mb-4 [&_ol>li]:pl-2 [&_h2]:text-3xl [&_h2]:text-white [&_h2]:mt-12 [&_h2]:mb-6 [&_h2]:tracking-tight [&_h3]:text-xl [&_h3]:font-bold [&_h3]:text-white [&_h3]:mt-10 [&_h3]:mb-4 [&_strong]:text-white [&_strong]:font-bold selection:bg-white/20">
+                                            className="min-w-0 max-w-full overflow-hidden break-words [overflow-wrap:anywhere] [&_a]:break-all [&_a]:[overflow-wrap:anywhere] text-white/80 font-sans text-[14px] sm:text-[17px] leading-relaxed sm:leading-[1.8] md:leading-[1.9] [&_p]:mb-4 sm:[&_p]:mb-6 [&_p:last-child]:mb-0 [&_ul]:list-none [&_ul]:pl-0 [&_ul]:mb-6 [&_ul>li]:mb-4 [&_ul>li]:pl-6 [&_ul>li]:relative [&_ul>li:before]:content-[''] [&_ul>li:before]:absolute [&_ul>li:before]:left-0 [&_ul>li:before]:top-[0.8em] [&_ul>li:before]:w-1.5 [&_ul>li:before]:h-px [&_ul>li:before]:bg-white/40 [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:mb-6 [&_ol>li]:mb-4 [&_ol>li]:pl-2 [&_h2]:text-3xl [&_h2]:text-white [&_h2]:mt-12 [&_h2]:mb-6 [&_h2]:tracking-tight [&_h3]:text-xl [&_h3]:font-bold [&_h3]:text-white [&_h3]:mt-10 [&_h3]:mb-4 [&_strong]:text-white [&_strong]:font-bold selection:bg-white/20">
                                             <ReactMarkdown 
                                                 remarkPlugins={[remarkGfm]}
                                                 components={{
                                                     h2: ({node, ...props}) => <h2 className="font-display text-3xl mb-4 mt-8" {...props} />,
                                                     h3: ({node, ...props}) => <h3 className="font-display text-xl mb-3 mt-6" {...props} />,
+                                                    a: ({node, ...props}) => {
+                                                        void node;
+                                                        return (
+                                                            <a
+                                                                className="break-all [overflow-wrap:anywhere] text-white underline decoration-white/30 underline-offset-4 hover:decoration-white"
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                {...props}
+                                                            />
+                                                        );
+                                                    },
                                                     table: ({...props}) => (
                                                         <div className="my-10 overflow-x-auto rounded-[1.5rem] border border-white/10 bg-white/[0.02] shadow-inner">
                                                             <table className="w-full text-left border-collapse font-sans text-[14px]" {...props} />
