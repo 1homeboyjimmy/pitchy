@@ -113,22 +113,73 @@ async def _extract_claims(query: str, docs: list[dict]) -> list[dict]:
 
 async def _verify(query: str, claims: list[dict], docs: list[dict]) -> list[dict]:
     compact = [{"claim_index": i, **{k: c.get(k) for k in ("claim","value_text","unit","period","geography","is_estimate","source_index","passage")}} for i,c in enumerate(claims)]
-    system = """Ты независимый фактчекер. Проверь соответствие утверждений приведённым passages, периоды, географию, арифметику и смешение факта с оценкой. Верни только JSON {\"verdicts\":[{\"claim_index\":int,\"status\":\"supported|partial|conflict|rejected\",\"confidence\":0..1,\"reason\":str}]}. Строго отклоняй выводы, не следующие из evidence."""
-    content, _, _ = await call_routerai(system, f"Исходный запрос: {query}\n\nУтверждения:\n{json.dumps(compact, ensure_ascii=False)[:50000]}", model=VERIFIER_MODEL, response_format={"type": "json_object"})
-    verdicts = _json_object(content, {"verdicts": []}).get("verdicts", [])
-    if not verdicts:
-        raise RuntimeError("Не удалось проверить извлечённые утверждения")
-    by_index = {v.get("claim_index"): v for v in verdicts if isinstance(v, dict)}
+    system = """Ты независимый фактчекер. Проверь соответствие каждого утверждения его passage, периоды, географию, арифметику и смешение факта с оценкой. Верни только компактный JSON {\"verdicts\":[{\"claim_index\":int,\"status\":\"supported|partial|conflict|rejected\",\"confidence\":0..1,\"reason\":str}]}. Обязательно верни по одному вердикту на каждый claim_index. reason — одно короткое предложение. Строго отклоняй выводы, не следующие из evidence."""
+    batches = [compact[i:i+8] for i in range(0, len(compact), 8)]
+    semaphore = asyncio.Semaphore(2)
+
+    async def verify_batch(batch_number: int, batch: list[dict]) -> list[dict]:
+        prompt = f"Исходный запрос: {query}\n\nУтверждения:\n{json.dumps(batch, ensure_ascii=False)}"
+        for attempt, max_tokens in enumerate((3000, 5000), 1):
+            async with semaphore:
+                content, _, usage = await call_routerai(
+                    system, prompt, model=VERIFIER_MODEL, max_tokens=max_tokens,
+                    response_format={"type": "json_object"},
+                )
+            data = _json_object(content, {"verdicts": []})
+            verdicts = data.get("verdicts", []) if isinstance(data, dict) else []
+            if verdicts:
+                return [verdict for verdict in verdicts if isinstance(verdict, dict)]
+            logger.warning(
+                "Verification batch %s attempt %s returned no parseable verdicts: response_chars=%s usage=%s",
+                batch_number, attempt, len(content or ""), usage,
+            )
+        return []
+
+    results = await asyncio.gather(
+        *(verify_batch(batch_number, batch) for batch_number, batch in enumerate(batches, 1)),
+        return_exceptions=True,
+    )
+    verdicts: list[dict] = []
+    for batch_number, result in enumerate(results, 1):
+        if isinstance(result, Exception):
+            logger.warning("Verification batch %s failed: %s", batch_number, result)
+            continue
+        verdicts.extend(result)
+
+    by_index = {v.get("claim_index"): v for v in verdicts}
+    missing_verdicts = 0
+    allowed_statuses = {"supported", "partial", "conflict", "rejected"}
     for i, claim in enumerate(claims):
         verdict = by_index.get(i, {})
-        claim["status"] = verdict.get("status", "partial")
-        claim["confidence"] = max(0, min(1, float(verdict.get("confidence", 0.5))))
-        claim["verification_reason"] = verdict.get("reason", "")
+        status = verdict.get("status")
+        if status not in allowed_statuses:
+            missing_verdicts += 1
+            status = "partial"
+            verdict = {
+                "confidence": 0.35,
+                "reason": "Проверяющий агент не вернул отдельный вердикт; утверждение подтверждено только исходным фрагментом.",
+            }
+        try:
+            confidence = float(verdict.get("confidence", 0.5))
+        except (TypeError, ValueError):
+            confidence = 0.5
+        claim["status"] = status
+        claim["confidence"] = max(0, min(1, confidence))
+        claim["verification_reason"] = str(verdict.get("reason", ""))
+    if missing_verdicts:
+        logger.warning(
+            "Verification completed with source-only fallback for %s of %s claims",
+            missing_verdicts, len(claims),
+        )
     return claims
 
 
 async def _write_report(query: str, plan: dict, claims: list[dict], docs: list[dict]) -> tuple[str, set[int]]:
-    usable = [c for c in claims if c.get("status") in ("supported", "partial")]
+    usable = [
+        c for c in claims
+        if c.get("status") in ("supported", "partial")
+        and float(c.get("confidence") or 0) >= 0.5
+    ]
     source_map = {d["source_index"]: d for d in docs}
     sections = []
     used_source_indices: set[int] = set()
