@@ -14,6 +14,8 @@ interface ExportMenuProps {
     messageId: number;
     disabled?: boolean;
     className?: string;
+    placement?: "up" | "down";
+    label?: string;
 }
 
 /**
@@ -21,7 +23,7 @@ interface ExportMenuProps {
  * via GET /chat/messages/{id}/export. Opens upward so it never clips against
  * the bottom of the chat scroll area.
  */
-export function ExportMenu({ messageId, disabled, className }: ExportMenuProps) {
+export function ExportMenu({ messageId, disabled, className, placement = "up", label }: ExportMenuProps) {
     const [open, setOpen] = useState(false);
     const [busy, setBusy] = useState<ExportFormat | null>(null);
     const rootRef = useRef<HTMLDivElement>(null);
@@ -65,17 +67,18 @@ export function ExportMenu({ messageId, disabled, className }: ExportMenuProps) 
                 disabled={isDisabled}
                 title={isDisabled ? "Экспорт станет доступен через секунду" : "Скачать ответ файлом"}
                 aria-label="Скачать ответ файлом"
-                className={`p-2.5 rounded-full transition-all active:scale-90 ${
+                className={`${label ? "flex items-center gap-2 rounded-full px-4 py-2 text-[12px] font-medium" : "p-2.5 rounded-full"} transition-all active:scale-90 ${
                     open
                         ? "text-white bg-white/10 shadow-lg shadow-white/5"
                         : "text-white/20 hover:text-white hover:bg-white/5"
                 } ${isDisabled ? "opacity-40 cursor-not-allowed" : ""}`}
             >
                 <Download className="w-4 h-4" strokeWidth={1.5} />
+                {label && <span>{label}</span>}
             </button>
 
             {open && (
-                <div className="absolute bottom-full left-0 mb-2 z-30 min-w-[190px] rounded-2xl border border-white/10 bg-[#161618] shadow-2xl shadow-black/50 overflow-hidden">
+                <div className={`absolute left-0 z-30 min-w-[190px] rounded-2xl border border-white/10 bg-[#161618] shadow-2xl shadow-black/50 overflow-hidden ${placement === "down" ? "top-full mt-2" : "bottom-full mb-2"}`}>
                     <div className="px-4 pt-3 pb-2 font-mono text-[9px] uppercase tracking-[0.2em] text-white/30 font-bold">
                         Скачать как
                     </div>

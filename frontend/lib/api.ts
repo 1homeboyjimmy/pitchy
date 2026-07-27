@@ -1323,7 +1323,7 @@ export type ResearchEvent = { phase: string; progress: number; message: string; 
 export type ResearchJob = {
   id: number; session_id: number; query: string; status: "queued"|"running"|"completed"|"failed"|"cancelled"|"cancelling";
   phase: string; progress: number; blueprint?: { questions?: Array<{id:string;question:string}>; report_sections?: Array<{id:string;title:string}> };
-  report?: string | null; sources: Array<{title:string;url:string;index?:number;relevance_score?:number}>; events: ResearchEvent[]; error?: string | null;
+  report?: string | null; sources: Array<{title:string;url:string;index?:number;relevance_score?:number;used_in_report?:boolean}>; events: ResearchEvent[]; error?: string | null;
 };
 export async function createResearchJob(data: {session_id:number;query:string;client_id?:string;assistant_client_id?:string}, token:string): Promise<ResearchJob> {
   return postAuthJson<ResearchJob>("/api/research", data, token);

@@ -13,6 +13,7 @@ import { CopyButton, serializeMessageHtml } from "@/components/chat/CopyButton";
 import { ExportMenu } from "@/components/chat/ExportMenu";
 import { FileCard } from "@/components/chat/FileCard";
 import { ResearchProgressCard } from "@/components/chat/ResearchProgressCard";
+import { ResearchDrawer } from "@/components/chat/ResearchDrawer";
 import { PresentationDrawer } from "./PresentationDrawer";
 import { PresentationSlide, importContext, type ResearchJob } from "@/lib/api";
 import { ContextImportModal } from "@/components/chat/ContextImportModal";
@@ -158,6 +159,7 @@ export function ChatInterface({
     const [streamingStatus, setStreamingStatus] = useState<string | null>(null);
     const [useDeepSearch, setUseDeepSearch] = useState(false);
     const [isResearchMode, setIsResearchMode] = useState(false);
+    const [openResearchMessageKey, setOpenResearchMessageKey] = useState<string | null>(null);
     const [isPresentationMode, setIsPresentationMode] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -639,6 +641,7 @@ export function ChatInterface({
                 const { createResearchJob, getResearchJob, getChatSession } = await import("@/lib/api");
                 let job = await createResearchJob({ session_id: session.id, query: content, client_id: userClientId, assistant_client_id: assistantClientId }, token);
                 setMessages(prev => prev.map(m => m.client_id === assistantClientId ? { ...m, research_job_id: job.id, researchJob: job, thoughts: undefined } : m));
+                setOpenResearchMessageKey(assistantClientId);
                 while (["queued", "running", "cancelling"].includes(job.status)) {
                     await new Promise(resolve => setTimeout(resolve, 2000));
                     if (abortController.signal.aborted) break;
@@ -855,6 +858,9 @@ export function ChatInterface({
     // an overlay over the chat first.
     const hasSlides = !!(presentationSlides && presentationSlides.length > 0);
     const useInlinePanel = hasSlides || isGeneratingSlides;
+    const openResearchMessage = openResearchMessageKey
+        ? messages.find((message) => (message.client_id || message.id).toString() === openResearchMessageKey) || null
+        : null;
 
     // Vertical drag-handle that lets the user resize the chat/preview split.
     // mousedown on the divider → listen on document → live-update chatWidthPct
@@ -924,7 +930,7 @@ export function ChatInterface({
             
             const hasContent = cleanContent.trim().length > 0;
             const isLastAssistant = msg.role === "assistant" && idx === messages.length - 1;
-            const shouldRenderMainBubble = msg.role === "user" || hasContent;
+            const shouldRenderMainBubble = msg.role === "user" || (hasContent && !msg.researchJob);
 
             return (
                 <motion.div 
@@ -959,6 +965,7 @@ export function ChatInterface({
                                 {msg.researchJob && (
                                     <ResearchProgressCard
                                         job={msg.researchJob}
+                                        onOpen={() => setOpenResearchMessageKey(messageKey.toString())}
                                         onCancel={["queued", "running", "cancelling"].includes(msg.researchJob.status) ? async () => {
                                             const token = getToken();
                                             if (!token) return;
@@ -970,7 +977,7 @@ export function ChatInterface({
                                     />
                                 )}
                                 {/* Thought Process */}
-                                {showThoughts && (
+                                {showThoughts && !msg.researchJob && (
                                     <div className="mb-8 ml-1">
                                         <details className="group" open={msg.thoughtExpanded}>
                                             <summary 
@@ -1449,6 +1456,22 @@ export function ChatInterface({
                     }}
                 />
             </div>
+
+            <ResearchDrawer
+                key={openResearchMessage?.researchJob?.id || "research-drawer"}
+                isOpen={!!openResearchMessage?.researchJob}
+                job={openResearchMessage?.researchJob || null}
+                messageId={openResearchMessage?.id}
+                onClose={() => setOpenResearchMessageKey(null)}
+                onCancel={openResearchMessage?.researchJob && ["queued", "running", "cancelling"].includes(openResearchMessage.researchJob.status) ? async () => {
+                    const token = getToken();
+                    if (!token || !openResearchMessage.researchJob) return;
+                    const { cancelResearchJob } = await import("@/lib/api");
+                    const job = await cancelResearchJob(openResearchMessage.researchJob.id, token);
+                    setMessages(prev => prev.map(message => (message.client_id || message.id).toString() === openResearchMessageKey ? { ...message, researchJob: job } : message));
+                    abortControllerRef.current?.abort();
+                } : undefined}
+            />
 
             {/* Context Import Modal */}
             <ContextImportModal

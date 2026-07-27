@@ -127,10 +127,11 @@ async def _verify(query: str, claims: list[dict], docs: list[dict]) -> list[dict
     return claims
 
 
-async def _write_report(query: str, plan: dict, claims: list[dict], docs: list[dict]) -> str:
+async def _write_report(query: str, plan: dict, claims: list[dict], docs: list[dict]) -> tuple[str, set[int]]:
     usable = [c for c in claims if c.get("status") in ("supported", "partial")]
     source_map = {d["source_index"]: d for d in docs}
     sections = []
+    used_source_indices: set[int] = set()
     for section in plan.get("report_sections", []):
         supported_by = set(section.get("supported_by") or [])
         evidence = []
@@ -138,6 +139,7 @@ async def _write_report(query: str, plan: dict, claims: list[dict], docs: list[d
             src = source_map.get(c.get("source_index"))
             if src and (not supported_by or src.get("question_id") in supported_by):
                 evidence.append({"claim": c.get("claim"), "status": c.get("status"), "confidence": c.get("confidence"), "is_estimate": c.get("is_estimate"), "period": c.get("period"), "geography": c.get("geography")})
+                used_source_indices.add(int(src["source_index"]))
         system = """Напиши один раздел профессионального глубокого исследования на русском языке. Синтезируй данные, не пересказывай источники по очереди. Используй только утверждения из evidence: не добавляй факты, числа, даты, названия организаций или выводы, которых там нет. Не используй отвергнутые факты. Оценки явно называй оценками Pitchy. Если данных недостаточно, честно и кратко укажи ограничение вместо догадки. Не вставляй URL, Markdown-ссылки, номера источников или список источников — интерфейс показывает источники отдельно. Не повторяй название раздела и не добавляй вводную или заключение за его пределами."""
         prompt = f"Исходный запрос: {query}\nНазвание раздела: {section.get('title')}\nЦель: {plan.get('objective')}\nПроверенные утверждения:\n{json.dumps(evidence[:60], ensure_ascii=False)}"
         content, _, _ = await call_makura(system, prompt, model=WRITER_MODEL)
@@ -147,7 +149,7 @@ async def _write_report(query: str, plan: dict, claims: list[dict], docs: list[d
     conflicts = [c for c in claims if c.get("status") in ("conflict", "rejected")]
     if conflicts:
         sections.append("## Противоречия и исключённые утверждения\n\n" + "\n".join(f"- {c.get('claim')} — {c.get('verification_reason') or c.get('status')}" for c in conflicts[:15]))
-    return "\n\n".join(sections)
+    return "\n\n".join(sections), used_source_indices
 
 async def run_research_job(job_id: int) -> None:
     try:
@@ -164,7 +166,8 @@ async def run_research_job(job_id: int) -> None:
             docs = [{**docs[r["index"]], "relevance_score": r["relevance_score"]} for r in ranking if 0 <= r["index"] < len(docs)]
         docs = docs[:30]
         for i, doc in enumerate(docs, 1): doc["source_index"] = i
-        if not await _update(job_id, "extracting", 55, f"Отобрано {len(docs)} источников, извлекаю факты"): return
+        discovered_sources = [{"title":d["title"],"url":d["url"],"index":d["source_index"],"relevance_score":d.get("relevance_score")} for d in docs]
+        if not await _update(job_id, "extracting", 55, f"Отобрано {len(docs)} источников, извлекаю факты", sources=discovered_sources): return
         async with AsyncSessionLocal() as db:
             await db.execute(delete(ResearchSource).where(ResearchSource.job_id == job_id))
             rows=[]
@@ -186,8 +189,8 @@ async def run_research_job(job_id: int) -> None:
                 if sid and c.get("passage"): db.add(ResearchEvidence(claim_id=claim.id,source_id=sid,passage=str(c["passage"])[:12000],supports=c.get("status") not in ("conflict","rejected")))
             await db.commit()
         if not await _update(job_id, "writing", 82, "Пишу отчёт по разделам"): return
-        report = await _write_report(query, plan, claims, docs)
-        public_sources=[{"title":d["title"],"url":d["url"],"index":d["source_index"],"relevance_score":d.get("relevance_score")} for d in docs]
+        report, used_source_indices = await _write_report(query, plan, claims, docs)
+        public_sources=[{"title":d["title"],"url":d["url"],"index":d["source_index"],"relevance_score":d.get("relevance_score"),"used_in_report":d["source_index"] in used_source_indices} for d in docs]
         async with AsyncSessionLocal() as db:
             job=await db.get(ResearchJob,job_id)
             if not job or job.cancel_requested: return

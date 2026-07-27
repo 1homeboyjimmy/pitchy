@@ -1,5 +1,5 @@
 "use client";
-import { Check, Circle, Loader, Search, ShieldCheck, FileText, X } from "lucide-react";
+import { Check, Circle, Loader, Search, ShieldCheck, FileText, X, ArrowUpRight } from "lucide-react";
 import type { ResearchJob } from "@/lib/api";
 
 const phases = [
@@ -9,7 +9,7 @@ const phases = [
 const order = Object.fromEntries(phases.map((p,i)=>[p[0],i]));
 const icons = { planning: Circle, searching: Search, reranking: Search, extracting: FileText, verifying: ShieldCheck, writing: FileText };
 
-export function ResearchProgressCard({job,onCancel}:{job:ResearchJob;onCancel?:()=>void}) {
+export function ResearchProgressCard({job,onCancel,onOpen}:{job:ResearchJob;onCancel?:()=>void;onOpen?:()=>void}) {
   const current = order[job.phase] ?? (job.status === "completed" ? phases.length : -1);
   const active = ["queued","running","cancelling"].includes(job.status);
   return <div className="mb-6 overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-white/[0.07] to-white/[0.015] shadow-2xl">
@@ -26,5 +26,9 @@ export function ResearchProgressCard({job,onCancel}:{job:ResearchJob;onCancel?:(
     </div>
     <div className="flex items-center justify-between border-t border-white/5 px-5 py-3 text-[10px] text-white/30"><span>{job.events.at(-1)?.message || "Ожидание запуска"}</span><span className="font-mono">{job.progress}%</span></div>
     {job.error && <div className="border-t border-red-500/10 bg-red-500/[0.05] px-5 py-3 text-xs text-red-300/80">{job.error}</div>}
+    {onOpen && <button type="button" onClick={onOpen} className="flex w-full items-center justify-center gap-2 border-t border-white/5 px-5 py-3 text-[11px] font-medium text-white/60 transition-colors hover:bg-white/[0.04] hover:text-white">
+      {job.status === "completed" ? "Открыть отчёт" : "Открыть процесс исследования"}
+      <ArrowUpRight className="h-3.5 w-3.5"/>
+    </button>}
   </div>;
 }
