@@ -125,7 +125,7 @@ async def test_extract_claims_uses_structured_extractor_and_retries_invalid_json
             }]
         }), None, {}
 
-    monkeypatch.setattr(research_service, "call_routerai", fake_call)
+    monkeypatch.setattr(research_service, "call_makura", fake_call)
     docs = [{"source_index": 1, "title": "Flowers", "url": "https://example.com", "content": "Evidence"}]
 
     claims = await research_service._extract_claims("цветочные магазины Москвы", docs)

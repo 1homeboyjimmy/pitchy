@@ -19,8 +19,8 @@ from search_agent import research_search_documents
 logger = logging.getLogger("app.research")
 PLANNER_MODEL = os.getenv("RESEARCH_PLANNER_MODEL", "glm-5")
 WRITER_MODEL = os.getenv("RESEARCH_WRITER_MODEL", "glm-5")
-EXTRACTOR_MODEL = os.getenv("RESEARCH_EXTRACTOR_MODEL", "z-ai/glm-5")
-EXTRACTOR_FALLBACK_MODEL = os.getenv("RESEARCH_EXTRACTOR_FALLBACK_MODEL", "openai/gpt-4.1-mini")
+EXTRACTOR_MODEL = os.getenv("RESEARCH_EXTRACTOR_MODEL", "glm-5")
+EXTRACTOR_FALLBACK_MODEL = os.getenv("RESEARCH_EXTRACTOR_FALLBACK_MODEL", "glm-4.7")
 VERIFIER_MODEL = os.getenv("RESEARCH_VERIFIER_MODEL", "moonshotai/kimi-k2.6")
 CRITIC_MODEL = os.getenv("RESEARCH_CRITIC_MODEL", "openai/gpt-4.1-mini")
 RERANK_MODEL = os.getenv("RESEARCH_RERANK_MODEL", "cohere/rerank-v3.5")
@@ -142,10 +142,7 @@ async def _extract_claims(query: str, docs: list[dict]) -> list[dict]:
         extractor_models = tuple(dict.fromkeys((EXTRACTOR_MODEL, EXTRACTOR_FALLBACK_MODEL)))
         for attempt, extractor_model in enumerate(extractor_models, 1):
             async with semaphore:
-                content, _, usage = await call_routerai(
-                    system, prompt, model=extractor_model, max_tokens=3500,
-                    response_format={"type": "json_object"},
-                )
+                content, _, usage = await call_makura(system, prompt, model=extractor_model)
             data = _json_object(content, {"claims": []})
             extracted = data.get("claims", []) if isinstance(data, dict) else []
             cleaned_content = re.sub(r"^```(?:json)?", "", (content or "").strip()).lstrip()
