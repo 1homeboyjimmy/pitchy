@@ -19,7 +19,8 @@ from search_agent import research_search_documents
 logger = logging.getLogger("app.research")
 PLANNER_MODEL = os.getenv("RESEARCH_PLANNER_MODEL", "glm-5")
 WRITER_MODEL = os.getenv("RESEARCH_WRITER_MODEL", "glm-5")
-EXTRACTOR_MODEL = os.getenv("RESEARCH_EXTRACTOR_MODEL", "glm-5")
+EXTRACTOR_MODEL = os.getenv("RESEARCH_EXTRACTOR_MODEL", "z-ai/glm-5")
+EXTRACTOR_FALLBACK_MODEL = os.getenv("RESEARCH_EXTRACTOR_FALLBACK_MODEL", "openai/gpt-4.1-mini")
 VERIFIER_MODEL = os.getenv("RESEARCH_VERIFIER_MODEL", "moonshotai/kimi-k2.6")
 RERANK_MODEL = os.getenv("RESEARCH_RERANK_MODEL", "cohere/rerank-v3.5")
 RERANK_MIN_SCORE = float(os.getenv("RESEARCH_RERANK_MIN_SCORE", "0.03"))
@@ -127,10 +128,11 @@ async def _extract_claims(query: str, docs: list[dict]) -> list[dict]:
         system = """Извлеки только проверяемые утверждения, которые прямо помогают ответить на запрос. Полностью игнорируй источник, если его предмет, география или тип рынка не соответствуют запросу. Верни только компактный JSON вида {\"claims\":[{\"claim\":str,\"value_text\":str|null,\"unit\":str|null,\"period\":str|null,\"geography\":str|null,\"is_estimate\":bool,\"source_index\":int,\"passage\":str}]}. Максимум 12 наиболее важных утверждений на пакет, passage не длиннее 500 символов. Не делай выводов, которых нет во фрагменте."""
         allowed_source_indices = {int(doc["source_index"]) for doc in batch}
         prompt = f"ЗАПРОС:\n{query}\n\nИСТОЧНИКИ:\n{evidence}"
-        for attempt in range(1, 3):
+        extractor_models = tuple(dict.fromkeys((EXTRACTOR_MODEL, EXTRACTOR_FALLBACK_MODEL)))
+        for attempt, extractor_model in enumerate(extractor_models, 1):
             async with semaphore:
                 content, _, usage = await call_routerai(
-                    system, prompt, model=EXTRACTOR_MODEL, max_tokens=3500,
+                    system, prompt, model=extractor_model, max_tokens=3500,
                     response_format={"type": "json_object"},
                 )
             data = _json_object(content, {"claims": []})
@@ -146,8 +148,8 @@ async def _extract_claims(query: str, docs: list[dict]) -> list[dict]:
             if valid or parseable_json and isinstance(data, dict) and "claims" in data:
                 return valid
             logger.warning(
-                "Claim extraction batch %s attempt %s returned no parseable JSON: response_chars=%s usage=%s",
-                batch_number, attempt, len(content or ""), usage,
+                "Claim extraction batch %s attempt %s (%s) returned no parseable JSON: response_chars=%s usage=%s",
+                batch_number, attempt, extractor_model, len(content or ""), usage,
             )
         return []
 

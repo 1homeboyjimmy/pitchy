@@ -108,9 +108,10 @@ async def test_extract_claims_uses_structured_extractor_and_retries_invalid_json
     async def fake_call(_system, _prompt, **kwargs):
         nonlocal calls
         calls += 1
-        assert kwargs["model"] == research_service.EXTRACTOR_MODEL
         if calls == 1:
+            assert kwargs["model"] == research_service.EXTRACTOR_MODEL
             return "not-json", None, {}
+        assert kwargs["model"] == research_service.EXTRACTOR_FALLBACK_MODEL
         return json.dumps({
             "claims": [{
                 "claim": "Relevant fact",
