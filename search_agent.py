@@ -116,7 +116,7 @@ async def _exa_search(query: str, num_results: int, api_key: str) -> dict:
     """
     body = {
         "query": query,
-        "type": "auto",
+        "type": "deep",
         "numResults": num_results,
         # `text` alongside `highlights` so the fallback below has something to
         # use when Exa returns no highlights for a result.
