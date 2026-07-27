@@ -721,12 +721,13 @@ export function AdminView() {
                                         conversion: s.users && Number(s.users) > 0 ? Number(((Number(s.subscriptions) / Number(s.users)) * 100).toFixed(2)) : 0
                                     }))}
                                     dataKey="date"
-                                    curveType="linear"
+                                    curveType="monotone"
                                     series={[{ name: "users", color: "blue.5", label: "Регистрации" }]}
                                     withGradient
                                     gridAxis="xy"
                                     textColor="rgba(255, 255, 255, 0.5)"
                                     withDots={analytics.series.length <= 31}
+                                    withLegend
                                     tickLine="xy"
                                     xAxisProps={{ interval: "preserveStartEnd" }}
                                 />
@@ -742,7 +743,7 @@ export function AdminView() {
                                         conversion: s.users && Number(s.users) > 0 ? Number(((Number(s.subscriptions) / Number(s.users)) * 100).toFixed(2)) : 0
                                     }))}
                                     dataKey="date"
-                                    curveType="linear"
+                                    curveType="monotone"
                                     series={[
                                         { name: "chat_sessions", color: "violet.5", label: "Сессии" },
                                         { name: "chat_messages", color: "cyan.5", label: "Сообщения" },
@@ -767,12 +768,13 @@ export function AdminView() {
                                         conversion: s.users && Number(s.users) > 0 ? Number(((Number(s.subscriptions) / Number(s.users)) * 100).toFixed(2)) : 0
                                     }))}
                                     dataKey="date"
-                                    curveType="linear"
+                                    curveType="monotone"
                                     series={[{ name: "subscriptions", color: "teal.5", label: "Платные пользователи" }]}
                                     withGradient
                                     gridAxis="xy"
                                     textColor="rgba(255, 255, 255, 0.5)"
                                     withDots={analytics.series.length <= 31}
+                                    withLegend
                                     tickLine="xy"
                                     xAxisProps={{ interval: "preserveStartEnd" }}
                                 />
@@ -788,12 +790,13 @@ export function AdminView() {
                                         conversion: s.users && Number(s.users) > 0 ? Number(((Number(s.subscriptions) / Number(s.users)) * 100).toFixed(2)) : 0
                                     }))}
                                     dataKey="date"
-                                    curveType="linear"
+                                    curveType="monotone"
                                     series={[{ name: "conversion", color: "orange.5", label: "Конверсия (%)" }]}
                                     withGradient
                                     gridAxis="xy"
                                     textColor="rgba(255, 255, 255, 0.5)"
                                     withDots={analytics.series.length <= 31}
+                                    withLegend
                                     tickLine="xy"
                                     xAxisProps={{ interval: "preserveStartEnd" }}
                                 />
