@@ -1331,6 +1331,9 @@ export async function createResearchJob(data: {session_id:number;query:string;cl
 export async function getResearchJob(id:number, token:string): Promise<ResearchJob> {
   return getAuthJson<ResearchJob>(`/api/research/${id}`, token);
 }
+export async function getSessionResearchJob(sessionId:number, token:string): Promise<ResearchJob | null> {
+  return getAuthJson<ResearchJob | null>(`/api/research/session/${sessionId}/active`, token);
+}
 export async function cancelResearchJob(id:number, token:string): Promise<ResearchJob> {
   return postAuthJson<ResearchJob>(`/api/research/${id}/cancel`, {}, token);
 }

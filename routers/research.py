@@ -68,18 +68,18 @@ async def create_research(payload: ResearchCreate, user: User = Depends(get_asyn
     return serialize(job)
 
 
+@router.get("/session/{session_id}/active")
+async def get_active_research(session_id:int,user:User=Depends(get_async_current_user),db:AsyncSession=Depends(get_async_db)):
+    job=(await db.execute(select(ResearchJob).where(ResearchJob.session_id==session_id,ResearchJob.user_id==user.id).order_by(ResearchJob.created_at.desc()))).scalars().first()
+    return serialize(job) if job else None
+
+
 @router.get("/{job_id}")
 async def get_research(job_id:int,user:User=Depends(get_async_current_user),db:AsyncSession=Depends(get_async_db)):
     job=(await db.execute(select(ResearchJob).where(ResearchJob.id==job_id,ResearchJob.user_id==user.id))).scalar_one_or_none()
     if not job: raise HTTPException(status_code=404,detail="Research not found")
     claims=(await db.execute(select(ResearchClaim).where(ResearchClaim.job_id==job.id))).scalars().all() if job.status=="completed" else None
     return serialize(job,claims)
-
-
-@router.get("/session/{session_id}/active")
-async def get_active_research(session_id:int,user:User=Depends(get_async_current_user),db:AsyncSession=Depends(get_async_db)):
-    job=(await db.execute(select(ResearchJob).where(ResearchJob.session_id==session_id,ResearchJob.user_id==user.id).order_by(ResearchJob.created_at.desc()))).scalars().first()
-    return serialize(job) if job else None
 
 
 @router.post("/{job_id}/cancel")

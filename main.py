@@ -105,7 +105,7 @@ from redis_client import get_redis
 from slm_dispatcher import slm_dispatcher
 from makura_client import call_makura, stream_makura
 from search_agent import execute_search_agent, execute_deep_research, async_search_with_sources, get_exa_proxy
-from db import SessionLocal, get_db
+from db import SessionLocal, get_db, engine
 from db_async import get_async_db
 from swarm_agent import run_analytical_swarm
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -810,6 +810,8 @@ async def _gather_health() -> dict:
     the whole site on a 30s cadence.
     """
 
+    health_started = time.time()
+
     # --- alembic revision matches HEAD? ---
     def _alembic_state() -> dict:
         try:
@@ -827,7 +829,12 @@ async def _gather_health() -> dict:
 
     # --- system snapshot ---
     def _system_info() -> dict:
-        info: dict = {}
+        import platform
+        info: dict = {
+            "environment": os.getenv("APP_ENV", "unknown"),
+            "python": platform.python_version(),
+            "cpu_count": os.cpu_count() or 0,
+        }
         try:
             import shutil
             total, used, free = shutil.disk_usage("/")
@@ -855,11 +862,85 @@ async def _gather_health() -> dict:
             info["load_15m"] = float(la[2])
         except Exception:
             pass
+        try:
+            with open("/proc/uptime") as f:
+                info["host_uptime_hours"] = round(float(f.read().split()[0]) / 3600, 1)
+        except Exception:
+            pass
         return info
+
+    def _db_details() -> dict:
+        t0 = time.time()
+        try:
+            with SessionLocal() as session:
+                session.execute(text("SELECT 1"))
+            pool = engine.pool
+            return {
+                "state": "healthy",
+                "ok": True,
+                "latency_ms": int((time.time() - t0) * 1000),
+                "pool_size": pool.size() if hasattr(pool, "size") else None,
+                "pool_checked_out": pool.checkedout() if hasattr(pool, "checkedout") else None,
+                "pool_overflow": pool.overflow() if hasattr(pool, "overflow") else None,
+            }
+        except Exception as e:
+            return {"state": "down", "ok": False, "error": type(e).__name__,
+                    "latency_ms": int((time.time() - t0) * 1000)}
+
+    def _redis_details() -> dict:
+        t0 = time.time()
+        if not os.getenv("REDIS_URL"):
+            return {"state": "skipped", "ok": False, "note": "REDIS_URL not configured"}
+        try:
+            client = get_redis()
+            if not client:
+                raise RuntimeError("client unavailable")
+            client.ping()
+            info = client.info("memory")
+            return {
+                "state": "healthy",
+                "ok": True,
+                "latency_ms": int((time.time() - t0) * 1000),
+                "used_memory_mb": round(float(info.get("used_memory", 0)) / 1024 / 1024, 1),
+                "maxmemory_mb": round(float(info.get("maxmemory", 0)) / 1024 / 1024, 1),
+            }
+        except Exception as e:
+            return {"state": "down", "ok": False, "error": type(e).__name__,
+                    "latency_ms": int((time.time() - t0) * 1000)}
+
+    def _research_details() -> dict:
+        try:
+            from models import ResearchJob
+            with SessionLocal() as session:
+                active = session.execute(
+                    select(ResearchJob).where(ResearchJob.status.in_(["queued", "running", "cancelling"]))
+                ).scalars().all()
+                failed_24h = session.execute(
+                    select(sa_func.count()).select_from(ResearchJob).where(
+                        ResearchJob.status == "failed",
+                        ResearchJob.completed_at >= datetime.utcnow() - timedelta(hours=24),
+                    )
+                ).scalar() or 0
+            oldest = min((job.updated_at or job.created_at for job in active), default=None)
+            stale_minutes = round((datetime.utcnow() - oldest).total_seconds() / 60, 1) if oldest else 0
+            state = "warning" if active and stale_minutes > 15 else "healthy"
+            return {
+                "state": state,
+                "ok": state == "healthy",
+                "active_jobs": len(active),
+                "oldest_update_minutes": stale_minutes,
+                "failed_24h": int(failed_24h),
+                "note": "active job has not reached a checkpoint for over 15 minutes" if state == "warning" else None,
+            }
+        except Exception as e:
+            return {"state": "warning", "ok": False, "error": type(e).__name__}
 
     # --- external probes, run in parallel ---
     makura_key = os.getenv("MAKURA_API_KEY", "")
+    routerai_key = os.getenv("ROUTERAI_API_KEY", "")
     exa_key = os.getenv("EXA_API_KEY", "")
+    langfuse_url = os.getenv("LANGFUSE_BASE_URL", "https://cloud.langfuse.com").rstrip("/")
+    langfuse_configured = bool(os.getenv("LANGFUSE_PUBLIC_KEY") and os.getenv("LANGFUSE_SECRET_KEY"))
     # Search egress: api.exa.ai is Cloudflare-blocked from our RU IP, so when a
     # proxy is configured the real dependency is the proxy, not Exa directly —
     # probe whatever the search agent will actually dial.
@@ -887,21 +968,35 @@ async def _gather_health() -> dict:
             logger.warning(f"health check {getattr(fn,'__name__',fn)} failed: {e}")
             return default
 
-    (db_ok, redis_ok, rag_ok, alembic_check, sys_info,
-     makura_check, exa_check, jina_check, smtp_check) = await asyncio.gather(
-        _safe_thread(_db_healthcheck, False),
-        _safe_thread(_redis_healthcheck, False),
+    (db_check, redis_check, rag_ok, alembic_check, sys_info, research_check,
+     makura_check, routerai_check, exa_check, jina_check, smtp_check,
+     chroma_check, frontend_check, loki_check, grafana_check, crowdsec_check,
+     langfuse_check) = await asyncio.gather(
+        _safe_thread(_db_details, {"state": "down", "ok": False, "error": "timeout"}),
+        _safe_thread(_redis_details, {"state": "down", "ok": False, "error": "timeout"}),
         _safe_thread(rag.healthcheck, False),
         _safe_thread(_alembic_state, {"ok": False, "error": "timeout"}),
         _safe_thread(_system_info, {}),
+        _safe_thread(_research_details, {"state": "warning", "ok": False, "error": "timeout"}),
         _check_http("https://api.makura.ai/v1/models",
                     headers={"Authorization": f"Bearer {makura_key}"} if makura_key else None,
+                    method="GET"),
+        _check_http("https://routerai.ru/api/v1/models",
+                    headers={"Authorization": f"Bearer {routerai_key}"} if routerai_key else None,
                     method="GET"),
         _check_tcp(exa_probe_host, exa_probe_port, timeout=5.0),
         _check_http("https://api.jina.ai/v1/rerank"),  # known 451 from RU — visibility only
         smtp_probe,
+        _check_http("http://chroma:8000/api/v2/heartbeat", method="GET"),
+        _check_http("http://frontend:3000", method="GET"),
+        _check_http("http://loki:3100/ready", method="GET"),
+        _check_http("http://grafana:3000/api/health", method="GET"),
+        _check_http("http://crowdsec:8080/health", method="GET"),
+        _check_http(langfuse_url, method="GET"),
         return_exceptions=False,
     )
+    db_ok = bool(db_check.get("ok"))
+    redis_ok = bool(redis_check.get("ok"))
 
     # Friendlier annotations for known states ----
     # jina is geo-blocked from RU servers; we have an internal fallback,
@@ -925,37 +1020,61 @@ async def _gather_health() -> dict:
     if not makura_key:
         makura_check["state"] = "skipped"
         makura_check["note"] = "MAKURA_API_KEY not set"
+    if not routerai_key:
+        routerai_check["state"] = "skipped"
+        routerai_check["note"] = "ROUTERAI_API_KEY not set"
+    if not langfuse_configured:
+        langfuse_check["state"] = "skipped"
+        langfuse_check["note"] = "Langfuse credentials not configured"
 
     # alembic_check + sys_info were already computed in the gather above.
     if "state" not in alembic_check:
         alembic_check["state"] = "healthy" if alembic_check.get("ok") else "warning"
 
-    # top-level status: ok if db is alive; degraded otherwise
-    status = "ok" if db_ok else "degraded"
+    core_checks = [db_check, redis_check, {"ok": rag_ok}, frontend_check, chroma_check]
+    status = "ok" if all(check.get("ok") for check in core_checks) else "degraded"
 
     def _core_state(ok: bool) -> str:
         return "healthy" if ok else "down"
 
+    checks = {
+        "db":      db_check,
+        "redis":   redis_check,
+        "rag":     {"state": _core_state(rag_ok), "ok": rag_ok,
+                    "note": None if rag_ok else "indexing in background or not ready"},
+        "chroma":  chroma_check,
+        "alembic": alembic_check,
+        "frontend": frontend_check,
+        "research": research_check,
+        "smtp":    {**smtp_check, "host": smtp_host, "port": smtp_port},
+        "makura":  {**makura_check, "configured": bool(makura_key)},
+        "routerai": {**routerai_check, "configured": bool(routerai_key)},
+        "exa":     {**exa_check, "configured": bool(exa_key)},
+        "jina":    jina_check,
+        "langfuse": {**langfuse_check, "configured": langfuse_configured},
+        "loki": loki_check,
+        "grafana": grafana_check,
+        "crowdsec": crowdsec_check,
+        "system":  sys_info,
+    }
+    state_counts = {"healthy": 0, "warning": 0, "down": 0, "skipped": 0}
+    for name, check in checks.items():
+        if name == "system":
+            continue
+        state = check.get("state", "healthy" if check.get("ok") else "down")
+        state_counts[state] = state_counts.get(state, 0) + 1
+
     return {
         "status": status,
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "duration_ms": int((time.time() - health_started) * 1000),
+        "summary": state_counts,
         # Backward-compatible top-level booleans
         "db": db_ok,
         "redis": redis_ok,
         "rag": rag_ok,
         "chromadb": rag_ok,
-        # Detailed nested checks
-        "checks": {
-            "db":      {"state": _core_state(db_ok), "ok": db_ok},
-            "redis":   {"state": _core_state(redis_ok), "ok": redis_ok},
-            "rag":     {"state": _core_state(rag_ok), "ok": rag_ok,
-                        "note": None if rag_ok else "indexing in background or not ready"},
-            "alembic": alembic_check,
-            "smtp":    {**smtp_check, "host": smtp_host, "port": smtp_port},
-            "makura":  {**makura_check, "configured": bool(makura_key)},
-            "exa":     {**exa_check, "configured": bool(exa_key)},
-            "jina":    jina_check,
-            "system":  sys_info,
-        },
+        "checks": checks,
     }
 
 
@@ -1005,10 +1124,14 @@ def _render_health_html(data: dict) -> str:
           <div class="kvs">{''.join(rows)}</div>
         </div>"""
 
-    checks = data.get("checks", {})
+    checks = dict(data.get("checks", {}))
     # System info gets its own larger card at the bottom
     sys_info = checks.pop("system", {})
-    ordered = ["db", "redis", "rag", "alembic", "smtp", "makura", "exa", "jina"]
+    ordered = [
+        "db", "redis", "chroma", "rag", "alembic", "frontend", "research",
+        "smtp", "makura", "routerai", "exa", "jina", "langfuse",
+        "loki", "grafana", "crowdsec",
+    ]
     cards_html = "".join(card(k, checks[k]) for k in ordered if k in checks)
 
     sys_rows = "".join(
@@ -1063,7 +1186,9 @@ def _render_health_html(data: dict) -> str:
     <h1>pitchy.pro · system status</h1>
     <span class="badge" style="background:{top_color}">{top_label}</span>
   </div>
-  <div class="sub">auto-refresh 30s · raw JSON: <a href="/health" onclick="event.preventDefault();
+  <div class="sub">auto-refresh 30s · generated in {data.get("duration_ms", "?")} ms ·
+       healthy {data.get("summary", {}).get("healthy", 0)} · warning {data.get("summary", {}).get("warning", 0)} ·
+       down {data.get("summary", {}).get("down", 0)} · raw JSON: <a href="/health" onclick="event.preventDefault();
        fetch('/health',{{headers:{{Accept:'application/json'}}}}).then(r=>r.text()).then(t=>
        document.body.innerHTML='<pre style=padding:24px;white-space:pre-wrap>'+t+'</pre>')">view</a></div>
   <div class="grid">{cards_html}</div>

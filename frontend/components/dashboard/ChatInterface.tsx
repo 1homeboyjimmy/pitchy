@@ -173,13 +173,33 @@ export function ChatInterface({
         const refresh = async () => {
             const token = getToken();
             if (!token || disposed) return;
-            const ids = Array.from(new Set((session.messages || []).map(m => m.research_job_id).filter((id): id is number => !!id)));
-            if (!ids.length) return;
-            const { getResearchJob } = await import("@/lib/api");
-            const jobs = await Promise.all(ids.map(id => getResearchJob(id, token).catch(() => null)));
+            const { getChatSession, getResearchJob, getSessionResearchJob } = await import("@/lib/api");
+            const [freshSession, latestJob] = await Promise.all([
+                getChatSession(session.id, token).catch(() => null),
+                getSessionResearchJob(session.id, token).catch(() => null),
+            ]);
+            if (disposed) return;
+            const serverMessages = freshSession?.messages || session.messages || [];
+            const ids = Array.from(new Set(serverMessages.map(m => m.research_job_id).filter((id): id is number => !!id)));
+            const jobs = await Promise.all(ids.map(id =>
+                latestJob?.id === id ? Promise.resolve(latestJob) : getResearchJob(id, token).catch(() => null)
+            ));
             if (disposed) return;
             const byId = new Map(jobs.filter((j): j is ResearchJob => !!j).map(j => [j.id, j]));
-            setMessages(prev => prev.map(m => m.research_job_id && byId.has(m.research_job_id) ? { ...m, researchJob: byId.get(m.research_job_id) } : m));
+            setMessages(prev => {
+                const localByKey = new Map(prev.map(message => [(message.client_id || message.id)?.toString(), message]));
+                return serverMessages.map(message => {
+                    const local = localByKey.get((message.client_id || message.id)?.toString());
+                    const researchJob = message.research_job_id ? byId.get(message.research_job_id) : undefined;
+                    return {
+                        ...message,
+                        content: (local?.content?.length || 0) > (message.content?.length || 0) ? local?.content || "" : message.content,
+                        thoughts: (local?.thoughts?.length || 0) > (message.thoughts?.length || 0) ? local?.thoughts : message.thoughts,
+                        sources: (local?.sources?.length || 0) > (message.sources?.length || 0) ? local?.sources || [] : message.sources,
+                        researchJob: researchJob || local?.researchJob,
+                    };
+                });
+            });
             if (jobs.some(j => j && ["queued", "running", "cancelling"].includes(j.status))) timer = setTimeout(refresh, 2500);
         };
         refresh();

@@ -134,7 +134,16 @@ export function AdminView() {
                     if (res.ok) setPromocodes(await res.json());
                 } else if (activeTab === "analytics") {
                     const endStr = dayjs().format("YYYY-MM-DD");
-                    const startStr = dayjs().subtract(30, "day").format("YYYY-MM-DD");
+                    const rangeAmount: Record<typeof analyticsTimeFilter, { amount: number; unit: dayjs.ManipulateType }> = {
+                        "24h": { amount: 1, unit: "day" },
+                        "3d": { amount: 3, unit: "day" },
+                        "1w": { amount: 7, unit: "day" },
+                        "1m": { amount: 1, unit: "month" },
+                        "6m": { amount: 6, unit: "month" },
+                        "1y": { amount: 1, unit: "year" },
+                    };
+                    const selectedRange = rangeAmount[analyticsTimeFilter];
+                    const startStr = dayjs().subtract(selectedRange.amount, selectedRange.unit).format("YYYY-MM-DD");
                     
                     const res = await fetch(`${API_BASE}/admin/analytics?start=${startStr}&end=${endStr}`, {
                         headers: { "Authorization": `Bearer ${token}` }
@@ -703,7 +712,8 @@ export function AdminView() {
                             </div>
 
                             <div className="bg-[#111111] border border-white/10 p-6">
-                                <h4 className="text-white font-mono-label text-[12px] uppercase tracking-widest mb-6">Динамика регистраций (Всего пользователей)</h4>
+                                <h4 className="text-white font-mono-label text-[12px] uppercase tracking-widest mb-1">Новые регистрации</h4>
+                                <p className="mb-6 text-[11px] font-code text-white/35">Количество новых пользователей за каждый интервал выбранного периода</p>
                                 <AreaChart
                                     h={280}
                                     data={analytics.series.map(s => ({
@@ -712,18 +722,19 @@ export function AdminView() {
                                     }))}
                                     dataKey="date"
                                     curveType="linear"
-                                    series={[{ name: "users", color: "gray.5", label: "Пользователи" }]}
+                                    series={[{ name: "users", color: "blue.5", label: "Регистрации" }]}
                                     withGradient
                                     gridAxis="xy"
                                     textColor="rgba(255, 255, 255, 0.5)"
-                                    withDots={false}
-                                    yAxisProps={{ ticks: [0, 20, 40, 60, 80], domain: [0, 80] }}
+                                    withDots={analytics.series.length <= 31}
+                                    tickLine="xy"
                                     xAxisProps={{ interval: "preserveStartEnd" }}
                                 />
                             </div>
 
                             <div className="bg-[#111111] border border-white/10 p-6">
-                                <h4 className="text-white font-mono-label text-[12px] uppercase tracking-widest mb-6">Активность (Чат-сессии)</h4>
+                                <h4 className="text-white font-mono-label text-[12px] uppercase tracking-widest mb-1">Активность в чатах</h4>
+                                <p className="mb-6 text-[11px] font-code text-white/35">Новые сессии и отправленные сообщения</p>
                                 <AreaChart
                                     h={280}
                                     data={analytics.series.map(s => ({
@@ -732,18 +743,23 @@ export function AdminView() {
                                     }))}
                                     dataKey="date"
                                     curveType="linear"
-                                    series={[{ name: "chat_sessions", color: "gray.5", label: "Сессии" }]}
+                                    series={[
+                                        { name: "chat_sessions", color: "violet.5", label: "Сессии" },
+                                        { name: "chat_messages", color: "cyan.5", label: "Сообщения" },
+                                    ]}
                                     withGradient
                                     gridAxis="xy"
                                     textColor="rgba(255, 255, 255, 0.5)"
-                                    withDots={false}
-                                    yAxisProps={{ ticks: [0, 50, 100, 150, 200], domain: [0, 200] }}
+                                    withDots={analytics.series.length <= 31}
+                                    withLegend
+                                    tickLine="xy"
                                     xAxisProps={{ interval: "preserveStartEnd" }}
                                 />
                             </div>
 
                             <div className="bg-[#111111] border border-white/10 p-6">
-                                <h4 className="text-white font-mono-label text-[12px] uppercase tracking-widest mb-6">Рост платных подписок</h4>
+                                <h4 className="text-white font-mono-label text-[12px] uppercase tracking-widest mb-1">Новые платные пользователи</h4>
+                                <p className="mb-6 text-[11px] font-code text-white/35">Регистрации пользователей, у которых сейчас активен платный тариф</p>
                                 <AreaChart
                                     h={280}
                                     data={analytics.series.map(s => ({
@@ -752,18 +768,19 @@ export function AdminView() {
                                     }))}
                                     dataKey="date"
                                     curveType="linear"
-                                    series={[{ name: "subscriptions", color: "gray.3", label: "Подписки" }]}
+                                    series={[{ name: "subscriptions", color: "teal.5", label: "Платные пользователи" }]}
                                     withGradient
                                     gridAxis="xy"
                                     textColor="rgba(255, 255, 255, 0.5)"
-                                    withDots={false}
-                                    yAxisProps={{ ticks: [0, 10, 20, 30, 40], domain: [0, 40] }}
+                                    withDots={analytics.series.length <= 31}
+                                    tickLine="xy"
                                     xAxisProps={{ interval: "preserveStartEnd" }}
                                 />
                             </div>
 
                             <div className="bg-[#111111] border border-white/10 p-6">
-                                <h4 className="text-white font-mono-label text-[12px] uppercase tracking-widest mb-6">Изменение конверсии (%)</h4>
+                                <h4 className="text-white font-mono-label text-[12px] uppercase tracking-widest mb-1">Конверсия новых регистраций</h4>
+                                <p className="mb-6 text-[11px] font-code text-white/35">Доля новых пользователей интервала, у которых сейчас платный тариф</p>
                                 <AreaChart
                                     h={280}
                                     data={analytics.series.map(s => ({
@@ -772,11 +789,12 @@ export function AdminView() {
                                     }))}
                                     dataKey="date"
                                     curveType="linear"
-                                    series={[{ name: "conversion", color: "gray.7", label: "Конверсия (%)" }]}
+                                    series={[{ name: "conversion", color: "orange.5", label: "Конверсия (%)" }]}
                                     withGradient
                                     gridAxis="xy"
                                     textColor="rgba(255, 255, 255, 0.5)"
-                                    withDots={false}
+                                    withDots={analytics.series.length <= 31}
+                                    tickLine="xy"
                                     xAxisProps={{ interval: "preserveStartEnd" }}
                                 />
                             </div>
