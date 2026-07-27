@@ -94,7 +94,7 @@ async def _extract_claims(query: str, docs: list[dict]) -> list[dict]:
         evidence = "\n\n".join(f"SOURCE_INDEX={d['source_index']}\nTITLE={d['title']}\nURL={d['url']}\nTEXT={d['content'][:3500]}" for d in batch)
         system = """Извлеки только проверяемые утверждения, которые помогают ответить на запрос. Верни только компактный JSON вида {\"claims\":[{\"claim\":str,\"value_text\":str|null,\"unit\":str|null,\"period\":str|null,\"geography\":str|null,\"is_estimate\":bool,\"source_index\":int,\"passage\":str}]}. Максимум 12 наиболее важных утверждений на пакет, passage не длиннее 500 символов. Не делай выводов, которых нет во фрагменте."""
         async with semaphore:
-            content, _, usage = await call_routerai(system, f"ЗАПРОС:\n{query}\n\nИСТОЧНИКИ:\n{evidence}", model=VERIFIER_MODEL, max_tokens=6000)
+            content, _, usage = await call_routerai(system, f"ЗАПРОС:\n{query}\n\nИСТОЧНИКИ:\n{evidence}", model=VERIFIER_MODEL, max_tokens=6000, response_format={"type": "json_object"})
         data = _json_object(content, {"claims": []})
         if not isinstance(data, dict) or not data.get("claims"):
             logger.warning("Claim extraction returned no parseable claims: response_chars=%s usage=%s", len(content or ""), usage)
@@ -114,7 +114,7 @@ async def _extract_claims(query: str, docs: list[dict]) -> list[dict]:
 async def _verify(query: str, claims: list[dict], docs: list[dict]) -> list[dict]:
     compact = [{"claim_index": i, **{k: c.get(k) for k in ("claim","value_text","unit","period","geography","is_estimate","source_index","passage")}} for i,c in enumerate(claims)]
     system = """Ты независимый фактчекер. Проверь соответствие утверждений приведённым passages, периоды, географию, арифметику и смешение факта с оценкой. Верни только JSON {\"verdicts\":[{\"claim_index\":int,\"status\":\"supported|partial|conflict|rejected\",\"confidence\":0..1,\"reason\":str}]}. Строго отклоняй выводы, не следующие из evidence."""
-    content, _, _ = await call_routerai(system, f"Исходный запрос: {query}\n\nУтверждения:\n{json.dumps(compact, ensure_ascii=False)[:50000]}", model=VERIFIER_MODEL)
+    content, _, _ = await call_routerai(system, f"Исходный запрос: {query}\n\nУтверждения:\n{json.dumps(compact, ensure_ascii=False)[:50000]}", model=VERIFIER_MODEL, response_format={"type": "json_object"})
     verdicts = _json_object(content, {"verdicts": []}).get("verdicts", [])
     if not verdicts:
         raise RuntimeError("Не удалось проверить извлечённые утверждения")
