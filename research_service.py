@@ -22,6 +22,7 @@ WRITER_MODEL = os.getenv("RESEARCH_WRITER_MODEL", "glm-5")
 EXTRACTOR_MODEL = os.getenv("RESEARCH_EXTRACTOR_MODEL", "z-ai/glm-5")
 EXTRACTOR_FALLBACK_MODEL = os.getenv("RESEARCH_EXTRACTOR_FALLBACK_MODEL", "openai/gpt-4.1-mini")
 VERIFIER_MODEL = os.getenv("RESEARCH_VERIFIER_MODEL", "moonshotai/kimi-k2.6")
+CRITIC_MODEL = os.getenv("RESEARCH_CRITIC_MODEL", "openai/gpt-4.1-mini")
 RERANK_MODEL = os.getenv("RESEARCH_RERANK_MODEL", "cohere/rerank-v3.5")
 RERANK_MIN_SCORE = float(os.getenv("RESEARCH_RERANK_MIN_SCORE", "0.03"))
 RERANK_MIN_DOCUMENTS = int(os.getenv("RESEARCH_RERANK_MIN_DOCUMENTS", "15"))
@@ -241,7 +242,86 @@ async def _verify(query: str, claims: list[dict], docs: list[dict]) -> list[dict
     return claims
 
 
-async def _write_report(job_id: int, query: str, plan: dict, claims: list[dict], docs: list[dict]) -> tuple[str, set[int]]:
+async def _build_research_brief(query: str, plan: dict, claims: list[dict]) -> dict:
+    usable = [
+        {
+            "claim": c.get("claim"),
+            "value_text": c.get("value_text"),
+            "unit": c.get("unit"),
+            "period": c.get("period"),
+            "geography": c.get("geography"),
+            "is_estimate": bool(c.get("is_estimate")),
+            "status": c.get("status"),
+            "confidence": c.get("confidence"),
+            "source_index": c.get("source_index"),
+        }
+        for c in claims
+        if c.get("status") in ("supported", "partial")
+        and float(c.get("confidence") or 0) >= 0.5
+    ]
+    fallback = {
+        "direct_answer": "Доступные данные требуют квалифицированного вывода.",
+        "decision_status": "qualified",
+        "entities": [],
+        "metric_registry": [],
+        "scope_rules": plan.get("scope") or {},
+        "caveats": ["Выводы ограничены составом и сопоставимостью найденных источников."],
+    }
+    system = """Ты ведущий аналитик исследования. Создай единый непротиворечивый research brief, которым будут обязаны пользоваться все авторы разделов. Верни только JSON:
+{"direct_answer":str,"decision_status":"conclusive|qualified|inconclusive","entities":[{"name":str,"role":str,"segment":str|null,"metric":str|null,"value":str|null,"geography":str|null,"period":str|null,"confidence":0..1}],"metric_registry":[{"metric":str,"value":str,"geography":str|null,"period":str|null,"status":"fact|estimate","interpretation":str}],"scope_rules":object,"caveats":[str]}.
+Не объединяй показатели с разной географией, периодом или методологией. Если критерий ответа не определён или метрики несопоставимы, decision_status должен быть qualified либо inconclusive. Не выбирай единого лидера/победителя только по косвенной метрике. Не добавляй фактов вне утверждений."""
+    prompt = (
+        f"Запрос: {query}\n"
+        f"Цель и рамки: {json.dumps({'objective': plan.get('objective'), 'scope': plan.get('scope')}, ensure_ascii=False)}\n"
+        f"Проверенный реестр фактов: {json.dumps(usable, ensure_ascii=False)}"
+    )
+    content, _, _ = await call_routerai(
+        system,
+        prompt,
+        model=CRITIC_MODEL,
+        max_tokens=3500,
+        response_format={"type": "json_object"},
+    )
+    brief = _json_object(content, fallback)
+    if not isinstance(brief, dict) or not brief.get("direct_answer"):
+        return fallback
+    for key, default in fallback.items():
+        brief.setdefault(key, default)
+    return brief
+
+
+async def _edit_report(query: str, report: str, brief: dict) -> str:
+    if not report.strip():
+        return report
+    system = """Ты независимый редактор-критик финального глубокого исследования. Верни только готовый Markdown-отчёт без служебных комментариев.
+Обязательные требования:
+1. Начни с краткого прямого ответа, затем дай компактную таблицу ключевых выводов: объект/тезис, критерий или метрика, география и период, статус доказательности.
+2. Research brief является глобальным контрактом: ни один раздел не может противоречить его direct_answer, decision_status, metric_registry и scope_rules.
+3. Удали смысловые повторы между разделами, сохранив каждый факт в наиболее подходящем месте. Итог должен быть плотнее исходника, но не терять важные доказательства, ограничения и практические последствия.
+4. Не сравнивай как равные разные бизнес-модели, географии, периоды и методологии. Не называй объект лидером/победителем без сопоставимой целевой метрики. При нескольких критериях сформулируй несколько квалифицированных лидеров.
+5. Явно различай формулировками «Подтверждённый факт», «Вывод Pitchy» и «Рабочая гипотеза», когда читатель может перепутать уровень доказательности. Не маркируй каждое очевидное предложение.
+6. Не превращай корреляцию, техническую метрику, намерение о сделке или косвенный признак в причинность.
+7. Удали артефакты кодировки, случайные иностранные символы, канцелярские повторы и взаимоисключающие числа. Если числа относятся к разным срезам, явно объясни различие.
+8. Не добавляй URL, Markdown-ссылки и номера источников: источники отображаются отдельно в интерфейсе."""
+    prompt = (
+        f"Исходный запрос: {query}\n\n"
+        f"Единый research brief:\n{json.dumps(brief, ensure_ascii=False)}\n\n"
+        f"Черновик отчёта:\n{report}"
+    )
+    edited, _, _ = await call_routerai(
+        system,
+        prompt,
+        model=CRITIC_MODEL,
+        max_tokens=8000,
+    )
+    candidate = (edited or "").strip()
+    if len(candidate) < 800:
+        logger.warning("Research critic returned insufficient output; preserving section draft")
+        return report
+    return candidate
+
+
+async def _write_report(job_id: int, query: str, plan: dict, claims: list[dict], docs: list[dict], brief: dict) -> tuple[str, set[int]]:
     usable = [
         c for c in claims
         if c.get("status") in ("supported", "partial")
@@ -280,8 +360,8 @@ async def _write_report(job_id: int, query: str, plan: dict, claims: list[dict],
             target_length = "250–450 слов"
         else:
             target_length = "100–200 слов"
-        system = """Напиши один раздел профессионального глубокого исследования на русском языке. Синтезируй данные, не пересказывай источники по очереди. Используй только утверждения из evidence: не добавляй факты, числа, даты, названия организаций или выводы, которых там нет. Не используй отвергнутые факты. Оценки явно называй оценками Pitchy. Не выдавай корреляцию, техническую метрику или косвенный признак за доказанную причинно-следственную связь. Если данных недостаточно, честно и кратко укажи ограничение вместо догадки. Не вставляй URL, Markdown-ссылки, номера источников или список источников — интерфейс показывает источники отдельно. Не повторяй название раздела и не добавляй вводную или заключение за его пределами."""
-        prompt = f"Исходный запрос: {query}\nНазвание раздела: {section_title}\nЦель: {plan.get('objective')}\nЦелевой объём: {target_length}. Раскрой причинно-следственные связи, сравнения, неопределённости и практическое значение, если это подтверждается evidence. Не растягивай текст повторениями.\nПроверенные утверждения:\n{json.dumps(evidence[:60], ensure_ascii=False)}"
+        system = """Напиши один раздел профессионального глубокого исследования на русском языке. Синтезируй данные, не пересказывай источники по очереди. Единый research brief — обязательный глобальный контракт: раздел не должен противоречить его прямому ответу, метрикам, географии и ограничениям. Используй только утверждения из evidence: не добавляй факты, числа, даты, названия организаций или выводы, которых там нет. Не используй отвергнутые факты. Различай подтверждённые факты, выводы Pitchy и рабочие гипотезы. Не выдавай корреляцию, техническую метрику или косвенный признак за доказанную причинно-следственную связь. Если данных недостаточно, честно и кратко укажи ограничение вместо догадки. Не вставляй URL, Markdown-ссылки, номера источников или список источников — интерфейс показывает источники отдельно. Не повторяй название раздела и не добавляй вводную или заключение за его пределами."""
+        prompt = f"Исходный запрос: {query}\nНазвание раздела: {section_title}\nЦель: {plan.get('objective')}\nЕдиный research brief: {json.dumps(brief, ensure_ascii=False)}\nЦелевой объём: {target_length}. Раскрой связи, сравнения, неопределённости и практическое значение, только если это подтверждается evidence. Не растягивай текст повторениями и не пересказывай общий прямой ответ без необходимости.\nПроверенные утверждения:\n{json.dumps(evidence[:60], ensure_ascii=False)}"
         content, _, _ = await call_makura(system, prompt, model=WRITER_MODEL)
         body = (content or "Недостаточно подтверждённых данных для раздела.").strip()
         body = re.sub(r"^\s*#{1,6}\s+[^\n]+\n+", "", body, count=1)
@@ -335,8 +415,13 @@ async def run_research_job(job_id: int) -> None:
         supported_count = sum(c.get("status") in ("supported", "partial") for c in claims)
         conflict_count = sum(c.get("status") in ("conflict", "rejected") for c in claims)
         if not await _update(job_id, "writing", 78, f"Фактчекер подтвердил {supported_count} утверждений и отметил {conflict_count} спорных"): return
-        if not await _update(job_id, "writing", 82, "Агент отчёта синтезирует выводы по разделам"): return
-        report, used_source_indices = await _write_report(job_id, query, plan, claims, docs)
+        if not await _update(job_id, "writing", 80, "Ведущий аналитик сводит факты в единый непротиворечивый brief"): return
+        brief = await _build_research_brief(query, plan, claims)
+        plan["research_brief"] = brief
+        if not await _update(job_id, "writing", 82, "Агент отчёта синтезирует выводы по разделам", blueprint=plan): return
+        report, used_source_indices = await _write_report(job_id, query, plan, claims, docs, brief)
+        if not await _update(job_id, "writing", 98, "Редактор-критик устраняет противоречия, повторы и проверяет уровни доказательности"): return
+        report = await _edit_report(query, report, brief)
         public_sources=[{"title":d["title"],"url":d["url"],"index":d["source_index"],"relevance_score":d.get("relevance_score"),"used_in_report":d["source_index"] in used_source_indices} for d in docs]
         async with AsyncSessionLocal() as db:
             job=await db.get(ResearchJob,job_id)

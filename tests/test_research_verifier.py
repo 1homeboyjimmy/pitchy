@@ -132,3 +132,64 @@ async def test_extract_claims_uses_structured_extractor_and_retries_invalid_json
 
     assert calls == 2
     assert claims[0]["claim"] == "Relevant fact"
+
+
+@pytest.mark.asyncio
+async def test_research_brief_becomes_global_metric_contract(monkeypatch):
+    async def fake_call(_system, _prompt, **kwargs):
+        assert kwargs["model"] == research_service.CRITIC_MODEL
+        assert kwargs["response_format"] == {"type": "json_object"}
+        return json.dumps({
+            "direct_answer": "Единого лидера определить нельзя.",
+            "decision_status": "inconclusive",
+            "entities": [{"name": "A", "role": "лидер по числу точек", "segment": "офлайн"}],
+            "metric_registry": [{
+                "metric": "точки",
+                "value": "10",
+                "geography": "Москва",
+                "period": "2026",
+                "status": "fact",
+                "interpretation": "Только физическое присутствие",
+            }],
+            "scope_rules": {"geography": "Москва"},
+            "caveats": ["Нет сопоставимой выручки"],
+        }), None, {}
+
+    monkeypatch.setattr(research_service, "call_routerai", fake_call)
+    claims = [{
+        "claim": "У A 10 точек в Москве",
+        "value_text": "10",
+        "period": "2026",
+        "geography": "Москва",
+        "status": "supported",
+        "confidence": 0.9,
+        "source_index": 1,
+    }]
+
+    brief = await research_service._build_research_brief(
+        "Кто лидер?",
+        {"objective": "Определить лидера", "scope": {"geography": "Москва"}},
+        claims,
+    )
+
+    assert brief["decision_status"] == "inconclusive"
+    assert brief["metric_registry"][0]["geography"] == "Москва"
+
+
+@pytest.mark.asyncio
+async def test_critic_preserves_draft_when_rewrite_is_empty(monkeypatch):
+    async def fake_call(*_args, **kwargs):
+        assert kwargs["model"] == research_service.CRITIC_MODEL
+        assert kwargs["max_tokens"] == 8000
+        return "", None, {}
+
+    monkeypatch.setattr(research_service, "call_routerai", fake_call)
+    draft = "## Прямой ответ\n\n" + ("Проверенный текст. " * 80)
+
+    edited = await research_service._edit_report(
+        "Исходный запрос",
+        draft,
+        {"direct_answer": "Ответ", "decision_status": "qualified"},
+    )
+
+    assert edited == draft
