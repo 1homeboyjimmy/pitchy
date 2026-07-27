@@ -11,7 +11,6 @@ import {
     ExternalLink,
     FileText,
     Globe,
-    Loader2,
     Search,
     ShieldCheck,
     X,
@@ -21,6 +20,7 @@ import remarkGfm from "remark-gfm";
 import type { ResearchJob } from "@/lib/api";
 import { hostFromUrl } from "@/lib/utils";
 import { ExportMenu } from "./ExportMenu";
+import { ResearchActivityOrb } from "./ResearchActivityOrb";
 
 type DrawerTab = "report" | "sources" | "process";
 
@@ -258,9 +258,13 @@ export function ResearchDrawer({
                                 <div className="mx-auto max-w-[700px]">
                                     <div className="mb-6 rounded-3xl border border-white/[0.07] bg-white/[0.025] p-5">
                                         <div className="flex items-center gap-3">
-                                            <div className={`flex h-10 w-10 items-center justify-center rounded-full ${active ? "bg-white text-black" : "bg-emerald-400/10 text-emerald-300"}`}>
-                                                {active ? <Loader2 className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />}
-                                            </div>
+                                            {active ? (
+                                                <ResearchActivityOrb />
+                                            ) : (
+                                                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-400/10 text-emerald-300">
+                                                    <Check className="h-5 w-5" />
+                                                </div>
+                                            )}
                                             <div className="min-w-0 flex-1">
                                                 <div className="text-sm font-medium text-white/90">{phaseLabels[job.phase] || job.phase}</div>
                                                 <div className="mt-1 text-xs text-white/35">{job.events.at(-1)?.message || "Ожидание запуска"}</div>
@@ -314,7 +318,10 @@ export function ResearchDrawer({
                                                         <div className={`absolute -left-[31px] top-0 flex h-3 w-3 items-center justify-center rounded-full ring-4 ring-[#151516] ${isLast && active ? "bg-white" : "bg-emerald-400/70"}`}>
                                                             {isLast && active && <Circle className="h-2 w-2 animate-pulse text-black" />}
                                                         </div>
-                                                        <div className="text-[11px] font-medium text-white/70">{phaseLabels[event.phase] || event.phase}</div>
+                                                        <div className="flex items-center gap-2 text-[11px] font-medium text-white/70">
+                                                            <span>{phaseLabels[event.phase] || event.phase}</span>
+                                                            <span className="font-mono text-[9px] text-white/20">{event.progress}%</span>
+                                                        </div>
                                                         <div className="mt-1 text-[13px] leading-relaxed text-white/40">{event.message}</div>
                                                     </div>
                                                 );

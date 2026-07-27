@@ -1,6 +1,7 @@
 "use client";
-import { Check, Circle, Loader, Search, ShieldCheck, FileText, X, ArrowUpRight } from "lucide-react";
+import { Check, Circle, Search, ShieldCheck, FileText, X, ArrowUpRight } from "lucide-react";
 import type { ResearchJob } from "@/lib/api";
+import { ResearchActivityOrb } from "./ResearchActivityOrb";
 
 const phases = [
   ["planning", "План исследования"], ["searching", "Поиск по направлениям"], ["reranking", "Отбор источников"],
@@ -20,7 +21,7 @@ export function ResearchProgressCard({job,onCancel,onOpen}:{job:ResearchJob;onCa
     <div className="h-1 bg-white/5"><div className="h-full bg-white transition-all duration-700" style={{width:`${job.progress}%`}}/></div>
     <div className="grid gap-2 p-4 sm:grid-cols-2">
       {phases.map(([key,label],i)=>{ const Icon=icons[key]; const done=job.status==="completed" || i<current; const now=i===current && active; return <div key={key} className={`flex items-center gap-3 rounded-2xl px-3 py-2.5 ${now?"bg-white/[0.08]":"bg-white/[0.025]"}`}>
-        <div className={`flex h-7 w-7 items-center justify-center rounded-full ${done?"bg-emerald-400/15 text-emerald-300":now?"bg-white text-black":"bg-white/5 text-white/20"}`}>{done?<Check className="h-3.5 w-3.5"/>:now?<Loader className="h-3.5 w-3.5 animate-spin"/>:<Icon className="h-3.5 w-3.5"/>}</div>
+        <div className={`flex h-7 w-7 items-center justify-center rounded-full ${done?"bg-emerald-400/15 text-emerald-300":now?"":"bg-white/5 text-white/20"}`}>{done?<Check className="h-3.5 w-3.5"/>:now?<div className="scale-[0.72]"><ResearchActivityOrb compact /></div>:<Icon className="h-3.5 w-3.5"/>}</div>
         <span className={`text-[12px] ${done||now?"text-white/80":"text-white/25"}`}>{label}</span>
       </div>})}
     </div>

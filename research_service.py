@@ -69,7 +69,17 @@ async def _plan(query: str) -> dict:
     if not isinstance(plan.get("questions"), list) or not plan["questions"]:
         return fallback
     plan["questions"] = plan["questions"][:8]
-    plan["report_sections"] = (plan.get("report_sections") or fallback["report_sections"])[:8]
+    report_sections = []
+    seen_section_titles: set[str] = set()
+    for section in plan.get("report_sections") or fallback["report_sections"]:
+        title_key = re.sub(r"\W+", "", str(section.get("title") or "")).lower()
+        if not title_key or title_key in seen_section_titles:
+            continue
+        seen_section_titles.add(title_key)
+        report_sections.append(section)
+        if len(report_sections) == 8:
+            break
+    plan["report_sections"] = report_sections or fallback["report_sections"]
     return plan
 
 
@@ -231,7 +241,7 @@ async def _verify(query: str, claims: list[dict], docs: list[dict]) -> list[dict
     return claims
 
 
-async def _write_report(query: str, plan: dict, claims: list[dict], docs: list[dict]) -> tuple[str, set[int]]:
+async def _write_report(job_id: int, query: str, plan: dict, claims: list[dict], docs: list[dict]) -> tuple[str, set[int]]:
     usable = [
         c for c in claims
         if c.get("status") in ("supported", "partial")
@@ -240,7 +250,8 @@ async def _write_report(query: str, plan: dict, claims: list[dict], docs: list[d
     source_map = {d["source_index"]: d for d in docs}
     sections = []
     used_source_indices: set[int] = set()
-    for section in plan.get("report_sections", []):
+    report_sections = plan.get("report_sections", [])
+    for section_number, section in enumerate(report_sections, 1):
         supported_by = set(section.get("supported_by") or [])
         evidence = []
         for c in usable:
@@ -249,6 +260,14 @@ async def _write_report(query: str, plan: dict, claims: list[dict], docs: list[d
                 evidence.append({"claim": c.get("claim"), "status": c.get("status"), "confidence": c.get("confidence"), "is_estimate": c.get("is_estimate"), "period": c.get("period"), "geography": c.get("geography"), "source_index": c.get("source_index")})
                 used_source_indices.add(int(src["source_index"]))
         section_title = str(section.get("title") or "Раздел")
+        section_progress = 82 + round((section_number - 1) / max(1, len(report_sections)) * 15)
+        if not await _update(
+            job_id,
+            "writing",
+            section_progress,
+            f"Агент отчёта: пишу раздел «{section_title}» ({section_number}/{len(report_sections)})",
+        ):
+            return "\n\n".join(sections), used_source_indices
         is_limitations = "огранич" in section_title.lower()
         if not evidence and not is_limitations:
             sections.append(f"## {section_title}\n\nНедостаточно подтверждённых данных для содержательного вывода по этому разделу.")
@@ -261,7 +280,7 @@ async def _write_report(query: str, plan: dict, claims: list[dict], docs: list[d
             target_length = "250–450 слов"
         else:
             target_length = "100–200 слов"
-        system = """Напиши один раздел профессионального глубокого исследования на русском языке. Синтезируй данные, не пересказывай источники по очереди. Используй только утверждения из evidence: не добавляй факты, числа, даты, названия организаций или выводы, которых там нет. Не используй отвергнутые факты. Оценки явно называй оценками Pitchy. Если данных недостаточно, честно и кратко укажи ограничение вместо догадки. Не вставляй URL, Markdown-ссылки, номера источников или список источников — интерфейс показывает источники отдельно. Не повторяй название раздела и не добавляй вводную или заключение за его пределами."""
+        system = """Напиши один раздел профессионального глубокого исследования на русском языке. Синтезируй данные, не пересказывай источники по очереди. Используй только утверждения из evidence: не добавляй факты, числа, даты, названия организаций или выводы, которых там нет. Не используй отвергнутые факты. Оценки явно называй оценками Pitchy. Не выдавай корреляцию, техническую метрику или косвенный признак за доказанную причинно-следственную связь. Если данных недостаточно, честно и кратко укажи ограничение вместо догадки. Не вставляй URL, Markdown-ссылки, номера источников или список источников — интерфейс показывает источники отдельно. Не повторяй название раздела и не добавляй вводную или заключение за его пределами."""
         prompt = f"Исходный запрос: {query}\nНазвание раздела: {section_title}\nЦель: {plan.get('objective')}\nЦелевой объём: {target_length}. Раскрой причинно-следственные связи, сравнения, неопределённости и практическое значение, если это подтверждается evidence. Не растягивай текст повторениями.\nПроверенные утверждения:\n{json.dumps(evidence[:60], ensure_ascii=False)}"
         content, _, _ = await call_makura(system, prompt, model=WRITER_MODEL)
         body = (content or "Недостаточно подтверждённых данных для раздела.").strip()
@@ -278,17 +297,20 @@ async def run_research_job(job_id: int) -> None:
         async with AsyncSessionLocal() as db:
             job = await db.get(ResearchJob, job_id); query = job.query if job else ""
         plan = await _plan(query)
-        if not await _update(job_id, "searching", 18, f"Сформировано {len(plan['questions'])} исследовательских вопросов", blueprint=plan): return
+        if not await _update(job_id, "searching", 12, f"Агент-планировщик сформировал {len(plan['questions'])} исследовательских вопросов", blueprint=plan): return
+        if not await _update(job_id, "searching", 18, f"Поисковые агенты изучают {len(plan['questions']) + 1} направлений параллельно"): return
         docs = await _collect(plan)
         if not docs: raise RuntimeError("Поиск не вернул пригодных источников")
-        if not await _update(job_id, "reranking", 42, f"Найдено {len(docs)} источников, ранжирую релевантность"): return
+        if not await _update(job_id, "reranking", 38, f"Поисковые агенты нашли {len(docs)} уникальных источников"): return
+        if not await _update(job_id, "reranking", 42, "Агент-реранкер сравнивает источники с целью исследования"): return
         ranking = await rerank_documents(query, [f"{d['title']}\n{d['content'][:3800]}" for d in docs], top_n=30, model=RERANK_MODEL)
         docs = _select_ranked_documents(docs, ranking)
         if not docs:
             raise RuntimeError("После ранжирования не осталось релевантных источников")
         for i, doc in enumerate(docs, 1): doc["source_index"] = i
         discovered_sources = [{"title":d["title"],"url":d["url"],"index":d["source_index"],"relevance_score":d.get("relevance_score")} for d in docs]
-        if not await _update(job_id, "extracting", 55, f"Отобрано {len(docs)} источников, извлекаю факты", sources=discovered_sources): return
+        if not await _update(job_id, "extracting", 48, f"Агент-реранкер отобрал {len(docs)} наиболее релевантных источников", sources=discovered_sources): return
+        if not await _update(job_id, "extracting", 55, f"Агенты извлечения читают источники пакетами и выделяют проверяемые факты"): return
         async with AsyncSessionLocal() as db:
             await db.execute(delete(ResearchSource).where(ResearchSource.job_id == job_id))
             rows=[]
@@ -299,7 +321,8 @@ async def run_research_job(job_id: int) -> None:
             for row in rows: await db.refresh(row)
             source_db_ids={row.rank:row.id for row in rows}
         claims = await _extract_claims(query, docs)
-        if not await _update(job_id, "verifying", 70, f"Извлечено {len(claims)} утверждений, проверяю противоречия"): return
+        if not await _update(job_id, "verifying", 64, f"Агенты извлечения выделили {len(claims)} проверяемых утверждений"): return
+        if not await _update(job_id, "verifying", 70, "Независимый фактчекер проверяет географию, периоды и противоречия"): return
         claims = await _verify(query, claims, docs)
         async with AsyncSessionLocal() as db:
             await db.execute(delete(ResearchClaim).where(ResearchClaim.job_id == job_id))
@@ -309,8 +332,11 @@ async def run_research_job(job_id: int) -> None:
                 sid=source_db_ids.get(c.get("source_index"))
                 if sid and c.get("passage"): db.add(ResearchEvidence(claim_id=claim.id,source_id=sid,passage=str(c["passage"])[:12000],supports=c.get("status") not in ("conflict","rejected")))
             await db.commit()
-        if not await _update(job_id, "writing", 82, "Пишу отчёт по разделам"): return
-        report, used_source_indices = await _write_report(query, plan, claims, docs)
+        supported_count = sum(c.get("status") in ("supported", "partial") for c in claims)
+        conflict_count = sum(c.get("status") in ("conflict", "rejected") for c in claims)
+        if not await _update(job_id, "writing", 78, f"Фактчекер подтвердил {supported_count} утверждений и отметил {conflict_count} спорных"): return
+        if not await _update(job_id, "writing", 82, "Агент отчёта синтезирует выводы по разделам"): return
+        report, used_source_indices = await _write_report(job_id, query, plan, claims, docs)
         public_sources=[{"title":d["title"],"url":d["url"],"index":d["source_index"],"relevance_score":d.get("relevance_score"),"used_in_report":d["source_index"] in used_source_indices} for d in docs]
         async with AsyncSessionLocal() as db:
             job=await db.get(ResearchJob,job_id)
