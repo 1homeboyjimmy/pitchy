@@ -19,8 +19,11 @@ from search_agent import research_search_documents
 logger = logging.getLogger("app.research")
 PLANNER_MODEL = os.getenv("RESEARCH_PLANNER_MODEL", "glm-5")
 WRITER_MODEL = os.getenv("RESEARCH_WRITER_MODEL", "glm-5")
+EXTRACTOR_MODEL = os.getenv("RESEARCH_EXTRACTOR_MODEL", "glm-5")
 VERIFIER_MODEL = os.getenv("RESEARCH_VERIFIER_MODEL", "moonshotai/kimi-k2.6")
 RERANK_MODEL = os.getenv("RESEARCH_RERANK_MODEL", "cohere/rerank-v3.5")
+RERANK_MIN_SCORE = float(os.getenv("RESEARCH_RERANK_MIN_SCORE", "0.03"))
+RERANK_MIN_DOCUMENTS = int(os.getenv("RESEARCH_RERANK_MIN_DOCUMENTS", "15"))
 
 
 def _json_object(text: str | None, fallback: Any) -> Any:
@@ -72,11 +75,26 @@ async def _plan(query: str) -> dict:
 async def _collect(plan: dict) -> list[dict]:
     semaphore = asyncio.Semaphore(3)
     async def search(question: dict) -> list[dict]:
+        objective = str(plan.get("objective") or "").strip()
+        scope = json.dumps(plan.get("scope") or {}, ensure_ascii=False)
+        preferred = ", ".join(str(item) for item in (question.get("preferred_sources") or []))
+        search_query = (
+            f"Тема исследования: {objective}\n"
+            f"Область и ограничения: {scope}\n"
+            f"Исследовательский вопрос: {question.get('question', '')}\n"
+            f"Предпочтительные источники: {preferred}"
+        )
         async with semaphore:
-            docs = await research_search_documents(question.get("question", ""), 8)
+            docs = await research_search_documents(search_query, 8)
             for doc in docs: doc["question_id"] = question.get("id")
             return docs
-    batches = await asyncio.gather(*(search(q) for q in plan["questions"]), return_exceptions=True)
+    objective_question = {
+        "id": "objective",
+        "question": plan.get("objective", ""),
+        "preferred_sources": ["primary", "official", "industry"],
+    }
+    search_targets = [objective_question, *plan["questions"]]
+    batches = await asyncio.gather(*(search(q) for q in search_targets), return_exceptions=True)
     unique: dict[str, dict] = {}
     for batch in batches:
         if isinstance(batch, Exception):
@@ -87,19 +105,56 @@ async def _collect(plan: dict) -> list[dict]:
     return list(unique.values())
 
 
+def _select_ranked_documents(docs: list[dict], ranking: list[dict]) -> list[dict]:
+    if not ranking:
+        return docs[:30]
+    ranked = [
+        {**docs[item["index"]], "relevance_score": float(item["relevance_score"])}
+        for item in ranking
+        if 0 <= item.get("index", -1) < len(docs)
+    ]
+    relevant = [doc for doc in ranked if doc["relevance_score"] >= RERANK_MIN_SCORE]
+    keep_count = min(30, max(RERANK_MIN_DOCUMENTS, len(relevant)))
+    return ranked[:keep_count]
+
+
 async def _extract_claims(query: str, docs: list[dict]) -> list[dict]:
     batches = [docs[i:i+3] for i in range(0, len(docs), 3)]
     semaphore = asyncio.Semaphore(3)
-    async def extract(batch: list[dict]) -> list[dict]:
+
+    async def extract(batch_number: int, batch: list[dict]) -> list[dict]:
         evidence = "\n\n".join(f"SOURCE_INDEX={d['source_index']}\nTITLE={d['title']}\nURL={d['url']}\nTEXT={d['content'][:3500]}" for d in batch)
-        system = """Извлеки только проверяемые утверждения, которые помогают ответить на запрос. Верни только компактный JSON вида {\"claims\":[{\"claim\":str,\"value_text\":str|null,\"unit\":str|null,\"period\":str|null,\"geography\":str|null,\"is_estimate\":bool,\"source_index\":int,\"passage\":str}]}. Максимум 12 наиболее важных утверждений на пакет, passage не длиннее 500 символов. Не делай выводов, которых нет во фрагменте."""
-        async with semaphore:
-            content, _, usage = await call_routerai(system, f"ЗАПРОС:\n{query}\n\nИСТОЧНИКИ:\n{evidence}", model=VERIFIER_MODEL, max_tokens=6000, response_format={"type": "json_object"})
-        data = _json_object(content, {"claims": []})
-        if not isinstance(data, dict) or not data.get("claims"):
-            logger.warning("Claim extraction returned no parseable claims: response_chars=%s usage=%s", len(content or ""), usage)
-        return data.get("claims", []) if isinstance(data, dict) else []
-    results = await asyncio.gather(*(extract(b) for b in batches), return_exceptions=True)
+        system = """Извлеки только проверяемые утверждения, которые прямо помогают ответить на запрос. Полностью игнорируй источник, если его предмет, география или тип рынка не соответствуют запросу. Верни только компактный JSON вида {\"claims\":[{\"claim\":str,\"value_text\":str|null,\"unit\":str|null,\"period\":str|null,\"geography\":str|null,\"is_estimate\":bool,\"source_index\":int,\"passage\":str}]}. Максимум 12 наиболее важных утверждений на пакет, passage не длиннее 500 символов. Не делай выводов, которых нет во фрагменте."""
+        allowed_source_indices = {int(doc["source_index"]) for doc in batch}
+        prompt = f"ЗАПРОС:\n{query}\n\nИСТОЧНИКИ:\n{evidence}"
+        for attempt in range(1, 3):
+            async with semaphore:
+                content, _, usage = await call_routerai(
+                    system, prompt, model=EXTRACTOR_MODEL, max_tokens=3500,
+                    response_format={"type": "json_object"},
+                )
+            data = _json_object(content, {"claims": []})
+            extracted = data.get("claims", []) if isinstance(data, dict) else []
+            cleaned_content = re.sub(r"^```(?:json)?", "", (content or "").strip()).lstrip()
+            parseable_json = cleaned_content.startswith("{")
+            valid = [
+                claim for claim in extracted
+                if isinstance(claim, dict)
+                and claim.get("claim")
+                and claim.get("source_index") in allowed_source_indices
+            ]
+            if valid or parseable_json and isinstance(data, dict) and "claims" in data:
+                return valid
+            logger.warning(
+                "Claim extraction batch %s attempt %s returned no parseable JSON: response_chars=%s usage=%s",
+                batch_number, attempt, len(content or ""), usage,
+            )
+        return []
+
+    results = await asyncio.gather(
+        *(extract(batch_number, batch) for batch_number, batch in enumerate(batches, 1)),
+        return_exceptions=True,
+    )
     claims = []
     for batch_number, result in enumerate(results, 1):
         if isinstance(result, Exception):
@@ -189,14 +244,27 @@ async def _write_report(query: str, plan: dict, claims: list[dict], docs: list[d
         for c in usable:
             src = source_map.get(c.get("source_index"))
             if src and (not supported_by or src.get("question_id") in supported_by):
-                evidence.append({"claim": c.get("claim"), "status": c.get("status"), "confidence": c.get("confidence"), "is_estimate": c.get("is_estimate"), "period": c.get("period"), "geography": c.get("geography")})
+                evidence.append({"claim": c.get("claim"), "status": c.get("status"), "confidence": c.get("confidence"), "is_estimate": c.get("is_estimate"), "period": c.get("period"), "geography": c.get("geography"), "source_index": c.get("source_index")})
                 used_source_indices.add(int(src["source_index"]))
+        section_title = str(section.get("title") or "Раздел")
+        is_limitations = "огранич" in section_title.lower()
+        if not evidence and not is_limitations:
+            sections.append(f"## {section_title}\n\nНедостаточно подтверждённых данных для содержательного вывода по этому разделу.")
+            continue
+        if len(evidence) >= 12:
+            target_length = "700–1100 слов"
+        elif len(evidence) >= 6:
+            target_length = "450–750 слов"
+        elif len(evidence) >= 3:
+            target_length = "250–450 слов"
+        else:
+            target_length = "100–200 слов"
         system = """Напиши один раздел профессионального глубокого исследования на русском языке. Синтезируй данные, не пересказывай источники по очереди. Используй только утверждения из evidence: не добавляй факты, числа, даты, названия организаций или выводы, которых там нет. Не используй отвергнутые факты. Оценки явно называй оценками Pitchy. Если данных недостаточно, честно и кратко укажи ограничение вместо догадки. Не вставляй URL, Markdown-ссылки, номера источников или список источников — интерфейс показывает источники отдельно. Не повторяй название раздела и не добавляй вводную или заключение за его пределами."""
-        prompt = f"Исходный запрос: {query}\nНазвание раздела: {section.get('title')}\nЦель: {plan.get('objective')}\nПроверенные утверждения:\n{json.dumps(evidence[:60], ensure_ascii=False)}"
+        prompt = f"Исходный запрос: {query}\nНазвание раздела: {section_title}\nЦель: {plan.get('objective')}\nЦелевой объём: {target_length}. Раскрой причинно-следственные связи, сравнения, неопределённости и практическое значение, если это подтверждается evidence. Не растягивай текст повторениями.\nПроверенные утверждения:\n{json.dumps(evidence[:60], ensure_ascii=False)}"
         content, _, _ = await call_makura(system, prompt, model=WRITER_MODEL)
         body = (content or "Недостаточно подтверждённых данных для раздела.").strip()
         body = re.sub(r"^\s*#{1,6}\s+[^\n]+\n+", "", body, count=1)
-        sections.append(f"## {section.get('title')}\n\n{body}")
+        sections.append(f"## {section_title}\n\n{body}")
     conflicts = [c for c in claims if c.get("status") in ("conflict", "rejected")]
     if conflicts:
         sections.append("## Противоречия и исключённые утверждения\n\n" + "\n".join(f"- {c.get('claim')} — {c.get('verification_reason') or c.get('status')}" for c in conflicts[:15]))
@@ -213,9 +281,9 @@ async def run_research_job(job_id: int) -> None:
         if not docs: raise RuntimeError("Поиск не вернул пригодных источников")
         if not await _update(job_id, "reranking", 42, f"Найдено {len(docs)} источников, ранжирую релевантность"): return
         ranking = await rerank_documents(query, [f"{d['title']}\n{d['content'][:3800]}" for d in docs], top_n=30, model=RERANK_MODEL)
-        if ranking:
-            docs = [{**docs[r["index"]], "relevance_score": r["relevance_score"]} for r in ranking if 0 <= r["index"] < len(docs)]
-        docs = docs[:30]
+        docs = _select_ranked_documents(docs, ranking)
+        if not docs:
+            raise RuntimeError("После ранжирования не осталось релевантных источников")
         for i, doc in enumerate(docs, 1): doc["source_index"] = i
         discovered_sources = [{"title":d["title"],"url":d["url"],"index":d["source_index"],"relevance_score":d.get("relevance_score")} for d in docs]
         if not await _update(job_id, "extracting", 55, f"Отобрано {len(docs)} источников, извлекаю факты", sources=discovered_sources): return
