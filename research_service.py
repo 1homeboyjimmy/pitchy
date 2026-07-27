@@ -88,13 +88,16 @@ async def _collect(plan: dict) -> list[dict]:
 
 
 async def _extract_claims(query: str, docs: list[dict]) -> list[dict]:
-    batches = [docs[i:i+5] for i in range(0, len(docs), 5)]
+    batches = [docs[i:i+3] for i in range(0, len(docs), 3)]
     semaphore = asyncio.Semaphore(3)
     async def extract(batch: list[dict]) -> list[dict]:
-        evidence = "\n\n".join(f"SOURCE_INDEX={d['source_index']}\nTITLE={d['title']}\nURL={d['url']}\nTEXT={d['content'][:4500]}" for d in batch)
-        system = """Извлеки только проверяемые утверждения, которые помогают ответить на запрос. Верни только JSON вида {\"claims\":[{\"claim\":str,\"value_text\":str|null,\"unit\":str|null,\"period\":str|null,\"geography\":str|null,\"is_estimate\":bool,\"source_index\":int,\"passage\":str}]}. Не делай выводов, которых нет во фрагменте."""
-        content, _, _ = await call_routerai(system, f"ЗАПРОС:\n{query}\n\nИСТОЧНИКИ:\n{evidence}", model=VERIFIER_MODEL)
+        evidence = "\n\n".join(f"SOURCE_INDEX={d['source_index']}\nTITLE={d['title']}\nURL={d['url']}\nTEXT={d['content'][:3500]}" for d in batch)
+        system = """Извлеки только проверяемые утверждения, которые помогают ответить на запрос. Верни только компактный JSON вида {\"claims\":[{\"claim\":str,\"value_text\":str|null,\"unit\":str|null,\"period\":str|null,\"geography\":str|null,\"is_estimate\":bool,\"source_index\":int,\"passage\":str}]}. Максимум 12 наиболее важных утверждений на пакет, passage не длиннее 500 символов. Не делай выводов, которых нет во фрагменте."""
+        async with semaphore:
+            content, _, usage = await call_routerai(system, f"ЗАПРОС:\n{query}\n\nИСТОЧНИКИ:\n{evidence}", model=VERIFIER_MODEL, max_tokens=6000)
         data = _json_object(content, {"claims": []})
+        if not isinstance(data, dict) or not data.get("claims"):
+            logger.warning("Claim extraction returned no parseable claims: response_chars=%s usage=%s", len(content or ""), usage)
         return data.get("claims", []) if isinstance(data, dict) else []
     results = await asyncio.gather(*(extract(b) for b in batches), return_exceptions=True)
     claims = []

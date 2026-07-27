@@ -31,7 +31,7 @@ def get_routerai_client():
     return _router_client
 
 @observe(name="routerai_call")
-async def call_routerai(system_prompt: str, user_message: str, model: str = "moonshotai/kimi-k2.6") -> Tuple[Optional[str], Optional[str], Dict[str, Any]]:
+async def call_routerai(system_prompt: str, user_message: str, model: str = "moonshotai/kimi-k2.6", max_tokens: int = 4096) -> Tuple[Optional[str], Optional[str], Dict[str, Any]]:
     """
     Calls RouterAI API via the official OpenAI-compatible client.
     """
@@ -44,7 +44,7 @@ async def call_routerai(system_prompt: str, user_message: str, model: str = "moo
                 {"role": "user", "content": user_message}
             ],
             temperature=0.2,
-            max_tokens=4096
+            max_tokens=max_tokens
         )
         content = response.choices[0].message.content or ""
         usage = response.usage.model_dump() if hasattr(response, 'usage') else {}
