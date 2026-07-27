@@ -5,11 +5,11 @@ import json
 import traceback
 from typing import Optional, Tuple, Dict, Any
 
+from openai import AsyncOpenAI
+
 try:
-    from langfuse.openai import AsyncOpenAI
     from langfuse.decorators import observe, langfuse_context
 except ImportError:
-    from openai import AsyncOpenAI
     def observe(*args, **kwargs):
         return lambda f: f
     langfuse_context = None
@@ -33,7 +33,7 @@ def get_routerai_client():
 @observe(name="routerai_call")
 async def call_routerai(system_prompt: str, user_message: str, model: str = "moonshotai/kimi-k2.6") -> Tuple[Optional[str], Optional[str], Dict[str, Any]]:
     """
-    Calls RouterAI API via Langfuse-instrumented OpenAI client.
+    Calls RouterAI API via the official OpenAI-compatible client.
     """
     client = get_routerai_client()
     try:
@@ -63,7 +63,7 @@ async def call_routerai(system_prompt: str, user_message: str, model: str = "moo
 @observe(name="routerai_stream")
 async def stream_routerai(system_prompt: str, user_message: str, model: str = "moonshotai/kimi-k2.6"):
     """
-    Streams from RouterAI API via Langfuse-instrumented OpenAI client.
+    Streams from RouterAI API via the official OpenAI-compatible client.
     """
     client = get_routerai_client()
     try:

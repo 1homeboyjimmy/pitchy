@@ -98,8 +98,13 @@ async def _extract_claims(query: str, docs: list[dict]) -> list[dict]:
         return data.get("claims", []) if isinstance(data, dict) else []
     results = await asyncio.gather(*(extract(b) for b in batches), return_exceptions=True)
     claims = []
-    for result in results:
-        if not isinstance(result, Exception): claims.extend(result)
+    for batch_number, result in enumerate(results, 1):
+        if isinstance(result, Exception):
+            logger.warning("Claim extraction batch %s failed: %s", batch_number, result)
+            continue
+        claims.extend(c for c in result if isinstance(c, dict) and c.get("claim"))
+    if not claims:
+        raise RuntimeError("Не удалось извлечь проверяемые утверждения из найденных источников")
     return claims[:80]
 
 
@@ -108,6 +113,8 @@ async def _verify(query: str, claims: list[dict], docs: list[dict]) -> list[dict
     system = """Ты независимый фактчекер. Проверь соответствие утверждений приведённым passages, периоды, географию, арифметику и смешение факта с оценкой. Верни только JSON {\"verdicts\":[{\"claim_index\":int,\"status\":\"supported|partial|conflict|rejected\",\"confidence\":0..1,\"reason\":str}]}. Строго отклоняй выводы, не следующие из evidence."""
     content, _, _ = await call_routerai(system, f"Исходный запрос: {query}\n\nУтверждения:\n{json.dumps(compact, ensure_ascii=False)[:50000]}", model=VERIFIER_MODEL)
     verdicts = _json_object(content, {"verdicts": []}).get("verdicts", [])
+    if not verdicts:
+        raise RuntimeError("Не удалось проверить извлечённые утверждения")
     by_index = {v.get("claim_index"): v for v in verdicts if isinstance(v, dict)}
     for i, claim in enumerate(claims):
         verdict = by_index.get(i, {})
@@ -122,21 +129,22 @@ async def _write_report(query: str, plan: dict, claims: list[dict], docs: list[d
     source_map = {d["source_index"]: d for d in docs}
     sections = []
     for section in plan.get("report_sections", []):
+        supported_by = set(section.get("supported_by") or [])
         evidence = []
         for c in usable:
             src = source_map.get(c.get("source_index"))
-            if src:
-                evidence.append({"claim": c.get("claim"), "status": c.get("status"), "confidence": c.get("confidence"), "is_estimate": c.get("is_estimate"), "source": c.get("source_index"), "url": src["url"]})
-        system = """Напиши один раздел профессионального глубокого исследования на русском языке. Синтезируй данные, не пересказывай источники по очереди. Каждое проверяемое утверждение сопровождай кликабельной Markdown-ссылкой [N](URL), используя source и url из evidence. Не используй отвергнутые факты. Оценки явно называй оценками Pitchy. Не добавляй вводную или заключение за пределами заданного раздела."""
+            if src and (not supported_by or src.get("question_id") in supported_by):
+                evidence.append({"claim": c.get("claim"), "status": c.get("status"), "confidence": c.get("confidence"), "is_estimate": c.get("is_estimate"), "period": c.get("period"), "geography": c.get("geography")})
+        system = """Напиши один раздел профессионального глубокого исследования на русском языке. Синтезируй данные, не пересказывай источники по очереди. Используй только утверждения из evidence: не добавляй факты, числа, даты, названия организаций или выводы, которых там нет. Не используй отвергнутые факты. Оценки явно называй оценками Pitchy. Если данных недостаточно, честно и кратко укажи ограничение вместо догадки. Не вставляй URL, Markdown-ссылки, номера источников или список источников — интерфейс показывает источники отдельно. Не повторяй название раздела и не добавляй вводную или заключение за его пределами."""
         prompt = f"Исходный запрос: {query}\nНазвание раздела: {section.get('title')}\nЦель: {plan.get('objective')}\nПроверенные утверждения:\n{json.dumps(evidence[:60], ensure_ascii=False)}"
         content, _, _ = await call_makura(system, prompt, model=WRITER_MODEL)
-        sections.append(f"## {section.get('title')}\n\n{(content or 'Недостаточно подтверждённых данных для раздела.').strip()}")
+        body = (content or "Недостаточно подтверждённых данных для раздела.").strip()
+        body = re.sub(r"^\s*#{1,6}\s+[^\n]+\n+", "", body, count=1)
+        sections.append(f"## {section.get('title')}\n\n{body}")
     conflicts = [c for c in claims if c.get("status") in ("conflict", "rejected")]
     if conflicts:
         sections.append("## Противоречия и исключённые утверждения\n\n" + "\n".join(f"- {c.get('claim')} — {c.get('verification_reason') or c.get('status')}" for c in conflicts[:15]))
-    sections.append("## Источники\n\n" + "\n".join(f"{d['source_index']}. [{d['title']}]({d['url']})" for d in docs))
     return "\n\n".join(sections)
-
 
 async def run_research_job(job_id: int) -> None:
     try:
