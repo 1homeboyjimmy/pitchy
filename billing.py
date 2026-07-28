@@ -202,6 +202,7 @@ async def create_configurable_subscription_payment(
 
     # Промокод действует на любую итоговую сумму подписки (база + доп-функции).
     promo_id = None
+    promo_target_tier = None
     if promo_code_value and promo_code_value.strip():
         code = promo_code_value.strip().upper()
         res = await db.execute(select(PromoCode).where(PromoCode.code == code))
@@ -218,11 +219,43 @@ async def create_configurable_subscription_payment(
         else:
             amount = round(amount * (100 - promo.discount_percent) / 100, 2)
         promo_id = promo.id
+        promo_target_tier = promo.target_tier
 
     existing_subscription = await get_subscription(db, user.id, for_update=True)
     if is_active(existing_subscription):
         raise HTTPException(status_code=409, detail="Активную подписку изменяйте в профиле — новая конфигурация применится при продлении")
     setup_yookassa()
+
+    if promo_target_tier == "research":
+        result = YookassaPayment.create({
+            "amount": {"value": f"{amount:.2f}", "currency": "RUB"},
+            "confirmation": {
+                "type": "redirect",
+                "return_url": os.getenv("APP_PUBLIC_URL", "http://localhost:3000") + "/account?payment=return",
+            },
+            "capture": True,
+            "description": "Pitchy: тариф Research по промокоду",
+            "metadata": {
+                "user_id": str(user.id),
+                "tier": promo_target_tier,
+                "kind": "promo_tier",
+                "promo_id": str(promo_id) if promo_id else "",
+            },
+        }, str(uuid.uuid4()))
+        db.add(Payment(
+            user_id=user.id,
+            yookassa_payment_id=result.id,
+            amount=amount,
+            currency="RUB",
+            status=result.status,
+            tier=promo_target_tier,
+            is_annual=False,
+            kind="legacy",
+            promo_code_id=promo_id,
+        ))
+        await db.commit()
+        return CreatePaymentResponse(confirmation_url=result.confirmation.confirmation_url)
+
     # Пока YooKassa не включила рекуррентные платежи (1-2 дня на согласование),
     # держим флаг ВЫКЛ → первый платёж разовый (без save_payment_method), проходит без 403.
     # Когда включат — ставим BILLING_RECURRING_ENABLED=1, и автосписание заработает без правок кода.

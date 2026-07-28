@@ -112,7 +112,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models import (
     Analysis, ChatMessage as DbChatMessage, ChatSession, ErrorLog,
     User, PromoCode, Payment, RagLog, ToolResult, SocialAccount, ProjectTree,
-    AdminAuditLog, Project,
+    AdminAuditLog, Project, ResearchJob,
 )
 import passport as passport_lib
 from sqlalchemy import select, func as sa_func
@@ -1333,12 +1333,12 @@ async def me_usage(
     reset on the 1st. Admins get a synthetic "unlimited" view.
     Frontend uses this to render QuotaCard and feature locks.
     """
-    from subscription_service import get_subscription, subscription_snapshot
+    from subscription_service import get_subscription, is_active, subscription_snapshot
     custom_subscription = await get_subscription(db, user.id)
-    if custom_subscription is not None:
+    if is_active(custom_subscription):
         snapshot = subscription_snapshot(custom_subscription)
         custom_limits = {
-            **snapshot["current_config"], "deep_research": -1,
+            **snapshot["current_config"], "search_messages": -1, "deep_research": -1,
             "can_use_deep_search": True, "can_use_research": True,
             "can_use_presentation": True, "can_use_import_context": True,
             "can_use_tree": True, "can_use_custdev": True,
@@ -1346,8 +1346,8 @@ async def me_usage(
         return {
             "tier": "custom",
             "limits": custom_limits,
-            "usage": {**snapshot["used"], "deep_research": 0},
-            "remaining": {**snapshot["remaining"], "deep_research": None},
+            "usage": {**snapshot["used"], "search_messages": 0, "deep_research": 0},
+            "remaining": {**snapshot["remaining"], "search_messages": None, "deep_research": None},
             "period_start": snapshot["current_period_start"],
             "period_end": snapshot["current_period_end"],
             "auto_renew": snapshot["auto_renew"],
@@ -1368,8 +1368,9 @@ async def me_usage(
     limits = PLAN_LIMITS["pro"] if user.is_admin else get_limits_for(user.subscription_tier, user.subscription_expires_at)
     month_start = start_of_month_utc()
 
-    # Main-chat user messages this month (counts only role="user")
-    messages_used = (await db.execute(
+    # Main-chat user messages this month. Search and full-research requests
+    # have their own quotas, so subtract them from the regular chat bucket.
+    total_user_messages = (await db.execute(
         select(sa_func.count())
         .select_from(DbChatMessage)
         .join(ChatSession, ChatSession.id == DbChatMessage.session_id)
@@ -1398,10 +1399,10 @@ async def me_usage(
     except Exception:
         roadmaps_used = 0
 
-    # Deep research messages — heuristic: messages with non-empty `sources` JSON,
-    # which is only set when use_deep_search/use_research was on.
+    # Search messages are chat assistant responses with sources that are not
+    # tied to the full-research job pipeline.
     try:
-        research_used = (await db.execute(
+        search_messages_used = (await db.execute(
             select(sa_func.count())
             .select_from(DbChatMessage)
             .join(ChatSession, ChatSession.id == DbChatMessage.session_id)
@@ -1410,10 +1411,39 @@ async def me_usage(
                 DbChatMessage.role == "assistant",
                 DbChatMessage.created_at >= month_start,
                 DbChatMessage.sources.isnot(None),
+                DbChatMessage.research_job_id.is_(None),
             )
         )).scalar() or 0
     except Exception:
-        research_used = 0
+        search_messages_used = 0
+
+    try:
+        research_jobs_used = (await db.execute(
+            select(sa_func.count())
+            .select_from(ResearchJob)
+            .where(
+                ResearchJob.user_id == user.id,
+                ResearchJob.created_at >= month_start,
+            )
+        )).scalar() or 0
+    except Exception:
+        research_jobs_used = 0
+
+    try:
+        tool_research_used = (await db.execute(
+            select(sa_func.count())
+            .select_from(ToolResult)
+            .where(
+                ToolResult.user_id == user.id,
+                ToolResult.tool_type == "deep-research",
+                ToolResult.created_at >= month_start,
+            )
+        )).scalar() or 0
+    except Exception:
+        tool_research_used = 0
+
+    research_used = research_jobs_used + tool_research_used
+    messages_used = max(0, total_user_messages - search_messages_used - research_jobs_used)
 
     def remaining(limit_value: int, used: int) -> int | None:
         if limit_value == UNLIMITED:
@@ -1425,12 +1455,14 @@ async def me_usage(
         "limits": limits_as_dict(limits),
         "usage": {
             "messages": messages_used,
+            "search_messages": search_messages_used,
             "custdev": custdev_used,
             "roadmaps": roadmaps_used,
             "deep_research": research_used,
         },
         "remaining": {
             "messages": remaining(limits.messages, messages_used),
+            "search_messages": remaining(limits.search_messages, search_messages_used),
             "custdev": remaining(limits.custdev, custdev_used),
             "roadmaps": remaining(limits.roadmaps, roadmaps_used),
             "deep_research": remaining(limits.deep_research, research_used),
@@ -1891,9 +1923,9 @@ async def async_check_subscription_limits(
 
     # New configurable subscriptions use an atomic ledger instead of counting
     # rows heuristically. Legacy plans continue through the old logic below.
-    from subscription_service import consume_quota, get_subscription
+    from subscription_service import consume_quota, get_subscription, is_active
     custom_subscription = await get_subscription(db, user.id)
-    if custom_subscription is not None:
+    if is_active(custom_subscription):
         resource = None
         if resource_type == "message":
             resource = "messages"
@@ -1931,6 +1963,7 @@ async def async_check_subscription_limits(
         "tree": limits.can_use_tree,
         "deep_search": limits.can_use_deep_search,
         "research": limits.can_use_research,
+        "deep_research": limits.can_use_research,
         "presentation": limits.can_use_presentation,
         "import": limits.can_use_import_context,
     }
@@ -1940,6 +1973,7 @@ async def async_check_subscription_limits(
             "tree": "интерактивная дорожная карта",
             "deep_search": "поиск в интернете",
             "research": "глубокое исследование",
+            "deep_research": "глубокое исследование",
             "presentation": "генерация презентации",
             "import": "импорт контекста",
         }.get(feature, feature)
@@ -1947,6 +1981,71 @@ async def async_check_subscription_limits(
             status_code=403,
             detail=f"upgrade_required: функция «{feature_label}» доступна на тарифах Starter и Pro. Обновите подписку.",
         )
+
+    async def count_search_messages() -> int:
+        return (await db.execute(
+            select(sa_func.count())
+            .select_from(DbChatMessage)
+            .join(ChatSession, ChatSession.id == DbChatMessage.session_id)
+            .where(
+                ChatSession.user_id == user.id,
+                DbChatMessage.role == "assistant",
+                DbChatMessage.created_at >= month_start,
+                DbChatMessage.sources.isnot(None),
+                DbChatMessage.research_job_id.is_(None),
+            )
+        )).scalar() or 0
+
+    async def count_research_jobs() -> int:
+        return (await db.execute(
+            select(sa_func.count())
+            .select_from(ResearchJob)
+            .where(ResearchJob.user_id == user.id, ResearchJob.created_at >= month_start)
+        )).scalar() or 0
+
+    async def count_deep_research() -> int:
+        tool_runs = (await db.execute(
+            select(sa_func.count())
+            .select_from(ToolResult)
+            .where(
+                ToolResult.user_id == user.id,
+                ToolResult.tool_type == "deep-research",
+                ToolResult.created_at >= month_start,
+            )
+        )).scalar() or 0
+        return await count_research_jobs() + tool_runs
+
+    async def count_regular_messages() -> int:
+        total = (await db.execute(
+            select(sa_func.count())
+            .select_from(DbChatMessage)
+            .join(ChatSession, ChatSession.id == DbChatMessage.session_id)
+            .where(
+                ChatSession.user_id == user.id,
+                DbChatMessage.role == "user",
+                DbChatMessage.created_at >= month_start,
+            )
+        )).scalar() or 0
+        return max(0, total - await count_search_messages() - await count_research_jobs())
+
+    async def enforce_quota(limit_value: int, used: int, label: str) -> None:
+        if limit_value == UNLIMITED:
+            return
+        if used >= limit_value:
+            raise HTTPException(
+                status_code=403,
+                detail=f"quota_exceeded: исчерпан месячный лимит {label} на тарифе {tier} ({limit_value}). Обновите подписку.",
+            )
+
+    # --- Standalone tools (monthly counters) -------------------------
+    if resource_type == "tool":
+        if feature == "deep_research":
+            await enforce_quota(limits.deep_research, await count_deep_research(), "глубоких исследований")
+            return
+        if feature == "deep_search":
+            await enforce_quota(limits.search_messages, await count_search_messages(), "поисковых сообщений")
+            return
+        return
 
     # --- Project creation (monthly counters) -------------------------
     if resource_type == "project":
@@ -1981,26 +2080,13 @@ async def async_check_subscription_limits(
 
     # --- Main chat message (monthly counter) -------------------------
     if resource_type == "message":
-        if limits.messages == UNLIMITED:
+        if feature == "research":
+            await enforce_quota(limits.deep_research, await count_deep_research(), "глубоких исследований")
             return
-        used = (await db.execute(
-            select(sa_func.count())
-            .select_from(DbChatMessage)
-            .join(ChatSession, ChatSession.id == DbChatMessage.session_id)
-            .where(
-                ChatSession.user_id == user.id,
-                DbChatMessage.role == "user",
-                DbChatMessage.created_at >= month_start,
-            )
-        )).scalar() or 0
-        if used >= limits.messages:
-            raise HTTPException(
-                status_code=403,
-                detail=(
-                    f"quota_exceeded: исчерпан месячный лимит сообщений на тарифе {tier} "
-                    f"({limits.messages}). Обновите подписку, чтобы продолжить."
-                ),
-            )
+        if is_search or feature == "deep_search":
+            await enforce_quota(limits.search_messages, await count_search_messages(), "поисковых сообщений")
+            return
+        await enforce_quota(limits.messages, await count_regular_messages(), "сообщений")
 
 
 @app.post("/analysis", response_model=AnalysisResponse)
@@ -2710,6 +2796,7 @@ async def tool_quick_search(
     db: AsyncSession = Depends(get_async_db),
 ) -> ToolResultResponse:
     """Запускает быстрый региональный поиск и сохраняет результат в историю."""
+    await async_check_subscription_limits(user, db, "tool", feature="deep_search")
     sources, context = await async_search_with_sources(payload.query, use_deep_search=False)
     
     # Store result

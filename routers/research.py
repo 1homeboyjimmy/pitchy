@@ -5,13 +5,13 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import select, func as sa_func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from auth import get_async_current_user
 from db_async import get_async_db
-from models import ChatMessage, ChatSession, ResearchClaim, ResearchJob, User
-from plan_limits import get_limits_for
+from models import ChatMessage, ChatSession, ResearchClaim, ResearchJob, ToolResult, User
+from plan_limits import UNLIMITED, get_limits_for, start_of_month_utc
 from research_service import run_research_job
 from subscription_service import consume_quota, get_subscription, is_active
 
@@ -48,9 +48,7 @@ async def create_research(payload: ResearchCreate, user: User = Depends(get_asyn
         raise HTTPException(status_code=409, detail="Дождитесь завершения текущего исследования.")
 
     custom_subscription = await get_subscription(db, user.id)
-    if not user.is_admin and custom_subscription is not None:
-        if not is_active(custom_subscription):
-            raise HTTPException(status_code=402, detail="Подписка не активна или срок действия закончился.")
+    if not user.is_admin and is_active(custom_subscription):
         await consume_quota(
             db, user, "messages",
             idempotency_key=f"research:{user.id}:{payload.assistant_client_id or payload.client_id or payload.query[:80]}",
@@ -58,6 +56,28 @@ async def create_research(payload: ResearchCreate, user: User = Depends(get_asyn
         )
     elif not user.is_admin and not limits.can_use_research:
         raise HTTPException(status_code=403, detail="Полное исследование доступно на тарифах Starter и Pro.")
+    elif not user.is_admin and limits.deep_research != UNLIMITED:
+        month_start = start_of_month_utc()
+        research_jobs_used = (await db.execute(
+            select(sa_func.count())
+            .select_from(ResearchJob)
+            .where(ResearchJob.user_id == user.id, ResearchJob.created_at >= month_start)
+        )).scalar() or 0
+        tool_research_used = (await db.execute(
+            select(sa_func.count())
+            .select_from(ToolResult)
+            .where(
+                ToolResult.user_id == user.id,
+                ToolResult.tool_type == "deep-research",
+                ToolResult.created_at >= month_start,
+            )
+        )).scalar() or 0
+        used = research_jobs_used + tool_research_used
+        if used >= limits.deep_research:
+            raise HTTPException(
+                status_code=403,
+                detail=f"quota_exceeded: исчерпан месячный лимит глубоких исследований ({limits.deep_research}). Обновите подписку.",
+            )
     user_message=ChatMessage(session_id=session.id,role="user",content=payload.query,client_id=payload.client_id)
     db.add(user_message)
     job=ResearchJob(user_id=user.id,session_id=session.id,query=payload.query,status="queued",phase="planning",progress=0,events=[])
