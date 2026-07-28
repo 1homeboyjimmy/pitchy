@@ -5,10 +5,11 @@
 
 import { getAuthJson } from "@/lib/api";
 
-export type SubscriptionTier = "free" | "starter" | "pro" | "tester" | "premium" | "custom";
+export type SubscriptionTier = "free" | "starter" | "research" | "pro" | "tester" | "premium" | "custom";
 
 export interface PlanQuotas {
   messages: number;        // -1 = unlimited
+  searchMessages: number;
   deepResearch: number;
   roadmaps: number;
   deepCustdev: number;
@@ -25,6 +26,7 @@ export interface PlanQuotas {
 export const PLAN_QUOTAS: Record<SubscriptionTier, PlanQuotas> = {
   free: {
     messages: 3,
+    searchMessages: 0,
     deepResearch: 0,
     roadmaps: 0,
     deepCustdev: 0, grants: 0,
@@ -37,6 +39,7 @@ export const PLAN_QUOTAS: Record<SubscriptionTier, PlanQuotas> = {
   },
   starter: {
     messages: 100,
+    searchMessages: 20,
     deepResearch: 20,
     roadmaps: 5,
     deepCustdev: 2, grants: 0,
@@ -47,8 +50,22 @@ export const PLAN_QUOTAS: Record<SubscriptionTier, PlanQuotas> = {
     canUseTree: true,
     canUseCustdev: true,
   },
+  research: {
+    messages: 20,
+    searchMessages: 10,
+    deepResearch: 3,
+    roadmaps: 5,
+    deepCustdev: 0, grants: 0,
+    canUseDeepSearch: true,
+    canUseResearch: true,
+    canUsePresentation: false,
+    canUseImportContext: true,
+    canUseTree: true,
+    canUseCustdev: false,
+  },
   pro: {
     messages: 500,
+    searchMessages: -1,
     deepResearch: -1,
     roadmaps: -1,
     deepCustdev: -1, grants: -1,
@@ -61,6 +78,7 @@ export const PLAN_QUOTAS: Record<SubscriptionTier, PlanQuotas> = {
   },
   premium: {
     messages: -1,
+    searchMessages: -1,
     deepResearch: -1,
     roadmaps: -1,
     deepCustdev: -1, grants: -1,
@@ -73,6 +91,7 @@ export const PLAN_QUOTAS: Record<SubscriptionTier, PlanQuotas> = {
   },
   tester: {
     messages: 25,
+    searchMessages: 0,
     deepResearch: 0,
     roadmaps: 0,
     deepCustdev: 0, grants: 0,
@@ -84,7 +103,7 @@ export const PLAN_QUOTAS: Record<SubscriptionTier, PlanQuotas> = {
     canUseCustdev: false,
   },
   custom: {
-    messages: 50, deepResearch: -1, roadmaps: 3, deepCustdev: 2, grants: 0,
+    messages: 50, searchMessages: -1, deepResearch: -1, roadmaps: 3, deepCustdev: 2, grants: 0,
     canUseDeepSearch: true, canUseResearch: true, canUsePresentation: true,
     canUseImportContext: true, canUseTree: true, canUseCustdev: true,
   },
@@ -92,6 +111,7 @@ export const PLAN_QUOTAS: Record<SubscriptionTier, PlanQuotas> = {
 
 export interface QuotaUsage {
   messages: number;
+  searchMessages: number;
   deepResearch: number;
   roadmaps: number;
   deepCustdev: number;
@@ -107,6 +127,7 @@ export function getTierLabel(tier?: string | null): string {
   const t = (tier || "free").toLowerCase();
   if (t === "free") return "Free";
   if (t === "starter") return "Starter";
+  if (t === "research") return "Research";
   if (t === "pro") return "Pro";
   if (t === "premium") return "Premium";
   if (t === "tester") return "Tester";
@@ -139,6 +160,7 @@ export interface UsageResponse {
   tier: SubscriptionTier;
   limits: {
     messages: number;
+    search_messages: number;
     custdev: number;
     roadmaps: number;
     deep_research: number;
@@ -152,6 +174,7 @@ export interface UsageResponse {
   };
   usage: {
     messages: number;
+    search_messages: number;
     custdev: number;
     roadmaps: number;
     deep_research: number;
@@ -159,6 +182,7 @@ export interface UsageResponse {
   };
   remaining: {
     messages: number | null;       // null = unlimited
+    search_messages: number | null;
     custdev: number | null;
     roadmaps: number | null;
     deep_research: number | null;
@@ -174,7 +198,7 @@ export async function fetchUsage(token: string): Promise<UsageResponse> {
 // Legacy placeholder kept for fallback rendering when the network call
 // hasn't completed yet. Returns zero usage so the bars start at 0.
 export function getPlaceholderUsage(_sessionsCount: number): QuotaUsage {
-  return { messages: 0, deepResearch: 0, roadmaps: 0, deepCustdev: 0, grants: 0 };
+  return { messages: 0, searchMessages: 0, deepResearch: 0, roadmaps: 0, deepCustdev: 0, grants: 0 };
 }
 
 // Helper for upgrade-required error detection from API responses.

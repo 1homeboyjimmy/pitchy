@@ -232,6 +232,7 @@ export function AccountPageClient() {
   const subscriptionLabel = user?.subscription_tier === 'premium' ? 'Премиум' 
     : user?.subscription_tier === 'pro' ? 'Pro' 
     : user?.subscription_tier === 'starter' ? 'Starter' 
+    : user?.subscription_tier === 'research' ? 'Research'
     : user?.subscription_tier === 'tester' ? 'Tester' 
     : 'Бесплатный';
 
@@ -367,6 +368,7 @@ export function AccountPageClient() {
           const tierLabel =
             sub.tier === "pro" ? "Pro" :
             sub.tier === "starter" ? "Starter" :
+            sub.tier === "research" ? "Research" :
             sub.tier === "tester" ? "Tester" :
             sub.tier === "premium" ? "Premium" :
             sub.tier === "custom" ? "Персональный" :

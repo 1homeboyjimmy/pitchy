@@ -13,6 +13,9 @@ Spec (per user requirement, 2026-05):
            allowed. CustDev: 2 runs per month (counter is filled from
            the external CustDev server which writes Analysis rows
            into this database — already synced).
+- research: promo tier for research trial: 20 regular chat messages,
+            10 web-search messages, 3 deep research generations,
+            context import, and 5 interactive roadmaps.
 - pro:     500 messages in main chat. All extras. Tree allowed.
            CustDev: unlimited.
 """
@@ -29,6 +32,8 @@ UNLIMITED = -1
 class PlanLimits:
     # Per-month main chat user-messages
     messages: int
+    # Per-month chat messages that explicitly use web search.
+    search_messages: int
     # Per-month CustDev runs (Analysis rows)
     custdev: int
     # Per-month tree/roadmap creations
@@ -48,6 +53,7 @@ class PlanLimits:
 PLAN_LIMITS: dict[str, PlanLimits] = {
     "free": PlanLimits(
         messages=3,
+        search_messages=0,
         custdev=0,
         roadmaps=0,
         deep_research=0,
@@ -55,6 +61,7 @@ PLAN_LIMITS: dict[str, PlanLimits] = {
     ),
     "starter": PlanLimits(
         messages=100,
+        search_messages=20,
         custdev=2,
         roadmaps=5,
         deep_research=20,
@@ -65,8 +72,20 @@ PLAN_LIMITS: dict[str, PlanLimits] = {
         can_use_tree=True,
         can_use_custdev=True,
     ),
+    "research": PlanLimits(
+        messages=20,
+        search_messages=10,
+        custdev=0,
+        roadmaps=5,
+        deep_research=3,
+        can_use_deep_search=True,
+        can_use_research=True,
+        can_use_import_context=True,
+        can_use_tree=True,
+    ),
     "pro": PlanLimits(
         messages=500,
+        search_messages=UNLIMITED,
         custdev=UNLIMITED,
         roadmaps=UNLIMITED,
         deep_research=UNLIMITED,
@@ -80,6 +99,7 @@ PLAN_LIMITS: dict[str, PlanLimits] = {
     # Legacy aliases — kept so old DB rows don't break authorization.
     "premium": PlanLimits(
         messages=UNLIMITED,
+        search_messages=UNLIMITED,
         custdev=UNLIMITED,
         roadmaps=UNLIMITED,
         deep_research=UNLIMITED,
@@ -92,6 +112,7 @@ PLAN_LIMITS: dict[str, PlanLimits] = {
     ),
     "tester": PlanLimits(
         messages=25,
+        search_messages=0,
         custdev=0,
         roadmaps=0,
         deep_research=0,
