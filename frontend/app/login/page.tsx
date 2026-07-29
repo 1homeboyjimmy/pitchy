@@ -39,6 +39,7 @@ function LoginContent() {
     }
   };
 
+
   return (
     <div className="bg-black text-foreground min-h-screen flex items-center justify-center p-6 relative overflow-hidden antialiased">
       {/* Decorative Orbs */}
@@ -104,7 +105,7 @@ function LoginContent() {
                 <label className="block font-mono-label text-[11px] text-white/40 uppercase tracking-[0.2em]" htmlFor="password">
                   Ключ доступа
                 </label>
-                <Link className="font-mono-label text-[10px] text-white/20 hover:text-white transition-colors uppercase tracking-widest" href="#">
+                <Link className="font-mono-label text-[10px] text-white/40 hover:text-white transition-colors uppercase tracking-widest" href="/forgot-password">
                   Забыли?
                 </Link>
               </div>
