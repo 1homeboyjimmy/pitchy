@@ -487,6 +487,16 @@ export function ChatInterface({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [session.id]);
 
+    // Подсказка режима теперь в потоке сообщений — доводим её до вида.
+    // Ждём конца входной анимации: плавный скролл, запущенный раньше,
+    // браузер отменяет из-за меняющейся во время анимации высоты.
+    useEffect(() => {
+        if (!modeHint) return;
+        const timer = setTimeout(() => scrollToBottom(true), 420);
+        return () => clearTimeout(timer);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [modeHint]);
+
     useEffect(() => {
         // Чат, созданный с initial_message (интент с лендинга), получает
         // авто-название фоном — при открытии с плейсхолдером добираем его.
@@ -882,6 +892,11 @@ export function ChatInterface({
         ? messages.find((message) => (message.client_id || message.id).toString() === openResearchMessageKey) || null
         : null;
 
+    // Приветствие платформы — первый ответ ассистента в сессии (его пишет
+    // бэкенд при создании чата). Копировать/экспортировать и оценивать там
+    // нечего, поэтому панель действий под ним не показываем.
+    const firstAssistantIdx = messages.findIndex((m) => m.role === "assistant");
+
     // Vertical drag-handle that lets the user resize the chat/preview split.
     // mousedown on the divider → listen on document → live-update chatWidthPct
     // while dragging → persist on mouseup.
@@ -951,6 +966,7 @@ export function ChatInterface({
             const hasContent = cleanContent.trim().length > 0;
             const isLastAssistant = msg.role === "assistant" && idx === messages.length - 1;
             const shouldRenderMainBubble = msg.role === "user" || (hasContent && !msg.researchJob);
+            const isGreeting = msg.role === "assistant" && idx === firstAssistantIdx;
 
             return (
                 <motion.div 
@@ -1084,13 +1100,13 @@ export function ChatInterface({
                                                         );
                                                     },
                                                     table: ({...props}) => (
-                                                        <div className="my-10 overflow-x-auto rounded-[1.5rem] border border-white/10 bg-white/[0.02] shadow-inner">
-                                                            <table className="w-full text-left border-collapse font-sans text-[14px]" {...props} />
+                                                        <div className="my-6 sm:my-10 pitchy-table-scroll rounded-[1.5rem] border border-white/10 bg-white/[0.02] shadow-inner">
+                                                            <table className="w-max min-w-full text-left border-collapse font-sans text-[14px]" {...props} />
                                                         </div>
                                                     ),
                                                     thead: ({...props}) => <thead className="bg-white/[0.05]" {...props} />,
-                                                    th: ({...props}) => <th className="p-5 font-bold text-white border-b border-white/10 uppercase tracking-widest text-[10px]" {...props} />,
-                                                    td: ({...props}) => <td className="p-5 text-white/50 border-b border-white/5 last:border-0" {...props} />,
+                                                    th: ({...props}) => <th className="p-3.5 sm:p-5 font-bold text-white border-b border-white/10 uppercase tracking-widest text-[10px] whitespace-nowrap" {...props} />,
+                                                    td: ({...props}) => <td className="p-3.5 sm:p-5 text-white/50 border-b border-white/5 last:border-0 align-top min-w-[7.5rem] max-w-[20rem]" {...props} />,
                                                 }}
                                             >
                                                 {getDisplayContent(msg)}
@@ -1122,6 +1138,7 @@ export function ChatInterface({
                                             </div>
                                         )}
 
+                                        {!isGreeting && (
                                         <div className="flex items-center justify-between mt-8 pt-8 border-t border-white/5 w-full transition-all duration-500">
                                             <div className="flex items-center gap-3">
                                                 <CopyButton
@@ -1153,6 +1170,7 @@ export function ChatInterface({
                                                 <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-white/10 font-bold">{msg.model_used}</span>
                                             )}
                                         </div>
+                                        )}
                                     </div>
 
                                     {/* Sources Rendering */}
@@ -1268,6 +1286,29 @@ export function ChatInterface({
                     )
                 }
 
+                {/* Подсказка выбранного режима. Живёт в потоке сообщений, а не в
+                    плавающей панели ввода: там она вставала поверх карточек
+                    «Выберите направление анализа» и на мобильном текст читался
+                    сквозь них. */}
+                <AnimatePresence>
+                    {modeHint && !isLoading && (
+                        <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+                            className="max-w-2xl mx-auto w-full border border-white/10 p-4 sm:p-5 rounded-3xl bg-[#0d0d0d] flex gap-3 sm:gap-4 items-start shadow-2xl shadow-black/50"
+                        >
+                            <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center shrink-0 border border-white/5 shadow-inner mt-0.5">
+                                <img src="/icons/logotip.png" alt="Pitchy" className="w-4 h-4 object-contain brightness-0 invert opacity-80" />
+                            </div>
+                            <div className="text-white/90 font-sans text-[14px] sm:text-[15px] leading-relaxed font-medium min-w-0">
+                                {modeHint}
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
                 {
                     session.analysis && (
                         <motion.div
@@ -1308,49 +1349,36 @@ export function ChatInterface({
             {/* Input Area (Fixed Bottom) */}
             <div ref={inputBarRef} className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/95 to-transparent pt-12 sm:pt-20 pb-5 sm:pb-10 z-40 px-2 sm:px-6 lg:px-12">
                 <div className={`mx-auto w-full transition-all duration-500 ease-[0.16,1,0.3,1] ${isSidebarCollapsed ? 'max-w-6xl' : 'max-w-4xl'}`}>
-                    
-                    <AnimatePresence>
-                        {modeHint && !isLoading && (
-                            <motion.div
-                                initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                                animate={{ opacity: 1, y: 0, scale: 1 }}
-                                exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                                transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-                                className="mb-4 lovable-glass-strong border border-white/10 p-5 rounded-3xl bg-gradient-to-br from-white/[0.04] to-transparent flex gap-4 items-start shadow-2xl shadow-black/50"
-                            >
-                                <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center shrink-0 border border-white/5 shadow-inner mt-0.5">
-                                    <img src="/icons/logotip.png" alt="Pitchy" className="w-4 h-4 object-contain brightness-0 invert opacity-80" />
-                                </div>
-                                <div className="text-white/90 font-sans text-[15px] leading-relaxed font-medium">
-                                    {modeHint}
-                                </div>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
 
                     {/* Free-tier exhausted banner — ChatGPT-style upsell */}
                     {messagesRemaining === 0 && (
+                        // Плашка стоит поверх ленты сообщений, поэтому фон у неё
+                        // непрозрачный — на просвечивающем варианте текст читался
+                        // вперемешку с последней репликой. На узком экране кнопка
+                        // уезжает под текст: в строку она сжимала абзац до ~110px.
                         <motion.div
                             initial={{ opacity: 0, y: 8 }}
                             animate={{ opacity: 1, y: 0 }}
-                            className="mb-4 mx-3 sm:mx-6 rounded-2xl border border-amber-500/30 bg-gradient-to-r from-amber-500/[0.08] to-amber-500/[0.02] p-4 sm:p-5 flex items-start gap-3"
+                            className="mb-4 rounded-2xl border border-amber-500/30 bg-[#171310] p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4"
                         >
-                            <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center shrink-0">
-                                <Lock className="w-4 h-4 text-amber-400" strokeWidth={2} />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <div className="text-[14px] font-medium text-white mb-0.5">
-                                    Месячный лимит сообщений исчерпан
+                            <div className="flex items-start gap-3 flex-1 min-w-0">
+                                <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center shrink-0">
+                                    <Lock className="w-4 h-4 text-amber-400" strokeWidth={2} />
                                 </div>
-                                <p className="text-[12px] text-white/55 leading-snug">
-                                    На тарифе {tierLabel || "Free"} доступно ограниченное число сообщений в месяц.
-                                    Обновите тариф, чтобы продолжить диалог с Pitchy.
-                                </p>
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-[14px] font-medium text-white mb-1">
+                                        Месячный лимит сообщений исчерпан
+                                    </div>
+                                    <p className="text-[12px] text-white/55 leading-snug">
+                                        На тарифе {tierLabel || "Free"} доступно ограниченное число сообщений в месяц.
+                                        Обновите тариф, чтобы продолжить диалог с Pitchy.
+                                    </p>
+                                </div>
                             </div>
                             <button
                                 type="button"
                                 onClick={() => setIsUpgradeModalOpen(true)}
-                                className="px-4 py-2 rounded-xl bg-white text-black text-[12px] font-mono uppercase tracking-[0.18em] font-bold hover:bg-neutral-200 active:scale-95 transition-all shrink-0"
+                                className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-white text-black text-[12px] font-mono uppercase tracking-[0.18em] font-bold hover:bg-neutral-200 active:scale-95 transition-all shrink-0"
                             >
                                 Улучшить
                             </button>

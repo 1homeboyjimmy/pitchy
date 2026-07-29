@@ -1,4 +1,4 @@
-import { motion, AnimatePresence } from "framer-motion";
+﻿import { motion, AnimatePresence } from "framer-motion";
 import { X, Download, FileText, RefreshCw, ChevronDown } from "react-feather";
 import { PresentationSlide } from "@/lib/api";
 import { SlideRenderer } from "./SlideRenderer";
@@ -120,13 +120,13 @@ export function PresentationDrawer({
       {/* Header */}
       <div className="flex items-center justify-between p-4 md:p-6 border-b border-white/10 print:hidden shrink-0">
         <h2 className="text-base md:text-xl font-bold text-white flex items-center gap-2 min-w-0">
-          <FileText className="w-5 h-5 text-pitchy-violet shrink-0" />
+          <FileText className="w-5 h-5 text-white/70 shrink-0" />
           <span className="truncate">Презентация</span>
           {provider && (
             <span
               className={`ml-2 px-2 py-0.5 text-[10px] font-mono uppercase tracking-widest rounded-md border shrink-0 ${
                 provider === "zai"
-                  ? "bg-pitchy-violet/15 text-pitchy-violet border-pitchy-violet/30"
+                  ? "bg-white/15 text-white border-white/30"
                   : "bg-white/5 text-white/60 border-white/10"
               }`}
               title={provider === "zai" ? "Native Z.AI slides_glm_agent" : "Fallback на Makura GLM-5"}
@@ -135,7 +135,7 @@ export function PresentationDrawer({
             </span>
           )}
           {isLoading && slides.length > 0 && (
-            <span className="ml-2 text-[10px] uppercase tracking-widest text-pitchy-violet/80 font-mono shrink-0">
+            <span className="ml-2 text-[10px] uppercase tracking-widest text-white/60 font-mono shrink-0">
               слайд {slides.length}…
             </span>
           )}
@@ -156,13 +156,13 @@ export function PresentationDrawer({
             <div className="hidden md:flex bg-white/5 rounded-lg p-1 mr-2 border border-white/10">
               <button
                 onClick={() => setViewMode("preview")}
-                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${viewMode === "preview" ? "bg-pitchy-violet text-white shadow" : "text-white/60 hover:text-white"}`}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${viewMode === "preview" ? "bg-white text-black shadow" : "text-white/60 hover:text-white"}`}
               >
                 Preview
               </button>
               <button
                 onClick={() => setViewMode("html")}
-                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${viewMode === "html" ? "bg-pitchy-violet text-white shadow" : "text-white/60 hover:text-white"}`}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${viewMode === "html" ? "bg-white text-black shadow" : "text-white/60 hover:text-white"}`}
               >
                 HTML
               </button>
@@ -241,10 +241,13 @@ export function PresentationDrawer({
         <div className="max-w-3xl mx-auto space-y-6 md:space-y-8 print:space-y-0 print:max-w-none w-full">
           {isLoading && slides.length === 0 && (
             <div className="flex flex-col items-center justify-center py-20 text-center">
+              {/* Кольцо крутилки строилось на несуществующих токенах
+                  from-pitchy-violet/to-pitchy-cyan — градиент не генерировался,
+                  и во время генерации не было видно вообще ничего. */}
               <div className="relative mb-8">
-                <div className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-pitchy-violet to-pitchy-cyan animate-spin [animation-duration:3s]" />
+                <div className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-white/70 via-white/20 to-transparent animate-spin [animation-duration:3s]" />
                 <div className="absolute inset-2 bg-[#0a0a0a] rounded-xl flex items-center justify-center">
-                  <FileText className="w-8 h-8 text-pitchy-violet animate-pulse" />
+                  <FileText className="w-8 h-8 text-white/70 animate-pulse" />
                 </div>
               </div>
               <h3 className="text-xl md:text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-white/60 mb-3">
@@ -269,7 +272,7 @@ export function PresentationDrawer({
               </motion.div>
             ))
           ) : (
-            <div className="bg-black border border-white/10 p-6 rounded-2xl w-full text-pitchy-cyan-light font-mono text-xs md:text-sm overflow-x-auto shadow-inner">
+            <div className="bg-black border border-white/10 p-6 rounded-2xl w-full text-white/70 font-mono text-xs md:text-sm overflow-x-auto shadow-inner">
               <pre>
                 <code>{JSON.stringify(slides, null, 2)}</code>
               </pre>

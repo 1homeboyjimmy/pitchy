@@ -11,6 +11,7 @@ dev.pitchy.pro {
     basic_auth @require_auth {
         egor.figurnyak {$STAGING_HASH_EGOR}
         alex.nikolenko {$STAGING_HASH_ALEX}
+        vaibly {$STAGING_HASH_VAIBLY}
     }
 
     # Ограничение доступа к метрикам (только для локальных запросов)

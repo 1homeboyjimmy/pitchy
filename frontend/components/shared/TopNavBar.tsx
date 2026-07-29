@@ -16,6 +16,7 @@ const navLinks = [
   { href: "/about", label: "О нас" },
   { href: "/pricing", label: "Тарифы" },
   { href: "/contact", label: "Контакты" },
+  { href: "/accelerators", label: "Акселераторам" },
 ];
 
 export function TopNavBar() {

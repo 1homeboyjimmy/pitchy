@@ -6,7 +6,7 @@ import { Notifications } from "@mantine/notifications";
 
 const theme = createTheme({
   primaryColor: "violet",
-  fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  fontFamily: "var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
   defaultRadius: "md",
   colors: {
     dark: [

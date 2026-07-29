@@ -362,7 +362,7 @@ const SectionHeading = ({ eyebrow, title, text, centered = false }: { eyebrow?: 
     className={`max-w-4xl ${centered ? "mx-auto text-center" : ""}`}
   >
     {eyebrow ? <div className="font-mono text-white/50 mb-4 tracking-[0.2em] text-xs uppercase">{eyebrow}</div> : null}
-    <h2 className="text-4xl leading-[1.1] text-white md:text-6xl mb-6" style={{ fontFamily: "'Instrument Serif', serif" }}>
+    <h2 className="text-4xl leading-[1.1] text-white md:text-6xl mb-6" style={{ fontFamily: "var(--font-prata), serif" }}>
       {title}
     </h2>
     <p className="text-sm leading-7 text-white/40 md:text-lg font-light max-w-2xl mx-auto">
@@ -422,7 +422,7 @@ const GrantSupportSection = () => (
         <div className="font-mono text-white/50 mb-4 tracking-[0.2em] text-xs uppercase">
           МЕРЫ ПОДДЕРЖКИ
         </div>
-        <h2 className="text-5xl md:text-7xl text-white leading-[1.05] mb-8" style={{ fontFamily: "'Instrument Serif', serif" }}>
+        <h2 className="text-5xl md:text-7xl text-white leading-[1.05] mb-8" style={{ fontFamily: "var(--font-prata), serif" }}>
           Автоматический подбор мер поддержки
         </h2>
         <p className="text-white/40 text-lg font-light leading-relaxed mb-10 max-w-2xl">
@@ -743,7 +743,7 @@ export default function LandingPage() {
                       <IdCard className="h-6 w-6 text-white/80" />
                     </div>
                     <div className="mb-4 font-mono text-xs uppercase tracking-[0.2em] text-white/50">Единый контекст</div>
-                    <h3 className="mb-4 text-3xl text-white sm:text-4xl" style={{ fontFamily: "'Instrument Serif', serif" }}>
+                    <h3 className="mb-4 text-3xl text-white sm:text-4xl" style={{ fontFamily: "var(--font-prata), serif" }}>
                       Паспорт проекта
                     </h3>
                     <p className="text-sm font-light leading-relaxed text-white/45 sm:text-base">
@@ -766,7 +766,7 @@ export default function LandingPage() {
               viewport={{ once: true }}
             >
               <div className="font-mono text-white/50 mb-4 tracking-[0.2em] text-xs uppercase">ПУТЬ ПОЛЬЗОВАТЕЛЯ</div>
-              <h2 className="text-5xl md:text-7xl text-white leading-[1.1] mb-8" style={{ fontFamily: "'Instrument Serif', serif" }}>
+              <h2 className="text-5xl md:text-7xl text-white leading-[1.1] mb-8" style={{ fontFamily: "var(--font-prata), serif" }}>
                 Путь продукта: от гипотезы до результата
               </h2>
               <p className="text-white/40 text-lg font-light leading-relaxed mb-10">
@@ -863,7 +863,7 @@ export default function LandingPage() {
               transition={{ duration: 0.8 }}
               viewport={{ once: true }}
             >
-              <h2 className="text-5xl md:text-7xl text-white leading-[1.1] mb-8" style={{ fontFamily: "'Instrument Serif', serif" }}>
+              <h2 className="text-5xl md:text-7xl text-white leading-[1.1] mb-8" style={{ fontFamily: "var(--font-prata), serif" }}>
                 Интеллект в каждом действии
               </h2>
               <p className="text-white/40 text-lg font-light leading-relaxed mb-10">
