@@ -15,6 +15,7 @@ import {
 } from "recharts";
 import { notifyError, notifySuccess, confirmAction } from "@/lib/ui";
 import { adminDate } from "@/lib/utils";
+import { PromoCampaignsPanel } from "./PromoCampaignsPanel";
 import {
     getGrants, extractGrantFromUrl, createGrant, type Grant, type GrantDraft,
     getGrantSources, createGrantSource, updateGrantSource, deleteGrantSource,
@@ -23,18 +24,6 @@ import {
 } from "@/lib/api";
 
 // Temporary Types mapping what API returns
-type PromoCode = {
-    id: number;
-    code: string;
-    discount_percent: number;
-    max_uses: number | null;
-    current_uses: number;
-    expires_at: string | null;
-    target_tier?: string | null;
-    fixed_price?: number | null;
-    created_at: string;
-};
-
 type User = {
     id: number;
     name: string;
@@ -241,7 +230,6 @@ type RagLog = {
 export function AdminView() {
     const [activeTab, setActiveTab] = useState<"analytics" | "promocodes" | "users" | "subscriptions" | "rag" | "grants">("users");
     const [loading, setLoading] = useState(true);
-    const [promocodes, setPromocodes] = useState<PromoCode[]>([]);
     const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
     const [users, setUsers] = useState<User[]>([]);
     const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
@@ -263,9 +251,6 @@ export function AdminView() {
     // RAG Visualization State
     const [vizStatus, setVizStatus] = useState<"idling" | "processing">("idling");
 
-    // New Promo Form
-    const [newPromo, setNewPromo] = useState({ code: "", discount_percent: 10, max_uses: "", target_tier: "", fixed_price: "" });
-
     // Grants (парсер) State
     const [grants, setGrants] = useState<Grant[]>([]);
     const [grantUrl, setGrantUrl] = useState("");
@@ -284,15 +269,7 @@ export function AdminView() {
                 if (!token) return;
 
                 if (activeTab === "promocodes") {
-                    const res = await fetch(`${API_BASE}/admin/promocodes`, {
-                        headers: { "Authorization": `Bearer ${token}` }
-                    });
-                    if (res.status === 401) {
-                        window.localStorage.removeItem("vi_auth_state");
-                        window.location.href = "/login?expired=1";
-                        return;
-                    }
-                    if (res.ok) setPromocodes(await res.json());
+                    // PromoCampaignsPanel загружает кампании самостоятельно.
                 } else if (activeTab === "analytics") {
                     // Раньше диапазон был захардкожен в 30 дней, поэтому
                     // переключатель периода перезапрашивал те же данные и
@@ -405,58 +382,6 @@ export function AdminView() {
             }
         } catch (e) {
             console.error("Rebuild viz error", e);
-        }
-    };
-
-    const handleCreatePromo = async () => {
-        try {
-            const token = getToken();
-            const res = await fetch(`${API_BASE}/admin/promocodes`, {
-                method: "POST",
-                headers: {
-                    "Authorization": `Bearer ${token}`,
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                    code: newPromo.code.toUpperCase(),
-                    discount_percent: newPromo.discount_percent,
-                    max_uses: newPromo.max_uses ? parseInt(newPromo.max_uses) : null,
-                    target_tier: newPromo.target_tier.trim() || null,
-                    fixed_price: newPromo.fixed_price ? parseFloat(newPromo.fixed_price) : null
-                })
-            });
-
-            if (res.ok) {
-                const created = await res.json();
-                setPromocodes([created, ...promocodes]);
-                setNewPromo({ code: "", discount_percent: 10, max_uses: "", target_tier: "", fixed_price: "" });
-            } else {
-                notifyError("Не удалось создать промокод. Возможно, такой код уже существует.");
-            }
-        } catch (e) {
-            console.error(e);
-        }
-    };
-
-    const handleDeletePromo = async (id: number) => {
-        const ok = await confirmAction({
-            title: "Удалить промокод?",
-            message: "Промокод будет удалён. Это действие нельзя отменить.",
-            confirmLabel: "Удалить",
-            danger: true,
-        });
-        if (!ok) return;
-        try {
-            const token = getToken();
-            const res = await fetch(`${API_BASE}/admin/promocodes/${id}`, {
-                method: "DELETE",
-                headers: { "Authorization": `Bearer ${token}` }
-            });
-            if (res.ok) {
-                setPromocodes(promocodes.filter(p => p.id !== id));
-            }
-        } catch (e) {
-            console.error(e);
         }
     };
 
@@ -753,99 +678,7 @@ export function AdminView() {
                     animate={{ opacity: 1, y: 0 }}
                 >
                     {activeTab === "promocodes" && (
-                        <div className="space-y-6">
-                            {/* Create new promo form */}
-                            <div className="p-6 bg-[#111111] border border-white/10">
-                                <h3 className="text-xl font-display font-bold text-white mb-6 uppercase tracking-tight">Создать промокод</h3>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
-                                    <input
-                                        type="text"
-                                        placeholder="Код (например TITLE20)"
-                                        value={newPromo.code}
-                                        onChange={(e) => setNewPromo({ ...newPromo, code: e.target.value })}
-                                        className="bg-black border border-white/10 px-4 py-2 text-white outline-none focus:border-white/30 font-code text-[13px]"
-                                    />
-                                    <input
-                                        type="number"
-                                        placeholder="% Скидки"
-                                        min="0" max="100"
-                                        value={newPromo.discount_percent}
-                                        onChange={(e) => setNewPromo({ ...newPromo, discount_percent: parseInt(e.target.value) || 0 })}
-                                        className="bg-black border border-white/10 px-4 py-2 text-white outline-none focus:border-white/30 font-code text-[13px]"
-                                    />
-                                    <input
-                                        type="number"
-                                        placeholder="Кол-во использований (не обяз.)"
-                                        value={newPromo.max_uses}
-                                        onChange={(e) => setNewPromo({ ...newPromo, max_uses: e.target.value })}
-                                        className="bg-black border border-white/10 px-4 py-2 text-white outline-none focus:border-white/30 w-full font-code text-[13px]"
-                                    />
-                                    <input
-                                        type="text"
-                                        placeholder="Тариф (напр. tester)"
-                                        value={newPromo.target_tier}
-                                        onChange={(e) => setNewPromo({ ...newPromo, target_tier: e.target.value })}
-                                        className="bg-black border border-white/10 px-4 py-2 text-white outline-none focus:border-white/30 font-code text-[13px]"
-                                    />
-                                    <input
-                                        type="number"
-                                        placeholder="Фикс. цена в ₽ (напр. 1)"
-                                        value={newPromo.fixed_price}
-                                        onChange={(e) => setNewPromo({ ...newPromo, fixed_price: e.target.value })}
-                                        className="bg-black border border-white/10 px-4 py-2 text-white outline-none focus:border-white/30 font-code text-[13px]"
-                                    />
-                                    <button
-                                        onClick={handleCreatePromo}
-                                        disabled={!newPromo.code.trim()}
-                                        className="flex items-center justify-center gap-2 px-4 py-2 bg-white text-black font-mono-label text-[10px] uppercase font-bold hover:opacity-90 transition-opacity disabled:opacity-50"
-                                    >
-                                        <Plus className="w-3.5 h-3.5" /> Добавить
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* Promo codes list */}
-                            <div className="bg-[#111111] border border-white/10 pitchy-table-scroll [--table-scroll-bg:#111111]">
-                                <table className="w-full text-left text-sm text-white min-w-[640px] font-code">
-                                    <thead className="bg-[#0A0A0A] text-white/50 border-b border-white/10 font-mono-label uppercase text-[10px] tracking-widest">
-                                        <tr>
-                                            <th className="px-6 py-4 font-bold">КОД</th>
-                                            <th className="px-6 py-4 font-bold text-center">СКИДКА %</th>
-                                            <th className="px-6 py-4 font-bold text-center">ТАРИФ/ЦЕНА</th>
-                                            <th className="px-6 py-4 font-bold text-center">ИСПОЛЬЗОВАНО</th>
-                                            <th className="px-6 py-4 font-bold text-right">ДЕЙСТВИЕ</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {promocodes.map(promo => (
-                                            <tr key={promo.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
-                                                <td className="px-6 py-4 font-bold tracking-wider">{promo.code}</td>
-                                                <td className="px-6 py-4 text-center">{promo.discount_percent}%</td>
-                                                <td className="px-6 py-4 text-center text-white/70">
-                                                    {promo.target_tier ? (
-                                                        <span className="bg-white/10 text-white px-2 py-0.5 border border-white/20 text-xs font-mono-label uppercase">{promo.target_tier}</span>
-                                                    ) : "—"}
-                                                    {promo.fixed_price && <span className="ml-2 text-xs">{promo.fixed_price} ₽</span>}
-                                                </td>
-                                                <td className="px-6 py-4 text-center text-white/50">
-                                                    {promo.current_uses} / {promo.max_uses ? promo.max_uses : '∞'}
-                                                </td>
-                                                <td className="px-6 py-4 text-right">
-                                                    <button onClick={() => handleDeletePromo(promo.id)} className="text-red-400 hover:text-red-300 p-2 transition-colors">
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                        {promocodes.length === 0 && (
-                                            <tr>
-                                                <td colSpan={4} className="px-6 py-8 text-center text-white/30">Нет активных промокодов</td>
-                                            </tr>
-                                        )}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
+                        <PromoCampaignsPanel />
                     )}
 
                     {activeTab === "analytics" && analytics && (

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Any
+from typing import List, Any, Literal
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
@@ -495,6 +495,51 @@ class PromoCodeResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class PromoCampaignCreate(BaseModel):
+    name: str = Field(..., min_length=2, max_length=150)
+    description: str | None = Field(default=None, max_length=2000)
+    status: Literal["draft", "active", "paused"] = "active"
+    benefit_type: Literal["percent_discount", "fixed_price"]
+    discount_percent: int | None = Field(default=None, ge=1, le=100)
+    fixed_price: float | None = Field(default=None, ge=0)
+    target_tier: str | None = Field(default=None, max_length=50)
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    max_redemptions: int | None = Field(default=None, ge=1)
+    per_user_limit: int = Field(default=1, ge=1, le=100)
+    first_payment_only: bool = False
+    code_mode: Literal["shared", "bulk"] = "shared"
+    code: str | None = Field(default=None, min_length=2, max_length=50)
+    code_prefix: str | None = Field(default=None, max_length=20)
+    generate_count: int = Field(default=1, ge=1, le=1000)
+    post_promo_action: Literal["none", "offer", "renew_base"] = "none"
+    renewal_config: dict[str, int] | None = None
+    renewal_price_policy: Literal["current", "fixed"] = "current"
+    renewal_fixed_price: float | None = Field(default=None, ge=0)
+    renewal_notice_days: int = Field(default=3, ge=0, le=30)
+
+
+class PromoCampaignUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=150)
+    description: str | None = Field(default=None, max_length=2000)
+    status: Literal["draft", "active", "paused", "ended"] | None = None
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    max_redemptions: int | None = Field(default=None, ge=1)
+    per_user_limit: int | None = Field(default=None, ge=1, le=100)
+    first_payment_only: bool | None = None
+    post_promo_action: Literal["none", "offer", "renew_base"] | None = None
+    renewal_config: dict[str, int] | None = None
+    renewal_price_policy: Literal["current", "fixed"] | None = None
+    renewal_fixed_price: float | None = Field(default=None, ge=0)
+    renewal_notice_days: int | None = Field(default=None, ge=0, le=30)
+
+
+class PromoCodesGenerateRequest(BaseModel):
+    count: int = Field(default=1, ge=1, le=1000)
+    prefix: str | None = Field(default=None, max_length=20)
 
 
 class PaymentResponse(BaseModel):

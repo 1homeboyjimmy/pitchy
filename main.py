@@ -7,7 +7,7 @@ import logging
 import time
 import random
 import secrets
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
 
 import urllib.parse
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, UploadFile, File, BackgroundTasks, Security
@@ -111,7 +111,7 @@ from swarm_agent import run_analytical_swarm
 from sqlalchemy.ext.asyncio import AsyncSession
 from models import (
     Analysis, ChatMessage as DbChatMessage, ChatSession, ErrorLog,
-    User, PromoCode, Payment, RagLog, ToolResult, SocialAccount, ProjectTree,
+    User, PromoCampaign, PromoCode, PromoRedemption, Payment, RagLog, ToolResult, SocialAccount, ProjectTree,
     AdminAuditLog, Project, ResearchJob,
 )
 import passport as passport_lib
@@ -137,6 +137,9 @@ from schemas import (
     EmailCodeVerifyRequest,
     PromoCodeCreate,
     PromoCodeResponse,
+    PromoCampaignCreate,
+    PromoCampaignUpdate,
+    PromoCodesGenerateRequest,
     PaymentResponse,
     PaymentResponse,
     SubscriptionResponse,
@@ -3300,6 +3303,263 @@ async def get_promocodes(
 ) -> list[PromoCodeResponse]:
     res = await db.execute(select(PromoCode).order_by(PromoCode.created_at.desc()))
     return res.scalars().all()
+
+
+def _promo_campaign_dict(campaign: PromoCampaign) -> dict:
+    succeeded = [r for r in campaign.redemptions if r.status == "succeeded"]
+    reserved = [r for r in campaign.redemptions if r.status == "reserved"]
+    codes = sorted(campaign.codes, key=lambda item: item.created_at, reverse=True)
+    return {
+        "id": campaign.id,
+        "name": campaign.name,
+        "description": campaign.description,
+        "status": campaign.status,
+        "benefit_type": campaign.benefit_type,
+        "discount_percent": campaign.discount_percent,
+        "fixed_price": float(campaign.fixed_price) if campaign.fixed_price is not None else None,
+        "target_tier": campaign.target_tier,
+        "starts_at": campaign.starts_at,
+        "ends_at": campaign.ends_at,
+        "max_redemptions": campaign.max_redemptions,
+        "per_user_limit": campaign.per_user_limit,
+        "first_payment_only": campaign.first_payment_only,
+        "code_mode": campaign.code_mode,
+        "code_prefix": campaign.code_prefix,
+        "post_promo_action": campaign.post_promo_action,
+        "renewal_config": campaign.renewal_config,
+        "renewal_price_policy": campaign.renewal_price_policy,
+        "renewal_fixed_price": (
+            float(campaign.renewal_fixed_price)
+            if campaign.renewal_fixed_price is not None
+            else None
+        ),
+        "renewal_notice_days": campaign.renewal_notice_days,
+        "created_at": campaign.created_at,
+        "updated_at": campaign.updated_at,
+        "codes_count": len(codes),
+        "redemptions_count": len(succeeded),
+        "reserved_count": len(reserved),
+        "revenue": round(sum(float(r.final_amount) for r in succeeded), 2),
+        "discount_total": round(sum(float(r.discount_amount) for r in succeeded), 2),
+        "codes": [
+            {
+                "id": code.id,
+                "code": code.code,
+                "is_active": code.is_active,
+                "current_uses": code.current_uses,
+                "max_uses": code.max_uses,
+                "assigned_user_id": code.assigned_user_id,
+                "expires_at": code.expires_at,
+            }
+            for code in codes[:100]
+        ],
+    }
+
+
+def _utc_naive(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+async def _load_promo_campaign(db: AsyncSession, campaign_id: int) -> PromoCampaign | None:
+    from sqlalchemy.orm import selectinload
+
+    return (await db.execute(
+        select(PromoCampaign)
+        .options(
+            selectinload(PromoCampaign.codes),
+            selectinload(PromoCampaign.redemptions),
+        )
+        .where(PromoCampaign.id == campaign_id)
+    )).scalar_one_or_none()
+
+
+async def _generate_campaign_codes(
+    db: AsyncSession,
+    campaign: PromoCampaign,
+    *,
+    count: int,
+    prefix: str | None,
+    shared_code: str | None = None,
+) -> list[PromoCode]:
+    normalized_prefix = "".join(ch for ch in (prefix or "PROMO").upper() if ch.isalnum())[:20] or "PROMO"
+    if shared_code:
+        candidates = [shared_code.strip().upper()]
+    else:
+        alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+        candidates: list[str] = []
+        while len(candidates) < count:
+            candidate = f"{normalized_prefix}-{''.join(secrets.choice(alphabet) for _ in range(8))}"
+            if candidate not in candidates:
+                candidates.append(candidate)
+
+    existing = set((await db.execute(
+        select(PromoCode.code).where(PromoCode.code.in_(candidates))
+    )).scalars().all())
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Промокод уже существует: {sorted(existing)[0]}",
+        )
+
+    per_code_limit = 1 if campaign.code_mode == "bulk" else campaign.max_redemptions
+    created = [
+        PromoCode(
+            code=code,
+            campaign_id=campaign.id,
+            discount_percent=int(campaign.discount_percent or 0),
+            target_tier=campaign.target_tier,
+            fixed_price=campaign.fixed_price,
+            max_uses=per_code_limit,
+            expires_at=campaign.ends_at,
+            is_active=True,
+        )
+        for code in candidates
+    ]
+    db.add_all(created)
+    await db.flush()
+    return created
+
+
+@app.get("/admin/promo-campaigns")
+async def get_promo_campaigns(
+    _: User = Depends(require_async_admin),
+    db: AsyncSession = Depends(get_async_db),
+) -> list[dict]:
+    from sqlalchemy.orm import selectinload
+
+    campaigns = (await db.execute(
+        select(PromoCampaign)
+        .options(
+            selectinload(PromoCampaign.codes),
+            selectinload(PromoCampaign.redemptions),
+        )
+        .order_by(PromoCampaign.created_at.desc())
+    )).scalars().all()
+    return [_promo_campaign_dict(campaign) for campaign in campaigns]
+
+
+@app.post("/admin/promo-campaigns")
+async def create_promo_campaign(
+    payload: PromoCampaignCreate,
+    _: User = Depends(require_async_admin),
+    db: AsyncSession = Depends(get_async_db),
+) -> dict:
+    from subscription_service import BASE_CONFIG, normalize_config
+
+    if payload.benefit_type == "percent_discount" and payload.discount_percent is None:
+        raise HTTPException(status_code=422, detail="Укажите процент скидки")
+    if payload.benefit_type == "fixed_price" and payload.fixed_price is None:
+        raise HTTPException(status_code=422, detail="Укажите фиксированную цену")
+    if payload.ends_at and payload.starts_at and payload.ends_at <= payload.starts_at:
+        raise HTTPException(status_code=422, detail="Дата окончания должна быть позже даты начала")
+    if payload.code_mode == "shared" and not payload.code:
+        raise HTTPException(status_code=422, detail="Для общего режима укажите промокод")
+    if payload.renewal_price_policy == "fixed" and payload.renewal_fixed_price is None:
+        raise HTTPException(status_code=422, detail="Укажите фиксированную цену продления")
+
+    renewal_config = None
+    if payload.post_promo_action in ("offer", "renew_base"):
+        try:
+            renewal_config = normalize_config(payload.renewal_config or BASE_CONFIG)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    campaign = PromoCampaign(
+        name=payload.name.strip(),
+        description=payload.description,
+        status=payload.status,
+        benefit_type=payload.benefit_type,
+        discount_percent=payload.discount_percent if payload.benefit_type == "percent_discount" else None,
+        fixed_price=payload.fixed_price if payload.benefit_type == "fixed_price" else None,
+        target_tier=payload.target_tier,
+        starts_at=_utc_naive(payload.starts_at),
+        ends_at=_utc_naive(payload.ends_at),
+        max_redemptions=payload.max_redemptions,
+        per_user_limit=payload.per_user_limit,
+        first_payment_only=payload.first_payment_only,
+        code_mode=payload.code_mode,
+        code_prefix=payload.code_prefix,
+        post_promo_action=payload.post_promo_action,
+        renewal_config=renewal_config,
+        renewal_price_policy=payload.renewal_price_policy,
+        renewal_fixed_price=payload.renewal_fixed_price,
+        renewal_notice_days=payload.renewal_notice_days,
+    )
+    db.add(campaign)
+    await db.flush()
+    await _generate_campaign_codes(
+        db,
+        campaign,
+        count=payload.generate_count if payload.code_mode == "bulk" else 1,
+        prefix=payload.code_prefix,
+        shared_code=payload.code if payload.code_mode == "shared" else None,
+    )
+    await db.commit()
+    loaded = await _load_promo_campaign(db, campaign.id)
+    return _promo_campaign_dict(loaded)
+
+
+@app.patch("/admin/promo-campaigns/{campaign_id}")
+async def update_promo_campaign(
+    campaign_id: int,
+    payload: PromoCampaignUpdate,
+    _: User = Depends(require_async_admin),
+    db: AsyncSession = Depends(get_async_db),
+) -> dict:
+    from subscription_service import normalize_config
+
+    campaign = (await db.execute(
+        select(PromoCampaign).where(PromoCampaign.id == campaign_id).with_for_update()
+    )).scalar_one_or_none()
+    if campaign is None:
+        raise HTTPException(status_code=404, detail="Промокампания не найдена")
+
+    values = payload.model_dump(exclude_unset=True)
+    for date_key in ("starts_at", "ends_at"):
+        if date_key in values:
+            values[date_key] = _utc_naive(values[date_key])
+    if "renewal_config" in values and values["renewal_config"] is not None:
+        try:
+            values["renewal_config"] = normalize_config(values["renewal_config"])
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    for key, value in values.items():
+        setattr(campaign, key, value)
+    if campaign.ends_at and campaign.starts_at and campaign.ends_at <= campaign.starts_at:
+        raise HTTPException(status_code=422, detail="Дата окончания должна быть позже даты начала")
+    campaign.updated_at = datetime.utcnow()
+    await db.commit()
+    loaded = await _load_promo_campaign(db, campaign.id)
+    return _promo_campaign_dict(loaded)
+
+
+@app.post("/admin/promo-campaigns/{campaign_id}/codes")
+async def generate_promo_campaign_codes(
+    campaign_id: int,
+    payload: PromoCodesGenerateRequest,
+    _: User = Depends(require_async_admin),
+    db: AsyncSession = Depends(get_async_db),
+) -> dict:
+    campaign = (await db.execute(
+        select(PromoCampaign).where(PromoCampaign.id == campaign_id)
+    )).scalar_one_or_none()
+    if campaign is None:
+        raise HTTPException(status_code=404, detail="Промокампания не найдена")
+    if campaign.code_mode != "bulk":
+        raise HTTPException(status_code=409, detail="Дополнительные коды доступны только для пула")
+    await _generate_campaign_codes(
+        db,
+        campaign,
+        count=payload.count,
+        prefix=payload.prefix or campaign.code_prefix,
+    )
+    await db.commit()
+    loaded = await _load_promo_campaign(db, campaign.id)
+    return _promo_campaign_dict(loaded)
 
 
 @app.post("/admin/promocodes", response_model=PromoCodeResponse)

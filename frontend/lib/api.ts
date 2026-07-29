@@ -530,13 +530,28 @@ export async function createPayment(tier: string, is_annual: boolean, promo_code
   return postAuthJson<{ confirmation_url: string }>("/billing/create-payment", { tier, is_annual, promo_code }, token);
 }
 
-export async function validatePromoCode(code: string): Promise<{ valid: boolean, discount_percent: number, target_tier?: string | null, fixed_price?: number | null, detail?: string }> {
+export type PromoValidation = {
+  valid: boolean;
+  discount_percent: number;
+  target_tier?: string | null;
+  fixed_price?: number | null;
+  detail?: string;
+  campaign_name?: string | null;
+  post_promo_action?: "none" | "offer" | "renew_base" | "standard" | null;
+  renewal_amount?: number | null;
+  renewal_notice_days?: number | null;
+  requires_auto_renew_consent?: boolean;
+  consent_text?: string | null;
+  consent_version?: string | null;
+};
+
+export async function validatePromoCode(code: string, originalAmount?: number): Promise<PromoValidation> {
   const response = await fetch(`${API_BASE}/billing/promo/validate`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ code }),
+    body: JSON.stringify({ code, original_amount: originalAmount }),
   });
   return response.json();
 }
@@ -1176,11 +1191,28 @@ export type ConfigurableSubscription = {
   remaining?: SubscriptionConfig;
   current_price?: number;
   next_price?: number;
+  promo_campaign_id?: number | null;
+  promo_ends_at?: string | null;
+  promo_post_action?: "none" | "offer" | "renew_base" | null;
+  promo_auto_renew_consented?: boolean;
   base_config: SubscriptionConfig;
 };
 
-export async function createConfigurableSubscription(config: SubscriptionConfig, token: string, promoCode?: string | null) {
-  return postAuthJson<{ confirmation_url: string }>("/billing/subscription/create-payment", { ...config, promo_code: promoCode ?? null }, token);
+export async function createConfigurableSubscription(
+  config: SubscriptionConfig,
+  token: string,
+  promoCode?: string | null,
+  promoAutoRenewConsent = false,
+) {
+  return postAuthJson<{ confirmation_url: string }>(
+    "/billing/subscription/create-payment",
+    {
+      ...config,
+      promo_code: promoCode ?? null,
+      promo_auto_renew_consent: promoAutoRenewConsent,
+    },
+    token,
+  );
 }
 
 export async function getConfigurableSubscription(token: string) {

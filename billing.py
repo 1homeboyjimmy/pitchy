@@ -13,7 +13,17 @@ from yookassa import Configuration, Payment as YookassaPayment
 from yookassa.domain.notification import WebhookNotificationFactory, WebhookNotificationEventType
 
 from db_async import get_async_db
-from models import User, Payment, PromoCode, CustomSubscription, SubscriptionUsageEvent, Analysis
+from models import (
+    User, Payment, PromoCode, PromoRedemption, CustomSubscription,
+    SubscriptionUsageEvent, Analysis,
+)
+from promo_service import (
+    PROMO_CONSENT_VERSION,
+    PromoDecision,
+    PromoValidationError,
+    evaluate_promo,
+    reserve_redemption,
+)
 from subscription_service import (
     BASE_CONFIG,
     calculate_price,
@@ -55,6 +65,7 @@ class CreatePaymentRequest(BaseModel):
     tier: str # "starter", "pro", or "tester"
     is_annual: bool = False
     promo_code: str | None = None
+    promo_auto_renew_consent: bool = False
 
 class CreatePaymentResponse(BaseModel):
     confirmation_url: str
@@ -70,6 +81,7 @@ class QuotaConfigRequest(BaseModel):
 class CreateConfigurablePaymentRequest(QuotaConfigRequest):
     # Промокод применяется к итоговой сумме подписки (база + все доп-функции).
     promo_code: str | None = None
+    promo_auto_renew_consent: bool = False
 
 
 class UpdateSubscriptionRequest(BaseModel):
@@ -84,6 +96,7 @@ class ConsumeUsageRequest(BaseModel):
 
 class ValidatePromoRequest(BaseModel):
     code: str
+    original_amount: float | None = None
 
 class ValidatePromoResponse(BaseModel):
     valid: bool
@@ -91,28 +104,25 @@ class ValidatePromoResponse(BaseModel):
     target_tier: str | None = None
     fixed_price: float | None = None
     detail: str | None = None
+    campaign_name: str | None = None
+    post_promo_action: str | None = None
+    renewal_amount: float | None = None
+    renewal_notice_days: int | None = None
+    requires_auto_renew_consent: bool = False
+    consent_text: str | None = None
+    consent_version: str | None = None
 
 @router.post("/promo/validate", response_model=ValidatePromoResponse)
 async def validate_promo(request: ValidatePromoRequest, db: AsyncSession = Depends(get_async_db)):
-    code = request.code.strip().upper()
-    res = await db.execute(select(PromoCode).where(PromoCode.code == code))
-    promo = res.scalar_one_or_none()
-    
-    if not promo:
-        return ValidatePromoResponse(valid=False, discount_percent=0, detail="Промокод не найден")
-        
-    if promo.expires_at and promo.expires_at < datetime.utcnow():
-        return ValidatePromoResponse(valid=False, discount_percent=0, detail="Срок действия промокода истек")
-        
-    if promo.max_uses and promo.current_uses >= promo.max_uses:
-        return ValidatePromoResponse(valid=False, discount_percent=0, detail="Максимальное количество использований исчерпано")
-        
-    return ValidatePromoResponse(
-        valid=True, 
-        discount_percent=promo.discount_percent,
-        target_tier=promo.target_tier,
-        fixed_price=float(promo.fixed_price) if promo.fixed_price is not None else None
-    )
+    try:
+        decision = await evaluate_promo(
+            db,
+            code=request.code,
+            original_amount=max(0.0, request.original_amount or 2490.0),
+        )
+    except PromoValidationError as exc:
+        return ValidatePromoResponse(valid=False, discount_percent=0, detail=str(exc))
+    return ValidatePromoResponse(**decision.public_dict())
 
 
 @router.post("/create-payment", response_model=CreatePaymentResponse)
@@ -124,25 +134,29 @@ async def create_payment(
     if request.tier not in PRICING_PLANS:
         raise HTTPException(status_code=400, detail="Invalid subscription tier")
     
-    amount = PRICING_PLANS[request.tier]["yearly" if request.is_annual else "monthly"]
-    
+    original_amount = float(PRICING_PLANS[request.tier]["yearly" if request.is_annual else "monthly"])
+    amount = original_amount
     promo_id = None
+    promo_decision: PromoDecision | None = None
+    promo_context: dict | None = None
     if request.promo_code:
-        code = request.promo_code.strip().upper()
-        res = await db.execute(select(PromoCode).where(PromoCode.code == code))
-        promo = res.scalar_one_or_none()
-        if promo and (not promo.expires_at or promo.expires_at > datetime.utcnow()) and (not promo.max_uses or promo.current_uses < promo.max_uses):
-            if promo.fixed_price is not None:
-                amount = float(promo.fixed_price)
-            else:
-                amount = amount * (100 - promo.discount_percent) / 100
-                
-            if promo.target_tier:
-                request.tier = promo.target_tier
-                
-            promo_id = promo.id
-        else:
-             raise HTTPException(status_code=400, detail="Invalid or expired promo code")
+        try:
+            promo_decision = await evaluate_promo(
+                db,
+                code=request.promo_code,
+                original_amount=original_amount,
+                user=user,
+                auto_renew_consent=request.promo_auto_renew_consent,
+                enforce_consent=True,
+                for_update=True,
+            )
+        except PromoValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        amount = promo_decision.final_amount
+        promo_id = promo_decision.promo.id
+        promo_context = promo_decision.payment_context(request.promo_auto_renew_consent)
+        if promo_decision.target_tier:
+            request.tier = promo_decision.target_tier
              
     setup_yookassa()
     
@@ -176,9 +190,19 @@ async def create_payment(
         status=res.status,
         tier=request.tier,
         is_annual=request.is_annual,
-        promo_code_id=promo_id
+        promo_code_id=promo_id,
+        promo_context=promo_context,
     )
     db.add(payment_record)
+    await db.flush()
+    if promo_decision is not None:
+        await reserve_redemption(
+            db,
+            decision=promo_decision,
+            user_id=user.id,
+            payment_id=payment_record.id,
+            auto_renew_consent=request.promo_auto_renew_consent,
+        )
     await db.commit()
     
     return CreatePaymentResponse(confirmation_url=res.confirmation.confirmation_url)
@@ -193,33 +217,37 @@ async def create_configurable_subscription_payment(
     """Create the first monthly payment and ask YooKassa to save the method."""
     data = config.model_dump()
     promo_code_value = data.pop("promo_code", None)
+    promo_auto_renew_consent = bool(data.pop("promo_auto_renew_consent", False))
     try:
         quota_config = normalize_config(data)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    amount = calculate_price(quota_config)
+    original_amount = float(calculate_price(quota_config))
+    amount = original_amount
 
     # Промокод действует на любую итоговую сумму подписки (база + доп-функции).
     promo_id = None
     promo_target_tier = None
+    promo_decision: PromoDecision | None = None
+    promo_context: dict | None = None
     if promo_code_value and promo_code_value.strip():
-        code = promo_code_value.strip().upper()
-        res = await db.execute(select(PromoCode).where(PromoCode.code == code))
-        promo = res.scalar_one_or_none()
-        valid = (
-            promo is not None
-            and (not promo.expires_at or promo.expires_at > datetime.utcnow())
-            and (not promo.max_uses or promo.current_uses < promo.max_uses)
-        )
-        if not valid:
-            raise HTTPException(status_code=400, detail="Промокод недействителен или истёк")
-        if promo.fixed_price is not None:
-            amount = float(promo.fixed_price)
-        else:
-            amount = round(amount * (100 - promo.discount_percent) / 100, 2)
-        promo_id = promo.id
-        promo_target_tier = promo.target_tier
+        try:
+            promo_decision = await evaluate_promo(
+                db,
+                code=promo_code_value,
+                original_amount=original_amount,
+                user=user,
+                auto_renew_consent=promo_auto_renew_consent,
+                enforce_consent=True,
+                for_update=True,
+            )
+        except PromoValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        amount = promo_decision.final_amount
+        promo_id = promo_decision.promo.id
+        promo_target_tier = promo_decision.target_tier
+        promo_context = promo_decision.payment_context(promo_auto_renew_consent)
 
     existing_subscription = await get_subscription(db, user.id, for_update=True)
     if is_active(existing_subscription):
@@ -252,7 +280,20 @@ async def create_configurable_subscription_payment(
             is_annual=False,
             kind="legacy",
             promo_code_id=promo_id,
+            promo_context=promo_context,
         ))
+        await db.flush()
+        payment = (await db.execute(
+            select(Payment).where(Payment.yookassa_payment_id == result.id)
+        )).scalar_one()
+        if promo_decision is not None:
+            await reserve_redemption(
+                db,
+                decision=promo_decision,
+                user_id=user.id,
+                payment_id=payment.id,
+                auto_renew_consent=promo_auto_renew_consent,
+            )
         await db.commit()
         return CreatePaymentResponse(confirmation_url=result.confirmation.confirmation_url)
 
@@ -273,7 +314,25 @@ async def create_configurable_subscription_payment(
             "kind": "subscription_initial",
         },
     }
-    if recurring_enabled:
+    wants_auto_renew = (
+        promo_decision is None
+        or promo_decision.campaign is None
+        or (
+            promo_decision.post_promo_action == "renew_base"
+            and promo_auto_renew_consent
+        )
+    )
+    if (
+        promo_decision is not None
+        and promo_decision.post_promo_action == "renew_base"
+        and wants_auto_renew
+        and not recurring_enabled
+    ):
+        raise HTTPException(
+            status_code=503,
+            detail="Автопродление для этой промокампании пока недоступно у платёжного провайдера",
+        )
+    if recurring_enabled and wants_auto_renew:
         payload["save_payment_method"] = True
     try:
         result = YookassaPayment.create(payload, str(uuid.uuid4()))
@@ -288,7 +347,7 @@ async def create_configurable_subscription_payment(
         raise HTTPException(status_code=502, detail="Не удалось создать платёж. Попробуйте позже.") from exc
 
     payment_method = getattr(result, "payment_method", None)
-    db.add(Payment(
+    payment_record = Payment(
         user_id=user.id,
         yookassa_payment_id=result.id,
         amount=amount,
@@ -300,13 +359,24 @@ async def create_configurable_subscription_payment(
         quota_config=quota_config,
         payment_method_id=getattr(payment_method, "id", None),
         promo_code_id=promo_id,
-    ))
+        promo_context=promo_context,
+    )
+    db.add(payment_record)
+    await db.flush()
+    if promo_decision is not None:
+        await reserve_redemption(
+            db,
+            decision=promo_decision,
+            user_id=user.id,
+            payment_id=payment_record.id,
+            auto_renew_consent=promo_auto_renew_consent,
+        )
     subscription = existing_subscription
     if subscription is None:
         subscription = CustomSubscription(
             user_id=user.id,
             status="pending",
-            auto_renew=True,
+            auto_renew=wants_auto_renew,
             current_config=quota_config,
             next_config=quota_config,
             used=empty_usage(),
@@ -315,6 +385,7 @@ async def create_configurable_subscription_payment(
     else:
         subscription.status = "pending" if subscription.status != "active" else subscription.status
         subscription.next_config = quota_config
+        subscription.auto_renew = wants_auto_renew
     await db.commit()
     return CreatePaymentResponse(confirmation_url=result.confirmation.confirmation_url)
 
@@ -425,7 +496,11 @@ async def consume_external_usage(
 
 async def _create_renewal_payment(db: AsyncSession, subscription: CustomSubscription) -> Payment:
     config = normalize_config(subscription.next_config or subscription.current_config)
-    amount = calculate_price(config)
+    amount = (
+        float(subscription.renewal_price_override)
+        if subscription.renewal_price_override is not None
+        else calculate_price(config)
+    )
     setup_yookassa()
     result = YookassaPayment.create({
         "amount": {"value": f"{amount:.2f}", "currency": "RUB"},
@@ -540,11 +615,18 @@ async def yookassa_webhook(request: Request, db: AsyncSession = Depends(get_asyn
                         now = datetime.utcnow()
                         start_date = max(now, subscription.current_period_end or now)
                         config = normalize_config(db_payment.quota_config or subscription.next_config)
+                        promo_context = db_payment.promo_context or {}
+                        post_promo_action = promo_context.get("post_promo_action")
+                        promo_consent = bool(promo_context.get("auto_renew_consent"))
+                        renewal_config = promo_context.get("renewal_config")
                         subscription.status = "active"
                         subscription.current_period_start = start_date
                         subscription.current_period_end = start_date + relativedelta(months=1)
                         subscription.current_config = config
-                        subscription.next_config = config
+                        if post_promo_action == "renew_base" and promo_consent and renewal_config:
+                            subscription.next_config = normalize_config(renewal_config)
+                        else:
+                            subscription.next_config = config
                         subscription.used = empty_usage()
                         subscription.renewal_retry_count = 0
                         payment_method = getattr(response_object, "payment_method", None)
@@ -552,7 +634,29 @@ async def yookassa_webhook(request: Request, db: AsyncSession = Depends(get_asyn
                         if method_id:
                             subscription.payment_method_id = method_id
                             db_payment.payment_method_id = method_id
-                        subscription.auto_renew = bool(subscription.payment_method_id)
+                        if post_promo_action in ("none", "offer"):
+                            subscription.auto_renew = False
+                        elif post_promo_action == "renew_base":
+                            subscription.auto_renew = bool(subscription.payment_method_id) and promo_consent
+                        else:
+                            subscription.auto_renew = bool(subscription.payment_method_id)
+                        if promo_context.get("campaign_id"):
+                            subscription.promo_campaign_id = int(promo_context["campaign_id"])
+                            subscription.promo_ends_at = subscription.current_period_end
+                            subscription.promo_post_action = post_promo_action
+                            if promo_consent:
+                                consent_at = promo_context.get("consent_at")
+                                subscription.promo_consent_at = (
+                                    datetime.fromisoformat(consent_at) if consent_at else now
+                                )
+                                subscription.promo_consent_version = (
+                                    promo_context.get("consent_version") or PROMO_CONSENT_VERSION
+                                )
+                            subscription.renewal_price_override = (
+                                promo_context.get("renewal_amount")
+                                if promo_context.get("renewal_price_policy") == "fixed"
+                                else None
+                            )
                         db_payment.period_start = subscription.current_period_start
                         db_payment.period_end = subscription.current_period_end
                         user.subscription_tier = "custom"
@@ -579,6 +683,14 @@ async def yookassa_webhook(request: Request, db: AsyncSession = Depends(get_asyn
 
                 if db_payment.promo_code:
                     db_payment.promo_code.current_uses += 1
+                    redemption = (await db.execute(
+                        select(PromoRedemption).where(
+                            PromoRedemption.payment_id == db_payment.id
+                        ).with_for_update()
+                    )).scalar_one_or_none()
+                    if redemption and redemption.status != "succeeded":
+                        redemption.status = "succeeded"
+                        redemption.redeemed_at = datetime.utcnow()
 
                 await db.commit()
 
@@ -606,6 +718,13 @@ async def yookassa_webhook(request: Request, db: AsyncSession = Depends(get_asyn
             db_payment = res.scalar_one_or_none()
             if db_payment and db_payment.status != "canceled":
                 db_payment.status = "canceled"
+                redemption = (await db.execute(
+                    select(PromoRedemption).where(
+                        PromoRedemption.payment_id == db_payment.id
+                    ).with_for_update()
+                )).scalar_one_or_none()
+                if redemption and redemption.status == "reserved":
+                    redemption.status = "canceled"
                 if db_payment.kind == "subscription_renewal":
                     subscription = await get_subscription(db, db_payment.user_id, for_update=True)
                     if subscription:

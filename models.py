@@ -116,6 +116,7 @@ class Payment(Base):
     payment_method_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     period_start: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     period_end: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    promo_context: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -143,6 +144,14 @@ class CustomSubscription(Base):
     used: Mapped[dict] = mapped_column(JSON, default=dict)
     renewal_attempted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     renewal_retry_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    promo_campaign_id: Mapped[int | None] = mapped_column(
+        ForeignKey("promo_campaigns.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    promo_ends_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    promo_post_action: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    promo_consent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    promo_consent_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    renewal_price_override: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -171,6 +180,36 @@ class SubscriptionUsageEvent(Base):
 
     user: Mapped["User"] = relationship(back_populates="usage_events")
 
+class PromoCampaign(Base):
+    __tablename__ = "promo_campaigns"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(150))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="draft", server_default="draft", index=True)
+    benefit_type: Mapped[str] = mapped_column(String(30), default="percent_discount")
+    discount_percent: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    fixed_price: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    target_tier: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    max_redemptions: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    per_user_limit: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    first_payment_only: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    code_mode: Mapped[str] = mapped_column(String(20), default="shared", server_default="shared")
+    code_prefix: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    post_promo_action: Mapped[str] = mapped_column(String(30), default="none", server_default="none")
+    renewal_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    renewal_price_policy: Mapped[str] = mapped_column(String(20), default="current", server_default="current")
+    renewal_fixed_price: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    renewal_notice_days: Mapped[int] = mapped_column(Integer, default=3, server_default="3")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    codes: Mapped[list["PromoCode"]] = relationship(back_populates="campaign")
+    redemptions: Mapped[list["PromoRedemption"]] = relationship(back_populates="campaign")
+
+
 class PromoCode(Base):
     __tablename__ = "promocodes"
 
@@ -182,9 +221,50 @@ class PromoCode(Base):
     max_uses: Mapped[int | None] = mapped_column(Integer, nullable=True)
     current_uses: Mapped[int] = mapped_column(Integer, default=0)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    campaign_id: Mapped[int | None] = mapped_column(
+        ForeignKey("promo_campaigns.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    assigned_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     payments: Mapped[list["Payment"]] = relationship(back_populates="promo_code")
+    campaign: Mapped["PromoCampaign | None"] = relationship(back_populates="codes")
+    redemptions: Mapped[list["PromoRedemption"]] = relationship(back_populates="promo_code")
+
+
+class PromoRedemption(Base):
+    __tablename__ = "promo_redemptions"
+    __table_args__ = (
+        UniqueConstraint("payment_id", name="uq_promo_redemptions_payment_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    campaign_id: Mapped[int | None] = mapped_column(
+        ForeignKey("promo_campaigns.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    promo_code_id: Mapped[int] = mapped_column(
+        ForeignKey("promocodes.id", ondelete="RESTRICT"), index=True
+    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    payment_id: Mapped[int | None] = mapped_column(
+        ForeignKey("payments.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    status: Mapped[str] = mapped_column(String(20), default="reserved", server_default="reserved", index=True)
+    original_amount: Mapped[float] = mapped_column(Numeric(10, 2))
+    discount_amount: Mapped[float] = mapped_column(Numeric(10, 2))
+    final_amount: Mapped[float] = mapped_column(Numeric(10, 2))
+    auto_renew_consent: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    consent_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    consent_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    consent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    redeemed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    campaign: Mapped["PromoCampaign | None"] = relationship(back_populates="redemptions")
+    promo_code: Mapped["PromoCode"] = relationship(back_populates="redemptions")
 
 
 class SocialAccount(Base):
