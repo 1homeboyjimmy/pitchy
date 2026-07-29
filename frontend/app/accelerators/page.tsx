@@ -516,7 +516,7 @@ export default function AcceleratorsPage() {
                         <div className="mb-5 flex-1 text-sm font-light leading-relaxed text-white/55">
                           {f.desc}
                         </div>
-                        <span className="mx-auto inline-block w-fit rounded-full border border-white/20 bg-white/[0.05] px-3 py-1 font-mono text-[10px] uppercase tracking-wider text-white/70 lg:mx-0">
+                        <span className="mx-auto inline-block w-fit shrink-0 whitespace-nowrap rounded-full border border-white/20 bg-white/[0.05] px-2.5 py-1 font-mono text-[9px] uppercase tracking-wider text-white/70 lg:mx-0 lg:px-3 lg:text-[10px]">
                           {f.by || "Pitchy + Вайбли"}
                         </span>
                       </div>
