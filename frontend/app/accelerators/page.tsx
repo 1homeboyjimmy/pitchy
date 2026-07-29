@@ -424,7 +424,7 @@ export default function AcceleratorsPage() {
                 <img
                   src="/logos/partners/vaibly.svg"
                   alt="Вайбли"
-                  className="-mx-[73px] h-[105px] w-auto shrink-0 object-contain sm:-mx-[105px] sm:h-[150px]"
+                  className="-mx-[91px] h-[105px] w-auto shrink-0 object-contain sm:-mx-[131px] sm:h-[150px]"
                   style={{ mixBlendMode: "screen" }}
                 />
               </div>
