@@ -406,7 +406,7 @@ export default function AcceleratorsPage() {
               <div className="mb-6 font-mono text-xs uppercase tracking-[0.25em] text-white/50">
                 Партнёрский бандл
               </div>
-              <div className="mb-8 flex items-center justify-center gap-6 sm:gap-12">
+              <div className="mb-8 flex translate-x-[27px] items-center justify-center gap-6 sm:translate-x-[37px] sm:gap-12">
                 {/* Pitchy — white logo on transparent */}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
