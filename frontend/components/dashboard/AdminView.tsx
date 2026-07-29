@@ -4,7 +4,15 @@ import dayjs from "dayjs";
 import { Users, Tag, BarChart2, Plus, Trash2, Shield, Loader, CreditCard, Award, Link as LinkIcon, RefreshCw, Power, Clock, Check, X } from "react-feather";
 import { Button, GlassCard } from "@/components/shared";
 import { getToken } from "@/lib/auth";
-import { AreaChart } from "@mantine/charts";
+import {
+    CartesianGrid,
+    Line,
+    LineChart,
+    ResponsiveContainer,
+    Tooltip,
+    XAxis,
+    YAxis,
+} from "recharts";
 import { notifyError, notifySuccess, confirmAction } from "@/lib/ui";
 import { adminDate } from "@/lib/utils";
 import {
@@ -52,16 +60,149 @@ type AnalyticsData = {
     series: Record<string, string | number>[];
 };
 
-// Глубина окна аналитики для каждого пресета переключателя периода.
-// Бэкенд сам переходит на почасовые корзины, когда окно ≤ 3 дней.
-const ANALYTICS_RANGE_DAYS: Record<string, number> = {
-    "24h": 1,
-    "3d": 3,
-    "1w": 7,
-    "1m": 30,
-    "6m": 180,
-    "1y": 365,
+type AnalyticsSeriesConfig = {
+    key: string;
+    label: string;
+    color: string;
+    unit?: string;
 };
+
+type AnalyticsChartCardProps = {
+    title: string;
+    description: string;
+    data: Record<string, string | number>[];
+    series: AnalyticsSeriesConfig[];
+    compactDates?: boolean;
+    allowDecimals?: boolean;
+    valueSuffix?: string;
+};
+
+function formatChartDate(value: string | number, compact: boolean) {
+    const date = dayjs(value);
+    if (!date.isValid()) return String(value);
+    return compact ? date.format("DD.MM HH:mm") : date.format("DD.MM");
+}
+
+function AnalyticsChartCard({
+    title,
+    description,
+    data,
+    series,
+    compactDates = false,
+    allowDecimals = false,
+    valueSuffix = "",
+}: AnalyticsChartCardProps) {
+    return (
+        <section className="overflow-hidden rounded-2xl border border-white/[0.08] bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.018))]">
+            <div className="flex flex-col gap-4 border-b border-white/[0.06] px-5 py-5 sm:flex-row sm:items-start sm:justify-between sm:px-7">
+                <div>
+                    <h4 className="font-mono-label text-[11px] font-bold uppercase tracking-[0.16em] text-white sm:text-[12px]">
+                        {title}
+                    </h4>
+                    <p className="mt-2 max-w-2xl font-code text-[11px] leading-relaxed text-white/35">
+                        {description}
+                    </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+                    {series.map((item) => (
+                        <div key={item.key} className="flex items-center gap-2">
+                            <span
+                                className="h-2 w-2 rounded-full shadow-[0_0_12px_currentColor]"
+                                style={{ backgroundColor: item.color, color: item.color }}
+                            />
+                            <span className="font-code text-[10px] text-white/55">{item.label}</span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            <div className="h-[280px] px-1 pb-4 pt-5 sm:h-[320px] sm:px-4 sm:pb-5">
+                {data.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={data} margin={{ top: 8, right: 18, left: 0, bottom: 2 }}>
+                            <CartesianGrid
+                                vertical={false}
+                                stroke="rgba(255,255,255,0.08)"
+                                strokeDasharray="4 6"
+                            />
+                            <XAxis
+                                dataKey="date"
+                                axisLine={false}
+                                tickLine={false}
+                                minTickGap={28}
+                                tickMargin={12}
+                                tick={{ fill: "rgba(255,255,255,0.38)", fontSize: 10 }}
+                                tickFormatter={(value) => formatChartDate(value, compactDates)}
+                            />
+                            <YAxis
+                                axisLine={false}
+                                tickLine={false}
+                                width={44}
+                                allowDecimals={allowDecimals}
+                                domain={[0, "auto"]}
+                                tick={{ fill: "rgba(255,255,255,0.38)", fontSize: 10 }}
+                                tickFormatter={(value) => `${value}${valueSuffix}`}
+                            />
+                            <Tooltip
+                                cursor={{ stroke: "rgba(255,255,255,0.18)", strokeDasharray: "3 4" }}
+                                labelFormatter={(value) => {
+                                    const date = dayjs(value);
+                                    return date.isValid() ? date.format("DD.MM.YYYY, HH:mm") : String(value);
+                                }}
+                                contentStyle={{
+                                    background: "rgba(10,10,10,0.96)",
+                                    border: "1px solid rgba(255,255,255,0.12)",
+                                    borderRadius: 12,
+                                    boxShadow: "0 18px 50px rgba(0,0,0,0.45)",
+                                    color: "#fff",
+                                    fontSize: 12,
+                                }}
+                                labelStyle={{ color: "rgba(255,255,255,0.5)", marginBottom: 8 }}
+                                itemStyle={{ paddingTop: 2, paddingBottom: 2 }}
+                            />
+                            {series.map((item) => (
+                                <Line
+                                    key={item.key}
+                                    type="linear"
+                                    dataKey={item.key}
+                                    name={item.label}
+                                    unit={item.unit}
+                                    stroke={item.color}
+                                    strokeWidth={2.5}
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    connectNulls
+                                    dot={
+                                        data.length <= 31
+                                            ? {
+                                                r: 3,
+                                                fill: "#111111",
+                                                stroke: item.color,
+                                                strokeWidth: 2,
+                                            }
+                                            : false
+                                    }
+                                    activeDot={{
+                                        r: 5,
+                                        fill: item.color,
+                                        stroke: "#111111",
+                                        strokeWidth: 2,
+                                    }}
+                                    isAnimationActive
+                                    animationDuration={500}
+                                />
+                            ))}
+                        </LineChart>
+                    </ResponsiveContainer>
+                ) : (
+                    <div className="flex h-full items-center justify-center px-4 text-center font-mono-label text-[10px] uppercase tracking-widest text-white/30">
+                        За выбранный период данных нет
+                    </div>
+                )}
+            </div>
+        </section>
+    );
+}
 
 const ANALYTICS_PERIODS = [
     { label: "24 часа", value: "24h" },
@@ -541,6 +682,7 @@ export function AdminView() {
                 date: String(s.date),
                 users: Number(s.users) || 0,
                 chat_sessions: Number(s.chat_sessions) || 0,
+                chat_messages: Number(s.chat_messages) || 0,
                 subscriptions: Number(s.subscriptions) || 0,
                 cum_users: cumUsers,
                 cum_subscriptions: cumSubs,
@@ -548,41 +690,6 @@ export function AdminView() {
             };
         });
     }, [analytics]);
-
-    const hasChartData = chartData.some(
-        (d) => d.users > 0 || d.chat_sessions > 0 || d.subscriptions > 0,
-    );
-
-    // Общие настройки всех четырёх графиков. Домен по оси Y раньше был
-    // захардкожен (0..80) — при реальных 1-3 регистрациях в день площадь
-    // прижималась к нулевой линии и график выглядел пустым.
-    const chartCommonProps = {
-        h: 240,
-        dataKey: "date",
-        curveType: "linear" as const,
-        withGradient: true,
-        gridAxis: "xy" as const,
-        textColor: "rgba(255, 255, 255, 0.5)",
-        withDots: true,
-        dotProps: { r: 2, strokeWidth: 1 },
-        activeDotProps: { r: 4 },
-        connectNulls: true,
-        yAxisProps: { allowDecimals: false, width: 38 },
-        xAxisProps: { interval: "preserveStartEnd" as const, minTickGap: 24 },
-    };
-
-    // Обычная функция, а не вложенный компонент: у вложенного при каждом
-    // ререндере AdminView менялся бы тип, и Recharts перемонтировал бы графики.
-    const chartCard = (title: string, chart: React.ReactNode) => (
-        <div key={title} className="bg-[#111111] border border-white/10 p-4 sm:p-6">
-            <h4 className="text-white font-mono-label text-[11px] sm:text-[12px] uppercase tracking-widest mb-4 sm:mb-6">{title}</h4>
-            {hasChartData ? chart : (
-                <div className="h-[240px] flex items-center justify-center text-white/30 font-mono-label text-[10px] uppercase tracking-widest text-center px-4">
-                    За выбранный период данных нет
-                </div>
-            )}
-        </div>
-    );
 
     const GRANT_STAGES = ["pre-seed", "seed", "growth", "scale"];
     const GRANT_SECTORS = ["it", "ai", "biotech", "medtech", "hardware", "energy", "agro", "fintech", "edtech", "creative", "media", "education", "ecommerce", "industry"];
@@ -791,96 +898,48 @@ export function AdminView() {
                                 </div>
                             </div>
 
-                            <div className="bg-[#111111] border border-white/10 p-6">
-                                <h4 className="text-white font-mono-label text-[12px] uppercase tracking-widest mb-1">Новые регистрации</h4>
-                                <p className="mb-6 text-[11px] font-code text-white/35">Количество новых пользователей за каждый интервал выбранного периода</p>
-                                <AreaChart
-                                    h={280}
-                                    data={analytics.series.map(s => ({
-                                        ...s,
-                                        conversion: s.users && Number(s.users) > 0 ? Number(((Number(s.subscriptions) / Number(s.users)) * 100).toFixed(2)) : 0
-                                    }))}
-                                    dataKey="date"
-                                    curveType="monotone"
-                                    series={[{ name: "users", color: "blue.5", label: "Регистрации" }]}
-                                    withGradient
-                                    gridAxis="xy"
-                                    textColor="rgba(255, 255, 255, 0.5)"
-                                    withDots={analytics.series.length <= 31}
-                                    withLegend
-                                    tickLine="xy"
-                                    xAxisProps={{ interval: "preserveStartEnd" }}
-                                />
-                            </div>
+                            <AnalyticsChartCard
+                                title="Новые регистрации"
+                                description="Количество новых пользователей за каждый интервал выбранного периода"
+                                data={chartData}
+                                compactDates={analyticsTimeFilter === "24h" || analyticsTimeFilter === "3d"}
+                                series={[
+                                    { key: "users", label: "Регистрации", color: "#60A5FA" },
+                                ]}
+                            />
 
-                            <div className="bg-[#111111] border border-white/10 p-6">
-                                <h4 className="text-white font-mono-label text-[12px] uppercase tracking-widest mb-1">Активность в чатах</h4>
-                                <p className="mb-6 text-[11px] font-code text-white/35">Новые сессии и отправленные сообщения</p>
-                                <AreaChart
-                                    h={280}
-                                    data={analytics.series.map(s => ({
-                                        ...s,
-                                        conversion: s.users && Number(s.users) > 0 ? Number(((Number(s.subscriptions) / Number(s.users)) * 100).toFixed(2)) : 0
-                                    }))}
-                                    dataKey="date"
-                                    curveType="monotone"
-                                    series={[
-                                        { name: "chat_sessions", color: "violet.5", label: "Сессии" },
-                                        { name: "chat_messages", color: "cyan.5", label: "Сообщения" },
-                                    ]}
-                                    withGradient
-                                    gridAxis="xy"
-                                    textColor="rgba(255, 255, 255, 0.5)"
-                                    withDots={analytics.series.length <= 31}
-                                    withLegend
-                                    tickLine="xy"
-                                    xAxisProps={{ interval: "preserveStartEnd" }}
-                                />
-                            </div>
+                            <AnalyticsChartCard
+                                title="Активность в чатах"
+                                description="Новые сессии и отправленные сообщения за каждый интервал"
+                                data={chartData}
+                                compactDates={analyticsTimeFilter === "24h" || analyticsTimeFilter === "3d"}
+                                series={[
+                                    { key: "chat_sessions", label: "Сессии", color: "#A78BFA" },
+                                    { key: "chat_messages", label: "Сообщения", color: "#22D3EE" },
+                                ]}
+                            />
 
-                            <div className="bg-[#111111] border border-white/10 p-6">
-                                <h4 className="text-white font-mono-label text-[12px] uppercase tracking-widest mb-1">Новые платные пользователи</h4>
-                                <p className="mb-6 text-[11px] font-code text-white/35">Регистрации пользователей, у которых сейчас активен платный тариф</p>
-                                <AreaChart
-                                    h={280}
-                                    data={analytics.series.map(s => ({
-                                        ...s,
-                                        conversion: s.users && Number(s.users) > 0 ? Number(((Number(s.subscriptions) / Number(s.users)) * 100).toFixed(2)) : 0
-                                    }))}
-                                    dataKey="date"
-                                    curveType="monotone"
-                                    series={[{ name: "subscriptions", color: "teal.5", label: "Платные пользователи" }]}
-                                    withGradient
-                                    gridAxis="xy"
-                                    textColor="rgba(255, 255, 255, 0.5)"
-                                    withDots={analytics.series.length <= 31}
-                                    withLegend
-                                    tickLine="xy"
-                                    xAxisProps={{ interval: "preserveStartEnd" }}
-                                />
-                            </div>
+                            <AnalyticsChartCard
+                                title="Новые платные пользователи"
+                                description="Новые пользователи с активным платным тарифом за каждый интервал"
+                                data={chartData}
+                                compactDates={analyticsTimeFilter === "24h" || analyticsTimeFilter === "3d"}
+                                series={[
+                                    { key: "subscriptions", label: "Платные пользователи", color: "#34D399" },
+                                ]}
+                            />
 
-                            <div className="bg-[#111111] border border-white/10 p-6">
-                                <h4 className="text-white font-mono-label text-[12px] uppercase tracking-widest mb-1">Конверсия новых регистраций</h4>
-                                <p className="mb-6 text-[11px] font-code text-white/35">Доля новых пользователей интервала, у которых сейчас платный тариф</p>
-                                <AreaChart
-                                    h={280}
-                                    data={analytics.series.map(s => ({
-                                        ...s,
-                                        conversion: s.users && Number(s.users) > 0 ? Number(((Number(s.subscriptions) / Number(s.users)) * 100).toFixed(2)) : 0
-                                    }))}
-                                    dataKey="date"
-                                    curveType="monotone"
-                                    series={[{ name: "conversion", color: "orange.5", label: "Конверсия (%)" }]}
-                                    withGradient
-                                    gridAxis="xy"
-                                    textColor="rgba(255, 255, 255, 0.5)"
-                                    withDots={analytics.series.length <= 31}
-                                    withLegend
-                                    tickLine="xy"
-                                    xAxisProps={{ interval: "preserveStartEnd" }}
-                                />
-                            </div>
+                            <AnalyticsChartCard
+                                title="Конверсия за период"
+                                description="Доля платных пользователей среди зарегистрированных, накопительно с начала периода"
+                                data={chartData}
+                                compactDates={analyticsTimeFilter === "24h" || analyticsTimeFilter === "3d"}
+                                allowDecimals
+                                valueSuffix="%"
+                                series={[
+                                    { key: "conversion", label: "Конверсия", color: "#FBBF24", unit: "%" },
+                                ]}
+                            />
                         </div>
                     )}
 

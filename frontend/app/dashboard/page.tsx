@@ -324,7 +324,7 @@ function DashboardContent() {
               transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
               className="absolute top-0 left-0 right-0 z-[100]"
             >
-              <InternalTopNavBar activeTab={activeTab} />
+              <InternalTopNavBar activeTab={activeTab} compactDashboard />
             </motion.div>
           )}
         </AnimatePresence>

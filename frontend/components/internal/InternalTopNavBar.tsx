@@ -19,13 +19,17 @@ const navLinks = [
 
 interface Props {
   activeTab: string;
+  compactDashboard?: boolean;
 }
 
-export function InternalTopNavBar({ activeTab }: Props) {
+export function InternalTopNavBar({ activeTab, compactDashboard = false }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const isAccountPage = pathname === "/account";
   const [isPagesMenuOpen, setIsPagesMenuOpen] = useState(false);
+  const visibleNavLinks = compactDashboard
+    ? navLinks.filter((link) => !["/faq", "/about", "/contact"].includes(link.href))
+    : navLinks;
 
   // Close the mobile pages menu whenever the route changes.
   useEffect(() => {
@@ -57,10 +61,14 @@ export function InternalTopNavBar({ activeTab }: Props) {
         <div className="flex items-center gap-4 relative z-[110]">
           {/* Spacer so logo aligns with mobile floating burger position */}
           <span className="md:hidden w-9 h-9" aria-hidden />
-          <Link href="/" className="flex items-center gap-2">
-            <PitchyLogo size="xl" />
-          </Link>
-          <div className="hidden sm:flex items-center gap-3 ml-4 border-l border-white/10 pl-4">
+          {!compactDashboard && (
+            <Link href="/" className="flex items-center gap-2">
+              <PitchyLogo size="xl" />
+            </Link>
+          )}
+          <div className={`hidden sm:flex items-center gap-3 ${
+            compactDashboard ? "" : "ml-4 border-l border-white/10 pl-4"
+          }`}>
             <span className="font-mono text-[9px] text-white/30 uppercase tracking-[0.2em] font-bold">
               {getTabName(activeTab)}
             </span>
@@ -69,7 +77,7 @@ export function InternalTopNavBar({ activeTab }: Props) {
 
         {/* Center Nav Links — Desktop */}
         <nav className="hidden lg:flex items-center gap-8 absolute left-1/2 -translate-x-1/2">
-          {navLinks.map((link) => {
+          {visibleNavLinks.map((link) => {
             const isActive = pathname === link.href;
             return (
               <Link
@@ -128,7 +136,7 @@ export function InternalTopNavBar({ activeTab }: Props) {
             className="md:hidden absolute top-full left-0 right-0 bg-black/95 backdrop-blur-xl border-b border-white/10 z-[105]"
           >
             <nav className="flex flex-col py-3 px-4">
-              {navLinks.map((link) => {
+              {visibleNavLinks.map((link) => {
                 const isActive = pathname === link.href;
                 return (
                   <Link
