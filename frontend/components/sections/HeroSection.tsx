@@ -151,14 +151,10 @@ export function HeroSection() {
                     <span>2026 / AI</span>
                 </div>
 
-                <div className="flex flex-1 flex-col items-center justify-center py-7 text-center md:py-9">
-                    <h1 className="flex max-w-full items-center justify-center whitespace-nowrap text-[clamp(55px,10.2vw,142px)] font-normal leading-[0.78] tracking-[-0.055em] text-white drop-shadow-[0_8px_34px_rgba(0,0,0,0.6)]" style={{ fontFamily: "'Instrument Serif', serif" }}>
-                        <span>Идея</span>
-                        <span className="relative mx-[0.18em] flex h-[0.42em] w-[0.72em] items-center" aria-hidden="true">
-                            <span className="h-px w-full bg-gradient-to-r from-white/20 via-cyan-100 to-white/20 shadow-[0_0_14px_rgba(165,243,252,0.9)]" />
-                            <span className="absolute left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-cyan-100 shadow-[0_0_18px_5px_rgba(165,243,252,0.7)] sm:h-2 sm:w-2" />
-                        </span>
-                        <span className="italic">Рост</span>
+                <div className="flex flex-1 flex-col items-center justify-start pb-7 pt-[9svh] text-center sm:pt-[7svh] md:pb-9 md:pt-[5vh] lg:pt-[4vh]">
+                    <h1 className="max-w-full text-[clamp(39px,7.4vw,106px)] font-normal leading-[0.82] tracking-[-0.045em] text-white drop-shadow-[0_8px_34px_rgba(0,0,0,0.65)]" style={{ fontFamily: "'Instrument Serif', serif" }}>
+                        <span className="block whitespace-nowrap">У идеи должен быть</span>
+                        <span className="mt-[0.08em] block italic">следующий шаг</span>
                     </h1>
                 </div>
 
