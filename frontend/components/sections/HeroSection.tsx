@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { Zap } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/lib/hooks/useAuth";
 
@@ -9,6 +9,31 @@ export function HeroSection() {
     const { isAuthenticated } = useAuth();
     const videoRef = useRef<HTMLVideoElement>(null);
     const fadingOutRef = useRef(false);
+    const actions = [
+        "Pitchy анализирует рынок",
+        "Pitchy проверяет спрос",
+        "Pitchy строит дорожную карту",
+        "Pitchy готовит презентацию",
+        "Pitchy подбирает финансирование",
+    ];
+    const [activeStage, setActiveStage] = useState(0);
+    const [typedText, setTypedText] = useState("");
+
+    useEffect(() => {
+        const action = actions[activeStage];
+        const isComplete = typedText.length >= action.length;
+        const timeout = window.setTimeout(() => {
+            if (isComplete) {
+                setTypedText("");
+                setActiveStage((current) => (current + 1) % actions.length);
+                return;
+            }
+
+            setTypedText(action.slice(0, typedText.length + 1));
+        }, isComplete ? 1200 : 42);
+
+        return () => window.clearTimeout(timeout);
+    }, [activeStage, typedText]);
 
     useEffect(() => {
         const video = videoRef.current;
@@ -90,7 +115,7 @@ export function HeroSection() {
     }, []);
 
     return (
-        <section className="relative min-h-[115vh] bg-black overflow-hidden flex flex-col justify-between selection:bg-white/20">
+        <section className="relative min-h-[calc(100svh-64px)] bg-black overflow-hidden flex flex-col selection:bg-white/20">
             {/* Background Video Engine.
                 Статичный постер лежит подложкой и виден ВСЕГДА — поэтому hero
                 никогда не бывает чёрным, пока грузится 20-МБ видео или если
@@ -113,40 +138,46 @@ export function HeroSection() {
                     className="absolute inset-0 w-full h-full object-cover translate-y-[0%] transition-opacity duration-500 opacity-0"
                     src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260328_115001_bcdaa3b4-03de-47e7-ad63-ae3e392c32d4.mp4"
                 />
+                <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-transparent to-transparent" />
+                <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_42%,transparent_0%,rgba(0,0,0,0.04)_48%,rgba(0,0,0,0.34)_100%)]" />
+                <div className="absolute inset-0 bg-black/30" />
             </div>
 
             {/* Hero Body */}
-            <div className="relative z-10 flex-1 flex flex-col items-center justify-start px-4 w-full max-w-4xl mx-auto text-center pt-[15vh] pb-12">
-                <h1 
-                    className="text-4xl md:text-5xl lg:text-6xl text-white mb-8 leading-[1.1] font-normal tracking-tight"
-                    style={{ fontFamily: "'Instrument Serif', serif" }}
-                >
-                    ИИ-экосистема для стартапов
-                </h1>
+            <div className="relative z-10 mx-auto flex w-full max-w-[1500px] flex-1 flex-col px-5 pb-8 pt-8 sm:px-8 md:px-12 md:pb-10 md:pt-10">
+                <div className="flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.24em] text-white/45 sm:text-[10px]">
+                    <span>Pitchy / Startup OS</span>
+                    <span className="hidden items-center gap-2 sm:flex"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-300" /> Система активна</span>
+                    <span>2026 / AI</span>
+                </div>
 
-                <p className="text-white/70 text-lg md:text-2xl max-w-3xl mx-auto mb-12 font-light leading-relaxed">
-                    От идеи до финансирования.
-                </p>
+                <div className="flex flex-1 flex-col items-center justify-center py-7 text-center md:py-9">
+                    <h1 className="flex max-w-full items-center justify-center whitespace-nowrap text-[clamp(55px,10.2vw,142px)] font-normal leading-[0.78] tracking-[-0.055em] text-white drop-shadow-[0_8px_34px_rgba(0,0,0,0.6)]" style={{ fontFamily: "'Instrument Serif', serif" }}>
+                        <span>Идея</span>
+                        <span className="relative mx-[0.18em] flex h-[0.42em] w-[0.72em] items-center" aria-hidden="true">
+                            <span className="h-px w-full bg-gradient-to-r from-white/20 via-cyan-100 to-white/20 shadow-[0_0_14px_rgba(165,243,252,0.9)]" />
+                            <span className="absolute left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-cyan-100 shadow-[0_0_18px_5px_rgba(165,243,252,0.7)] sm:h-2 sm:w-2" />
+                        </span>
+                        <span className="italic">Рост</span>
+                    </h1>
+                </div>
 
-                <div className="flex justify-center w-full">
-                    <Link href={isAuthenticated ? "/dashboard" : "/signup"}>
-                        <button className="liquid-glass-strong text-white px-10 py-4 rounded-full text-lg font-medium hover:scale-105 transition-transform flex items-center gap-3">
-                            <span className="relative z-10">Протестировать идею</span>
-                            <Zap className="w-5 h-5 shrink-0 text-white fill-white relative z-10" />
-                        </button>
+                <div className="relative mx-auto flex w-full max-w-[620px] flex-col items-center pb-1 md:pb-3">
+                    <div className="flex min-h-9 items-center justify-center rounded-full border border-white/15 bg-black/45 px-4 py-2 font-mono text-[10px] tracking-[0.04em] text-white shadow-[0_12px_36px_rgba(0,0,0,0.28)] backdrop-blur-md sm:min-h-10 sm:px-6 sm:text-xs">
+                        <span className="text-cyan-100/60" aria-hidden="true">›&nbsp;</span>
+                        <span className="[text-shadow:0_2px_10px_#000]">{typedText}</span>
+                        <span className="ml-0.5 inline-block h-[1em] w-px animate-pulse bg-cyan-100 shadow-[0_0_8px_rgba(165,243,252,0.9)]" aria-hidden="true" />
+                    </div>
+
+                    <Link href={isAuthenticated ? "/dashboard" : "/signup"} className="group mx-auto mt-5 flex w-fit items-center gap-5 rounded-full border border-white/35 bg-white/95 py-2.5 pl-6 pr-2.5 text-black shadow-[0_0_40px_rgba(255,255,255,0.18)] transition-all hover:scale-[1.02] hover:bg-cyan-50 sm:mt-6 sm:gap-8 sm:pl-8">
+                        <span className="text-sm font-semibold">Анализ идеи</span>
+                        <span className="flex h-10 w-10 items-center justify-center rounded-full border border-black/15 bg-black text-white transition-transform group-hover:rotate-[-35deg]">
+                            <ArrowRight className="h-4 w-4" />
+                        </span>
                     </Link>
                 </div>
             </div>
 
-            {/* Footer */}
-            <footer className="relative z-10 w-full px-6 py-8 flex justify-center md:justify-end">
-                <Link href="https://t.me/pitchy_pro" target="_blank" className="liquid-glass rounded-full p-4 transition-all hover:bg-white/10 text-white flex items-center gap-2">
-                    <svg className="w-5 h-5 relative z-10 fill-current" viewBox="0 0 24 24">
-                        <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12l-6.87 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.458c.537-.196 1.006.128.831.953z"/>
-                    </svg>
-                    <span className="text-sm font-medium pr-2 relative z-10">Telegram</span>
-                </Link>
-            </footer>
         </section>
     );
 }
