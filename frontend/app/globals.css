@@ -595,3 +595,19 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 .pitchy-table-scroll:hover::-webkit-scrollbar-thumb {
   background-color: rgba(255, 255, 255, 0.28);
 }
+
+/* Keep every viewport scrollable while hiding native scrollbar chrome. */
+html,
+body,
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+*::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
