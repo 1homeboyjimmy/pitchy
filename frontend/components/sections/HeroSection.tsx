@@ -9,31 +9,27 @@ export function HeroSection() {
     const { isAuthenticated } = useAuth();
     const videoRef = useRef<HTMLVideoElement>(null);
     const fadingOutRef = useRef(false);
-    const actions = [
-        "Pitchy анализирует рынок",
-        "Pitchy проверяет спрос",
-        "Pitchy строит дорожную карту",
-        "Pitchy готовит презентацию",
-        "Pitchy подбирает финансирование",
-    ];
-    const [activeStage, setActiveStage] = useState(0);
-    const [typedText, setTypedText] = useState("");
+    const [heroPhraseIndex, setHeroPhraseIndex] = useState(0);
+    const [heroPhraseVisible, setHeroPhraseVisible] = useState(true);
 
     useEffect(() => {
-        const action = actions[activeStage];
-        const isComplete = typedText.length >= action.length;
-        const timeout = window.setTimeout(() => {
-            if (isComplete) {
-                setTypedText("");
-                setActiveStage((current) => (current + 1) % actions.length);
-                return;
-            }
+        const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+        if (prefersReducedMotion) return;
 
-            setTypedText(action.slice(0, typedText.length + 1));
-        }, isComplete ? 1200 : 42);
+        const fadeTimeout = window.setTimeout(() => {
+            setHeroPhraseVisible(false);
+        }, 2400);
 
-        return () => window.clearTimeout(timeout);
-    }, [activeStage, typedText]);
+        const swapTimeout = window.setTimeout(() => {
+            setHeroPhraseIndex((current) => (current + 1) % 2);
+            setHeroPhraseVisible(true);
+        }, 3200);
+
+        return () => {
+            window.clearTimeout(fadeTimeout);
+            window.clearTimeout(swapTimeout);
+        };
+    }, [heroPhraseIndex]);
 
     useEffect(() => {
         const video = videoRef.current;
@@ -152,20 +148,18 @@ export function HeroSection() {
                 </div>
 
                 <div className="flex flex-1 flex-col items-center justify-start pb-7 pt-[9svh] text-center sm:pt-[7svh] md:pb-9 md:pt-[5vh] lg:pt-[4vh]">
-                    <h1 className="max-w-full text-[clamp(39px,7.4vw,106px)] font-normal leading-[0.82] tracking-[-0.045em] text-white drop-shadow-[0_8px_34px_rgba(0,0,0,0.65)]" style={{ fontFamily: "'Instrument Serif', serif" }}>
-                        <span className="block whitespace-nowrap">У идеи должен быть</span>
-                        <span className="mt-[0.08em] block italic">следующий шаг</span>
+                    <h1 className="relative flex h-[78px] w-full max-w-[980px] items-center justify-center text-white drop-shadow-[0_8px_34px_rgba(0,0,0,0.65)] sm:h-[94px] md:h-[122px]" style={{ fontFamily: "'Instrument Serif', serif" }}>
+                        <span className={"absolute whitespace-nowrap text-[clamp(34px,7.4vw,106px)] font-normal leading-none tracking-[-0.045em] transition-all duration-700 ease-in-out " + (heroPhraseIndex === 0 && heroPhraseVisible ? "translate-y-0 opacity-100" : "-translate-y-3 opacity-0")}>
+                            От реальной боли
+                        </span>
+                        <span className={"absolute whitespace-nowrap text-[clamp(22px,6vw,82px)] font-normal italic leading-none tracking-[-0.04em] transition-all duration-700 ease-in-out " + (heroPhraseIndex === 1 && heroPhraseVisible ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0")}>
+                            к востребованному продукту
+                        </span>
                     </h1>
                 </div>
 
                 <div className="relative mx-auto flex w-full max-w-[620px] flex-col items-center pb-1 md:pb-3">
-                    <div className="flex min-h-9 items-center justify-center rounded-full border border-white/15 bg-black/45 px-4 py-2 font-mono text-[10px] tracking-[0.04em] text-white shadow-[0_12px_36px_rgba(0,0,0,0.28)] backdrop-blur-md sm:min-h-10 sm:px-6 sm:text-xs">
-                        <span className="text-cyan-100/60" aria-hidden="true">›&nbsp;</span>
-                        <span className="[text-shadow:0_2px_10px_#000]">{typedText}</span>
-                        <span className="ml-0.5 inline-block h-[1em] w-px animate-pulse bg-cyan-100 shadow-[0_0_8px_rgba(165,243,252,0.9)]" aria-hidden="true" />
-                    </div>
-
-                    <Link href={isAuthenticated ? "/dashboard" : "/signup"} className="group mx-auto mt-5 flex w-fit items-center gap-5 rounded-full border border-white/35 bg-white/95 py-2.5 pl-6 pr-2.5 text-black shadow-[0_0_40px_rgba(255,255,255,0.18)] transition-all hover:scale-[1.02] hover:bg-cyan-50 sm:mt-6 sm:gap-8 sm:pl-8">
+                    <Link href={isAuthenticated ? "/dashboard" : "/signup"} className="group mx-auto flex w-fit items-center gap-5 rounded-full border border-white/35 bg-white/95 py-2.5 pl-6 pr-2.5 text-black shadow-[0_0_40px_rgba(255,255,255,0.18)] transition-all hover:scale-[1.02] hover:bg-cyan-50 sm:gap-8 sm:pl-8">
                         <span className="text-sm font-semibold">Анализ идеи</span>
                         <span className="flex h-10 w-10 items-center justify-center rounded-full border border-black/15 bg-black text-white transition-transform group-hover:rotate-[-35deg]">
                             <ArrowRight className="h-4 w-4" />
