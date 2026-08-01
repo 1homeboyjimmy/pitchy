@@ -1,28 +1,32 @@
-# Pitchy.pro - AI Startup Analysis Platform
+# Pitchy.pro
 
-## Overview
-Pitchy.pro is an AI-powered copilot for business and startup development. It provides instant automated screening, risk assessment, and detailed reporting for both startup founders and investors.
+> Pitchy — русскоязычная AI-платформа для проверки стартап-идей, поиска слабых мест и подготовки материалов для развития проекта.
 
-## Key Features
-- **Startup Scoring (0-100)**: Objective evaluation of startup potential based on market trends, team composition, product data, and growth metrics.
-- **Unit Economics Calculation**: Automated analysis of financial models and profitability.
-- **Competitor Analysis & Target Audience**: AI-driven insights into market positioning and customer segments.
-- **Pitch Deck Structuring**: Generation of structure and content recommendations for investor presentations.
-- **Interactive AI Analyst**: A conversational interface for requesting specific business advice and strategic planning.
+## Основные страницы
 
-## Target Audience
-- **Founders & Entrepreneurs**: To validate ideas, find weak spots, and prepare for fundraising.
-- **Venture Capitalists (VCs) & Angel Investors**: To perform rapid initial screening and due diligence of inbound deal flow.
+- [Главная](https://pitchy.pro/): обзор продукта и возможностей.
+- [О продукте](https://pitchy.pro/about): информация о Pitchy.
+- [Тарифы](https://pitchy.pro/pricing): актуальные планы и ограничения.
+- [FAQ](https://pitchy.pro/faq): ответы на частые вопросы.
+- [Политика конфиденциальности](https://pitchy.pro/privacy): обработка и защита персональных данных.
+- [Условия использования](https://pitchy.pro/terms): правила работы с сервисом.
+- [Безопасность](https://pitchy.pro/security): меры безопасности и рекомендации пользователям.
+- [Карта сайта](https://pitchy.pro/sitemap.xml): индекс публичных страниц.
 
-## Technology
-- Uses advanced Large Language Models (LLMs) to analyze publicly available market data.
-- Does not require or expose confidential internal company data (NDAs are respected).
+## Возможности
 
-## Pricing
-- **Free Tier**: 1 free project analysis.
-- **Premium Tier**: Unlimited projects, detailed PDF/TXT exports, competitor comparison, and advanced pitch deck generation.
+- критическая валидация стартап-идей и выявление противоречий;
+- анализ рынка, конкурентов, целевой аудитории и рисков;
+- расчёт и проверка юнит-экономики;
+- подготовка структуры питч-дека и плана развития;
+- диалоговый AI-аналитик для работы с проектом.
 
-## Contact Information
-- **Email**: auth@pitchy.pro
-- **Website**: https://pitchy.pro
-- **Company**: ИП Фигурняк Егор Сергеевич (TIN: 400700088347)
+## Данные и ограничения
+
+Pitchy использует модели искусственного интеллекта и может допускать ошибки. Ответы сервиса не являются инвестиционной, юридической или финансовой рекомендацией. Пользователь может передавать описания проектов и файлы для анализа; не следует загружать пароли, платёжные данные, коммерческие тайны и иные сведения, которые не требуются для задачи. Условия обработки данных описаны в [политике конфиденциальности](https://pitchy.pro/privacy).
+
+## Контакты
+
+- Сайт: [pitchy.pro](https://pitchy.pro/)
+- Электронная почта: auth@pitchy.pro
+- Оператор: НПД Фигурняк Егор Сергеевич, ИНН 400700088347

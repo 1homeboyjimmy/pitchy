@@ -18,22 +18,27 @@ const nextConfig: NextConfig = {
             // script-src без wildcard https: — иначе инъектированный
             // <script src="https://evil/x.js"> прошёл бы. 'unsafe-inline'/eval
             // пока оставлены (Next инлайнит бутстрап без nonce); следующий шаг —
-            // nonce через middleware. Остальные источники широкие осознанно
-            // (видео с CloudFront, шрифты, картинки грантов).
+            // nonce через middleware. HTTPS для картинок и соединений остаётся
+            // широким из-за внешних источников грантов и API.
             value: [
               "default-src 'self'",
               "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-              "style-src 'self' 'unsafe-inline' https:",
+              "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob: https:",
-              "font-src 'self' data: https:",
-              "media-src 'self' blob: https://stream.mux.com https: data:",
+              "font-src 'self' data:",
+              "media-src 'self' blob: https://stream.mux.com data:",
               "worker-src 'self' blob:",
               "connect-src 'self' https://stream.mux.com https: wss:",
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "object-src 'none'",
+              "form-action 'self' https://*.yandex.ru https://accounts.google.com https://github.com https://yoomoney.ru https://yookassa.ru",
             ].join("; "),
           },
+          { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
         ],
       },
     ];
@@ -54,6 +59,12 @@ const nextConfig: NextConfig = {
       // на бэкенд переписываем ТОЛЬКО запросы с заголовком Authorization —
       // это API-вызовы; обычная навигация рендерит страницу грантов.
       beforeFiles: [
+        // Same-origin URL keeps the browser on Pitchy while Next proxies the
+        // existing hero asset. The optimized poster remains the LCP element.
+        {
+          source: "/media/hero.mp4",
+          destination: "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260328_115001_bcdaa3b4-03de-47e7-ad63-ae3e392c32d4.mp4",
+        },
         { source: "/grants", has: hasAuth, destination: `${BACKEND_URL}/grants` },
         { source: "/grants/:path*", has: hasAuth, destination: `${BACKEND_URL}/grants/:path*` },
       ],

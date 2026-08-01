@@ -45,11 +45,11 @@ export function LandingFooter() {
           <div className="flex flex-col gap-2">
             <div className="flex items-baseline gap-3">
               <PitchyLogo size="3xl" />
-              <span className="text-white/20 text-xs font-medium font-sans tracking-tight uppercase">
+              <span className="text-white/50 text-xs font-medium font-sans tracking-tight uppercase">
                 © 2026 Все права защищены
               </span>
             </div>
-            <p className="text-white/20 text-[10px] font-medium font-sans tracking-widest uppercase">
+            <p className="text-white/50 text-xs font-medium font-sans tracking-widest uppercase">
               НПД Фигурняк Егор Сергеевич, ИНН 400700088347
             </p>
           </div>

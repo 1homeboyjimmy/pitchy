@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   ArrowUpRight, Users, FileText, MessageSquare, Map,
   Briefcase, BarChart3, UserCheck, Megaphone, Landmark, Rocket, GraduationCap, CheckCircle2, Sparkles, IdCard
@@ -632,7 +633,7 @@ export default function LandingPage() {
         <div className="aurora-orb right-[-10rem] top-[60%] h-[40rem] w-[40rem] bg-white/[0.02] animate-float-slow" />
 
         {/* System Overview Section */}
-        <section className="relative px-6 py-32 md:px-12">
+        <section id="system-overview" className="relative scroll-mt-20 px-6 py-32 md:px-12">
           <div className="mx-auto max-w-7xl">
             <SectionHeading
               centered
@@ -881,9 +882,12 @@ export default function LandingPage() {
                   ].map((bar, i) => (
                     <div key={bar.name} className="flex flex-col items-center gap-3">
                       <div className="h-7 flex items-center justify-center">
-                        <img
+                        <Image
                           src={bar.logo}
                           alt={bar.name}
+                          width={72}
+                          height={24}
+                          sizes="72px"
                           className="h-6 w-auto max-w-[72px] object-contain"
                           onError={(e) => {
                             e.currentTarget.style.display = "none";
@@ -1055,6 +1059,7 @@ export default function LandingPage() {
                   <motion.circle
                     cx={200}
                     cy={200}
+                    r={30}
                     fill="none"
                     stroke="rgba(255,255,255,0.15)"
                     strokeWidth={1}
