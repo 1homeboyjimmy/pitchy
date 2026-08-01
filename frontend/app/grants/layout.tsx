@@ -9,6 +9,7 @@ import { getToken } from "@/lib/auth";
 import { getMe, type UserResponse } from "@/lib/api";
 import { fetchUsage, getQuotas, type UsageResponse } from "@/lib/planLimits";
 import { notifyTierGate } from "@/lib/ui";
+import { Providers } from "../providers";
 
 /**
  * Shell layout for /grants/* pages so the left sidebar persists exactly like
@@ -51,6 +52,7 @@ export default function GrantsLayout({ children }: { children: React.ReactNode }
   };
 
   return (
+    <Providers>
     <div className="bg-black text-white h-[100dvh] min-h-0 font-sans flex overflow-hidden">
       <button
         onClick={() => setIsMobileSidebarOpen((prev) => !prev)}
@@ -84,5 +86,6 @@ export default function GrantsLayout({ children }: { children: React.ReactNode }
         </main>
       </div>
     </div>
+    </Providers>
   );
 }

@@ -1008,6 +1008,7 @@ export default function LandingPage() {
                         key={`node-${i}-${a.label}`}
                         cx={a.x}
                         cy={a.y}
+                        r={0}
                         fill="rgba(255,255,255,0.85)"
                         stroke="rgba(255,255,255,0.4)"
                         strokeWidth={1}
@@ -1023,6 +1024,7 @@ export default function LandingPage() {
                       key={`background-node-${i}`}
                       cx={a.x}
                       cy={a.y}
+                      r={0}
                       fill="rgba(255,255,255,0.25)"
                       stroke="rgba(255,255,255,0.4)"
                       strokeWidth={1}
@@ -1063,6 +1065,7 @@ export default function LandingPage() {
                     fill="none"
                     stroke="rgba(255,255,255,0.15)"
                     strokeWidth={1}
+                    initial={{ r: 30, opacity: 0.4 }}
                     animate={{ r: [30, 40, 30], opacity: [0.4, 0.08, 0.4] }}
                     transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
                   />

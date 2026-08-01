@@ -1,9 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Prata, Inter, JetBrains_Mono } from "next/font/google";
-import { Providers } from "./providers";
 import "./globals.css";
-import "@mantine/core/styles.css";
-import "@mantine/notifications/styles.css";
 
 // Self-hosted fonts (next/font downloads & serves them from our own origin —
 // no runtime dependency on fonts.googleapis.com, which is unreliable/blocked
@@ -88,10 +85,7 @@ export default function RootLayout({
       <body className="antialiased">
         <ScrollToTop />
         <BreadcrumbsSchema />
-        <Providers>
-
-          {children}
-        </Providers>
+        {children}
       </body>
     </html>
   );
