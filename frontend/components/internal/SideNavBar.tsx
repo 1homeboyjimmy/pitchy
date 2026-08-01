@@ -75,7 +75,7 @@ export function SideNavBar({
         initial={false}
         animate={{ width: !isMobileOpen && isCollapsed ? 80 : 256 }}
         transition={{ duration: 0.45, ease: EASE }}
-        className={`h-screen min-h-0 overflow-y-auto overflow-x-hidden border-r border-white/5 bg-black flex flex-col py-8 z-50 ${
+        className={`h-[100dvh] max-w-[calc(100vw-1rem)] min-h-0 overflow-y-auto overflow-x-hidden border-r border-white/5 bg-black flex flex-col py-5 sm:py-8 z-50 ${
           isMobileOpen ? "fixed inset-y-0 left-0" : "hidden md:flex"
         }`}
       >

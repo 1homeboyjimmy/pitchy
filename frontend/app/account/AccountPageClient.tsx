@@ -519,8 +519,8 @@ export function AccountPageClient() {
       
       {/* Add Email Modal */}
       {isAddEmailOpen && createPortal(
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="bg-[#111111] border border-white/10 rounded w-[28rem] max-w-[calc(100vw-2rem)] shrink-0 p-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto overscroll-contain bg-black/80 backdrop-blur-sm p-3 sm:p-4">
+          <div className="bg-[#111111] border border-white/10 rounded w-[28rem] max-w-[calc(100vw-1.5rem)] max-h-[calc(100dvh-1.5rem)] overflow-y-auto shrink-0 p-5 sm:p-6">
             <h3 className="text-xl font-display font-medium text-white mb-6">Добавить Email</h3>
             <input
               type="email"
@@ -540,8 +540,8 @@ export function AccountPageClient() {
 
       {/* Change Password Modal */}
       {isChangePasswordOpen && createPortal(
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="bg-[#111111] border border-white/10 rounded w-[28rem] max-w-[calc(100vw-2rem)] shrink-0 p-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto overscroll-contain bg-black/80 backdrop-blur-sm p-3 sm:p-4">
+          <div className="bg-[#111111] border border-white/10 rounded w-[28rem] max-w-[calc(100vw-1.5rem)] max-h-[calc(100dvh-1.5rem)] overflow-y-auto shrink-0 p-5 sm:p-6">
             <h3 className="text-xl font-display font-medium text-white mb-6">Сменить пароль</h3>
 
             {passwordStep === "init" && (
@@ -605,8 +605,8 @@ export function AccountPageClient() {
 
       {/* Change Email Modal */}
       {isChangeEmailOpen && createPortal(
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="bg-[#111111] border border-white/10 rounded w-[28rem] max-w-[calc(100vw-2rem)] shrink-0 p-6 overflow-hidden relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto overscroll-contain bg-black/80 backdrop-blur-sm p-3 sm:p-4">
+          <div className="bg-[#111111] border border-white/10 rounded w-[28rem] max-w-[calc(100vw-1.5rem)] max-h-[calc(100dvh-1.5rem)] shrink-0 p-5 sm:p-6 overflow-y-auto relative">
             <motion.div layout>
               <motion.h3 layout="position" className="text-xl font-display font-medium text-white mb-6">Сменить Email</motion.h3>
 
@@ -687,8 +687,8 @@ export function AccountPageClient() {
 
       {/* Email Sent Confirmation Modal */}
       {showEmailSentModal && createPortal(
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="bg-[#111111] border border-white/10 rounded w-[24rem] max-w-[calc(100vw-2rem)] shrink-0 p-8 text-center">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto overscroll-contain bg-black/80 backdrop-blur-sm p-3 sm:p-4">
+          <div className="bg-[#111111] border border-white/10 rounded w-[24rem] max-w-[calc(100vw-1.5rem)] max-h-[calc(100dvh-1.5rem)] overflow-y-auto shrink-0 p-5 sm:p-8 text-center">
             <div className="flex justify-center mb-6">
               <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center border border-white/10">
                 <Check className="w-8 h-8 text-white" />

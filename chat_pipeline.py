@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import re
+from datetime import datetime
 from typing import Any, Iterable
 
 from rag_reranker import rerank_indices
@@ -30,6 +32,32 @@ VALID_RAG_CATEGORIES = {
     "legal_regulations",
     "platform_manual",
 }
+
+
+def requires_fresh_web_search(query: str, current_year: int | None = None) -> bool:
+    """Deterministic guardrail for queries where stale model memory is unsafe."""
+    normalized = (query or "").lower().replace("ё", "е")
+    year = current_year or datetime.now().year
+    mentioned_years = {int(value) for value in re.findall(r"\b20\d{2}\b", normalized)}
+    if any(value >= year - 1 for value in mentioned_years):
+        return True
+
+    freshness_markers = (
+        "сейчас", "сегодня", "актуальн", "последн", "на текущ",
+        "статистик", "сколько", "количество", "число ", "динамик",
+    )
+    public_data_markers = (
+        "в росс", " в рф", "рынок", "мсп", "компан", "ип ",
+        "населен", "росстат", "фнс", "минэконом", "ставк", "инфляц",
+    )
+    legal_markers = (
+        "закон", "фз-", "фз ", "регулирован", "лицензи", "запрещен",
+        "разрешен", "юридическ", "налог", "роспотребнадзор",
+    )
+    has_freshness = any(marker in normalized for marker in freshness_markers)
+    return (
+        has_freshness and any(marker in normalized for marker in public_data_markers)
+    ) or any(marker in normalized for marker in legal_markers)
 
 EVIDENCE_SAFETY_INSTRUCTION = """
 [EVIDENCE SAFETY]

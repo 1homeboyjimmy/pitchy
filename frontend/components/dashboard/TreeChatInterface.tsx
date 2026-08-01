@@ -216,7 +216,7 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
   const stopGeneration = () => { if (abortControllerRef.current) { abortControllerRef.current.abort(); setIsLoading(false); abortControllerRef.current = null; } };
 
   return (
-    <div className="flex flex-col h-full bg-black/90 backdrop-blur-2xl border-l border-white/10 w-[400px] shadow-2xl relative overflow-hidden">
+    <div className="flex flex-col h-full max-h-[100dvh] bg-black/90 backdrop-blur-2xl border-l border-white/10 w-full sm:w-[400px] max-w-full shadow-2xl relative overflow-hidden">
       
       {/* Header & Tabs */}
       <div className="pt-5 px-4 pb-0 border-b border-white/10 bg-white/[0.02]">

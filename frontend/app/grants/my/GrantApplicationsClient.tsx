@@ -209,7 +209,7 @@ export function GrantApplicationsClient() {
       </p>
 
       {apps.length === 0 ? (
-        <div className="lovable-glass rounded-3xl p-10 text-center border border-white/10">
+        <div className="lovable-glass rounded-3xl p-6 sm:p-10 text-center border border-white/10">
           <Banknote className="mx-auto text-white/20 mb-4" size={36} />
           <p className="text-white/50 mb-5">Пока пусто. Добавьте грант на доску со страницы подбора.</p>
           <Link href="/grants" className="inline-flex bg-white text-black font-semibold text-sm px-7 py-3 rounded-full hover:bg-neutral-200 transition-all">

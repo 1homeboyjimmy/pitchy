@@ -45,6 +45,18 @@ def test_category_allowlist_rejects_arbitrary_collection_names():
     ]) == ["market_analysis"]
 
 
+def test_fresh_public_statistics_force_web_search():
+    assert chat_pipeline.requires_fresh_web_search(
+        "Сколько МСП в РФ на 2026 год?", current_year=2026
+    )
+    assert chat_pipeline.requires_fresh_web_search(
+        "Какие сейчас требования закона к обработке данных?", current_year=2026
+    )
+    assert not chat_pipeline.requires_fresh_web_search(
+        "Помоги сформулировать ценностное предложение", current_year=2026
+    )
+
+
 def test_tree_chat_request_enforces_shared_limits():
     request = TreeChatRequest(message="hello", client_id="c", assistant_client_id="a")
     assert request.message == "hello"

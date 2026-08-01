@@ -40,7 +40,7 @@ export function UpgradeModal({ isOpen, onClose, message }: UpgradeModalProps) {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+          className="fixed inset-0 z-[9999] flex items-center justify-center overflow-y-auto overscroll-contain p-2 sm:p-4"
           onClick={onClose}
         >
           {/* Backdrop */}
@@ -53,7 +53,7 @@ export function UpgradeModal({ isOpen, onClose, message }: UpgradeModalProps) {
             exit={{ opacity: 0, scale: 0.9, y: 20 }}
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
             onClick={(e) => e.stopPropagation()}
-            className="relative w-full max-w-md rounded-3xl overflow-hidden max-h-[88vh] overflow-y-auto"
+            className="relative w-full max-w-md rounded-2xl sm:rounded-3xl overflow-hidden max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] overflow-y-auto"
           >
             {/* Панель в фирменной монохромной палитре. Прежний градиент
                 строился на from-pitchy-violet/to-pitchy-cyan — таких токенов

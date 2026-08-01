@@ -6,7 +6,7 @@ export function SlideRenderer({ slide }: { slide: PresentationSlide }) {
     const sanitizedHtml = DOMPurify.sanitize(slide.html);
     return (
       <div 
-        className="w-full h-[500px] md:h-auto md:aspect-video flex items-stretch justify-stretch relative overflow-hidden rounded-2xl print:h-[100vh] print:rounded-none bg-[#131313]" 
+        className="w-full h-[420px] sm:h-[500px] md:h-auto md:aspect-video flex items-stretch justify-stretch relative overflow-hidden rounded-2xl print:h-[100vh] print:rounded-none bg-[#131313]"
         dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
       />
     );

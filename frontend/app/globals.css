@@ -119,6 +119,9 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-body-lg);
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: hidden;
   }
 }
 
@@ -502,6 +505,10 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 /* Subtle chat scrollbar — visible on hover, fades when idle.
    Used by the main chat scroll viewport. */
 .pitchy-chat-scroll {
+  min-height: 0;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
   scrollbar-gutter: stable;

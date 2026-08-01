@@ -12,11 +12,11 @@ export default function TesterWarningModal({ isOpen, onClose, featureName }: Tes
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-pitchy-bg/80 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto overscroll-contain p-2 sm:p-4 bg-pitchy-bg/80 backdrop-blur-sm">
             <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="bg-pitchy-card border border-white/10 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl relative"
+                className="bg-pitchy-card border border-white/10 rounded-2xl w-full max-w-md max-h-[calc(100dvh-1rem)] overflow-y-auto shadow-2xl relative"
             >
                 <button
                     onClick={onClose}
@@ -25,7 +25,7 @@ export default function TesterWarningModal({ isOpen, onClose, featureName }: Tes
                     <X className="w-6 h-6" />
                 </button>
 
-                <div className="p-8 pb-6 text-center">
+                <div className="p-5 pb-4 sm:p-8 sm:pb-6 text-center">
                     <div className="mx-auto bg-white/10 w-16 h-16 rounded-full flex items-center justify-center mb-6">
                         <Lock className="w-8 h-8 text-white" />
                     </div>
@@ -38,7 +38,7 @@ export default function TesterWarningModal({ isOpen, onClose, featureName }: Tes
                     </p>
                 </div>
 
-                <div className="px-8 pb-8 flex flex-col gap-3">
+                <div className="px-5 pb-5 sm:px-8 sm:pb-8 flex flex-col gap-3">
                     <Link
                         href="/pricing"
                         onClick={onClose}

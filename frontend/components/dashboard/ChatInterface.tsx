@@ -19,7 +19,7 @@ import { PresentationSlide, importContext, type ResearchJob } from "@/lib/api";
 import { ContextImportModal } from "@/components/chat/ContextImportModal";
 import { UpgradeModal } from "@/components/chat/UpgradeModal";
 import { notifyError } from "@/lib/ui";
-import { stripThoughts, hostFromUrl, parseAttachments, parseExports, type MessageAttachment, type MessageExport } from "@/lib/utils";
+import { stripThoughts, stripPitchySignature, hostFromUrl, parseAttachments, parseExports, type MessageAttachment, type MessageExport } from "@/lib/utils";
 
 // Плейсхолдеры названий чата — держать в синхроне с _DEFAULT_CHAT_TITLES
 // в main.py. Пока сессия так называется, бэкенд генерирует ей название по
@@ -959,7 +959,7 @@ export function ChatInterface({
                 if (match) derivedThoughts = match[1];
             }
 
-            const cleanContent = stripThoughts(rawContentText);
+            const cleanContent = stripPitchySignature(stripThoughts(rawContentText));
             const hasThoughts = derivedThoughts !== undefined && derivedThoughts !== null && derivedThoughts.length > 0;
             const showThoughts = hasThoughts;
             
@@ -1142,7 +1142,7 @@ export function ChatInterface({
                                         <div className="flex items-center justify-between mt-8 pt-8 border-t border-white/5 w-full transition-all duration-500">
                                             <div className="flex items-center gap-3">
                                                 <CopyButton
-                                                    text={parseExports(stripThoughts(msg.content || "")).text}
+                                                    text={stripPitchySignature(parseExports(stripThoughts(msg.content || "")).text)}
                                                     getHtml={() => {
                                                         const el = messageContentRefs.current.get(getSafeKey(msg));
                                                         return el ? serializeMessageHtml(el) : null;
@@ -1347,8 +1347,8 @@ export function ChatInterface({
             </div >
 
             {/* Input Area (Fixed Bottom) */}
-            <div ref={inputBarRef} className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/95 to-transparent pt-12 sm:pt-20 pb-5 sm:pb-10 z-40 px-2 sm:px-6 lg:px-12">
-                <div className={`mx-auto w-full transition-all duration-500 ease-[0.16,1,0.3,1] ${isSidebarCollapsed ? 'max-w-6xl' : 'max-w-4xl'}`}>
+            <div ref={inputBarRef} className="pointer-events-none absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/95 to-transparent pt-12 sm:pt-20 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-7 z-40 px-2 sm:px-6 lg:px-12">
+                <div className={`pointer-events-auto mx-auto w-full transition-all duration-500 ease-[0.16,1,0.3,1] ${isSidebarCollapsed ? 'max-w-6xl' : 'max-w-4xl'}`}>
 
                     {/* Free-tier exhausted banner — ChatGPT-style upsell */}
                     {messagesRemaining === 0 && (
@@ -1446,6 +1446,9 @@ export function ChatInterface({
                             </button>
                         </motion.div>
                     )}
+                    <p className="mx-auto mt-2 max-w-3xl px-3 text-center text-[11px] leading-[1.45] text-white/45 sm:mt-3 sm:text-xs">
+                        Pitchy использует искусственный интеллект и может ошибаться. Проверяйте важную информацию и исходные данные. Ответы носят информационно-аналитический характер и не являются индивидуальной инвестиционной рекомендацией.
+                    </p>
                 </div>
             </div>
             </div> {/* end of chat column (flex-1 with optional md:max-w-[60%]) */}

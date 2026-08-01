@@ -27,7 +27,7 @@ export default function OfferPage() {
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="lovable-glass rounded-[40px] p-10 md:p-16 shadow-2xl"
+                        className="lovable-glass rounded-3xl sm:rounded-[40px] p-5 sm:p-8 md:p-16 shadow-2xl"
                     >
                         <div className="prose prose-invert prose-neutral max-w-none prose-headings:text-white prose-headings:font-display prose-headings:tracking-tight prose-p:text-foreground/70 prose-li:text-foreground/70">
                             <p>

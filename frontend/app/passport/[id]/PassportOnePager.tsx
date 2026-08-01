@@ -191,7 +191,7 @@ export function PassportOnePager() {
       </div>
 
       {/* Документ A4 */}
-      <article className="op-doc w-full max-w-[820px] bg-white text-neutral-900 rounded-xl shadow-xl border border-neutral-200 p-10">
+      <article className="op-doc w-full max-w-[820px] bg-white text-neutral-900 rounded-xl shadow-xl border border-neutral-200 p-5 sm:p-10">
         {/* Шапка */}
         <header className="flex items-start justify-between gap-6 pb-5">
           <div className="min-w-0">

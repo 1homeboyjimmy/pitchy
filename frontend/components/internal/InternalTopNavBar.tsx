@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { LogOut, User, Menu, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -31,11 +31,6 @@ export function InternalTopNavBar({ activeTab, compactDashboard = false }: Props
     ? navLinks.filter((link) => !["/faq", "/about", "/contact"].includes(link.href))
     : navLinks;
 
-  // Close the mobile pages menu whenever the route changes.
-  useEffect(() => {
-    setIsPagesMenuOpen(false);
-  }, [pathname]);
-
   const getTabName = (tab: string) => {
     switch (tab) {
       case "overview": return "Обзор";
@@ -52,11 +47,9 @@ export function InternalTopNavBar({ activeTab, compactDashboard = false }: Props
     router.push("/");
   };
 
-  const linkBase = "font-mono text-[10px] uppercase tracking-[0.2em] transition-all font-bold";
-
   return (
     <header className="relative w-full bg-black/95 backdrop-blur-xl border-b border-white/5">
-      <div className="flex flex-row justify-between items-center py-4 px-8 w-full max-w-[1440px] mx-auto">
+      <div className="flex flex-row justify-between items-center py-3 sm:py-4 px-4 sm:px-8 w-full max-w-[1440px] mx-auto">
         {/* Left: Logo & Menu Toggle */}
         <div className="flex items-center gap-4 relative z-[110]">
           {/* Spacer so logo aligns with mobile floating burger position */}

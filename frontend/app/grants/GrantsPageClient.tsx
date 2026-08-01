@@ -661,7 +661,7 @@ export function GrantsPageClient() {
               </div>
             )
           ) : visibleGrants.length === 0 ? (
-            <div className="lovable-glass rounded-3xl p-10 text-center text-white/40 border border-white/10">
+            <div className="lovable-glass rounded-3xl p-6 sm:p-10 text-center text-white/40 border border-white/10">
               {grants.length === 0
                 ? "Каталог пока пуст. Скоро здесь появятся актуальные программы."
                 : "В этой категории пока нет программ."}

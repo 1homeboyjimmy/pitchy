@@ -406,16 +406,16 @@ export default function AcceleratorsPage() {
               <div className="mb-6 font-mono text-xs uppercase tracking-[0.25em] text-white/50">
                 Партнёрский бандл
               </div>
-              <div className="mb-8 flex translate-x-[27px] items-center justify-center gap-6 sm:translate-x-[37px] sm:gap-12">
+              <div className="mb-8 flex items-center justify-center gap-2 sm:translate-x-[37px] sm:gap-12">
                 {/* Pitchy — white logo on transparent */}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src="/logos/partners/pitchy.png"
                   alt="Pitchy"
-                  className="h-[168px] w-auto shrink-0 object-contain sm:h-[240px]"
+                  className="h-24 w-auto min-w-0 shrink object-contain sm:h-[240px] sm:shrink-0"
                   style={{ transform: "translateY(-4.5%)" }}
                 />
-                <span className="relative flex h-20 w-20 shrink-0 items-center justify-center sm:h-24 sm:w-24">
+                <span className="relative flex h-12 w-12 shrink-0 items-center justify-center sm:h-24 sm:w-24">
                   <span className="absolute inset-0 rounded-full bg-white/15 blur-md" />
                   <span className="relative text-5xl font-light text-white sm:text-6xl">×</span>
                 </span>
@@ -424,7 +424,7 @@ export default function AcceleratorsPage() {
                 <img
                   src="/logos/partners/vaibly.svg"
                   alt="Вайбли"
-                  className="-mx-[91px] h-[105px] w-auto shrink-0 object-contain sm:-mx-[131px] sm:h-[150px]"
+                  className="-mx-8 h-16 w-auto min-w-0 shrink object-contain sm:-mx-[131px] sm:h-[150px] sm:shrink-0"
                   style={{ mixBlendMode: "screen" }}
                 />
               </div>
@@ -693,7 +693,7 @@ export default function AcceleratorsPage() {
               whileInView={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.7, ease: "easeOut" }}
               viewport={{ once: true }}
-              className="lovable-glass-strong lovable-liquid-outline relative overflow-hidden rounded-[2.5rem] bg-black/40 p-10 text-center shadow-[0_0_100px_-24px_rgba(255,255,255,0.18)] sm:p-14"
+              className="lovable-glass-strong lovable-liquid-outline relative overflow-hidden rounded-3xl sm:rounded-[2.5rem] bg-black/40 p-6 text-center shadow-[0_0_100px_-24px_rgba(255,255,255,0.18)] sm:p-14"
             >
               <div className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.05]">
                 <Sparkles className="h-6 w-6 text-white/80" />

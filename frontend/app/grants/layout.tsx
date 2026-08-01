@@ -51,7 +51,7 @@ export default function GrantsLayout({ children }: { children: React.ReactNode }
   };
 
   return (
-    <div className="bg-black text-white h-screen font-sans flex overflow-hidden">
+    <div className="bg-black text-white h-[100dvh] min-h-0 font-sans flex overflow-hidden">
       <button
         onClick={() => setIsMobileSidebarOpen((prev) => !prev)}
         className="md:hidden fixed top-3 left-3 z-[200] p-2 text-white/80 hover:text-white bg-black/70 backdrop-blur-md border border-white/10 rounded-lg active:scale-95 transition-colors"
@@ -73,7 +73,7 @@ export default function GrantsLayout({ children }: { children: React.ReactNode }
         onLockedClick={(label) => notifyTierGate(label)}
       />
 
-      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden relative">
+      <div className="flex-1 flex flex-col min-w-0 h-[100dvh] min-h-0 overflow-hidden relative">
         {!isSidebarCollapsed && (
           <div className="absolute top-0 left-0 right-0 z-[100]">
             <InternalTopNavBar activeTab="grants" />
