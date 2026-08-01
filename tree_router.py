@@ -23,10 +23,11 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, WebSock
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from auth import get_async_current_user
 from db_async import get_async_db, AsyncSessionLocal
-from models import User, ProjectTree
+from models import User, ProjectTree, TreeChatHistory
 from schemas import TreeCreateRequest, TreeResponse, TreeNodeUpdateRequest, TreeChatRequest, TreeChatResponse, TreeEvaluateRequest
 from tree_orchestrator import generate_tree_from_text, generate_tree_from_pdf
 from chat_orchestrator import ChatOrchestrator
@@ -288,6 +289,58 @@ async def tree_chat(
 ):
     """Intelligent chat orchestration for the decision tree (Streaming)."""
     from fastapi.responses import StreamingResponse
+
+    tree_result = await db.execute(
+        select(ProjectTree).where(ProjectTree.id == tree_id, ProjectTree.user_id == user.id)
+    )
+    if tree_result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Roadmap not found")
+
+    # Replay completed requests and reject ambiguous half-finished duplicates.
+    # The database partial unique index is the final race-condition guard.
+    if payload.assistant_client_id:
+        assistant_result = await db.execute(
+            select(TreeChatHistory).where(
+                TreeChatHistory.project_id == tree_id,
+                TreeChatHistory.client_id == payload.assistant_client_id,
+            )
+        )
+        existing_assistant = assistant_result.scalar_one_or_none()
+        if existing_assistant:
+            async def replay():
+                events = [
+                    {"type": "metadata", "model": "Pitchy (replay)"},
+                    {"type": "chunk", "content": existing_assistant.message or ""},
+                    {"type": "final", "assistant_client_id": payload.assistant_client_id},
+                ]
+                for event in events:
+                    yield f"event: {event['type']}\ndata: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+            return StreamingResponse(replay(), media_type="text/event-stream")
+
+    if payload.client_id:
+        user_message_result = await db.execute(
+            select(TreeChatHistory).where(
+                TreeChatHistory.project_id == tree_id,
+                TreeChatHistory.client_id == payload.client_id,
+            )
+        )
+        if user_message_result.scalar_one_or_none():
+            raise HTTPException(status_code=409, detail="Chat request is already being processed")
+
+        db.add(TreeChatHistory(
+            project_id=tree_id,
+            role="user",
+            message=payload.message,
+            client_id=payload.client_id,
+            node_id=payload.active_node_id,
+        ))
+        try:
+            await db.commit()
+        except IntegrityError:
+            await db.rollback()
+            raise HTTPException(status_code=409, detail="Chat request is already being processed")
+
     orchestrator = ChatOrchestrator(tree_id, user.id, db)
     
     headers = {
@@ -298,7 +351,13 @@ async def tree_chat(
         "X-Content-Type-Options": "nosniff"
     }
     return StreamingResponse(
-        orchestrator.process_message(payload.message, payload.active_node_id, client_id=payload.client_id, assistant_client_id=payload.assistant_client_id),
+        orchestrator.process_message(
+            payload.message,
+            payload.active_node_id,
+            client_id=payload.client_id,
+            assistant_client_id=payload.assistant_client_id,
+            persist_user_message=not bool(payload.client_id),
+        ),
         media_type="text/event-stream",
         headers=headers
     )

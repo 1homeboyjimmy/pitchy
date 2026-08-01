@@ -101,7 +101,7 @@ async def stream_routerai(system_prompt: str, user_message: str, model: str = "m
 
 @observe(name="routerai_rerank")
 async def rerank_documents(query: str, documents: list[str], top_n: int = 30, model: str = "cohere/rerank-v3.5") -> list[dict]:
-    """Rerank documents through RouterAI's Cohere-compatible endpoint."""
+    """Rerank documents through RouterAI's dedicated rerank endpoint."""
     if not documents:
         return []
     api_key = os.getenv("ROUTERAI_API_KEY")
@@ -111,7 +111,7 @@ async def rerank_documents(query: str, documents: list[str], top_n: int = 30, mo
     base_url = os.getenv("ROUTERAI_BASE_URL", "https://routerai.ru/api/v1").rstrip("/")
     payload = {"model": model, "query": query, "documents": documents, "top_n": min(top_n, len(documents)), "return_documents": False}
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    async with httpx.AsyncClient(timeout=float(os.getenv("RERANK_TIMEOUT_SECONDS", "60"))) as client:
+    async with httpx.AsyncClient(timeout=float(os.getenv("RERANK_TIMEOUT_SECONDS", "15"))) as client:
         response = await client.post(f"{base_url}/rerank", json=payload, headers=headers)
     response.raise_for_status()
     data = response.json()

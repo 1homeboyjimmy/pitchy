@@ -314,10 +314,6 @@ export async function deleteChatSession(id: number, token: string): Promise<{ st
   return response.json();
 }
 
-export async function sendChatMessage(sessionId: number, content: string, token: string): Promise<ChatMessageResponse> {
-  return postAuthJson<ChatMessageResponse>(`/chat/sessions/${sessionId}/messages`, { content }, token);
-}
-
 export type UploadedAttachment = {
   name: string;
   kind: string;
