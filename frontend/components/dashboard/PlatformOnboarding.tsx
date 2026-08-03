@@ -16,6 +16,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { patchAuthJson } from "@/lib/api";
+import { trackMetrikaGoal } from "@/components/analytics/YandexMetrika";
 
 type ProjectStage = "no-idea" | "has-idea";
 
@@ -125,6 +126,7 @@ export function PlatformOnboarding({ token, onComplete }: PlatformOnboardingProp
     setIsSaving(true);
     try {
       await patchAuthJson("/me", { onboarding_completed: true }, token);
+      trackMetrikaGoal("onboarding_completed");
     } catch (error) {
       console.error("Failed to save onboarding state:", error);
     } finally {

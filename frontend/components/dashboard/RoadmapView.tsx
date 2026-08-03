@@ -11,6 +11,7 @@ import {
   getProjects, getRoadmap, patchPassport, analyzeRoadmapStep, streamRoadmapOverall, createProject, downloadRoadmapPdf,
   type ProjectListItem, type Roadmap, type RoadmapCheckpoint, type RoadmapField, type RoadmapOverall,
 } from "@/lib/api";
+import { trackMetrikaGoal } from "@/components/analytics/YandexMetrika";
 
 // Геометрия извилистого пути (в координатах viewBox; узлы позиционируются в %).
 const VB_W = 280;
@@ -259,6 +260,7 @@ export function RoadmapView() {
     setDownloadingPdf(true);
     try {
       await downloadRoadmapPdf(pid, token);
+      trackMetrikaGoal("roadmap_exported", { format: "pdf" });
     } catch (err) {
       notifyError(err instanceof Error ? err.message : "Не удалось скачать PDF");
     } finally {
@@ -310,6 +312,8 @@ export function RoadmapView() {
     setCreating(true);
     try {
       const proj = await createProject({ name }, t);
+      trackMetrikaGoal("roadmap_created", { source: "roadmap_hub" });
+      trackMetrikaGoal("project_created", { project_source: "roadmap_hub" });
       const pj = await getProjects(t);
       setProjects(pj);
       setNewName("");
@@ -329,6 +333,7 @@ export function RoadmapView() {
     setSaving(true);
     try {
       await patchPassport(pid, fields, t);
+      trackMetrikaGoal("roadmap_checkpoint_completed", { checkpoint_type: cpId || "unknown" });
       await loadRoadmap(pid, true);
     } catch {
       notifyError("Не удалось сохранить");
@@ -341,6 +346,7 @@ export function RoadmapView() {
       setAnalyzingStep(cpId);
       try {
         const res = await analyzeRoadmapStep(pid, cpId, t);
+        trackMetrikaGoal("roadmap_step_analysis_completed", { checkpoint_type: cpId });
         setStepAnalysis((m) => ({ ...m, [cpId]: res.analysis }));
       } catch {
         notifyError("Не удалось получить разбор шага");
@@ -366,6 +372,7 @@ export function RoadmapView() {
           notifyError(ev.text || "Ошибка генерации аналитики");
         }
       }
+      trackMetrikaGoal("roadmap_overall_analysis_completed");
     } catch {
       notifyError("Не удалось получить аналитику стартапа");
     } finally {

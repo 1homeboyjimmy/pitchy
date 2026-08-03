@@ -4,6 +4,7 @@ import Link from "next/link";
 import { LayoutDashboard, MessageSquare, GitBranch, Users, Shield, HelpCircle, Star, X, ChevronLeft, ChevronRight, Lock, Banknote } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { PitchyLogo } from "../shared/PitchyLogo";
+import { trackMetrikaGoal } from "@/components/analytics/YandexMetrika";
 
 const EASE = [0.16, 1, 0.3, 1] as const;
 
@@ -130,6 +131,10 @@ export function SideNavBar({
                 <a
                   key={item.id}
                   href={item.href}
+                  onClick={() => {
+                    if (item.id === "custdev") trackMetrikaGoal("custdev_opened", { entry_point: "sidebar" });
+                    onMobileClose?.();
+                  }}
                   className={`group flex items-center gap-3 px-4 py-3 text-white/50 hover:bg-white/[0.03] transition-all duration-300 rounded-2xl active:scale-[0.98] ${isCollapsed ? "justify-center px-0" : ""}`}
                   title={isCollapsed ? item.label : ""}
                 >

@@ -5,6 +5,7 @@ import { TopNavBar } from "@/components/shared/TopNavBar";
 import { SiteFooter } from "@/components/shared/SiteFooter";
 import { MapPin, Clock, ArrowRight, CheckCircle2, Mail, Send } from "lucide-react";
 import { notifyError, notifySuccess } from "@/lib/ui";
+import { trackMetrikaGoal } from "@/components/analytics/YandexMetrika";
 
 export default function ContactPage() {
     const [formData, setFormData] = useState({
@@ -35,6 +36,7 @@ export default function ContactPage() {
                 return;
             }
             notifySuccess("Обращение отправлено. Ответим на email в течение 24 часов.");
+            trackMetrikaGoal("contact_form_sent", { subject: formData.subject });
             setSubmitted(true);
             setFormData({ name: "", email: "", subject: "", message: "" });
             setTimeout(() => setSubmitted(false), 4000);

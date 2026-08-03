@@ -13,6 +13,7 @@ import {
   validatePromoCode,
   type PromoValidation,
 } from "@/lib/api";
+import { trackMetrikaGoal } from "@/components/analytics/YandexMetrika";
 
 const BASE: SubscriptionConfig = { messages: 50, roadmaps: 3, custdev: 2, grants: 0 };
 const PRICE: SubscriptionConfig = { messages: 7, roadmaps: 150, custdev: 750, grants: 1000 };
@@ -135,6 +136,11 @@ export function SubscriptionConfigurator({ account = false }: { account?: boolea
           promoApplied,
           promoApplied ? acceptedRecurring : true,
         );
+        trackMetrikaGoal("checkout_started", {
+          price_rub: finalPrice,
+          has_promo: Boolean(promoApplied),
+          plan_type: "custom",
+        });
         window.location.href = result.confirmation_url;
       }
     } catch (error) {

@@ -8,6 +8,7 @@ import { PitchyLogo } from "@/components/shared/PitchyLogo";
 import { postJson } from "@/lib/api";
 import { setToken } from "@/lib/auth";
 import { YandexIcon } from "@/components/shared/icons/YandexIcon";
+import { trackMetrikaGoal } from "@/components/analytics/YandexMetrika";
 
 // Defined at module scope so its identity is stable across renders.
 // When this used to be declared inside SignUpContent, every keystroke
@@ -88,8 +89,10 @@ function SignUpContent() {
       );
 
       if (data.status === "verification_required") {
+        trackMetrikaGoal("signup_success", { auth_method: "email" });
         setVerificationStep("verify");
       } else if (data.token) {
+        trackMetrikaGoal("signup_success", { auth_method: "email" });
         setToken(data.token);
         const next = searchParams.get("next") || "/dashboard";
         router.push(next);
@@ -114,6 +117,7 @@ function SignUpContent() {
         code: verificationCode,
       });
       setToken(data.access_token);
+      trackMetrikaGoal("email_verified");
       const next = searchParams.get("next") || "/dashboard";
       router.push(next);
     } catch (err) {

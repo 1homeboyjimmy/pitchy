@@ -62,6 +62,7 @@ export const viewport: Viewport = {
 
 import { ScrollToTop } from "@/components/shared/ScrollToTop";
 import { BreadcrumbsSchema } from "@/components/shared/BreadcrumbsSchema";
+import { YandexMetrika, METRIKA_ID } from "@/components/analytics/YandexMetrika";
 
 
 export default function RootLayout({
@@ -83,6 +84,12 @@ export default function RootLayout({
             Caddyfile. */}
       </head>
       <body className="antialiased">
+        <YandexMetrika />
+        <noscript>
+          <div>
+            <img src={`https://mc.yandex.ru/watch/${METRIKA_ID}`} style={{ position: "absolute", left: "-9999px" }} alt="" />
+          </div>
+        </noscript>
         <ScrollToTop />
         <BreadcrumbsSchema />
         {children}

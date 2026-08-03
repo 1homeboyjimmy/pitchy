@@ -31,6 +31,7 @@ import {
   UserResponse
 } from "@/lib/api";
 import Link from "next/link";
+import { trackMetrikaGoal } from "@/components/analytics/YandexMetrika";
 
 function UnauthDashboard() {
   return (
@@ -195,6 +196,7 @@ function DashboardContent() {
     try {
       if (!token) throw new Error("No token");
       const session = await createChatSession({ title: "Чат с аналитиком" }, token);
+      trackMetrikaGoal("chat_session_created", { source: "dashboard" });
       setSessions(prev => [session, ...prev]);
       setActiveSession(session);
       setActiveTab("chat");

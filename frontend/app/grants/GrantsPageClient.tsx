@@ -13,6 +13,7 @@ import {
   getProjects, getGrants, matchGrants, onboardProject,
   type ProjectListItem, type Grant, type GrantMatch,
 } from "@/lib/api";
+import { trackMetrikaGoal } from "@/components/analytics/YandexMetrika";
 
 const EASE = [0.16, 1, 0.3, 1] as const;
 
@@ -311,7 +312,12 @@ export function GrantsPageClient() {
     let cancelled = false;
     setMatchLoading(true);
     matchGrants(activeProject, token, { onlyEligible })
-      .then((m) => { if (!cancelled) setMatches(m); })
+      .then((m) => {
+        if (!cancelled) {
+          setMatches(m);
+          trackMetrikaGoal("grant_match_completed", { matches_bucket: m.length === 0 ? "0" : m.length <= 5 ? "1_5" : "6_plus" });
+        }
+      })
       .catch((e) => { console.error(e); if (!cancelled) notifyError("Не удалось подобрать гранты"); })
       .finally(() => { if (!cancelled) setMatchLoading(false); });
     return () => { cancelled = true; };
@@ -323,6 +329,7 @@ export function GrantsPageClient() {
     setOnboarding(true);
     try {
       const res = await onboardProject(idea.trim(), t);
+      trackMetrikaGoal("project_created", { project_source: "grants_onboarding" });
       const p = res.project;
       const item: ProjectListItem = {
         id: p.id,
