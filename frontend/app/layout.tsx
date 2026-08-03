@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Suspense } from "react";
 import { Prata, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -84,7 +85,9 @@ export default function RootLayout({
             Caddyfile. */}
       </head>
       <body className="antialiased">
-        <YandexMetrika />
+        <Suspense fallback={null}>
+          <YandexMetrika />
+        </Suspense>
         <noscript>
           <div>
             <img src={`https://mc.yandex.ru/watch/${METRIKA_ID}`} style={{ position: "absolute", left: "-9999px" }} alt="" />
