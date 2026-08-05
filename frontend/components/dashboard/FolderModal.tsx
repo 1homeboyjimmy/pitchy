@@ -145,9 +145,9 @@ export function FolderModal({
   if (!mounted) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-[300] flex items-center justify-center overflow-y-auto overscroll-contain p-2 sm:p-4 bg-black/80 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="w-full max-w-3xl max-h-[88vh] bg-neutral-950 border border-white/10 rounded-3xl flex flex-col overflow-hidden"
+        className="w-full max-w-3xl max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] bg-neutral-950 border border-white/10 rounded-2xl sm:rounded-3xl flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

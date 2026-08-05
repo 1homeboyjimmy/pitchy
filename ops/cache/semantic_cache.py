@@ -24,6 +24,7 @@ from rag import GeminiEmbeddingFunction
 logger = logging.getLogger("app")
 
 class SemanticCache:
+    ENTRY_PREFIX = "__pitchy_cache_v2__:"
     def __init__(self):
         self.embedding_fn = GeminiEmbeddingFunction()
         self.index_name = "idx:semantic_cache"
@@ -67,9 +68,25 @@ class SemanticCache:
         Проверяет наличие похожего запроса в кэше для данного проекта.
         """
         try:
-            return await asyncio.to_thread(self._sync_get, query, project_id, threshold)
+            entry = await self.get_entry(query, project_id, threshold)
+            return entry.get("response") if entry else None
         except Exception as e:
             logger.error(f"SemanticCache.get error: {e}")
+            return None
+
+    async def get_entry(self, query: str, project_id: str, threshold: float = 0.95) -> Optional[dict]:
+        try:
+            raw = await asyncio.to_thread(self._sync_get, query, project_id, threshold)
+            if not raw:
+                return None
+            if raw.startswith(self.ENTRY_PREFIX):
+                payload = json.loads(raw[len(self.ENTRY_PREFIX):])
+                if isinstance(payload, dict) and isinstance(payload.get("response"), str):
+                    return payload
+                return None
+            return {"response": raw, "sources": None}
+        except Exception as e:
+            logger.error(f"SemanticCache.get_entry error: {e}")
             return None
 
     def _sync_get(self, query: str, project_id: str, threshold: float) -> Optional[str]:
@@ -101,26 +118,31 @@ class SemanticCache:
             logger.error(f"SemanticCache _sync_get error: {e}")
             return None
 
-    async def set(self, query: str, response: str, project_id: str):
+    async def set(self, query: str, response: str, project_id: str, sources: list[dict] | None = None):
         """
         Сохраняет ответ в семантический кэш.
         """
         try:
-            await asyncio.to_thread(self._sync_set, query, response, project_id)
+            await asyncio.to_thread(self._sync_set, query, response, project_id, sources)
         except Exception as e:
             logger.error(f"SemanticCache.set error: {e}")
 
-    def _sync_set(self, query: str, response: str, project_id: str):
+    def _sync_set(self, query: str, response: str, project_id: str, sources: list[dict] | None = None):
         try:
             query_embedding = self.embedding_fn.encode_query(query)
             embedding_bytes = np.array(query_embedding, dtype=np.float32).tobytes()
             
             doc_id = f"{self.prefix}{uuid.uuid4().hex}"
             
+            stored_response = self.ENTRY_PREFIX + json.dumps(
+                {"response": response, "sources": sources},
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
             self.client.hset(doc_id, mapping={
                 "project_id": project_id,
                 "query": query.encode('utf-8') if isinstance(query, str) else query,
-                "response": response.encode('utf-8') if isinstance(response, str) else response,
+                "response": stored_response.encode('utf-8'),
                 "query_vector": embedding_bytes
             })
             self.client.expire(doc_id, self.ttl_seconds)

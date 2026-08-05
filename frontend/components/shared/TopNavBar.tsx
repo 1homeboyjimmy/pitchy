@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Menu, X } from "lucide-react";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { clearToken } from "@/lib/auth";
@@ -16,6 +16,7 @@ const navLinks = [
   { href: "/about", label: "О нас" },
   { href: "/pricing", label: "Тарифы" },
   { href: "/contact", label: "Контакты" },
+  { href: "/accelerators", label: "Акселераторам" },
 ];
 
 export function TopNavBar() {
@@ -24,10 +25,6 @@ export function TopNavBar() {
   const { isAuthenticated } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  useEffect(() => {
-    setIsMobileMenuOpen(false);
-  }, [pathname]);
-
   const handleLogout = async () => {
     await clearToken();
     router.push("/");
@@ -35,7 +32,7 @@ export function TopNavBar() {
 
   return (
     <header className="fixed top-0 left-0 right-0 z-[100] w-full bg-black/95 backdrop-blur-xl border-b border-white/5">
-      <div className="flex flex-row justify-between items-center py-4 px-8 w-full max-w-[1440px] mx-auto">
+      <div className="flex flex-row justify-between items-center py-3 sm:py-4 px-4 sm:px-8 w-full max-w-[1440px] mx-auto">
         {/* Left: Logo */}
         <Link href="/" className="flex items-center gap-2 relative z-[110]">
           <PitchyLogo size="xl" />
@@ -114,6 +111,7 @@ export function TopNavBar() {
                 <Link
                   key={link.href}
                   href={link.href}
+                  onClick={() => setIsMobileMenuOpen(false)}
                   className="text-xl font-medium text-foreground/80 hover:text-white uppercase tracking-tighter font-sans"
                 >
                   {link.label}

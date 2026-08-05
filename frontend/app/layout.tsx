@@ -1,8 +1,30 @@
 import type { Metadata, Viewport } from "next";
-import { Providers } from "./providers";
+import { Suspense } from "react";
+import { Prata, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-import "@mantine/core/styles.css";
-import "@mantine/notifications/styles.css";
+
+// Self-hosted fonts (next/font downloads & serves them from our own origin —
+// no runtime dependency on fonts.googleapis.com, which is unreliable/blocked
+// in RU). Cyrillic subset is mandatory: the whole site is Russian.
+const prata = Prata({
+  subsets: ["latin", "cyrillic"],
+  weight: "400",
+  variable: "--font-prata",
+  display: "swap",
+});
+
+const inter = Inter({
+  subsets: ["latin", "cyrillic"],
+  style: ["normal", "italic"],
+  variable: "--font-inter",
+  display: "swap",
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin", "cyrillic"],
+  variable: "--font-jetbrains",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://pitchy.pro"),
@@ -41,6 +63,7 @@ export const viewport: Viewport = {
 
 import { ScrollToTop } from "@/components/shared/ScrollToTop";
 import { BreadcrumbsSchema } from "@/components/shared/BreadcrumbsSchema";
+import { YandexMetrika, METRIKA_ID } from "@/components/analytics/YandexMetrika";
 
 
 export default function RootLayout({
@@ -49,7 +72,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="ru" suppressHydrationWarning>
+    <html
+      lang="ru"
+      className={`${prata.variable} ${inter.variable} ${jetbrainsMono.variable}`}
+      suppressHydrationWarning
+    >
       <head>
         {/* CSP is set by Caddy at the edge — keeping a separate meta tag
             here would mean the browser intersects two different policies
@@ -58,12 +85,17 @@ export default function RootLayout({
             Caddyfile. */}
       </head>
       <body className="antialiased">
+        <Suspense fallback={null}>
+          <YandexMetrika />
+        </Suspense>
+        <noscript>
+          <div>
+            <img src={`https://mc.yandex.ru/watch/${METRIKA_ID}`} style={{ position: "absolute", left: "-9999px" }} alt="" />
+          </div>
+        </noscript>
         <ScrollToTop />
         <BreadcrumbsSchema />
-        <Providers>
-
-          {children}
-        </Providers>
+        {children}
       </body>
     </html>
   );

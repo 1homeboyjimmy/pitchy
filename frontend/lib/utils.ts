@@ -33,6 +33,18 @@ export function stripThoughts(content: string): string {
     return stripped.trim();
 }
 
+/** Remove forbidden model signatures from historical and streaming replies. */
+export function stripPitchySignature(content: string): string {
+    if (!content) return "";
+    return content
+        .replace(
+            /(?:^|\n)\s*(?:[-—–]\s*)?[*_~]*\s*Pitchy\s*,\s*(?:(?:ведущий|старший|главный)\s+)?(?:эксперт|аналитик|советник)[^\n]*[*_~]*\s*$/gimu,
+            "",
+        )
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+}
+
 export type MessageAttachment = { name: string; kind: string };
 
 // Attachment blocks embedded by the backend into stored user messages.

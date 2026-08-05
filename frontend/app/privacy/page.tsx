@@ -94,7 +94,7 @@ export default function PrivacyPage() {
                         initial={{ opacity: 0, y: 20 }}
                         whileInView={{ opacity: 1, y: 0 }}
                         viewport={{ once: true }}
-                        className="lovable-glass-strong rounded-[40px] p-10 md:p-16"
+                        className="lovable-glass-strong rounded-3xl sm:rounded-[40px] p-5 sm:p-8 md:p-16"
                     >
                         <div className="prose prose-invert prose-neutral max-w-none prose-p:text-foreground/70 prose-headings:text-white prose-li:text-foreground/70">
                         <h2 className="text-3xl font-display mb-10 tracking-tight">Полный текст Политики в отношении обработки персональных данных</h2>

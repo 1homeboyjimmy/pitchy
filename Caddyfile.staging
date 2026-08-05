@@ -11,6 +11,7 @@ dev.pitchy.pro {
     basic_auth @require_auth {
         egor.figurnyak {$STAGING_HASH_EGOR}
         alex.nikolenko {$STAGING_HASH_ALEX}
+        vaibly {$STAGING_HASH_VAIBLY}
     }
 
     # Ограничение доступа к метрикам (только для локальных запросов)
@@ -49,9 +50,11 @@ dev.pitchy.pro {
         X-Frame-Options "SAMEORIGIN"
         X-Content-Type-Options "nosniff"
         Referrer-Policy "strict-origin-when-cross-origin"
+        Cross-Origin-Opener-Policy "same-origin"
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
 
         # Content Security Policy — kept aligned with prod Caddyfile.
-        Content-Security-Policy "default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval'; media-src 'self' blob: https://stream.mux.com https: data:; worker-src 'self' blob:; connect-src 'self' https://stream.mux.com https: wss: dev.pitchy.pro *.pitchy.pro; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self' https://*.yandex.ru https://accounts.google.com https://github.com https://yoomoney.ru https://yookassa.ru;"
+        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://mc.yandex.ru; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; media-src 'self' blob: https://stream.mux.com data:; worker-src 'self' blob:; connect-src 'self' https://stream.mux.com https: wss: dev.pitchy.pro *.pitchy.pro; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self' https://*.yandex.ru https://accounts.google.com https://github.com https://yoomoney.ru https://yookassa.ru;"
     }
 
     # Сжатие контента для ускорения загрузки (исключая SSE для предотвращения буферизации)

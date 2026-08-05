@@ -93,9 +93,9 @@ function VerifyContent() {
   };
 
   return (
-    <div className="text-on-surface min-h-screen flex items-center justify-center p-4">
+    <div className="text-on-surface min-h-[100dvh] flex items-center justify-center p-3 sm:p-4">
       {/* Verification Card */}
-      <div className="w-full max-w-[420px] bg-[#111111] border border-white/10 rounded-lg p-8 relative group">
+      <div className="w-full max-w-[420px] bg-[#111111] border border-white/10 rounded-lg p-5 sm:p-8 relative group">
         {/* Hover glow */}
         <div
           className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none rounded-lg"
@@ -122,13 +122,13 @@ function VerifyContent() {
 
           {/* 6-Digit Input Form */}
           <form className="w-full flex flex-col gap-6" onSubmit={handleSubmit}>
-            <div className="flex justify-center gap-2" onPaste={handlePaste}>
+            <div className="flex justify-center gap-1.5 sm:gap-2" onPaste={handlePaste}>
               {digits.map((digit, i) => (
                 <input
                   key={i}
                   ref={(el) => { inputRefs.current[i] = el; }}
                   aria-label={`Digit ${i + 1}`}
-                  className="w-[48px] h-[56px] bg-[#111111] border border-white/10 rounded text-center text-primary font-code text-[20px] focus:border-white/40 focus:ring-0 focus:outline-none transition-colors"
+                  className="h-12 w-10 sm:h-14 sm:w-12 bg-[#111111] border border-white/10 rounded text-center text-primary font-code text-[18px] sm:text-[20px] focus:border-white/40 focus:ring-0 focus:outline-none transition-colors"
                   maxLength={1}
                   type="text"
                   inputMode="numeric"

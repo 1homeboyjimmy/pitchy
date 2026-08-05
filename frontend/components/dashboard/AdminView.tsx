@@ -1,12 +1,21 @@
-import React, { useState, useEffect } from "react";
+﻿import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import dayjs from "dayjs";
 import { Users, Tag, BarChart2, Plus, Trash2, Shield, Loader, CreditCard, Award, Link as LinkIcon, RefreshCw, Power, Clock, Check, X } from "react-feather";
 import { Button, GlassCard } from "@/components/shared";
 import { getToken } from "@/lib/auth";
-import { AreaChart } from "@mantine/charts";
+import {
+    CartesianGrid,
+    Line,
+    LineChart,
+    ResponsiveContainer,
+    Tooltip,
+    XAxis,
+    YAxis,
+} from "recharts";
 import { notifyError, notifySuccess, confirmAction } from "@/lib/ui";
 import { adminDate } from "@/lib/utils";
+import { PromoCampaignsPanel } from "./PromoCampaignsPanel";
 import {
     getGrants, extractGrantFromUrl, createGrant, type Grant, type GrantDraft,
     getGrantSources, createGrantSource, updateGrantSource, deleteGrantSource,
@@ -15,18 +24,6 @@ import {
 } from "@/lib/api";
 
 // Temporary Types mapping what API returns
-type PromoCode = {
-    id: number;
-    code: string;
-    discount_percent: number;
-    max_uses: number | null;
-    current_uses: number;
-    expires_at: string | null;
-    target_tier?: string | null;
-    fixed_price?: number | null;
-    created_at: string;
-};
-
 type User = {
     id: number;
     name: string;
@@ -51,6 +48,159 @@ type AnalyticsData = {
     };
     series: Record<string, string | number>[];
 };
+
+type AnalyticsSeriesConfig = {
+    key: string;
+    label: string;
+    color: string;
+    unit?: string;
+};
+
+type AnalyticsChartCardProps = {
+    title: string;
+    description: string;
+    data: Record<string, string | number>[];
+    series: AnalyticsSeriesConfig[];
+    compactDates?: boolean;
+    allowDecimals?: boolean;
+    valueSuffix?: string;
+};
+
+function formatChartDate(value: string | number, compact: boolean) {
+    const date = dayjs(value);
+    if (!date.isValid()) return String(value);
+    return compact ? date.format("DD.MM HH:mm") : date.format("DD.MM");
+}
+
+function AnalyticsChartCard({
+    title,
+    description,
+    data,
+    series,
+    compactDates = false,
+    allowDecimals = false,
+    valueSuffix = "",
+}: AnalyticsChartCardProps) {
+    return (
+        <section className="overflow-hidden rounded-2xl border border-white/[0.08] bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.018))]">
+            <div className="flex flex-col gap-4 border-b border-white/[0.06] px-5 py-5 sm:flex-row sm:items-start sm:justify-between sm:px-7">
+                <div>
+                    <h4 className="font-mono-label text-[11px] font-bold uppercase tracking-[0.16em] text-white sm:text-[12px]">
+                        {title}
+                    </h4>
+                    <p className="mt-2 max-w-2xl font-code text-[11px] leading-relaxed text-white/35">
+                        {description}
+                    </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+                    {series.map((item) => (
+                        <div key={item.key} className="flex items-center gap-2">
+                            <span
+                                className="h-2 w-2 rounded-full shadow-[0_0_12px_currentColor]"
+                                style={{ backgroundColor: item.color, color: item.color }}
+                            />
+                            <span className="font-code text-[10px] text-white/55">{item.label}</span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            <div className="h-[280px] px-1 pb-4 pt-5 sm:h-[320px] sm:px-4 sm:pb-5">
+                {data.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={data} margin={{ top: 8, right: 18, left: 0, bottom: 2 }}>
+                            <CartesianGrid
+                                vertical={false}
+                                stroke="rgba(255,255,255,0.08)"
+                                strokeDasharray="4 6"
+                            />
+                            <XAxis
+                                dataKey="date"
+                                axisLine={false}
+                                tickLine={false}
+                                minTickGap={28}
+                                tickMargin={12}
+                                tick={{ fill: "rgba(255,255,255,0.38)", fontSize: 10 }}
+                                tickFormatter={(value) => formatChartDate(value, compactDates)}
+                            />
+                            <YAxis
+                                axisLine={false}
+                                tickLine={false}
+                                width={44}
+                                allowDecimals={allowDecimals}
+                                domain={[0, "auto"]}
+                                tick={{ fill: "rgba(255,255,255,0.38)", fontSize: 10 }}
+                                tickFormatter={(value) => `${value}${valueSuffix}`}
+                            />
+                            <Tooltip
+                                cursor={{ stroke: "rgba(255,255,255,0.18)", strokeDasharray: "3 4" }}
+                                labelFormatter={(value) => {
+                                    const date = dayjs(value);
+                                    return date.isValid() ? date.format("DD.MM.YYYY, HH:mm") : String(value);
+                                }}
+                                contentStyle={{
+                                    background: "rgba(10,10,10,0.96)",
+                                    border: "1px solid rgba(255,255,255,0.12)",
+                                    borderRadius: 12,
+                                    boxShadow: "0 18px 50px rgba(0,0,0,0.45)",
+                                    color: "#fff",
+                                    fontSize: 12,
+                                }}
+                                labelStyle={{ color: "rgba(255,255,255,0.5)", marginBottom: 8 }}
+                                itemStyle={{ paddingTop: 2, paddingBottom: 2 }}
+                            />
+                            {series.map((item) => (
+                                <Line
+                                    key={item.key}
+                                    type="linear"
+                                    dataKey={item.key}
+                                    name={item.label}
+                                    unit={item.unit}
+                                    stroke={item.color}
+                                    strokeWidth={2.5}
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    connectNulls
+                                    dot={
+                                        data.length <= 31
+                                            ? {
+                                                r: 3,
+                                                fill: "#111111",
+                                                stroke: item.color,
+                                                strokeWidth: 2,
+                                            }
+                                            : false
+                                    }
+                                    activeDot={{
+                                        r: 5,
+                                        fill: item.color,
+                                        stroke: "#111111",
+                                        strokeWidth: 2,
+                                    }}
+                                    isAnimationActive
+                                    animationDuration={500}
+                                />
+                            ))}
+                        </LineChart>
+                    </ResponsiveContainer>
+                ) : (
+                    <div className="flex h-full items-center justify-center px-4 text-center font-mono-label text-[10px] uppercase tracking-widest text-white/30">
+                        За выбранный период данных нет
+                    </div>
+                )}
+            </div>
+        </section>
+    );
+}
+
+const ANALYTICS_PERIODS = [
+    { label: "24 часа", value: "24h" },
+    { label: "3 дня", value: "3d" },
+    { label: "Неделя", value: "1w" },
+    { label: "Месяц", value: "1m" },
+    { label: "Полгода", value: "6m" },
+    { label: "Год", value: "1y" },
+] as const;
 
 type Subscription = {
     user_id: number;
@@ -80,7 +230,6 @@ type RagLog = {
 export function AdminView() {
     const [activeTab, setActiveTab] = useState<"analytics" | "promocodes" | "users" | "subscriptions" | "rag" | "grants">("users");
     const [loading, setLoading] = useState(true);
-    const [promocodes, setPromocodes] = useState<PromoCode[]>([]);
     const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
     const [users, setUsers] = useState<User[]>([]);
     const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
@@ -102,9 +251,6 @@ export function AdminView() {
     // RAG Visualization State
     const [vizStatus, setVizStatus] = useState<"idling" | "processing">("idling");
 
-    // New Promo Form
-    const [newPromo, setNewPromo] = useState({ code: "", discount_percent: 10, max_uses: "", target_tier: "", fixed_price: "" });
-
     // Grants (парсер) State
     const [grants, setGrants] = useState<Grant[]>([]);
     const [grantUrl, setGrantUrl] = useState("");
@@ -123,16 +269,11 @@ export function AdminView() {
                 if (!token) return;
 
                 if (activeTab === "promocodes") {
-                    const res = await fetch(`${API_BASE}/admin/promocodes`, {
-                        headers: { "Authorization": `Bearer ${token}` }
-                    });
-                    if (res.status === 401) {
-                        window.localStorage.removeItem("vi_auth_state");
-                        window.location.href = "/login?expired=1";
-                        return;
-                    }
-                    if (res.ok) setPromocodes(await res.json());
+                    // PromoCampaignsPanel загружает кампании самостоятельно.
                 } else if (activeTab === "analytics") {
+                    // Раньше диапазон был захардкожен в 30 дней, поэтому
+                    // переключатель периода перезапрашивал те же данные и
+                    // визуально ничего не менял.
                     const endStr = dayjs().format("YYYY-MM-DD");
                     const rangeAmount: Record<typeof analyticsTimeFilter, { amount: number; unit: dayjs.ManipulateType }> = {
                         "24h": { amount: 1, unit: "day" },
@@ -241,58 +382,6 @@ export function AdminView() {
             }
         } catch (e) {
             console.error("Rebuild viz error", e);
-        }
-    };
-
-    const handleCreatePromo = async () => {
-        try {
-            const token = getToken();
-            const res = await fetch(`${API_BASE}/admin/promocodes`, {
-                method: "POST",
-                headers: {
-                    "Authorization": `Bearer ${token}`,
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                    code: newPromo.code.toUpperCase(),
-                    discount_percent: newPromo.discount_percent,
-                    max_uses: newPromo.max_uses ? parseInt(newPromo.max_uses) : null,
-                    target_tier: newPromo.target_tier.trim() || null,
-                    fixed_price: newPromo.fixed_price ? parseFloat(newPromo.fixed_price) : null
-                })
-            });
-
-            if (res.ok) {
-                const created = await res.json();
-                setPromocodes([created, ...promocodes]);
-                setNewPromo({ code: "", discount_percent: 10, max_uses: "", target_tier: "", fixed_price: "" });
-            } else {
-                notifyError("Не удалось создать промокод. Возможно, такой код уже существует.");
-            }
-        } catch (e) {
-            console.error(e);
-        }
-    };
-
-    const handleDeletePromo = async (id: number) => {
-        const ok = await confirmAction({
-            title: "Удалить промокод?",
-            message: "Промокод будет удалён. Это действие нельзя отменить.",
-            confirmLabel: "Удалить",
-            danger: true,
-        });
-        if (!ok) return;
-        try {
-            const token = getToken();
-            const res = await fetch(`${API_BASE}/admin/promocodes/${id}`, {
-                method: "DELETE",
-                headers: { "Authorization": `Bearer ${token}` }
-            });
-            if (res.ok) {
-                setPromocodes(promocodes.filter(p => p.id !== id));
-            }
-        } catch (e) {
-            console.error(e);
         }
     };
 
@@ -502,13 +591,39 @@ export function AdminView() {
         }
     };
 
+    // Бэкенд отдаёт счётчики «сколько нового в этой корзине». Графики роста
+    // («всего пользователей», «рост подписок») должны быть накопительными,
+    // иначе кривая роста выглядит как шум около нуля. Конверсию тоже считаем
+    // по накопленным значениям: в дневной корзине «1 юзер / 1 подписка»
+    // давало бы 100%.
+    const chartData = React.useMemo(() => {
+        if (!analytics?.series) return [];
+        let cumUsers = 0;
+        let cumSubs = 0;
+        return analytics.series.map((s) => {
+            cumUsers += Number(s.users) || 0;
+            cumSubs += Number(s.subscriptions) || 0;
+            return {
+                date: String(s.date),
+                users: Number(s.users) || 0,
+                chat_sessions: Number(s.chat_sessions) || 0,
+                chat_messages: Number(s.chat_messages) || 0,
+                subscriptions: Number(s.subscriptions) || 0,
+                cum_users: cumUsers,
+                cum_subscriptions: cumSubs,
+                conversion: cumUsers > 0 ? Number(((cumSubs / cumUsers) * 100).toFixed(2)) : 0,
+            };
+        });
+    }, [analytics]);
+
     const GRANT_STAGES = ["pre-seed", "seed", "growth", "scale"];
     const GRANT_SECTORS = ["it", "ai", "biotech", "medtech", "hardware", "energy", "agro", "fintech", "edtech", "creative", "media", "education", "ecommerce", "industry"];
     const GRANT_ENTITIES = ["ООО", "ИП", "самозанятый", "физлицо", "НКО"];
 
     return (
         <div className="space-y-6">
-            <div className="flex gap-2 border-b border-white/10 pb-4 overflow-x-auto thin-scrollbar">
+            {/* thin-scrollbar нигде не объявлен — берём существующий класс. */}
+            <div className="flex gap-2 border-b border-white/10 pb-4 overflow-x-auto pitchy-muted-x-scroll">
                 <button
                     onClick={() => setActiveTab("users")}
                     className={`flex items-center gap-2 px-4 py-2 font-mono-label text-[10px] uppercase font-bold tracking-widest transition-all whitespace-nowrap ${activeTab === "users" ? "bg-white text-black" : "border border-white/10 text-white/50 hover:text-white bg-[#111111]"
@@ -563,118 +678,21 @@ export function AdminView() {
                     animate={{ opacity: 1, y: 0 }}
                 >
                     {activeTab === "promocodes" && (
-                        <div className="space-y-6">
-                            {/* Create new promo form */}
-                            <div className="p-6 bg-[#111111] border border-white/10">
-                                <h3 className="text-xl font-display font-bold text-white mb-6 uppercase tracking-tight">Создать промокод</h3>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
-                                    <input
-                                        type="text"
-                                        placeholder="Код (например TITLE20)"
-                                        value={newPromo.code}
-                                        onChange={(e) => setNewPromo({ ...newPromo, code: e.target.value })}
-                                        className="bg-black border border-white/10 px-4 py-2 text-white outline-none focus:border-white/30 font-code text-[13px]"
-                                    />
-                                    <input
-                                        type="number"
-                                        placeholder="% Скидки"
-                                        min="0" max="100"
-                                        value={newPromo.discount_percent}
-                                        onChange={(e) => setNewPromo({ ...newPromo, discount_percent: parseInt(e.target.value) || 0 })}
-                                        className="bg-black border border-white/10 px-4 py-2 text-white outline-none focus:border-white/30 font-code text-[13px]"
-                                    />
-                                    <input
-                                        type="number"
-                                        placeholder="Кол-во использований (не обяз.)"
-                                        value={newPromo.max_uses}
-                                        onChange={(e) => setNewPromo({ ...newPromo, max_uses: e.target.value })}
-                                        className="bg-black border border-white/10 px-4 py-2 text-white outline-none focus:border-white/30 w-full font-code text-[13px]"
-                                    />
-                                    <input
-                                        type="text"
-                                        placeholder="Тариф (напр. tester)"
-                                        value={newPromo.target_tier}
-                                        onChange={(e) => setNewPromo({ ...newPromo, target_tier: e.target.value })}
-                                        className="bg-black border border-white/10 px-4 py-2 text-white outline-none focus:border-white/30 font-code text-[13px]"
-                                    />
-                                    <input
-                                        type="number"
-                                        placeholder="Фикс. цена в ₽ (напр. 1)"
-                                        value={newPromo.fixed_price}
-                                        onChange={(e) => setNewPromo({ ...newPromo, fixed_price: e.target.value })}
-                                        className="bg-black border border-white/10 px-4 py-2 text-white outline-none focus:border-white/30 font-code text-[13px]"
-                                    />
-                                    <button
-                                        onClick={handleCreatePromo}
-                                        disabled={!newPromo.code.trim()}
-                                        className="flex items-center justify-center gap-2 px-4 py-2 bg-white text-black font-mono-label text-[10px] uppercase font-bold hover:opacity-90 transition-opacity disabled:opacity-50"
-                                    >
-                                        <Plus className="w-3.5 h-3.5" /> Добавить
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* Promo codes list */}
-                            <div className="bg-[#111111] border border-white/10">
-                                <table className="w-full text-left text-sm text-white font-code">
-                                    <thead className="bg-[#0A0A0A] text-white/50 border-b border-white/10 font-mono-label uppercase text-[10px] tracking-widest">
-                                        <tr>
-                                            <th className="px-6 py-4 font-bold">КОД</th>
-                                            <th className="px-6 py-4 font-bold text-center">СКИДКА %</th>
-                                            <th className="px-6 py-4 font-bold text-center">ТАРИФ/ЦЕНА</th>
-                                            <th className="px-6 py-4 font-bold text-center">ИСПОЛЬЗОВАНО</th>
-                                            <th className="px-6 py-4 font-bold text-right">ДЕЙСТВИЕ</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {promocodes.map(promo => (
-                                            <tr key={promo.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
-                                                <td className="px-6 py-4 font-bold tracking-wider">{promo.code}</td>
-                                                <td className="px-6 py-4 text-center">{promo.discount_percent}%</td>
-                                                <td className="px-6 py-4 text-center text-white/70">
-                                                    {promo.target_tier ? (
-                                                        <span className="bg-white/10 text-white px-2 py-0.5 border border-white/20 text-xs font-mono-label uppercase">{promo.target_tier}</span>
-                                                    ) : "—"}
-                                                    {promo.fixed_price && <span className="ml-2 text-xs">{promo.fixed_price} ₽</span>}
-                                                </td>
-                                                <td className="px-6 py-4 text-center text-white/50">
-                                                    {promo.current_uses} / {promo.max_uses ? promo.max_uses : '∞'}
-                                                </td>
-                                                <td className="px-6 py-4 text-right">
-                                                    <button onClick={() => handleDeletePromo(promo.id)} className="text-red-400 hover:text-red-300 p-2 transition-colors">
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                        {promocodes.length === 0 && (
-                                            <tr>
-                                                <td colSpan={4} className="px-6 py-8 text-center text-white/30">Нет активных промокодов</td>
-                                            </tr>
-                                        )}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
+                        <PromoCampaignsPanel />
                     )}
 
                     {activeTab === "analytics" && analytics && (
                         <div className="space-y-6 mt-6">
-                            <div className="flex items-center justify-between">
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                                 <h3 className="text-xl font-display font-bold text-white uppercase tracking-tight">Аналитика платформы</h3>
-                                <div className="flex bg-[#111111] border border-white/10 p-1">
-                                    {[
-                                        { label: "24 часа", value: "24h" },
-                                        { label: "3 дня", value: "3d" },
-                                        { label: "Неделя", value: "1w" },
-                                        { label: "Месяц", value: "1m" },
-                                        { label: "Полгода", value: "6m" },
-                                        { label: "Год", value: "1y" },
-                                    ].map((opt) => (
+                                {/* Шесть кнопок не помещаются в 375px — на мобильном
+                                    ряд скроллится по горизонтали вместо сжатия. */}
+                                <div className="flex bg-[#111111] border border-white/10 p-1 overflow-x-auto pitchy-muted-x-scroll -mx-4 px-4 sm:mx-0 sm:px-1">
+                                    {ANALYTICS_PERIODS.map((opt) => (
                                         <button
                                             key={opt.value}
-                                            onClick={() => setAnalyticsTimeFilter(opt.value as "24h" | "3d" | "1w" | "1m" | "6m" | "1y")}
-                                            className={`px-3 py-1.5 font-mono-label text-[10px] uppercase font-bold tracking-widest transition-colors ${analyticsTimeFilter === opt.value
+                                            onClick={() => setAnalyticsTimeFilter(opt.value)}
+                                            className={`px-3 py-1.5 font-mono-label text-[10px] uppercase font-bold tracking-widest transition-colors whitespace-nowrap shrink-0 ${analyticsTimeFilter === opt.value
                                                 ? "bg-white text-black"
                                                 : "text-white/50 hover:text-white bg-transparent"
                                                 }`}
@@ -685,128 +703,82 @@ export function AdminView() {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                                <div className="bg-[#111111] border border-white/10 p-6">
+                            {/* Две колонки уже на телефоне: одна колонка из четырёх
+                                карточек по p-6 занимала почти весь первый экран. */}
+                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
+                                <div className="bg-[#111111] border border-white/10 p-4 sm:p-6">
                                     <p className="text-white/50 font-mono-label text-[10px] uppercase tracking-widest mb-2">Всего пользователей</p>
-                                    <p className="text-3xl font-mono text-white font-bold">{analytics.totals.users}</p>
+                                    <p className="text-2xl sm:text-3xl font-mono text-white font-bold">{analytics.totals.users}</p>
                                 </div>
-                                <div className="bg-[#111111] border border-white/10 p-6">
+                                <div className="bg-[#111111] border border-white/10 p-4 sm:p-6">
                                     <p className="text-white/50 font-mono-label text-[10px] uppercase tracking-widest mb-2">Чат-сессий</p>
-                                    <p className="text-3xl font-mono text-white font-bold flex items-end gap-2">
+                                    <p className="text-2xl sm:text-3xl font-mono text-white font-bold flex flex-wrap items-end gap-x-2">
                                         {analytics.totals.chat_sessions}
                                         <span className="text-xs text-white/40 mb-1 font-code">(анон: {analytics.totals.chat_sessions_anon})</span>
                                     </p>
                                 </div>
-                                <div className="bg-[#111111] border border-white/10 p-6">
+                                <div className="bg-[#111111] border border-white/10 p-4 sm:p-6">
                                     <p className="text-white/50 font-mono-label text-[10px] uppercase tracking-widest mb-2">Количество подписок</p>
-                                    <p className="text-3xl font-mono text-white font-bold flex items-end gap-2">
+                                    <p className="text-2xl sm:text-3xl font-mono text-white font-bold flex items-end gap-2">
                                         {analytics.totals.subscriptions}
                                     </p>
                                 </div>
-                                <div className="bg-[#111111] border border-white/10 p-6">
+                                <div className="bg-[#111111] border border-white/10 p-4 sm:p-6">
                                     <p className="text-white/50 font-mono-label text-[10px] uppercase tracking-widest mb-2">Конверсия (%)</p>
-                                    <p className="text-3xl font-mono text-white font-bold flex items-end gap-2">
+                                    <p className="text-2xl sm:text-3xl font-mono text-white font-bold flex items-end gap-2">
                                         {analytics.totals.users > 0 ? ((analytics.totals.subscriptions / analytics.totals.users) * 100).toFixed(2) : "0.00"}%
                                     </p>
                                 </div>
                             </div>
 
-                            <div className="bg-[#111111] border border-white/10 p-6">
-                                <h4 className="text-white font-mono-label text-[12px] uppercase tracking-widest mb-1">Новые регистрации</h4>
-                                <p className="mb-6 text-[11px] font-code text-white/35">Количество новых пользователей за каждый интервал выбранного периода</p>
-                                <AreaChart
-                                    h={280}
-                                    data={analytics.series.map(s => ({
-                                        ...s,
-                                        conversion: s.users && Number(s.users) > 0 ? Number(((Number(s.subscriptions) / Number(s.users)) * 100).toFixed(2)) : 0
-                                    }))}
-                                    dataKey="date"
-                                    curveType="monotone"
-                                    series={[{ name: "users", color: "blue.5", label: "Регистрации" }]}
-                                    withGradient
-                                    gridAxis="xy"
-                                    textColor="rgba(255, 255, 255, 0.5)"
-                                    withDots={analytics.series.length <= 31}
-                                    withLegend
-                                    tickLine="xy"
-                                    xAxisProps={{ interval: "preserveStartEnd" }}
-                                />
-                            </div>
+                            <AnalyticsChartCard
+                                title="Новые регистрации"
+                                description="Количество новых пользователей за каждый интервал выбранного периода"
+                                data={chartData}
+                                compactDates={analyticsTimeFilter === "24h" || analyticsTimeFilter === "3d"}
+                                series={[
+                                    { key: "users", label: "Регистрации", color: "#60A5FA" },
+                                ]}
+                            />
 
-                            <div className="bg-[#111111] border border-white/10 p-6">
-                                <h4 className="text-white font-mono-label text-[12px] uppercase tracking-widest mb-1">Активность в чатах</h4>
-                                <p className="mb-6 text-[11px] font-code text-white/35">Новые сессии и отправленные сообщения</p>
-                                <AreaChart
-                                    h={280}
-                                    data={analytics.series.map(s => ({
-                                        ...s,
-                                        conversion: s.users && Number(s.users) > 0 ? Number(((Number(s.subscriptions) / Number(s.users)) * 100).toFixed(2)) : 0
-                                    }))}
-                                    dataKey="date"
-                                    curveType="monotone"
-                                    series={[
-                                        { name: "chat_sessions", color: "violet.5", label: "Сессии" },
-                                        { name: "chat_messages", color: "cyan.5", label: "Сообщения" },
-                                    ]}
-                                    withGradient
-                                    gridAxis="xy"
-                                    textColor="rgba(255, 255, 255, 0.5)"
-                                    withDots={analytics.series.length <= 31}
-                                    withLegend
-                                    tickLine="xy"
-                                    xAxisProps={{ interval: "preserveStartEnd" }}
-                                />
-                            </div>
+                            <AnalyticsChartCard
+                                title="Активность в чатах"
+                                description="Новые сессии и отправленные сообщения за каждый интервал"
+                                data={chartData}
+                                compactDates={analyticsTimeFilter === "24h" || analyticsTimeFilter === "3d"}
+                                series={[
+                                    { key: "chat_sessions", label: "Сессии", color: "#A78BFA" },
+                                    { key: "chat_messages", label: "Сообщения", color: "#22D3EE" },
+                                ]}
+                            />
 
-                            <div className="bg-[#111111] border border-white/10 p-6">
-                                <h4 className="text-white font-mono-label text-[12px] uppercase tracking-widest mb-1">Новые платные пользователи</h4>
-                                <p className="mb-6 text-[11px] font-code text-white/35">Регистрации пользователей, у которых сейчас активен платный тариф</p>
-                                <AreaChart
-                                    h={280}
-                                    data={analytics.series.map(s => ({
-                                        ...s,
-                                        conversion: s.users && Number(s.users) > 0 ? Number(((Number(s.subscriptions) / Number(s.users)) * 100).toFixed(2)) : 0
-                                    }))}
-                                    dataKey="date"
-                                    curveType="monotone"
-                                    series={[{ name: "subscriptions", color: "teal.5", label: "Платные пользователи" }]}
-                                    withGradient
-                                    gridAxis="xy"
-                                    textColor="rgba(255, 255, 255, 0.5)"
-                                    withDots={analytics.series.length <= 31}
-                                    withLegend
-                                    tickLine="xy"
-                                    xAxisProps={{ interval: "preserveStartEnd" }}
-                                />
-                            </div>
+                            <AnalyticsChartCard
+                                title="Новые платные пользователи"
+                                description="Новые пользователи с активным платным тарифом за каждый интервал"
+                                data={chartData}
+                                compactDates={analyticsTimeFilter === "24h" || analyticsTimeFilter === "3d"}
+                                series={[
+                                    { key: "subscriptions", label: "Платные пользователи", color: "#34D399" },
+                                ]}
+                            />
 
-                            <div className="bg-[#111111] border border-white/10 p-6">
-                                <h4 className="text-white font-mono-label text-[12px] uppercase tracking-widest mb-1">Конверсия новых регистраций</h4>
-                                <p className="mb-6 text-[11px] font-code text-white/35">Доля новых пользователей интервала, у которых сейчас платный тариф</p>
-                                <AreaChart
-                                    h={280}
-                                    data={analytics.series.map(s => ({
-                                        ...s,
-                                        conversion: s.users && Number(s.users) > 0 ? Number(((Number(s.subscriptions) / Number(s.users)) * 100).toFixed(2)) : 0
-                                    }))}
-                                    dataKey="date"
-                                    curveType="monotone"
-                                    series={[{ name: "conversion", color: "orange.5", label: "Конверсия (%)" }]}
-                                    withGradient
-                                    gridAxis="xy"
-                                    textColor="rgba(255, 255, 255, 0.5)"
-                                    withDots={analytics.series.length <= 31}
-                                    withLegend
-                                    tickLine="xy"
-                                    xAxisProps={{ interval: "preserveStartEnd" }}
-                                />
-                            </div>
+                            <AnalyticsChartCard
+                                title="Конверсия за период"
+                                description="Доля платных пользователей среди зарегистрированных, накопительно с начала периода"
+                                data={chartData}
+                                compactDates={analyticsTimeFilter === "24h" || analyticsTimeFilter === "3d"}
+                                allowDecimals
+                                valueSuffix="%"
+                                series={[
+                                    { key: "conversion", label: "Конверсия", color: "#FBBF24", unit: "%" },
+                                ]}
+                            />
                         </div>
                     )}
 
                     {activeTab === "users" && (
                         <div className="space-y-6">
-                            <div className="bg-[#111111] border border-white/10 overflow-hidden overflow-x-auto">
+                            <div className="bg-[#111111] border border-white/10 pitchy-table-scroll [--table-scroll-bg:#111111]">
                                 <table className="w-full text-left text-sm text-white min-w-[800px] font-code">
                                     <thead className="bg-[#0A0A0A] text-white/50 border-b border-white/10 font-mono-label uppercase text-[10px] tracking-widest">
                                         <tr>
@@ -888,8 +860,8 @@ export function AdminView() {
                                     <h3 className="text-xl font-display font-bold text-white uppercase tracking-tight">Платные пользователи</h3>
                                     <span className="font-mono-label text-[10px] uppercase tracking-widest text-white/40">{subscriptions.length} подписок</span>
                                 </div>
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-sm font-code">
+                                <div className="pitchy-table-scroll [--table-scroll-bg:#111111]">
+                                    <table className="w-full text-sm min-w-[900px] font-code">
                                         <thead>
                                             <tr className="text-white/50 border-b border-white/10 font-mono-label uppercase text-[10px] tracking-widest">
                                                 <th className="text-left px-4 py-3 font-bold">Email</th>
@@ -1110,8 +1082,8 @@ export function AdminView() {
                                         <h4 className="text-white font-mono-label text-[12px] uppercase tracking-widest">История загрузок</h4>
                                         <span className="font-mono-label text-[10px] uppercase tracking-widest text-white/40">{ragLogsTotal} записей</span>
                                     </div>
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full text-sm font-code">
+                                    <div className="pitchy-table-scroll [--table-scroll-bg:#111111]">
+                                        <table className="w-full text-sm min-w-[720px] font-code">
                                             <thead>
                                                 <tr className="text-white/50 border-b border-white/10 font-mono-label uppercase text-[10px] tracking-widest">
                                                     <th className="text-left py-3 pr-4 w-32 font-bold">Дата</th>

@@ -17,6 +17,18 @@ from models import User, ProjectTree
 from llm_client import dispatch_intent, request_roadmap_edit
 from ops.cache.semantic_cache import semantic_cache
 from schemas.llm import IntentClassification, RoadmapEditResponse
+from chat_pipeline import (
+    RAG_TIMEOUT_SECONDS,
+    RERANK_TIMEOUT_SECONDS,
+    ROUTING_TIMEOUT_SECONDS,
+    SWARM_TIMEOUT_SECONDS,
+    WEB_SEARCH_TIMEOUT_SECONDS,
+    MAX_HISTORY_CONTEXT_CHARS,
+    MAX_USER_CHARS,
+    build_evidence_context,
+    rerank_rag_entries,
+    sanitize_categories,
+)
 
 # Langfuse normalization: SDK looks for LANGFUSE_HOST, but server sets LANGFUSE_BASE_URL
 if os.getenv("LANGFUSE_BASE_URL") and not os.getenv("LANGFUSE_HOST"):
@@ -134,7 +146,12 @@ class ChatOrchestrator:
 
         # Fallback to DB
         from sqlalchemy import select
-        res = await self.db.execute(select(ProjectTree).where(ProjectTree.id == self.tree_id))
+        res = await self.db.execute(
+            select(ProjectTree).where(
+                ProjectTree.id == self.tree_id,
+                ProjectTree.user_id == self.user_id,
+            )
+        )
         tree = res.scalar_one_or_none()
         if not tree:
             return {"nodes": [], "readiness_index": 0}
@@ -276,8 +293,16 @@ class ChatOrchestrator:
             )
         
         chat_history_list = []
-        for m in history:
-            chat_history_list.append({"role": m["role"], "content": m["content"]})
+        history_chars = 0
+        for m in reversed(history):
+            content = str(m.get("content") or "")
+            remaining = MAX_HISTORY_CONTEXT_CHARS - history_chars
+            if remaining <= 0:
+                break
+            bounded = clip_text(content, remaining)
+            chat_history_list.append({"role": m.get("role", "user"), "content": bounded})
+            history_chars += len(bounded)
+        chat_history_list.reverse()
             
         messages = [{"role": "system", "content": system_prompt}] + chat_history_list
 
@@ -287,7 +312,7 @@ class ChatOrchestrator:
         # them inline used to make the model treat its own response as a
         # debate with the prompt and frame answers as "based on what you
         # provided".
-        messages.append({"role": "user", "content": user_message})
+        messages.append({"role": "user", "content": clip_text(user_message, MAX_USER_CHARS)})
         
         async for chunk in stream_makura(messages=messages):
             yield chunk
@@ -431,11 +456,19 @@ class ChatOrchestrator:
 
     # NOTE: Do NOT use @observe here — it wraps async generators and buffers all yields,
     # completely breaking SSE streaming. Langfuse tracing is done manually inside.
-    async def process_message(self, user_message: str, active_node_id: str = None, client_id: str = None, assistant_client_id: str = None, use_deep_search: bool = False, use_research: bool = False):
+    async def process_message(self, user_message: str, active_node_id: str = None, client_id: str = None, assistant_client_id: str = None, use_deep_search: bool = False, use_research: bool = False, persist_user_message: bool = True):
         """Main entry point for chat orchestration. Yields JSON chunks."""
         
         # Manual Langfuse trace creation (replaces @observe which kills generators)
         trace = None
+        pipeline_meta = {
+            "pipeline": "roadmap-chat-v2",
+            "rag_candidates": 0,
+            "reranked_candidates": 0,
+            "web_sources": 0,
+            "swarm_facts": 0,
+            "fallbacks": [],
+        }
         if langfuse_context:
             try:
                 from langfuse import Langfuse
@@ -451,12 +484,26 @@ class ChatOrchestrator:
                 logger.warning(f"Langfuse trace creation failed: {e}")
         
         # Step 0: Fast Path (Semantic Cache) - Traced by @observe on semantic_cache.get
-        cached_response = await semantic_cache.get(query=user_message, project_id=str(self.tree_id))
+        cache_query = f"roadmap-chat-v2\nnode={active_node_id or 'root'}\n{user_message}"
+        cached_entry = await semantic_cache.get_entry(query=cache_query, project_id=str(self.tree_id))
+        cached_response = cached_entry.get("response") if cached_entry else None
         
         if cached_response and not use_deep_search and not use_research:
+            await self.add_chat_message(
+                "assistant",
+                cached_response,
+                node_id=active_node_id,
+                model_used="Semantic Cache (Hit)",
+                client_id=assistant_client_id,
+                sources=cached_entry.get("sources") or [],
+            )
+            if cached_entry.get("sources"):
+                yield self._format_sse({"type": "sources", "data": cached_entry["sources"]})
             yield self._format_sse({"type": "chunk", "content": cached_response})
             yield self._format_sse({"type": "metadata", "model": "Semantic Cache (Hit)"})
             yield self._format_sse({"type": "final", "readiness_index": 0})
+            if trace:
+                trace.update(output=cached_response, metadata={**pipeline_meta, "cache_hit": True})
             return
 
         async def keep_alive_generator(gen):
@@ -474,6 +521,7 @@ class ChatOrchestrator:
         # --- STREAMING START: Yield immediately after trace creation ---
         reply_full = ""
         thoughts_full = ""
+        ttft = None
         
         current_date = datetime.now().strftime("%d %B %Y")
         t = f"Инициализация сессии: {current_date}. Проверяю актуальность данных и сверяю календарь...\n"
@@ -489,18 +537,28 @@ class ChatOrchestrator:
         from slm_dispatcher import slm_dispatcher
         intent_task = asyncio.create_task(dispatch_intent(user_message))
         slm_intent_task = asyncio.create_task(slm_dispatcher.classify_query_intent(user_message))
-        rag_task = asyncio.create_task(rag.aget_relevant_chunks(user_message, top_k=10, parent_trace=trace)) # Ask for 10 for Swarm
         state_task = asyncio.create_task(self.load_state())
         
         # Parallel Execution (tasks already started via create_task/to_thread)
         try:
-            intent_data = await intent_task
+            intent_data = await asyncio.wait_for(intent_task, timeout=ROUTING_TIMEOUT_SECONDS)
             yield self._format_sse({"type": "status", "content": "Интент определен..."})
             
-            slm_res = await slm_intent_task
+            slm_res = await asyncio.wait_for(slm_intent_task, timeout=ROUTING_TIMEOUT_SECONDS)
             yield self._format_sse({"type": "status", "content": "Глубокий анализ параметров..."})
             
-            initial_rag_chunks = await rag_task
+            categories = sanitize_categories(slm_res.get("categories", [])) if isinstance(slm_res, dict) else []
+            initial_rag_chunks = await asyncio.wait_for(
+                rag.aget_relevant_chunks(
+                    user_message,
+                    categories=categories or None,
+                    top_k=10,
+                    parent_trace=trace,
+                ),
+                timeout=RAG_TIMEOUT_SECONDS,
+            )
+            pipeline_meta["categories"] = categories
+            pipeline_meta["rag_candidates"] = len(initial_rag_chunks)
             yield self._format_sse({"type": "status", "content": "Поиск по базе знаний завершен..."})
             
             state = await state_task
@@ -512,6 +570,10 @@ class ChatOrchestrator:
             if isinstance(state, Exception): state = {"nodes": [], "readiness_index": 0}
         except Exception as e:
             logger.error(f"Error in parallel tasks: {e}")
+            pipeline_meta["fallbacks"].append("routing_or_rag")
+            for pending_task in (intent_task, slm_intent_task, state_task):
+                if not pending_task.done():
+                    pending_task.cancel()
             # Fallbacks
             intent_data = IntentClassification(intent="chat", reasoning="Fallback", confidence=0.0)
             slm_res = {}
@@ -585,6 +647,16 @@ class ChatOrchestrator:
                 tags=[intent, "deep_search" if use_deep_search else "basic_search"]
             )
 
+        # Start VoyageAI reranking before optional web search so the two
+        # independent network stages overlap. Keep entries structured so
+        # source metadata survives into the final evidence context.
+        rerank_task = asyncio.create_task(
+            asyncio.wait_for(
+                rerank_rag_entries(user_message, initial_rag_chunks, top_k=6),
+                timeout=RERANK_TIMEOUT_SECONDS,
+            )
+        )
+
         # Step 1.5: Web Search if needed - Traced by @observe on async_search_with_sources
         search_texts = []
         if intent == "search" or is_deep_search or use_deep_search or use_research:
@@ -602,13 +674,32 @@ class ChatOrchestrator:
             current_id = trace.id if trace else None
             search_task = asyncio.create_task(async_search_with_sources(user_message, use_deep_search=True, trace_id=current_id, parent_observation_id=current_id))
             
-            # Non-blocking wait with keep-alive
+            # Non-blocking wait with keep-alive and a hard server deadline.
+            search_started = time.monotonic()
+            search_timed_out = False
             while not search_task.done():
                 # Yield a tiny status or thought to keep the connection alive and show activity
                 yield self._format_sse({"type": "status", "content": "Выполняю поиск по интернету (Exa AI)..."})
                 await asyncio.sleep(2.0)
-            
-            search_sources, search_context = await search_task
+
+                if time.monotonic() - search_started >= WEB_SEARCH_TIMEOUT_SECONDS:
+                    search_task.cancel()
+                    search_timed_out = True
+                    logger.warning("Roadmap web search timed out after %.1fs", WEB_SEARCH_TIMEOUT_SECONDS)
+                    break
+
+            if search_timed_out:
+                try:
+                    await search_task
+                except asyncio.CancelledError:
+                    pass
+                search_sources, search_context = [], ""
+            else:
+                try:
+                    search_sources, search_context = await search_task
+                except Exception as search_err:
+                    logger.warning("Roadmap web search failed: %s", search_err)
+                    search_sources, search_context = [], ""
             
             if trace:
                 try:
@@ -617,6 +708,7 @@ class ChatOrchestrator:
                     pass
                     
             sources_list = search_sources
+            pipeline_meta["web_sources"] = len(search_sources)
             if search_context:
                 search_texts = [search_context]
                 
@@ -627,9 +719,14 @@ class ChatOrchestrator:
         # similarity; reranker picks the top-6 most actually useful for
         # answering the user's question. Falls back to naive top-K on any
         # failure (no key, timeout, malformed JSON) — never a hard dep.
-        from rag_reranker import rerank_chunks
-        all_rag_texts = [c["text"] if isinstance(c, dict) else c for c in initial_rag_chunks]
-        rag_texts = await rerank_chunks(user_message, all_rag_texts, top_k=6)
+        try:
+            reranked_entries = await rerank_task
+        except Exception as rerank_err:
+            logger.warning("Roadmap VoyageAI rerank failed; using Chroma order: %s", rerank_err)
+            pipeline_meta["fallbacks"].append("reranker")
+            reranked_entries = initial_rag_chunks[:6]
+        pipeline_meta["reranked_candidates"] = len(reranked_entries)
+        rag_texts = [str(entry.get("text") or "") for entry in reranked_entries]
 
         # Step 1.7: Swarm Analysis (Map-Reduce)
         from swarm_agent import run_analytical_swarm
@@ -646,25 +743,15 @@ class ChatOrchestrator:
             await asyncio.sleep(0)
             
             try:
-                from swarm_agent import stream_analytical_swarm
                 current_id = trace.id if trace else None
-                
-                swarm_res = []
-                start_swarm = time.time()
-                
-                # Use the new generator for per-agent progress
-                async for res in stream_analytical_swarm(chunks_to_swarm, trace_id=current_id, parent_observation_id=current_id):
-                    swarm_res.append(res)
-                    elapsed = int(time.time() - start_swarm)
-                    
-                    # Real-time status yield for each agent
-                    status_text = f"Анализ данных: агент {len(swarm_res)}/{len(chunks_to_swarm)} завершил работу ({elapsed}с)..."
-                    yield self._format_sse({"type": "status", "content": status_text})
-                    await asyncio.sleep(0.01) # Flush socket buffer
-                    
-                    if time.time() - start_swarm > 40.0: # Hard safety break
-                        logger.warning("Swarm streaming timed out — moving forward with partial results")
-                        break
+                swarm_res = await asyncio.wait_for(
+                    run_analytical_swarm(
+                        chunks_to_swarm,
+                        trace_id=current_id,
+                        parent_observation_id=current_id,
+                    ),
+                    timeout=SWARM_TIMEOUT_SECONDS,
+                )
                 
                 if trace:
                     try:
@@ -673,6 +760,7 @@ class ChatOrchestrator:
                         pass
             except Exception as swarm_err:
                 logger.error(f"Swarm streaming error: {swarm_err}")
+                pipeline_meta["fallbacks"].append("swarm")
                 swarm_res = []
             
             facts = []
@@ -684,22 +772,14 @@ class ChatOrchestrator:
             
             if facts:
                 swarm_facts = "\n- ".join(set(facts))
+                pipeline_meta["swarm_facts"] = len(facts)
             
-        compiled_rag_context = ""
-        if mini_graph and "карта пуста" not in mini_graph:
-            compiled_rag_context += f"ДАННЫЕ ИЗ SMART ROADMAP (Мини-Граф проекта):\n{mini_graph}\n\n"
-        if swarm_facts:
-            compiled_rag_context += f"ПРОВЕРЕННЫЕ ФАКТЫ ИЗ БАЗЫ ЗНАНИЙ И СЕТИ:\n{swarm_facts}\n\n"
-        if not swarm_facts and rag_texts:
-            # Use the full reranked set (now 6 instead of the old hard-coded 3) —
-            # the LLM-as-reranker has already picked the relevant ones, so we no
-            # longer need to be defensive about prompt size.
-            compiled_rag_context += f"ДАННЫЕ ИЗ БАЗЫ ЗНАНИЙ:\n{chr(10).join(rag_texts)}\n\n"
-        # Always surface web-search content if we have it — otherwise the
-        # synthesis prompt only sees RAG and the model hallucinates from its
-        # 2024 weights for fresh-data questions.
-        if search_texts:
-            compiled_rag_context += f"ДАННЫЕ ИЗ ВЕБ-ПОИСКА (Exa):\n{chr(10).join(search_texts)[:4000]}\n\n"
+        compiled_rag_context = build_evidence_context(
+            project_context=mini_graph if "карта пуста" not in mini_graph else "",
+            rag_entries=reranked_entries,
+            web_context="\n".join(search_texts),
+            swarm_facts=swarm_facts,
+        )
 
         try:
             yield self._format_sse({"type": "status", "content": "Синтезирую финальный ответ..."})
@@ -914,8 +994,7 @@ class ChatOrchestrator:
                     }
                     if lf_usage:
                         update_params["usage"] = lf_usage
-                    if ttft is not None:
-                        update_params["metadata"] = {"ttft": ttft}
+                    update_params["metadata"] = {**pipeline_meta, "ttft": ttft}
                     
                     trace.update(**update_params)
                 except Exception as e:
@@ -928,14 +1007,20 @@ class ChatOrchestrator:
             yield self._format_sse({"type": "tree_update", "data": state})
 
         # 4. Finalize (happy path — stream completed successfully)
-        await self.add_chat_message("user", user_message, node_id=active_node_id, client_id=client_id)
+        if persist_user_message:
+            await self.add_chat_message("user", user_message, node_id=active_node_id, client_id=client_id)
         await self.add_chat_message("assistant", reply_full, thoughts=thoughts_full.strip() if thoughts_full else None, node_id=active_node_id, model_used=model_used, client_id=assistant_client_id, sources=sources_list)
         message_saved = True # Mark AFTER successful save to prevent duplicate in finally
 
         # Step 3: Background Cache Save
         # Only cache general chat responses that are successful and not tool-based
         if intent == "chat" and reply_full and not use_deep_search and not use_research:
-            asyncio.create_task(semantic_cache.set(query=user_message, response=reply_full, project_id=str(self.tree_id)))
+            asyncio.create_task(semantic_cache.set(
+                query=cache_query,
+                response=reply_full,
+                project_id=str(self.tree_id),
+                sources=sources_list,
+            ))
 
         # Final metadata
         yield self._format_sse({

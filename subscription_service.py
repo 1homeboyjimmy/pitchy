@@ -156,5 +156,13 @@ def subscription_snapshot(subscription: CustomSubscription) -> dict:
         "used": used,
         "remaining": {key: max(0, current[key] - used[key]) for key in RESOURCES},
         "current_price": calculate_price(current),
-        "next_price": calculate_price(next_config),
+        "next_price": (
+            float(subscription.renewal_price_override)
+            if subscription.renewal_price_override is not None
+            else calculate_price(next_config)
+        ),
+        "promo_campaign_id": subscription.promo_campaign_id,
+        "promo_ends_at": subscription.promo_ends_at,
+        "promo_post_action": subscription.promo_post_action,
+        "promo_auto_renew_consented": bool(subscription.promo_consent_at),
     }

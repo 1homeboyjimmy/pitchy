@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   ArrowUpRight, Users, FileText, MessageSquare, Map,
   Briefcase, BarChart3, UserCheck, Megaphone, Landmark, Rocket, GraduationCap, CheckCircle2, Sparkles, IdCard
@@ -362,7 +363,7 @@ const SectionHeading = ({ eyebrow, title, text, centered = false }: { eyebrow?: 
     className={`max-w-4xl ${centered ? "mx-auto text-center" : ""}`}
   >
     {eyebrow ? <div className="font-mono text-white/50 mb-4 tracking-[0.2em] text-xs uppercase">{eyebrow}</div> : null}
-    <h2 className="text-4xl leading-[1.1] text-white md:text-6xl mb-6" style={{ fontFamily: "'Instrument Serif', serif" }}>
+    <h2 className="text-4xl leading-[1.1] text-white md:text-6xl mb-6" style={{ fontFamily: "var(--font-prata), serif" }}>
       {title}
     </h2>
     <p className="text-sm leading-7 text-white/40 md:text-lg font-light max-w-2xl mx-auto">
@@ -422,7 +423,7 @@ const GrantSupportSection = () => (
         <div className="font-mono text-white/50 mb-4 tracking-[0.2em] text-xs uppercase">
           МЕРЫ ПОДДЕРЖКИ
         </div>
-        <h2 className="text-5xl md:text-7xl text-white leading-[1.05] mb-8" style={{ fontFamily: "'Instrument Serif', serif" }}>
+        <h2 className="text-5xl md:text-7xl text-white leading-[1.05] mb-8" style={{ fontFamily: "var(--font-prata), serif" }}>
           Автоматический подбор мер поддержки
         </h2>
         <p className="text-white/40 text-lg font-light leading-relaxed mb-10 max-w-2xl">
@@ -632,7 +633,7 @@ export default function LandingPage() {
         <div className="aurora-orb right-[-10rem] top-[60%] h-[40rem] w-[40rem] bg-white/[0.02] animate-float-slow" />
 
         {/* System Overview Section */}
-        <section className="relative px-6 py-32 md:px-12">
+        <section id="system-overview" className="relative scroll-mt-20 px-6 py-32 md:px-12">
           <div className="mx-auto max-w-7xl">
             <SectionHeading
               centered
@@ -743,7 +744,7 @@ export default function LandingPage() {
                       <IdCard className="h-6 w-6 text-white/80" />
                     </div>
                     <div className="mb-4 font-mono text-xs uppercase tracking-[0.2em] text-white/50">Единый контекст</div>
-                    <h3 className="mb-4 text-3xl text-white sm:text-4xl" style={{ fontFamily: "'Instrument Serif', serif" }}>
+                    <h3 className="mb-4 text-3xl text-white sm:text-4xl" style={{ fontFamily: "var(--font-prata), serif" }}>
                       Паспорт проекта
                     </h3>
                     <p className="text-sm font-light leading-relaxed text-white/45 sm:text-base">
@@ -766,7 +767,7 @@ export default function LandingPage() {
               viewport={{ once: true }}
             >
               <div className="font-mono text-white/50 mb-4 tracking-[0.2em] text-xs uppercase">ПУТЬ ПОЛЬЗОВАТЕЛЯ</div>
-              <h2 className="text-5xl md:text-7xl text-white leading-[1.1] mb-8" style={{ fontFamily: "'Instrument Serif', serif" }}>
+              <h2 className="text-5xl md:text-7xl text-white leading-[1.1] mb-8" style={{ fontFamily: "var(--font-prata), serif" }}>
                 Путь продукта: от гипотезы до результата
               </h2>
               <p className="text-white/40 text-lg font-light leading-relaxed mb-10">
@@ -863,7 +864,7 @@ export default function LandingPage() {
               transition={{ duration: 0.8 }}
               viewport={{ once: true }}
             >
-              <h2 className="text-5xl md:text-7xl text-white leading-[1.1] mb-8" style={{ fontFamily: "'Instrument Serif', serif" }}>
+              <h2 className="text-5xl md:text-7xl text-white leading-[1.1] mb-8" style={{ fontFamily: "var(--font-prata), serif" }}>
                 Интеллект в каждом действии
               </h2>
               <p className="text-white/40 text-lg font-light leading-relaxed mb-10">
@@ -881,9 +882,12 @@ export default function LandingPage() {
                   ].map((bar, i) => (
                     <div key={bar.name} className="flex flex-col items-center gap-3">
                       <div className="h-7 flex items-center justify-center">
-                        <img
+                        <Image
                           src={bar.logo}
                           alt={bar.name}
+                          width={72}
+                          height={24}
+                          sizes="72px"
                           className="h-6 w-auto max-w-[72px] object-contain"
                           onError={(e) => {
                             e.currentTarget.style.display = "none";
@@ -1004,6 +1008,7 @@ export default function LandingPage() {
                         key={`node-${i}-${a.label}`}
                         cx={a.x}
                         cy={a.y}
+                        r={0}
                         fill="rgba(255,255,255,0.85)"
                         stroke="rgba(255,255,255,0.4)"
                         strokeWidth={1}
@@ -1019,6 +1024,7 @@ export default function LandingPage() {
                       key={`background-node-${i}`}
                       cx={a.x}
                       cy={a.y}
+                      r={0}
                       fill="rgba(255,255,255,0.25)"
                       stroke="rgba(255,255,255,0.4)"
                       strokeWidth={1}
@@ -1055,9 +1061,11 @@ export default function LandingPage() {
                   <motion.circle
                     cx={200}
                     cy={200}
+                    r={30}
                     fill="none"
                     stroke="rgba(255,255,255,0.15)"
                     strokeWidth={1}
+                    initial={{ r: 30, opacity: 0.4 }}
                     animate={{ r: [30, 40, 30], opacity: [0.4, 0.08, 0.4] }}
                     transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
                   />

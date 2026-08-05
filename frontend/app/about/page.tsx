@@ -232,7 +232,7 @@ export default function AboutPage() {
       <main className="flex-grow pt-12 pb-24 px-6 md:px-12 max-w-[1440px] mx-auto w-full relative z-10">
         {/* Header */}
         <header className="mb-16 md:mb-24 mt-8 md:mt-16">
-          <h1 className="font-display text-6xl md:text-8xl text-white mb-8 max-w-4xl tracking-tighter leading-none">
+          <h1 className="font-display text-4xl sm:text-6xl md:text-8xl text-white mb-8 max-w-4xl tracking-tighter leading-none">
             О <PitchyLogo size="none" />
           </h1>
           <p className="font-body-lg text-xl text-foreground/60 max-w-2xl leading-relaxed">
@@ -271,7 +271,7 @@ export default function AboutPage() {
         {/* Bento Grid */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
           {/* Mission Card */}
-          <section className="md:col-span-8 lovable-glass rounded-3xl p-10 relative overflow-hidden group">
+          <section className="md:col-span-8 lovable-glass rounded-3xl p-5 sm:p-8 lg:p-10 relative overflow-hidden group">
             <div className="absolute inset-0 bg-gradient-to-br from-white/[0.04] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
             <div className="flex items-start gap-5 mb-16">
               <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center border border-white/10">

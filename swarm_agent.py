@@ -22,9 +22,12 @@ class ChunkAnalysis(BaseModel):
     confidence: float = Field(description="Уверенность в данных от 0.0 до 1.0", ge=0.0, le=1.0)
 
 def get_patched_client():
+    api_key = os.getenv("ROUTERAI_API_KEY")
+    if not api_key:
+        return None
     client = AsyncOpenAI(
         base_url="https://routerai.ru/api/v1",
-        api_key=os.getenv("ROUTERAI_API_KEY", "test_key")
+        api_key=api_key,
     )
     return instructor.from_openai(client)
 
@@ -58,6 +61,9 @@ async def _process_single_chunk(client, chunk: str, trace_id: str = None, parent
 @observe(name="run_analytical_swarm")
 async def run_analytical_swarm(chunks: List[str], trace_id: str = None, parent_observation_id: str = None) -> List[ChunkAnalysis]:
     """Параллельный запуск роя на N чанков (возвращает список)."""
+    if not os.getenv("ROUTERAI_API_KEY"):
+        logger.info("Analytical swarm skipped: ROUTERAI_API_KEY is missing")
+        return []
     results = []
     async for res in stream_analytical_swarm(chunks, trace_id, parent_observation_id):
         results.append(res)
@@ -77,6 +83,9 @@ async def stream_analytical_swarm(chunks: List[str], trace_id: str = None, paren
             langfuse_context.update_current_observation(parent_observation_id=parent_observation_id)
         
     client = get_patched_client()
+    if client is None:
+        logger.info("Analytical swarm skipped: ROUTERAI_API_KEY is missing")
+        return
     tasks = [_process_single_chunk(client, chunk, trace_id=trace_id, parent_observation_id=parent_observation_id) for chunk in chunks]
     
     for coro in asyncio.as_completed(tasks):

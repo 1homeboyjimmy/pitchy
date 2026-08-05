@@ -11,7 +11,9 @@ import {
   getConfigurableSubscription,
   updateConfigurableSubscription,
   validatePromoCode,
+  type PromoValidation,
 } from "@/lib/api";
+import { trackMetrikaGoal } from "@/components/analytics/YandexMetrika";
 
 const BASE: SubscriptionConfig = { messages: 50, roadmaps: 3, custdev: 2, grants: 0 };
 const PRICE: SubscriptionConfig = { messages: 7, roadmaps: 150, custdev: 750, grants: 1000 };
@@ -41,6 +43,7 @@ export function SubscriptionConfigurator({ account = false }: { account?: boolea
   const [discountPercent, setDiscountPercent] = useState(0);
   const [fixedPrice, setFixedPrice] = useState<number | null>(null);
   const [promoMsg, setPromoMsg] = useState<string | null>(null);
+  const [promoDetails, setPromoDetails] = useState<PromoValidation | null>(null);
   const [checkingPromo, setCheckingPromo] = useState(false);
   const price = useMemo(() => totalPrice(config), [config]);
   const finalPrice = useMemo(() => {
@@ -48,6 +51,9 @@ export function SubscriptionConfigurator({ account = false }: { account?: boolea
     if (discountPercent > 0) return Math.round(price * (100 - discountPercent) / 100);
     return price;
   }, [price, discountPercent, fixedPrice]);
+  const displayedPrice = account && subscription?.next_price != null
+    ? subscription.next_price
+    : finalPrice;
 
   const applyPromo = async () => {
     const code = promoInput.trim().toUpperCase();
@@ -55,17 +61,20 @@ export function SubscriptionConfigurator({ account = false }: { account?: boolea
     setCheckingPromo(true);
     setPromoMsg(null);
     try {
-      const result = await validatePromoCode(code);
+      const result = await validatePromoCode(code, price);
       if (!result.valid) {
         setPromoApplied(null);
         setDiscountPercent(0);
         setFixedPrice(null);
+        setPromoDetails(null);
         setPromoMsg(result.detail || "Промокод недействителен");
         return;
       }
       setPromoApplied(code);
       setDiscountPercent(result.discount_percent || 0);
       setFixedPrice(result.fixed_price ?? null);
+      setPromoDetails(result);
+      setAcceptedRecurring(false);
       setPromoMsg(
         result.fixed_price != null
           ? `Промокод применён: фиксированная цена ${result.fixed_price.toLocaleString("ru-RU")} ₽`
@@ -84,6 +93,8 @@ export function SubscriptionConfigurator({ account = false }: { account?: boolea
     setFixedPrice(null);
     setPromoInput("");
     setPromoMsg(null);
+    setPromoDetails(null);
+    setAcceptedRecurring(false);
   };
 
   useEffect(() => {
@@ -119,7 +130,17 @@ export function SubscriptionConfigurator({ account = false }: { account?: boolea
         setSubscription(updated);
         setMessage("Конфигурация следующего месяца сохранена");
       } else {
-        const result = await createConfigurableSubscription(config, token, promoApplied);
+        const result = await createConfigurableSubscription(
+          config,
+          token,
+          promoApplied,
+          promoApplied ? acceptedRecurring : true,
+        );
+        trackMetrikaGoal("checkout_started", {
+          price_rub: finalPrice,
+          has_promo: Boolean(promoApplied),
+          plan_type: "custom",
+        });
         window.location.href = result.confirmation_url;
       }
     } catch (error) {
@@ -157,15 +178,50 @@ export function SubscriptionConfigurator({ account = false }: { account?: boolea
       <div className="mb-8">
         <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-white/35">{account ? "Следующий платёж" : "Базовая подписка"}</p>
         <h2 className="mt-2 font-display text-3xl sm:text-5xl text-white">
-          {finalPrice.toLocaleString("ru-RU")} ₽ <span className="text-lg text-white/35">/ месяц</span>
+          {displayedPrice.toLocaleString("ru-RU")} ₽ <span className="text-lg text-white/35">/ месяц</span>
           {!account && promoApplied && finalPrice !== price && (
             <span className="ml-3 text-lg text-white/35 line-through">{price.toLocaleString("ru-RU")} ₽</span>
           )}
         </h2>
         {!account && promoApplied && (
-          <p className="mt-2 text-xs text-emerald-300">Промокод {promoApplied} применён{discountPercent > 0 ? ` · −${discountPercent}%` : ""}</p>
+          <div className="mt-2 space-y-1">
+            <p className="text-xs text-emerald-300">
+              Промокод {promoApplied} применён{discountPercent > 0 ? ` · −${discountPercent}%` : ""}
+            </p>
+            {promoDetails?.campaign_name && (
+              <p className="text-[11px] text-white/35">Кампания: {promoDetails.campaign_name}</p>
+            )}
+            {promoDetails?.post_promo_action === "renew_base" && promoDetails.renewal_amount != null && (
+              <p className="text-[11px] text-amber-200/70">
+                После промо — базовый тариф за {promoDetails.renewal_amount.toLocaleString("ru-RU")} ₽/месяц
+              </p>
+            )}
+            {promoDetails?.post_promo_action === "none" && (
+              <p className="text-[11px] text-white/35">После промо автопродление не выполняется</p>
+            )}
+          </div>
         )}
-        <p className="mt-3 text-sm text-white/45">Остатки сгорают при продлении. Выбранная конфигурация повторяется автоматически.</p>
+        <p className="mt-3 text-sm text-white/45">
+          Остатки сгорают при продлении.
+          {account && subscription?.promo_post_action && subscription.promo_post_action !== "renew_base"
+            ? " Автопродление для промопериода отключено."
+            : " Выбранная конфигурация повторяется автоматически."}
+        </p>
+        {account && subscription?.promo_ends_at && (
+          <div className="mt-4 rounded-2xl border border-amber-300/15 bg-amber-300/[0.04] p-4 text-xs leading-relaxed text-amber-100/65">
+            <p>
+              Промопериод действует до{" "}
+              {new Date(subscription.promo_ends_at).toLocaleDateString("ru-RU")}.
+            </p>
+            <p className="mt-1">
+              {subscription.promo_post_action === "renew_base" && subscription.auto_renew
+                ? `Затем базовый тариф продлится автоматически за ${displayedPrice.toLocaleString("ru-RU")} ₽/месяц.`
+                : subscription.promo_post_action === "offer"
+                  ? "После завершения промо мы предложим продление отдельно, без автоматического списания."
+                  : "После завершения промо автоматического списания не будет."}
+            </p>
+          </div>
+        )}
       </div>
 
       {account && subscription?.mode === "custom" && subscription.remaining && (
@@ -230,6 +286,20 @@ export function SubscriptionConfigurator({ account = false }: { account?: boolea
         />
         {account ? (
           <span>Автопродление на следующий месяц</span>
+        ) : promoApplied && promoDetails?.post_promo_action === "renew_base" ? (
+          <span className="leading-relaxed">
+            {promoDetails.consent_text || "Согласен на автопродление после окончания промопериода."}{" "}
+            Принимаю{" "}
+            <a href="/offer" target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="underline underline-offset-2 hover:text-white">Оферту</a>.
+          </span>
+        ) : promoApplied && promoDetails?.post_promo_action === "offer" ? (
+          <span className="leading-relaxed">
+            Согласен с условиями промооплаты. После окончания промо автосписания не будет — мы предложим продлить базовый тариф отдельно.
+          </span>
+        ) : promoApplied && promoDetails?.post_promo_action === "none" ? (
+          <span className="leading-relaxed">
+            Согласен с условиями разовой промооплаты. После окончания промо автопродление будет отключено.
+          </span>
         ) : (
           <span className="leading-relaxed">
             Согласен на ежемесячное автопродление и сохранение способа оплаты, принимаю{" "}

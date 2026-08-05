@@ -11,6 +11,7 @@ import {
   getProjects, getRoadmap, patchPassport, analyzeRoadmapStep, streamRoadmapOverall, createProject, downloadRoadmapPdf,
   type ProjectListItem, type Roadmap, type RoadmapCheckpoint, type RoadmapField, type RoadmapOverall,
 } from "@/lib/api";
+import { trackMetrikaGoal } from "@/components/analytics/YandexMetrika";
 
 // Геометрия извилистого пути (в координатах viewBox; узлы позиционируются в %).
 const VB_W = 280;
@@ -37,14 +38,16 @@ function Markdown({ children }: { children: string }) {
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
+          // Как и в чате: таблица держит естественную ширину колонок и
+          // скроллится вбок, а не ужимается в нечитаемые столбцы.
           table: ({ ...props }) => (
-            <div className="my-3 overflow-x-auto rounded-xl border border-white/10 bg-white/5">
-              <table className="w-full text-left border-collapse" {...props} />
+            <div className="my-3 pitchy-table-scroll rounded-xl border border-white/10 bg-white/5">
+              <table className="w-max min-w-full text-left border-collapse" {...props} />
             </div>
           ),
           thead: ({ ...props }) => <thead className="bg-white/10" {...props} />,
-          th: ({ ...props }) => <th className="p-2 text-[11px] font-bold text-white/80 border-b border-white/10 uppercase tracking-wider" {...props} />,
-          td: ({ ...props }) => <td className="p-2 text-[12px] text-white/80 border-b border-white/5 last:border-0" {...props} />,
+          th: ({ ...props }) => <th className="p-2 text-[11px] font-bold text-white/80 border-b border-white/10 uppercase tracking-wider whitespace-nowrap" {...props} />,
+          td: ({ ...props }) => <td className="p-2 text-[12px] text-white/80 border-b border-white/5 last:border-0 align-top min-w-[7rem] max-w-[18rem]" {...props} />,
         }}
       >
         {children}
@@ -257,6 +260,7 @@ export function RoadmapView() {
     setDownloadingPdf(true);
     try {
       await downloadRoadmapPdf(pid, token);
+      trackMetrikaGoal("roadmap_exported", { format: "pdf" });
     } catch (err) {
       notifyError(err instanceof Error ? err.message : "Не удалось скачать PDF");
     } finally {
@@ -308,6 +312,8 @@ export function RoadmapView() {
     setCreating(true);
     try {
       const proj = await createProject({ name }, t);
+      trackMetrikaGoal("roadmap_created", { source: "roadmap_hub" });
+      trackMetrikaGoal("project_created", { project_source: "roadmap_hub" });
       const pj = await getProjects(t);
       setProjects(pj);
       setNewName("");
@@ -327,6 +333,7 @@ export function RoadmapView() {
     setSaving(true);
     try {
       await patchPassport(pid, fields, t);
+      trackMetrikaGoal("roadmap_checkpoint_completed", { checkpoint_type: cpId || "unknown" });
       await loadRoadmap(pid, true);
     } catch {
       notifyError("Не удалось сохранить");
@@ -339,6 +346,7 @@ export function RoadmapView() {
       setAnalyzingStep(cpId);
       try {
         const res = await analyzeRoadmapStep(pid, cpId, t);
+        trackMetrikaGoal("roadmap_step_analysis_completed", { checkpoint_type: cpId });
         setStepAnalysis((m) => ({ ...m, [cpId]: res.analysis }));
       } catch {
         notifyError("Не удалось получить разбор шага");
@@ -364,6 +372,7 @@ export function RoadmapView() {
           notifyError(ev.text || "Ошибка генерации аналитики");
         }
       }
+      trackMetrikaGoal("roadmap_overall_analysis_completed");
     } catch {
       notifyError("Не удалось получить аналитику стартапа");
     } finally {

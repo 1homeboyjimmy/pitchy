@@ -16,6 +16,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { patchAuthJson } from "@/lib/api";
+import { trackMetrikaGoal } from "@/components/analytics/YandexMetrika";
 
 type ProjectStage = "no-idea" | "has-idea";
 
@@ -125,6 +126,7 @@ export function PlatformOnboarding({ token, onComplete }: PlatformOnboardingProp
     setIsSaving(true);
     try {
       await patchAuthJson("/me", { onboarding_completed: true }, token);
+      trackMetrikaGoal("onboarding_completed");
     } catch (error) {
       console.error("Failed to save onboarding state:", error);
     } finally {
@@ -147,7 +149,7 @@ export function PlatformOnboarding({ token, onComplete }: PlatformOnboardingProp
 
   return (
     <motion.div
-      className="fixed inset-0 z-[300] bg-[#111111] text-white overflow-hidden"
+      className="fixed inset-0 z-[300] bg-[#111111] text-white overflow-y-auto overscroll-contain"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -156,7 +158,7 @@ export function PlatformOnboarding({ token, onComplete }: PlatformOnboardingProp
       <div className="absolute inset-x-0 top-0 h-px bg-white/10" />
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.08),transparent_42%)] pointer-events-none" />
 
-      <div className="relative z-10 min-h-screen flex flex-col items-center px-4 pt-16 pb-36 sm:pt-24 sm:pb-40">
+      <div className="relative z-10 min-h-[100dvh] flex flex-col items-center px-4 pt-14 pb-36 sm:pt-24 sm:pb-40">
         <AnimatePresence mode="wait">
           {slide === 0 ? (
             <motion.section
@@ -271,7 +273,7 @@ export function PlatformOnboarding({ token, onComplete }: PlatformOnboardingProp
         </AnimatePresence>
       </div>
 
-      <div className="fixed bottom-8 left-0 right-0 z-20 flex flex-col items-center gap-4 px-4">
+      <div className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] sm:bottom-8 left-0 right-0 z-20 flex flex-col items-center gap-3 sm:gap-4 px-4">
         <div className="flex items-center gap-3">
           <button
             type="button"

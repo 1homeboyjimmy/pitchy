@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import Image from "next/image";
 
 interface Props {
   className?: string;
@@ -23,10 +24,12 @@ export function PitchyLogo({ className, size = "md", isSentence = false, isCompa
 
   if (isCompact) {
     return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
+      <Image
         src="/icons/logotip.png"
         alt="Pitchy"
+        width={32}
+        height={32}
+        sizes="32px"
         className={cn("h-8 w-8 object-contain shrink-0", className)}
       />
     );
@@ -34,7 +37,7 @@ export function PitchyLogo({ className, size = "md", isSentence = false, isCompa
 
   return (
     <span className={cn("font-display tracking-tight text-white inline-flex items-baseline", size !== "none" && sizeClasses[size], className)}>
-      {isSentence ? "Pitchy" : "Pitchy"}<span className="text-white/30 italic">.pro</span>
+      {isSentence ? "Pitchy" : "Pitchy"}<span className="text-white/50 italic">.pro</span>
     </span>
   );
 }

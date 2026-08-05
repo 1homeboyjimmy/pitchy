@@ -8,29 +8,30 @@ import { PitchyLogo } from "@/components/shared/PitchyLogo";
 import { postJson } from "@/lib/api";
 import { setToken } from "@/lib/auth";
 import { YandexIcon } from "@/components/shared/icons/YandexIcon";
+import { trackMetrikaGoal } from "@/components/analytics/YandexMetrika";
 
 // Defined at module scope so its identity is stable across renders.
 // When this used to be declared inside SignUpContent, every keystroke
 // re-created the component, remounting the input tree and losing focus
 // after each character.
 const AuthWrapper = ({ children, title }: { children: React.ReactNode; title: string }) => (
-  <div className="bg-black text-foreground min-h-screen flex items-center justify-center p-6 relative overflow-hidden antialiased">
+  <div className="bg-black text-foreground min-h-[100dvh] flex items-center justify-center px-3 py-8 sm:p-6 relative overflow-hidden antialiased">
     {/* Decorative Orbs */}
     <div className="aurora-orb top-[-10rem] left-[-10rem] h-96 w-96 bg-white/[0.04] animate-pulse" />
     <div className="aurora-orb bottom-[-5rem] right-[-5rem] h-80 w-80 bg-white/[0.02] animate-float-slow" />
 
     <div className="w-full max-w-[900px] relative z-10">
-      <div className="text-center mb-12">
-        <Link href="/" className="inline-block mb-8">
+      <div className="text-center mb-8 sm:mb-12">
+        <Link href="/" className="inline-block mb-5 sm:mb-8">
           <PitchyLogo size="3xl" />
         </Link>
-        <h2 className="text-6xl md:text-8xl text-white tracking-tighter leading-[0.9] mb-4 font-display">
+        <h2 className="text-4xl sm:text-6xl md:text-8xl text-white tracking-tighter leading-[0.9] mb-4 font-display">
           {title.split(' ')[0]} <br />
           <span className="text-white/30 italic">{title.split(' ').slice(1).join(' ')}</span>.
         </h2>
       </div>
 
-      <div className="lovable-glass rounded-[40px] p-10 md:p-12 shadow-2xl relative overflow-hidden group max-w-[540px] mx-auto">
+      <div className="lovable-glass rounded-3xl sm:rounded-[40px] p-5 sm:p-8 md:p-12 shadow-2xl relative overflow-hidden group max-w-[540px] mx-auto">
          <div className="absolute inset-0 bg-gradient-to-br from-white/[0.05] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
          {children}
       </div>
@@ -88,8 +89,10 @@ function SignUpContent() {
       );
 
       if (data.status === "verification_required") {
+        trackMetrikaGoal("signup_success", { auth_method: "email" });
         setVerificationStep("verify");
       } else if (data.token) {
+        trackMetrikaGoal("signup_success", { auth_method: "email" });
         setToken(data.token);
         const next = searchParams.get("next") || "/dashboard";
         router.push(next);
@@ -114,6 +117,7 @@ function SignUpContent() {
         code: verificationCode,
       });
       setToken(data.access_token);
+      trackMetrikaGoal("email_verified");
       const next = searchParams.get("next") || "/dashboard";
       router.push(next);
     } catch (err) {

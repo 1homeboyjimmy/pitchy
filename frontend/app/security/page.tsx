@@ -51,7 +51,7 @@ export default function SecurityPage() {
             <main className="flex-grow pt-32 pb-24 px-6 md:px-12 max-w-[1440px] mx-auto w-full relative z-10">
                 {/* Header */}
                 <header className="mb-16 md:mb-24 mt-8 md:mt-16 text-center">
-                    <h1 className="font-display text-6xl md:text-8xl text-white mb-8 tracking-tighter leading-none">
+                    <h1 className="font-display text-4xl sm:text-6xl md:text-8xl text-white mb-8 tracking-tighter leading-none">
                         Безопасность<span className="text-white/20">.</span>
                     </h1>
                     <p className="font-body-lg text-xl text-foreground/60 max-w-2xl mx-auto leading-relaxed">

@@ -7,7 +7,7 @@ import logging
 import time
 import random
 import secrets
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
 
 import urllib.parse
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, UploadFile, File, BackgroundTasks, Security
@@ -104,6 +104,7 @@ import uuid
 from redis_client import get_redis
 from slm_dispatcher import slm_dispatcher
 from makura_client import call_makura, stream_makura
+from routerai_client import stream_routerai
 from search_agent import execute_search_agent, execute_deep_research, async_search_with_sources, get_exa_proxy
 from db import SessionLocal, get_db, engine
 from db_async import get_async_db
@@ -111,11 +112,12 @@ from swarm_agent import run_analytical_swarm
 from sqlalchemy.ext.asyncio import AsyncSession
 from models import (
     Analysis, ChatMessage as DbChatMessage, ChatSession, ErrorLog,
-    User, PromoCode, Payment, RagLog, ToolResult, SocialAccount, ProjectTree,
+    User, PromoCampaign, PromoCode, PromoRedemption, Payment, RagLog, ToolResult, SocialAccount, ProjectTree,
     AdminAuditLog, Project, ResearchJob,
 )
 import passport as passport_lib
 from sqlalchemy import select, func as sa_func
+from sqlalchemy.exc import IntegrityError
 from schemas import (
     AnalysisCreateRequest,
     AnalysisResponse,
@@ -137,6 +139,9 @@ from schemas import (
     EmailCodeVerifyRequest,
     PromoCodeCreate,
     PromoCodeResponse,
+    PromoCampaignCreate,
+    PromoCampaignUpdate,
+    PromoCodesGenerateRequest,
     PaymentResponse,
     PaymentResponse,
     SubscriptionResponse,
@@ -214,13 +219,28 @@ SYSTEM_PROMPT = (
     "достоверные данные из контекста. Отвечай строго в формате JSON без пояснений."
 )
 SYSTEM_CHAT_PROMPT = (
-    "Ты — Pitchy, ведущий эксперт по венчурным инвестициям и развитию технологического бизнеса в России. "
+    "Ты — аналитическая система Pitchy для проверки стартапов и бизнес-гипотез на российском рынке. "
     "ОТВЕЧАЙ СТРОГО НА РУССКОМ ЯЗЫКЕ. Использование китайских иероглифов или любых других языков (кроме общепринятых английских терминов) КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО. "
     "Если ты начнешь отвечать на китайском — это будет считаться системной ошибкой. "
-    "Твоя задача — давать глубокий, структурированный и визуально чистый анализ проектов для российского рынка. "
+    "Твоя задача — проводить строгий инвестиционный скрининг, а не поддерживать пользователя или продавать ему его идею. "
+    "Будь жёстким, конкретным и профессиональным критиком, но не груби. Не смягчай вывод ради вежливости, не хвали идею без доказательств и не придумывай сильные стороны для баланса. "
+    "Если гипотеза противоречива, вторична, не имеет платёжеспособного спроса, защищаемого преимущества, реалистичной экономики или законного способа реализации — прямо напиши, что в текущем виде она нежизнеспособна, и перечисли причины по степени критичности. "
+    "Начинай анализ идеи с короткого вердикта: «ОТКЛОНИТЬ», «НУЖНА ПРОВЕРКА» или «МОЖНО ТЕСТИРОВАТЬ». Затем обязательно укажи: критические противоречия; неподтверждённые допущения; стоп-факторы; какие данные опровергнут или подтвердят вывод; минимальный дешёвый тест. "
+    "Отделяй факты из источников от предположений и расчётных оценок. Не выдавай отсутствие данных за положительный сигнал. Если данных недостаточно для вывода — назови это блокером и запроси конкретные цифры. "
+    "Любые цифры проверяй на арифметическую и экономическую согласованность. Явно отмечай взаимоисключающие заявления пользователя, нереалистичные сроки, скрытые зависимости, регуляторные ограничения и бесплатные альтернативы. "
+    "НИКОГДА не выдумывай CAC, LTV, retention, средний чек, готовность платить, размер рынка, экономию, маржу или долю клиентов. Если числа не даны пользователем и не подтверждены релевантным источником, пиши «нет данных», давай формулу и список данных для расчёта. Не переноси отраслевые цифры из нерелевантного кейса на проект пользователя. "
+    "Ссылка [KBn] допустима только когда соответствующий фрагмент прямо подтверждает конкретное утверждение. Общие советы из базы знаний не являются доказательством спроса, цены или экономики данного проекта. "
+    "Не считай 20 интервью или любое другое число разговоров подтверждением спроса само по себе. Проверяй: с кем говорили, как часто возникала проблема, чем её решают сейчас, сколько реально теряют, есть ли бюджет, кто принимает решение и были ли предзаказ, пилот или иное обязательство. "
+    "Если непонятно, что именно продаётся, кому и как работает продукт, не фантазируй сегменты и выгоды. Сначала задай не более трёх блокирующих уточняющих вопросов. "
+    "Не предлагай пивот только ради конструктивного финала. Пивот допустим лишь если он сохраняет подтверждённый актив или инсайт команды и устраняет названные стоп-факторы; иначе честно рекомендуй прекратить работу над гипотезой. "
+    "Не заканчивай шаблонным «Хотите, я помогу…». Завершай конкретным следующим тестом, перечнем требуемых данных либо решением остановить гипотезу. "
+    "Не советуй покупать, продавать или держать конкретные финансовые инструменты и не подстраивай финансовые советы под личный риск-профиль пользователя. Материалы должны оставаться информационно-аналитическими. "
+    "Твоя роль — проверка аргументов, а не источник авторитета: НИКОГДА не называй себя экспертом, инвестиционным советником, аналитиком с опытом или представителем венчурного фонда. "
+    "НИКОГДА не подписывай ответ: не добавляй в конце «Pitchy», «команда Pitchy», должность, роль, имя или подпись в любом оформлении. Не используй формулировку «Pitchy, эксперт по венчурным инвестициям» ни при каких обстоятельствах. "
+    "Давай глубокий, структурированный и визуально чистый анализ проектов для российского рынка. "
     "Отвечай сразу полноценным итоговым ответом в формате чистого Markdown (жирный текст, списки, таблицы). "
     "НИКОГДА не используй теги <think>, <thought> или подобные — пиши ответ напрямую. "
-    "Никогда не упоминай в ответе названия моделей, провайдеров, технологий бэкенда (Qwen, GLM, Makura, Exa, ChromaDB и т.п.) — представляйся только как Pitchy. "
+    "Никогда не упоминай в ответе названия моделей, провайдеров или технологий бэкенда (Qwen, GLM, Makura, Exa, ChromaDB и т.п.). "
     "Учитывай специфику РФ: регуляторику, конкуренцию, поведение потребителей и требования инвесторов."
 )
 
@@ -938,6 +958,7 @@ async def _gather_health() -> dict:
     # --- external probes, run in parallel ---
     makura_key = os.getenv("MAKURA_API_KEY", "")
     routerai_key = os.getenv("ROUTERAI_API_KEY", "")
+    routerai_base_url = os.getenv("ROUTERAI_BASE_URL", "https://routerai.ru/api/v1").rstrip("/")
     exa_key = os.getenv("EXA_API_KEY", "")
     langfuse_url = os.getenv("LANGFUSE_BASE_URL", "https://cloud.langfuse.com").rstrip("/")
     langfuse_configured = bool(os.getenv("LANGFUSE_PUBLIC_KEY") and os.getenv("LANGFUSE_SECRET_KEY"))
@@ -969,7 +990,7 @@ async def _gather_health() -> dict:
             return default
 
     (db_check, redis_check, rag_ok, alembic_check, sys_info, research_check,
-     makura_check, routerai_check, exa_check, jina_check, smtp_check,
+     makura_check, routerai_check, exa_check, smtp_check,
      chroma_check, frontend_check, loki_check, grafana_check, crowdsec_check,
      langfuse_check) = await asyncio.gather(
         _safe_thread(_db_details, {"state": "down", "ok": False, "error": "timeout"}),
@@ -981,11 +1002,10 @@ async def _gather_health() -> dict:
         _check_http("https://api.makura.ai/v1/models",
                     headers={"Authorization": f"Bearer {makura_key}"} if makura_key else None,
                     method="GET"),
-        _check_http("https://routerai.ru/api/v1/models",
+        _check_http(f"{routerai_base_url}/models",
                     headers={"Authorization": f"Bearer {routerai_key}"} if routerai_key else None,
                     method="GET"),
         _check_tcp(exa_probe_host, exa_probe_port, timeout=5.0),
-        _check_http("https://api.jina.ai/v1/rerank"),  # known 451 from RU — visibility only
         smtp_probe,
         _check_http("http://chroma:8000/api/v2/heartbeat", method="GET"),
         _check_http("http://frontend:3000", method="GET"),
@@ -999,11 +1019,6 @@ async def _gather_health() -> dict:
     redis_ok = bool(redis_check.get("ok"))
 
     # Friendlier annotations for known states ----
-    # jina is geo-blocked from RU servers; we have an internal fallback,
-    # so demote to "warning" with a clear note instead of "down".
-    if jina_check.get("status_code") == 451:
-        jina_check["state"] = "warning"
-        jina_check["note"] = "geo-blocked from RU (expected, RAG fallback covers it)"
     # exa: TCP-only probe — validates reachability without burning the search
     # balance. Target is the egress proxy when one is configured (that's the hop
     # that can actually break), otherwise api.exa.ai:443 directly. If the key
@@ -1023,6 +1038,12 @@ async def _gather_health() -> dict:
     if not routerai_key:
         routerai_check["state"] = "skipped"
         routerai_check["note"] = "ROUTERAI_API_KEY not set"
+    from rag_reranker import RERANKER_MODEL
+    routerai_check["reranker_model"] = RERANKER_MODEL
+    routerai_check["reranker_endpoint"] = f"{routerai_base_url}/rerank"
+    routerai_check["note"] = (
+        (routerai_check.get("note") + "; ") if routerai_check.get("note") else ""
+    ) + "health probe checks RouterAI reachability; chat uses the dedicated rerank endpoint"
     if not langfuse_configured:
         langfuse_check["state"] = "skipped"
         langfuse_check["note"] = "Langfuse credentials not configured"
@@ -1050,7 +1071,6 @@ async def _gather_health() -> dict:
         "makura":  {**makura_check, "configured": bool(makura_key)},
         "routerai": {**routerai_check, "configured": bool(routerai_key)},
         "exa":     {**exa_check, "configured": bool(exa_key)},
-        "jina":    jina_check,
         "langfuse": {**langfuse_check, "configured": langfuse_configured},
         "loki": loki_check,
         "grafana": grafana_check,
@@ -1129,7 +1149,7 @@ def _render_health_html(data: dict) -> str:
     sys_info = checks.pop("system", {})
     ordered = [
         "db", "redis", "chroma", "rag", "alembic", "frontend", "research",
-        "smtp", "makura", "routerai", "exa", "jina", "langfuse",
+        "smtp", "makura", "routerai", "exa", "langfuse",
         "loki", "grafana", "crowdsec",
     ]
     cards_html = "".join(card(k, checks[k]) for k in ordered if k in checks)
@@ -2331,6 +2351,13 @@ def save_assistant_message(session_id: int, content: str, thoughts: str | None =
     from models import ChatMessage as DbChatMessage
     db = SessionLocal()
     try:
+        if client_id:
+            existing = db.query(DbChatMessage).filter(
+                DbChatMessage.session_id == session_id,
+                DbChatMessage.client_id == client_id,
+            ).first()
+            if existing:
+                return existing.id
         msg = DbChatMessage(
             session_id=session_id, 
             role="assistant", 
@@ -2342,6 +2369,7 @@ def save_assistant_message(session_id: int, content: str, thoughts: str | None =
         db.add(msg)
         db.commit() # Сразу фиксируем в базе
         db.refresh(msg)
+        return msg.id
     finally:
         db.close()
 
@@ -2350,6 +2378,14 @@ async def async_save_assistant_message(session_id: int, content: str, thoughts: 
     from db_async import AsyncSessionLocal
     from models import ChatMessage as DbChatMessage
     async with AsyncSessionLocal() as db:
+        if client_id:
+            existing_result = await db.execute(select(DbChatMessage).where(
+                DbChatMessage.session_id == session_id,
+                DbChatMessage.client_id == client_id,
+            ))
+            existing = existing_result.scalar_one_or_none()
+            if existing:
+                return existing.id
         msg = DbChatMessage(
             session_id=session_id,
             role="assistant",
@@ -2367,8 +2403,33 @@ async def async_save_assistant_message(session_id: int, content: str, thoughts: 
         return new_id
 
 
-@app.post("/chat")
+def replay_chat_message(message: DbChatMessage) -> EventSourceResponse:
+    """Replay an already completed idempotent request as a short SSE stream."""
+    async def replay_generator():
+        yield format_sse({"type": "metadata", "model": "Pitchy (replay)"})
+        if message.sources:
+            yield format_sse({"type": "sources", "data": message.sources})
+        if message.thoughts:
+            yield format_sse({"type": "thought", "content": message.thoughts})
+        yield format_sse({"type": "chunk", "content": message.content or ""})
+
+    return EventSourceResponse(
+        replay_generator(),
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@app.post("/chat", deprecated=True, include_in_schema=False)
 async def chat(payload: ChatRequest):
+    raise HTTPException(
+        status_code=410,
+        detail="Legacy chat endpoint retired; use POST /chat/sessions/{session_id}/messages",
+    )
+
     if not payload.messages:
         raise HTTPException(status_code=400, detail="messages is required")
 
@@ -2454,7 +2515,7 @@ async def delete_chat_session(
     await db.execute(delete(DbChatMessage).where(DbChatMessage.session_id == session.id))
     await db.delete(session)
     await db.commit()
-    return {"status": "ok"}
+    return {"status": "ok", "deleted_id": session_id}
 
 
 @app.get("/chat/sessions/{session_id}/messages", response_model=list[ChatMessageResponse])
@@ -2476,7 +2537,7 @@ async def list_chat_messages(
     return [ChatMessageResponse.model_validate(m) for m in messages]
 
 
-@app.post("/chat/messages")
+@app.post("/chat/messages", deprecated=True, include_in_schema=False)
 @observe(name="create_chat_message")
 async def create_chat_message(
     payload: ChatMessageCreateRequest,
@@ -2484,6 +2545,11 @@ async def create_chat_message(
     user: User = Depends(get_async_current_user),
     db: AsyncSession = Depends(get_async_db),
 ) -> StreamingResponse:
+    raise HTTPException(
+        status_code=410,
+        detail="Legacy chat endpoint retired; use POST /chat/sessions/{session_id}/messages",
+    )
+
     if langfuse_context:
         langfuse_context.update_current_trace(
             user_id=str(user.id),
@@ -3300,6 +3366,263 @@ async def get_promocodes(
 ) -> list[PromoCodeResponse]:
     res = await db.execute(select(PromoCode).order_by(PromoCode.created_at.desc()))
     return res.scalars().all()
+
+
+def _promo_campaign_dict(campaign: PromoCampaign) -> dict:
+    succeeded = [r for r in campaign.redemptions if r.status == "succeeded"]
+    reserved = [r for r in campaign.redemptions if r.status == "reserved"]
+    codes = sorted(campaign.codes, key=lambda item: item.created_at, reverse=True)
+    return {
+        "id": campaign.id,
+        "name": campaign.name,
+        "description": campaign.description,
+        "status": campaign.status,
+        "benefit_type": campaign.benefit_type,
+        "discount_percent": campaign.discount_percent,
+        "fixed_price": float(campaign.fixed_price) if campaign.fixed_price is not None else None,
+        "target_tier": campaign.target_tier,
+        "starts_at": campaign.starts_at,
+        "ends_at": campaign.ends_at,
+        "max_redemptions": campaign.max_redemptions,
+        "per_user_limit": campaign.per_user_limit,
+        "first_payment_only": campaign.first_payment_only,
+        "code_mode": campaign.code_mode,
+        "code_prefix": campaign.code_prefix,
+        "post_promo_action": campaign.post_promo_action,
+        "renewal_config": campaign.renewal_config,
+        "renewal_price_policy": campaign.renewal_price_policy,
+        "renewal_fixed_price": (
+            float(campaign.renewal_fixed_price)
+            if campaign.renewal_fixed_price is not None
+            else None
+        ),
+        "renewal_notice_days": campaign.renewal_notice_days,
+        "created_at": campaign.created_at,
+        "updated_at": campaign.updated_at,
+        "codes_count": len(codes),
+        "redemptions_count": len(succeeded),
+        "reserved_count": len(reserved),
+        "revenue": round(sum(float(r.final_amount) for r in succeeded), 2),
+        "discount_total": round(sum(float(r.discount_amount) for r in succeeded), 2),
+        "codes": [
+            {
+                "id": code.id,
+                "code": code.code,
+                "is_active": code.is_active,
+                "current_uses": code.current_uses,
+                "max_uses": code.max_uses,
+                "assigned_user_id": code.assigned_user_id,
+                "expires_at": code.expires_at,
+            }
+            for code in codes[:100]
+        ],
+    }
+
+
+def _utc_naive(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+async def _load_promo_campaign(db: AsyncSession, campaign_id: int) -> PromoCampaign | None:
+    from sqlalchemy.orm import selectinload
+
+    return (await db.execute(
+        select(PromoCampaign)
+        .options(
+            selectinload(PromoCampaign.codes),
+            selectinload(PromoCampaign.redemptions),
+        )
+        .where(PromoCampaign.id == campaign_id)
+    )).scalar_one_or_none()
+
+
+async def _generate_campaign_codes(
+    db: AsyncSession,
+    campaign: PromoCampaign,
+    *,
+    count: int,
+    prefix: str | None,
+    shared_code: str | None = None,
+) -> list[PromoCode]:
+    normalized_prefix = "".join(ch for ch in (prefix or "PROMO").upper() if ch.isalnum())[:20] or "PROMO"
+    if shared_code:
+        candidates = [shared_code.strip().upper()]
+    else:
+        alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+        candidates: list[str] = []
+        while len(candidates) < count:
+            candidate = f"{normalized_prefix}-{''.join(secrets.choice(alphabet) for _ in range(8))}"
+            if candidate not in candidates:
+                candidates.append(candidate)
+
+    existing = set((await db.execute(
+        select(PromoCode.code).where(PromoCode.code.in_(candidates))
+    )).scalars().all())
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Промокод уже существует: {sorted(existing)[0]}",
+        )
+
+    per_code_limit = 1 if campaign.code_mode == "bulk" else campaign.max_redemptions
+    created = [
+        PromoCode(
+            code=code,
+            campaign_id=campaign.id,
+            discount_percent=int(campaign.discount_percent or 0),
+            target_tier=campaign.target_tier,
+            fixed_price=campaign.fixed_price,
+            max_uses=per_code_limit,
+            expires_at=campaign.ends_at,
+            is_active=True,
+        )
+        for code in candidates
+    ]
+    db.add_all(created)
+    await db.flush()
+    return created
+
+
+@app.get("/admin/promo-campaigns")
+async def get_promo_campaigns(
+    _: User = Depends(require_async_admin),
+    db: AsyncSession = Depends(get_async_db),
+) -> list[dict]:
+    from sqlalchemy.orm import selectinload
+
+    campaigns = (await db.execute(
+        select(PromoCampaign)
+        .options(
+            selectinload(PromoCampaign.codes),
+            selectinload(PromoCampaign.redemptions),
+        )
+        .order_by(PromoCampaign.created_at.desc())
+    )).scalars().all()
+    return [_promo_campaign_dict(campaign) for campaign in campaigns]
+
+
+@app.post("/admin/promo-campaigns")
+async def create_promo_campaign(
+    payload: PromoCampaignCreate,
+    _: User = Depends(require_async_admin),
+    db: AsyncSession = Depends(get_async_db),
+) -> dict:
+    from subscription_service import BASE_CONFIG, normalize_config
+
+    if payload.benefit_type == "percent_discount" and payload.discount_percent is None:
+        raise HTTPException(status_code=422, detail="Укажите процент скидки")
+    if payload.benefit_type == "fixed_price" and payload.fixed_price is None:
+        raise HTTPException(status_code=422, detail="Укажите фиксированную цену")
+    if payload.ends_at and payload.starts_at and payload.ends_at <= payload.starts_at:
+        raise HTTPException(status_code=422, detail="Дата окончания должна быть позже даты начала")
+    if payload.code_mode == "shared" and not payload.code:
+        raise HTTPException(status_code=422, detail="Для общего режима укажите промокод")
+    if payload.renewal_price_policy == "fixed" and payload.renewal_fixed_price is None:
+        raise HTTPException(status_code=422, detail="Укажите фиксированную цену продления")
+
+    renewal_config = None
+    if payload.post_promo_action in ("offer", "renew_base"):
+        try:
+            renewal_config = normalize_config(payload.renewal_config or BASE_CONFIG)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    campaign = PromoCampaign(
+        name=payload.name.strip(),
+        description=payload.description,
+        status=payload.status,
+        benefit_type=payload.benefit_type,
+        discount_percent=payload.discount_percent if payload.benefit_type == "percent_discount" else None,
+        fixed_price=payload.fixed_price if payload.benefit_type == "fixed_price" else None,
+        target_tier=payload.target_tier,
+        starts_at=_utc_naive(payload.starts_at),
+        ends_at=_utc_naive(payload.ends_at),
+        max_redemptions=payload.max_redemptions,
+        per_user_limit=payload.per_user_limit,
+        first_payment_only=payload.first_payment_only,
+        code_mode=payload.code_mode,
+        code_prefix=payload.code_prefix,
+        post_promo_action=payload.post_promo_action,
+        renewal_config=renewal_config,
+        renewal_price_policy=payload.renewal_price_policy,
+        renewal_fixed_price=payload.renewal_fixed_price,
+        renewal_notice_days=payload.renewal_notice_days,
+    )
+    db.add(campaign)
+    await db.flush()
+    await _generate_campaign_codes(
+        db,
+        campaign,
+        count=payload.generate_count if payload.code_mode == "bulk" else 1,
+        prefix=payload.code_prefix,
+        shared_code=payload.code if payload.code_mode == "shared" else None,
+    )
+    await db.commit()
+    loaded = await _load_promo_campaign(db, campaign.id)
+    return _promo_campaign_dict(loaded)
+
+
+@app.patch("/admin/promo-campaigns/{campaign_id}")
+async def update_promo_campaign(
+    campaign_id: int,
+    payload: PromoCampaignUpdate,
+    _: User = Depends(require_async_admin),
+    db: AsyncSession = Depends(get_async_db),
+) -> dict:
+    from subscription_service import normalize_config
+
+    campaign = (await db.execute(
+        select(PromoCampaign).where(PromoCampaign.id == campaign_id).with_for_update()
+    )).scalar_one_or_none()
+    if campaign is None:
+        raise HTTPException(status_code=404, detail="Промокампания не найдена")
+
+    values = payload.model_dump(exclude_unset=True)
+    for date_key in ("starts_at", "ends_at"):
+        if date_key in values:
+            values[date_key] = _utc_naive(values[date_key])
+    if "renewal_config" in values and values["renewal_config"] is not None:
+        try:
+            values["renewal_config"] = normalize_config(values["renewal_config"])
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    for key, value in values.items():
+        setattr(campaign, key, value)
+    if campaign.ends_at and campaign.starts_at and campaign.ends_at <= campaign.starts_at:
+        raise HTTPException(status_code=422, detail="Дата окончания должна быть позже даты начала")
+    campaign.updated_at = datetime.utcnow()
+    await db.commit()
+    loaded = await _load_promo_campaign(db, campaign.id)
+    return _promo_campaign_dict(loaded)
+
+
+@app.post("/admin/promo-campaigns/{campaign_id}/codes")
+async def generate_promo_campaign_codes(
+    campaign_id: int,
+    payload: PromoCodesGenerateRequest,
+    _: User = Depends(require_async_admin),
+    db: AsyncSession = Depends(get_async_db),
+) -> dict:
+    campaign = (await db.execute(
+        select(PromoCampaign).where(PromoCampaign.id == campaign_id)
+    )).scalar_one_or_none()
+    if campaign is None:
+        raise HTTPException(status_code=404, detail="Промокампания не найдена")
+    if campaign.code_mode != "bulk":
+        raise HTTPException(status_code=409, detail="Дополнительные коды доступны только для пула")
+    await _generate_campaign_codes(
+        db,
+        campaign,
+        count=payload.count,
+        prefix=payload.prefix or campaign.code_prefix,
+    )
+    await db.commit()
+    loaded = await _load_promo_campaign(db, campaign.id)
+    return _promo_campaign_dict(loaded)
 
 
 @app.post("/admin/promocodes", response_model=PromoCodeResponse)
@@ -4186,23 +4509,6 @@ async def export_chat_message(
     )
 
 
-@app.delete("/chat/sessions/{session_id}")
-async def delete_chat_session(
-    session_id: int,
-    user: User = Depends(get_async_current_user),
-    db: AsyncSession = Depends(get_async_db),
-) -> dict:
-    res = await db.execute(
-        select(ChatSession)
-        .where(ChatSession.id == session_id, ChatSession.user_id == user.id)
-    )
-    session = res.scalar_one_or_none()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-    
-    await db.delete(session)
-    await db.commit()
-    return {"status": "ok", "deleted_id": session_id}
 class FeedbackRequest(BaseModel):
     feedback: int
 
@@ -4325,6 +4631,26 @@ async def send_chat_message(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
+    # Network retries reuse client-generated UUIDs. Replay a completed answer,
+    # or reject a still-running duplicate before charging limits or inserting.
+    if payload.assistant_client_id:
+        existing_assistant_result = await db.execute(select(DbChatMessage).where(
+            DbChatMessage.session_id == session.id,
+            DbChatMessage.client_id == payload.assistant_client_id,
+            DbChatMessage.role == "assistant",
+        ))
+        existing_assistant = existing_assistant_result.scalar_one_or_none()
+        if existing_assistant:
+            return replay_chat_message(existing_assistant)
+    if payload.client_id:
+        existing_user_result = await db.execute(select(DbChatMessage).where(
+            DbChatMessage.session_id == session.id,
+            DbChatMessage.client_id == payload.client_id,
+            DbChatMessage.role == "user",
+        ))
+        if existing_user_result.scalar_one_or_none():
+            raise HTTPException(status_code=409, detail="Chat request is already in progress")
+
     # Determine which feature flag (if any) this request is asking for so
     # the limit check can short-circuit with upgrade_required on free tier.
     requested_feature = None
@@ -4370,6 +4696,8 @@ async def send_chat_message(
     # Query used for classification/retrieval/web search — the user's question,
     # not the (potentially huge) attached file contents.
     query_text = raw_content or "Проанализируй прикреплённые файлы: " + ", ".join(a.name for a in attachments)
+    from chat_pipeline import build_model_user_content
+    model_user_content = build_model_user_content(raw_content, attachment_block)
 
     # 1. Save User Message
     user_msg = DbChatMessage(
@@ -4379,7 +4707,11 @@ async def send_chat_message(
         client_id=payload.client_id
     )
     db.add(user_msg)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Duplicate chat request")
     await db.refresh(session)
 
     # Авто-название по контексту (как в Claude): пока у чата плейсхолдер,
@@ -4487,7 +4819,8 @@ async def send_chat_message(
                 tags=["main_chat", "deep_search" if getattr(payload, "use_deep_search", False) else "basic_search"]
             )
 
-        provider = os.getenv("PRIMARY_PROVIDER", "makura")
+        main_chat_model = os.getenv("MAIN_CHAT_MODEL", "z-ai/glm-5.2")
+        provider = f"routerai/{main_chat_model}"
         full_response = ""
         full_thoughts = ""
         usage_data = None
@@ -4495,11 +4828,24 @@ async def send_chat_message(
         start_time = time.time()
         ttft = None
         message_saved = False  # Track if the message was successfully queued for saving
+        pipeline_meta = {
+            "pipeline": "chat-v2",
+            "rag_candidates": 0,
+            "reranked_candidates": 0,
+            "web_sources": 0,
+            "swarm_facts": 0,
+            "fallbacks": [],
+        }
 
         try:
             # We need history for contextual responses — use pre-loaded messages
             history = sorted(session.messages, key=lambda m: m.created_at)
             chat_history = [ChatMessage(role=m.role, content=m.content) for m in history]
+            from chat_pipeline import build_history_text
+            # Bump whenever the behavioural contract changes so a response
+            # generated under an older, softer persona is never replayed.
+            cache_scope = f"chat-v3:{session.id}"
+            cache_query = query_text + "\nRECENT CONTEXT:\n" + build_history_text(chat_history[-4:])
 
             # Пассивная память папки: если чат живёт в папке проекта, тянем
             # дамп паспорта + релевантные факты, чтобы заземлить любой ответ.
@@ -4527,7 +4873,7 @@ async def send_chat_message(
                 return format_sse({"type": "thought", "content": content})
 
             # ===========================================================
-            # STAGE 1/6 — Semantic cache lookup
+            # STAGE 1/7 — Semantic cache lookup
             # ===========================================================
             yield _emit_thought("Проверяю, не отвечал ли я на похожий вопрос недавно.\n")
 
@@ -4536,10 +4882,14 @@ async def send_chat_message(
             if not (use_deep_search_flag or use_research_flag or is_pres_request or attachments or export_request):
                 try:
                     from ops.cache.semantic_cache import semantic_cache as _sc
-                    cached = await _sc.get(query=query_text, project_id=str(session.id))
-                    if cached:
+                    cached_entry = await _sc.get_entry(query=cache_query, project_id=cache_scope)
+                    if cached_entry:
+                        cached = cached_entry["response"]
+                        cached_sources = cached_entry.get("sources") or []
                         yield _emit_thought("Нашёл подходящий ответ из памяти — отдаю мгновенно.\n")
                         yield format_sse({"type": "metadata", "model": "Pitchy"})
+                        if cached_sources:
+                            yield format_sse({"type": "sources", "data": cached_sources})
                         yield format_sse({"type": "chunk", "content": cached})
                         full_response = cached
                         ttft = time.time() - start_time
@@ -4550,7 +4900,7 @@ async def send_chat_message(
                             content=full_response,
                             thoughts=full_thoughts.strip() or None,
                             client_id=payload.assistant_client_id,
-                            sources=None,
+                            sources=cached_sources or None,
                         ))
                         return
                 except Exception as e:
@@ -4559,37 +4909,35 @@ async def send_chat_message(
                 yield _emit_thought("Пропускаю быстрый ответ — нужен свежий анализ.\n")
 
             # ===========================================================
-            # STAGE 2/6 — Parallel: intent classifier + knowledge base
+            # STAGE 2/7 — Intent routing, then targeted knowledge-base retrieval
             # ===========================================================
             cats: list = []
             slm_res: dict = {}
             context_chunks: list = []
             try:
                 from slm_dispatcher import slm_dispatcher as _slm
-                slm_task = asyncio.create_task(_slm.classify_query_intent(query_text))
-                context_task = asyncio.create_task(
-                    asyncio.to_thread(rag.get_relevant_chunks, query_text, categories=None, top_k=10)
+                from chat_pipeline import (
+                    RAG_TIMEOUT_SECONDS,
+                    ROUTING_TIMEOUT_SECONDS,
+                    sanitize_categories,
                 )
-
                 yield _emit_thought("Разбираюсь в сути запроса и одновременно поднимаю релевантный контекст из базы знаний.\n")
-
-                pending = {slm_task, context_task}
-                while pending:
-                    _, pending = await asyncio.wait(pending, timeout=5.0)
-                    if pending:
-                        yield format_sse({"type": "ping"})
-
-                if slm_task.exception() is None:
-                    slm_res = slm_task.result() or {}
-                    cats = slm_res.get("categories") or []
-                if context_task.exception() is None:
-                    context_chunks = context_task.result() or []
-
-                if cats:
-                    context_chunks = [
-                        c for c in context_chunks
-                        if isinstance(c, dict) and any(cat in c.get('metadata', {}).get('collection', '') for cat in cats)
-                    ] or context_chunks
+                slm_res = await asyncio.wait_for(
+                    _slm.classify_query_intent(query_text),
+                    timeout=ROUTING_TIMEOUT_SECONDS,
+                ) or {}
+                cats = sanitize_categories(slm_res.get("categories"))
+                context_chunks = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        rag.get_relevant_chunks,
+                        query_text,
+                        categories=cats or None,
+                        top_k=10,
+                    ),
+                    timeout=RAG_TIMEOUT_SECONDS,
+                ) or []
+                pipeline_meta["categories"] = cats
+                pipeline_meta["rag_candidates"] = len(context_chunks)
 
                 topic_label = "финансовая модель" if slm_res.get("is_finance") else \
                               "глубокий анализ" if slm_res.get("is_deep_search") else "общий анализ"
@@ -4599,36 +4947,65 @@ async def send_chat_message(
                 )
             except Exception as e:
                 logger.error(f"Stage 2 (intent+RAG) failed: {e}")
+                pipeline_meta["fallbacks"].append("routing_or_rag")
                 yield _emit_thought("Контекст подгрузить не удалось — отвечаю на общих знаниях.\n")
 
             # ===========================================================
-            # STAGE 3/6 — Web search (conditional)
+            # STAGE 3/7 — Web search (conditional)
             # ===========================================================
             search_ctx = ""
+            from chat_pipeline import requires_fresh_web_search
             should_search = (
                 use_deep_search_flag
                 or use_research_flag
                 or slm_res.get("is_deep_search", False)
+                or requires_fresh_web_search(query_text)
             )
+            from chat_pipeline import RERANK_TIMEOUT_SECONDS, rerank_rag_entries
+            rerank_task = asyncio.create_task(
+                rerank_rag_entries(query_text, context_chunks[:10], top_k=6)
+            ) if context_chunks else None
+
             if should_search and not is_pres_request:
                 yield _emit_thought("Запрос требует свежих данных — ищу актуальную информацию в интернете.\n")
                 try:
                     from search_agent import async_search_with_sources
-                    search_sources, search_ctx = await async_search_with_sources(query_text, use_deep_search=True)
+                    from chat_pipeline import WEB_SEARCH_TIMEOUT_SECONDS
+                    search_sources, search_ctx = await asyncio.wait_for(
+                        async_search_with_sources(query_text, use_deep_search=True),
+                        timeout=WEB_SEARCH_TIMEOUT_SECONDS,
+                    )
                     if search_sources:
                         sources = search_sources
+                        pipeline_meta["web_sources"] = len(search_sources)
                         yield format_sse({"type": "sources", "data": search_sources})
                         yield _emit_thought(f"Подобрал {len(search_sources)} проверенных источников.\n")
                 except Exception as e:
                     logger.error(f"Stage 3 (web search) failed: {e}")
+                    pipeline_meta["fallbacks"].append("web_search")
             else:
                 yield _emit_thought("Внешний поиск не нужен — данных в базе знаний достаточно.\n")
 
             # ===========================================================
-            # STAGE 4/6 — Analytical agents (Map phase)
+            # STAGE 4/7 — Dedicated RAG reranker
             # ===========================================================
             swarm_facts = ""
-            rag_texts = [c["text"] if isinstance(c, dict) else c for c in context_chunks[:10]]
+            reranked_entries = context_chunks[:6]
+            if rerank_task:
+                try:
+                    reranked_entries = await asyncio.wait_for(
+                        rerank_task,
+                        timeout=RERANK_TIMEOUT_SECONDS,
+                    )
+                except Exception as e:
+                    logger.error(f"RAG reranker failed: {e}")
+                    pipeline_meta["fallbacks"].append("reranker")
+            pipeline_meta["reranked_candidates"] = len(reranked_entries)
+            rag_texts = [str(c.get("text") or "") for c in reranked_entries]
+
+            # ===========================================================
+            # STAGE 5/7 — Analytical agents (Map phase)
+            # ===========================================================
             chunks_for_swarm = rag_texts + ([search_ctx] if search_ctx else [])
 
             if chunks_for_swarm and not is_pres_request and not use_research_flag:
@@ -4638,7 +5015,11 @@ async def send_chat_message(
                 )
                 try:
                     from swarm_agent import run_analytical_swarm
-                    swarm_res = await run_analytical_swarm(chunks_for_swarm)
+                    from chat_pipeline import SWARM_TIMEOUT_SECONDS
+                    swarm_res = await asyncio.wait_for(
+                        run_analytical_swarm(chunks_for_swarm),
+                        timeout=SWARM_TIMEOUT_SECONDS,
+                    )
                     facts: list[str] = []
                     for item in swarm_res or []:
                         comps = getattr(item, 'competitors', None) or []
@@ -4649,28 +5030,26 @@ async def send_chat_message(
                             facts.append("Метрики: " + "; ".join(mets))
                     if facts:
                         swarm_facts = "\n- ".join(sorted(set(facts)))
+                        pipeline_meta["swarm_facts"] = len(facts)
                         yield _emit_thought(f"Извлёк {len(facts)} групп проверенных фактов.\n")
                     else:
                         yield _emit_thought("Структурированных фактов не нашлось — опираюсь на исходные фрагменты.\n")
                 except Exception as e:
                     logger.error(f"Stage 4 (analytical agents) failed: {e}")
+                    pipeline_meta["fallbacks"].append("swarm")
                     yield _emit_thought("Аналитические агенты недоступны — опираюсь на исходные фрагменты.\n")
             else:
                 yield _emit_thought("Дополнительный анализ фрагментов не требуется.\n")
 
-            # Compile final RAG context for GLM-5 (Reduce phase input)
-            compiled_rag = ""
-            if swarm_facts:
-                compiled_rag += f"ПРОВЕРЕННЫЕ ФАКТЫ ИЗ БАЗЫ ЗНАНИЙ И СЕТИ:\n- {swarm_facts}\n\n"
-            if not swarm_facts and rag_texts:
-                compiled_rag += f"ДАННЫЕ ИЗ БАЗЫ ЗНАНИЙ:\n{chr(10).join(rag_texts[:3])}\n\n"
-            if search_ctx and not swarm_facts:
-                compiled_rag += f"ДАННЫЕ ИЗ ИНТЕРНЕТА:\n{search_ctx[:2500]}\n\n"
-
-            # Паспорт + память папки идут первыми — это самый авторитетный
-            # контекст о проекте, важнее общих фрагментов из базы знаний.
-            if project_ctx:
-                compiled_rag = project_ctx + "\n\n" + compiled_rag
+            # Raw evidence is always preserved. Structured swarm facts are an
+            # additional signal and can no longer erase RAG or web context.
+            from chat_pipeline import build_evidence_context
+            compiled_rag = build_evidence_context(
+                project_context=project_ctx,
+                rag_entries=reranked_entries,
+                web_context=search_ctx,
+                swarm_facts=swarm_facts,
+            )
 
             # 3.1 MODE: PRESENTATION GENERATION
             if is_pres_request:
@@ -4690,7 +5069,7 @@ async def send_chat_message(
 
                 final_slides = []
                 # Attached files feed the deck content (question + extracted text).
-                pres_query = stored_content[:24_000] if attachments else payload.content
+                pres_query = model_user_content[:24_000]
                 provider_used = None
                 try:
                     async for item in _handle_presentation_in_chat(
@@ -4785,19 +5164,18 @@ Never print raw URLs, scraped navigation, long date sequences, or a
 "Source N / Content" catalogue. Do not invent facts absent from the evidence.
 """
                 research_prompt = (
-                    f"USER QUESTION:\n{stored_content}\n\n"
-                    f"NUMBERED WEB EVIDENCE:\n{search_ctx[:16000]}\n"
+                    f"USER QUESTION:\n{model_user_content}\n\n"
+                    f"AVAILABLE EVIDENCE:\n{compiled_rag[:28000]}\n"
                 )
-                if attachment_block:
-                    research_prompt += (
-                        "\nATTACHED MATERIAL EXCERPT:\n"
-                        f"{attachment_block[:4000]}\n"
-                    )
 
                 yield _emit_thought(
                     "Источники собраны. Сопоставляю факты и формирую аналитический отчёт.\n"
                 )
-                raw_gen = stream_makura(research_system, research_prompt)
+                raw_gen = stream_routerai(
+                    research_system,
+                    research_prompt,
+                    model=main_chat_model,
+                )
                 async for sse_item in parse_thought_generator(raw_gen):
                     try:
                         data = json.loads(sse_item.get("data", "{}"))
@@ -4818,13 +5196,14 @@ Never print raw URLs, scraped navigation, long date sequences, or a
             # 4. MODE: QUICK SEARCH OR REGULAR CHAT
             else:
                 # =======================================================
-                # STAGE 5/6 — GLM-5 Reduce phase (synthesis + streaming)
+                # STAGE 6/7 — GLM-5 Reduce phase (synthesis + streaming)
                 # =======================================================
-                history_text = "\n".join([f"{m.role}: {m.content[:300]}" for m in chat_history[-8:]])
+                from chat_pipeline import build_history_text
+                history_text = build_history_text(chat_history)
                 user_prompt = (
                     f"{compiled_rag}"
                     f"ИСТОРИЯ ДИАЛОГА:\n{history_text}\n\n"
-                    f"Вопрос пользователя: {stored_content}"
+                    f"Вопрос пользователя: {model_user_content}"
                 )
 
                 yield _emit_thought("Готов. Формулирую развёрнутый ответ на основе собранных данных.\n")
@@ -4849,7 +5228,11 @@ Never print raw URLs, scraped navigation, long date sequences, or a
                         "напиши, что данных о проекте недостаточно, и попроси описать проект или заполнить "
                         "паспорт проекта. Никаких выдуманных данных."
                     )
-                raw_gen = stream_makura(_export_system, user_prompt)
+                raw_gen = stream_routerai(
+                    _export_system,
+                    user_prompt,
+                    model=main_chat_model,
+                )
 
                 async for sse_item in parse_thought_generator(raw_gen):
                     # sse_item is a dict from format_sse: {"event": "...", "data": "JSON_STRING"}
@@ -4955,7 +5338,7 @@ Never print raw URLs, scraped navigation, long date sequences, or a
                     logger.warning(f"schedule project memory extraction failed: {e}")
 
             # =======================================================
-            # STAGE 6/6 — Background Semantic Cache write
+            # STAGE 7/7 — Background Semantic Cache write
             # Cache only successful, non-research, non-presentation
             # responses so future identical queries get the fast path.
             # =======================================================
@@ -4963,15 +5346,25 @@ Never print raw URLs, scraped navigation, long date sequences, or a
                 try:
                     from ops.cache.semantic_cache import semantic_cache as _sc
                     asyncio.create_task(_sc.set(
-                        query=query_text,
+                        query=cache_query,
                         response=full_response,
-                        project_id=str(session.id),
+                        project_id=cache_scope,
+                        sources=sources or None,
                     ))
                 except Exception as e:
                     logger.error(f"Stage 6 (semantic cache set) failed: {e}")
         except Exception as e:
-            logger.error(f"Session streaming failed: {e}")
-            yield format_sse({"type": "error", "content": str(e)})
+            logger.error(f"Session streaming failed: {type(e).__name__}: {e}", exc_info=True)
+            pipeline_meta["fallbacks"].append("main_chat_provider")
+            if full_response.strip():
+                safe_error = "\n\nОтвет прервался из-за временной ошибки сервиса. Попробуйте повторить запрос."
+            else:
+                safe_error = (
+                    "Не удалось получить ответ от аналитической модели. "
+                    "Попробуйте повторить запрос через минуту."
+                )
+            full_response += safe_error
+            yield format_sse({"type": "chunk", "content": safe_error})
         finally:
             # Rescue save: if message wasn't saved (e.g. stream aborted), save the partial response
             if not message_saved and full_response.strip():
@@ -4998,8 +5391,10 @@ Never print raw URLs, scraped navigation, long date sequences, or a
                             "output": usage_data.get("completion_tokens", 0),
                             "total": usage_data.get("total_tokens", 0)
                         }
-                    if ttft is not None:
-                        update_params["metadata"] = {"ttft": ttft}
+                    update_params["metadata"] = {
+                        **pipeline_meta,
+                        "ttft": ttft,
+                    }
                     
                     langfuse_context.update_current_observation(**update_params)
                 except Exception as e:

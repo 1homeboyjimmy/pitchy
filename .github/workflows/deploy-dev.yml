@@ -4,6 +4,16 @@ on:
   push:
     branches: [ dev ]
 
+# Раннеры self-hosted иногда отваливаются между джобами: 25.07 build-frontend
+# отработал на ru-vmmedium, а build-backend так и не получил раннера и провисел
+# в очереди часами, блокируя deploy. Без группы каждый следующий пуш вставал в
+# ту же очередь за мёртвым раном. Теперь новый пуш в dev снимает предыдущий —
+# деплой идемпотентен (reset --hard + compose up --force-recreate + миграции),
+# поэтому обрыв на середине лечится следующим прогоном.
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: true
+
 env:
   REGISTRY: ghcr.io
   BACKEND_IMAGE: ghcr.io/${{ github.repository }}/backend
@@ -12,6 +22,7 @@ env:
 jobs:
   build-backend:
     runs-on: self-hosted
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
@@ -45,6 +56,7 @@ jobs:
 
   build-frontend:
     runs-on: self-hosted
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
@@ -79,6 +91,7 @@ jobs:
 
   deploy:
     runs-on: self-hosted
+    timeout-minutes: 45
     needs: [build-backend, build-frontend]
     steps:
       - name: Deploy to staging over SSH

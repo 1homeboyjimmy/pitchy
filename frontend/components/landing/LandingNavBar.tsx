@@ -1,18 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Menu, X, ChevronDown } from "lucide-react";
+import { useState } from "react";
+import { Menu, X } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 
 export function LandingNavBar() {
-    const pathname = usePathname();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
-
-    useEffect(() => {
-        setIsMenuOpen(false);
-    }, [pathname]);
 
     const navLinks = [
         { name: "Главная", href: "/" },
@@ -23,7 +17,7 @@ export function LandingNavBar() {
 
     return (
         <header className="fixed top-0 left-0 right-0 z-[100] w-full">
-            <div className="flex flex-row justify-between items-center py-5 px-8 w-full max-w-[1440px] mx-auto">
+            <div className="flex flex-row justify-between items-center py-4 sm:py-5 px-4 sm:px-8 w-full max-w-[1440px] mx-auto">
                 {/* Left: Logo */}
                 <Link href="/" className="flex items-center gap-2 relative z-[110]">
                     <span className="text-foreground font-bold text-2xl tracking-tighter font-display uppercase">
@@ -78,6 +72,7 @@ export function LandingNavBar() {
                                 <Link 
                                     key={link.name} 
                                     href={link.href} 
+                                    onClick={() => setIsMenuOpen(false)}
                                     className="text-2xl font-bold text-foreground/80 hover:text-foreground uppercase tracking-widest"
                                 >
                                     {link.name}

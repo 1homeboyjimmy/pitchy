@@ -13,6 +13,7 @@ import {
   getProjects, getGrants, matchGrants, onboardProject,
   type ProjectListItem, type Grant, type GrantMatch,
 } from "@/lib/api";
+import { trackMetrikaGoal } from "@/components/analytics/YandexMetrika";
 
 const EASE = [0.16, 1, 0.3, 1] as const;
 
@@ -311,7 +312,12 @@ export function GrantsPageClient() {
     let cancelled = false;
     setMatchLoading(true);
     matchGrants(activeProject, token, { onlyEligible })
-      .then((m) => { if (!cancelled) setMatches(m); })
+      .then((m) => {
+        if (!cancelled) {
+          setMatches(m);
+          trackMetrikaGoal("grant_match_completed", { matches_bucket: m.length === 0 ? "0" : m.length <= 5 ? "1_5" : "6_plus" });
+        }
+      })
       .catch((e) => { console.error(e); if (!cancelled) notifyError("Не удалось подобрать гранты"); })
       .finally(() => { if (!cancelled) setMatchLoading(false); });
     return () => { cancelled = true; };
@@ -323,6 +329,7 @@ export function GrantsPageClient() {
     setOnboarding(true);
     try {
       const res = await onboardProject(idea.trim(), t);
+      trackMetrikaGoal("project_created", { project_source: "grants_onboarding" });
       const p = res.project;
       const item: ProjectListItem = {
         id: p.id,
@@ -388,7 +395,7 @@ export function GrantsPageClient() {
   if (!token) {
     return (
       <div className="h-full flex flex-col items-center justify-center px-4 text-center">
-        <h1 className="text-4xl text-white mb-4" style={{ fontFamily: "'Instrument Serif', serif" }}>
+        <h1 className="text-4xl text-white mb-4" style={{ fontFamily: "var(--font-prata), serif" }}>
           Войдите, чтобы подбирать гранты
         </h1>
         <Link href="/login" className="bg-white text-black font-semibold text-sm px-8 py-3 rounded-full mt-4">
@@ -409,7 +416,7 @@ export function GrantsPageClient() {
         <div className="mb-10">
           <div className="flex items-center gap-3 mb-3">
             <Banknote className="text-white/70" size={28} strokeWidth={1.5} />
-            <h1 className="text-4xl md:text-5xl tracking-tight" style={{ fontFamily: "'Instrument Serif', serif" }}>
+            <h1 className="text-4xl md:text-5xl tracking-tight" style={{ fontFamily: "var(--font-prata), serif" }}>
               Гранты
             </h1>
           </div>
@@ -661,7 +668,7 @@ export function GrantsPageClient() {
               </div>
             )
           ) : visibleGrants.length === 0 ? (
-            <div className="lovable-glass rounded-3xl p-10 text-center text-white/40 border border-white/10">
+            <div className="lovable-glass rounded-3xl p-6 sm:p-10 text-center text-white/40 border border-white/10">
               {grants.length === 0
                 ? "Каталог пока пуст. Скоро здесь появятся актуальные программы."
                 : "В этой категории пока нет программ."}

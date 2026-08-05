@@ -31,12 +31,13 @@ import {
   UserResponse
 } from "@/lib/api";
 import Link from "next/link";
+import { trackMetrikaGoal } from "@/components/analytics/YandexMetrika";
 
 function UnauthDashboard() {
   return (
-    <div className="min-h-screen bg-black flex flex-col relative overflow-hidden antialiased">
+    <div className="min-h-[100dvh] bg-black flex flex-col relative overflow-hidden antialiased">
       {/* Background Glow */}
-      <div className="absolute top-[-20%] left-1/2 -translate-x-1/2 w-[800px] h-[600px] bg-white/5 blur-[120px] rounded-full pointer-events-none" />
+      <div className="absolute top-[-20%] left-1/2 -translate-x-1/2 w-[min(800px,140vw)] h-[600px] bg-white/5 blur-[120px] rounded-full pointer-events-none" />
 
       <TopNavBar />
 
@@ -45,7 +46,7 @@ function UnauthDashboard() {
         <div className="flex flex-col items-center w-full max-w-[800px]">
 
           <div className="text-center w-full mb-12">
-            <h1 className="text-6xl md:text-8xl text-white mb-8 leading-[0.9] tracking-tighter" style={{ fontFamily: "'Instrument Serif', serif" }}>
+            <h1 className="text-4xl sm:text-6xl md:text-8xl text-white mb-8 leading-[0.9] tracking-tighter" style={{ fontFamily: "var(--font-prata), serif" }}>
               Войдите для <br />
               <span className="text-white/30 italic transition-all duration-700 hover:text-white/50">доступа</span>.
             </h1>
@@ -195,6 +196,7 @@ function DashboardContent() {
     try {
       if (!token) throw new Error("No token");
       const session = await createChatSession({ title: "Чат с аналитиком" }, token);
+      trackMetrikaGoal("chat_session_created", { source: "dashboard" });
       setSessions(prev => [session, ...prev]);
       setActiveSession(session);
       setActiveTab("chat");
@@ -280,7 +282,7 @@ function DashboardContent() {
   };
 
   return (
-    <div className="bg-black text-white h-screen font-sans flex overflow-hidden">
+    <div className="bg-black text-white h-[100dvh] min-h-0 font-sans flex overflow-hidden">
       <AnimatePresence>
         {showOnboarding && token && (
           <PlatformOnboarding token={token} onComplete={handleOnboardingComplete} />
@@ -313,7 +315,7 @@ function DashboardContent() {
         onLockedClick={(label) => notifyTierGate(label)}
       />
 
-      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden relative">
+      <div className="flex-1 flex flex-col min-w-0 h-[100dvh] min-h-0 overflow-hidden relative">
         <AnimatePresence initial={false}>
           {!isSidebarCollapsed && (
             <motion.div
@@ -324,12 +326,12 @@ function DashboardContent() {
               transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
               className="absolute top-0 left-0 right-0 z-[100]"
             >
-              <InternalTopNavBar activeTab={activeTab} />
+              <InternalTopNavBar activeTab={activeTab} compactDashboard />
             </motion.div>
           )}
         </AnimatePresence>
 
-        <main className="flex-1 overflow-y-auto overflow-x-hidden transition-[padding] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]">
+        <main className={`min-h-0 flex-1 overflow-x-hidden transition-[padding] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${activeTab === 'chat' || activeTab === 'tree' ? 'overflow-y-hidden' : 'overflow-y-auto overscroll-contain'}`}>
           <div className={`w-full mx-auto transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${activeTab === 'chat' || activeTab === 'tree' ? `px-3 sm:px-8 ${mainPadTop} h-full` : `px-4 sm:px-8 lg:px-12 ${mainPadTop} ${overviewMaxW} min-h-full`}`}>
 
           {activeTab === "overview" && (

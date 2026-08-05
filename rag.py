@@ -303,97 +303,42 @@ async def _smart_ingest_batch(rag_instance: "StartupRAG", chunks: List[str], sou
             )
 
 
-@observe(name="Reranker")
-def _rerank_chunks(query: str, entries: List[dict], distances: List[float]) -> List[dict]:
-    """Reranking using Jina AI Reranker API with fallback to distance score."""
+@observe(name="merge_chroma_candidates")
+def _merge_chroma_candidates(entries: List[dict], distances: List[float]) -> List[dict]:
+    """Deduplicate candidates and merge collections by Chroma cosine distance.
+
+    This retrieval-layer helper deliberately performs no model-based reranking
+    and no network calls. Chat pipelines pass the resulting candidates to the
+    dedicated VoyageAI reranker through RouterAI.
+    """
     if not entries:
         return []
 
-    logger.info(f"Starting rerank for {len(entries)} chunks")
-
-    # Dedup and filter
-    seen = set()
-    filtered_entries = []
-    filtered_distances = []
-    
+    candidates_by_text: dict[str, tuple[dict, float]] = {}
     for entry, dist in zip(entries, distances):
         doc = entry["text"]
         if len(doc.strip()) < 50:
             continue
-        doc_hash = hash(doc)
-        if doc_hash in seen:
-            continue
-        seen.add(doc_hash)
-        filtered_entries.append(entry)
-        filtered_distances.append(dist)
-        
-    if not filtered_entries:
-        return []
+        distance = float(dist)
+        current = candidates_by_text.get(doc)
+        if current is None or distance < current[1]:
+            candidates_by_text[doc] = (entry, distance)
+
+    candidates = list(candidates_by_text.values())
+    candidates.sort(key=lambda candidate: candidate[1])
+    for entry, distance in candidates:
+        entry["score"] = max(0.0, 1.0 - distance)
 
     if langfuse_context:
         langfuse_context.update_current_observation(
             metadata={
                 "total_chunks_before": len(entries),
-                "total_chunks_after": len(filtered_entries)
+                "total_chunks_after": len(candidates),
+                "ranking": "chroma_cosine_distance",
             }
         )
 
-    jina_api_key = os.getenv("JINA_API_KEY")
-    if jina_api_key:
-        return _jina_rerank_internal(query, filtered_entries, jina_api_key)
-    
-    return _fallback_rerank(query, filtered_entries, filtered_distances)
-
-@observe(name="jina_reranker")
-def _jina_rerank_internal(query: str, filtered_entries: List[dict], api_key: str) -> List[dict]:
-    try:
-        import requests
-        url = "https://api.jina.ai/v1/rerank"
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}"
-        }
-        payload = {
-            "model": "jina-reranker-v2-base-multilingual",
-            "query": query,
-            "documents": [e["text"] for e in filtered_entries],
-            "top_n": len(filtered_entries)
-        }
-        
-        response = requests.post(url, json=payload, headers=headers, timeout=5.0)
-        response.raise_for_status()
-        res_results = response.json().get("results", [])
-        res_results.sort(key=lambda x: x["relevance_score"], reverse=True)
-        
-        reranked = []
-        for r in res_results:
-            entry = filtered_entries[r["index"]]
-            entry["score"] = r["relevance_score"]
-            reranked.append(entry)
-        
-        logger.info(f"Successfully reranked {len(reranked)} chunks using Jina AI.")
-        return reranked
-    except Exception as e:
-        logger.error(f"Jina reranker API failed: {e}")
-        return []
-
-def _fallback_rerank(query, entries, distances):
-    scored = []
-    query_words = set(re.findall(r'\w{3,}', query.lower()))
-    for entry, dist in zip(entries, distances):
-        doc = entry["text"]
-        doc_words = set(re.findall(r'\w{3,}', doc.lower()))
-        overlap = len(query_words & doc_words) / max(len(query_words), 1)
-        similarity = max(0, 1 - dist)
-        combined = 0.9 * similarity + 0.1 * overlap
-        scored.append((entry, combined))
-
-    scored.sort(key=lambda x: x[1], reverse=True)
-    
-    for entry, score in scored:
-        entry["score"] = score
-        
-    return [entry for entry, _ in scored]
+    return [entry for entry, _ in candidates]
 
 
 @dataclass
@@ -529,8 +474,8 @@ class StartupRAG:
                 metadata={"total_hits": len(all_docs), "categories": categories}
             )
 
-        reranked = _rerank_chunks(text, all_docs, all_distances)
-        return reranked[:top_k]
+        candidates = _merge_chroma_candidates(all_docs, all_distances)
+        return candidates[:top_k]
 
     async def _query_single_collection(self, collection, query_embedding, fetch_k):
         if collection.count() == 0:
@@ -589,8 +534,8 @@ class StartupRAG:
             if span:
                 span.update(metadata={"total_hits": len(all_docs), "categories": categories})
 
-            reranked = await asyncio.to_thread(_rerank_chunks, text, all_docs, all_distances)
-            results_out = reranked[:top_k]
+            candidates = _merge_chroma_candidates(all_docs, all_distances)
+            results_out = candidates[:top_k]
             
             if span:
                 span.end(output=results_out)

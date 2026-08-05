@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { Providers } from '../providers';
 
 export const metadata: Metadata = {
     title: 'Дашборд инвестора | Управление проектами Pitchy.pro',
@@ -12,5 +13,5 @@ export const metadata: Metadata = {
 };
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-    return <>{children}</>;
+    return <Providers>{children}</Providers>;
 }

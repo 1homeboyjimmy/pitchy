@@ -201,7 +201,7 @@ export function GrantApplicationsClient() {
 
       <div className="flex items-center gap-3 mb-3">
         <LayoutGrid className="text-white/70" size={26} strokeWidth={1.5} />
-        <h1 className="text-4xl tracking-tight" style={{ fontFamily: "'Instrument Serif', serif" }}>Мои гранты</h1>
+        <h1 className="text-4xl tracking-tight" style={{ fontFamily: "var(--font-prata), serif" }}>Мои гранты</h1>
       </div>
       <p className="text-white/40 text-sm mb-10 max-w-2xl">
         Воронка заявок: ведите гранты по стадиям, отмечайте выполненные требования и видите,
@@ -209,7 +209,7 @@ export function GrantApplicationsClient() {
       </p>
 
       {apps.length === 0 ? (
-        <div className="lovable-glass rounded-3xl p-10 text-center border border-white/10">
+        <div className="lovable-glass rounded-3xl p-6 sm:p-10 text-center border border-white/10">
           <Banknote className="mx-auto text-white/20 mb-4" size={36} />
           <p className="text-white/50 mb-5">Пока пусто. Добавьте грант на доску со страницы подбора.</p>
           <Link href="/grants" className="inline-flex bg-white text-black font-semibold text-sm px-7 py-3 rounded-full hover:bg-neutral-200 transition-all">

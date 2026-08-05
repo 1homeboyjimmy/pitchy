@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Any
+from typing import List, Any, Literal
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 
 class RegisterRequest(BaseModel):
@@ -179,9 +179,9 @@ class ChatAttachmentIn(BaseModel):
 class ChatMessageCreateRequest(BaseModel):
     # session_id passed in path usually, but can be here too
     # content may be empty when attachments are present (validated in endpoint)
-    content: str = ""
-    client_id: str | None = None
-    assistant_client_id: str | None = None
+    content: str = Field("", max_length=20_000)
+    client_id: str | None = Field(None, max_length=50)
+    assistant_client_id: str | None = Field(None, max_length=50)
     use_deep_search: bool = False
     use_research: bool = False
     intent: str | None = None
@@ -190,6 +190,13 @@ class ChatMessageCreateRequest(BaseModel):
     # of editing the existing one.
     regenerate_deck: bool = False
     attachments: list[ChatAttachmentIn] | None = Field(None, max_length=5)
+
+    @model_validator(mode="after")
+    def validate_total_attachment_size(self):
+        total_chars = sum(len(attachment.text) for attachment in self.attachments or [])
+        if total_chars > 120_000:
+            raise ValueError("Общий объём текста вложений не должен превышать 120 000 символов")
+        return self
 
 
 class ProjectContext(BaseModel):
@@ -497,6 +504,51 @@ class PromoCodeResponse(BaseModel):
         from_attributes = True
 
 
+class PromoCampaignCreate(BaseModel):
+    name: str = Field(..., min_length=2, max_length=150)
+    description: str | None = Field(default=None, max_length=2000)
+    status: Literal["draft", "active", "paused"] = "active"
+    benefit_type: Literal["percent_discount", "fixed_price"]
+    discount_percent: int | None = Field(default=None, ge=1, le=100)
+    fixed_price: float | None = Field(default=None, ge=0)
+    target_tier: str | None = Field(default=None, max_length=50)
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    max_redemptions: int | None = Field(default=None, ge=1)
+    per_user_limit: int = Field(default=1, ge=1, le=100)
+    first_payment_only: bool = False
+    code_mode: Literal["shared", "bulk"] = "shared"
+    code: str | None = Field(default=None, min_length=2, max_length=50)
+    code_prefix: str | None = Field(default=None, max_length=20)
+    generate_count: int = Field(default=1, ge=1, le=1000)
+    post_promo_action: Literal["none", "offer", "renew_base"] = "none"
+    renewal_config: dict[str, int] | None = None
+    renewal_price_policy: Literal["current", "fixed"] = "current"
+    renewal_fixed_price: float | None = Field(default=None, ge=0)
+    renewal_notice_days: int = Field(default=3, ge=0, le=30)
+
+
+class PromoCampaignUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=150)
+    description: str | None = Field(default=None, max_length=2000)
+    status: Literal["draft", "active", "paused", "ended"] | None = None
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    max_redemptions: int | None = Field(default=None, ge=1)
+    per_user_limit: int | None = Field(default=None, ge=1, le=100)
+    first_payment_only: bool | None = None
+    post_promo_action: Literal["none", "offer", "renew_base"] | None = None
+    renewal_config: dict[str, int] | None = None
+    renewal_price_policy: Literal["current", "fixed"] | None = None
+    renewal_fixed_price: float | None = Field(default=None, ge=0)
+    renewal_notice_days: int | None = Field(default=None, ge=0, le=30)
+
+
+class PromoCodesGenerateRequest(BaseModel):
+    count: int = Field(default=1, ge=1, le=1000)
+    prefix: str | None = Field(default=None, max_length=20)
+
+
 class PaymentResponse(BaseModel):
     id: int
     user_id: int
@@ -627,10 +679,10 @@ class TreeNodeUpdateRequest(BaseModel):
 
 
 class TreeChatRequest(BaseModel):
-    message: str = Field(..., min_length=1)
+    message: str = Field(..., min_length=1, max_length=20_000)
     active_node_id: str | None = None
-    client_id: str | None = None
-    assistant_client_id: str | None = None
+    client_id: str | None = Field(default=None, max_length=50)
+    assistant_client_id: str | None = Field(default=None, max_length=50)
     use_deep_search: bool = False
 
 

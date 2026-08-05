@@ -5,6 +5,7 @@ import { TopNavBar } from "@/components/shared/TopNavBar";
 import { SiteFooter } from "@/components/shared/SiteFooter";
 import { MapPin, Clock, ArrowRight, CheckCircle2, Mail, Send } from "lucide-react";
 import { notifyError, notifySuccess } from "@/lib/ui";
+import { trackMetrikaGoal } from "@/components/analytics/YandexMetrika";
 
 export default function ContactPage() {
     const [formData, setFormData] = useState({
@@ -35,6 +36,7 @@ export default function ContactPage() {
                 return;
             }
             notifySuccess("Обращение отправлено. Ответим на email в течение 24 часов.");
+            trackMetrikaGoal("contact_form_sent", { subject: formData.subject });
             setSubmitted(true);
             setFormData({ name: "", email: "", subject: "", message: "" });
             setTimeout(() => setSubmitted(false), 4000);
@@ -56,7 +58,7 @@ export default function ContactPage() {
             <main className="flex-grow pt-12 pb-24 px-6 md:px-12 max-w-[1440px] mx-auto w-full relative z-10">
                 {/* Header Section */}
                 <header className="mb-20 mt-8">
-                    <h1 className="font-display text-6xl md:text-8xl text-white mb-8 tracking-tighter leading-none">
+                    <h1 className="font-display text-4xl sm:text-6xl md:text-8xl text-white mb-8 tracking-tighter leading-none">
                         Связь с <span className="text-white/30 italic">нами</span>.
                     </h1>
                     <p className="text-xl text-foreground/60 w-full max-w-2xl leading-relaxed">
@@ -68,7 +70,7 @@ export default function ContactPage() {
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start pb-16">
                     {/* Contact Info Panel (Left) */}
                     <div className="lg:col-span-4 flex flex-col gap-6">
-                        <div className="lovable-glass p-10 rounded-[40px] flex flex-col gap-10 relative overflow-hidden group">
+                        <div className="lovable-glass p-5 sm:p-8 lg:p-10 rounded-3xl sm:rounded-[40px] flex flex-col gap-8 sm:gap-10 relative overflow-hidden group">
                             <div className="absolute inset-0 bg-gradient-to-br from-white/[0.06] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
                             
                             <div className="flex flex-col gap-4 relative z-10">
@@ -103,7 +105,7 @@ export default function ContactPage() {
                     </div>
 
                     {/* Form Container (Right) */}
-                    <div className="lg:col-span-8 lovable-glass p-8 md:p-16 rounded-[40px] relative overflow-hidden group">
+                    <div className="lg:col-span-8 lovable-glass p-5 sm:p-8 md:p-16 rounded-3xl sm:rounded-[40px] relative overflow-hidden group">
                         <div className="absolute inset-0 bg-gradient-to-br from-white/[0.04] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
                         
                         <form onSubmit={handleSubmit} className="flex flex-col gap-8 relative z-10">
