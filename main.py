@@ -104,6 +104,7 @@ import uuid
 from redis_client import get_redis
 from slm_dispatcher import slm_dispatcher
 from makura_client import call_makura, stream_makura
+from routerai_client import stream_routerai
 from search_agent import execute_search_agent, execute_deep_research, async_search_with_sources, get_exa_proxy
 from db import SessionLocal, get_db, engine
 from db_async import get_async_db
@@ -4818,7 +4819,8 @@ async def send_chat_message(
                 tags=["main_chat", "deep_search" if getattr(payload, "use_deep_search", False) else "basic_search"]
             )
 
-        provider = os.getenv("PRIMARY_PROVIDER", "makura")
+        main_chat_model = os.getenv("MAIN_CHAT_MODEL", "z-ai/glm-5.2")
+        provider = f"routerai/{main_chat_model}"
         full_response = ""
         full_thoughts = ""
         usage_data = None
@@ -5169,7 +5171,11 @@ Never print raw URLs, scraped navigation, long date sequences, or a
                 yield _emit_thought(
                     "Источники собраны. Сопоставляю факты и формирую аналитический отчёт.\n"
                 )
-                raw_gen = stream_makura(research_system, research_prompt)
+                raw_gen = stream_routerai(
+                    research_system,
+                    research_prompt,
+                    model=main_chat_model,
+                )
                 async for sse_item in parse_thought_generator(raw_gen):
                     try:
                         data = json.loads(sse_item.get("data", "{}"))
@@ -5222,7 +5228,11 @@ Never print raw URLs, scraped navigation, long date sequences, or a
                         "напиши, что данных о проекте недостаточно, и попроси описать проект или заполнить "
                         "паспорт проекта. Никаких выдуманных данных."
                     )
-                raw_gen = stream_makura(_export_system, user_prompt)
+                raw_gen = stream_routerai(
+                    _export_system,
+                    user_prompt,
+                    model=main_chat_model,
+                )
 
                 async for sse_item in parse_thought_generator(raw_gen):
                     # sse_item is a dict from format_sse: {"event": "...", "data": "JSON_STRING"}
@@ -5344,8 +5354,17 @@ Never print raw URLs, scraped navigation, long date sequences, or a
                 except Exception as e:
                     logger.error(f"Stage 6 (semantic cache set) failed: {e}")
         except Exception as e:
-            logger.error(f"Session streaming failed: {e}")
-            yield format_sse({"type": "error", "content": str(e)})
+            logger.error(f"Session streaming failed: {type(e).__name__}: {e}", exc_info=True)
+            pipeline_meta["fallbacks"].append("main_chat_provider")
+            if full_response.strip():
+                safe_error = "\n\nОтвет прервался из-за временной ошибки сервиса. Попробуйте повторить запрос."
+            else:
+                safe_error = (
+                    "Не удалось получить ответ от аналитической модели. "
+                    "Попробуйте повторить запрос через минуту."
+                )
+            full_response += safe_error
+            yield format_sse({"type": "chunk", "content": safe_error})
         finally:
             # Rescue save: if message wasn't saved (e.g. stream aborted), save the partial response
             if not message_saved and full_response.strip():

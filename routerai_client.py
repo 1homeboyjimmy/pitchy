@@ -2,6 +2,7 @@ import os
 import logging
 import httpx
 import json
+import re
 import traceback
 from typing import Optional, Tuple, Dict, Any
 
@@ -15,6 +16,33 @@ except ImportError:
     langfuse_context = None
 
 logger = logging.getLogger("app")
+
+
+class RouterAIUpstreamError(RuntimeError):
+    """RouterAI returned a provider/WAF error as successful chat content."""
+
+
+_UPSTREAM_ERROR_PREFIX = re.compile(
+    r"^\s*(?:\[?\s*error(?:\s+\d{3})?\s*\]?\s*:|(?:http|status)\s+\d{3}\b)",
+    re.IGNORECASE,
+)
+_UPSTREAM_ERROR_MARKERS = (
+    "blocked by bot detection",
+    "access denied",
+    "cloudflare ray id",
+    "cf-error-code",
+    "just a moment...",
+)
+
+
+def looks_like_upstream_error(text: str) -> bool:
+    """Detect technical error envelopes that must never reach the chat."""
+    normalized = (text or "").strip().lower()
+    if not normalized:
+        return False
+    return bool(_UPSTREAM_ERROR_PREFIX.match(normalized)) or any(
+        marker in normalized[:1000] for marker in _UPSTREAM_ERROR_MARKERS
+    )
 
 # Unified client for RouterAI
 _router_client = None
@@ -81,6 +109,8 @@ async def stream_routerai(system_prompt: str, user_message: str, model: str = "m
         )
         
         usage_data = {}
+        pending_content = ""
+        content_verified = False
         async for chunk in stream:
             if hasattr(chunk, 'usage') and chunk.usage:
                 usage_data = chunk.usage.model_dump()
@@ -90,14 +120,32 @@ async def stream_routerai(system_prompt: str, user_message: str, model: str = "m
                 
             delta = chunk.choices[0].delta
             if delta.content:
-                yield delta.content
+                if content_verified:
+                    yield delta.content
+                    continue
+
+                # A provider-side browser/WAF can return an error envelope in
+                # a successful 200 stream. Hold only the first line so that
+                # technical output is rejected before it reaches persistence.
+                pending_content += delta.content
+                if looks_like_upstream_error(pending_content):
+                    raise RouterAIUpstreamError("upstream provider rejected the request")
+                if "\n" in pending_content or len(pending_content) >= 256:
+                    content_verified = True
+                    yield pending_content
+                    pending_content = ""
+
+        if pending_content:
+            if looks_like_upstream_error(pending_content):
+                raise RouterAIUpstreamError("upstream provider rejected the request")
+            yield pending_content
                 
         if usage_data:
             yield {"__usage__": usage_data}
             
     except Exception as e:
-        logger.error(f"RouterAI streaming failed: {e}")
-        yield f"\n[Ошибка соединения: {str(e)}]"
+        logger.error(f"RouterAI streaming failed: {type(e).__name__}: {e}", exc_info=True)
+        raise
 
 @observe(name="routerai_rerank")
 async def rerank_documents(query: str, documents: list[str], top_n: int = 30, model: str = "cohere/rerank-v3.5") -> list[dict]:
