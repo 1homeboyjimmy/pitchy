@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import re
 from typing import List, Dict, Any, Optional
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
@@ -15,6 +16,76 @@ except ImportError:
 load_dotenv()
 
 logger = logging.getLogger("slm_dispatcher")
+
+# Режимы ответа основного чата. Разделение нужно, чтобы справочный вопрос
+# («сколько сейчас МСП в РФ») не проходил через рамку разбора проекта и не
+# упирался в «мне не хватает данных о вашем бизнесе».
+CHAT_MODE_FACT = "fact"        # факт, цифра, определение, перечень
+CHAT_MODE_CONSULT = "consult"  # совет, подход, объяснение «как делать»
+CHAT_MODE_REVIEW = "review"    # критический разбор проекта пользователя
+CHAT_MODES = (CHAT_MODE_FACT, CHAT_MODE_CONSULT, CHAT_MODE_REVIEW)
+
+# «Мой/наш проект» — сигнал, что речь о бизнесе пользователя, а не о рынке
+# вообще. Без него вопрос со словом «сколько» почти всегда справочный.
+_OWN_PROJECT_RE = re.compile(
+    r"\b(мо[йяеёюи]\w*|наш\w*|у меня|у нас|мне|нам|нас)\b.{0,40}"
+    r"(проект|стартап|иде[яию]|продукт|бизнес|компани|сервис|приложени|метрик|экономик|команд|питч|презентац)"
+    r"|(проект|стартап|иде[яию]|продукт|бизнес|компани|сервис|приложени|метрик|экономик|команд|питч|презентац)\w*"
+    r".{0,20}\b(мо[йяеёюи]\w*|наш\w*)",
+    re.IGNORECASE | re.UNICODE,
+)
+
+# Прямая просьба оценить/разобрать.
+_REVIEW_VERB_RE = re.compile(
+    r"\b(оцени|оценит[ье]|разбер[ии]|разобрат[ь]|критик|покритик|проанализируй|"
+    r"что дума[ею]шь|что скажешь|как теб[еи]|найди слабы|найди дыр|"
+    r"стоит ли (мне|нам)|взлетит|жизнеспособн)",
+    re.IGNORECASE | re.UNICODE,
+)
+
+# Справочные зачины. Проверяем начало запроса: «сколько сейчас МСП в РФ»,
+# «что такое CAC», «какие гранты есть для IT».
+_FACT_START_RE = re.compile(
+    r"^\W*(скольк|что тако|кто тако|что значит|что означает|как[оа][йея]\s+(объ[её]м|размер|доля|ставка|курс|срок)|"
+    r"когда\s|где\s|назови|перечисли|дай список|каки[ем]\s+(есть|существуют|бывают|гранты|льготы|программы|законы))",
+    re.IGNORECASE | re.UNICODE,
+)
+
+
+def resolve_chat_mode(
+    query: str,
+    slm_mode: Optional[str] = None,
+    has_attachments: bool = False,
+) -> str:
+    """Итоговый режим ответа: эвристики поверх решения SLM.
+
+    Чистая функция без сети — эвристики страхуют классификатор, когда тот
+    недоступен или ошибся. Порядок: явная просьба разобрать проект → явно
+    справочный зачин → мнение SLM → consult (нейтральный дефолт, который
+    ничего не требует от пользователя).
+    """
+    text = (query or "").strip()
+    if not text:
+        return slm_mode if slm_mode in CHAT_MODES else CHAT_MODE_CONSULT
+
+    about_own_project = bool(_OWN_PROJECT_RE.search(text))
+    asks_for_review = bool(_REVIEW_VERB_RE.search(text))
+
+    # «Оцени мою идею», «разбери нашу экономику», а также «разбери» с
+    # приложенным файлом — это всегда разбор.
+    if asks_for_review and (about_own_project or has_attachments):
+        return CHAT_MODE_REVIEW
+
+    # Справочный зачин без упоминания своего бизнеса — факт, даже если SLM
+    # решил иначе: это как раз тот случай, который ломался.
+    if _FACT_START_RE.search(text) and not about_own_project and not asks_for_review:
+        return CHAT_MODE_FACT
+
+    if slm_mode in CHAT_MODES:
+        return slm_mode
+
+    return CHAT_MODE_REVIEW if (about_own_project and asks_for_review) else CHAT_MODE_CONSULT
+
 
 class SLMClient:
     """
@@ -78,19 +149,31 @@ class SLMClient:
 
     @observe(name="classify_query_intent")
     async def classify_query_intent(self, query: str) -> Dict[str, Any]:
-        """Determines RAG categories, web search requirement, and finance context."""
+        """Determines RAG categories, web search requirement, finance context
+        and the answer mode (fact / consult / review)."""
         system_prompt = (
             "You are a routing assistant. Determine the most relevant categories for the user's query.\n"
             "Categories: market_analysis, target_audience, unit_economics, pitching_tips, grants_and_funds, legal_regulations, platform_manual.\n"
             "Also determine if a real-time web search is required (`is_deep_search`).\n"
             "And determine if the query relates to finance/unit economics (`is_finance`).\n"
-            "Return JSON: {\"categories\": [\"category1\", ...], \"is_deep_search\": false, \"is_finance\": false}"
+            "Finally determine the answer `mode`:\n"
+            "  - \"fact\": the user wants a fact, a number, a definition or a list of "
+            "existing things (market size, statistics, what a term means, which grants exist). "
+            "Nothing about their own business is being evaluated.\n"
+            "  - \"consult\": the user wants advice, an approach or an explanation of how to do "
+            "something (how to acquire first users, which channel to pick, how to compute CAC).\n"
+            "  - \"review\": the user asks to evaluate, critique or analyse THEIR OWN project, "
+            "idea, numbers, pitch or documents.\n"
+            "Return JSON: {\"categories\": [\"category1\", ...], \"is_deep_search\": false, "
+            "\"is_finance\": false, \"mode\": \"fact\" | \"consult\" | \"review\"}"
         )
         data = await self._call_json(system_prompt, f"Query: {query}")
+        mode = data.get("mode")
         return {
             "categories": data.get("categories", ["platform_manual"]),
             "is_deep_search": data.get("is_deep_search", False),
-            "is_finance": data.get("is_finance", False)
+            "is_finance": data.get("is_finance", False),
+            "mode": mode if mode in CHAT_MODES else None,
         }
 
     @observe(name="detect_search_intent")
