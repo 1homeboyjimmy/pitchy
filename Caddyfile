@@ -1,10 +1,19 @@
 # Настройка для Grafana (Мониторинг)
 grafana.pitchy.pro {
+    # Grafana is not a PHP host. Reject common automated PHP/WordPress
+    # probes before they reach the upstream and create misleading 502s.
+    @php_probe path *.php */*.php
+    respond @php_probe 404
     reverse_proxy grafana:3000
 }
 
 # Основной сайт Pitchy.pro и Dev-стенд
 pitchy.pro, dev.pitchy.pro {
+    # The application has no PHP endpoints. Return a clean 404 for scanner
+    # traffic instead of forwarding it to Next.js/backend.
+    @php_probe path *.php */*.php
+    respond @php_probe 404
+
     # Structured access logs make proxy/network failures (including VPN traffic)
     # observable without relying on a third-party error tracker.
     log {
