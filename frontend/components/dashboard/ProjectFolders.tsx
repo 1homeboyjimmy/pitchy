@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { FolderOpen, FolderPlus, Loader, Gauge, MessageSquare, X, Check, ChevronRight } from "lucide-react";
-import { getProjects, createProject, type ProjectListItem, type ChatSessionResponse } from "@/lib/api";
+import { getProjects, createProject, describeApiError, type ProjectListItem, type ChatSessionResponse } from "@/lib/api";
 import { notifyError } from "@/lib/ui";
 import { PassportModal } from "./PassportModal";
 import { FolderModal } from "./FolderModal";
@@ -50,7 +50,7 @@ export function ProjectFolders({ token, onOpenSession, onSessionCreated, onAttac
       setShowInput(false);
     } catch (e) {
       console.error(e);
-      notifyError("Не удалось создать папку проекта");
+      notifyError(describeApiError(e, "Не удалось создать папку проекта. Попробуйте ещё раз."));
     } finally {
       setCreating(false);
     }

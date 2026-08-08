@@ -154,10 +154,10 @@ async def register(
 ) -> dict:
     # Late imports to dodge circular: main imports us to register the
     # router; we touch main only when a request actually lands here.
-    from main import _check_rate_limit, _check_registration_rate_limit
+    from main import _check_rate_limit, _check_registration_rate_limit, get_client_ip
     import email_templates
 
-    ip = request.client.host if request.client else "unknown"
+    ip = get_client_ip(request)
     _check_rate_limit(ip)
     _check_registration_rate_limit(ip)
 

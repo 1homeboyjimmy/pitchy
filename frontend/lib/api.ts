@@ -121,6 +121,33 @@ export type ChatSearchItem = {
 const API_BASE = "";
 const COOKIE_SESSION_MARKER = "cookie-session";
 
+export class ApiError extends Error {
+  readonly status: number;
+  readonly requestId?: string;
+
+  constructor(message: string, status = 0, requestId?: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.requestId = requestId;
+  }
+}
+
+export function describeApiError(error: unknown, fallback: string): string {
+  if (!(error instanceof ApiError)) return fallback;
+  if (error.status === 0) return "Не удалось связаться с сервером. Проверьте соединение и повторите попытку.";
+  if (error.status === 401) return "Сессия истекла. Войдите снова и повторите действие.";
+  if (error.status === 402 || error.status === 403) {
+    if (/upgrade_required|недоступн|подписк|тариф|quota_exceeded/i.test(error.message)) {
+      return "Эта функция доступна после подключения подходящего тарифа.";
+    }
+    return "Действие запрещено для текущей учётной записи.";
+  }
+  if (error.status === 429) return "Слишком много запросов. Подождите немного и повторите попытку.";
+  if (error.status >= 500) return "Сервис временно недоступен. Повторите попытку через минуту.";
+  return error.message || fallback;
+}
+
 // Перевод известных серверных сообщений (англ.) на русский для понятных ошибок
 // входа/регистрации. Неизвестные строки отдаём как есть.
 function translateAuthDetail(msg: string): string {
@@ -155,12 +182,18 @@ async function request<T>(
     headers["X-Idempotency-Key"] = globalThis.crypto?.randomUUID?.()
       || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   }
-  const res = await fetch(`${API_BASE}${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-    credentials: "include",
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+      credentials: "include",
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
+    throw new ApiError("network_error", 0);
+  }
   if (!res.ok) {
     // 401 на самих auth-эндпоинтах (/auth/login и т.п.) — это «неверный
     // логин/пароль», а НЕ «протухла сессия». Глобальный авто-логаут с подменой
@@ -175,7 +208,7 @@ async function request<T>(
       if (!window.location.pathname.startsWith("/login")) {
         window.location.href = "/login?expired=1";
       }
-      throw new Error("Invalid token");
+      throw new ApiError("Invalid token", 401, res.headers.get("X-Request-ID") || undefined);
     }
     const err = await res.json().catch(() => ({}));
     const d = err?.detail;
@@ -201,7 +234,7 @@ async function request<T>(
         .filter(Boolean);
       if (parts.length) detail = parts.join("; ");
     }
-    throw new Error(detail);
+    throw new ApiError(detail, res.status, res.headers.get("X-Request-ID") || undefined);
   }
   return (await res.json()) as T;
 }

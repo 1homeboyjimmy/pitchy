@@ -5,6 +5,13 @@ grafana.pitchy.pro {
 
 # Основной сайт Pitchy.pro и Dev-стенд
 pitchy.pro, dev.pitchy.pro {
+    # Structured access logs make proxy/network failures (including VPN traffic)
+    # observable without relying on a third-party error tracker.
+    log {
+        output stdout
+        format json
+    }
+
     # Ограничение доступа к метрикам (только для локальных запросов)
     handle /metrics {
         @external not remote_ip private_ranges 127.0.0.1/8 ::1

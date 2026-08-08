@@ -79,6 +79,43 @@ async def load_project_context(
     return "\n\n".join(parts)
 
 
+async def load_project_brief(db: AsyncSession, project_id: int) -> str:
+    """Одна строка о проекте — для справочных ответов (режим fact).
+
+    Полный дамп паспорта в справочном вопросе вреден: модель начинает
+    разбирать бизнес вместо того, чтобы назвать цифру. Но знать сферу
+    пользователя полезно — можно привязать ответ к его рынку, если он
+    сформулировал вопрос неточно. Поэтому здесь только сфера и аудитория.
+    """
+    res = await db.execute(select(Project).where(Project.id == project_id))
+    project = res.scalar_one_or_none()
+    if not project:
+        return ""
+
+    core = (project.passport or {}).get("core") or {}
+
+    def _val(key: str) -> str:
+        v = core.get(key)
+        return str(v).strip() if isinstance(v, str) and v.strip() else ""
+
+    name = _val("name") or (project.name or "").strip()
+    what = _val("solution") or _val("problem")
+    bits: list[str] = []
+    if name:
+        bits.append(name)
+    if what:
+        bits.append(what[:160])
+    for key, label in (("target_audience", "аудитория"), ("geo", "гео"),
+                       ("business_model", "модель")):
+        v = _val(key)
+        if v:
+            bits.append(f"{label}: {v[:80]}")
+
+    if not bits:
+        return ""
+    return "СФЕРА ПОЛЬЗОВАТЕЛЯ (справочно, разбирать её не нужно): " + "; ".join(bits)
+
+
 async def extract_and_store_facts(
     project_id: int,
     user_text: str,

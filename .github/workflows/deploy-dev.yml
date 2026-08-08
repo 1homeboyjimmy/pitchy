@@ -4,12 +4,21 @@ on:
   push:
     branches: [ dev ]
 
-# Раннеры self-hosted иногда отваливаются между джобами: 25.07 build-frontend
-# отработал на ru-vmmedium, а build-backend так и не получил раннера и провисел
-# в очереди часами, блокируя deploy. Без группы каждый следующий пуш вставал в
-# ту же очередь за мёртвым раном. Теперь новый пуш в dev снимает предыдущий —
-# деплой идемпотентен (reset --hard + compose up --force-recreate + миграции),
-# поэтому обрыв на середине лечится следующим прогоном.
+# Раннеры self-hosted регулярно отваливаются: 25.07 build-frontend отработал на
+# ru-vmmedium, а build-backend так и не получил раннера; 06.08 весь прогон
+# провисел в queued, потому что ru-vmmedium — единственный раннер репозитория, а
+# резервный dev-server-pitchy умер ещё 24.07 (GitHub удалил его регистрацию за
+# долгий простой, и раннер вышел с «no retry needed» — systemd такой выход
+# считает штатным и не перезапускает).
+#
+# Поэтому сборка образов переехала на GitHub-hosted: репозиторий публичный, для
+# него ubuntu-latest бесплатны и всегда доступны, а билдам не нужен доступ к
+# нашей инфраструктуре — они только пушат образы в GHCR. На self-hosted остался
+# один deploy: ему нужен SSH-доступ на dev-хост.
+#
+# Concurrency: новый пуш в dev снимает предыдущий прогон — деплой идемпотентен
+# (reset --hard + compose up --force-recreate + миграции), поэтому обрыв на
+# середине лечится следующим прогоном.
 concurrency:
   group: deploy-dev
   cancel-in-progress: true
@@ -21,7 +30,7 @@ env:
 
 jobs:
   build-backend:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
@@ -55,7 +64,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=dev-backend
 
   build-frontend:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read

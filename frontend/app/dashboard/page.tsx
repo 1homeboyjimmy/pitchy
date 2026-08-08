@@ -28,7 +28,8 @@ import {
   createChatSessionFromIntent,
   ChatSessionResponse,
   ChatSessionDetailResponse,
-  UserResponse
+  UserResponse,
+  describeApiError,
 } from "@/lib/api";
 import Link from "next/link";
 import { trackMetrikaGoal } from "@/components/analytics/YandexMetrika";
@@ -202,7 +203,7 @@ function DashboardContent() {
       setActiveTab("chat");
     } catch (e) {
       console.error(e);
-      notifyError("Не удалось создать чат. Попробуйте позже.");
+      notifyError(describeApiError(e, "Не удалось создать чат. Попробуйте позже."));
     } finally {
       setIsCreating(false);
     }
