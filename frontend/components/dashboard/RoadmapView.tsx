@@ -140,16 +140,11 @@ function CheckpointEditor({
   analysis?: string;
   analyzing?: boolean;
 }) {
-  const [draft, setDraft] = useState<Record<string, string>>({});
-
-  useEffect(() => {
+  const [draft, setDraft] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {};
     cp.fields.forEach((f) => { init[f.path] = fieldToText(f); });
-    // This synchronizes the editor draft with a newly selected checkpoint.
-    // The effect is intentional: draft is local, editable state.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setDraft(init);
-  }, [cp.id, cp.fields]);
+    return init;
+  });
 
   const submit = () => {
     const fields: Record<string, unknown> = {};
@@ -496,6 +491,7 @@ export function RoadmapView() {
               <WindingMap checkpoints={roadmap.checkpoints} selectedId={selectedId} onSelect={setSelectedId} />
               {selected && (
                 <CheckpointEditor
+                  key={`${selected.id}:${JSON.stringify(selected.fields)}`}
                   cp={selected}
                   onSave={handleSave}
                   saving={saving}
