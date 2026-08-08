@@ -64,7 +64,7 @@ class Project(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(200), default="Новый проект")
     # Структурированный паспорт. Схема секций (core/market/metrics/team/
-    # custdev/legal/assets/custom) описана в schemas.base.PassportData.
+    # legal/assets/custom) описана в schemas.base.PassportData.
     # Каждое поле может нести метаданные источника (manual|ai|grant) —
     # хранятся в passport["_meta"][field_path].
     passport: Mapped[dict] = mapped_column(JSON, default=dict)

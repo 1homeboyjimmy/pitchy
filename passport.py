@@ -8,7 +8,6 @@
       "market":  {"size", "competitors": [...]},
       "metrics": {"mrr", "users", "cac", "growth"},
       "team":    [...],                 # список участников
-      "custdev": {"personas": [...], "interviews_done"},
       "legal":   {"entity_type", "requisites"},
       "assets":  {"deck_session_id", "roadmap_id"},
       "custom":  {...},                 # свободные пары ключ-значение
@@ -28,8 +27,7 @@ from typing import Any
 
 # Единственная схема редактируемых полей паспорта. Она же возвращается
 # фронтенду в PassportResponse, поэтому форма, мастер и серверный расчёт
-# готовности не могут расходиться. CustDev остаётся частью паспорта, но не
-# является обязательным для заполнения.
+# готовности не могут расходиться.
 PASSPORT_FIELDS: list[dict[str, Any]] = [
     {"path": "core.name", "section": "Основное", "label": "Название", "hint": "Как называется ваш стартап?", "weight": 3, "required": True},
     {"path": "core.problem", "section": "Основное", "label": "Проблема", "hint": "Какую боль клиента вы решаете? 1–2 предложения.", "weight": 3, "required": True, "multiline": True},
@@ -45,8 +43,6 @@ PASSPORT_FIELDS: list[dict[str, Any]] = [
     {"path": "metrics.cac", "section": "Метрики", "label": "CAC", "hint": "Стоимость привлечения клиента.", "weight": 0, "required": False},
     {"path": "metrics.growth", "section": "Метрики", "label": "Рост", "hint": "Динамика роста выручки или базы пользователей.", "weight": 0, "required": False},
     {"path": "team", "section": "Команда", "label": "Команда", "hint": "Участники и роли — по одному в строке.", "weight": 2, "required": True, "list": True},
-    {"path": "custdev.personas", "section": "CustDev", "label": "Персоны / CustDev", "hint": "Кого интервьюировали? Ключевые персоны — по одной в строке.", "weight": 0, "required": False, "list": True},
-    {"path": "custdev.interviews_done", "section": "CustDev", "label": "Проведено интервью", "hint": "Сколько интервью уже проведено и какие выводы получены.", "weight": 0, "required": False, "multiline": True},
     {"path": "legal.entity_type", "section": "Юр. данные", "label": "Юр. форма", "hint": "ООО, ИП, самозанятый — или пока не оформлено.", "weight": 1, "required": True},
 ]
 

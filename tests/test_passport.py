@@ -19,7 +19,7 @@ def complete_required_passport() -> dict:
     }
 
 
-def test_custdev_is_optional_for_readiness_and_missing_sections():
+def test_custdev_is_not_part_of_the_passport_schema_or_readiness():
     project = complete_required_passport()
     before = passport.compute_readiness(project)
 
@@ -29,6 +29,7 @@ def test_custdev_is_optional_for_readiness_and_missing_sections():
     assert passport.compute_readiness(project) == 100
     assert passport.missing_sections(project) == []
     assert "CustDev" not in passport.missing_sections({})
+    assert all(not field["path"].startswith("custdev.") for field in passport.PASSPORT_FIELDS)
 
 
 def test_team_is_a_required_field_and_present_in_the_shared_contract():
@@ -65,6 +66,5 @@ def test_readiness_contract_contains_every_editable_field():
     config = passport.readiness_config()
     fields_by_path = {field["path"]: field for field in config["fields"]}
 
-    assert fields_by_path["custdev.personas"]["required"] is False
-    assert fields_by_path["custdev.interviews_done"]["required"] is False
+    assert all(not path.startswith("custdev.") for path in fields_by_path)
     assert config["custom_field_bonus"] == passport.CUSTOM_FIELD_BONUS
