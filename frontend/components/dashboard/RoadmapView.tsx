@@ -145,6 +145,9 @@ function CheckpointEditor({
   useEffect(() => {
     const init: Record<string, string> = {};
     cp.fields.forEach((f) => { init[f.path] = fieldToText(f); });
+    // This synchronizes the editor draft with a newly selected checkpoint.
+    // The effect is intentional: draft is local, editable state.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDraft(init);
   }, [cp.id, cp.fields]);
 

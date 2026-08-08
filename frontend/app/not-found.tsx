@@ -2,15 +2,11 @@
 
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { PitchyLogo } from "@/components/shared/PitchyLogo";
 
 export default function NotFound() {
-  const [timestamp, setTimestamp] = useState("");
-
-  useEffect(() => {
-    setTimestamp(new Date().toISOString());
-  }, []);
+  const [timestamp] = useState(() => new Date().toISOString());
 
   return (
     <div className="min-h-screen flex flex-col font-body-sm text-body-sm antialiased">
