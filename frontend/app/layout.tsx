@@ -63,7 +63,8 @@ export const viewport: Viewport = {
 
 import { ScrollToTop } from "@/components/shared/ScrollToTop";
 import { BreadcrumbsSchema } from "@/components/shared/BreadcrumbsSchema";
-import { YandexMetrika, METRIKA_ID } from "@/components/analytics/YandexMetrika";
+import { YandexMetrika } from "@/components/analytics/YandexMetrika";
+import { CookieConsentBanner } from "@/components/shared/CookieConsentBanner";
 
 
 export default function RootLayout({
@@ -88,14 +89,10 @@ export default function RootLayout({
         <Suspense fallback={null}>
           <YandexMetrika />
         </Suspense>
-        <noscript>
-          <div>
-            <img src={`https://mc.yandex.ru/watch/${METRIKA_ID}`} style={{ position: "absolute", left: "-9999px" }} alt="" />
-          </div>
-        </noscript>
         <ScrollToTop />
         <BreadcrumbsSchema />
         {children}
+        <CookieConsentBanner />
       </body>
     </html>
   );

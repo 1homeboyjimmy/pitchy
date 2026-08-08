@@ -315,7 +315,6 @@ function Footer() {
 
 /* ═══════════════════════════ Layout ═══════════════════════════ */
 import { useIdleTimeout } from "@/lib/hooks/useIdleTimeout";
-import { CookieConsent } from "@/components/shared/CookieConsent";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   // Initialize the auto-logout hook (defaults to 3 hours)
@@ -332,7 +331,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
         {children}
       </main>
       {!isDashboard && <Footer />}
-      <CookieConsent />
     </div>
   );
 }

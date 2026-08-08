@@ -2,7 +2,13 @@
 
 import Script from "next/script";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
+import {
+  clearYandexAnalyticsCookies,
+  getCookieConsent,
+  hasAnalyticsCookieConsent,
+  subscribeCookieConsent,
+} from "@/lib/cookieConsent";
 
 export const METRIKA_ID = 111275219;
 
@@ -16,7 +22,7 @@ declare global {
 
 /** Sends a goal only after the product action has succeeded. */
 export function trackMetrikaGoal(goal: string, params?: MetrikaParams) {
-  if (typeof window === "undefined" || !window.ym) return;
+  if (typeof window === "undefined" || !hasAnalyticsCookieConsent() || !window.ym) return;
   window.ym(METRIKA_ID, "reachGoal", goal, params);
 }
 
@@ -28,9 +34,37 @@ export function YandexMetrika() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const initialPath = useRef<string | null>(null);
+  const wasEnabled = useRef(false);
+  const consent = useSyncExternalStore(
+    subscribeCookieConsent,
+    getCookieConsent,
+    () => "unknown",
+  );
+  const enabled = consent === "accepted";
   const urlPath = `${pathname}${searchParams.size ? `?${searchParams.toString()}` : ""}`;
 
   useEffect(() => {
+    if (wasEnabled.current && !enabled) {
+      window.ym?.(METRIKA_ID, "destruct");
+      clearYandexAnalyticsCookies();
+      initialPath.current = null;
+    } else if (!wasEnabled.current && enabled && window.ym) {
+      window.ym(METRIKA_ID, "init", {
+        ssr: true,
+        webvisor: true,
+        clickmap: true,
+        ecommerce: "dataLayer",
+        referrer: document.referrer,
+        url: location.href,
+        accurateTrackBounce: true,
+        trackLinks: true,
+      });
+    }
+    wasEnabled.current = enabled;
+  }, [enabled]);
+
+  useEffect(() => {
+    if (!enabled) return;
     if (initialPath.current === null) {
       initialPath.current = urlPath;
       return;
@@ -39,7 +73,9 @@ export function YandexMetrika() {
       title: document.title,
       referrer: document.referrer,
     });
-  }, [urlPath]);
+  }, [enabled, urlPath]);
+
+  if (!enabled) return null;
 
   return (
     <Script id="yandex-metrika" strategy="afterInteractive">
