@@ -101,6 +101,7 @@ from lockbox import lockbox
 from metrics import ERROR_COUNT, REQUEST_COUNT, REQUEST_LATENCY
 from observability import configure_logging
 import uuid
+import ipaddress
 from redis_client import get_redis
 from slm_dispatcher import slm_dispatcher
 from makura_client import call_makura, stream_makura
@@ -553,6 +554,8 @@ app.add_middleware(
 
 @app.middleware("http")
 async def metrics_middleware(request: Request, call_next):
+    request_id = request.headers.get("x-request-id") or uuid.uuid4().hex
+    request.state.request_id = request_id
     start = time.perf_counter()
     raw_path = request.url.path
     method = request.method
@@ -597,13 +600,41 @@ async def metrics_middleware(request: Request, call_next):
             "path": path,
             "status_code": response.status_code,
             "latency_ms": int(duration * 1000),
+            "request_id": request_id,
         },
     )
+    response.headers["X-Request-ID"] = request_id
     return response
 
 AUTH_RATE_LIMIT = {}
 AUTH_RATE_WINDOW_SECONDS = int(os.getenv("AUTH_RATE_WINDOW_SECONDS", "600"))
 AUTH_RATE_MAX = int(os.getenv("AUTH_RATE_MAX", "10"))
+
+
+def get_client_ip(request: Request) -> str:
+    """Return the real client IP when the request came through our proxy.
+
+    Caddy overwrites X-Real-IP/X-Forwarded-For before forwarding to FastAPI.
+    Trust those headers only from private/loopback peers; direct public clients
+    cannot forge them into the backend because the backend is not exposed.
+    """
+    peer = request.client.host if request.client else "unknown"
+    try:
+        peer_ip = ipaddress.ip_address(peer)
+        trusted_peer = peer_ip.is_private or peer_ip.is_loopback
+    except ValueError:
+        trusted_peer = False
+    if trusted_peer:
+        forwarded = request.headers.get("x-real-ip")
+        if not forwarded:
+            forwarded = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+        if forwarded:
+            try:
+                ipaddress.ip_address(forwarded)
+                return forwarded
+            except ValueError:
+                pass
+    return peer
 
 def _check_rate_limit(ip: str) -> None:
     now = datetime.utcnow().timestamp()
@@ -671,6 +702,8 @@ def _log_error(
     try:
         auth_header = request.headers.get("authorization", "")
         token = auth_header.replace("Bearer ", "") if auth_header else ""
+        if not token:
+            token = request.cookies.get(get_access_token_cookie_name(), "")
         user_id = get_user_id_from_token(token) if token else None
         with SessionLocal() as db:
             db.add(
@@ -713,7 +746,11 @@ def _redis_healthcheck() -> bool | None:
 async def http_exception_handler(request: Request, exc: HTTPException):
     if exc.status_code >= 400:
         _log_error(request, exc.status_code, str(exc.detail))
-    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+    response = JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+    request_id = getattr(request.state, "request_id", None)
+    if request_id:
+        response.headers["X-Request-ID"] = request_id
+    return response
 
 
 @app.exception_handler(Exception)
@@ -725,10 +762,14 @@ async def global_exception_handler(request: Request, exc: Exception):
         "method": request.method,
     })
     _log_error(request, 500, str(exc))
-    return JSONResponse(
+    response = JSONResponse(
         status_code=500,
         content={"detail": "Внутренняя ошибка сервера. Мы уже работаем над исправлением."}
     )
+    request_id = getattr(request.state, "request_id", None)
+    if request_id:
+        response.headers["X-Request-ID"] = request_id
+    return response
 
 
 def _build_user_prompt(description: str, context_chunks: list[dict]) -> str:
@@ -4192,8 +4233,6 @@ async def create_chat_session(
     user: User = Depends(get_async_current_user),
     db: AsyncSession = Depends(get_async_db),
 ) -> ChatSessionDetailResponse:
-    await async_check_subscription_limits(user, db, "project")
-
     session = ChatSession(
         user_id=user.id,
         title=payload.title,
@@ -4319,8 +4358,6 @@ async def create_chat_session_from_intent(
     user: User = Depends(get_async_current_user),
     db: AsyncSession = Depends(get_async_db),
 ) -> ChatSessionDetailResponse:
-    await async_check_subscription_limits(user, db, "project")
-    
     redis = get_redis()
     key = f"guest_intent:{payload.intent_id}"
     raw_data = redis.get(key)
@@ -4411,8 +4448,6 @@ async def create_chat_session_auto(
     user: User = Depends(get_async_current_user),
     db: AsyncSession = Depends(get_async_db),
 ) -> ChatSessionDetailResponse:
-    await async_check_subscription_limits(user, db, "project")
-    
     session = ChatSession(
         user_id=user.id,
         title="Новый диалог",

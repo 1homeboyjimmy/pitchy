@@ -201,7 +201,6 @@ services:
       - /var/log:/var/log/host:ro
       - ./ops/monitoring/crowdsec-acquis.yaml:/etc/crowdsec/acquis.d/ssh.yaml:ro
       - ./ops/monitoring/whitelist.yaml:/etc/crowdsec/parsers/s02-enrich/pitchy-whitelist.yaml:ro
-      - ./ops/monitoring/geoblock-profile.yaml:/etc/crowdsec/profiles.d/geoblock.yaml:ro
     ports:
       - "127.0.0.1:8080:8080"
     deploy:

@@ -60,14 +60,9 @@ async def create_project(
     user: User = Depends(get_async_current_user),
     db: AsyncSession = Depends(get_async_db),
 ) -> ProjectResponse:
-    from subscription_service import consume_quota, require_legacy_access
-    handled = await consume_quota(
-        db, user, "roadmaps",
-        idempotency_key=request.headers.get("X-Idempotency-Key") or f"roadmap:project:{user.id}:{hash((payload.name, str(payload.passport)))}",
-        reference_type="project",
-    )
-    if not handled:
-        require_legacy_access(user, "roadmaps")
+    # A project folder is a basic workspace primitive, not a generated
+    # roadmap.  It must remain available on the free tier; only roadmap
+    # generation consumes the roadmaps quota.
     passport = payload.passport or {}
     project = Project(
         user_id=user.id,
@@ -111,15 +106,6 @@ async def onboard_project(
     мастере/модалке, и эти правки уже не перезатираются автоматикой.
     """
     from slm_dispatcher import slm_dispatcher
-    from subscription_service import consume_quota, require_legacy_access
-    handled = await consume_quota(
-        db, user, "roadmaps",
-        idempotency_key=request.headers.get("X-Idempotency-Key") or f"roadmap:onboard:{user.id}:{hash(payload.idea)}",
-        reference_type="project_onboard",
-    )
-    if not handled:
-        require_legacy_access(user, "roadmaps")
-
     idea = (payload.idea or "").strip()
     try:
         draft = await slm_dispatcher.draft_passport_from_idea(idea)

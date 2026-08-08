@@ -10,7 +10,7 @@ import {
 import { getToken } from "@/lib/auth";
 import { notifyError } from "@/lib/ui";
 import {
-  getProjects, getGrants, matchGrants, onboardProject,
+  getProjects, getGrants, matchGrants, onboardProject, describeApiError,
   type ProjectListItem, type Grant, type GrantMatch,
 } from "@/lib/api";
 import { trackMetrikaGoal } from "@/components/analytics/YandexMetrika";
@@ -345,7 +345,7 @@ export function GrantsPageClient() {
       setIdea("");
     } catch (e) {
       console.error(e);
-      notifyError("Не удалось разобрать идею. Попробуйте ещё раз или создайте папку вручную.");
+      notifyError(describeApiError(e, "Не удалось разобрать идею. Попробуйте ещё раз или создайте папку вручную."));
     } finally {
       setOnboarding(false);
     }
