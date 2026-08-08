@@ -149,11 +149,9 @@ export function PassportOnePager() {
   const core = (p.core as Record<string, unknown>) || {};
   const market = (p.market as Record<string, unknown>) || {};
   const metrics = (p.metrics as Record<string, unknown>) || {};
-  const custdev = (p.custdev as Record<string, unknown>) || {};
   const legal = (p.legal as Record<string, unknown>) || {};
   const team = listOf(p.team);
   const competitors = listOf(market.competitors);
-  const personas = listOf(custdev.personas);
 
   const readiness = project.readiness_index ?? 0;
   const updated = fmtDate(project.passport_updated_at || project.updated_at);
@@ -169,9 +167,8 @@ export function PassportOnePager() {
   const hasMarket = !!(txt(market.size) || competitors.length);
   const hasMetrics = metricRows.length > 0;
   const hasTeam = team.length > 0;
-  const hasCustdev = personas.length > 0 || !!txt(custdev.interviews_done);
   const hasLegal = !!(txt(legal.entity_type) || txt(legal.requisites));
-  const anything = hasCore || hasMarket || hasMetrics || hasTeam || hasCustdev || hasLegal;
+  const anything = hasCore || hasMarket || hasMetrics || hasTeam || hasLegal;
 
   return (
     <div className="op-screen min-h-screen bg-neutral-200 py-6 px-4 flex flex-col items-center">
@@ -261,25 +258,6 @@ export function PassportOnePager() {
                   </li>
                 ))}
               </ul>
-            </Section>
-          )}
-
-          {hasCustdev && (
-            <Section title="CustDev">
-              {personas.length > 0 && (
-                <div className="op-row">
-                  <div className="font-mono-label text-[10px] uppercase tracking-widest text-neutral-400 mb-1">Персоны</div>
-                  <ul className="space-y-1">
-                    {personas.map((c, i) => (
-                      <li key={i} className="text-[13px] text-neutral-800 flex gap-2">
-                        <span className="text-neutral-300">—</span>
-                        <span>{c}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              <Inline label="Проведено интервью" value={txt(custdev.interviews_done)} />
             </Section>
           )}
 

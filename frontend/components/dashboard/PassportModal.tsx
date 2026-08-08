@@ -4,47 +4,9 @@ import { useState, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useMounted } from "@mantine/hooks";
 import { X, Loader, Plus, Save, Hand, Sparkles, Award, Gauge, Wand2, ChevronLeft, ChevronRight, Check, SkipForward, FileDown } from "lucide-react";
-import { getPassport, patchPassport, type PassportData } from "@/lib/api";
+import { getPassport, patchPassport, type PassportData, type PassportFieldDefinition, type PassportReadinessConfig } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import { notifyError, notifySuccess } from "@/lib/ui";
-
-type FieldDef = { k: string; label: string; multiline?: boolean };
-type SectionDef = { key: string; label: string; fields: FieldDef[]; lists?: FieldDef[] };
-
-const SECTIONS: SectionDef[] = [
-  {
-    key: "core", label: "Основное",
-    fields: [
-      { k: "name", label: "Название" },
-      { k: "problem", label: "Проблема", multiline: true },
-      { k: "solution", label: "Решение", multiline: true },
-      { k: "target_audience", label: "Целевая аудитория", multiline: true },
-      { k: "stage", label: "Стадия" },
-      { k: "business_model", label: "Бизнес-модель" },
-      { k: "geo", label: "География" },
-    ],
-  },
-  {
-    key: "market", label: "Рынок",
-    fields: [{ k: "size", label: "Объём рынка" }],
-    lists: [{ k: "competitors", label: "Конкуренты (по одному в строке)" }],
-  },
-  {
-    key: "metrics", label: "Метрики",
-    fields: [
-      { k: "mrr", label: "MRR" },
-      { k: "users", label: "Пользователи" },
-      { k: "cac", label: "CAC" },
-      { k: "growth", label: "Рост" },
-    ],
-  },
-  {
-    key: "legal", label: "Юр. данные",
-    fields: [
-      { k: "entity_type", label: "Юр. форма" },
-    ],
-  },
-];
 
 const SOURCE_BADGE: Record<string, { label: string; cls: string; icon: typeof Hand }> = {
   manual: { label: "вручную", cls: "text-sky-300/80 bg-sky-500/10", icon: Hand },
@@ -52,30 +14,7 @@ const SOURCE_BADGE: Record<string, { label: string; cls: string; icon: typeof Ha
   grant: { label: "грант", cls: "text-amber-300/80 bg-amber-500/10", icon: Award },
 };
 
-// Зеркало KEY_FIELDS из passport.py: путь, вес (важность для индекса
-// готовности) и подсказка для мастера заполнения. Сумма весов = 24.
-type WizardField = {
-  path: string; section: string; label: string; hint: string;
-  weight: number; multiline?: boolean; list?: boolean;
-};
-const WIZARD_FIELDS: WizardField[] = [
-  { path: "core.name", section: "Основное", label: "Название проекта", hint: "Как называется ваш стартап?", weight: 3 },
-  { path: "core.problem", section: "Основное", label: "Проблема", hint: "Какую боль клиента вы решаете? 1–2 предложения.", weight: 3, multiline: true },
-  { path: "core.solution", section: "Основное", label: "Решение", hint: "Как ваш продукт закрывает эту боль?", weight: 3, multiline: true },
-  { path: "core.target_audience", section: "Основное", label: "Целевая аудитория", hint: "Кто платит и пользуется? Сегмент, гео, размер.", weight: 2, multiline: true },
-  { path: "core.stage", section: "Основное", label: "Стадия", hint: "Идея / прототип / первые продажи / рост.", weight: 1 },
-  { path: "core.business_model", section: "Основное", label: "Бизнес-модель", hint: "Как зарабатываете: подписка, комиссия, разовые продажи?", weight: 2 },
-  { path: "core.geo", section: "Основное", label: "География", hint: "Основной рынок: Россия, СНГ, конкретные регионы.", weight: 1 },
-  { path: "market.size", section: "Рынок", label: "Объём рынка", hint: "Оценка рынка (TAM/SAM) в деньгах или числе клиентов.", weight: 2 },
-  { path: "market.competitors", section: "Рынок", label: "Конкуренты", hint: "Перечислите по одному в строке.", weight: 1, list: true },
-  { path: "metrics.mrr", section: "Метрики", label: "MRR", hint: "Ежемесячная выручка, если уже есть продажи.", weight: 1 },
-  { path: "metrics.users", section: "Метрики", label: "Пользователи", hint: "Сколько активных пользователей или клиентов.", weight: 1 },
-  { path: "team", section: "Команда", label: "Команда", hint: "Участники и роли — по одному в строке.", weight: 2, list: true },
-  { path: "custdev.personas", section: "CustDev", label: "Персоны / CustDev", hint: "Кого интервьюировали? Ключевые персоны — по одной в строке.", weight: 1, list: true },
-  { path: "legal.entity_type", section: "Юр. данные", label: "Юр. форма", hint: "ООО, ИП, самозанятый — или пока не оформлено.", weight: 1 },
-];
-const WIZARD_TOTAL = WIZARD_FIELDS.reduce((s, f) => s + f.weight, 0);
-const LIST_PATHS = new Set(WIZARD_FIELDS.filter((f) => f.list).map((f) => f.path));
+type SectionDef = { label: string; fields: PassportFieldDefinition[] };
 
 function getMeta(passport: PassportData): Record<string, { source?: string }> {
   return (passport?._meta as Record<string, { source?: string }>) || {};
@@ -112,6 +51,7 @@ export function PassportModal({ projectId, projectName, onClose, onSaved }: Prop
   const [saving, setSaving] = useState(false);
   const [passport, setPassport] = useState<PassportData>({});
   const [missing, setMissing] = useState<string[]>([]);
+  const [readinessConfig, setReadinessConfig] = useState<PassportReadinessConfig | null>(null);
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [newKey, setNewKey] = useState("");
   const [newVal, setNewVal] = useState("");
@@ -127,32 +67,63 @@ export function PassportModal({ projectId, projectName, onClose, onSaved }: Prop
       .then((v) => {
         setPassport(v.passport || {});
         setMissing(v.missing_sections || []);
+        setReadinessConfig(v.readiness_config);
       })
       .catch((e) => { console.error(e); notifyError("Не удалось загрузить паспорт"); })
       .finally(() => setLoading(false));
   }, [projectId]);
 
-  const valueFor = (path: string, isList = false): string => {
+  const valueFor = (path: string): string => {
     if (path in edits) return edits[path];
     return asText(getPath(passport, path));
   };
 
   const setValue = (path: string, v: string) => setEdits((p) => ({ ...p, [path]: v }));
 
-  // Живой индекс готовности: считаем локально по тем же весам, что и бэкенд,
-  // чтобы шкала реагировала на ввод сразу, не дожидаясь сохранения.
+  const fields = useMemo(() => readinessConfig?.fields || [], [readinessConfig]);
+  const requiredFields = useMemo(() => fields.filter((field) => field.required), [fields]);
+  const listPaths = useMemo(() => new Set(fields.filter((field) => field.list).map((field) => field.path)), [fields]);
+  const sections = useMemo(() => {
+    const grouped = new Map<string, SectionDef>();
+    for (const field of fields) {
+      const section = grouped.get(field.section) || { label: field.section, fields: [] };
+      section.fields.push(field);
+      grouped.set(field.section, section);
+    }
+    return [...grouped.values()];
+  }, [fields]);
+
+  // Живой индекс готовности использует конфигурацию, полученную с бэкенда,
+  // поэтому совпадает с сохранённым значением после PATCH.
   const localReadiness = useMemo(() => {
     const filled = (path: string) => {
       const raw = path in edits ? edits[path] : asText(getPath(passport, path));
       return !!raw && raw.trim().length > 0;
     };
     let got = 0;
-    for (const f of WIZARD_FIELDS) if (filled(f.path)) got += f.weight;
-    return Math.round((got * 100) / WIZARD_TOTAL);
-  }, [passport, edits]);
+    const total = requiredFields.reduce((sum, field) => sum + field.weight, 0);
+    for (const field of requiredFields) if (filled(field.path)) got += field.weight;
+    const base = total ? Math.round((got * 100) / total) : 0;
+
+    const customValues: Record<string, unknown> = {
+      ...((passport.custom as Record<string, unknown>) || {}),
+    };
+    for (const [path, value] of Object.entries(edits)) {
+      if (path.startsWith("custom.")) customValues[path.slice(7)] = value;
+    }
+    const customCount = Object.values(customValues).filter((value) => {
+      if (typeof value === "string") return value.trim().length > 0;
+      if (Array.isArray(value)) return value.length > 0;
+      if (value && typeof value === "object") return Object.keys(value).length > 0;
+      return value !== null && value !== undefined;
+    }).length;
+    const bonus = Math.min(customCount, readinessConfig?.max_custom_fields_for_readiness || 0)
+      * (readinessConfig?.custom_field_bonus || 0);
+    return Math.min(100, base + bonus);
+  }, [passport, edits, requiredFields, readinessConfig]);
 
   const startWizard = () => {
-    const empty = WIZARD_FIELDS.filter((f) => {
+    const empty = requiredFields.filter((f) => {
       const raw = f.path in edits ? edits[f.path] : asText(getPath(passport, f.path));
       return !raw || !raw.trim();
     }).map((f) => f.path);
@@ -162,8 +133,8 @@ export function PassportModal({ projectId, projectName, onClose, onSaved }: Prop
   };
 
   const wizardDefs = wizardPaths
-    .map((p) => WIZARD_FIELDS.find((f) => f.path === p))
-    .filter((f): f is WizardField => !!f);
+    .map((p) => requiredFields.find((f) => f.path === p))
+    .filter((f): f is PassportFieldDefinition => !!f);
   const wizardCurrent = wizardDefs[step];
   const wizardLast = step >= wizardDefs.length - 1;
 
@@ -178,7 +149,7 @@ export function PassportModal({ projectId, projectName, onClose, onSaved }: Prop
     if (!t) return;
     const fields: Record<string, unknown> = {};
     for (const [path, raw] of Object.entries(edits)) {
-      const isList = LIST_PATHS.has(path);
+      const isList = listPaths.has(path);
       if (isList) {
         const arr = raw.split("\n").map((s) => s.trim()).filter(Boolean);
         fields[path] = arr;
@@ -190,7 +161,9 @@ export function PassportModal({ projectId, projectName, onClose, onSaved }: Prop
     setSaving(true);
     try {
       const res = await patchPassport(projectId, fields, t);
+      setPassport(res.passport || {});
       setMissing(res.missing_sections || []);
+      setReadinessConfig(res.readiness_config);
       onSaved?.(res.readiness_index);
       notifySuccess("Паспорт обновлён");
       onClose();
@@ -309,7 +282,7 @@ export function PassportModal({ projectId, projectName, onClose, onSaved }: Prop
                 {wizardCurrent.multiline || wizardCurrent.list ? (
                   <textarea
                     autoFocus
-                    value={valueFor(wizardCurrent.path, wizardCurrent.list)}
+                    value={valueFor(wizardCurrent.path)}
                     onChange={(e) => setValue(wizardCurrent.path, e.target.value)}
                     rows={wizardCurrent.list ? 4 : 3}
                     placeholder={wizardCurrent.list ? "По одному в строке…" : "Введите ответ…"}
@@ -333,22 +306,22 @@ export function PassportModal({ projectId, projectName, onClose, onSaved }: Prop
             ) : null
           ) : (
             <>
-              {SECTIONS.map((sec) => (
-                <div key={sec.key}>
+              {sections.map((sec) => (
+                <div key={sec.label}>
                   <h3 className="font-mono text-[10px] uppercase tracking-[0.2em] text-white/40 mb-3">{sec.label}</h3>
                   <div className="space-y-4">
                     {sec.fields.map((f) => {
-                      const path = `${sec.key}.${f.k}`;
+                      const path = f.path;
                       return (
                         <div key={path}>
                           <label className="flex items-center gap-2 text-white/50 text-xs mb-1.5">
-                            {f.label} {sourceBadge(path)}
+                            {f.label} {!f.required && <span className="text-white/25">необязательно</span>} {sourceBadge(path)}
                           </label>
-                          {f.multiline ? (
+                          {f.multiline || f.list ? (
                             <textarea
                               value={valueFor(path)}
                               onChange={(e) => setValue(path, e.target.value)}
-                              rows={2}
+                              rows={f.list ? 3 : 2}
                               className="w-full bg-white/[0.03] rounded-xl p-3 text-white text-sm border border-white/10 focus:border-white/30 outline-none resize-none placeholder:text-white/20"
                             />
                           ) : (
@@ -358,22 +331,6 @@ export function PassportModal({ projectId, projectName, onClose, onSaved }: Prop
                               className="w-full bg-white/[0.03] rounded-xl px-3 py-2.5 text-white text-sm border border-white/10 focus:border-white/30 outline-none placeholder:text-white/20"
                             />
                           )}
-                        </div>
-                      );
-                    })}
-                    {(sec.lists || []).map((f) => {
-                      const path = `${sec.key}.${f.k}`;
-                      return (
-                        <div key={path}>
-                          <label className="flex items-center gap-2 text-white/50 text-xs mb-1.5">
-                            {f.label} {sourceBadge(path)}
-                          </label>
-                          <textarea
-                            value={valueFor(path, true)}
-                            onChange={(e) => setValue(path, e.target.value)}
-                            rows={3}
-                            className="w-full bg-white/[0.03] rounded-xl p-3 text-white text-sm border border-white/10 focus:border-white/30 outline-none resize-none placeholder:text-white/20"
-                          />
                         </div>
                       );
                     })}

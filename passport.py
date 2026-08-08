@@ -8,7 +8,6 @@
       "market":  {"size", "competitors": [...]},
       "metrics": {"mrr", "users", "cac", "growth"},
       "team":    [...],                 # список участников
-      "custdev": {"personas": [...], "interviews_done"},
       "legal":   {"entity_type", "requisites"},
       "assets":  {"deck_session_id", "roadmap_id"},
       "custom":  {...},                 # свободные пары ключ-значение
@@ -26,34 +25,43 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-# Ключевые поля для индекса готовности. Вес показывает важность секции:
-# core важнее custom. (field_path, weight).
-KEY_FIELDS: list[tuple[str, int]] = [
-    ("core.name", 3),
-    ("core.problem", 3),
-    ("core.solution", 3),
-    ("core.target_audience", 2),
-    ("core.stage", 1),
-    ("core.business_model", 2),
-    ("core.geo", 1),
-    ("market.size", 2),
-    ("market.competitors", 1),
-    ("metrics.mrr", 1),
-    ("metrics.users", 1),
-    ("team", 2),
-    ("custdev.personas", 1),
-    ("legal.entity_type", 1),
+# Единственная схема редактируемых полей паспорта. Она же возвращается
+# фронтенду в PassportResponse, поэтому форма, мастер и серверный расчёт
+# готовности не могут расходиться.
+PASSPORT_FIELDS: list[dict[str, Any]] = [
+    {"path": "core.name", "section": "Основное", "label": "Название", "hint": "Как называется ваш стартап?", "weight": 3, "required": True},
+    {"path": "core.problem", "section": "Основное", "label": "Проблема", "hint": "Какую боль клиента вы решаете? 1–2 предложения.", "weight": 3, "required": True, "multiline": True},
+    {"path": "core.solution", "section": "Основное", "label": "Решение", "hint": "Как ваш продукт закрывает эту боль?", "weight": 3, "required": True, "multiline": True},
+    {"path": "core.target_audience", "section": "Основное", "label": "Целевая аудитория", "hint": "Кто платит и пользуется? Сегмент, гео, размер.", "weight": 2, "required": True, "multiline": True},
+    {"path": "core.stage", "section": "Основное", "label": "Стадия", "hint": "Идея / прототип / первые продажи / рост.", "weight": 1, "required": True},
+    {"path": "core.business_model", "section": "Основное", "label": "Бизнес-модель", "hint": "Как зарабатываете: подписка, комиссия, разовые продажи?", "weight": 2, "required": True},
+    {"path": "core.geo", "section": "Основное", "label": "География", "hint": "Основной рынок: Россия, СНГ, конкретные регионы.", "weight": 1, "required": True},
+    {"path": "market.size", "section": "Рынок", "label": "Объём рынка", "hint": "Оценка рынка (TAM/SAM) в деньгах или числе клиентов.", "weight": 2, "required": True},
+    {"path": "market.competitors", "section": "Рынок", "label": "Конкуренты", "hint": "Перечислите по одному в строке.", "weight": 1, "required": True, "list": True},
+    {"path": "metrics.mrr", "section": "Метрики", "label": "MRR", "hint": "Ежемесячная выручка, если уже есть продажи.", "weight": 1, "required": True},
+    {"path": "metrics.users", "section": "Метрики", "label": "Пользователи", "hint": "Сколько активных пользователей или клиентов.", "weight": 1, "required": True},
+    {"path": "metrics.cac", "section": "Метрики", "label": "CAC", "hint": "Стоимость привлечения клиента.", "weight": 0, "required": False},
+    {"path": "metrics.growth", "section": "Метрики", "label": "Рост", "hint": "Динамика роста выручки или базы пользователей.", "weight": 0, "required": False},
+    {"path": "team", "section": "Команда", "label": "Команда", "hint": "Участники и роли — по одному в строке.", "weight": 2, "required": True, "list": True},
+    {"path": "legal.entity_type", "section": "Юр. данные", "label": "Юр. форма", "hint": "ООО, ИП, самозанятый — или пока не оформлено.", "weight": 1, "required": True},
 ]
 
-# Человекочитаемые названия секций для подсказок «не хватает».
-SECTION_LABELS: dict[str, str] = {
-    "core": "Основное",
-    "market": "Рынок",
-    "metrics": "Метрики",
-    "team": "Команда",
-    "custdev": "CustDev",
-    "legal": "Юр. данные",
-}
+# Свободные поля — дополнительный сигнал полноты, но не заменяют обязательные
+# сведения и не делают их обязательными. Бонус ограничен, чтобы паспорт нельзя
+# было довести до 100% набором произвольных полей.
+CUSTOM_FIELD_BONUS = 1
+MAX_CUSTOM_FIELDS_FOR_READINESS = 5
+
+# Обратносуместимое представление ключевых полей для внутренних потребителей.
+KEY_FIELDS: list[tuple[str, int]] = [
+    (field["path"], field["weight"])
+    for field in PASSPORT_FIELDS
+    if field["required"]
+]
+
+SECTION_LABELS: dict[str, str] = {}
+for _field in PASSPORT_FIELDS:
+    SECTION_LABELS.setdefault(_field["path"].split(".")[0], _field["section"])
 
 
 def _get_path(passport: dict, path: str) -> Any:
@@ -82,13 +90,21 @@ def _is_filled(value: Any) -> bool:
 
 
 def compute_readiness(passport: dict | None) -> int:
-    """Возвращает 0..100 — взвешенный % заполненных ключевых полей."""
+    """Возвращает 0..100 — готовность обязательных полей + бонус за custom."""
     passport = passport or {}
     total = sum(w for _, w in KEY_FIELDS)
     if total == 0:
         return 0
     got = sum(w for path, w in KEY_FIELDS if _is_filled(_get_path(passport, path)))
-    return round(got * 100 / total)
+    base = round(got * 100 / total)
+    custom = passport.get("custom") or {}
+    custom_count = (
+        sum(1 for value in custom.values() if _is_filled(value))
+        if isinstance(custom, dict)
+        else 0
+    )
+    bonus = min(custom_count, MAX_CUSTOM_FIELDS_FOR_READINESS) * CUSTOM_FIELD_BONUS
+    return min(100, base + bonus)
 
 
 def missing_sections(passport: dict | None) -> list[str]:
@@ -105,6 +121,15 @@ def missing_sections(passport: dict | None) -> list[str]:
         if not has_any:
             out.append(SECTION_LABELS.get(section, section))
     return out
+
+
+def readiness_config() -> dict[str, Any]:
+    """Контракт полей для редактора паспорта и локального расчёта на UI."""
+    return {
+        "fields": [dict(field) for field in PASSPORT_FIELDS],
+        "custom_field_bonus": CUSTOM_FIELD_BONUS,
+        "max_custom_fields_for_readiness": MAX_CUSTOM_FIELDS_FOR_READINESS,
+    }
 
 
 def merge_patch(passport: dict | None, fields: dict[str, Any], source: str = "manual") -> dict:
