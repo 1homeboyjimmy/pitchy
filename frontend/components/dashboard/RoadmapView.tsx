@@ -332,7 +332,10 @@ export function RoadmapView() {
     const cpId = selectedId;
     setSaving(true);
     try {
-      await patchPassport(pid, fields, t);
+      const result = await patchPassport(pid, fields, t);
+      setProjects((prev) => prev.map((project) => (
+        project.id === pid ? { ...project, readiness_index: result.readiness_index } : project
+      )));
       trackMetrikaGoal("roadmap_checkpoint_completed", { checkpoint_type: cpId || "unknown" });
       await loadRoadmap(pid, true);
     } catch {

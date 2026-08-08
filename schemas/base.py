@@ -286,6 +286,7 @@ class PassportResponse(BaseModel):
     passport: dict[str, Any] = {}
     readiness_index: int = 0
     missing_sections: list[str] = Field(default_factory=list)
+    readiness_config: dict[str, Any] = Field(default_factory=dict)
 
 
 class ProjectOnboardRequest(BaseModel):

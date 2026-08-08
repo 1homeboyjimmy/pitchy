@@ -889,6 +889,23 @@ export async function toolDeepResearch(query: string, token: string): Promise<To
 
 export type PassportData = Record<string, unknown>;
 
+export type PassportFieldDefinition = {
+  path: string;
+  section: string;
+  label: string;
+  hint: string;
+  weight: number;
+  required: boolean;
+  multiline?: boolean;
+  list?: boolean;
+};
+
+export type PassportReadinessConfig = {
+  fields: PassportFieldDefinition[];
+  custom_field_bonus: number;
+  max_custom_fields_for_readiness: number;
+};
+
 export type Project = {
   id: number;
   name: string;
@@ -913,6 +930,7 @@ export type PassportView = {
   passport: PassportData;
   readiness_index: number;
   missing_sections: string[];
+  readiness_config: PassportReadinessConfig;
 };
 
 export async function getProjects(token: string, includeArchived = false): Promise<ProjectListItem[]> {

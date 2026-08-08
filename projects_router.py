@@ -53,6 +53,17 @@ async def _get_owned_project(project_id: int, user: User, db: AsyncSession) -> P
     return project
 
 
+def _project_response(project: Project) -> ProjectResponse:
+    """Возвращает проект с индексом по актуальной схеме паспорта.
+
+    Это не даёт старому сохранённому значению индекса отображаться после
+    изменения правил готовности, до первой ручной правки пользователя.
+    """
+    response = ProjectResponse.model_validate(project)
+    response.readiness_index = passport_lib.compute_readiness(project.passport or {})
+    return response
+
+
 @router.post("", response_model=ProjectResponse)
 async def create_project(
     payload: ProjectCreateRequest,
@@ -88,7 +99,7 @@ async def create_project(
             session.project_id = project.id
             await db.commit()
 
-    return ProjectResponse.model_validate(project)
+    return _project_response(project)
 
 
 @router.post("/onboard", response_model=ProjectOnboardResponse)
@@ -129,7 +140,7 @@ async def onboard_project(
     await db.refresh(project)
 
     return ProjectOnboardResponse(
-        project=ProjectResponse.model_validate(project),
+        project=_project_response(project),
         summary=draft.get("summary") or "",
     )
 
@@ -160,6 +171,7 @@ async def list_projects(
     out = []
     for p in projects:
         item = ProjectListItemResponse.model_validate(p)
+        item.readiness_index = passport_lib.compute_readiness(p.passport or {})
         item.session_count = counts.get(p.id, 0)
         out.append(item)
     return out
@@ -172,7 +184,7 @@ async def get_project(
     db: AsyncSession = Depends(get_async_db),
 ) -> ProjectResponse:
     project = await _get_owned_project(project_id, user, db)
-    return ProjectResponse.model_validate(project)
+    return _project_response(project)
 
 
 @router.patch("/{project_id}", response_model=ProjectResponse)
@@ -191,7 +203,7 @@ async def update_project(
         project.status = payload.status
     await db.commit()
     await db.refresh(project)
-    return ProjectResponse.model_validate(project)
+    return _project_response(project)
 
 
 @router.delete("/{project_id}")
@@ -218,6 +230,7 @@ async def get_passport(
         passport=passport,
         readiness_index=passport_lib.compute_readiness(passport),
         missing_sections=passport_lib.missing_sections(passport),
+        readiness_config=passport_lib.readiness_config(),
     )
 
 
@@ -242,6 +255,7 @@ async def patch_passport(
         passport=merged,
         readiness_index=project.readiness_index,
         missing_sections=passport_lib.missing_sections(merged),
+        readiness_config=passport_lib.readiness_config(),
     )
 
 
