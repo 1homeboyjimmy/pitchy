@@ -4,6 +4,8 @@
 @theme {
   /* ── Colors: Full Material-style palette ── */
   --color-background: #141313;
+  /* Default foreground used by the legal/FAQ pages and shared components. */
+  --color-foreground: #e5e2e1;
   --color-on-background: #e5e2e1;
   --color-surface: #141313;
   --color-surface-dim: #141313;
