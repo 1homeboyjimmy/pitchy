@@ -41,6 +41,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from auth import (
     create_access_token,
     get_access_token_cookie_name,
+    get_legacy_access_token_cookie_name,
     get_access_token_max_age,
     get_async_current_user,
     hash_password,
@@ -52,6 +53,21 @@ from auth import (
 from db_async import get_async_db
 from email_utils import send_email
 from models import User
+from custdev_sso import (
+    ExchangeRequest,
+    IntrospectRequest,
+    REDIRECT_URI,
+    CLIENT_ID,
+    consume_code,
+    introspect_grant,
+    issue_code,
+    issue_grant,
+    read_code,
+    revoke_grant,
+    require_custdev_service,
+    validate_authorize_request,
+    verify_pkce,
+)
 from schemas.base import (
     EmailCodeVerifyRequest,
     LoginRequest,
@@ -66,6 +82,114 @@ from schemas.base import (
 
 router = APIRouter(tags=["auth"])
 logger = logging.getLogger("app.routers.auth")
+
+
+@router.get("/auth/sso/custdev/authorize")
+async def custdev_authorize(
+    client_id: str = Query(..., min_length=1, max_length=100),
+    redirect_uri: str = Query(..., min_length=1, max_length=2048),
+    state: str = Query(..., min_length=16, max_length=512),
+    code_challenge: str = Query(..., min_length=43, max_length=128),
+    code_challenge_method: str = Query(..., min_length=1, max_length=10),
+    user: User = Depends(get_async_current_user),
+):
+    """Start the browser SSO leg using the main site's own session cookie."""
+    validate_authorize_request(
+        client_id=client_id,
+        redirect_uri=redirect_uri,
+        code_challenge=code_challenge,
+        method=code_challenge_method,
+    )
+    code = issue_code(user_id=user.id, code_challenge=code_challenge)
+    target = urllib.parse.urlencode({"code": code, "state": state})
+    response = RedirectResponse(url=f"{REDIRECT_URI}?{target}", status_code=302)
+    if os.getenv("AUTH_COOKIE_HOST_ONLY", "false").strip().lower() in ("1", "true", "yes"):
+        _set_session_cookie(response, create_access_token(user.id))
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    return response
+
+
+@router.post("/internal/auth/custdev/exchange")
+async def custdev_exchange(
+    payload: ExchangeRequest,
+    db: AsyncSession = Depends(get_async_db),
+    _service: None = Depends(require_custdev_service),
+):
+    """Exchange a one-time SSO code for a short-lived CustDev grant."""
+    if payload.grant_type != "authorization_code":
+        raise HTTPException(status_code=400, detail="Unsupported grant type")
+    if payload.client_id != CLIENT_ID or payload.redirect_uri != REDIRECT_URI:
+        raise HTTPException(status_code=400, detail="Invalid SSO client")
+    code_data = read_code(payload.code)
+    if not code_data:
+        raise HTTPException(status_code=400, detail="Invalid or expired authorization code")
+    if (
+        code_data.get("client_id") != payload.client_id
+        or code_data.get("redirect_uri") != payload.redirect_uri
+        or not verify_pkce(payload.code_verifier, str(code_data.get("code_challenge", "")))
+    ):
+        raise HTTPException(status_code=400, detail="Invalid authorization code proof")
+    # Consume only after PKCE and client binding have been validated. The
+    # atomic GETDEL means concurrent exchanges can still produce at most one
+    # grant.
+    if not consume_code(payload.code):
+        raise HTTPException(status_code=400, detail="Invalid or expired authorization code")
+    try:
+        user_id = int(code_data["user_id"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid authorization code") from exc
+    result = await db.execute(
+        select(User).where(User.id == user_id, User.deleted_at.is_(None))
+    )
+    user = result.scalar_one_or_none()
+    if not user or not user.is_active or (user.locked_until and user.locked_until > datetime.utcnow()):
+        raise HTTPException(status_code=401, detail="User is not active")
+    grant = issue_grant(user_id=user.id)
+    return {
+        "active": True,
+        "sub": grant.user_id,
+        "scope": list(grant.scope),
+        "grant_id": grant.grant_id,
+        "expires_at": grant.expires_at,
+    }
+
+
+@router.post("/internal/auth/custdev/introspect")
+async def custdev_introspect(
+    payload: IntrospectRequest,
+    db: AsyncSession = Depends(get_async_db),
+    _service: None = Depends(require_custdev_service),
+):
+    """Validate a CustDev grant without exposing the main JWT."""
+    grant = introspect_grant(payload.grant_id)
+    if not grant:
+        return {"active": False}
+    try:
+        user_id = int(grant["sub"])
+    except (KeyError, TypeError, ValueError):
+        return {"active": False}
+    result = await db.execute(
+        select(User).where(User.id == user_id, User.deleted_at.is_(None))
+    )
+    user = result.scalar_one_or_none()
+    if not user or not user.is_active or (user.locked_until and user.locked_until > datetime.utcnow()):
+        return {"active": False}
+    return {
+        "active": True,
+        "sub": str(user.id),
+        "scope": grant.get("scope", []),
+        "expires_at": int(grant["expires_at"]),
+    }
+
+
+@router.post("/internal/auth/custdev/revoke")
+async def custdev_revoke(
+    payload: IntrospectRequest,
+    _service: None = Depends(require_custdev_service),
+):
+    revoke_grant(payload.grant_id)
+    return {"active": False}
 
 
 def _safe_next_path(value: str | None) -> str | None:
@@ -129,6 +253,8 @@ def _reset_code_attempts(scope: str, identity: str) -> None:
 
 
 def _set_session_cookie(response: Response, token: str) -> None:
+    host_only = os.getenv("AUTH_COOKIE_HOST_ONLY", "false").strip().lower() in ("1", "true", "yes")
+    domain = None if host_only else os.getenv("COOKIE_DOMAIN", ".pitchy.pro")
     response.set_cookie(
         key=get_access_token_cookie_name(),
         value=token,
@@ -137,8 +263,16 @@ def _set_session_cookie(response: Response, token: str) -> None:
         samesite="lax",
         max_age=get_access_token_max_age(),
         path="/",
-        domain=os.getenv("COOKIE_DOMAIN", ".pitchy.pro"),
+        domain=domain,
     )
+    if host_only:
+        # Remove the old parent-domain cookie after the host-only session has
+        # been established. This is a migration, not a forced logout.
+        response.delete_cookie(
+            key=get_legacy_access_token_cookie_name(),
+            path="/",
+            domain=os.getenv("COOKIE_DOMAIN", ".pitchy.pro"),
+        )
 
 
 # ===================================================================
@@ -339,11 +473,18 @@ async def login(
 
 @router.post("/auth/logout")
 def logout(response: Response) -> dict:
+    host_only = os.getenv("AUTH_COOKIE_HOST_ONLY", "false").strip().lower() in ("1", "true", "yes")
     response.delete_cookie(
         key=get_access_token_cookie_name(),
         path="/",
-        domain=os.getenv("COOKIE_DOMAIN", ".pitchy.pro"),
+        domain=None if host_only else os.getenv("COOKIE_DOMAIN", ".pitchy.pro"),
     )
+    if host_only:
+        response.delete_cookie(
+            key=get_legacy_access_token_cookie_name(),
+            path="/",
+            domain=os.getenv("COOKIE_DOMAIN", ".pitchy.pro"),
+        )
     return {"status": "ok"}
 
 
@@ -616,14 +757,5 @@ async def sso_callback(
             path="/",
             domain=os.getenv("COOKIE_DOMAIN", ".pitchy.pro"),
         )
-    redirect.set_cookie(
-        key=get_access_token_cookie_name(),
-        value=token,
-        httponly=True,
-        secure=os.getenv("APP_ENV", "dev").lower() == "prod",
-        samesite="lax",
-        max_age=get_access_token_max_age(),
-        path="/",
-        domain=os.getenv("COOKIE_DOMAIN", ".pitchy.pro"),
-    )
+    _set_session_cookie(redirect, token)
     return redirect

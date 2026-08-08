@@ -11,6 +11,12 @@
 - `YOOKASSA_SHOP_ID`, `YOOKASSA_SECRET_KEY`: YooKassa credentials for billing.
 - `BILLING_CRON_SECRET`: shared secret for the subscription renewal cron endpoint and GitHub Actions workflow.
 - `REDIS_URL`: Redis connection URL for rate limiting.
+- `CUSTDEV_SSO_CLIENT_ID`: registered CustDev SSO client identifier.
+- `CUSTDEV_SSO_REDIRECT_URI`: exact, pre-registered CustDev callback URI.
+- `CUSTDEV_SSO_SERVICE_SECRET`: separate HMAC secret for CustDev-to-Pitchy calls; never reuse `APP_SECRET_KEY`.
+- `CUSTDEV_SSO_CODE_TTL`, `CUSTDEV_SSO_GRANT_TTL`: one-time code and scoped grant lifetimes.
+- `AUTH_COOKIE_HOST_ONLY`: migration switch for the main session cookie; enable only after CustDev `code_exchange` is verified.
+- `LOCKBOX_CUSTDEV_SSO_SERVICE_SECRET_SECRET_ID` / `..._ENTRY_KEY`: optional Lockbox source for the CustDev service secret.
 - `CHROMA_PERSIST_DIR`: Filesystem path for Chroma persistent data.
 - `CHROMA_COLLECTION`: Chroma collection name.
 - `CHROMA_DOCS_DIR`: Directory with seed documents for RAG.

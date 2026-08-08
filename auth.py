@@ -73,7 +73,18 @@ def create_access_token(user_id: int) -> str:
 
 
 def get_access_token_cookie_name() -> str:
+    configured = os.getenv("ACCESS_TOKEN_COOKIE_NAME", "").strip()
+    if configured:
+        return configured
+    return "__Host-pitchy_session" if _host_only_cookie_mode() else "access_token"
+
+
+def get_legacy_access_token_cookie_name() -> str:
     return "access_token"
+
+
+def _host_only_cookie_mode() -> bool:
+    return os.getenv("AUTH_COOKIE_HOST_ONLY", "false").strip().lower() in ("1", "true", "yes")
 
 
 def get_access_token_max_age() -> int:
@@ -100,6 +111,10 @@ def get_current_user(
     removed so an XSS-stolen localStorage token can't be replayed against
     the API — only the httpOnly cookie counts."""
     token = request.cookies.get(get_access_token_cookie_name())
+    # Migration path: accept the old parent-domain cookie until the user has
+    # completed one request through the new host-only SSO flow.
+    if not token and _host_only_cookie_mode():
+        token = request.cookies.get(get_legacy_access_token_cookie_name())
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
@@ -133,6 +148,8 @@ async def get_async_current_user(
 ) -> User:
     """Cookie-only session auth. See get_current_user."""
     token = request.cookies.get(get_access_token_cookie_name())
+    if not token and _host_only_cookie_mode():
+        token = request.cookies.get(get_legacy_access_token_cookie_name())
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
