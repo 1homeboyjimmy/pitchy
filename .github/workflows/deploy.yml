@@ -4,6 +4,10 @@ on:
   push:
     branches: [ main ]
 
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
 env:
   REGISTRY: ghcr.io
   # Приводим к нижнему регистру для совместимости с Docker
@@ -89,8 +93,10 @@ jobs:
           VPS_SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_ACTOR: ${{ github.actor }}
+          RELEASE_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
+          trap 'rm -f ~/.ssh/prod_deploy_key' EXIT
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           printf '%s\n' "$VPS_SSH_PRIVATE_KEY" > ~/.ssh/prod_deploy_key
@@ -102,7 +108,7 @@ jobs:
               -o ServerAliveInterval=30 \
               -o ServerAliveCountMax=120 \
               "$VPS_USER@$VPS_HOST" \
-              "GITHUB_TOKEN='$GH_TOKEN' GITHUB_ACTOR='$GH_ACTOR' bash -s" <<'REMOTE_SCRIPT'
+              "GITHUB_TOKEN='$GH_TOKEN' GITHUB_ACTOR='$GH_ACTOR' IMAGE_TAG='$RELEASE_SHA' bash -s" <<'REMOTE_SCRIPT'
           set -e
           cd /opt/ai-startup
 

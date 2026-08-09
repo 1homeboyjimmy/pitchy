@@ -51,7 +51,7 @@ services:
           memory: 2G
 
   backend:
-    image: ghcr.io/1homeboyjimmy/pitchy/backend:latest
+    image: ghcr.io/1homeboyjimmy/pitchy/backend:${IMAGE_TAG:-latest}
     restart: unless-stopped
     logging:
       driver: "json-file"
@@ -93,7 +93,7 @@ services:
           memory: 4G
 
   frontend:
-    image: ghcr.io/1homeboyjimmy/pitchy/frontend:latest
+    image: ghcr.io/1homeboyjimmy/pitchy/frontend:${IMAGE_TAG:-latest}
     restart: unless-stopped
     logging:
       driver: "json-file"

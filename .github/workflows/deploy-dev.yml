@@ -101,8 +101,10 @@ jobs:
           DEV_SSH_KEY: ${{ secrets.DEV_SSH_KEY }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_ACTOR: ${{ github.actor }}
+          RELEASE_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
+          trap 'rm -f ~/.ssh/dev_deploy_key' EXIT
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           printf '%s\n' "$DEV_SSH_KEY" > ~/.ssh/dev_deploy_key
@@ -114,7 +116,7 @@ jobs:
               -o ServerAliveInterval=30 \
               -o ServerAliveCountMax=120 \
               "$DEV_USERNAME@$DEV_HOST" \
-              "GITHUB_TOKEN='$GH_TOKEN' GITHUB_ACTOR='$GH_ACTOR' bash -s" <<'REMOTE_SCRIPT'
+              "GITHUB_TOKEN='$GH_TOKEN' GITHUB_ACTOR='$GH_ACTOR' IMAGE_TAG='$RELEASE_SHA' bash -s" <<'REMOTE_SCRIPT'
           set -e
           cd /opt/ai-startup
 
@@ -145,8 +147,7 @@ jobs:
           docker compose pull -q || echo "WARNING: Some images failed to pull"
 
           # Restart services
-          docker compose down --timeout 10 --remove-orphans || true
-          docker compose up -d --force-recreate --remove-orphans
+          timeout 180 docker compose up -d --force-recreate --remove-orphans
 
           # Wait for postgres
           for i in $(seq 1 10); do
