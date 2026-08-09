@@ -191,7 +191,7 @@ health_ok="false"
 for i in $(seq 1 60); do
   body="$(
     timeout 20 docker compose --env-file "$RUNTIME_ENV_FILE" \
-      exec -T backend curl -s http://127.0.0.1:8000/health || true
+      exec -T backend curl -s http://127.0.0.1:8000/ready || true
   )"
   if [[ "$body" == *'"status":"ok"'* ]]; then
     health_ok="true"

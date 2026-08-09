@@ -1345,8 +1345,42 @@ def _render_health_html(data: dict) -> str:
 </html>"""
 
 
+@app.get("/live")
+async def live() -> dict[str, str]:
+    """Cheap liveness probe: the process and event loop are responding."""
+    return {"status": "ok"}
+
+
+@app.get("/ready")
+async def ready(db: AsyncSession = Depends(get_async_db)) -> dict[str, str]:
+    """Readiness probe used by Docker/Caddy before sending traffic."""
+    try:
+        await db.execute(text("SELECT 1"))
+    except Exception as exc:
+        logger.warning("Readiness check failed: %s", exc)
+        raise HTTPException(status_code=503, detail="Service not ready") from exc
+    return {"status": "ok"}
+
+
 @app.get("/health")
-async def health(request: Request):
+async def health() -> dict:
+    """Public, redacted health summary; no infrastructure details."""
+    data = await _gather_health()
+    return {
+        "status": data.get("status", "error"),
+        "generated_at": data.get("generated_at"),
+        "summary": data.get("summary", {}),
+    }
+
+
+@app.get("/health/details")
+async def health_details(
+    request: Request,
+    user: User = Depends(get_async_current_user),
+):
+    """Detailed diagnostics for authenticated administrators only."""
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
     """System health endpoint.
 
     Returns JSON by default. If the request `Accept` header asks for HTML
