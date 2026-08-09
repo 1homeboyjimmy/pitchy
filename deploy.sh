@@ -61,16 +61,13 @@ if [[ -f "ops/backup/backup.sh" ]]; then
   bash ops/backup/backup.sh || echo "WARNING: Pre-deployment backup failed, continuing anyway..."
 fi
 
-# ---- STOP OLD CONTAINERS ----
-echo "Stopping old containers..."
-docker compose --env-file "$RUNTIME_ENV_FILE" down --timeout 10 --remove-orphans || true
-docker rm -f $(docker ps -aq --filter "label=com.docker.compose.project=ai-startup") 2>/dev/null || true
-docker container prune -f 2>/dev/null || true
-
 # ---- START CONTAINERS (no --build, images are pre-built) ----
-echo "Starting containers..."
+# Do not take the stack down before starting the new revision.  `down` created
+# a full outage when a later compose/health step stalled.  Compose can safely
+# recreate changed services in place, keeping the proxy and healthy services up.
+echo "Starting/recreating containers without downtime..."
 DEPLOY_START_EPOCH=$(date +%s)
-APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" up -d --force-recreate --remove-orphans
+env APP_ENV_FILE="$RUNTIME_ENV_FILE" timeout 180 docker compose --env-file "$RUNTIME_ENV_FILE" up -d --force-recreate --remove-orphans
 
 # Verify that `up -d --force-recreate` actually recreated containers.
 # Previously, force-recreate silently no-op'd in some scenarios — leaving
@@ -122,7 +119,7 @@ if ! grep -qE "^CROWDSEC_BOUNCER_KEY=.+$" "$RUNTIME_ENV_FILE"; then
     sed -i '/^CROWDSEC_BOUNCER_KEY=/d' "$RUNTIME_ENV_FILE"
     echo "CROWDSEC_BOUNCER_KEY=$BOUNCER_KEY" >> "$RUNTIME_ENV_FILE"
     # Restart the bouncer so it picks up the new env var
-    APP_ENV_FILE="$RUNTIME_ENV_FILE" docker compose --env-file "$RUNTIME_ENV_FILE" up -d crowdsec-bouncer-firewall
+    env APP_ENV_FILE="$RUNTIME_ENV_FILE" timeout 60 docker compose --env-file "$RUNTIME_ENV_FILE" up -d crowdsec-bouncer-firewall
     echo "CrowdSec Bouncer registered successfully."
   else
     echo "ERROR: Failed to register CrowdSec Bouncer. Deployment aborted to prevent insecure state."
@@ -171,7 +168,7 @@ docker image prune -af
 health_ok="false"
 for i in $(seq 1 60); do
   body="$(
-    docker compose --env-file "$RUNTIME_ENV_FILE" \
+    timeout 20 docker compose --env-file "$RUNTIME_ENV_FILE" \
       exec -T backend curl -s http://127.0.0.1:8000/health || true
   )"
   if [[ "$body" == *'"status":"ok"'* ]]; then
