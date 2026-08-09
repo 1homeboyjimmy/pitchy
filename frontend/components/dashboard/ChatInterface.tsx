@@ -1446,7 +1446,7 @@ export function ChatInterface({
                             </button>
                         </motion.div>
                     )}
-                    <p className="mx-auto mt-2 max-w-3xl px-3 text-center text-[11px] leading-[1.45] text-white/45 sm:mt-3 sm:text-xs">
+                    <p className="mx-auto mt-2 max-w-3xl px-3 text-center text-[10px] leading-[1.35] text-white/45 line-clamp-2 sm:mt-3 sm:text-xs sm:leading-[1.45] sm:line-clamp-none">
                         Pitchy использует искусственный интеллект и может ошибаться. Проверяйте важную информацию и исходные данные. Ответы носят информационно-аналитический характер и не являются индивидуальной инвестиционной рекомендацией.
                     </p>
                 </div>

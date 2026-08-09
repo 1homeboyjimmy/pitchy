@@ -411,7 +411,7 @@ const PersonaReactionCard = ({ persona, index }: { persona: ActivePersonaReactio
 };
 
 const GrantSupportSection = () => (
-  <section className="relative section-line px-6 py-32 md:px-12 overflow-hidden">
+  <section className="relative section-line px-4 py-20 sm:px-6 sm:py-28 md:px-12 md:py-32 overflow-hidden">
     <div className="absolute inset-x-0 top-20 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
     <div className="mx-auto max-w-7xl grid gap-14 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
       <motion.div
@@ -423,10 +423,10 @@ const GrantSupportSection = () => (
         <div className="font-mono text-white/50 mb-4 tracking-[0.2em] text-xs uppercase">
           МЕРЫ ПОДДЕРЖКИ
         </div>
-        <h2 className="text-5xl md:text-7xl text-white leading-[1.05] mb-8" style={{ fontFamily: "var(--font-prata), serif" }}>
+        <h2 className="max-w-full break-words text-4xl sm:text-5xl md:text-7xl text-white leading-[1.05] mb-6 sm:mb-8" style={{ fontFamily: "var(--font-prata), serif" }}>
           Автоматический подбор мер поддержки
         </h2>
-        <p className="text-white/40 text-lg font-light leading-relaxed mb-10 max-w-2xl">
+        <p className="text-white/40 text-base sm:text-lg font-light leading-relaxed mb-8 sm:mb-10 max-w-2xl">
           Не тратьте недели на поиск грантов и разбор требований. Pitchy подбирает меры поддержки под ваш проект и подготавливает заявку с помощью ИИ.
         </p>
         <div className="grid gap-3 sm:grid-cols-3">

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { getMe, patchAuthJson } from "@/lib/api";
 import {
   clearYandexAnalyticsCookies,
@@ -14,7 +14,6 @@ import {
 import { useAuth } from "@/lib/hooks/useAuth";
 
 export function CookieConsentBanner() {
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const { isAuthenticated, isLoaded, token } = useAuth();
   const choice = useSyncExternalStore(
     subscribeCookieConsent,
@@ -62,7 +61,6 @@ export function CookieConsentBanner() {
       choice === "accepted" && nextChoice === "necessary" ? "revoked" : nextChoice;
 
     setCookieConsent(storedChoice);
-    setSettingsOpen(false);
     if (nextChoice === "necessary") clearYandexAnalyticsCookies();
 
     if (isAuthenticated && token) {
@@ -74,19 +72,9 @@ export function CookieConsentBanner() {
     }
   };
 
-  const isOpen = choice === "unknown" || settingsOpen;
-  if (!isOpen) {
-    return (
-      <button
-        type="button"
-        onClick={() => setSettingsOpen(true)}
-        aria-label="Открыть настройки cookie"
-        className="fixed bottom-3 left-3 z-[250] rounded-full border border-white/15 bg-black/90 px-3 py-2 text-[10px] font-medium text-white/65 shadow-lg backdrop-blur-md transition-colors hover:border-white/30 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-      >
-        Настройки cookie
-      </button>
-    );
-  }
+  // После выбора баннер полностью исчезает. Настройки cookie доступны через
+  // страницу политики, а плавающая кнопка больше не перекрывает интерфейс.
+  if (choice !== "unknown") return null;
 
   return (
     <section
