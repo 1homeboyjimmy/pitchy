@@ -161,6 +161,28 @@ if [[ -z "$CURRENT_REV" || -z "$HEAD_REV" || "$CURRENT_REV" != "$HEAD_REV" ]]; t
 fi
 echo "Migrations OK — alembic at $CURRENT_REV (matches head)"
 
+# ---- DATABASE SCHEMA CONTRACT ----
+# Alembic's version marker alone is not sufficient: verify the objects used by
+# critical user flows before accepting the deploy.
+echo "Verifying critical database schema..."
+DB_USER="$(read_runtime_env_value "POSTGRES_USER")"
+DB_NAME="$(read_runtime_env_value "POSTGRES_DB")"
+for table in custom_subscriptions promo_campaigns promo_redemptions chat_sessions chat_messages projects; do
+  present=$(docker compose --env-file "$RUNTIME_ENV_FILE" exec -T postgres psql -At -U "$DB_USER" -d "$DB_NAME" -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='$table';" | tr -d '[:space:]')
+  if [[ "$present" != "1" ]]; then
+    echo "ERROR: missing critical table $table"
+    exit 1
+  fi
+done
+for column in promo_campaign_id promo_ends_at promo_post_action promo_consent_at promo_consent_version; do
+  present=$(docker compose --env-file "$RUNTIME_ENV_FILE" exec -T postgres psql -At -U "$DB_USER" -d "$DB_NAME" -c "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='custom_subscriptions' AND column_name='$column';" | tr -d '[:space:]')
+  if [[ "$present" != "1" ]]; then
+    echo "ERROR: missing custom_subscriptions.$column"
+    exit 1
+  fi
+done
+echo "Database schema contract passed."
+
 # ---- PRUNE OLD IMAGES ----
 docker image prune -af
 
