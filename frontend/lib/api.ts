@@ -1146,15 +1146,38 @@ export type GrantApplication = {
 
 // Гранты ходят на /grants. URL /grants/* заняты страницами Next, поэтому
 // next.config переписывает их на бэкенд ТОЛЬКО для запросов с заголовком
-// Authorization (наши fetch его шлют, навигация в браузере — нет), так что
+// x-pitchy-api (наши fetch его шлют, навигация в браузере — нет), так что
 // страница и API живут на одном пути без коллизии.
-export async function getGrants(token: string, status?: string): Promise<Grant[]> {
-  const q = status ? `?status=${status}` : "";
-  return getAuthJson<Grant[]>(`/grants${q}`, token);
+async function retryGrantRead<T>(operation: () => Promise<T>): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      const retryable = error instanceof ApiError
+        && (error.status === 0 || error.status === 502 || error.status === 503 || error.status === 504);
+      if (!retryable || attempt === 2) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
+    }
+  }
+  throw lastError;
+}
+
+export async function getGrants(
+  token: string,
+  options?: string | { status?: string; includeExpired?: boolean },
+): Promise<Grant[]> {
+  const params = new URLSearchParams();
+  const status = typeof options === "string" ? options : options?.status;
+  if (status) params.set("status", status);
+  if (typeof options === "object" && options.includeExpired) params.set("include_expired", "true");
+  const q = params.size ? `?${params.toString()}` : "";
+  return retryGrantRead(() => getAuthJson<Grant[]>(`/grants${q}`, token));
 }
 
 export async function getGrant(id: number, token: string): Promise<Grant> {
-  return getAuthJson<Grant>(`/grants/${id}`, token);
+  return retryGrantRead(() => getAuthJson<Grant>(`/grants/${id}`, token));
 }
 
 // Черновик гранта, извлечённый парсером по ссылке (поля GrantCreateRequest).
@@ -1200,7 +1223,7 @@ export async function matchGrants(
   const params = new URLSearchParams({ project_id: String(projectId) });
   if (opts?.includeClosed) params.set("include_closed", "true");
   if (opts?.onlyEligible) params.set("only_eligible", "true");
-  return getAuthJson<GrantMatch[]>(`/grants/match?${params.toString()}`, token);
+  return retryGrantRead(() => getAuthJson<GrantMatch[]>(`/grants/match?${params.toString()}`, token));
 }
 
 export async function generateGrantApplication(
@@ -1281,11 +1304,11 @@ export async function detachConfigurableSubscriptionMethod(token: string) {
 
 export async function getGrantApplications(token: string, projectId?: number): Promise<GrantApplication[]> {
   const q = projectId != null ? `?project_id=${projectId}` : "";
-  return getAuthJson<GrantApplication[]>(`/grants/applications${q}`, token);
+  return retryGrantRead(() => getAuthJson<GrantApplication[]>(`/grants/applications${q}`, token));
 }
 
 export async function getGrantApplication(appId: number, token: string): Promise<GrantApplication> {
-  return getAuthJson<GrantApplication>(`/grants/applications/${appId}`, token);
+  return retryGrantRead(() => getAuthJson<GrantApplication>(`/grants/applications/${appId}`, token));
 }
 
 export async function updateGrantApplication(

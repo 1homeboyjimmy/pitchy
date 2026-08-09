@@ -115,7 +115,10 @@ export function GrantApplicationsClient() {
     if (!t) { setLoading(false); return; }
     (async () => {
       try {
-        const [list, allGrants] = await Promise.all([getGrantApplications(t), getGrants(t)]);
+        const [list, allGrants] = await Promise.all([
+          getGrantApplications(t),
+          getGrants(t, { includeExpired: true }),
+        ]);
         setApps(list);
         const gmap: Record<number, Grant> = {};
         for (const g of allGrants) gmap[g.id] = g;

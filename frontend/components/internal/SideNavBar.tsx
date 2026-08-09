@@ -127,20 +127,24 @@ export function SideNavBar({
                   </button>
                 );
               }
-              return (
-                <a
-                  key={item.id}
-                  href={item.href}
-                  onClick={() => {
+              const isExternal = /^https?:\/\//.test(item.href);
+              const navProps = {
+                  href: item.href,
+                  onClick: () => {
                     if (item.id === "custdev") trackMetrikaGoal("custdev_opened", { entry_point: "sidebar" });
                     onMobileClose?.();
-                  }}
-                  className={`group flex items-center gap-3 px-4 py-3 text-white/50 hover:bg-white/[0.03] transition-all duration-300 rounded-2xl active:scale-[0.98] ${isCollapsed ? "justify-center px-0" : ""}`}
-                  title={isCollapsed ? item.label : ""}
-                >
+                  },
+                  className: `group flex items-center gap-3 px-4 py-3 text-white/50 hover:bg-white/[0.03] transition-all duration-300 rounded-2xl active:scale-[0.98] ${isCollapsed ? "justify-center px-0" : ""}`,
+                  title: isCollapsed ? item.label : "",
+              };
+              const body = (
+                <>
                   {content}
-                </a>
+                </>
               );
+              return isExternal
+                ? <a key={item.id} {...navProps}>{body}</a>
+                : <Link key={item.id} {...navProps}>{body}</Link>;
             }
 
             return (

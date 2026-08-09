@@ -7,7 +7,7 @@ import { SideNavBar } from "@/components/internal/SideNavBar";
 import { InternalTopNavBar } from "@/components/internal/InternalTopNavBar";
 import { getToken } from "@/lib/auth";
 import { getMe, type UserResponse } from "@/lib/api";
-import { fetchUsage, getQuotas, type UsageResponse } from "@/lib/planLimits";
+import { fetchUsage, type UsageResponse } from "@/lib/planLimits";
 import { notifyTierGate } from "@/lib/ui";
 import { Providers } from "../providers";
 
@@ -41,9 +41,6 @@ export default function GrantsLayout({ children }: { children: React.ReactNode }
     return () => { cancelled = true; };
   }, []);
 
-  const tier = (usage?.tier || userProfile?.subscription_tier || "free").toLowerCase();
-  const quotas = getQuotas(tier);
-
   // Internal dashboard tabs route back to the dashboard with the tab pre-selected.
   const handleSetActiveTab = (tab: string) => {
     if (tab === "grants") return; // already here
@@ -70,8 +67,8 @@ export default function GrantsLayout({ children }: { children: React.ReactNode }
         onMobileClose={() => setIsMobileSidebarOpen(false)}
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-        canUseTree={usage?.limits.can_use_tree ?? quotas.canUseTree}
-        canUseCustdev={usage?.limits.can_use_custdev ?? quotas.canUseCustdev}
+        canUseTree={usage ? usage.limits.can_use_tree : true}
+        canUseCustdev={usage ? usage.limits.can_use_custdev : true}
         onLockedClick={(label) => notifyTierGate(label)}
       />
 

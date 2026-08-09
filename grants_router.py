@@ -87,6 +87,15 @@ async def _get_owned_project(project_id: int, user: User, db: AsyncSession) -> P
     return project
 
 
+async def _get_visible_grant(grant_id: int, user: User, db: AsyncSession) -> Grant:
+    """Return a grant without exposing pending/rejected records by direct ID."""
+    res = await db.execute(select(Grant).where(Grant.id == grant_id))
+    grant = res.scalar_one_or_none()
+    if not grant or (grant.moderation != "approved" and not user.is_admin):
+        raise HTTPException(status_code=404, detail="Грант не найден")
+    return grant
+
+
 @router.get("", response_model=list[GrantResponse])
 async def list_grants(
     status: str | None = Query(None, description="open | upcoming | closed"),
@@ -104,16 +113,11 @@ async def list_grants(
         if category not in GRANT_CATEGORIES:
             raise HTTPException(status_code=400, detail="Неизвестная категория")
         q = q.where(Grant.category == category)
-    # Прошедшие по дате подачи автоматически пропадают — но только для
-    # запарсенных программ (мероприятия/акселераторы/питчи с unicornroad).
-    # Курируемые вручную гранты (source='manual') не скрываем по устаревшей
-    # дате — ими управляет админ (у ФСИ-программ даты подачи плавающие).
+    # По умолчанию каталог содержит только актуальные программы. Историческое
+    # исключение для source='manual' оставляло в выдаче просроченные гранты.
     if not include_expired:
-        q = q.where(or_(
-            Grant.source == "manual",
-            Grant.deadline.is_(None),
-            Grant.deadline >= datetime.utcnow(),
-        ))
+        q = q.where(Grant.status != "closed")
+        q = q.where(or_(Grant.deadline.is_(None), Grant.deadline > datetime.utcnow()))
     q = q.order_by(Grant.deadline.is_(None), Grant.deadline.asc()).limit(200)
     res = await db.execute(q)
     grants = res.scalars().all()
@@ -136,13 +140,7 @@ async def match_grants(
     q = select(Grant).where(Grant.moderation == "approved")
     if not include_closed:
         q = q.where(Grant.status != "closed")
-        # Прошедшие по дедлайну не подбираем — но только запарсенные; курируемые
-        # вручную гранты (source='manual') не отсекаем по устаревшей дате.
-        q = q.where(or_(
-            Grant.source == "manual",
-            Grant.deadline.is_(None),
-            Grant.deadline >= datetime.utcnow(),
-        ))
+        q = q.where(or_(Grant.deadline.is_(None), Grant.deadline > datetime.utcnow()))
     res = await db.execute(q)
     grants = res.scalars().all()
 
@@ -350,14 +348,7 @@ async def get_grant(
     user: User = Depends(get_async_current_user),
     db: AsyncSession = Depends(get_async_db),
 ) -> GrantResponse:
-    res = await db.execute(select(Grant).where(Grant.id == grant_id))
-    grant = res.scalar_one_or_none()
-    if not grant:
-        raise HTTPException(status_code=404, detail="Грант не найден")
-    # Непубличные (pending/rejected) видны только админу — прямой переход по
-    # id не должен раскрывать немодерированные программы обычным пользователям.
-    if grant.moderation != "approved" and not user.is_admin:
-        raise HTTPException(status_code=404, detail="Грант не найден")
+    grant = await _get_visible_grant(grant_id, user, db)
     resp = GrantResponse.model_validate(grant)
     resp.has_template = grant_templates.has_real_template(grant)
     return resp
@@ -375,10 +366,7 @@ async def generate_application(
     Upsert по (user, project, grant): если карточка уже есть на канбане
     (например, добавлена как «Интересует»), наполняем её содержимым вместо
     создания дубля и подвигаем стадию interested → preparing."""
-    res = await db.execute(select(Grant).where(Grant.id == grant_id))
-    grant = res.scalar_one_or_none()
-    if not grant:
-        raise HTTPException(status_code=404, detail="Грант не найден")
+    grant = await _get_visible_grant(grant_id, user, db)
     # Генерацию включаем только для грантов с реальным шаблоном фонда.
     if not grant_templates.has_real_template(grant):
         raise HTTPException(
@@ -401,9 +389,19 @@ async def generate_application(
         require_legacy_access(user, "grants")
 
     score, _hard_pass, _reasons = grants_service.match_grant(project.passport or {}, grant)
-    result = await grants_service.generate_application(
-        project.passport or {}, grant, extra_context=payload.extra_context or ""
-    )
+    try:
+        result = await grants_service.generate_application(
+            project.passport or {}, grant, extra_context=payload.extra_context or ""
+        )
+    except RuntimeError as exc:
+        # consume_quota only flushed its debit into this transaction. Rolling
+        # back here guarantees an upstream outage never spends the user's unit.
+        await db.rollback()
+        logger.warning("grant generation unavailable (grant=%s project=%s): %s", grant.id, project.id, exc)
+        raise HTTPException(
+            status_code=503,
+            detail="Генератор заявок временно недоступен. Лимит не списан — попробуйте ещё раз.",
+        ) from exc
 
     existing = await db.execute(
         select(GrantApplication).where(
@@ -452,10 +450,7 @@ async def track_grant(
     Создаёт карточку в стадии «Интересует». Идемпотентно по (user, project,
     grant): повторный вызов возвращает существующую карточку, не плодя дубли —
     чтобы кнопка «В мои гранты» была безопасна при повторных кликах."""
-    res = await db.execute(select(Grant).where(Grant.id == grant_id))
-    grant = res.scalar_one_or_none()
-    if not grant:
-        raise HTTPException(status_code=404, detail="Грант не найден")
+    grant = await _get_visible_grant(grant_id, user, db)
 
     project = await _get_owned_project(payload.project_id, user, db)
 
@@ -523,10 +518,11 @@ async def parse_unicornroad(
     user: User = Depends(get_async_current_user),
     db: AsyncSession = Depends(get_async_db),
 ) -> dict:
-    """Импорт программ с unicornroad.ru в каталог (moderation='pending'). Только админ.
+    """Импорт доверенного фида unicornroad.ru в публичный каталог. Только админ.
 
     sections — список разделов (event/accelerator/competition/pitch/fund);
-    по умолчанию все. Дедуп по url. Программы попадают в очередь модерации."""
+    по умолчанию все. Дедуп по url. Свободные источники по-прежнему проходят
+    ручную модерацию, а структурированный фид публикуется сразу."""
     _require_admin(user)
     result = await unicornroad_parser.crawl_unicornroad(
         sections=sections,
@@ -546,12 +542,7 @@ async def get_grant_template(
     """Эффективный шаблон заявки для гранта (override из БД или дефолт из кода).
 
     Поле `source`: custom — задан админом в БД; default — выбран по названию/орг."""
-    res = await db.execute(select(Grant).where(Grant.id == grant_id))
-    grant = res.scalar_one_or_none()
-    if not grant:
-        raise HTTPException(status_code=404, detail="Грант не найден")
-    if grant.moderation != "approved" and not user.is_admin:
-        raise HTTPException(status_code=404, detail="Грант не найден")
+    grant = await _get_visible_grant(grant_id, user, db)
     template = grant_templates.select_application_template(grant)
     source = "custom" if grant.application_template else "default"
     return {"source": source, "template": template}

@@ -56,7 +56,7 @@ const nextConfig: NextConfig = {
     return {
       // beforeFiles выполняется ДО проверки файловых маршрутов (страниц).
       // Гранты: URL /grants и /grants/[id] заняты страницами Next. Поэтому
-      // на бэкенд переписываем ТОЛЬКО запросы с заголовком Authorization —
+      // на бэкенд переписываем ТОЛЬКО запросы с заголовком x-pitchy-api —
       // это API-вызовы; обычная навигация рендерит страницу грантов.
       beforeFiles: [
         // Same-origin URL keeps the browser on Pitchy while Next proxies the

@@ -17,13 +17,21 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from datetime import datetime
 from urllib.parse import urljoin, urlparse
 
 logger = logging.getLogger("app.grants_autodiscover")
 
-LOOP_INTERVAL_SECONDS = 24 * 60 * 60   # проход раз в сутки
-STARTUP_DELAY_SECONDS = 120            # не мешаем старту бэкенда
+LOOP_INTERVAL_SECONDS = max(
+    3600, int(os.getenv("GRANT_CATALOG_REFRESH_SECONDS", str(24 * 60 * 60)))
+)
+STARTUP_DELAY_SECONDS = max(
+    0, int(os.getenv("GRANT_MAINTENANCE_STARTUP_DELAY_SECONDS", "120"))
+)
+DEADLINE_CHECK_INTERVAL_SECONDS = max(
+    60, int(os.getenv("GRANT_DEADLINE_CHECK_SECONDS", str(60 * 60)))
+)
 FETCH_DELAY_SECONDS = 1.5              # вежливая пауза между страницами
 GLOBAL_MAX_ITEMS = 30                  # жёсткий потолок программ за проход
 
@@ -195,13 +203,52 @@ async def run_autodiscovery_once() -> dict:
     return summary
 
 
+async def sync_deadlines_once() -> dict:
+    """Close expired grants and activate programs whose opening date arrived."""
+    from db_async import AsyncSessionLocal
+    import grants_service
+
+    async with AsyncSessionLocal() as db:
+        result = await grants_service.sync_grant_deadline_statuses(db)
+    if result["changed"]:
+        logger.info("grant deadline sync: %s", result)
+    return result
+
+
+async def refresh_trusted_catalog_once() -> dict:
+    """Refresh deterministic trusted feeds that do not require moderation."""
+    import unicornroad_parser
+
+    result = await unicornroad_parser.crawl_unicornroad(
+        max_per_section=100,
+        force_refresh=False,
+        active_only=True,
+    )
+    logger.info("trusted grant catalog refresh: %s", result)
+    return result
+
+
 async def run_autodiscovery_loop() -> None:
-    """Верхнеуровневый цикл: стартовая задержка, затем проход раз в сутки.
-    Любая ошибка прохода логируется и НЕ убивает цикл."""
+    """Hourly deadline checks plus a daily refresh of all grant sources."""
     await asyncio.sleep(STARTUP_DELAY_SECONDS)
+    refresh_every_checks = max(1, LOOP_INTERVAL_SECONDS // DEADLINE_CHECK_INTERVAL_SECONDS)
+    checks_since_refresh = refresh_every_checks
     while True:
         try:
-            await run_autodiscovery_once()
+            await sync_deadlines_once()
         except Exception as e:  # noqa: BLE001
-            logger.error("autodiscover loop error: %s: %s", type(e).__name__, e, exc_info=True)
-        await asyncio.sleep(LOOP_INTERVAL_SECONDS)
+            logger.error("grant deadline sync error: %s: %s", type(e).__name__, e, exc_info=True)
+
+        if checks_since_refresh >= refresh_every_checks:
+            try:
+                await refresh_trusted_catalog_once()
+            except Exception as e:  # noqa: BLE001
+                logger.error("trusted grant refresh error: %s: %s", type(e).__name__, e, exc_info=True)
+            try:
+                await run_autodiscovery_once()
+            except Exception as e:  # noqa: BLE001
+                logger.error("autodiscover loop error: %s: %s", type(e).__name__, e, exc_info=True)
+            checks_since_refresh = 0
+
+        checks_since_refresh += 1
+        await asyncio.sleep(DEADLINE_CHECK_INTERVAL_SECONDS)

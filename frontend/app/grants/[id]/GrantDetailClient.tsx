@@ -12,6 +12,7 @@ import { getToken } from "@/lib/auth";
 import { notifyError } from "@/lib/ui";
 import {
   getGrant, getProjects, generateGrantApplication, trackGrant, matchGrants,
+  describeApiError,
   type Grant, type ProjectListItem, type GrantApplication, type GrantMatch,
 } from "@/lib/api";
 
@@ -86,13 +87,22 @@ export function GrantDetailClient() {
     if (!t) { setLoading(false); return; }
     (async () => {
       try {
-        const [g, pj] = await Promise.all([getGrant(grantId, t), getProjects(t)]);
-        setGrant(g);
-        setProjects(pj);
-        setProjectId((current) => current == null && pj.length > 0 ? pj[0].id : current);
-      } catch (e) {
-        console.error(e);
-        notifyError("Не удалось загрузить грант");
+        const [grantResult, projectsResult] = await Promise.allSettled([
+          getGrant(grantId, t),
+          getProjects(t),
+        ]);
+        if (grantResult.status === "fulfilled") setGrant(grantResult.value);
+        else {
+          console.error(grantResult.reason);
+          notifyError(describeApiError(grantResult.reason, "Не удалось загрузить грант"));
+        }
+        if (projectsResult.status === "fulfilled") {
+          const pj = projectsResult.value;
+          setProjects(pj);
+          setProjectId((current) => current == null && pj.length > 0 ? pj[0].id : current);
+        } else {
+          console.error("Failed to load projects on grant page", projectsResult.reason);
+        }
       } finally {
         setLoading(false);
       }
@@ -120,7 +130,7 @@ export function GrantDetailClient() {
       setTracked(true); // заявка попала на канбан «Мои гранты» (стадия «Готовлю»)
     } catch (e) {
       console.error(e);
-      notifyError("Не удалось сгенерировать заявку");
+      notifyError(describeApiError(e, "Не удалось сгенерировать заявку"));
     } finally {
       setGenerating(false);
     }
@@ -134,7 +144,7 @@ export function GrantDetailClient() {
       setTracked(true);
     } catch (e) {
       console.error(e);
-      notifyError("Не удалось добавить в «Мои гранты»");
+      notifyError(describeApiError(e, "Не удалось добавить в «Мои гранты»"));
     } finally {
       setTracking(false);
     }

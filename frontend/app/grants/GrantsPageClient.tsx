@@ -271,6 +271,7 @@ export function GrantsPageClient() {
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
   const [activeProject, setActiveProject] = useState<number | null>(null);
   const [grants, setGrants] = useState<Grant[]>([]);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
   const [matches, setMatches] = useState<GrantMatch[]>([]);
   const [matchLoading, setMatchLoading] = useState(false);
   const [onlyEligible, setOnlyEligible] = useState(false);
@@ -289,19 +290,37 @@ export function GrantsPageClient() {
     }
     (async () => {
       try {
-        const [pj, gr] = await Promise.all([getProjects(t), getGrants(t)]);
-        setProjects(pj);
-        setGrants(gr);
+        const [projectsResult, grantsResult] = await Promise.allSettled([getProjects(t), getGrants(t)]);
+        if (projectsResult.status === "fulfilled") setProjects(projectsResult.value);
+        else console.error("Failed to load grant projects", projectsResult.reason);
+        if (grantsResult.status === "fulfilled") {
+          setGrants(grantsResult.value);
+          setCatalogError(null);
+        } else {
+          console.error("Failed to load grant catalogue", grantsResult.reason);
+          setCatalogError(describeApiError(grantsResult.reason, "Не удалось загрузить каталог грантов."));
+        }
         // Не выбираем проект автоматически: сначала показываем ВСЕ программы,
         // подбор под паспорт — по желанию пользователя (клик по проекту ниже).
-      } catch (e) {
-        console.error(e);
-        notifyError("Не удалось загрузить гранты");
       } finally {
         setLoading(false);
       }
     })();
   }, []);
+
+  const retryCatalog = async () => {
+    if (!token) return;
+    setCatalogError(null);
+    setLoading(true);
+    try {
+      setGrants(await getGrants(token));
+    } catch (error) {
+      console.error(error);
+      setCatalogError(describeApiError(error, "Не удалось загрузить каталог грантов."));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Автоподбор под выбранный проект.
   useEffect(() => {
@@ -667,6 +686,13 @@ export function GrantsPageClient() {
                 ))}
               </div>
             )
+          ) : catalogError ? (
+            <div className="lovable-glass rounded-3xl p-6 sm:p-10 text-center border border-amber-500/20">
+              <p className="text-white/60 text-sm">{catalogError}</p>
+              <button onClick={retryCatalog} className="mt-4 rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-black hover:bg-neutral-200">
+                Повторить загрузку
+              </button>
+            </div>
           ) : visibleGrants.length === 0 ? (
             <div className="lovable-glass rounded-3xl p-6 sm:p-10 text-center text-white/40 border border-white/10">
               {grants.length === 0
