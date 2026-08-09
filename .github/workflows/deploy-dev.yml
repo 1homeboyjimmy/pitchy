@@ -151,7 +151,7 @@ jobs:
 
           # Wait for postgres
           for i in $(seq 1 10); do
-            if docker compose exec -T postgres pg_isready -U app_user -d app; then
+            if docker compose exec -T postgres pg_isready -U app_user -d app </dev/null; then
               echo "Postgres is ready."
               break
             fi
@@ -163,12 +163,12 @@ jobs:
           # let two migrations sit unapplied for days before being caught
           # by 500s on the dependent endpoints. Fail loud — the workflow
           # turns red, and the issue is fixed before users see it.
-          if ! timeout 60 docker compose exec -T backend python -m alembic upgrade head; then
+          if ! timeout 60 docker compose exec -T backend python -m alembic upgrade head </dev/null; then
             echo "ERROR: alembic upgrade head exited non-zero on dev"
             exit 1
           fi
-          CURRENT_REV=$(docker compose exec -T backend python -m alembic current 2>/dev/null | grep -oE '[a-f0-9]{12}' | head -n 1 || true)
-          HEAD_REV=$(docker compose exec -T backend python -m alembic heads 2>/dev/null | grep -oE '[a-f0-9]{12}' | head -n 1 || true)
+          CURRENT_REV=$(docker compose exec -T backend python -m alembic current </dev/null 2>/dev/null | grep -oE '[a-f0-9]{12}' | head -n 1 || true)
+          HEAD_REV=$(docker compose exec -T backend python -m alembic heads </dev/null 2>/dev/null | grep -oE '[a-f0-9]{12}' | head -n 1 || true)
           if [ -z "$CURRENT_REV" ] || [ -z "$HEAD_REV" ] || [ "$CURRENT_REV" != "$HEAD_REV" ]; then
             echo "ERROR: alembic revision mismatch — current=$CURRENT_REV, head=$HEAD_REV"
             exit 1
@@ -181,7 +181,7 @@ jobs:
           mkdir -p .deploy-state
           if [ ! -f .deploy-state/unicornroad-rich-events-v1.done ]; then
             echo "Running one-time Unicorn Road event backfill..."
-            if ! timeout 900 docker compose exec -T backend python -c "import asyncio, json; from unicornroad_parser import crawl_unicornroad; print(json.dumps(asyncio.run(crawl_unicornroad(sections=['event'], max_per_section=1000, force_refresh=True, active_only=True)), ensure_ascii=False))"; then
+            if ! timeout 900 docker compose exec -T backend python -c "import asyncio, json; from unicornroad_parser import crawl_unicornroad; print(json.dumps(asyncio.run(crawl_unicornroad(sections=['event'], max_per_section=1000, force_refresh=True, active_only=True)), ensure_ascii=False))" </dev/null; then
               echo "ERROR: Unicorn Road event backfill failed"
               exit 1
             fi
@@ -192,7 +192,7 @@ jobs:
           # Healthcheck
           health_ok="false"
           for i in $(seq 1 30); do
-            body="$(docker compose exec -T backend curl -s http://127.0.0.1:8000/health || true)"
+            body="$(docker compose exec -T backend curl -s http://127.0.0.1:8000/health </dev/null || true)"
             if echo "$body" | grep -q '"status":"ok"'; then
               health_ok="true"
               echo "Healthcheck passed on attempt $i!"
