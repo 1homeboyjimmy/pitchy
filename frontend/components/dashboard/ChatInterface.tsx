@@ -623,6 +623,11 @@ export function ChatInterface({
 
         const abortController = new AbortController();
         abortControllerRef.current = abortController;
+        // Keep the client id available to the error-reconciliation path even
+        // when the stream fails after the request has been created.
+        let assistantClientId = "";
+        let fullThoughtContent = "";
+        let statusTrace = "";
 
         try {
             const token = getToken();
@@ -630,7 +635,7 @@ export function ChatInterface({
 
             const now = new Date();
             const userClientId = crypto.randomUUID();
-            const assistantClientId = crypto.randomUUID();
+            assistantClientId = crypto.randomUUID();
 
             if (!silent) {
                 setStreamingStatus("Pitchy планирует поиск...");
@@ -690,8 +695,8 @@ export function ChatInterface({
             setDisplayedLength(0);
 
             let assistantContent = "";
-            let fullThoughtContent = "";
-            let statusTrace = "";
+            fullThoughtContent = "";
+            statusTrace = "";
             let lastStatusForTrace = "";
             const startTime = now.getTime();
             const { sendChatMessageStream, getChatSession } = await import("@/lib/api");
