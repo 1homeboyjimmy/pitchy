@@ -451,8 +451,14 @@ export async function* sendChatMessageStream(
   let buffer = "";
   while (true) {
     const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
+    if (done) {
+      // The last SSE event is not required to end with a blank line. Flush
+      // the decoder/buffer so a completed answer is not silently dropped.
+      buffer += decoder.decode();
+      if (buffer.trim()) buffer += "\n\n";
+    } else {
+      buffer += decoder.decode(value, { stream: true });
+    }
     // SSE spec uses CRLF; sse-starlette emits \r\n\r\n between events.
     // Accept both \r\n\r\n and \n\n so the parser works with any backend.
     const events = buffer.split(/\r?\n\r?\n/);
@@ -480,6 +486,7 @@ export async function* sendChatMessageStream(
         }
       }
     }
+    if (done) break;
   }
 }
 

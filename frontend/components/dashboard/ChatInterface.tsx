@@ -852,13 +852,22 @@ export function ChatInterface({
             } else {
                 notifyError("Не удалось отправить сообщение.");
             }
-            setMessages((prev) => {
-                const last = prev.length;
-                if (last >= 2 && prev[last - 1].role === "assistant" && prev[last - 1].content === "") {
-                    return prev.slice(0, -2);
-                }
-                return prev.filter(m => m.id !== -1);
-            });
+            // Keep the user's message and the assistant placeholder visible.
+            // Previously both temporary messages were removed on a stream
+            // failure, which made the composer jump back to the mode buttons
+            // and looked like the request had disappeared. Reconciliation on
+            // the next session refresh will replace this placeholder if the
+            // backend completed the response after the connection dropped.
+            setMessages((prev) => prev.map((message) =>
+                message.client_id === assistantClientId
+                    ? {
+                        ...message,
+                        content: "Не удалось получить ответ от сервера. Запрос сохранён — попробуйте обновить чат.",
+                        thoughts: fullThoughtContent || statusTrace || message.thoughts,
+                        thoughtExpanded: false,
+                    }
+                    : message
+            ));
         } finally {
             setIsLoading(false);
             setStreamingStatus(null);
