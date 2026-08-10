@@ -3,6 +3,7 @@ import uuid
 import asyncio
 import logging
 import json
+import re
 import numpy as np
 from typing import Optional
 
@@ -97,7 +98,12 @@ class SemanticCache:
             # distance < 0.05
             max_distance = 1.0 - threshold
             
-            q = Query(f"(@project_id:{{{project_id}}})=>[KNN 1 @query_vector $vec AS score]")\
+            # Tag values are not literals in RediSearch. Project/session ids
+            # often contain punctuation (notably `-`), which otherwise makes
+            # the query parser fail with "Syntax error near ...". Escape all
+            # tag-special characters before interpolating the value.
+            safe_project_id = re.sub(r'([,.<>/\\{}\[\]"\':;!@#$%^&*()\-+=~| ])', r'\\\1', str(project_id))
+            q = Query(f"(@project_id:{{{safe_project_id}}})=>[KNN 1 @query_vector $vec AS score]")\
                 .sort_by("score")\
                 .return_fields("response", "score")\
                 .dialect(2)

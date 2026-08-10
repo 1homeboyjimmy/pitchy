@@ -17,8 +17,8 @@ logger = logging.getLogger("app")
 
 class ChunkAnalysis(BaseModel):
     is_relevant: bool = Field(description="Содержит ли текст полезные бизнес-метрики или конкурентов?")
-    competitors: List[str] = Field(default_factory=list, description="Найденные имена конкурентов")
-    metrics: List[str] = Field(default_factory=list, description="Найденные числа, цены, доли рынка")
+    competitors: List[str] = Field(default_factory=list, max_length=20, description="Не более 20 найденных имён конкурентов")
+    metrics: List[str] = Field(default_factory=list, max_length=30, description="Не более 30 наиболее важных чисел, цен и долей рынка")
     confidence: float = Field(description="Уверенность в данных от 0.0 до 1.0", ge=0.0, le=1.0)
 
 def get_patched_client():
@@ -47,7 +47,7 @@ async def _process_single_chunk(client, chunk: str, trace_id: str = None, parent
             model="qwen/qwen-2.5-7b-instruct", 
             response_model=ChunkAnalysis,
             messages=[
-                {"role": "system", "content": "Извлеки бизнес-данные. Верни строгий JSON."},
+                {"role": "system", "content": "Извлеки только самые важные бизнес-данные. Верни строгий JSON. Максимум 20 конкурентов и 30 метрик; не перечисляй повторяющиеся значения."},
                 {"role": "user", "content": f"Текст: {chunk}"}
             ],
             temperature=0.1,
