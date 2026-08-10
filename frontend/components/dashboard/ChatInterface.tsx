@@ -707,16 +707,18 @@ export function ChatInterface({
             let watchdog: NodeJS.Timeout;
             const resetWatchdog = () => {
                 clearTimeout(watchdog);
-                // 45s: длинная «мысль» модели (напр. генерация отчёта для экспорта —
-                // до ~35s молчания без стрим-событий) не должна обрывать генерацию.
+                // Long model/tool phases can legitimately take more than a
+                // minute before the next visible token. The server emits SSE
+                // heartbeats, but keep a generous hard client-side ceiling as
+                // a safety net for proxies/browsers that buffer those events.
                 // При обрыве по 20s стоп-кнопка исчезала, а ответ подтягивался рефетчем.
                 watchdog = setTimeout(() => {
-                    console.error("Watchdog timeout: no events for 45s");
+                    console.error("Watchdog timeout: no events for 180s");
                     if (abortControllerRef.current) {
                         abortControllerRef.current.abort();
                     }
-                    setStreamingStatus("Слишком долгое ожидание ответа от серверов (Таймаут).");
-                }, 45000);
+                    setStreamingStatus("Сервер всё ещё формирует ответ. Запрос сохранён — можно обновить чат и продолжить.");
+                }, 180000);
             };
 
             resetWatchdog();
