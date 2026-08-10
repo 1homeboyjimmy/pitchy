@@ -25,16 +25,16 @@ export interface PlanQuotas {
 
 export const PLAN_QUOTAS: Record<SubscriptionTier, PlanQuotas> = {
   free: {
-    messages: 3,
+    messages: 5,
     searchMessages: 0,
     deepResearch: 0,
-    roadmaps: 0,
+    roadmaps: 1,
     deepCustdev: 0, grants: 0,
     canUseDeepSearch: false,
     canUseResearch: false,
     canUsePresentation: false,
     canUseImportContext: false,
-    canUseTree: false,
+    canUseTree: true,
     canUseCustdev: false,
   },
   starter: {

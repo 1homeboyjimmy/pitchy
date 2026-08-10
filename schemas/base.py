@@ -332,6 +332,13 @@ class GrantResponse(BaseModel):
     category: str = "grant"
     moderation: str = "approved"
 
+    @field_validator("stages", "sectors", "entity_types", mode="before")
+    @classmethod
+    def _legacy_null_lists(cls, value):
+        # The first grants migration allowed NULL JSON arrays. Keep one legacy
+        # row from making FastAPI fail serialization for the whole catalogue.
+        return value or []
+
     class Config:
         from_attributes = True
 
@@ -437,7 +444,7 @@ class GrantModerateRequest(BaseModel):
 
 class GrantApplicationGenerateRequest(BaseModel):
     project_id: int
-    extra_context: str | None = None
+    extra_context: str | None = Field(default=None, max_length=8000)
     request_id: str | None = Field(default=None, max_length=100)
 
 
@@ -452,6 +459,11 @@ class GrantApplicationResponse(BaseModel):
     match_score: int = 0
     created_at: datetime
     updated_at: datetime
+
+    @field_validator("content", mode="before")
+    @classmethod
+    def _legacy_null_content(cls, value):
+        return value or {}
 
     class Config:
         from_attributes = True

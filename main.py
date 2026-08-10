@@ -452,9 +452,8 @@ async def lifespan(app: FastAPI):
     from subscription_notices import run_subscription_notices_loop
     asyncio.create_task(run_subscription_notices_loop())
 
-    # Авто-обнаружение грантов (#20): раз в сутки обходим включённые источники
-    # (админ добавляет их в админке) и кладём найденное в очередь модерации.
-    # Цикл на asyncio (как subscription_notices), без новых зависимостей.
+    # Грантовый каталог: каждый час закрываем истёкшие программы, раз в сутки
+    # обновляем доверенные фиды и обходим добавленные админом источники.
     from grants_autodiscover import run_autodiscovery_loop
     asyncio.create_task(run_autodiscovery_loop())
 
@@ -1629,15 +1628,17 @@ async def me_usage(
             return None  # JSON null → frontend treats as unlimited
         return max(0, limit_value - used)
 
+    legacy_grants_limit = UNLIMITED if tier_name not in ("free", "tester") else 0
     return {
         "tier": tier_name,
-        "limits": limits_as_dict(limits),
+        "limits": {**limits_as_dict(limits), "grants": legacy_grants_limit},
         "usage": {
             "messages": messages_used,
             "search_messages": search_messages_used,
             "custdev": custdev_used,
             "roadmaps": roadmaps_used,
             "deep_research": research_used,
+            "grants": 0,
         },
         "remaining": {
             "messages": remaining(limits.messages, messages_used),
@@ -1645,6 +1646,7 @@ async def me_usage(
             "custdev": remaining(limits.custdev, custdev_used),
             "roadmaps": remaining(limits.roadmaps, roadmaps_used),
             "deep_research": remaining(limits.deep_research, research_used),
+            "grants": remaining(legacy_grants_limit, 0),
         },
         "period_start": month_start.isoformat() + "Z",
     }

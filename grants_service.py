@@ -143,14 +143,58 @@ def _parse_iso_date(s):
     return None
 
 
-def _status_from_dates(opens_at, deadline) -> str:
+def _status_from_dates(opens_at, deadline, *, now=None) -> str:
     from datetime import datetime
-    now = datetime.utcnow()
-    if deadline and deadline < now:
+    now = now or datetime.utcnow()
+    if deadline and deadline <= now:
         return "closed"
     if opens_at and opens_at > now:
         return "upcoming"
     return "open"
+
+
+async def sync_grant_deadline_statuses(db, *, now=None) -> dict[str, int]:
+    """Synchronise time-derived statuses without overriding manual closures.
+
+    Every expired record is closed, including legacy/manual grants. Upcoming
+    records open when their start date arrives. A manually closed program is
+    never reopened merely because its stored deadline is still in the future.
+    """
+    from datetime import datetime
+    from sqlalchemy import select
+    from models import Grant
+
+    now = now or datetime.utcnow()
+    result = await db.execute(
+        select(Grant).where(
+            (Grant.deadline.is_not(None)) | (Grant.opens_at.is_not(None))
+        )
+    )
+    changed = 0
+    closed = 0
+    opened = 0
+    upcoming = 0
+    for grant in result.scalars().all():
+        target = grant.status
+        if grant.deadline is not None and grant.deadline <= now:
+            target = "closed"
+        elif grant.status == "upcoming" and (grant.opens_at is None or grant.opens_at <= now):
+            target = "open"
+        elif grant.status == "open" and grant.opens_at is not None and grant.opens_at > now:
+            target = "upcoming"
+        if target == grant.status:
+            continue
+        grant.status = target
+        changed += 1
+        if target == "closed":
+            closed += 1
+        elif target == "open":
+            opened += 1
+        else:
+            upcoming += 1
+    if changed:
+        await db.commit()
+    return {"changed": changed, "closed": closed, "opened": opened, "upcoming": upcoming}
 
 
 def _coerce_list(values, allowed: list[str] | None = None) -> list[str]:
@@ -475,17 +519,18 @@ async def generate_application(passport: dict | None, grant, extra_context: str 
     sections: dict[str, str] = {}
     usage_total = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
+    timeout_seconds = max(10.0, float(os.getenv("GRANTS_GENERATION_TIMEOUT_SECONDS", "90")))
     try:
-        results = await asyncio.gather(*[
+        results = await asyncio.wait_for(asyncio.gather(*[
             _generate_group(
                 g, fund_guidance=template["fund_guidance"], grant_facts=grant_facts,
                 brief=brief, extra_context=extra_context, model=model,
             )
             for g in template["groups"]
-        ], return_exceptions=True)
+        ], return_exceptions=True), timeout=timeout_seconds)
         for g, res in zip(template["groups"], results):
             if isinstance(res, Exception):
-                logger.error(f"grant gen group '{g['id']}' failed: {res}")
+                logger.error("grant gen group '%s' failed: %s", g["id"], res)
                 continue
             part, usage = res
             if isinstance(part, dict):
@@ -495,8 +540,17 @@ async def generate_application(passport: dict | None, grant, extra_context: str 
                     usage_total[k] += int(usage.get(k) or 0)
                 except Exception:
                     pass
-    except Exception as e:  # noqa: BLE001
-        logger.error(f"grant application generation failed: {e}")
+    except TimeoutError as exc:
+        logger.error("grant application generation timed out after %.1fs", timeout_seconds)
+        raise RuntimeError("grant_generation_timeout") from exc
+    except Exception as exc:  # noqa: BLE001
+        logger.error("grant application generation failed: %s", exc, exc_info=True)
+        raise RuntimeError("grant_generation_failed") from exc
+
+    # Do not charge a quota unit or save an all-placeholder application when
+    # every upstream group failed or returned malformed JSON.
+    if not sections:
+        raise RuntimeError("grant_generation_empty")
 
     # Порядок и подписи разделов для рендера; заглушки для пустых.
     section_meta: list[dict] = []

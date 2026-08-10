@@ -6,8 +6,9 @@ by hand because the frontend ships a static config and runtime check
 both sides defensively.
 
 Spec (per user requirement, 2026-05):
-- free:    3 messages in main chat. NO extras. Locks on every other
-           feature with an upgrade prompt.
+- free:    5 messages in main chat, read-only grants catalogue, and one
+           roadmap per month. Paid grant actions and advanced chat features
+           remain locked with an upgrade prompt.
 - starter: 100 messages in main chat. ALL chat extras (deep_search,
            research, presentation, import) allowed. Tree/Roadmap
            allowed. CustDev: 2 runs per month (counter is filled from
@@ -52,12 +53,14 @@ class PlanLimits:
 
 PLAN_LIMITS: dict[str, PlanLimits] = {
     "free": PlanLimits(
-        messages=3,
+        messages=5,
         search_messages=0,
         custdev=0,
-        roadmaps=0,
+        roadmaps=1,
         deep_research=0,
-        # All advanced chat extras and other features are blocked on free.
+        # Free users may read the grants catalogue and create one roadmap;
+        # paid grant actions and advanced chat features remain blocked.
+        can_use_tree=True,
     ),
     "starter": PlanLimits(
         messages=100,

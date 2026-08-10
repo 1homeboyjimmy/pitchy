@@ -10,8 +10,11 @@ import {
 } from "lucide-react";
 import { getToken } from "@/lib/auth";
 import { notifyError } from "@/lib/ui";
+import { GrantActionsPaywall } from "../GrantActionsPaywall";
+import { useGrantAccess } from "../GrantAccessContext";
 import {
   getGrant, getProjects, generateGrantApplication, trackGrant, matchGrants,
+  describeApiError,
   type Grant, type ProjectListItem, type GrantApplication, type GrantMatch,
 } from "@/lib/api";
 
@@ -63,6 +66,7 @@ const FORMAT_LABELS: Record<string, string> = {
 };
 
 export function GrantDetailClient() {
+  const { loading: accessLoading, canUseGrantActions } = useGrantAccess();
   const params = useParams();
   const search = useSearchParams();
   const grantId = Number(params.id);
@@ -86,13 +90,22 @@ export function GrantDetailClient() {
     if (!t) { setLoading(false); return; }
     (async () => {
       try {
-        const [g, pj] = await Promise.all([getGrant(grantId, t), getProjects(t)]);
-        setGrant(g);
-        setProjects(pj);
-        setProjectId((current) => current == null && pj.length > 0 ? pj[0].id : current);
-      } catch (e) {
-        console.error(e);
-        notifyError("Не удалось загрузить грант");
+        const [grantResult, projectsResult] = await Promise.allSettled([
+          getGrant(grantId, t),
+          getProjects(t),
+        ]);
+        if (grantResult.status === "fulfilled") setGrant(grantResult.value);
+        else {
+          console.error(grantResult.reason);
+          notifyError(describeApiError(grantResult.reason, "Не удалось загрузить грант"));
+        }
+        if (projectsResult.status === "fulfilled") {
+          const pj = projectsResult.value;
+          setProjects(pj);
+          setProjectId((current) => current == null && pj.length > 0 ? pj[0].id : current);
+        } else {
+          console.error("Failed to load projects on grant page", projectsResult.reason);
+        }
       } finally {
         setLoading(false);
       }
@@ -101,7 +114,7 @@ export function GrantDetailClient() {
 
   // Объяснение матча: подтягиваем оценку этого гранта под выбранный проект.
   useEffect(() => {
-    if (!token || projectId == null) { setMatch(null); return; }
+    if (!token || projectId == null || !canUseGrantActions) { setMatch(null); return; }
     let cancelled = false;
     matchGrants(projectId, token)
       .then((list) => {
@@ -109,7 +122,7 @@ export function GrantDetailClient() {
       })
       .catch((e) => console.error(e));
     return () => { cancelled = true; };
-  }, [token, projectId, grantId]);
+  }, [token, projectId, grantId, canUseGrantActions]);
 
   const handleGenerate = async () => {
     if (!token || projectId == null) return;
@@ -120,7 +133,7 @@ export function GrantDetailClient() {
       setTracked(true); // заявка попала на канбан «Мои гранты» (стадия «Готовлю»)
     } catch (e) {
       console.error(e);
-      notifyError("Не удалось сгенерировать заявку");
+      notifyError(describeApiError(e, "Не удалось сгенерировать заявку"));
     } finally {
       setGenerating(false);
     }
@@ -134,7 +147,7 @@ export function GrantDetailClient() {
       setTracked(true);
     } catch (e) {
       console.error(e);
-      notifyError("Не удалось добавить в «Мои гранты»");
+      notifyError(describeApiError(e, "Не удалось добавить в «Мои гранты»"));
     } finally {
       setTracking(false);
     }
@@ -280,7 +293,7 @@ export function GrantDetailClient() {
         </div>
 
         {/* Насколько подходит вам (объяснение соответствия под выбранный проект) */}
-        {isApplyable && match && (
+        {isApplyable && canUseGrantActions && match && (
           <div className="lovable-glass rounded-2xl p-6 border border-emerald-500/15 mb-8">
             <div className="flex items-center justify-between gap-3 mb-4">
               <h3 className="font-display text-lg text-white">Насколько подходит вам</h3>
@@ -416,7 +429,13 @@ export function GrantDetailClient() {
         )}
 
         {/* Генерация заявки / трекинг — только для applyable-категорий */}
-        {isApplyable && (
+        {isApplyable && !accessLoading && !canUseGrantActions && (
+          <div className="border-t border-white/10 pt-8">
+            <GrantActionsPaywall />
+          </div>
+        )}
+
+        {isApplyable && canUseGrantActions && (
         <section className="border-t border-white/10 pt-8">
           <div className="flex items-center gap-2 mb-4 text-white/70">
             <Sparkles size={18} />

@@ -78,6 +78,36 @@ async def get_subscription(db: AsyncSession, user_id: int, *, for_update: bool =
     return (await db.execute(query)).scalar_one_or_none()
 
 
+async def require_quota_access(db: AsyncSession, user: User, resource: str) -> None:
+    """Require at least one available unit without consuming it.
+
+    Used by mutations that belong to a paid resource but should not debit a
+    unit themselves (for example, saving a grant before generation).
+    """
+    if user.is_admin:
+        return
+    if resource not in RESOURCES:
+        raise ValueError(f"Unknown quota resource: {resource}")
+
+    subscription = await get_subscription(db, user.id)
+    if subscription is None:
+        require_legacy_access(user, resource)
+        return
+    if not is_active(subscription):
+        raise HTTPException(
+            status_code=402,
+            detail="subscription_inactive: подписка не активна или срок действия закончился",
+        )
+
+    config = normalize_config(subscription.current_config)
+    used = {**empty_usage(), **(subscription.used or {})}
+    if used[resource] >= config[resource]:
+        raise HTTPException(
+            status_code=402,
+            detail=f"quota_exceeded: докупите доступ к ресурсу {resource}",
+        )
+
+
 async def consume_quota(
     db: AsyncSession,
     user: User,

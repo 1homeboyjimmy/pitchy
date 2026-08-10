@@ -10,8 +10,9 @@ headless-браузер, ни LLM-извлечение: берём структ�
 описание. getpost делаем только для НОВЫХ постов (дедуп по url до запроса),
 параллельно с ограничением одновременных соединений.
 
-Импортируем программы как Grant с category/location и moderation='pending'
-(в очередь модерации, дедуп по url).
+Unicorn Road is a curated, structured feed, so imported programs are published
+immediately. Free-form sources discovered by grants_autodiscover still go
+through the moderation queue.
 """
 
 from __future__ import annotations
@@ -379,7 +380,7 @@ async def crawl_unicornroad(
     force_refresh: bool = False,
     active_only: bool = False,
 ) -> dict:
-    """Импортирует программы с unicornroad в каталог (moderation='pending').
+    """Импортирует программы с unicornroad прямо в публичный каталог.
 
     sections — ключи CATEGORY_FEEDS (по умолчанию все). Дедуп по url до getpost
     (не тратим запросы на существующие). Для мероприятий/питчей тянем точный
@@ -464,7 +465,7 @@ async def crawl_unicornroad(
                             setattr(existing, field, value)
                     updated += 1
                 else:
-                    db.add(Grant(**data, source="unicornroad", moderation="pending"))
+                    db.add(Grant(**data, source="unicornroad", moderation="approved"))
                     new += 1
 
             if new or updated:

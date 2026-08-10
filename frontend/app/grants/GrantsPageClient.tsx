@@ -14,6 +14,8 @@ import {
   type ProjectListItem, type Grant, type GrantMatch,
 } from "@/lib/api";
 import { trackMetrikaGoal } from "@/components/analytics/YandexMetrika";
+import { GrantActionsPaywall } from "./GrantActionsPaywall";
+import { useGrantAccess } from "./GrantAccessContext";
 
 const EASE = [0.16, 1, 0.3, 1] as const;
 
@@ -266,11 +268,13 @@ function SupportMeasureCard({ grant, match, href }: { grant: Grant; match?: Gran
 }
 
 export function GrantsPageClient() {
+  const { loading: accessLoading, canUseGrantActions } = useGrantAccess();
   const [token, setTok] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
   const [activeProject, setActiveProject] = useState<number | null>(null);
   const [grants, setGrants] = useState<Grant[]>([]);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
   const [matches, setMatches] = useState<GrantMatch[]>([]);
   const [matchLoading, setMatchLoading] = useState(false);
   const [onlyEligible, setOnlyEligible] = useState(false);
@@ -289,19 +293,37 @@ export function GrantsPageClient() {
     }
     (async () => {
       try {
-        const [pj, gr] = await Promise.all([getProjects(t), getGrants(t)]);
-        setProjects(pj);
-        setGrants(gr);
+        const [projectsResult, grantsResult] = await Promise.allSettled([getProjects(t), getGrants(t)]);
+        if (projectsResult.status === "fulfilled") setProjects(projectsResult.value);
+        else console.error("Failed to load grant projects", projectsResult.reason);
+        if (grantsResult.status === "fulfilled") {
+          setGrants(grantsResult.value);
+          setCatalogError(null);
+        } else {
+          console.error("Failed to load grant catalogue", grantsResult.reason);
+          setCatalogError(describeApiError(grantsResult.reason, "Не удалось загрузить каталог грантов."));
+        }
         // Не выбираем проект автоматически: сначала показываем ВСЕ программы,
         // подбор под паспорт — по желанию пользователя (клик по проекту ниже).
-      } catch (e) {
-        console.error(e);
-        notifyError("Не удалось загрузить гранты");
       } finally {
         setLoading(false);
       }
     })();
   }, []);
+
+  const retryCatalog = async () => {
+    if (!token) return;
+    setCatalogError(null);
+    setLoading(true);
+    try {
+      setGrants(await getGrants(token));
+    } catch (error) {
+      console.error(error);
+      setCatalogError(describeApiError(error, "Не удалось загрузить каталог грантов."));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Автоподбор под выбранный проект.
   useEffect(() => {
@@ -425,8 +447,16 @@ export function GrantsPageClient() {
           </p>
         </div>
 
-        {/* Выбор проекта */}
-        {projects.length === 0 ? (
+        {!accessLoading && !canUseGrantActions && (
+          <div className="mb-10">
+            <GrantActionsPaywall compact />
+          </div>
+        )}
+
+        {canUseGrantActions && (
+          <>
+          {/* Выбор проекта и персональный подбор доступны вместе с подачей. */}
+          {projects.length === 0 ? (
           <div className="lovable-glass rounded-3xl p-7 md:p-9 mb-10 border border-white/10">
             <div className="flex items-center gap-2 mb-3 text-white/40">
               <Rocket size={15} className="text-white/60" />
@@ -460,7 +490,7 @@ export function GrantsPageClient() {
               </button>
             </div>
           </div>
-        ) : (
+          ) : (
           <div className="mb-10">
             <div className="flex items-center gap-2 mb-1.5 text-white/40">
               <FolderOpen size={15} />
@@ -490,10 +520,10 @@ export function GrantsPageClient() {
               ))}
             </div>
           </div>
-        )}
+          )}
 
-        {/* Мгновенный разбор идеи после онбординга */}
-        {onboardSummary && (
+          {/* Мгновенный разбор идеи после онбординга */}
+          {onboardSummary && (
           <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -509,6 +539,8 @@ export function GrantsPageClient() {
               <ArrowRight size={12} /> Черновик паспорта собран, ниже — подобранные программы. Уточните детали в паспорте проекта, чтобы повысить точность.
             </p>
           </motion.div>
+          )}
+          </>
         )}
 
         {/* Верхний блок: слева — текущие программы, справа — календарь */}
@@ -667,6 +699,13 @@ export function GrantsPageClient() {
                 ))}
               </div>
             )
+          ) : catalogError ? (
+            <div className="lovable-glass rounded-3xl p-6 sm:p-10 text-center border border-amber-500/20">
+              <p className="text-white/60 text-sm">{catalogError}</p>
+              <button onClick={retryCatalog} className="mt-4 rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-black hover:bg-neutral-200">
+                Повторить загрузку
+              </button>
+            </div>
           ) : visibleGrants.length === 0 ? (
             <div className="lovable-glass rounded-3xl p-6 sm:p-10 text-center text-white/40 border border-white/10">
               {grants.length === 0
