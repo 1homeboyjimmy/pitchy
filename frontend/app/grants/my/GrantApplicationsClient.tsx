@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   Loader, ChevronLeft, LayoutGrid, Banknote, CheckCircle2, Circle,
   AlertTriangle, ChevronDown, ChevronUp, ExternalLink,
+  LockKeyhole,
 } from "lucide-react";
 import { getToken } from "@/lib/auth";
 import { notifyError } from "@/lib/ui";
@@ -12,6 +13,8 @@ import {
   getGrantApplications, getGrants, matchGrants, updateGrantApplication,
   type GrantApplication, type Grant, type GrantMatch, type CrmStage,
 } from "@/lib/api";
+import { GrantActionsPaywall } from "../GrantActionsPaywall";
+import { useGrantAccess } from "../GrantAccessContext";
 
 // Колонки воронки CRM. Порядок = слева направо.
 const STAGES: { key: CrmStage; label: string; accent: string; dot: string }[] = [
@@ -99,6 +102,7 @@ function formatUpdatedAt(value: string): string {
 }
 
 export function GrantApplicationsClient() {
+  const { loading: accessLoading, canUseGrantActions } = useGrantAccess();
   const [token, setTok] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [apps, setApps] = useState<GrantApplication[]>([]);
@@ -154,7 +158,7 @@ export function GrantApplicationsClient() {
   }, []);
 
   const moveStage = async (app: GrantApplication, stage: CrmStage) => {
-    if (stage === app.stage || !token) return;
+    if (stage === app.stage || !token || !canUseGrantActions) return;
     const before = apps;
     setBusyId(app.id);
     setApps((prev) => prev.map((a) => (a.id === app.id ? { ...a, stage } : a)));
@@ -170,7 +174,7 @@ export function GrantApplicationsClient() {
   };
 
   const toggleRequirement = async (app: GrantApplication, item: string) => {
-    if (!token) return;
+    if (!token || !canUseGrantActions) return;
     const checked = new Set(app.content.checklist ?? []);
     if (checked.has(item)) checked.delete(item);
     else checked.add(item);
@@ -211,12 +215,22 @@ export function GrantApplicationsClient() {
         чего не хватает в паспорте под каждую программу.
       </p>
 
+      {!accessLoading && !canUseGrantActions && (
+        <div className="mb-10">
+          <GrantActionsPaywall compact />
+        </div>
+      )}
+
       {apps.length === 0 ? (
         <div className="lovable-glass rounded-3xl p-6 sm:p-10 text-center border border-white/10">
           <Banknote className="mx-auto text-white/20 mb-4" size={36} />
-          <p className="text-white/50 mb-5">Пока пусто. Добавьте грант на доску со страницы подбора.</p>
-          <Link href="/grants" className="inline-flex bg-white text-black font-semibold text-sm px-7 py-3 rounded-full hover:bg-neutral-200 transition-all">
-            Подобрать грант ›
+          <p className="text-white/50 mb-5">
+            {canUseGrantActions
+              ? "Пока пусто. Добавьте грант на доску со страницы подбора."
+              : "Здесь появятся сохранённые программы и заявки после подключения подачи."}
+          </p>
+          <Link href={canUseGrantActions ? "/grants" : "/pricing"} className="inline-flex bg-white text-black font-semibold text-sm px-7 py-3 rounded-full hover:bg-neutral-200 transition-all">
+            {canUseGrantActions ? "Подобрать грант ›" : "Докупить подачу ›"}
           </Link>
         </div>
       ) : (
@@ -418,6 +432,7 @@ export function GrantApplicationsClient() {
                                       <button
                                         key={i}
                                         onClick={() => toggleRequirement(app, item)}
+                                        disabled={!canUseGrantActions}
                                         className="w-full flex items-start gap-2 text-left group"
                                       >
                                         {checked
@@ -435,10 +450,15 @@ export function GrantApplicationsClient() {
 
                             {/* Перемещение по воронке + ссылка на грант */}
                             <div className="flex items-center gap-2">
+                              {!canUseGrantActions && (
+                                <span className="flex items-center gap-1 text-[10px] text-violet-200/60" title="Редактирование доступно после подключения подачи">
+                                  <LockKeyhole size={11} /> Только просмотр
+                                </span>
+                              )}
                               <select
                                 value={app.stage}
                                 onChange={(e) => moveStage(app, e.target.value as CrmStage)}
-                                disabled={busyId === app.id}
+                                disabled={busyId === app.id || !canUseGrantActions}
                                 className="flex-1 bg-white/5 border border-white/10 rounded-lg text-xs text-white/70 px-2 py-1.5 outline-none focus:border-white/25 disabled:opacity-50"
                               >
                                 {STAGES.map((s) => (

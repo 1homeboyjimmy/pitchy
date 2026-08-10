@@ -326,6 +326,8 @@ async def update_application(
     app = res.scalar_one_or_none()
     if not app:
         raise HTTPException(status_code=404, detail="Заявка не найдена")
+    from subscription_service import require_quota_access
+    await require_quota_access(db, user, "grants")
     if payload.content is not None:
         app.content = payload.content
         flag_modified(app, "content")
@@ -464,6 +466,9 @@ async def track_grant(
     app = existing.scalar_one_or_none()
     if app is not None:
         return GrantApplicationResponse.model_validate(app)
+
+    from subscription_service import require_quota_access
+    await require_quota_access(db, user, "grants")
 
     score, _hard_pass, _reasons = grants_service.match_grant(project.passport or {}, grant)
     app = GrantApplication(

@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 import { getToken } from "@/lib/auth";
 import { notifyError } from "@/lib/ui";
+import { GrantActionsPaywall } from "../GrantActionsPaywall";
+import { useGrantAccess } from "../GrantAccessContext";
 import {
   getGrant, getProjects, generateGrantApplication, trackGrant, matchGrants,
   describeApiError,
@@ -64,6 +66,7 @@ const FORMAT_LABELS: Record<string, string> = {
 };
 
 export function GrantDetailClient() {
+  const { loading: accessLoading, canUseGrantActions } = useGrantAccess();
   const params = useParams();
   const search = useSearchParams();
   const grantId = Number(params.id);
@@ -111,7 +114,7 @@ export function GrantDetailClient() {
 
   // Объяснение матча: подтягиваем оценку этого гранта под выбранный проект.
   useEffect(() => {
-    if (!token || projectId == null) { setMatch(null); return; }
+    if (!token || projectId == null || !canUseGrantActions) { setMatch(null); return; }
     let cancelled = false;
     matchGrants(projectId, token)
       .then((list) => {
@@ -119,7 +122,7 @@ export function GrantDetailClient() {
       })
       .catch((e) => console.error(e));
     return () => { cancelled = true; };
-  }, [token, projectId, grantId]);
+  }, [token, projectId, grantId, canUseGrantActions]);
 
   const handleGenerate = async () => {
     if (!token || projectId == null) return;
@@ -290,7 +293,7 @@ export function GrantDetailClient() {
         </div>
 
         {/* Насколько подходит вам (объяснение соответствия под выбранный проект) */}
-        {isApplyable && match && (
+        {isApplyable && canUseGrantActions && match && (
           <div className="lovable-glass rounded-2xl p-6 border border-emerald-500/15 mb-8">
             <div className="flex items-center justify-between gap-3 mb-4">
               <h3 className="font-display text-lg text-white">Насколько подходит вам</h3>
@@ -426,7 +429,13 @@ export function GrantDetailClient() {
         )}
 
         {/* Генерация заявки / трекинг — только для applyable-категорий */}
-        {isApplyable && (
+        {isApplyable && !accessLoading && !canUseGrantActions && (
+          <div className="border-t border-white/10 pt-8">
+            <GrantActionsPaywall />
+          </div>
+        )}
+
+        {isApplyable && canUseGrantActions && (
         <section className="border-t border-white/10 pt-8">
           <div className="flex items-center gap-2 mb-4 text-white/70">
             <Sparkles size={18} />

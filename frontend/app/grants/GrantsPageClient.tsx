@@ -14,6 +14,8 @@ import {
   type ProjectListItem, type Grant, type GrantMatch,
 } from "@/lib/api";
 import { trackMetrikaGoal } from "@/components/analytics/YandexMetrika";
+import { GrantActionsPaywall } from "./GrantActionsPaywall";
+import { useGrantAccess } from "./GrantAccessContext";
 
 const EASE = [0.16, 1, 0.3, 1] as const;
 
@@ -266,6 +268,7 @@ function SupportMeasureCard({ grant, match, href }: { grant: Grant; match?: Gran
 }
 
 export function GrantsPageClient() {
+  const { loading: accessLoading, canUseGrantActions } = useGrantAccess();
   const [token, setTok] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
@@ -444,8 +447,16 @@ export function GrantsPageClient() {
           </p>
         </div>
 
-        {/* Выбор проекта */}
-        {projects.length === 0 ? (
+        {!accessLoading && !canUseGrantActions && (
+          <div className="mb-10">
+            <GrantActionsPaywall compact />
+          </div>
+        )}
+
+        {canUseGrantActions && (
+          <>
+          {/* Выбор проекта и персональный подбор доступны вместе с подачей. */}
+          {projects.length === 0 ? (
           <div className="lovable-glass rounded-3xl p-7 md:p-9 mb-10 border border-white/10">
             <div className="flex items-center gap-2 mb-3 text-white/40">
               <Rocket size={15} className="text-white/60" />
@@ -479,7 +490,7 @@ export function GrantsPageClient() {
               </button>
             </div>
           </div>
-        ) : (
+          ) : (
           <div className="mb-10">
             <div className="flex items-center gap-2 mb-1.5 text-white/40">
               <FolderOpen size={15} />
@@ -509,10 +520,10 @@ export function GrantsPageClient() {
               ))}
             </div>
           </div>
-        )}
+          )}
 
-        {/* Мгновенный разбор идеи после онбординга */}
-        {onboardSummary && (
+          {/* Мгновенный разбор идеи после онбординга */}
+          {onboardSummary && (
           <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -528,6 +539,8 @@ export function GrantsPageClient() {
               <ArrowRight size={12} /> Черновик паспорта собран, ниже — подобранные программы. Уточните детали в паспорте проекта, чтобы повысить точность.
             </p>
           </motion.div>
+          )}
+          </>
         )}
 
         {/* Верхний блок: слева — текущие программы, справа — календарь */}

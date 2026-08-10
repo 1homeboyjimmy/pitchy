@@ -10,6 +10,7 @@ import { getMe, type UserResponse } from "@/lib/api";
 import { fetchUsage, type UsageResponse } from "@/lib/planLimits";
 import { notifyTierGate } from "@/lib/ui";
 import { Providers } from "../providers";
+import { GrantAccessProvider } from "./GrantAccessContext";
 
 /**
  * Shell layout for /grants/* pages so the left sidebar persists exactly like
@@ -22,6 +23,7 @@ export default function GrantsLayout({ children }: { children: React.ReactNode }
   const router = useRouter();
   const [userProfile, setUserProfile] = useState<UserResponse | null>(null);
   const [usage, setUsage] = useState<UsageResponse | null>(null);
+  const [accessLoading, setAccessLoading] = useState(true);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
@@ -37,6 +39,7 @@ export default function GrantsLayout({ children }: { children: React.ReactNode }
       if (cancelled) return;
       setUserProfile(user);
       setUsage(usageData);
+      setAccessLoading(false);
     })();
     return () => { cancelled = true; };
   }, []);
@@ -48,8 +51,16 @@ export default function GrantsLayout({ children }: { children: React.ReactNode }
     else router.push(`/dashboard?tab=${tab}`);
   };
 
+  const grantsRemaining = usage?.remaining.grants;
+  const canUseGrantActions = Boolean(
+    userProfile?.is_admin ||
+    grantsRemaining === null ||
+    (typeof grantsRemaining === "number" && grantsRemaining > 0),
+  );
+
   return (
     <Providers>
+    <GrantAccessProvider value={{ loading: accessLoading, canUseGrantActions }}>
     <div className="bg-black text-white h-[100dvh] min-h-0 font-sans flex overflow-hidden">
       <button
         onClick={() => setIsMobileSidebarOpen((prev) => !prev)}
@@ -83,6 +94,7 @@ export default function GrantsLayout({ children }: { children: React.ReactNode }
         </main>
       </div>
     </div>
+    </GrantAccessProvider>
     </Providers>
   );
 }
