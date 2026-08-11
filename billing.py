@@ -35,6 +35,7 @@ from subscription_service import (
 )
 from auth import get_async_current_user
 from lockbox import lockbox
+from tbank_payment_service import TBankError, cancel_payment as tbank_cancel_payment, init_payment as tbank_init_payment, verify_notification as tbank_verify_notification
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/billing", tags=["billing"])
@@ -112,6 +113,11 @@ class ValidatePromoResponse(BaseModel):
     consent_text: str | None = None
     consent_version: str | None = None
 
+
+class TBankRefundRequest(BaseModel):
+    payment_id: int
+    amount: float | None = None
+
 @router.post("/promo/validate", response_model=ValidatePromoResponse)
 async def validate_promo(request: ValidatePromoRequest, db: AsyncSession = Depends(get_async_db)):
     try:
@@ -158,6 +164,38 @@ async def create_payment(
         if promo_decision.target_tier:
             request.tier = promo_decision.target_tier
              
+    if os.getenv("PAYMENT_PROVIDER", "yookassa").strip().lower() == "tbank":
+        order_id = f"pitchy-{user.id}-{uuid.uuid4().hex[:20]}"
+        try:
+            result = await tbank_init_payment(
+                order_id=order_id,
+                amount_rub=amount,
+                description=f"Pitchy: {request.tier}",
+                email=user.email,
+            )
+        except TBankError as exc:
+            raise HTTPException(status_code=502, detail="Payment provider is temporarily unavailable") from exc
+        payment_record = Payment(
+            user_id=user.id,
+            yookassa_payment_id=f"tbank:{result.get('PaymentId') or order_id}",
+            provider="tbank",
+            provider_payment_id=str(result.get("PaymentId") or ""),
+            provider_order_id=order_id,
+            amount=amount,
+            currency="RUB",
+            status="pending",
+            tier=request.tier,
+            is_annual=request.is_annual,
+            promo_code_id=promo_id,
+            promo_context=promo_context,
+        )
+        db.add(payment_record)
+        await db.flush()
+        if promo_decision is not None:
+            await reserve_redemption(db, decision=promo_decision, user_id=user.id, payment_id=payment_record.id, auto_renew_consent=request.promo_auto_renew_consent)
+        await db.commit()
+        return CreatePaymentResponse(confirmation_url=result["PaymentURL"])
+
     setup_yookassa()
     
     # Create payment in Yookassa
@@ -208,6 +246,89 @@ async def create_payment(
     return CreatePaymentResponse(confirmation_url=res.confirmation.confirmation_url)
 
 
+@router.post("/tbank/notification")
+async def tbank_notification(request: Request, db: AsyncSession = Depends(get_async_db)):
+    """Process signed T-Bank payment status notifications (dev first)."""
+    payload = await request.json()
+    try:
+        if not tbank_verify_notification(payload):
+            raise HTTPException(status_code=403, detail="Invalid notification signature")
+        order_id = str(payload.get("OrderId") or "")
+        payment_id = str(payload.get("PaymentId") or "")
+        result = await db.execute(select(Payment).where(Payment.provider == "tbank", Payment.provider_order_id == order_id))
+        payment = result.scalar_one_or_none()
+        if payment is None:
+            return {"status": "ignored"}
+        if payment.provider_payment_id and payment.provider_payment_id != payment_id:
+            raise HTTPException(status_code=400, detail="Payment identifier mismatch")
+        expected_amount = int(round(float(payment.amount) * 100))
+        if int(payload.get("Amount") or 0) != expected_amount:
+            raise HTTPException(status_code=400, detail="Payment amount mismatch")
+        status = str(payload.get("Status") or "").upper()
+        success = str(payload.get("Success")).lower() == "true"
+        if success and status in {"AUTHORIZED", "CONFIRMED", "COMPLETED"}:
+            payment.status = "succeeded"
+            now = datetime.utcnow()
+            user = (await db.execute(select(User).where(User.id == payment.user_id))).scalar_one_or_none()
+            if user:
+                if payment.kind == "subscription_initial":
+                    subscription = await get_subscription(db, user.id, for_update=True)
+                    if subscription is None:
+                        subscription = CustomSubscription(user_id=user.id, current_config=payment.quota_config or BASE_CONFIG, next_config=payment.quota_config or BASE_CONFIG, used=empty_usage())
+                        db.add(subscription)
+                    subscription.status = "active"
+                    subscription.current_period_start = now
+                    subscription.current_period_end = now + relativedelta(months=1)
+                    subscription.current_config = normalize_config(payment.quota_config or BASE_CONFIG)
+                    subscription.next_config = subscription.current_config
+                    subscription.used = empty_usage()
+                    subscription.auto_renew = False
+                    payment.period_start = subscription.current_period_start
+                    payment.period_end = subscription.current_period_end
+                    user.subscription_tier = "custom"
+                    user.subscription_expires_at = subscription.current_period_end
+                else:
+                    user.subscription_tier = payment.tier
+                    user.subscription_expires_at = max(now, user.subscription_expires_at or now) + (relativedelta(years=1) if payment.is_annual else relativedelta(months=1))
+            if payment.promo_code:
+                payment.promo_code.current_uses += 1
+                redemption = (await db.execute(select(PromoRedemption).where(PromoRedemption.payment_id == payment.id).with_for_update())).scalar_one_or_none()
+                if redemption and redemption.status != "succeeded":
+                    redemption.status = "succeeded"
+                    redemption.redeemed_at = now
+        elif not success or status in {"REJECTED", "CANCELED", "REVERSED"}:
+            payment.status = "canceled"
+            payment.failure_reason = str(payload.get("Message") or payload.get("ErrorCode") or "payment_failed")
+        await db.commit()
+        return {"status": "ok"}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        await db.rollback()
+        logger.error("T-Bank notification processing failed: %s", type(exc).__name__)
+        raise HTTPException(status_code=503, detail="Notification processing failed") from exc
+
+
+@router.post("/tbank/refund")
+async def tbank_refund(request: TBankRefundRequest, db: AsyncSession = Depends(get_async_db), user: User = Depends(get_async_current_user)):
+    """Refund a user's own successful dev payment and send a refund receipt."""
+    result = await db.execute(select(Payment).where(Payment.id == request.payment_id, Payment.user_id == user.id, Payment.provider == "tbank"))
+    payment = result.scalar_one_or_none()
+    if payment is None or payment.status != "succeeded" or not payment.provider_payment_id:
+        raise HTTPException(status_code=404, detail="Payment is not refundable")
+    amount = float(request.amount if request.amount is not None else payment.amount)
+    if amount <= 0 or amount > float(payment.amount):
+        raise HTTPException(status_code=400, detail="Invalid refund amount")
+    try:
+        response = await tbank_cancel_payment(payment_id=payment.provider_payment_id, amount_rub=amount, description=f"Возврат Pitchy: {payment.tier}", email=user.email)
+    except TBankError as exc:
+        raise HTTPException(status_code=502, detail="Refund provider is temporarily unavailable") from exc
+    if amount >= float(payment.amount):
+        payment.status = "refunded"
+    await db.commit()
+    return {"status": "ok", "payment_id": response.get("PaymentId")}
+
+
 @router.post("/subscription/create-payment", response_model=CreatePaymentResponse)
 async def create_configurable_subscription_payment(
     config: CreateConfigurablePaymentRequest,
@@ -252,6 +373,25 @@ async def create_configurable_subscription_payment(
     existing_subscription = await get_subscription(db, user.id, for_update=True)
     if is_active(existing_subscription):
         raise HTTPException(status_code=409, detail="Активную подписку изменяйте в профиле — новая конфигурация применится при продлении")
+    if os.getenv("PAYMENT_PROVIDER", "yookassa").strip().lower() == "tbank":
+        order_id = f"pitchy-sub-{user.id}-{uuid.uuid4().hex[:18]}"
+        try:
+            result = await tbank_init_payment(order_id=order_id, amount_rub=amount, description="Pitchy: подписка", email=user.email)
+        except TBankError as exc:
+            raise HTTPException(status_code=502, detail="Payment provider is temporarily unavailable") from exc
+        payment = Payment(
+            user_id=user.id, yookassa_payment_id=f"tbank:{result.get('PaymentId') or order_id}",
+            provider="tbank", provider_payment_id=str(result.get("PaymentId") or ""), provider_order_id=order_id,
+            amount=amount, currency="RUB", status="pending", tier=promo_target_tier or "custom", is_annual=False,
+            kind="subscription_initial", quota_config=quota_config, promo_code_id=promo_id, promo_context=promo_context,
+        )
+        db.add(payment)
+        await db.flush()
+        if promo_decision is not None:
+            await reserve_redemption(db, decision=promo_decision, user_id=user.id, payment_id=payment.id, auto_renew_consent=promo_auto_renew_consent)
+        await db.commit()
+        return CreatePaymentResponse(confirmation_url=result["PaymentURL"])
+
     setup_yookassa()
 
     if promo_target_tier == "research":
