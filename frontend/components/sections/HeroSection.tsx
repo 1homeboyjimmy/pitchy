@@ -56,12 +56,14 @@ export function HeroSection() {
                     poster="/hero-poster.jpg"
                     aria-hidden="true"
                     onCanPlay={() => setVideoReady(true)}
-                    className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-500 motion-reduce:hidden ${videoReady ? "opacity-100" : "opacity-0"}`}
+                    // Keep the poster visible underneath. A failed or delayed
+                    // video load must never turn the hero into a black screen.
+                    className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-500 motion-reduce:hidden ${videoReady ? "opacity-70" : "opacity-0"}`}
                     src="/media/hero.mp4"
                 />
-                <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-transparent to-transparent" />
-                <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_42%,transparent_0%,rgba(0,0,0,0.04)_48%,rgba(0,0,0,0.34)_100%)]" />
-                <div className="absolute inset-0 bg-black/30" />
+                <div className="absolute inset-0 bg-gradient-to-b from-black/35 via-transparent to-transparent" />
+                <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_42%,transparent_0%,rgba(0,0,0,0.02)_48%,rgba(0,0,0,0.18)_100%)]" />
+                <div className="absolute inset-0 bg-black/10" />
             </div>
 
             {/* Hero Body */}
