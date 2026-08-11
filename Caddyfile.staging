@@ -6,6 +6,9 @@ dev.pitchy.pro {
     # Просим пароль только если НЕТ Bearer токена
     @require_auth {
         not header Authorization Bearer*
+        # ACME HTTP-01 must remain public; otherwise Let's Encrypt receives
+        # 401 from the staging Basic Auth middleware and renewal fails.
+        not path /.well-known/acme-challenge/*
     }
     
     basic_auth @require_auth {

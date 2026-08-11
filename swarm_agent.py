@@ -53,6 +53,12 @@ async def _process_single_chunk(client, chunk: str, trace_id: str = None, parent
             temperature=0.1,
             max_retries=2
         )
+        # RouterAI may occasionally return an empty response object during a
+        # provider hiccup. Instructor then raises a misleading
+        # ``NoneType is not subscriptable`` while parsing choices. Convert it
+        # into a clear, retryable failure handled by the swarm fallback.
+        if response is None:
+            raise RuntimeError("RouterAI returned an empty swarm response")
         return response
     except Exception as e:
         logger.error(f"Swarm chunk error: {e}", exc_info=True)

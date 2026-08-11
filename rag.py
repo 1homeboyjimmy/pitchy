@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import List, Dict
 import os
 import asyncio
+import time
 import re
 import logging
 from datetime import datetime
@@ -80,14 +81,20 @@ class GeminiEmbeddingFunction(EmbeddingFunction):
         """Fire a tiny embedding call to keep the RouterAI TLS connection
         and any provider-side cold path warm. Called periodically by a
         background task so the FIRST real query of a session isn't slow."""
-        try:
-            self._client.embeddings.create(
-                model=self._model, input="warmup", encoding_format="float",
-            )
-            return True
-        except Exception as e:
-            logger.warning(f"Embedding warmup failed: {type(e).__name__}: {e}")
-            return False
+        # A transient 502 is common while the provider is waking up. Retry
+        # with a short backoff so one failed probe does not mark RAG degraded.
+        for attempt in range(3):
+            try:
+                self._client.embeddings.create(
+                    model=self._model, input="warmup", encoding_format="float",
+                )
+                return True
+            except Exception as e:
+                if attempt == 2:
+                    logger.warning(f"Embedding warmup failed after 3 attempts: {type(e).__name__}: {e}")
+                else:
+                    time.sleep(1.5 * (attempt + 1))
+        return False
 
     def __call__(self, input: Documents) -> Embeddings:
         """Embed a batch of documents. Batches in groups of 20 to stay within API limits."""
