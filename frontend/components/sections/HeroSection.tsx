@@ -9,8 +9,23 @@ import { useAuth } from "@/lib/hooks/useAuth";
 export function HeroSection() {
     const { isAuthenticated } = useAuth();
     const [videoReady, setVideoReady] = useState(false);
+    const [canLoadVideo, setCanLoadVideo] = useState(false);
     const [heroPhraseIndex, setHeroPhraseIndex] = useState(0);
     const [heroPhraseVisible, setHeroPhraseVisible] = useState(true);
+
+    useEffect(() => {
+        // The hero video is ~20 MB. Do not spend a mobile/data-saver user's
+        // bandwidth on it; the responsive poster is the intended fallback.
+        const connection = (navigator as Navigator & {
+            connection?: { saveData?: boolean; effectiveType?: string };
+        }).connection;
+        const isMobile = window.matchMedia?.("(max-width: 768px)").matches;
+        const isSlowConnection = connection?.saveData || ["slow-2g", "2g"].includes(connection?.effectiveType || "");
+        const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+        const enableVideo = !isMobile && !isSlowConnection && !prefersReducedMotion;
+        const timer = window.setTimeout(() => setCanLoadVideo(enableVideo), 0);
+        return () => window.clearTimeout(timer);
+    }, []);
 
     useEffect(() => {
         const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -47,7 +62,7 @@ export function HeroSection() {
                     sizes="100vw"
                     className="object-cover"
                 />
-                <video
+                {canLoadVideo && <video
                     autoPlay
                     muted
                     loop
@@ -60,7 +75,7 @@ export function HeroSection() {
                     // video load must never turn the hero into a black screen.
                     className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-500 motion-reduce:hidden ${videoReady ? "opacity-70" : "opacity-0"}`}
                     src="/media/hero.mp4"
-                />
+                />}
                 <div className="absolute inset-0 bg-gradient-to-b from-black/35 via-transparent to-transparent" />
                 <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_42%,transparent_0%,rgba(0,0,0,0.02)_48%,rgba(0,0,0,0.18)_100%)]" />
                 <div className="absolute inset-0 bg-black/10" />
