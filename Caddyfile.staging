@@ -66,6 +66,12 @@ dev.pitchy.pro {
     }
     encode @not-sse gzip zstd
 
+    # Never cache HTML/RSC documents between deployments.
+    @next-document header Accept *text/html*
+    header @next-document Cache-Control "no-store, max-age=0, must-revalidate"
+    @next-rsc header RSC *
+    header @next-rsc Cache-Control "no-store, max-age=0, must-revalidate"
+
     # Все остальные запросы направляем на Frontend (Next.js)
     handle {
         reverse_proxy frontend:3000 {
