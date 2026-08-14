@@ -11,6 +11,7 @@ import {
   getConfigurableSubscription,
   updateConfigurableSubscription,
   validatePromoCode,
+  describeApiError,
   type PromoValidation,
 } from "@/lib/api";
 import { trackMetrikaGoal } from "@/components/analytics/YandexMetrika";
@@ -145,7 +146,7 @@ export function SubscriptionConfigurator({ account = false }: { account?: boolea
       }
     } catch (error) {
       console.error(error);
-      setMessage("Не удалось сохранить подписку. Попробуйте ещё раз.");
+      setMessage(describeApiError(error, "Не удалось сохранить подписку. Попробуйте ещё раз."));
     } finally {
       setSaving(false);
     }
