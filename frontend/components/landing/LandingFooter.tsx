@@ -42,7 +42,7 @@ export function LandingFooter() {
         </div>
 
         <div className="mt-24 pt-8 border-t border-white/5">
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-8 md:flex-row md:items-end md:justify-between">
             <div className="flex items-baseline gap-3">
               <PitchyLogo size="3xl" />
               <span className="text-white/50 text-xs font-medium font-sans tracking-tight uppercase">
@@ -52,6 +52,21 @@ export function LandingFooter() {
             <p className="text-white/50 text-xs font-medium font-sans tracking-widest uppercase">
               НПД Фигурняк Егор Сергеевич, ИНН 400700088347
             </p>
+            <a
+              href="https://productradar.ru/product/pitchy-pro?utm_source=badge"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="self-start opacity-80 transition-opacity hover:opacity-100 md:self-end"
+              aria-label="Pitchy — продукт недели номер 1 на Product Radar"
+            >
+              <img
+                src="https://productradar.ru/wp-json/productradar/v1/badge?period=week&rank=1&theme=black"
+                alt="Награда Product Radar: продукт недели №1"
+                width={252}
+                height={68}
+                className="h-auto w-[210px] sm:w-[252px]"
+              />
+            </a>
           </div>
         </div>
       </div>
