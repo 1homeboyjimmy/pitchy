@@ -43,7 +43,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install packages from wheels collected in the builder stage
 COPY --from=builder /app/wheels /wheels
 COPY --from=builder /app/requirements.txt .
-RUN pip install --no-cache-dir /wheels/*
+RUN pip install --no-cache-dir --find-links=/wheels -r requirements.txt
 
 # Force cache invalidation for the source-copy layer whenever the commit changes.
 # Wheel install above stays cached when requirements.txt is unchanged; only the
