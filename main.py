@@ -536,6 +536,9 @@ app.include_router(auth_router.router)
 from routers import research as research_router
 app.include_router(research_router.router)
 
+from routers import accelerators as accelerators_router
+app.include_router(accelerators_router.router)
+
 
 allowed_origins = [
     origin.strip()
@@ -1511,7 +1514,29 @@ async def me_usage(
     reset on the 1st. Admins get a synthetic "unlimited" view.
     Frontend uses this to render QuotaCard and feature locks.
     """
+    from accelerator_service import accelerator_quota_snapshot, entitlement_is_greater
     from subscription_service import get_subscription, is_active, subscription_snapshot
+
+    async def overlay_accelerator_quotas(response: dict) -> dict:
+        accelerator_memberships: set[int] = set()
+        for resource in ("messages", "roadmaps", "custdev", "grants"):
+            snapshot = await accelerator_quota_snapshot(db, user.id, resource)
+            if not snapshot:
+                continue
+            base_limit = int(response["limits"].get(resource, 0))
+            if not entitlement_is_greater(snapshot["limit"], base_limit):
+                continue
+            response["limits"][resource] = snapshot["limit"]
+            response["usage"][resource] = snapshot["used"]
+            response["remaining"][resource] = snapshot["remaining"]
+            accelerator_memberships.add(snapshot["membership"].id)
+        if accelerator_memberships:
+            response["tier"] = "accelerator"
+            response["accelerator_membership_ids"] = sorted(accelerator_memberships)
+            response["limits"]["can_use_tree"] = response["limits"].get("roadmaps", 0) != 0
+            response["limits"]["can_use_custdev"] = response["limits"].get("custdev", 0) != 0
+        return response
+
     custom_subscription = await get_subscription(db, user.id)
     if is_active(custom_subscription):
         snapshot = subscription_snapshot(custom_subscription)
@@ -1521,7 +1546,7 @@ async def me_usage(
             "can_use_presentation": True, "can_use_import_context": True,
             "can_use_tree": True, "can_use_custdev": True,
         }
-        return {
+        response = {
             "tier": "custom",
             "limits": custom_limits,
             "usage": {**snapshot["used"], "search_messages": 0, "deep_research": 0},
@@ -1532,6 +1557,7 @@ async def me_usage(
             "next_config": snapshot["next_config"],
             "next_price": snapshot["next_price"],
         }
+        return await overlay_accelerator_quotas(response)
 
     from plan_limits import (
         PLAN_LIMITS,
@@ -1629,7 +1655,7 @@ async def me_usage(
         return max(0, limit_value - used)
 
     legacy_grants_limit = UNLIMITED if tier_name not in ("free", "tester") else 0
-    return {
+    response = {
         "tier": tier_name,
         "limits": {**limits_as_dict(limits), "grants": legacy_grants_limit},
         "usage": {
@@ -1650,6 +1676,7 @@ async def me_usage(
         },
         "period_start": month_start.isoformat() + "Z",
     }
+    return await overlay_accelerator_quotas(response)
 
 
 @app.patch("/me", response_model=UserResponse)
@@ -2106,23 +2133,25 @@ async def async_check_subscription_limits(
     # rows heuristically. Legacy plans continue through the old logic below.
     from subscription_service import consume_quota, get_subscription, is_active
     custom_subscription = await get_subscription(db, user.id)
+    resource = None
+    if resource_type == "message":
+        resource = "messages"
+    elif resource_type == "project" and feature == "custdev":
+        resource = "custdev"
+    elif resource_type == "project" and feature in ("tree", "roadmap"):
+        resource = "roadmaps"
+    if resource:
+        handled = await consume_quota(
+            db,
+            user,
+            resource,
+            idempotency_key=idempotency_key or f"{resource}:{user.id}:{uuid.uuid4()}",
+            reference_type=feature or resource_type,
+            reference_id=str(session_id) if session_id is not None else None,
+        )
+        if handled:
+            return
     if is_active(custom_subscription):
-        resource = None
-        if resource_type == "message":
-            resource = "messages"
-        elif resource_type == "project" and feature == "custdev":
-            resource = "custdev"
-        elif resource_type == "project" and feature in ("tree", "roadmap"):
-            resource = "roadmaps"
-        if resource:
-            await consume_quota(
-                db,
-                user,
-                resource,
-                idempotency_key=idempotency_key or f"{resource}:{user.id}:{uuid.uuid4()}",
-                reference_type=feature or resource_type,
-                reference_id=str(session_id) if session_id is not None else None,
-            )
         # Chat modes are included in a message; no separate paid resource.
         return
 

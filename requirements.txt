@@ -27,6 +27,7 @@ python-multipart
 python-docx
 duckduckgo-search
 pillow>=12.1.1
+qrcode>=8.0
 wheel>=0.46.2
 setuptools>=79.0.2
 cryptography>=46.0.5

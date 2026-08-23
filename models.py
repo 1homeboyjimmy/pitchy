@@ -183,6 +183,411 @@ class SubscriptionUsageEvent(Base):
 
     user: Mapped["User"] = relationship(back_populates="usage_events")
 
+
+class Accelerator(Base):
+    """Workspace owned by Pitchy and operated by assigned organizers."""
+
+    __tablename__ = "accelerators"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    organization_id: Mapped[int | None] = mapped_column(
+        ForeignKey("accelerator_organizations.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
+    name: Mapped[str] = mapped_column(String(200))
+    organization: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="draft", server_default="draft", index=True)
+    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AcceleratorOrganization(Base):
+    __tablename__ = "accelerator_organizations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    slug: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="active", server_default="active", index=True)
+    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AcceleratorStaff(Base):
+    """Accelerator-scoped staff assignment; organizers are not global admins."""
+
+    __tablename__ = "accelerator_staff"
+    __table_args__ = (
+        UniqueConstraint("accelerator_id", "user_id", name="uq_accelerator_staff_user"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    accelerator_id: Mapped[int] = mapped_column(ForeignKey("accelerators.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    role: Mapped[str] = mapped_column(String(30), default="organizer", server_default="organizer")
+    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class AcceleratorCohort(Base):
+    __tablename__ = "accelerator_cohorts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    accelerator_id: Mapped[int] = mapped_column(ForeignKey("accelerators.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(String(30), default="draft", server_default="draft", index=True)
+    timezone: Mapped[str] = mapped_column(String(80), default="Europe/Moscow", server_default="Europe/Moscow")
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    application_form_schema: Mapped[dict] = mapped_column(JSON, default=dict)
+    default_quota_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    default_quota_updated_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AcceleratorProgramConfig(Base):
+    """Versioned switches for modules that can be implemented independently."""
+
+    __tablename__ = "accelerator_program_configs"
+    __table_args__ = (
+        UniqueConstraint("cohort_id", name="uq_accelerator_program_config_cohort"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    cohort_id: Mapped[int] = mapped_column(ForeignKey("accelerator_cohorts.id", ondelete="CASCADE"), index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    modules: Mapped[dict] = mapped_column(JSON, default=dict)
+    locked_modules: Mapped[dict] = mapped_column(JSON, default=dict)
+    updated_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AcceleratorApplication(Base):
+    __tablename__ = "accelerator_applications"
+    __table_args__ = (
+        UniqueConstraint("cohort_id", "user_id", name="uq_accelerator_application_user"),
+        UniqueConstraint("cohort_id", "applicant_email", name="uq_accelerator_application_email"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    cohort_id: Mapped[int] = mapped_column(ForeignKey("accelerator_cohorts.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True)
+    applicant_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    applicant_email: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    application_type: Mapped[str] = mapped_column(String(30), default="project", server_default="project")
+    status: Mapped[str] = mapped_column(String(30), default="submitted", server_default="submitted", index=True)
+    form_payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    privacy_consent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    program_rules_consent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    reviewed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    review_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    revision_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True, index=True)
+    revision_requested_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    revision_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    submitted_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AcceleratorMembership(Base):
+    __tablename__ = "accelerator_memberships"
+    __table_args__ = (
+        UniqueConstraint("cohort_id", "user_id", name="uq_accelerator_membership_user"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    cohort_id: Mapped[int] = mapped_column(ForeignKey("accelerator_cohorts.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True)
+    application_id: Mapped[int] = mapped_column(ForeignKey("accelerator_applications.id", ondelete="RESTRICT"), unique=True)
+    role: Mapped[str] = mapped_column(String(30), default="resident", server_default="resident")
+    status: Mapped[str] = mapped_column(String(30), default="accepted", server_default="accepted", index=True)
+    accepted_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    accepted_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    enrolled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AcceleratorApplicationEvent(Base):
+    __tablename__ = "accelerator_application_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    application_id: Mapped[int] = mapped_column(ForeignKey("accelerator_applications.id", ondelete="CASCADE"), index=True)
+    from_status: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    to_status: Mapped[str] = mapped_column(String(30), index=True)
+    actor_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class AcceleratorParticipantProfile(Base):
+    __tablename__ = "accelerator_participant_profiles"
+    __table_args__ = (
+        UniqueConstraint("membership_id", name="uq_accelerator_participant_profile_membership"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    membership_id: Mapped[int] = mapped_column(ForeignKey("accelerator_memberships.id", ondelete="CASCADE"), index=True)
+    profile: Mapped[dict] = mapped_column(JSON, default=dict)
+    visibility: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AcceleratorProgramStage(Base):
+    __tablename__ = "accelerator_program_stages"
+    __table_args__ = (
+        UniqueConstraint("cohort_id", "position", name="uq_accelerator_program_stage_position"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    cohort_id: Mapped[int] = mapped_column(ForeignKey("accelerator_cohorts.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(300))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    position: Mapped[int] = mapped_column(Integer)
+    unlock_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    required: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    status: Mapped[str] = mapped_column(String(30), default="draft", server_default="draft", index=True)
+    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    updated_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AcceleratorProgramMaterial(Base):
+    __tablename__ = "accelerator_program_materials"
+    __table_args__ = (
+        UniqueConstraint("stage_id", "position", name="uq_accelerator_program_material_position"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    stage_id: Mapped[int] = mapped_column(ForeignKey("accelerator_program_stages.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(300))
+    kind: Mapped[str] = mapped_column(String(30), default="link", server_default="link")
+    url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    position: Mapped[int] = mapped_column(Integer)
+    required: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AcceleratorProgramMaterialProgress(Base):
+    __tablename__ = "accelerator_program_material_progress"
+    __table_args__ = (
+        UniqueConstraint("material_id", "membership_id", name="uq_accelerator_material_progress_membership"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    material_id: Mapped[int] = mapped_column(ForeignKey("accelerator_program_materials.id", ondelete="CASCADE"), index=True)
+    membership_id: Mapped[int] = mapped_column(ForeignKey("accelerator_memberships.id", ondelete="CASCADE"), index=True)
+    completed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class AcceleratorProgramStageProgress(Base):
+    __tablename__ = "accelerator_program_stage_progress"
+    __table_args__ = (
+        UniqueConstraint("stage_id", "membership_id", name="uq_accelerator_stage_progress_membership"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    stage_id: Mapped[int] = mapped_column(ForeignKey("accelerator_program_stages.id", ondelete="CASCADE"), index=True)
+    membership_id: Mapped[int] = mapped_column(ForeignKey("accelerator_memberships.id", ondelete="CASCADE"), index=True)
+    completed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class AcceleratorHomeworkAssignment(Base):
+    __tablename__ = "accelerator_homework_assignments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    cohort_id: Mapped[int] = mapped_column(ForeignKey("accelerator_cohorts.id", ondelete="CASCADE"), index=True)
+    stage_id: Mapped[int | None] = mapped_column(
+        ForeignKey("accelerator_program_stages.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    title: Mapped[str] = mapped_column(String(300))
+    description: Mapped[str] = mapped_column(Text)
+    due_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(30), default="draft", server_default="draft", index=True)
+    audience: Mapped[str] = mapped_column(String(30), default="cohort", server_default="cohort")
+    allow_resubmit: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    updated_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AcceleratorHomeworkTarget(Base):
+    __tablename__ = "accelerator_homework_targets"
+    __table_args__ = (
+        UniqueConstraint("assignment_id", "membership_id", name="uq_accelerator_homework_target_membership"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    assignment_id: Mapped[int] = mapped_column(ForeignKey("accelerator_homework_assignments.id", ondelete="CASCADE"), index=True)
+    membership_id: Mapped[int] = mapped_column(ForeignKey("accelerator_memberships.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class AcceleratorHomeworkSubmission(Base):
+    __tablename__ = "accelerator_homework_submissions"
+    __table_args__ = (
+        UniqueConstraint("assignment_id", "membership_id", name="uq_accelerator_homework_submission_membership"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    assignment_id: Mapped[int] = mapped_column(ForeignKey("accelerator_homework_assignments.id", ondelete="CASCADE"), index=True)
+    membership_id: Mapped[int] = mapped_column(ForeignKey("accelerator_memberships.id", ondelete="CASCADE"), index=True)
+    answer_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    attachments: Mapped[list] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(30), default="submitted", server_default="submitted", index=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    submitted_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    reviewed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    review_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AcceleratorEvent(Base):
+    __tablename__ = "accelerator_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    cohort_id: Mapped[int] = mapped_column(ForeignKey("accelerator_cohorts.id", ondelete="CASCADE"), index=True)
+    stage_id: Mapped[int | None] = mapped_column(
+        ForeignKey("accelerator_program_stages.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    title: Mapped[str] = mapped_column(String(300))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    starts_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    ends_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    event_format: Mapped[str] = mapped_column(String(20), default="online", server_default="online")
+    location: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    meeting_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="draft", server_default="draft", index=True)
+    checkin_code: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    checkin_opens_minutes: Mapped[int] = mapped_column(Integer, default=120, server_default="120")
+    checkin_closes_minutes: Mapped[int] = mapped_column(Integer, default=180, server_default="180")
+    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    updated_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AcceleratorAttendanceRecord(Base):
+    __tablename__ = "accelerator_attendance_records"
+    __table_args__ = (
+        UniqueConstraint("event_id", "membership_id", name="uq_accelerator_attendance_event_membership"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    event_id: Mapped[int] = mapped_column(ForeignKey("accelerator_events.id", ondelete="CASCADE"), index=True)
+    membership_id: Mapped[int] = mapped_column(ForeignKey("accelerator_memberships.id", ondelete="CASCADE"), index=True)
+    status: Mapped[str] = mapped_column(String(20), default="present", server_default="present", index=True)
+    checkin_method: Mapped[str] = mapped_column(String(20), default="qr", server_default="qr")
+    checked_in_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    marked_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AcceleratorInvitation(Base):
+    __tablename__ = "accelerator_invitations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    application_id: Mapped[int] = mapped_column(ForeignKey("accelerator_applications.id", ondelete="CASCADE"), unique=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class AcceleratorNotificationOutbox(Base):
+    __tablename__ = "accelerator_notification_outbox"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    accelerator_id: Mapped[int] = mapped_column(ForeignKey("accelerators.id", ondelete="CASCADE"), index=True)
+    cohort_id: Mapped[int | None] = mapped_column(ForeignKey("accelerator_cohorts.id", ondelete="CASCADE"), nullable=True, index=True)
+    recipient_email: Mapped[str] = mapped_column(String(255), index=True)
+    event_type: Mapped[str] = mapped_column(String(50), index=True)
+    subject: Mapped[str] = mapped_column(String(300))
+    body: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="pending", server_default="pending", index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    idempotency_key: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    available_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class AcceleratorResidentQuotaOverride(Base):
+    """An immutable quota assignment; newer active rows supersede older rows."""
+
+    __tablename__ = "accelerator_resident_quota_overrides"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    membership_id: Mapped[int] = mapped_column(ForeignKey("accelerator_memberships.id", ondelete="CASCADE"), index=True)
+    source: Mapped[str] = mapped_column(String(20))  # individual | cohort
+    limits: Mapped[dict] = mapped_column(JSON)
+    starts_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    superseded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class AcceleratorQuotaUsageEvent(Base):
+    __tablename__ = "accelerator_quota_usage_events"
+    __table_args__ = (
+        UniqueConstraint("idempotency_key", name="uq_accelerator_quota_usage_idempotency"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    membership_id: Mapped[int] = mapped_column(ForeignKey("accelerator_memberships.id", ondelete="CASCADE"), index=True)
+    quota_override_id: Mapped[int] = mapped_column(ForeignKey("accelerator_resident_quota_overrides.id", ondelete="RESTRICT"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    resource: Mapped[str] = mapped_column(String(30), index=True)
+    quantity: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    idempotency_key: Mapped[str] = mapped_column(String(255))
+    reference_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    reference_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    event_metadata: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class AcceleratorAuditLog(Base):
+    __tablename__ = "accelerator_audit_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    accelerator_id: Mapped[int] = mapped_column(ForeignKey("accelerators.id", ondelete="CASCADE"), index=True)
+    cohort_id: Mapped[int | None] = mapped_column(ForeignKey("accelerator_cohorts.id", ondelete="CASCADE"), nullable=True, index=True)
+    actor_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    action: Mapped[str] = mapped_column(String(80), index=True)
+    target_type: Mapped[str] = mapped_column(String(50))
+    target_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    details: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
 class PromoCampaign(Base):
     __tablename__ = "promo_campaigns"
 

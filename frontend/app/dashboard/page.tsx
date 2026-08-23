@@ -25,6 +25,7 @@ import {
   getChatSession,
   deleteChatSession,
   getMe,
+  getAuthJson,
   createChatSessionFromIntent,
   ChatSessionResponse,
   ChatSessionDetailResponse,
@@ -86,6 +87,7 @@ function DashboardContent() {
   const [isContextImportOpen, setIsContextImportOpen] = useState(false);
   const [usage, setUsage] = useState<UsageResponse | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [hasAccelerator, setHasAccelerator] = useState(false);
 
   // Prefer the live tier returned by /me/usage (server-side resolved,
   // accounts for expired subscriptions); fall back to /me before the
@@ -164,15 +166,17 @@ function DashboardContent() {
         return;
       }
       try {
-        const [sessionsList, user, usageData] = await Promise.all([
+        const [sessionsList, user, usageData, acceleratorRows] = await Promise.all([
           getChatSessions(token).catch(() => []),
           getMe(token).catch(() => null),
           fetchUsage(token).catch(() => null),
+          getAuthJson<Array<{ id: number }>>("/api/accelerators", token).catch(() => []),
         ]);
         setSessions(sessionsList);
         setUserProfile(user);
         setShowOnboarding(Boolean(user && !user.onboarding_completed_at));
         setUsage(usageData);
+        setHasAccelerator(Boolean(user?.is_admin || acceleratorRows.length));
       } catch (e) {
         console.error(e);
       } finally {
@@ -307,6 +311,7 @@ function DashboardContent() {
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         isAdmin={userProfile?.is_admin}
+        hasAccelerator={hasAccelerator}
         isMobileOpen={isMobileSidebarOpen}
         onMobileClose={() => setIsMobileSidebarOpen(false)}
         isCollapsed={isSidebarCollapsed}

@@ -65,8 +65,6 @@ async def create_tree(
     db: AsyncSession = Depends(get_async_db),
 ) -> TreeResponse:
     """Create a Smart Roadmap starting with Universal Base Nodes."""
-    if user.subscription_tier == "tester":
-        raise HTTPException(status_code=403, detail="Интерактивная дорожная карта недоступна в тарифе Tester. Оформите подписку.")
     from subscription_service import consume_quota, require_legacy_access
     handled = await consume_quota(
         db, user, "roadmaps",
@@ -116,9 +114,6 @@ async def upload_pdf(
     db: AsyncSession = Depends(get_async_db),
 ) -> TreeResponse:
     """Upload a PDF and generate a decision tree from its contents."""
-    if user.subscription_tier == "tester":
-        raise HTTPException(status_code=403, detail="Загрузка PDF недоступна в тарифе Tester. Оформите подписку.")
-        
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Только PDF файлы поддерживаются")
 

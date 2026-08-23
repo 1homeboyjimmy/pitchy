@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { LayoutDashboard, MessageSquare, GitBranch, Users, Shield, HelpCircle, Star, X, ChevronLeft, ChevronRight, Lock, Banknote } from "lucide-react";
+import { LayoutDashboard, MessageSquare, GitBranch, Users, Shield, HelpCircle, Star, X, ChevronLeft, ChevronRight, Lock, Banknote, Rocket } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { PitchyLogo } from "../shared/PitchyLogo";
 import { trackMetrikaGoal } from "@/components/analytics/YandexMetrika";
@@ -12,6 +12,7 @@ interface Props {
   activeTab: string;
   setActiveTab: (t: string) => void;
   isAdmin?: boolean;
+  hasAccelerator?: boolean;
   isMobileOpen?: boolean;
   onMobileClose?: () => void;
   isCollapsed?: boolean;
@@ -27,6 +28,7 @@ export function SideNavBar({
   activeTab,
   setActiveTab,
   isAdmin,
+  hasAccelerator,
   isMobileOpen,
   onMobileClose,
   isCollapsed,
@@ -48,6 +50,10 @@ export function SideNavBar({
       locked: !canUseCustdev,
     },
   ];
+
+  if (hasAccelerator || isAdmin) {
+    topNavItems.push({ id: "accelerator", label: "Акселератор", icon: Rocket, href: "/accelerator", locked: false });
+  }
 
   if (isAdmin) {
     topNavItems.push({ id: "admin", label: "Админ", icon: Shield, locked: false });

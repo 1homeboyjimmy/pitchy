@@ -78,6 +78,42 @@ async def get_subscription(db: AsyncSession, user_id: int, *, for_update: bool =
     return (await db.execute(query)).scalar_one_or_none()
 
 
+def _base_entitlement_limit(user: User, subscription: CustomSubscription | None, resource: str) -> int:
+    """Limit outside an accelerator, used to choose the stronger entitlement."""
+    if is_active(subscription):
+        return normalize_config(subscription.current_config)[resource]
+    if subscription is not None:
+        return 0
+
+    from plan_limits import UNLIMITED, get_limits_for, resolve_tier
+    limits = get_limits_for(user.subscription_tier, user.subscription_expires_at)
+    tier = resolve_tier(user.subscription_tier, user.subscription_expires_at)
+    return {
+        "messages": limits.messages,
+        "roadmaps": limits.roadmaps,
+        "custdev": limits.custdev,
+        "grants": UNLIMITED if tier not in ("free", "tester") else 0,
+    }[resource]
+
+
+async def _preferred_accelerator_snapshot(
+    db: AsyncSession,
+    user: User,
+    subscription: CustomSubscription | None,
+    resource: str,
+) -> dict | None:
+    from accelerator_service import accelerator_quota_snapshot, entitlement_is_greater
+    try:
+        snapshot = await accelerator_quota_snapshot(db, user.id, resource)
+    except AttributeError:
+        # Lightweight unit-test doubles may not implement the AsyncSession API.
+        return None
+    if not snapshot:
+        return None
+    base_limit = _base_entitlement_limit(user, subscription, resource)
+    return snapshot if entitlement_is_greater(snapshot["limit"], base_limit) else None
+
+
 async def require_quota_access(db: AsyncSession, user: User, resource: str) -> None:
     """Require at least one available unit without consuming it.
 
@@ -90,6 +126,14 @@ async def require_quota_access(db: AsyncSession, user: User, resource: str) -> N
         raise ValueError(f"Unknown quota resource: {resource}")
 
     subscription = await get_subscription(db, user.id)
+    accelerator = await _preferred_accelerator_snapshot(db, user, subscription, resource)
+    if accelerator:
+        if accelerator["limit"] != -1 and accelerator["used"] >= accelerator["limit"]:
+            raise HTTPException(
+                status_code=402,
+                detail=f"quota_exceeded: лимит резидента {resource} исчерпан ({accelerator['limit']})",
+            )
+        return
     if subscription is None:
         require_legacy_access(user, resource)
         return
@@ -137,6 +181,18 @@ async def consume_quota(
         return True
 
     subscription = await get_subscription(db, user.id, for_update=True)
+    accelerator = await _preferred_accelerator_snapshot(db, user, subscription, resource)
+    if accelerator:
+        from accelerator_service import consume_accelerator_quota
+        return await consume_accelerator_quota(
+            db,
+            user_id=user.id,
+            resource=resource,
+            idempotency_key=idempotency_key,
+            reference_type=reference_type,
+            reference_id=reference_id,
+            metadata=metadata,
+        )
     if not subscription:
         return False
     if not is_active(subscription):

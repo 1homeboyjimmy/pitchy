@@ -167,7 +167,7 @@ async function request<T>(
   path: string,
   body?: unknown,
   token?: string | null,
-  method: "GET" | "POST" | "DELETE" | "PATCH" = "POST"
+  method: "GET" | "POST" | "DELETE" | "PATCH" | "PUT" = "POST"
 ): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token && token !== COOKIE_SESSION_MARKER) {
@@ -243,6 +243,10 @@ export async function postJson<T>(path: string, body: unknown): Promise<T> {
   return request<T>(path, body);
 }
 
+export async function getJson<T>(path: string): Promise<T> {
+  return request<T>(path, undefined, null, "GET");
+}
+
 export async function postAuthJson<T>(
   path: string,
   body: unknown,
@@ -255,16 +259,24 @@ export async function getAuthJson<T>(path: string, token: string): Promise<T> {
   return request<T>(path, undefined, token, "GET");
 }
 
-export async function deleteAuth(path: string, token: string): Promise<void> {
-  await request(path, undefined, token, "DELETE");
-}
-
 export async function patchAuthJson<T>(
   path: string,
   body: unknown,
   token: string
 ): Promise<T> {
   return request<T>(path, body, token, "PATCH");
+}
+
+export async function putAuthJson<T>(
+  path: string,
+  body: unknown,
+  token: string
+): Promise<T> {
+  return request<T>(path, body, token, "PUT");
+}
+
+export async function deleteAuth(path: string, token: string): Promise<void> {
+  await request(path, undefined, token, "DELETE");
 }
 
 export type ChatSessionCreateRequest = {

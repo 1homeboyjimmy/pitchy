@@ -70,6 +70,7 @@ const nextConfig: NextConfig = {
       ],
       afterFiles: [
         // Proxy all backend API paths through Next.js server
+        { source: "/api/:path*", destination: `${BACKEND_URL}/api/:path*` },
         { source: "/guest/:path*", destination: `${BACKEND_URL}/guest/:path*` },
         { source: "/billing/:path*", destination: `${BACKEND_URL}/billing/:path*` },
         { source: "/auth/:path*", destination: `${BACKEND_URL}/auth/:path*` },

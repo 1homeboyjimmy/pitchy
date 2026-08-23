@@ -5,7 +5,7 @@
 
 import { getAuthJson } from "@/lib/api";
 
-export type SubscriptionTier = "free" | "starter" | "research" | "pro" | "tester" | "premium" | "custom";
+export type SubscriptionTier = "free" | "starter" | "research" | "pro" | "tester" | "premium" | "custom" | "accelerator";
 
 export interface PlanQuotas {
   messages: number;        // -1 = unlimited
@@ -107,6 +107,11 @@ export const PLAN_QUOTAS: Record<SubscriptionTier, PlanQuotas> = {
     canUseDeepSearch: true, canUseResearch: true, canUsePresentation: true,
     canUseImportContext: true, canUseTree: true, canUseCustdev: true,
   },
+  accelerator: {
+    messages: 0, searchMessages: 0, deepResearch: 0, roadmaps: 0, deepCustdev: 0, grants: 0,
+    canUseDeepSearch: false, canUseResearch: false, canUsePresentation: false,
+    canUseImportContext: false, canUseTree: false, canUseCustdev: false,
+  },
 };
 
 export interface QuotaUsage {
@@ -132,6 +137,7 @@ export function getTierLabel(tier?: string | null): string {
   if (t === "premium") return "Premium";
   if (t === "tester") return "Tester";
   if (t === "custom") return "Персональный";
+  if (t === "accelerator") return "Резидент акселератора";
   return t;
 }
 
