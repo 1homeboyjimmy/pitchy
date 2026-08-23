@@ -10,6 +10,7 @@ export type ApplicationFormField = {
   placeholder?: string;
   type?: "text" | "email" | "number" | "textarea" | "select";
   required?: boolean;
+  application_types?: Array<"project" | "participant">;
   options?: Array<string | { value: string; label: string }>;
 };
 
@@ -40,6 +41,7 @@ function normalize(schema: ApplicationFormSchema): { title: string; description:
       label: field.label || field.key,
       type: field.type || "text",
       required: Boolean(field.required || required.has(field.key)),
+      application_types: field.application_types || ["project", "participant"],
       options: (field.options || []).map((option) => typeof option === "string" ? option : option.label),
     })),
   };
@@ -50,7 +52,7 @@ function makeField(existing: EditableField[]): EditableField {
   let key = `question_${index}`;
   const keys = new Set(existing.map((field) => field.key));
   while (keys.has(key)) { index += 1; key = `question_${index}`; }
-  return { key, label: `Новый вопрос ${index}`, type: "text", required: false, options: [] };
+  return { key, label: `Новый вопрос ${index}`, type: "text", required: false, application_types: ["project", "participant"], options: [] };
 }
 
 export function ApplicationFormEditor({
@@ -105,12 +107,17 @@ export function ApplicationFormEditor({
       setError("Для поля с выбором укажите минимум два варианта.");
       return;
     }
+    if (fields.some((field) => !field.application_types?.length)) {
+      setError("Укажите, для какого типа заявки показывать каждый вопрос.");
+      return;
+    }
     setError("");
     const cleanedFields: ApplicationFormField[] = fields.map((field) => ({
       key: field.key.trim(),
       label: field.label.trim(),
       type: field.type || "text",
       required: Boolean(field.required),
+      application_types: field.application_types,
       ...(field.description?.trim() ? { description: field.description.trim() } : {}),
       ...(field.placeholder?.trim() ? { placeholder: field.placeholder.trim() } : {}),
       ...(field.type === "select" ? { options: field.options.map((option) => option.trim()).filter(Boolean) } : {}),
@@ -158,7 +165,27 @@ export function ApplicationFormEditor({
               <label className="text-sm text-white/60 sm:col-span-2">Пояснение<input value={field.description || ""} onChange={(event) => patchField(index, { description: event.target.value })} maxLength={1000} placeholder="Необязательный комментарий под полем" className="workspace-input mt-2" /></label>
               {field.type === "select" && <label className="text-sm text-white/60 sm:col-span-2">Варианты ответа<textarea value={field.options.join("\n")} onChange={(event) => patchField(index, { options: event.target.value.split("\n") })} rows={4} placeholder={"Один вариант на строку\nВторой вариант"} className="workspace-input mt-2 resize-y" /></label>}
             </div>
-            <label className="mt-4 flex items-center gap-3 text-sm text-white/60"><input type="checkbox" checked={Boolean(field.required)} onChange={(event) => patchField(index, { required: event.target.checked })} /> Обязательный вопрос</label>
+            <div className="mt-4 flex flex-wrap gap-x-6 gap-y-3 text-sm text-white/60">
+              <label className="flex items-center gap-3"><input type="checkbox" checked={Boolean(field.required)} onChange={(event) => patchField(index, { required: event.target.checked })} /> Обязательный вопрос</label>
+              <span className="text-white/35">Показывать для:</span>
+              {(["project", "participant"] as const).map((applicationType) => (
+                <label key={applicationType} className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={field.application_types?.includes(applicationType) ?? true}
+                    onChange={(event) => {
+                      const current = field.application_types || ["project", "participant"];
+                      patchField(index, {
+                        application_types: event.target.checked
+                          ? Array.from(new Set([...current, applicationType]))
+                          : current.filter((item) => item !== applicationType),
+                      });
+                    }}
+                  />
+                  {applicationType === "project" ? "проекта" : "участника без проекта"}
+                </label>
+              ))}
+            </div>
           </article>
         ))}
       </div>

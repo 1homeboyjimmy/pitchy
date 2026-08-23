@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 import hashlib
 import os
+import re
 import secrets
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
@@ -56,6 +57,8 @@ from models import (
 )
 from schemas.accelerators import (
     AcceleratorCreate,
+    AcceleratorSetupCreate,
+    AcceleratorUpdate,
     ApplicationRevisionUpdate,
     ApplicationCreate,
     ApplicationReview,
@@ -87,12 +90,15 @@ DEFAULT_MODULES = {
     "program": True,
     "homework": False,
     "attendance": False,
-    "matchmaking": False,
-    "progress_tracking": False,
-    "project_audit": False,
-    "demo_day": False,
 }
 LOCKED_BASE_MODULES = {"applications": True, "program": True}
+COHORT_STATUS_TRANSITIONS = {
+    "draft": {"accepting", "archived"},
+    "accepting": {"draft", "active", "archived"},
+    "active": {"completed", "archived"},
+    "completed": {"archived"},
+    "archived": set(),
+}
 
 
 def accelerator_dict(row: Accelerator) -> dict:
@@ -283,17 +289,30 @@ async def get_cohort_or_404(db: AsyncSession, cohort_id: int) -> AcceleratorCoho
     return row
 
 
-def validate_application_form(schema: dict, payload: dict) -> None:
+def validate_application_form(schema: dict, payload: dict, application_type: str = "project") -> None:
     if not isinstance(payload, dict) or not payload:
         raise HTTPException(status_code=422, detail="Заявка должна содержать заполненную форму")
     required = set(schema.get("required") or []) if isinstance(schema, dict) else set()
     fields = schema.get("fields") or [] if isinstance(schema, dict) else []
+    hidden_keys: set[str] = set()
     for field in fields:
-        if isinstance(field, dict) and field.get("required") and field.get("key"):
+        if not isinstance(field, dict) or not field.get("key"):
+            continue
+        application_types = field.get("application_types")
+        if application_types and application_type not in application_types:
+            hidden_keys.add(field["key"])
+            continue
+        if field.get("required"):
             required.add(field["key"])
+    required -= hidden_keys
     missing = [key for key in sorted(required) if payload.get(key) in (None, "", [])]
     if missing:
         raise HTTPException(status_code=422, detail=f"Не заполнены обязательные поля: {', '.join(missing)}")
+
+
+def setup_slug(name: str) -> str:
+    value = re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
+    return (value or "organization")[:90]
 
 
 @router.post("/organizations")
@@ -341,6 +360,95 @@ async def list_organizations(
         "description": row.description,
         "status": row.status,
     } for row in rows]
+
+
+@router.post("/setup")
+async def setup_accelerator(
+    payload: AcceleratorSetupCreate,
+    admin: User = Depends(require_async_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Atomically creates the minimum usable accelerator foundation."""
+    unknown_modules = set(payload.modules) - set(DEFAULT_MODULES)
+    if unknown_modules:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Недоступные модули: {', '.join(sorted(unknown_modules))}",
+        )
+    if payload.organization_id:
+        organization = await db.get(AcceleratorOrganization, payload.organization_id)
+        if not organization or organization.status != "active":
+            raise HTTPException(status_code=404, detail="Активная организация не найдена")
+    else:
+        base_slug = setup_slug(payload.organization_name or "organization")
+        slug = base_slug
+        suffix = 1
+        while (await db.execute(select(AcceleratorOrganization.id).where(
+            AcceleratorOrganization.slug == slug
+        ))).scalar_one_or_none():
+            suffix += 1
+            slug = f"{base_slug[:110]}-{suffix}"
+        organization = AcceleratorOrganization(
+            name=(payload.organization_name or "").strip(),
+            slug=slug,
+            description=payload.organization_description,
+            created_by_user_id=admin.id,
+        )
+        db.add(organization)
+        await db.flush()
+
+    accelerator = Accelerator(
+        organization_id=organization.id,
+        name=payload.accelerator_name.strip(),
+        organization=organization.name,
+        description=payload.accelerator_description,
+        created_by_user_id=admin.id,
+    )
+    db.add(accelerator)
+    await db.flush()
+    cohort = AcceleratorCohort(
+        accelerator_id=accelerator.id,
+        name=payload.cohort_name.strip(),
+        timezone=payload.timezone.strip(),
+        starts_at=payload.starts_at,
+        ends_at=payload.ends_at,
+        application_form_schema=payload.application_form_schema,
+        default_quota_config=payload.default_quota_config,
+        default_quota_updated_by_user_id=admin.id if payload.default_quota_config else None,
+        created_by_user_id=admin.id,
+    )
+    db.add(cohort)
+    await db.flush()
+    modules = {**DEFAULT_MODULES, **payload.modules}
+    db.add(AcceleratorProgramConfig(
+        cohort_id=cohort.id,
+        version=1,
+        modules=modules,
+        locked_modules=LOCKED_BASE_MODULES.copy(),
+        updated_by_user_id=admin.id,
+    ))
+    add_audit(
+        db,
+        accelerator_id=accelerator.id,
+        cohort_id=cohort.id,
+        actor_user_id=admin.id,
+        action="accelerator.setup_completed",
+        target_type="accelerator",
+        target_id=accelerator.id,
+        details={"organization_id": organization.id, "modules": modules},
+    )
+    await db.commit()
+    await db.refresh(accelerator)
+    await db.refresh(cohort)
+    return {
+        "accelerator": {**accelerator_dict(accelerator), "access_role": "global_admin"},
+        "cohort": cohort_dict(cohort),
+        "organization": {
+            "id": organization.id,
+            "name": organization.name,
+            "slug": organization.slug,
+        },
+    }
 
 
 @router.post("")
@@ -404,6 +512,34 @@ async def list_accelerators(
             .order_by(Accelerator.created_at.desc())
         )).scalars().all()
     return [{**accelerator_dict(row), "access_role": access_roles[row.id]} for row in rows]
+
+
+@router.patch("/{accelerator_id}")
+async def update_accelerator(
+    accelerator_id: int,
+    payload: AcceleratorUpdate,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    accelerator = await get_accelerator_or_404(db, accelerator_id)
+    if not user.is_admin and not await is_accelerator_organizer(db, user.id, accelerator_id):
+        raise HTTPException(status_code=403, detail="Нет прав на настройку акселератора")
+    if payload.name is not None:
+        accelerator.name = payload.name.strip()
+    if "description" in payload.model_fields_set:
+        accelerator.description = payload.description
+    add_audit(
+        db,
+        accelerator_id=accelerator.id,
+        actor_user_id=user.id,
+        action="accelerator.updated",
+        target_type="accelerator",
+        target_id=accelerator.id,
+        details={"updated_fields": sorted(payload.model_fields_set)},
+    )
+    await db.commit()
+    await db.refresh(accelerator)
+    return accelerator_dict(accelerator)
 
 
 @router.get("/me/memberships")
@@ -494,7 +630,10 @@ async def assign_organizer(
         AcceleratorStaff.user_id == payload.user_id,
     ))).scalar_one_or_none()
     if existing:
-        return {"id": existing.id, "accelerator_id": accelerator_id, "user_id": payload.user_id, "role": existing.role}
+        return {
+            "id": existing.id, "accelerator_id": accelerator_id, "user_id": payload.user_id,
+            "name": organizer.name, "email": organizer.email, "role": existing.role,
+        }
     staff = AcceleratorStaff(
         accelerator_id=accelerator_id,
         user_id=payload.user_id,
@@ -512,17 +651,98 @@ async def assign_organizer(
         target_id=payload.user_id,
     )
     await db.commit()
-    return {"id": staff.id, "accelerator_id": accelerator_id, "user_id": payload.user_id, "role": staff.role}
+    return {
+        "id": staff.id, "accelerator_id": accelerator_id, "user_id": payload.user_id,
+        "name": organizer.name, "email": organizer.email, "role": staff.role,
+    }
+
+
+@router.get("/{accelerator_id}/organizers")
+async def list_organizers(
+    accelerator_id: int,
+    admin: User = Depends(require_async_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    await get_accelerator_or_404(db, accelerator_id)
+    rows = (await db.execute(
+        select(AcceleratorStaff, User)
+        .join(User, User.id == AcceleratorStaff.user_id)
+        .where(AcceleratorStaff.accelerator_id == accelerator_id)
+        .order_by(User.name, User.email)
+    )).all()
+    return [{
+        "id": staff.id,
+        "user_id": user.id,
+        "name": user.name,
+        "email": user.email,
+        "role": staff.role,
+        "created_at": staff.created_at,
+    } for staff, user in rows]
+
+
+@router.get("/{accelerator_id}/organizer-candidates")
+async def search_organizer_candidates(
+    accelerator_id: int,
+    q: str = Query(min_length=2, max_length=200),
+    admin: User = Depends(require_async_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    await get_accelerator_or_404(db, accelerator_id)
+    search = f"%{q.strip()}%"
+    assigned_ids = select(AcceleratorStaff.user_id).where(
+        AcceleratorStaff.accelerator_id == accelerator_id
+    )
+    rows = (await db.execute(
+        select(User)
+        .where(
+            User.is_active.is_(True),
+            User.deleted_at.is_(None),
+            User.id.not_in(assigned_ids),
+            or_(User.name.ilike(search), User.email.ilike(search)),
+        )
+        .order_by(User.name, User.email)
+        .limit(20)
+    )).scalars().all()
+    return [{"id": row.id, "name": row.name, "email": row.email} for row in rows]
+
+
+@router.delete("/{accelerator_id}/organizers/{user_id}", status_code=204)
+async def remove_organizer(
+    accelerator_id: int,
+    user_id: int,
+    admin: User = Depends(require_async_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    await get_accelerator_or_404(db, accelerator_id)
+    staff = (await db.execute(select(AcceleratorStaff).where(
+        AcceleratorStaff.accelerator_id == accelerator_id,
+        AcceleratorStaff.user_id == user_id,
+    ))).scalar_one_or_none()
+    if not staff:
+        raise HTTPException(status_code=404, detail="Организатор не найден")
+    await db.delete(staff)
+    add_audit(
+        db,
+        accelerator_id=accelerator_id,
+        actor_user_id=admin.id,
+        action="organizer.removed",
+        target_type="user",
+        target_id=user_id,
+    )
+    await db.commit()
+    return Response(status_code=204)
 
 
 @router.post("/{accelerator_id}/cohorts")
 async def create_cohort(
     accelerator_id: int,
     payload: CohortCreate,
-    admin: User = Depends(require_async_admin),
+    user: User = Depends(get_async_current_user),
     db: AsyncSession = Depends(get_async_db),
 ):
     accelerator = await get_accelerator_or_404(db, accelerator_id)
+    if not user.is_admin and not await is_accelerator_organizer(db, user.id, accelerator_id):
+        raise HTTPException(status_code=403, detail="Нет прав на создание потока")
     if payload.ends_at and payload.starts_at and payload.ends_at <= payload.starts_at:
         raise HTTPException(status_code=422, detail="Дата окончания потока должна быть позже даты начала")
     cohort = AcceleratorCohort(
@@ -532,7 +752,7 @@ async def create_cohort(
         starts_at=payload.starts_at,
         ends_at=payload.ends_at,
         application_form_schema=payload.application_form_schema,
-        created_by_user_id=admin.id,
+        created_by_user_id=user.id,
     )
     db.add(cohort)
     await db.flush()
@@ -541,13 +761,13 @@ async def create_cohort(
         version=1,
         modules=DEFAULT_MODULES.copy(),
         locked_modules=LOCKED_BASE_MODULES.copy(),
-        updated_by_user_id=admin.id,
+        updated_by_user_id=user.id,
     ))
     add_audit(
         db,
         accelerator_id=accelerator.id,
         cohort_id=cohort.id,
-        actor_user_id=admin.id,
+        actor_user_id=user.id,
         action="cohort.created",
         target_type="cohort",
         target_id=cohort.id,
@@ -599,6 +819,14 @@ async def update_cohort_status(
     cohort = await get_cohort_or_404(db, cohort_id)
     await require_cohort_manager(db, user, cohort)
     previous = cohort.status
+    if payload.status == previous:
+        return cohort_dict(cohort)
+    allowed = COHORT_STATUS_TRANSITIONS.get(previous, set())
+    if payload.status not in allowed:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Нельзя перевести поток из статуса «{previous}» в «{payload.status}»",
+        )
     cohort.status = payload.status
     add_audit(
         db,
@@ -669,7 +897,9 @@ async def get_program_config(
     config = (await db.execute(select(AcceleratorProgramConfig).where(
         AcceleratorProgramConfig.cohort_id == cohort.id
     ))).scalar_one()
-    return {"cohort_id": cohort.id, "version": config.version, "modules": config.modules, "locked_modules": config.locked_modules}
+    modules = {key: bool((config.modules or {}).get(key, default)) for key, default in DEFAULT_MODULES.items()}
+    locked = {key: value for key, value in (config.locked_modules or {}).items() if key in DEFAULT_MODULES}
+    return {"cohort_id": cohort.id, "version": config.version, "modules": modules, "locked_modules": locked}
 
 
 @router.patch("/cohorts/{cohort_id}/program-config")
@@ -691,7 +921,10 @@ async def update_program_config(
     unknown = set(payload.modules) - set(DEFAULT_MODULES)
     if unknown:
         raise HTTPException(status_code=422, detail=f"Неизвестные модули: {', '.join(sorted(unknown))}")
-    next_modules = {**DEFAULT_MODULES, **(config.modules or {}), **payload.modules}
+    next_modules = {
+        key: payload.modules.get(key, bool((config.modules or {}).get(key, default)))
+        for key, default in DEFAULT_MODULES.items()
+    }
     for key, required_value in (config.locked_modules or {}).items():
         if next_modules.get(key) != required_value:
             raise HTTPException(status_code=409, detail=f"Модуль {key} зафиксирован главным администратором")
@@ -779,7 +1012,8 @@ async def list_program_stages(
     cohort = await get_cohort_or_404(db, cohort_id)
     await require_cohort_manager(db, user, cohort)
     rows = (await db.execute(select(AcceleratorProgramStage).where(
-        AcceleratorProgramStage.cohort_id == cohort.id
+        AcceleratorProgramStage.cohort_id == cohort.id,
+        AcceleratorProgramStage.status != "archived",
     ).order_by(AcceleratorProgramStage.position))).scalars().all()
     return [await manager_stage_dict(db, row) for row in rows]
 
@@ -886,6 +1120,62 @@ async def publish_program_stage(
     return await manager_stage_dict(db, stage)
 
 
+@router.post("/program-stages/{stage_id}/duplicate")
+async def duplicate_program_stage(
+    stage_id: int,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    source = await db.get(AcceleratorProgramStage, stage_id)
+    if not source:
+        raise HTTPException(status_code=404, detail="Этап программы не найден")
+    cohort = await get_cohort_or_404(db, source.cohort_id)
+    await require_cohort_manager(db, user, cohort)
+    max_position = (await db.execute(select(func.max(AcceleratorProgramStage.position)).where(
+        AcceleratorProgramStage.cohort_id == cohort.id
+    ))).scalar_one() or 0
+    duplicate = AcceleratorProgramStage(
+        cohort_id=cohort.id, title=f"{source.title} — копия", description=source.description,
+        position=max_position + 1, unlock_at=source.unlock_at, required=source.required,
+        created_by_user_id=user.id, updated_by_user_id=user.id,
+    )
+    db.add(duplicate)
+    await db.flush()
+    for material in await stage_materials(db, source.id):
+        db.add(AcceleratorProgramMaterial(
+            stage_id=duplicate.id, title=material.title, kind=material.kind, url=material.url,
+            content=material.content, position=material.position, required=material.required,
+        ))
+    add_audit(db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+              actor_user_id=user.id, action="program_stage.duplicated",
+              target_type="program_stage", target_id=duplicate.id, details={"source_id": source.id})
+    await db.commit()
+    return await manager_stage_dict(db, duplicate)
+
+
+@router.post("/program-stages/{stage_id}/archive")
+async def archive_program_stage(
+    stage_id: int,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    stage = await db.get(AcceleratorProgramStage, stage_id)
+    if not stage:
+        raise HTTPException(status_code=404, detail="Этап программы не найден")
+    cohort = await get_cohort_or_404(db, stage.cohort_id)
+    await require_cohort_manager(db, user, cohort)
+    if stage.status == "archived":
+        raise HTTPException(status_code=409, detail="Этап уже в архиве")
+    stage.status = "archived"
+    stage.position = -stage.id
+    stage.updated_by_user_id = user.id
+    add_audit(db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+              actor_user_id=user.id, action="program_stage.archived",
+              target_type="program_stage", target_id=stage.id)
+    await db.commit()
+    return await manager_stage_dict(db, stage)
+
+
 @router.put("/cohorts/{cohort_id}/program-stages/reorder")
 async def reorder_program_stages(
     cohort_id: int,
@@ -896,7 +1186,8 @@ async def reorder_program_stages(
     cohort = await get_cohort_or_404(db, cohort_id)
     await require_cohort_manager(db, user, cohort)
     stages = list((await db.execute(select(AcceleratorProgramStage).where(
-        AcceleratorProgramStage.cohort_id == cohort.id
+        AcceleratorProgramStage.cohort_id == cohort.id,
+        AcceleratorProgramStage.status != "archived",
     ).with_for_update())).scalars().all())
     if {stage.id for stage in stages} != set(payload.stage_ids):
         raise HTTPException(status_code=422, detail="Передайте все этапы потока без повторов")
@@ -1025,7 +1316,10 @@ async def list_homework_assignments(
     await require_homework_module(db, cohort)
     assignments = (await db.execute(
         select(AcceleratorHomeworkAssignment)
-        .where(AcceleratorHomeworkAssignment.cohort_id == cohort.id)
+        .where(
+            AcceleratorHomeworkAssignment.cohort_id == cohort.id,
+            AcceleratorHomeworkAssignment.status != "archived",
+        )
         .order_by(AcceleratorHomeworkAssignment.created_at.desc())
     )).scalars().all()
     result = []
@@ -1263,6 +1557,60 @@ async def remind_homework_assignment(
     for notification_id in notification_ids:
         background_tasks.add_task(process_notification_event, notification_id)
     return {"id": assignment.id, "reminded": len(notification_ids)}
+
+
+@router.post("/homework/{assignment_id}/duplicate")
+async def duplicate_homework_assignment(
+    assignment_id: int,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    source = await get_homework_assignment_or_404(db, assignment_id)
+    cohort = await get_cohort_or_404(db, source.cohort_id)
+    await require_cohort_manager(db, user, cohort)
+    await require_homework_module(db, cohort)
+    duplicate = AcceleratorHomeworkAssignment(
+        cohort_id=source.cohort_id, stage_id=source.stage_id,
+        title=f"{source.title} — копия", description=source.description,
+        due_at=source.due_at if source.due_at and source.due_at > datetime.utcnow() else None,
+        audience=source.audience, allow_resubmit=source.allow_resubmit,
+        created_by_user_id=user.id, updated_by_user_id=user.id,
+    )
+    db.add(duplicate)
+    await db.flush()
+    target_ids = list((await db.execute(select(AcceleratorHomeworkTarget.membership_id).where(
+        AcceleratorHomeworkTarget.assignment_id == source.id
+    ))).scalars().all())
+    for membership_id in target_ids:
+        db.add(AcceleratorHomeworkTarget(assignment_id=duplicate.id, membership_id=membership_id))
+    add_audit(db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+              actor_user_id=user.id, action="homework.duplicated",
+              target_type="homework_assignment", target_id=duplicate.id,
+              details={"source_id": source.id})
+    await db.commit()
+    return {"id": duplicate.id, "status": duplicate.status}
+
+
+@router.post("/homework/{assignment_id}/archive")
+async def archive_homework_assignment(
+    assignment_id: int,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    assignment = await get_homework_assignment_or_404(db, assignment_id)
+    cohort = await get_cohort_or_404(db, assignment.cohort_id)
+    await require_cohort_manager(db, user, cohort)
+    await require_homework_module(db, cohort)
+    if assignment.status == "archived":
+        raise HTTPException(status_code=409, detail="Задание уже в архиве")
+    assignment.status = "archived"
+    assignment.archived_at = datetime.utcnow()
+    assignment.updated_by_user_id = user.id
+    add_audit(db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+              actor_user_id=user.id, action="homework.archived",
+              target_type="homework_assignment", target_id=assignment.id)
+    await db.commit()
+    return {"id": assignment.id, "status": assignment.status}
 
 
 @router.get("/memberships/{membership_id}/homework")
@@ -1524,7 +1872,8 @@ async def list_events(
     await require_cohort_manager(db, user, cohort)
     await require_attendance_module(db, cohort)
     rows = (await db.execute(select(AcceleratorEvent).where(
-        AcceleratorEvent.cohort_id == cohort.id
+        AcceleratorEvent.cohort_id == cohort.id,
+        AcceleratorEvent.status != "archived",
     ).order_by(AcceleratorEvent.starts_at))).scalars().all()
     counts = dict((await db.execute(
         select(AcceleratorAttendanceRecord.event_id, func.count(AcceleratorAttendanceRecord.id))
@@ -1635,6 +1984,59 @@ async def event_checkin_qr(
     image = qrcode.make(url, image_factory=qrcode.image.svg.SvgPathImage)
     return Response(content=image.to_string(), media_type="image/svg+xml",
                     headers={"Cache-Control": "no-store"})
+
+
+@router.post("/events/{event_id}/duplicate")
+async def duplicate_event(
+    event_id: int,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    source = await db.get(AcceleratorEvent, event_id)
+    if not source:
+        raise HTTPException(status_code=404, detail="Мероприятие не найдено")
+    cohort = await get_cohort_or_404(db, source.cohort_id)
+    await require_cohort_manager(db, user, cohort)
+    await require_attendance_module(db, cohort)
+    duplicate = AcceleratorEvent(
+        cohort_id=source.cohort_id, stage_id=source.stage_id,
+        title=f"{source.title} — копия", description=source.description,
+        starts_at=source.starts_at, ends_at=source.ends_at,
+        event_format=source.event_format, location=source.location, meeting_url=source.meeting_url,
+        checkin_code=secrets.token_urlsafe(24),
+        checkin_opens_minutes=source.checkin_opens_minutes,
+        checkin_closes_minutes=source.checkin_closes_minutes,
+        created_by_user_id=user.id, updated_by_user_id=user.id,
+    )
+    db.add(duplicate)
+    await db.flush()
+    add_audit(db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+              actor_user_id=user.id, action="event.duplicated", target_type="event",
+              target_id=duplicate.id, details={"source_id": source.id})
+    await db.commit()
+    return event_dict(duplicate)
+
+
+@router.post("/events/{event_id}/archive")
+async def archive_event(
+    event_id: int,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    event = await db.get(AcceleratorEvent, event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Мероприятие не найдено")
+    cohort = await get_cohort_or_404(db, event.cohort_id)
+    await require_cohort_manager(db, user, cohort)
+    await require_attendance_module(db, cohort)
+    if event.status == "archived":
+        raise HTTPException(status_code=409, detail="Мероприятие уже в архиве")
+    event.status = "archived"
+    event.updated_by_user_id = user.id
+    add_audit(db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+              actor_user_id=user.id, action="event.archived", target_type="event", target_id=event.id)
+    await db.commit()
+    return event_dict(event)
 
 
 @router.get("/events/{event_id}/attendance")
@@ -1779,7 +2181,9 @@ async def submit_application(
     cohort = await get_cohort_or_404(db, cohort_id)
     if cohort.status != "accepting":
         raise HTTPException(status_code=409, detail="Приём заявок в этот поток закрыт")
-    validate_application_form(cohort.application_form_schema or {}, payload.form_payload)
+    validate_application_form(
+        cohort.application_form_schema or {}, payload.form_payload, payload.application_type
+    )
     if payload.project_id:
         from models import Project
         project = (await db.execute(select(Project.id).where(
@@ -1856,7 +2260,9 @@ async def submit_public_application(
     cohort = await get_cohort_or_404(db, cohort_id)
     if cohort.status != "accepting":
         raise HTTPException(status_code=409, detail="Приём заявок в этот поток закрыт")
-    validate_application_form(cohort.application_form_schema or {}, payload.form_payload)
+    validate_application_form(
+        cohort.application_form_schema or {}, payload.form_payload, payload.application_type
+    )
     email = str(payload.applicant_email).strip().lower()
     existing = (await db.execute(select(AcceleratorApplication.id).where(
         AcceleratorApplication.cohort_id == cohort.id,
@@ -2187,7 +2593,9 @@ async def submit_application_revision(
 ):
     application = await application_by_revision_token(db, token)
     cohort = await get_cohort_or_404(db, application.cohort_id)
-    validate_application_form(cohort.application_form_schema or {}, payload.form_payload)
+    validate_application_form(
+        cohort.application_form_schema or {}, payload.form_payload, application.application_type
+    )
     previous = application.status
     application.form_payload = payload.form_payload
     application.revision_token_hash = None

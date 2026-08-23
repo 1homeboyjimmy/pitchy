@@ -56,6 +56,7 @@ from routers.accelerators import (
     update_cohort,
     update_program_config,
     update_cohort_status,
+    validate_application_form,
 )
 from schemas.accelerators import (
     AcceleratorCreate,
@@ -82,6 +83,23 @@ from schemas.accelerators import (
 )
 from subscription_service import consume_quota
 from sqlalchemy import select
+
+
+def test_application_form_supports_type_specific_required_fields():
+    with pytest.raises(HTTPException):
+        validate_application_form({"required": ["legacy_field"]}, {"another": "value"})
+    schema = {
+        "required": ["motivation", "project_name"],
+        "fields": [
+            {"key": "motivation", "required": True, "application_types": ["project", "participant"]},
+            {"key": "project_name", "required": True, "application_types": ["project"]},
+        ],
+    }
+    validate_application_form(schema, {"motivation": "Хочу развить компетенции"}, "participant")
+    with pytest.raises(HTTPException) as missing_project_name:
+        validate_application_form(schema, {"motivation": "Хочу развить проект"}, "project")
+    assert missing_project_name.value.status_code == 422
+    assert "project_name" in missing_project_name.value.detail
 
 
 @pytest.mark.asyncio

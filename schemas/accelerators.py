@@ -53,6 +53,17 @@ def validate_application_form_schema(value: dict[str, Any] | None) -> dict[str, 
             if text_value is not None and (not isinstance(text_value, str) or len(text_value) > max_length):
                 raise ValueError(f"Поле {key}: значение {text_key} слишком длинное")
         options = field.get("options", [])
+        application_types = field.get("application_types")
+        if application_types is not None:
+            if (
+                not isinstance(application_types, list)
+                or not application_types
+                or len(set(application_types)) != len(application_types)
+                or any(item not in {"project", "participant"} for item in application_types)
+            ):
+                raise ValueError(
+                    f"Поле {key}: application_types должен содержать project и/или participant"
+                )
         if field_type == "select":
             if not isinstance(options, list) or len(options) < 2 or len(options) > 50:
                 raise ValueError(f"Поле {key}: укажите от 2 до 50 вариантов ответа")
@@ -79,6 +90,51 @@ class AcceleratorCreate(BaseModel):
     name: str = Field(min_length=2, max_length=200)
     organization: str | None = Field(default=None, max_length=200)
     description: str | None = None
+
+
+class AcceleratorUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=200)
+    description: str | None = Field(default=None, max_length=10000)
+
+
+class AcceleratorSetupCreate(BaseModel):
+    organization_id: int | None = Field(default=None, gt=0)
+    organization_name: str | None = Field(default=None, min_length=2, max_length=200)
+    organization_description: str | None = Field(default=None, max_length=10000)
+    accelerator_name: str = Field(min_length=2, max_length=200)
+    accelerator_description: str | None = Field(default=None, max_length=10000)
+    cohort_name: str = Field(min_length=2, max_length=200)
+    timezone: str = Field(default="Europe/Moscow", min_length=1, max_length=80)
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    application_form_schema: dict[str, Any] = Field(default_factory=dict)
+    modules: dict[str, bool] = Field(default_factory=dict)
+    default_quota_config: dict[str, int] | None = None
+
+    @field_validator("application_form_schema")
+    @classmethod
+    def validate_form_schema(cls, value: dict[str, Any]) -> dict[str, Any]:
+        return validate_application_form_schema(value) or {}
+
+    @field_validator("default_quota_config")
+    @classmethod
+    def validate_quota_config(cls, value: dict[str, int] | None) -> dict[str, int] | None:
+        if value is None:
+            return None
+        expected = {"messages", "roadmaps", "custdev", "grants"}
+        if set(value) != expected:
+            raise ValueError("Лимиты должны содержать messages, roadmaps, custdev и grants")
+        if any(not isinstance(limit, int) or limit < -1 for limit in value.values()):
+            raise ValueError("Лимит должен быть -1 (безлимит) или неотрицательным")
+        return value
+
+    @model_validator(mode="after")
+    def validate_setup(self):
+        if bool(self.organization_id) == bool((self.organization_name or "").strip()):
+            raise ValueError("Выберите существующую организацию или укажите название новой")
+        if self.starts_at and self.ends_at and self.ends_at <= self.starts_at:
+            raise ValueError("Дата окончания потока должна быть позже даты начала")
+        return self
 
 
 class CohortCreate(BaseModel):

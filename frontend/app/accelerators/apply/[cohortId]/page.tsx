@@ -14,6 +14,7 @@ type FormField = {
   placeholder?: string;
   type?: "text" | "email" | "number" | "textarea" | "select";
   required?: boolean;
+  application_types?: Array<"project" | "participant">;
   options?: Array<string | { value: string; label: string }>;
 };
 
@@ -48,7 +49,12 @@ export default function AcceleratorApplicationPage() {
     return () => { cancelled = true; };
   }, [cohortId]);
 
-  const fields = useMemo(() => form?.form_schema.fields || [], [form]);
+  const fields = useMemo(
+    () => (form?.form_schema.fields || []).filter(
+      (field) => !field.application_types?.length || field.application_types.includes(applicationType),
+    ),
+    [applicationType, form],
+  );
   const required = useMemo(
     () => new Set([...(form?.form_schema.required || []), ...fields.filter((field) => field.required).map((field) => field.key)]),
     [fields, form],

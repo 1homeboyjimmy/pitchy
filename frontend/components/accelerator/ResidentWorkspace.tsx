@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowUpRight, Banknote, CalendarDays, Check, CheckCircle2, Clock3, ExternalLink, FileText, GitBranch, Loader2, LockKeyhole, MapPin, MessageSquare, Rocket, Send, Users } from "lucide-react";
+import { ArrowUpRight, Banknote, CalendarDays, Check, Clock3, ExternalLink, FileText, GitBranch, Loader2, LockKeyhole, MapPin, MessageSquare, Rocket, Send, Users } from "lucide-react";
 
 import { describeApiError, getAuthJson, postAuthJson } from "@/lib/api";
 import { useAuth } from "@/lib/hooks/useAuth";
@@ -35,17 +35,6 @@ export type ResidentWorkspaceData = {
   effective_quotas: Record<string, ResidentQuota>;
 };
 
-const MODULE_LABELS: Record<string, { label: string; description: string }> = {
-  applications: { label: "Заявка", description: "Ваша заявка и решение организатора сохранены в системе." },
-  program: { label: "Программа", description: "Основной путь и материалы потока." },
-  homework: { label: "Домашние задания", description: "Задания, дедлайны и обратная связь организатора." },
-  attendance: { label: "Посещаемость", description: "Регистрация на мероприятиях потока." },
-  matchmaking: { label: "Матчмейкинг", description: "Поиск участников и компетенций для команды." },
-  progress_tracking: { label: "Прогресс", description: "Динамика прохождения программы." },
-  project_audit: { label: "Аудит проекта", description: "Разбор проекта инструментами Pitchy." },
-  demo_day: { label: "Демо-день", description: "Подготовка итоговых материалов и выступления." },
-};
-
 const QUOTA_META = {
   messages: { label: "Сообщения", icon: MessageSquare },
   roadmaps: { label: "Дорожные карты", icon: GitBranch },
@@ -69,7 +58,7 @@ export function ResidentWorkspace({ acceleratorId, data }: { acceleratorId: numb
 
 function MembershipView({ membership, quotas }: { membership: ResidentMembership; quotas: Record<string, ResidentQuota> }) {
   const enrolled = membership.status === "enrolled";
-  const activeModules = Object.entries(membership.modules).filter(([, enabled]) => enabled);
+  const [section, setSection] = useState<"overview" | "program" | "homework" | "events">("overview");
   const startsAt = formatDate(membership.cohort.starts_at);
   const endsAt = formatDate(membership.cohort.ends_at);
 
@@ -85,21 +74,25 @@ function MembershipView({ membership, quotas }: { membership: ResidentMembership
         {!enrolled && <div className="flex gap-3 p-6 text-sm text-white/55"><Clock3 className="mt-0.5 shrink-0 text-amber-300" size={19} /><div><h3 className="mb-1 text-white">Ожидается зачисление</h3><p>Заявка уже одобрена. Организатор завершит зачисление, после чего здесь появятся программа и лимиты Pitchy.</p></div></div>}
       </section>
 
-      {enrolled && membership.project && <section className="workspace-card"><div className="flex flex-wrap items-center justify-between gap-5"><div className="min-w-0"><p className="mb-2 text-xs uppercase tracking-[.18em] text-white/35">Проект резидента</p><h2 className="truncate text-2xl">{membership.project.name}</h2><div className="mt-4 h-2 w-full max-w-sm overflow-hidden rounded-full bg-white/8"><div className="h-full rounded-full bg-emerald-400" style={{ width: `${Math.max(0, Math.min(100, membership.project.readiness_index))}%` }} /></div><p className="mt-2 text-xs text-white/40">Паспорт заполнен на {membership.project.readiness_index}%</p></div><Link href={`/passport/${membership.project.id}`} className="workspace-button"><FileText size={16} /> Открыть паспорт</Link></div></section>}
+      {enrolled && <nav className="flex gap-2 overflow-x-auto pb-1" aria-label="Разделы программы резидента"><ResidentTab active={section === "overview"} onClick={() => setSection("overview")}>Обзор</ResidentTab><ResidentTab active={section === "program"} onClick={() => setSection("program")}>Программа</ResidentTab>{membership.modules.homework && <ResidentTab active={section === "homework"} onClick={() => setSection("homework")}>Домашние задания</ResidentTab>}{membership.modules.attendance && <ResidentTab active={section === "events"} onClick={() => setSection("events")}>Мероприятия</ResidentTab>}</nav>}
 
-      {enrolled && <section className="workspace-card"><h2 className="mb-5 text-xl">Лимиты Pitchy</h2><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{Object.entries(QUOTA_META).map(([resource, meta]) => { const quota = quotas[resource]; const Icon = meta.icon; const appliesHere = quota?.membership_id === membership.membership_id; return <article key={resource} className="rounded-2xl border border-white/8 bg-white/[0.02] p-4"><Icon size={18} className="mb-4 text-white/40" /><p className="text-sm text-white/45">{meta.label}</p><p className="mt-1 text-2xl">{appliesHere ? quota.limit === -1 ? "∞" : quota.remaining : "—"}</p><p className="mt-1 text-xs text-white/30">{appliesHere ? quota.limit === -1 ? "Без ограничений" : `из ${quota.limit}, использовано ${quota.used}` : "Не назначено этому потоку"}</p></article>; })}</div></section>}
+      {enrolled && section === "overview" && membership.project && <section className="workspace-card"><div className="flex flex-wrap items-center justify-between gap-5"><div className="min-w-0"><p className="mb-2 text-xs uppercase tracking-[.18em] text-white/35">Проект резидента</p><h2 className="truncate text-2xl">{membership.project.name}</h2><div className="mt-4 h-2 w-full max-w-sm overflow-hidden rounded-full bg-white/8"><div className="h-full rounded-full bg-emerald-400" style={{ width: `${Math.max(0, Math.min(100, membership.project.readiness_index))}%` }} /></div><p className="mt-2 text-xs text-white/40">Паспорт заполнен на {membership.project.readiness_index}%</p></div><Link href={`/passport/${membership.project.id}`} className="workspace-button"><FileText size={16} /> Открыть паспорт</Link></div></section>}
 
-      {enrolled && <ResidentProgram membershipId={membership.membership_id} />}
+      {enrolled && section === "overview" && <section className="workspace-card"><h2 className="mb-5 text-xl">Лимиты Pitchy</h2><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{Object.entries(QUOTA_META).map(([resource, meta]) => { const quota = quotas[resource]; const Icon = meta.icon; const appliesHere = quota?.membership_id === membership.membership_id; return <article key={resource} className="rounded-2xl border border-white/8 bg-white/[0.02] p-4"><Icon size={18} className="mb-4 text-white/40" /><p className="text-sm text-white/45">{meta.label}</p><p className="mt-1 text-2xl">{appliesHere ? quota.limit === -1 ? "∞" : quota.remaining : "—"}</p><p className="mt-1 text-xs text-white/30">{appliesHere ? quota.limit === -1 ? "Без ограничений" : `из ${quota.limit}, использовано ${quota.used}` : "Не назначено этому потоку"}</p></article>; })}</div></section>}
 
-      {enrolled && membership.modules.homework && <ResidentHomework membershipId={membership.membership_id} />}
+      {enrolled && section === "program" && <ResidentProgram membershipId={membership.membership_id} />}
 
-      {enrolled && membership.modules.attendance && <ResidentEvents membershipId={membership.membership_id} />}
+      {enrolled && section === "homework" && membership.modules.homework && <ResidentHomework membershipId={membership.membership_id} />}
 
-      {enrolled && <section className="workspace-card"><h2 className="mb-2 text-xl">Программа потока</h2><p className="mb-5 text-sm text-white/40">Отображаются только модули, включённые организатором.</p><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{activeModules.map(([key]) => { const moduleInfo = MODULE_LABELS[key] || { label: key, description: "Модуль программы" }; return <article key={key} className="rounded-2xl border border-emerald-400/15 bg-emerald-400/[0.04] p-4"><CheckCircle2 size={18} className="mb-4 text-emerald-400" /><h3>{moduleInfo.label}</h3><p className="mt-2 text-xs leading-relaxed text-white/35">{moduleInfo.description}</p></article>; })}</div></section>}
+      {enrolled && section === "events" && membership.modules.attendance && <ResidentEvents membershipId={membership.membership_id} />}
 
-      {enrolled && <section className="workspace-card"><h2 className="mb-5 text-xl">Инструменты проекта</h2><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><Action href="/dashboard?tab=chat" label="Чат с аналитиком" icon={MessageSquare} /><Action href="/dashboard?tab=tree" label="Дорожная карта" icon={GitBranch} /><Action href="https://custdev.pitchy.pro/" label="Кастдев" icon={Users} external /><Action href="/grants" label="Гранты" icon={Banknote} /></div></section>}
+      {enrolled && section === "overview" && <section className="workspace-card"><h2 className="mb-5 text-xl">Инструменты проекта</h2><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><Action href="/dashboard?tab=chat" label="Чат с аналитиком" icon={MessageSquare} /><Action href="/dashboard?tab=tree" label="Дорожная карта" icon={GitBranch} /><Action href="https://custdev.pitchy.pro/" label="Кастдев" icon={Users} external /><Action href="/grants" label="Гранты" icon={Banknote} /></div></section>}
     </>
   );
+}
+
+function ResidentTab({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return <button type="button" onClick={onClick} className={`shrink-0 rounded-full border px-4 py-2 text-sm ${active ? "border-white bg-white text-black" : "border-white/10 text-white/50"}`}>{children}</button>;
 }
 
 function Action({ href, label, icon: Icon, external }: { href: string; label: string; icon: typeof Rocket; external?: boolean }) {
