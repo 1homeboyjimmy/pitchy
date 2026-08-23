@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from accelerator_service import (
     add_audit,
+    accelerator_membership_quota_snapshot,
     accelerator_quota_snapshot,
     assign_quota_override,
     has_active_personal_override,
@@ -99,6 +100,12 @@ COHORT_STATUS_TRANSITIONS = {
     "completed": {"archived"},
     "archived": set(),
 }
+
+
+def require_global_admin_user(user: User) -> None:
+    """Defense in depth for business operations reserved for Pitchy admins."""
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Требуются права главного администратора")
 
 
 def accelerator_dict(row: Accelerator) -> dict:
@@ -449,8 +456,6 @@ async def setup_accelerator(
             "slug": organization.slug,
         },
     }
-
-
 @router.post("")
 async def create_accelerator(
     payload: AcceleratorCreate,
@@ -1244,6 +1249,17 @@ async def complete_program_material(
     ))).scalar_one_or_none()
     if not existing:
         db.add(AcceleratorProgramMaterialProgress(material_id=material.id, membership_id=membership.id))
+        cohort = await get_cohort_or_404(db, membership.cohort_id)
+        add_audit(
+            db,
+            accelerator_id=cohort.accelerator_id,
+            cohort_id=cohort.id,
+            actor_user_id=user.id,
+            action="program_material.completed",
+            target_type="program_material",
+            target_id=material.id,
+            details={"membership_id": membership.id, "stage_id": stage.id},
+        )
         await db.commit()
     return {"material_id": material.id, "completed": True}
 
@@ -1301,6 +1317,17 @@ async def complete_program_stage(
         if accepted is None:
             raise HTTPException(status_code=409, detail="Сначала получите зачёт по домашнему заданию этапа")
     db.add(AcceleratorProgramStageProgress(stage_id=stage.id, membership_id=membership.id))
+    cohort = await get_cohort_or_404(db, membership.cohort_id)
+    add_audit(
+        db,
+        accelerator_id=cohort.accelerator_id,
+        cohort_id=cohort.id,
+        actor_user_id=user.id,
+        action="program_stage.completed",
+        target_type="program_stage",
+        target_id=stage.id,
+        details={"membership_id": membership.id},
+    )
     await db.commit()
     return {"stage_id": stage.id, "completed": True}
 
@@ -1940,6 +1967,15 @@ async def update_event(
     event.checkin_opens_minutes = payload.checkin_opens_minutes
     event.checkin_closes_minutes = payload.checkin_closes_minutes
     event.updated_by_user_id = user.id
+    add_audit(
+        db,
+        accelerator_id=cohort.accelerator_id,
+        cohort_id=cohort.id,
+        actor_user_id=user.id,
+        action="event.updated",
+        target_type="event",
+        target_id=event.id,
+    )
     await db.commit()
     return event_dict(event)
 
@@ -2161,12 +2197,30 @@ async def check_in_to_event(
         AcceleratorAttendanceRecord.event_id == event.id,
         AcceleratorAttendanceRecord.membership_id == membership.id,
     ))).scalar_one_or_none()
+    changed = not record or record.status != "present" or record.checkin_method != "qr"
     if not record:
         record = AcceleratorAttendanceRecord(
             event_id=event.id, membership_id=membership.id, status="present",
             checkin_method="qr", checked_in_at=now,
         )
         db.add(record)
+    elif changed:
+        record.status = "present"
+        record.checkin_method = "qr"
+        record.checked_in_at = now
+        record.marked_by_user_id = None
+        record.comment = None
+    if changed:
+        add_audit(
+            db,
+            accelerator_id=cohort.accelerator_id,
+            cohort_id=cohort.id,
+            actor_user_id=user.id,
+            action="attendance.checked_in",
+            target_type="event",
+            target_id=event.id,
+            details={"membership_id": membership.id, "method": "qr"},
+        )
         await db.commit()
     return {"event": event_dict(event, attendance=record), "checked_in": True}
 
@@ -2660,6 +2714,7 @@ async def assign_resident_quota(
     admin: User = Depends(require_async_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
+    require_global_admin_user(admin)
     membership = await db.get(AcceleratorMembership, membership_id)
     if not membership:
         raise HTTPException(status_code=404, detail="Резидент не найден")
@@ -2695,6 +2750,7 @@ async def assign_cohort_quota(
     admin: User = Depends(require_async_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
+    require_global_admin_user(admin)
     cohort = await get_cohort_or_404(db, cohort_id)
     limits = normalize_resident_limits(payload.limits.model_dump())
     cohort.default_quota_config = limits
@@ -2770,8 +2826,8 @@ async def get_resident_quota(
         await require_cohort_manager(db, user, cohort)
     resources = {}
     for resource in ("messages", "roadmaps", "custdev", "grants"):
-        snapshot = await accelerator_quota_snapshot(db, membership.user_id, resource)
-        if snapshot and snapshot["membership"].id == membership.id:
+        snapshot = await accelerator_membership_quota_snapshot(db, membership.id, resource)
+        if snapshot:
             resources[resource] = {
                 "limit": snapshot["limit"],
                 "used": snapshot["used"],

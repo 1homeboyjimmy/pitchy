@@ -8,6 +8,7 @@ from fastapi import BackgroundTasks, HTTPException
 from pydantic import ValidationError
 
 from accelerator_service import accelerator_quota_snapshot
+from accelerator_notification_service import enqueue_due_homework_reminders
 from db_async import AsyncSessionLocal
 from models import (
     AcceleratorApplication,
@@ -18,6 +19,9 @@ from models import (
     AcceleratorAttendanceRecord,
     AcceleratorEvent,
     AcceleratorNotificationOutbox,
+    AcceleratorAuditLog,
+    AcceleratorProgramConfig,
+    AcceleratorQuotaUsageEvent,
     AcceleratorParticipantProfile,
     Project,
     User,
@@ -43,6 +47,8 @@ from routers.accelerators import (
     list_resident_homework,
     list_resident_program_stages,
     list_resident_events,
+    get_resident_quota,
+    get_program_config,
     publish_homework_assignment,
     publish_event,
     publish_program_stage,
@@ -82,7 +88,7 @@ from schemas.accelerators import (
     StatusUpdate,
 )
 from subscription_service import consume_quota
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 
 def test_application_form_supports_type_specific_required_fields():
@@ -381,6 +387,138 @@ async def test_application_enrollment_and_per_resident_quota_precedence():
         assert stored_submission is not None
         assert stored_submission.review_comment == "Зачтено"
 
+        deadline_homework = await create_homework_assignment(
+            cohort["id"],
+            HomeworkAssignmentCreate(
+                title="Отчёт к дедлайну",
+                description="Загрузите итоговый отчёт.",
+                due_at=datetime.utcnow() + timedelta(hours=12),
+                audience="selected",
+                target_membership_ids=[membership_id],
+            ),
+            organizer,
+            db,
+        )
+        await publish_homework_assignment(
+            deadline_homework["id"], BackgroundTasks(), organizer, db
+        )
+        reminder_result = await enqueue_due_homework_reminders(now=datetime.utcnow())
+        assert reminder_result["created"] == 1
+        repeated_reminder = await enqueue_due_homework_reminders(now=datetime.utcnow())
+        assert repeated_reminder["created"] == 0
+        deadline_reminder = (await db.execute(select(AcceleratorNotificationOutbox).where(
+            AcceleratorNotificationOutbox.event_type == "homework_deadline_reminder",
+            AcceleratorNotificationOutbox.recipient_email == resident.email,
+        ))).scalar_one()
+        assert "меньше 24 часов" in deadline_reminder.body
+
+        # A manager editing this cohort must see its own assignment even when a
+        # stronger entitlement from another simultaneous cohort wins globally.
+        await update_cohort_status(
+            hidden_cohort["id"], StatusUpdate(status="accepting"), admin, db
+        )
+        second_application = await submit_application(
+            hidden_cohort["id"],
+            ApplicationCreate(
+                form_payload={"project_name": "Pitch in another cohort"},
+                accept_privacy=True,
+                accept_program_rules=True,
+            ),
+            resident,
+            db,
+        )
+        second_accepted = await accept_application(
+            second_application["id"], ApplicationReview(), BackgroundTasks(), admin, db
+        )
+        await enroll_application(second_application["id"], admin, db)
+        await assign_resident_quota(
+            second_accepted["membership_id"],
+            ResidentQuotaAssign(
+                limits=ResidentQuotaLimits(messages=200, roadmaps=10, custdev=10, grants=10)
+            ),
+            admin,
+            db,
+        )
+        assert (await accelerator_quota_snapshot(db, resident.id, "messages"))["limit"] == 200
+        first_cohort_quota = await get_resident_quota(membership_id, organizer, db)
+        assert first_cohort_quota["resources"]["messages"]["limit"] == 90
+
+
+@pytest.mark.asyncio
+async def test_role_boundaries_block_cross_accelerator_management_and_quota_changes():
+    suffix = uuid.uuid4().hex
+    async with AsyncSessionLocal() as db:
+        admin = User(email=f"admin-roles-{suffix}@example.test", name="Admin", is_admin=True)
+        organizer = User(email=f"organizer-roles-{suffix}@example.test", name="Organizer")
+        resident = User(email=f"resident-roles-{suffix}@example.test", name="Resident")
+        db.add_all([admin, organizer, resident])
+        await db.commit()
+        for user in (admin, organizer, resident):
+            await db.refresh(user)
+
+        own_accelerator = await create_accelerator(
+            AcceleratorCreate(name="Organizer accelerator"), admin, db
+        )
+        foreign_accelerator = await create_accelerator(
+            AcceleratorCreate(name="Foreign accelerator"), admin, db
+        )
+        await assign_organizer(
+            own_accelerator["id"], OrganizerAssign(user_id=organizer.id), admin, db
+        )
+        own_cohort = await create_cohort(
+            own_accelerator["id"], CohortCreate(name="Own cohort"), organizer, db
+        )
+        foreign_cohort = await create_cohort(
+            foreign_accelerator["id"], CohortCreate(name="Foreign cohort"), admin, db
+        )
+
+        own_config = await update_program_config(
+            own_cohort["id"],
+            ProgramConfigUpdate(version=1, modules={"homework": True}),
+            organizer,
+            db,
+        )
+        assert own_config["modules"]["homework"] is True
+        stored_config = (await db.execute(select(AcceleratorProgramConfig).where(
+            AcceleratorProgramConfig.cohort_id == own_cohort["id"]
+        ))).scalar_one()
+        stored_config.modules = {"homework": True, "legacy_fake_module": True}
+        await db.commit()
+        compatible_config = await get_program_config(own_cohort["id"], organizer, db)
+        assert compatible_config["modules"] == {
+            "applications": True,
+            "program": True,
+            "homework": True,
+            "attendance": False,
+        }
+        assert "legacy_fake_module" not in compatible_config["modules"]
+        with pytest.raises(HTTPException) as foreign_management:
+            await update_program_config(
+                foreign_cohort["id"],
+                ProgramConfigUpdate(version=1, modules={"homework": True}),
+                organizer,
+                db,
+            )
+        assert foreign_management.value.status_code == 403
+        with pytest.raises(HTTPException) as resident_management:
+            await update_program_config(
+                own_cohort["id"],
+                ProgramConfigUpdate(version=own_config["version"], modules={"attendance": True}),
+                resident,
+                db,
+            )
+        assert resident_management.value.status_code == 403
+        with pytest.raises(HTTPException) as organizer_quota:
+            await assign_cohort_quota(
+                own_cohort["id"],
+                CohortQuotaAssign(
+                    limits=ResidentQuotaLimits(messages=70, roadmaps=4, custdev=2, grants=1)
+                ),
+                organizer,
+                db,
+            )
+        assert organizer_quota.value.status_code == 403
+
 
 @pytest.mark.asyncio
 async def test_free_resident_can_spend_accelerator_message_quota_atomically():
@@ -437,6 +575,20 @@ async def test_free_resident_can_spend_accelerator_message_quota_atomically():
             )
             assert handled is True
             await db.commit()
+
+        repeated = await consume_quota(
+            db,
+            resident,
+            "messages",
+            idempotency_key=f"accelerator-test:{suffix}:0",
+        )
+        assert repeated is True
+        await db.commit()
+        usage_count = (await db.execute(select(func.count(AcceleratorQuotaUsageEvent.id)).where(
+            AcceleratorQuotaUsageEvent.user_id == resident.id,
+            AcceleratorQuotaUsageEvent.resource == "messages",
+        ))).scalar_one()
+        assert usage_count == 7
 
         with pytest.raises(HTTPException) as exhausted:
             await consume_quota(
@@ -528,6 +680,16 @@ async def test_program_attendance_and_candidate_revision_flow(monkeypatch):
         assert resident_events[0]["attendance"]["status"] == "present"
         attendance = (await db.execute(select(AcceleratorAttendanceRecord))).scalar_one()
         assert attendance.checkin_method == "qr"
+        audit_actions = set((await db.execute(
+            select(AcceleratorAuditLog.action).where(
+                AcceleratorAuditLog.accelerator_id == accelerator["id"]
+            )
+        )).scalars().all())
+        assert {
+            "program_material.completed",
+            "program_stage.completed",
+            "attendance.checked_in",
+        } <= audit_actions
 
         candidate_application = await submit_application(
             cohort["id"], ApplicationCreate(form_payload={"project_name": "Draft"}, accept_privacy=True, accept_program_rules=True), candidate, db,

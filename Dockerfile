@@ -19,7 +19,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     pip wheel --no-cache-dir --no-deps --wheel-dir /app/wheels -r requirements.txt
 
 # --- STAGE 2: Runner ---
-FROM python:3.11-slim
+FROM python:3.11-slim AS runtime
 
 WORKDIR /app
 
@@ -62,3 +62,10 @@ EXPOSE 8000
 # is what happened in commit 62a4044 — the deploy workflow's manual exec
 # step silently no-op'd because the container wasn't ready yet).
 CMD ["sh", "-c", "python -m alembic upgrade head && exec uvicorn main:app --host 0.0.0.0 --port 8000"]
+
+# CI target: exercising the real runtime image catches missing packages and
+# migration incompatibilities in addition to application-level regressions.
+FROM runtime AS accelerator-tests
+RUN python -m pytest tests/test_accelerator_foundation.py
+
+FROM runtime AS production

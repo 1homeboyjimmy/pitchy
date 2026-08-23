@@ -2,14 +2,30 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+import logging
+import os
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db_async import AsyncSessionLocal
 from email_utils import send_email
-from models import AcceleratorNotificationOutbox
+from models import (
+    AcceleratorCohort,
+    AcceleratorHomeworkAssignment,
+    AcceleratorHomeworkSubmission,
+    AcceleratorHomeworkTarget,
+    AcceleratorMembership,
+    AcceleratorNotificationOutbox,
+    AcceleratorProgramConfig,
+    User,
+)
+
+
+logger = logging.getLogger(__name__)
 
 
 async def enqueue_notification(
@@ -94,3 +110,131 @@ async def process_pending_notifications(limit: int = 50) -> dict[str, int]:
     for event_id in ids:
         sent += int(await process_notification_event(event_id))
     return {"selected": len(ids), "sent": sent, "failed_or_deferred": len(ids) - sent}
+
+
+async def enqueue_due_homework_reminders(
+    *, now: datetime | None = None, window_hours: int = 24
+) -> dict[str, int]:
+    """Queue one reminder for homework entering the deadline window."""
+    now = now or datetime.utcnow()
+    deadline = now + timedelta(hours=window_hours)
+    frontend_url = os.getenv("FRONTEND_URL", "https://pitchy.pro").rstrip("/")
+    eligible = 0
+    created = 0
+    async with AsyncSessionLocal() as db:
+        assignments = (await db.execute(
+            select(
+                AcceleratorHomeworkAssignment,
+                AcceleratorCohort,
+                AcceleratorProgramConfig,
+            )
+            .join(
+                AcceleratorCohort,
+                AcceleratorCohort.id == AcceleratorHomeworkAssignment.cohort_id,
+            )
+            .join(
+                AcceleratorProgramConfig,
+                AcceleratorProgramConfig.cohort_id == AcceleratorCohort.id,
+            )
+            .where(
+                AcceleratorHomeworkAssignment.status == "published",
+                AcceleratorHomeworkAssignment.due_at.is_not(None),
+                AcceleratorHomeworkAssignment.due_at >= now,
+                AcceleratorHomeworkAssignment.due_at <= deadline,
+            )
+        )).all()
+        for assignment, cohort, config in assignments:
+            if not (config.modules or {}).get("homework"):
+                continue
+            recipient_query = (
+                select(AcceleratorMembership, User)
+                .join(User, User.id == AcceleratorMembership.user_id)
+                .where(
+                    AcceleratorMembership.cohort_id == cohort.id,
+                    AcceleratorMembership.role == "resident",
+                    AcceleratorMembership.status == "enrolled",
+                    User.is_active.is_(True),
+                    User.deleted_at.is_(None),
+                )
+            )
+            if assignment.audience == "selected":
+                target_ids = select(AcceleratorHomeworkTarget.membership_id).where(
+                    AcceleratorHomeworkTarget.assignment_id == assignment.id
+                )
+                recipient_query = recipient_query.where(
+                    AcceleratorMembership.id.in_(target_ids)
+                )
+            recipients = (await db.execute(recipient_query)).all()
+            inactive_ids = set((await db.execute(
+                select(AcceleratorHomeworkSubmission.membership_id).where(
+                    AcceleratorHomeworkSubmission.assignment_id == assignment.id,
+                    AcceleratorHomeworkSubmission.status.in_(("submitted", "accepted")),
+                )
+            )).scalars().all())
+            for membership, resident in recipients:
+                if membership.id in inactive_ids:
+                    continue
+                eligible += 1
+                key = (
+                    f"homework-deadline-{window_hours}h:{assignment.id}:"
+                    f"{membership.id}:{assignment.due_at.isoformat()}"
+                )
+                exists = (await db.execute(
+                    select(AcceleratorNotificationOutbox.id).where(
+                        AcceleratorNotificationOutbox.idempotency_key == key
+                    )
+                )).scalar_one_or_none()
+                if exists is not None:
+                    continue
+                try:
+                    timezone_name = cohort.timezone or "Europe/Moscow"
+                    try:
+                        cohort_timezone = ZoneInfo(timezone_name)
+                    except ZoneInfoNotFoundError:
+                        timezone_name = "UTC"
+                        cohort_timezone = timezone.utc
+                    local_due_at = assignment.due_at.replace(
+                        tzinfo=timezone.utc
+                    ).astimezone(cohort_timezone)
+                    async with db.begin_nested():
+                        await enqueue_notification(
+                            db,
+                            accelerator_id=cohort.accelerator_id,
+                            cohort_id=cohort.id,
+                            recipient_email=resident.email,
+                            event_type="homework_deadline_reminder",
+                            subject=f"Скоро дедлайн: {assignment.title}",
+                            body=(
+                                f"Здравствуйте, {resident.name}!\n\nДо дедлайна задания "
+                                f"«{assignment.title}» осталось меньше {window_hours} часов.\n"
+                                f"Дедлайн: {local_due_at.strftime('%d.%m.%Y %H:%M')} "
+                                f"({timezone_name}).\n\nОткрыть: {frontend_url}/accelerator"
+                            ),
+                            idempotency_key=key,
+                        )
+                    created += 1
+                except IntegrityError:
+                    # Another application instance created the same durable
+                    # reminder after our existence check.
+                    continue
+        await db.commit()
+    return {"eligible": eligible, "created": created}
+
+
+async def run_accelerator_notifications_loop(interval_seconds: int = 300) -> None:
+    """Generate deadline reminders and drain the durable outbox."""
+    while True:
+        try:
+            reminders = await enqueue_due_homework_reminders()
+            delivery = await process_pending_notifications()
+            if reminders["created"] or delivery["selected"]:
+                logger.info(
+                    "Accelerator notifications: reminders=%s delivery=%s",
+                    reminders,
+                    delivery,
+                )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Accelerator notification loop failed")
+        await asyncio.sleep(interval_seconds)

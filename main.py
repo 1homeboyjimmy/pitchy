@@ -452,6 +452,11 @@ async def lifespan(app: FastAPI):
     from subscription_notices import run_subscription_notices_loop
     asyncio.create_task(run_subscription_notices_loop())
 
+    # Durable accelerator notifications: retry the outbox and generate one
+    # idempotent reminder when a homework deadline enters the 24-hour window.
+    from accelerator_notification_service import run_accelerator_notifications_loop
+    asyncio.create_task(run_accelerator_notifications_loop())
+
     # Грантовый каталог: каждый час закрываем истёкшие программы, раз в сутки
     # обновляем доверенные фиды и обходим добавленные админом источники.
     from grants_autodiscover import run_autodiscovery_loop

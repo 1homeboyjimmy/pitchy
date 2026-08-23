@@ -199,6 +199,85 @@ async def active_quota_override(
     return override, membership, limit
 
 
+async def active_membership_quota_override(
+    db: AsyncSession,
+    membership_id: int,
+    resource: str,
+    *,
+    for_update: bool = False,
+    now: datetime | None = None,
+) -> tuple[AcceleratorResidentQuotaOverride, AcceleratorMembership, int] | None:
+    """Return the entitlement for one membership, without cross-cohort ranking."""
+    if resource not in ACCELERATOR_RESOURCES:
+        return None
+    now = now or datetime.utcnow()
+    query = (
+        select(AcceleratorResidentQuotaOverride, AcceleratorMembership)
+        .join(
+            AcceleratorMembership,
+            AcceleratorMembership.id == AcceleratorResidentQuotaOverride.membership_id,
+        )
+        .where(
+            AcceleratorMembership.id == membership_id,
+            AcceleratorMembership.role == "resident",
+            AcceleratorMembership.status == "enrolled",
+            (
+                AcceleratorResidentQuotaOverride.superseded_at.is_(None)
+                | (AcceleratorResidentQuotaOverride.superseded_at > now)
+            ),
+            AcceleratorResidentQuotaOverride.starts_at <= now,
+            (
+                AcceleratorResidentQuotaOverride.ends_at.is_(None)
+                | (AcceleratorResidentQuotaOverride.ends_at > now)
+            ),
+        )
+    )
+    if for_update:
+        query = query.with_for_update()
+    rows = (await db.execute(query)).all()
+    candidates = []
+    for override, membership in rows:
+        try:
+            limit = normalize_resident_limits(override.limits)[resource]
+        except (TypeError, ValueError):
+            continue
+        candidates.append((limit, override, membership))
+    if not candidates:
+        return None
+    individual = [item for item in candidates if item[1].source == "individual"]
+    pool = individual or candidates
+    limit, override, membership = max(pool, key=lambda item: item[1].starts_at)
+    return override, membership, limit
+
+
+async def accelerator_membership_quota_snapshot(
+    db: AsyncSession, membership_id: int, resource: str
+) -> dict | None:
+    active = await active_membership_quota_override(db, membership_id, resource)
+    if not active:
+        return None
+    override, membership, limit = active
+    period_start = max(
+        override.starts_at,
+        datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0),
+    )
+    used = (await db.execute(
+        select(sa_func.coalesce(sa_func.sum(AcceleratorQuotaUsageEvent.quantity), 0)).where(
+            AcceleratorQuotaUsageEvent.quota_override_id == override.id,
+            AcceleratorQuotaUsageEvent.resource == resource,
+            AcceleratorQuotaUsageEvent.created_at >= period_start,
+        )
+    )).scalar_one()
+    return {
+        "override": override,
+        "membership": membership,
+        "limit": limit,
+        "used": int(used or 0),
+        "remaining": None if limit == UNLIMITED else max(0, limit - int(used or 0)),
+        "period_start": period_start,
+    }
+
+
 async def accelerator_quota_snapshot(
     db: AsyncSession, user_id: int, resource: str
 ) -> dict | None:
@@ -255,6 +334,16 @@ async def consume_accelerator_quota(
     if not active:
         return False
     override, membership, limit = active
+    # The override row serializes concurrent debits. Re-check the key after
+    # acquiring that lock because another request may have committed while this
+    # transaction was waiting.
+    existing = (await db.execute(
+        select(AcceleratorQuotaUsageEvent.id).where(
+            AcceleratorQuotaUsageEvent.idempotency_key == idempotency_key
+        )
+    )).scalar_one_or_none()
+    if existing is not None:
+        return True
     period_start = max(override.starts_at, datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0))
     used = (await db.execute(
         select(sa_func.coalesce(sa_func.sum(AcceleratorQuotaUsageEvent.quantity), 0)).where(
