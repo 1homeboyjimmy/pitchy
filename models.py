@@ -409,6 +409,73 @@ class AcceleratorTrackingTask(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class AcceleratorMatchProfile(Base):
+    """Cohort-scoped matching data for residents, trackers and experts."""
+
+    __tablename__ = "accelerator_match_profiles"
+    __table_args__ = (
+        UniqueConstraint("cohort_id", "user_id", "role", name="uq_accelerator_match_profile_user_role"),
+        UniqueConstraint("membership_id", name="uq_accelerator_match_profile_membership"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    cohort_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_cohorts.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    membership_id: Mapped[int | None] = mapped_column(
+        ForeignKey("accelerator_memberships.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    role: Mapped[str] = mapped_column(String(20), index=True)
+    bio: Mapped[str | None] = mapped_column(Text, nullable=True)
+    expertise: Mapped[list] = mapped_column(JSON, default=list)
+    needs: Mapped[list] = mapped_column(JSON, default=list)
+    industries: Mapped[list] = mapped_column(JSON, default=list)
+    goals: Mapped[list] = mapped_column(JSON, default=list)
+    preferred_formats: Mapped[list] = mapped_column(JSON, default=list)
+    max_matches: Mapped[int] = mapped_column(Integer, default=5, server_default="5")
+    active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"), index=True)
+    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    updated_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AcceleratorMatch(Base):
+    __tablename__ = "accelerator_matches"
+    __table_args__ = (
+        UniqueConstraint(
+            "resident_membership_id", "counterpart_profile_id",
+            name="uq_accelerator_match_resident_counterpart",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    cohort_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_cohorts.id", ondelete="CASCADE"), index=True
+    )
+    resident_membership_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_memberships.id", ondelete="CASCADE"), index=True
+    )
+    counterpart_profile_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_match_profiles.id", ondelete="CASCADE"), index=True
+    )
+    counterpart_role: Mapped[str] = mapped_column(String(20), index=True)
+    score: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    reasons: Mapped[list] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(20), default="active", server_default="active", index=True)
+    tracker_assignment_id: Mapped[int | None] = mapped_column(
+        ForeignKey("accelerator_tracker_assignments.id", ondelete="SET NULL"), nullable=True
+    )
+    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    ended_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class AcceleratorApplicationEvent(Base):
     __tablename__ = "accelerator_application_events"
 

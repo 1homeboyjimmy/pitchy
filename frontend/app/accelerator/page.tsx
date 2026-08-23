@@ -21,14 +21,16 @@ import { TrackerManager } from "@/components/accelerator/TrackerManager";
 import { TrackingDashboard } from "@/components/accelerator/TrackingDashboard";
 import { TrackerAttendance } from "@/components/accelerator/TrackerAttendance";
 import { TrackerHomework } from "@/components/accelerator/TrackerHomework";
+import { MatchmakingManager } from "@/components/accelerator/MatchmakingManager";
+import { MatchmakingWorkspace } from "@/components/accelerator/MatchmakingWorkspace";
 
-type Accelerator = { id: number; name: string; description?: string | null; status: string; access_role: "global_admin" | "organizer" | "tracker" | "resident" };
+type Accelerator = { id: number; name: string; description?: string | null; status: string; access_role: "global_admin" | "organizer" | "tracker" | "expert" | "resident" };
 type Cohort = { id: number; accelerator_id: number; name: string; status: string; timezone: string; starts_at?: string | null; ends_at?: string | null; default_quota_config?: Limits | null; application_form_schema: ApplicationFormSchema };
 type ProgramConfig = { cohort_id: number; version: number; modules: Record<string, boolean>; locked_modules: Record<string, boolean> };
 type Resident = { membership_id: number; user_id: number; name: string; email: string; status: string; status_reason?: string | null; trackers?: Array<{ user_id: number; name: string }> };
-type TabKey = "overview" | "applications" | "form" | "program" | "homework" | "attendance" | "trackers" | "reports" | "tracking" | "quotas" | "settings" | "audit";
+type TabKey = "overview" | "applications" | "form" | "program" | "homework" | "attendance" | "trackers" | "reports" | "tracking" | "matching" | "quotas" | "settings" | "audit";
 
-const MODULE_LABELS: Record<string, string> = { applications: "Заявки", program: "Программа", homework: "Домашние задания", attendance: "Посещаемость", progress_tracking: "Трекинг прогресса" };
+const MODULE_LABELS: Record<string, string> = { applications: "Заявки", program: "Программа", homework: "Домашние задания", attendance: "Посещаемость", progress_tracking: "Трекинг прогресса", matchmaking: "Матчмейкинг" };
 const STATUS_LABELS: Record<string, string> = { draft: "Черновик", accepting: "Приём заявок", active: "Идёт", completed: "Завершён", archived: "Архив", accepted: "Принят", enrolled: "Зачислен" };
 const STATUS_TRANSITIONS: Record<string, string[]> = { draft: ["accepting", "archived"], accepting: ["draft", "active", "archived"], active: ["completed", "archived"], completed: ["archived"], archived: [] };
 
@@ -41,7 +43,7 @@ export default function AcceleratorWorkspacePage() {
 
   const selectedAccelerator = accelerators.find((row) => row.id === acceleratorId) || null;
   const selectedCohort = cohorts.find((row) => row.id === cohortId) || null;
-  const isAdmin = Boolean(profile?.is_admin); const isResident = selectedAccelerator?.access_role === "resident"; const isTracker = selectedAccelerator?.access_role === "tracker"; const canManage = selectedAccelerator?.access_role === "global_admin" || selectedAccelerator?.access_role === "organizer"; const canReadCohort = canManage || isTracker;
+  const isAdmin = Boolean(profile?.is_admin); const isResident = selectedAccelerator?.access_role === "resident"; const isTracker = selectedAccelerator?.access_role === "tracker"; const isExpert = selectedAccelerator?.access_role === "expert"; const canManage = selectedAccelerator?.access_role === "global_admin" || selectedAccelerator?.access_role === "organizer"; const canReadCohort = canManage || isTracker || isExpert;
 
   const loadAccelerators = useCallback(async () => {
     if (!token) { setLoading(false); return; }
@@ -65,11 +67,11 @@ export default function AcceleratorWorkspacePage() {
       const [program, applicationRows, residentRows] = await Promise.all([
         getAuthJson<ProgramConfig>(`/api/accelerators/cohorts/${cohortId}/program-config`, token),
         canManage ? getAuthJson<AcceleratorApplication[]>(`/api/accelerators/cohorts/${cohortId}/applications`, token) : Promise.resolve([]),
-        getAuthJson<Resident[]>(`/api/accelerators/cohorts/${cohortId}/residents`, token),
+        isExpert ? Promise.resolve([]) : getAuthJson<Resident[]>(`/api/accelerators/cohorts/${cohortId}/residents`, token),
       ]);
       setConfig(program); setApplications(applicationRows); setResidents(residentRows);
     } catch (reason) { setError(describeApiError(reason, "Не удалось загрузить данные потока")); }
-  }, [canManage, canReadCohort, cohortId, token]);
+  }, [canManage, canReadCohort, cohortId, isExpert, token]);
   useEffect(() => { void loadCohortDetails(); }, [loadCohortDetails]);
 
   const tabs = useMemo(() => {
@@ -78,16 +80,19 @@ export default function AcceleratorWorkspacePage() {
       if (config?.modules.progress_tracking) rows.push({ key: "tracking", label: "Трекинг" });
       if (config?.modules.homework) rows.push({ key: "homework", label: "Домашние задания" });
       if (config?.modules.attendance) rows.push({ key: "attendance", label: "Посещаемость" });
+      if (config?.modules.matchmaking) rows.push({ key: "matching", label: "Матчмейкинг" });
       return rows;
     }
+    if (isExpert) return config?.modules.matchmaking ? [{ key: "matching" as TabKey, label: "Мои связки" }] : [];
     const rows: Array<{ key: TabKey; label: string }> = [{ key: "overview", label: "Обзор" }, { key: "applications", label: "Заявки" }, { key: "form", label: "Анкета" }, { key: "program", label: "Программа" }];
     if (config?.modules.homework) rows.push({ key: "homework", label: "Домашние задания" });
     if (config?.modules.attendance) rows.push({ key: "attendance", label: "Посещаемость" });
     if (config?.modules.progress_tracking) rows.push({ key: "tracking", label: "Трекинг" });
+    if (config?.modules.matchmaking) rows.push({ key: "matching", label: "Матчмейкинг" });
     rows.push({ key: "trackers", label: "Трекеры" }, { key: "reports", label: "Отчётность" });
     if (isAdmin) rows.push({ key: "quotas", label: "Лимиты" });
     rows.push({ key: "settings", label: "Настройки" }, { key: "audit", label: "Журнал" }); return rows;
-  }, [config, isAdmin, isTracker]);
+  }, [config, isAdmin, isExpert, isTracker]);
   useEffect(() => { if (!tabs.some((item) => item.key === tab)) setTab(tabs[0]?.key || "overview"); }, [tab, tabs]);
 
   const saveApplicationForm = async (applicationFormSchema: ApplicationFormSchema) => {
@@ -106,7 +111,7 @@ export default function AcceleratorWorkspacePage() {
     {error && <div role="alert" className="mb-6 rounded-2xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200">{error}</div>}
     {showSetup && isAdmin && <div className="mb-7"><AcceleratorSetupWizard token={token} onCancel={accelerators.length ? () => setShowSetup(false) : undefined} onCreated={async (result) => { await loadAccelerators(); setAcceleratorId(result.accelerator.id); setCohortId(result.cohort.id); setShowSetup(false); setTab("overview"); }} /></div>}
     {!accelerators.length && !showSetup ? <EmptyState isAdmin={isAdmin} onCreate={() => setShowSetup(true)} /> : accelerators.length > 0 && <>
-      <div className={`mb-6 grid gap-3 ${isResident ? "" : "md:grid-cols-2"}`}><SelectCard label="Акселератор"><select value={acceleratorId || ""} onChange={(event) => { setAcceleratorId(Number(event.target.value)); setTab("overview"); }} className="workspace-input">{accelerators.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select><p className="mt-2 text-xs text-white/35">Роль: {selectedAccelerator?.access_role === "global_admin" ? "главный администратор" : selectedAccelerator?.access_role === "organizer" ? "организатор" : selectedAccelerator?.access_role === "tracker" ? "трекер" : "резидент"}</p></SelectCard>{!isResident && <SelectCard label="Поток"><select value={cohortId || ""} onChange={(event) => { setCohortId(Number(event.target.value)); setTab("overview"); }} className="workspace-input" disabled={!cohorts.length}>{cohorts.length ? cohorts.map((row) => <option key={row.id} value={row.id}>{row.name}</option>) : <option value="">Нет назначенных потоков</option>}</select>{selectedCohort && <p className="mt-2 text-xs text-white/35">{STATUS_LABELS[selectedCohort.status] || selectedCohort.status}</p>}</SelectCard>}</div>
+      <div className={`mb-6 grid gap-3 ${isResident ? "" : "md:grid-cols-2"}`}><SelectCard label="Акселератор"><select value={acceleratorId || ""} onChange={(event) => { setAcceleratorId(Number(event.target.value)); setTab("overview"); }} className="workspace-input">{accelerators.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select><p className="mt-2 text-xs text-white/35">Роль: {selectedAccelerator?.access_role === "global_admin" ? "главный администратор" : selectedAccelerator?.access_role === "organizer" ? "организатор" : selectedAccelerator?.access_role === "tracker" ? "трекер" : selectedAccelerator?.access_role === "expert" ? "эксперт" : "резидент"}</p></SelectCard>{!isResident && <SelectCard label="Поток"><select value={cohortId || ""} onChange={(event) => { setCohortId(Number(event.target.value)); setTab("overview"); }} className="workspace-input" disabled={!cohorts.length}>{cohorts.length ? cohorts.map((row) => <option key={row.id} value={row.id}>{row.name}</option>) : <option value="">Нет назначенных потоков</option>}</select>{selectedCohort && <p className="mt-2 text-xs text-white/35">{STATUS_LABELS[selectedCohort.status] || selectedCohort.status}</p>}</SelectCard>}</div>
       {isResident && acceleratorId && <ResidentWorkspace acceleratorId={acceleratorId} data={residentWorkspace} />}
       {!isResident && canReadCohort && selectedCohort && <>
         <nav className="mb-6 flex gap-2 overflow-x-auto pb-2" aria-label="Разделы акселератора">{tabs.map((item) => <button type="button" key={item.key} onClick={() => setTab(item.key)} className={`shrink-0 rounded-full border px-4 py-2 text-sm ${tab === item.key ? "border-white bg-white text-black" : "border-white/10 text-white/50 hover:text-white"}`}>{item.label}</button>)}</nav>
@@ -117,6 +122,7 @@ export default function AcceleratorWorkspacePage() {
         {tab === "homework" && config?.modules.homework && (canManage ? <HomeworkManager cohortId={selectedCohort.id} token={token} residents={residents} /> : <TrackerHomework cohortId={selectedCohort.id} token={token} />)}
         {tab === "attendance" && config?.modules.attendance && (canManage ? <AttendanceManager cohortId={selectedCohort.id} token={token} /> : <TrackerAttendance cohortId={selectedCohort.id} token={token} />)}
         {tab === "tracking" && config?.modules.progress_tracking && <TrackingDashboard cohortId={selectedCohort.id} token={token} />}
+        {tab === "matching" && config?.modules.matchmaking && (canManage ? <MatchmakingManager cohortId={selectedCohort.id} token={token} /> : <MatchmakingWorkspace cohortId={selectedCohort.id} />)}
         {tab === "trackers" && canManage && <TrackerManager token={token} cohortId={selectedCohort.id} residents={residents} />}
         {tab === "reports" && <ResidentReport token={token} cohortId={selectedCohort.id} canManage={canManage} onChanged={loadCohortDetails} />}
         {tab === "quotas" && isAdmin && <QuotaManager token={token} cohortId={selectedCohort.id} initialTemplate={selectedCohort.default_quota_config} residents={residents} />}

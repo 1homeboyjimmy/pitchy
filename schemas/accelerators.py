@@ -339,6 +339,54 @@ class TrackingTaskUpdate(BaseModel):
     status: Literal["open", "done", "cancelled"]
 
 
+def normalize_match_tags(values: list[str]) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for raw in values:
+        value = " ".join(raw.strip().split())
+        key = value.casefold()
+        if value and key not in seen:
+            result.append(value)
+            seen.add(key)
+    return result
+
+
+class MatchProfileData(BaseModel):
+    bio: str | None = Field(default=None, max_length=5000)
+    expertise: list[str] = Field(default_factory=list, max_length=30)
+    needs: list[str] = Field(default_factory=list, max_length=30)
+    industries: list[str] = Field(default_factory=list, max_length=20)
+    goals: list[str] = Field(default_factory=list, max_length=20)
+    preferred_formats: list[str] = Field(default_factory=list, max_length=10)
+    max_matches: int = Field(default=5, ge=1, le=100)
+    active: bool = True
+
+    @field_validator("bio")
+    @classmethod
+    def strip_match_bio(cls, value: str | None) -> str | None:
+        return (value or "").strip() or None
+
+    @field_validator("expertise", "needs", "industries", "goals", "preferred_formats")
+    @classmethod
+    def validate_match_tags(cls, value: list[str]) -> list[str]:
+        if any(not isinstance(item, str) or len(item.strip()) > 100 for item in value):
+            raise ValueError("Каждый тег должен быть строкой до 100 символов")
+        return normalize_match_tags(value)
+
+
+class MatchPoolProfileCreate(MatchProfileData):
+    user_id: int = Field(gt=0)
+    role: Literal["tracker", "expert"]
+
+
+class MatchCreate(BaseModel):
+    counterpart_profile_id: int = Field(gt=0)
+
+
+class MatchStatusUpdate(BaseModel):
+    status: Literal["active", "ended"]
+
+
 class InvitationAccept(BaseModel):
     password: str = Field(min_length=8, max_length=72)
 

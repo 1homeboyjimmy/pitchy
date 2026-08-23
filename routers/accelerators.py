@@ -51,6 +51,8 @@ from models import (
     AcceleratorHomeworkTarget,
     AcceleratorMembership,
     AcceleratorMembershipEvent,
+    AcceleratorMatch,
+    AcceleratorMatchProfile,
     AcceleratorOrganization,
     AcceleratorProgramConfig,
     AcceleratorProgramMaterial,
@@ -98,6 +100,10 @@ from schemas.accelerators import (
     TrackingFeedbackCreate,
     TrackingTaskCreate,
     TrackingTaskUpdate,
+    MatchProfileData,
+    MatchPoolProfileCreate,
+    MatchCreate,
+    MatchStatusUpdate,
 )
 
 
@@ -109,6 +115,7 @@ DEFAULT_MODULES = {
     "homework": False,
     "attendance": False,
     "progress_tracking": False,
+    "matchmaking": False,
 }
 LOCKED_BASE_MODULES = {"applications": True, "program": True}
 COHORT_STATUS_TRANSITIONS = {
@@ -208,6 +215,17 @@ async def require_progress_tracking_module(
     ))).scalar_one_or_none()
     if not config or not (config.modules or {}).get("progress_tracking"):
         raise HTTPException(status_code=409, detail="Модуль трекинга прогресса не включён для этого потока")
+    return config
+
+
+async def require_matchmaking_module(
+    db: AsyncSession, cohort: AcceleratorCohort
+) -> AcceleratorProgramConfig:
+    config = (await db.execute(select(AcceleratorProgramConfig).where(
+        AcceleratorProgramConfig.cohort_id == cohort.id
+    ))).scalar_one_or_none()
+    if not config or not (config.modules or {}).get("matchmaking"):
+        raise HTTPException(status_code=409, detail="Модуль матчмейкинга не включён для этого потока")
     return config
 
 
@@ -556,9 +574,21 @@ async def list_accelerators(
             .join(AcceleratorMembership, AcceleratorMembership.cohort_id == AcceleratorCohort.id)
             .where(AcceleratorMembership.user_id == user.id)
         )).scalars().all()
+        expert_accelerator_ids = set((await db.execute(
+            select(AcceleratorCohort.accelerator_id)
+            .join(AcceleratorMatch, AcceleratorMatch.cohort_id == AcceleratorCohort.id)
+            .join(AcceleratorMatchProfile, AcceleratorMatchProfile.id == AcceleratorMatch.counterpart_profile_id)
+            .where(
+                AcceleratorMatch.status == "active",
+                AcceleratorMatchProfile.user_id == user.id,
+                AcceleratorMatchProfile.role == "expert",
+            )
+        )).scalars().all())
         staff_roles = {accelerator_id: role for accelerator_id, role in staff_rows}
         for tracker_accelerator_id in tracker_accelerator_ids:
             staff_roles.setdefault(tracker_accelerator_id, "tracker")
+        for expert_accelerator_id in expert_accelerator_ids:
+            staff_roles.setdefault(expert_accelerator_id, "expert")
         staff_ids = set(staff_roles)
         resident_ids = set(resident_rows)
         access_roles = {
@@ -1117,29 +1147,26 @@ async def list_cohorts(
     await get_accelerator_or_404(db, accelerator_id)
     cohort_query = select(AcceleratorCohort).where(AcceleratorCohort.accelerator_id == accelerator_id)
     if not user.is_admin and not await is_accelerator_organizer(db, user.id, accelerator_id):
-        tracker_cohort_ids = (
+        tracker_cohort_ids = set((await db.execute(
             select(AcceleratorMembership.cohort_id)
             .join(
                 AcceleratorTrackerAssignment,
                 AcceleratorTrackerAssignment.membership_id == AcceleratorMembership.id,
             )
             .where(AcceleratorTrackerAssignment.tracker_user_id == user.id)
-        )
-        tracker_has_assignment = (await db.execute(
-            select(AcceleratorTrackerAssignment.id)
-            .join(
-                AcceleratorMembership,
-                AcceleratorMembership.id == AcceleratorTrackerAssignment.membership_id,
-            )
-            .join(AcceleratorCohort, AcceleratorCohort.id == AcceleratorMembership.cohort_id)
+        )).scalars().all())
+        expert_cohort_ids = set((await db.execute(
+            select(AcceleratorMatch.cohort_id)
+            .join(AcceleratorMatchProfile, AcceleratorMatchProfile.id == AcceleratorMatch.counterpart_profile_id)
             .where(
-                AcceleratorTrackerAssignment.tracker_user_id == user.id,
-                AcceleratorCohort.accelerator_id == accelerator_id,
+                AcceleratorMatchProfile.user_id == user.id,
+                AcceleratorMatchProfile.role == "expert",
+                AcceleratorMatch.status == "active",
             )
-            .limit(1)
-        )).scalar_one_or_none()
-        if tracker_has_assignment is not None:
-            cohort_query = cohort_query.where(AcceleratorCohort.id.in_(tracker_cohort_ids))
+        )).scalars().all())
+        staff_cohort_ids = tracker_cohort_ids | expert_cohort_ids
+        if staff_cohort_ids:
+            cohort_query = cohort_query.where(AcceleratorCohort.id.in_(staff_cohort_ids))
             rows = (await db.execute(
                 cohort_query.order_by(AcceleratorCohort.created_at.desc())
             )).scalars().all()
@@ -1246,12 +1273,23 @@ async def get_program_config(
     cohort = await get_cohort_or_404(db, cohort_id)
     if not user.is_admin and not await is_accelerator_organizer(db, user.id, cohort.accelerator_id):
         tracker_access = bool(await tracker_membership_ids(db, user.id, cohort.id))
+        expert_access = (await db.execute(
+            select(AcceleratorMatch.id)
+            .join(AcceleratorMatchProfile, AcceleratorMatchProfile.id == AcceleratorMatch.counterpart_profile_id)
+            .where(
+                AcceleratorMatch.cohort_id == cohort.id,
+                AcceleratorMatch.status == "active",
+                AcceleratorMatchProfile.user_id == user.id,
+                AcceleratorMatchProfile.role == "expert",
+            )
+            .limit(1)
+        )).scalar_one_or_none() is not None
         member = (await db.execute(select(AcceleratorMembership.id).where(
             AcceleratorMembership.cohort_id == cohort.id,
             AcceleratorMembership.user_id == user.id,
             AcceleratorMembership.status == "enrolled",
         ))).scalar_one_or_none()
-        if member is None and not tracker_access:
+        if member is None and not tracker_access and not expert_access:
             raise HTTPException(status_code=403, detail="Нет доступа к потоку")
     config = (await db.execute(select(AcceleratorProgramConfig).where(
         AcceleratorProgramConfig.cohort_id == cohort.id
@@ -3846,6 +3884,639 @@ async def update_tracking_task(
     for notification_id in notification_ids:
         background_tasks.add_task(process_notification_event, notification_id)
     return tracking_task_dict(task)
+
+
+def match_profile_dict(profile: AcceleratorMatchProfile, person: User, active_matches: int = 0) -> dict:
+    return {
+        "id": profile.id,
+        "cohort_id": profile.cohort_id,
+        "user_id": profile.user_id,
+        "membership_id": profile.membership_id,
+        "role": profile.role,
+        "name": person.name,
+        "email": person.email,
+        "bio": profile.bio,
+        "expertise": profile.expertise or [],
+        "needs": profile.needs or [],
+        "industries": profile.industries or [],
+        "goals": profile.goals or [],
+        "preferred_formats": profile.preferred_formats or [],
+        "max_matches": profile.max_matches,
+        "active": profile.active,
+        "active_matches": active_matches,
+        "updated_at": profile.updated_at,
+    }
+
+
+def apply_match_profile_data(
+    profile: AcceleratorMatchProfile, payload: MatchProfileData, actor_user_id: int
+) -> None:
+    profile.bio = payload.bio
+    profile.expertise = payload.expertise
+    profile.needs = payload.needs
+    profile.industries = payload.industries
+    profile.goals = payload.goals
+    profile.preferred_formats = payload.preferred_formats
+    profile.max_matches = payload.max_matches
+    profile.active = payload.active
+    profile.updated_by_user_id = actor_user_id
+
+
+def normalized_tag_set(values: list[str] | None) -> set[str]:
+    return {" ".join(value.casefold().split()) for value in (values or []) if value.strip()}
+
+
+def calculate_match_score(
+    resident_profile: AcceleratorMatchProfile, counterpart: AcceleratorMatchProfile
+) -> tuple[int, list[str]]:
+    needs = normalized_tag_set(resident_profile.needs)
+    expertise = normalized_tag_set(counterpart.expertise)
+    shared_needs = needs & expertise
+    resident_industries = normalized_tag_set(resident_profile.industries)
+    shared_industries = resident_industries & normalized_tag_set(counterpart.industries)
+    resident_goals = normalized_tag_set(resident_profile.goals)
+    shared_goals = resident_goals & (expertise | normalized_tag_set(counterpart.goals))
+    shared_formats = normalized_tag_set(resident_profile.preferred_formats) & normalized_tag_set(
+        counterpart.preferred_formats
+    )
+    score = 10
+    reasons: list[str] = []
+    if needs:
+        score += round(55 * len(shared_needs) / len(needs))
+    elif expertise:
+        score += 15
+    if shared_needs:
+        reasons.append("Закрывает запросы: " + ", ".join(sorted(shared_needs)[:3]))
+    if shared_industries:
+        score += 20
+        reasons.append("Опыт в отрасли: " + ", ".join(sorted(shared_industries)[:2]))
+    if shared_goals:
+        score += 10
+        reasons.append("Совпадают цели и компетенции")
+    if shared_formats:
+        score += 5
+        reasons.append("Подходит формат взаимодействия")
+    if not reasons:
+        reasons.append("Общий кандидат из пула потока")
+    return min(100, score), reasons
+
+
+async def match_profile_relationship_count(
+    db: AsyncSession, profile: AcceleratorMatchProfile
+) -> int:
+    conditions = [AcceleratorMatch.counterpart_profile_id == profile.id]
+    if profile.membership_id:
+        conditions.append(AcceleratorMatch.resident_membership_id == profile.membership_id)
+    return int((await db.execute(select(func.count(AcceleratorMatch.id)).where(
+        AcceleratorMatch.status == "active", or_(*conditions)
+    ))).scalar_one() or 0)
+
+
+async def get_match_profile_or_404(db: AsyncSession, profile_id: int) -> AcceleratorMatchProfile:
+    profile = await db.get(AcceleratorMatchProfile, profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Профиль матчмейкинга не найден")
+    return profile
+
+
+async def require_matchmaking_person_access(
+    db: AsyncSession, user: User, cohort: AcceleratorCohort
+) -> str:
+    if user.is_admin:
+        return "global_admin"
+    if await is_accelerator_organizer(db, user.id, cohort.accelerator_id):
+        return "organizer"
+    resident = (await db.execute(select(AcceleratorMembership.id).where(
+        AcceleratorMembership.cohort_id == cohort.id,
+        AcceleratorMembership.user_id == user.id,
+        AcceleratorMembership.role == "resident",
+        AcceleratorMembership.status == "enrolled",
+    ))).scalar_one_or_none()
+    if resident is not None:
+        return "resident"
+    role = (await db.execute(
+        select(AcceleratorMatchProfile.role)
+        .join(AcceleratorMatch, AcceleratorMatch.counterpart_profile_id == AcceleratorMatchProfile.id)
+        .where(
+            AcceleratorMatch.cohort_id == cohort.id,
+            AcceleratorMatch.status == "active",
+            AcceleratorMatchProfile.user_id == user.id,
+        )
+        .limit(1)
+    )).scalar_one_or_none()
+    if role in ("tracker", "expert"):
+        return role
+    raise HTTPException(status_code=403, detail="Нет доступа к матчмейкингу этого потока")
+
+
+async def matchmaking_match_dict(db: AsyncSession, match: AcceleratorMatch) -> dict:
+    membership = await db.get(AcceleratorMembership, match.resident_membership_id)
+    resident = await db.get(User, membership.user_id) if membership else None
+    profile = await db.get(AcceleratorMatchProfile, match.counterpart_profile_id)
+    counterpart = await db.get(User, profile.user_id) if profile else None
+    return {
+        "id": match.id,
+        "cohort_id": match.cohort_id,
+        "resident": {
+            "membership_id": membership.id,
+            "user_id": resident.id,
+            "name": resident.name,
+            "email": resident.email,
+        } if membership and resident else None,
+        "counterpart": match_profile_dict(
+            profile, counterpart, await match_profile_relationship_count(db, profile)
+        ) if profile and counterpart else None,
+        "counterpart_role": match.counterpart_role,
+        "score": match.score,
+        "reasons": match.reasons or [],
+        "status": match.status,
+        "created_at": match.created_at,
+        "ended_at": match.ended_at,
+    }
+
+
+@router.get("/cohorts/{cohort_id}/matchmaking/candidates")
+async def search_matchmaking_candidates(
+    cohort_id: int,
+    role: str = Query(pattern="^(tracker|expert)$"),
+    q: str = Query(min_length=2, max_length=200),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    cohort = await get_cohort_or_404(db, cohort_id)
+    await require_cohort_manager(db, user, cohort)
+    await require_matchmaking_module(db, cohort)
+    search = f"%{q.strip()}%"
+    existing_ids = select(AcceleratorMatchProfile.user_id).where(
+        AcceleratorMatchProfile.cohort_id == cohort.id,
+        AcceleratorMatchProfile.role == role,
+    )
+    organizer_ids = select(AcceleratorStaff.user_id).where(
+        AcceleratorStaff.accelerator_id == cohort.accelerator_id,
+        AcceleratorStaff.role == "organizer",
+    )
+    resident_ids = select(AcceleratorMembership.user_id).where(
+        AcceleratorMembership.cohort_id == cohort.id,
+        AcceleratorMembership.role == "resident",
+    )
+    rows = (await db.execute(select(User).where(
+        User.is_active.is_(True), User.deleted_at.is_(None),
+        User.id.not_in(existing_ids), User.id.not_in(organizer_ids), User.id.not_in(resident_ids),
+        or_(User.name.ilike(search), User.email.ilike(search)),
+    ).order_by(User.name, User.email).limit(20))).scalars().all()
+    return [{"id": row.id, "name": row.name, "email": row.email} for row in rows]
+
+
+@router.get("/cohorts/{cohort_id}/matchmaking/profiles")
+async def list_matchmaking_profiles(
+    cohort_id: int,
+    role: str | None = Query(default=None, pattern="^(resident|tracker|expert)$"),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    cohort = await get_cohort_or_404(db, cohort_id)
+    await require_cohort_manager(db, user, cohort)
+    await require_matchmaking_module(db, cohort)
+    query = select(AcceleratorMatchProfile, User).join(
+        User, User.id == AcceleratorMatchProfile.user_id
+    ).where(AcceleratorMatchProfile.cohort_id == cohort.id)
+    if role:
+        query = query.where(AcceleratorMatchProfile.role == role)
+    rows = (await db.execute(query.order_by(
+        AcceleratorMatchProfile.role, User.name
+    ))).all()
+    return [match_profile_dict(profile, person, await match_profile_relationship_count(db, profile))
+            for profile, person in rows]
+
+
+@router.post("/cohorts/{cohort_id}/matchmaking/profiles")
+async def create_matchmaking_pool_profile(
+    cohort_id: int,
+    payload: MatchPoolProfileCreate,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    cohort = await get_cohort_or_404(db, cohort_id)
+    await require_cohort_manager(db, user, cohort)
+    await require_matchmaking_module(db, cohort)
+    person = await db.get(User, payload.user_id)
+    if not person or not person.is_active or person.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Активный пользователь не найден")
+    if await is_accelerator_organizer(db, person.id, cohort.accelerator_id):
+        raise HTTPException(status_code=409, detail="Организатора нельзя добавить в пул")
+    resident_membership = (await db.execute(select(AcceleratorMembership.id).where(
+        AcceleratorMembership.cohort_id == cohort.id,
+        AcceleratorMembership.user_id == person.id,
+        AcceleratorMembership.role == "resident",
+    ))).scalar_one_or_none()
+    if resident_membership is not None:
+        raise HTTPException(status_code=409, detail="Резидент уже участвует в подборе как резидент")
+    existing = (await db.execute(select(AcceleratorMatchProfile.id).where(
+        AcceleratorMatchProfile.cohort_id == cohort.id,
+        AcceleratorMatchProfile.user_id == person.id,
+        AcceleratorMatchProfile.role == payload.role,
+    ))).scalar_one_or_none()
+    if existing is not None:
+        raise HTTPException(status_code=409, detail="Пользователь уже добавлен в этот пул")
+    profile = AcceleratorMatchProfile(
+        cohort_id=cohort.id, user_id=person.id, role=payload.role,
+        created_by_user_id=user.id, updated_by_user_id=user.id,
+    )
+    apply_match_profile_data(profile, payload, user.id)
+    db.add(profile)
+    await db.flush()
+    add_audit(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        actor_user_id=user.id, action="matchmaking.profile_created",
+        target_type="match_profile", target_id=profile.id,
+        details={"role": profile.role, "user_id": profile.user_id},
+    )
+    await db.commit()
+    return match_profile_dict(profile, person)
+
+
+@router.put("/matchmaking/profiles/{profile_id}")
+async def update_matchmaking_profile(
+    profile_id: int,
+    payload: MatchProfileData,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    profile = await get_match_profile_or_404(db, profile_id)
+    cohort = await get_cohort_or_404(db, profile.cohort_id)
+    await require_matchmaking_module(db, cohort)
+    manager = user.is_admin or await is_accelerator_organizer(db, user.id, cohort.accelerator_id)
+    if not manager and profile.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Можно менять только свой профиль")
+    if not manager and payload.active != profile.active:
+        raise HTTPException(status_code=403, detail="Статус профиля меняет организатор")
+    apply_match_profile_data(profile, payload, user.id)
+    add_audit(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        actor_user_id=user.id, action="matchmaking.profile_updated",
+        target_type="match_profile", target_id=profile.id,
+    )
+    await db.commit()
+    person = await db.get(User, profile.user_id)
+    return match_profile_dict(profile, person, await match_profile_relationship_count(db, profile))
+
+
+@router.get("/memberships/{membership_id}/match-profile")
+async def get_resident_match_profile(
+    membership_id: int,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    membership = await db.get(AcceleratorMembership, membership_id)
+    if not membership or membership.role != "resident":
+        raise HTTPException(status_code=404, detail="Резидент не найден")
+    cohort = await get_cohort_or_404(db, membership.cohort_id)
+    await require_matchmaking_module(db, cohort)
+    manager = user.is_admin or await is_accelerator_organizer(db, user.id, cohort.accelerator_id)
+    if not manager and membership.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Нет доступа к профилю резидента")
+    row = (await db.execute(
+        select(AcceleratorMatchProfile, User)
+        .join(User, User.id == AcceleratorMatchProfile.user_id)
+        .where(AcceleratorMatchProfile.membership_id == membership.id)
+    )).one_or_none()
+    if not row:
+        return None
+    profile, person = row
+    return match_profile_dict(profile, person, await match_profile_relationship_count(db, profile))
+
+
+@router.put("/memberships/{membership_id}/match-profile")
+async def upsert_resident_match_profile(
+    membership_id: int,
+    payload: MatchProfileData,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    membership = await db.get(AcceleratorMembership, membership_id)
+    if not membership or membership.role != "resident" or membership.status != "enrolled":
+        raise HTTPException(status_code=404, detail="Активный резидент не найден")
+    cohort = await get_cohort_or_404(db, membership.cohort_id)
+    await require_matchmaking_module(db, cohort)
+    manager = user.is_admin or await is_accelerator_organizer(db, user.id, cohort.accelerator_id)
+    if not manager and membership.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Можно менять только свой профиль")
+    profile = (await db.execute(select(AcceleratorMatchProfile).where(
+        AcceleratorMatchProfile.membership_id == membership.id
+    ).with_for_update())).scalar_one_or_none()
+    if not profile:
+        profile = AcceleratorMatchProfile(
+            cohort_id=cohort.id, user_id=membership.user_id, membership_id=membership.id,
+            role="resident", created_by_user_id=user.id, updated_by_user_id=user.id,
+        )
+        db.add(profile)
+    apply_match_profile_data(profile, payload, user.id)
+    await db.flush()
+    add_audit(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        actor_user_id=user.id, action="matchmaking.resident_profile_upserted",
+        target_type="match_profile", target_id=profile.id,
+        details={"membership_id": membership.id},
+    )
+    await db.commit()
+    person = await db.get(User, membership.user_id)
+    return match_profile_dict(profile, person, await match_profile_relationship_count(db, profile))
+
+
+@router.get("/memberships/{membership_id}/matchmaking/recommendations")
+async def matchmaking_recommendations(
+    membership_id: int,
+    role: str = Query(default="expert", pattern="^(resident|tracker|expert)$"),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    membership = await db.get(AcceleratorMembership, membership_id)
+    if not membership or membership.role != "resident" or membership.status != "enrolled":
+        raise HTTPException(status_code=404, detail="Активный резидент не найден")
+    cohort = await get_cohort_or_404(db, membership.cohort_id)
+    await require_matchmaking_module(db, cohort)
+    manager = user.is_admin or await is_accelerator_organizer(db, user.id, cohort.accelerator_id)
+    if not manager and membership.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Нет доступа к рекомендациям")
+    resident_profile = (await db.execute(select(AcceleratorMatchProfile).where(
+        AcceleratorMatchProfile.membership_id == membership.id,
+        AcceleratorMatchProfile.active.is_(True),
+    ))).scalar_one_or_none()
+    if not resident_profile:
+        raise HTTPException(status_code=409, detail="Сначала заполните профиль матчмейкинга резидента")
+    query = (
+        select(AcceleratorMatchProfile, User)
+        .join(User, User.id == AcceleratorMatchProfile.user_id)
+        .where(
+            AcceleratorMatchProfile.cohort_id == cohort.id,
+            AcceleratorMatchProfile.role == role,
+            AcceleratorMatchProfile.active.is_(True),
+            AcceleratorMatchProfile.user_id != membership.user_id,
+        )
+    )
+    if role == "resident":
+        query = query.join(
+            AcceleratorMembership, AcceleratorMembership.id == AcceleratorMatchProfile.membership_id
+        ).where(AcceleratorMembership.status == "enrolled")
+    candidates = []
+    for profile, person in (await db.execute(query)).all():
+        active_count = await match_profile_relationship_count(db, profile)
+        if active_count >= profile.max_matches:
+            continue
+        score, reasons = calculate_match_score(resident_profile, profile)
+        existing_status = (await db.execute(select(AcceleratorMatch.status).where(
+            AcceleratorMatch.resident_membership_id == membership.id,
+            AcceleratorMatch.counterpart_profile_id == profile.id,
+        ))).scalar_one_or_none()
+        data = match_profile_dict(profile, person, active_count)
+        if not manager:
+            data.pop("email", None)
+        candidates.append({"profile": data, "score": score, "reasons": reasons,
+                           "existing_status": existing_status})
+    return sorted(candidates, key=lambda row: (-row["score"], row["profile"]["name"]))
+
+
+async def ensure_tracker_match_assignment(
+    db: AsyncSession,
+    cohort: AcceleratorCohort,
+    match: AcceleratorMatch,
+    profile: AcceleratorMatchProfile,
+    actor_user_id: int,
+) -> None:
+    staff = (await db.execute(select(AcceleratorStaff).where(
+        AcceleratorStaff.accelerator_id == cohort.accelerator_id,
+        AcceleratorStaff.user_id == profile.user_id,
+    ))).scalar_one_or_none()
+    if staff and staff.role != "tracker":
+        raise HTTPException(status_code=409, detail="Кандидат уже назначен организатором")
+    if not staff:
+        db.add(AcceleratorStaff(
+            accelerator_id=cohort.accelerator_id, user_id=profile.user_id,
+            role="tracker", created_by_user_id=actor_user_id,
+        ))
+    assignment = (await db.execute(select(AcceleratorTrackerAssignment).where(
+        AcceleratorTrackerAssignment.tracker_user_id == profile.user_id,
+        AcceleratorTrackerAssignment.membership_id == match.resident_membership_id,
+    ))).scalar_one_or_none()
+    if not assignment:
+        assignment = AcceleratorTrackerAssignment(
+            tracker_user_id=profile.user_id, membership_id=match.resident_membership_id,
+            assigned_by_user_id=actor_user_id,
+        )
+        db.add(assignment)
+        await db.flush()
+        match.tracker_assignment_id = assignment.id
+
+
+@router.post("/memberships/{membership_id}/matches")
+async def create_accelerator_match(
+    membership_id: int,
+    payload: MatchCreate,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    membership = await db.get(AcceleratorMembership, membership_id)
+    if not membership or membership.role != "resident" or membership.status != "enrolled":
+        raise HTTPException(status_code=404, detail="Активный резидент не найден")
+    cohort = await get_cohort_or_404(db, membership.cohort_id)
+    await require_cohort_manager(db, user, cohort)
+    await require_matchmaking_module(db, cohort)
+    profile = await get_match_profile_or_404(db, payload.counterpart_profile_id)
+    if profile.cohort_id != cohort.id or not profile.active or profile.user_id == membership.user_id:
+        raise HTTPException(status_code=422, detail="Кандидат недоступен для этого резидента")
+    if profile.role == "resident":
+        peer = await db.get(AcceleratorMembership, profile.membership_id)
+        if not peer or peer.status != "enrolled":
+            raise HTTPException(status_code=422, detail="Резидент-кандидат не активен")
+    active_count = await match_profile_relationship_count(db, profile)
+    existing = (await db.execute(select(AcceleratorMatch).where(
+        AcceleratorMatch.resident_membership_id == membership.id,
+        AcceleratorMatch.counterpart_profile_id == profile.id,
+    ).with_for_update())).scalar_one_or_none()
+    if existing and existing.status == "active":
+        raise HTTPException(status_code=409, detail="Связка уже подтверждена")
+    if active_count >= profile.max_matches:
+        raise HTTPException(status_code=409, detail="У кандидата закончились свободные слоты")
+    resident_profile = (await db.execute(select(AcceleratorMatchProfile).where(
+        AcceleratorMatchProfile.membership_id == membership.id,
+        AcceleratorMatchProfile.active.is_(True),
+    ))).scalar_one_or_none()
+    if not resident_profile:
+        raise HTTPException(status_code=409, detail="Сначала заполните профиль резидента")
+    if await match_profile_relationship_count(db, resident_profile) >= resident_profile.max_matches:
+        raise HTTPException(status_code=409, detail="У резидента закончились свободные слоты")
+    if profile.role == "resident":
+        reverse_match = (await db.execute(select(AcceleratorMatch.id).where(
+            AcceleratorMatch.resident_membership_id == profile.membership_id,
+            AcceleratorMatch.counterpart_profile_id == resident_profile.id,
+            AcceleratorMatch.status == "active",
+        ))).scalar_one_or_none()
+        if reverse_match is not None:
+            raise HTTPException(status_code=409, detail="Связка между резидентами уже подтверждена")
+    score, reasons = calculate_match_score(resident_profile, profile)
+    match = existing or AcceleratorMatch(
+        cohort_id=cohort.id, resident_membership_id=membership.id,
+        counterpart_profile_id=profile.id, counterpart_role=profile.role,
+        created_by_user_id=user.id,
+    )
+    if not existing:
+        db.add(match)
+    match.status = "active"
+    match.score = score
+    match.reasons = reasons
+    match.ended_at = None
+    match.ended_by_user_id = None
+    if profile.role == "tracker":
+        await ensure_tracker_match_assignment(db, cohort, match, profile, user.id)
+    await db.flush()
+    resident = await db.get(User, membership.user_id)
+    counterpart = await db.get(User, profile.user_id)
+    notification_ids = []
+    for recipient, other_name in ((resident, counterpart.name), (counterpart, resident.name)):
+        notification = await enqueue_notification(
+            db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+            recipient_email=recipient.email, event_type="matchmaking_match_created",
+            subject="Новая связка в акселераторе",
+            body=(f"Для вас подтверждена связка с {other_name}."
+                  f"\n\nОткрыть: {os.getenv('FRONTEND_URL', 'https://pitchy.pro').rstrip('/')}/accelerator"),
+            idempotency_key=f"match-created:{match.id}:{match.updated_at.isoformat()}:{recipient.id}",
+        )
+        notification_ids.append(notification.id)
+    add_audit(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        actor_user_id=user.id, action="matchmaking.match_created",
+        target_type="match", target_id=match.id,
+        details={"membership_id": membership.id, "counterpart_profile_id": profile.id,
+                 "role": profile.role, "score": score},
+    )
+    await db.commit()
+    for notification_id in notification_ids:
+        background_tasks.add_task(process_notification_event, notification_id)
+    return await matchmaking_match_dict(db, match)
+
+
+@router.get("/cohorts/{cohort_id}/matches")
+async def list_accelerator_matches(
+    cohort_id: int,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    cohort = await get_cohort_or_404(db, cohort_id)
+    await require_cohort_manager(db, user, cohort)
+    await require_matchmaking_module(db, cohort)
+    rows = (await db.execute(select(AcceleratorMatch).where(
+        AcceleratorMatch.cohort_id == cohort.id
+    ).order_by(AcceleratorMatch.status, AcceleratorMatch.created_at.desc()))).scalars().all()
+    return [await matchmaking_match_dict(db, row) for row in rows]
+
+
+@router.get("/cohorts/{cohort_id}/matchmaking/me")
+async def my_accelerator_matches(
+    cohort_id: int,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    cohort = await get_cohort_or_404(db, cohort_id)
+    await require_matchmaking_module(db, cohort)
+    access_role = await require_matchmaking_person_access(db, user, cohort)
+    profiles = (await db.execute(select(AcceleratorMatchProfile).where(
+        AcceleratorMatchProfile.cohort_id == cohort.id,
+        AcceleratorMatchProfile.user_id == user.id,
+    ))).scalars().all()
+    own_membership_ids = set((await db.execute(select(AcceleratorMembership.id).where(
+        AcceleratorMembership.cohort_id == cohort.id,
+        AcceleratorMembership.user_id == user.id,
+    ))).scalars().all())
+    own_profile_ids = {profile.id for profile in profiles}
+    query = select(AcceleratorMatch).where(AcceleratorMatch.cohort_id == cohort.id)
+    if access_role not in ("global_admin", "organizer"):
+        query = query.where(or_(
+            AcceleratorMatch.resident_membership_id.in_(own_membership_ids),
+            AcceleratorMatch.counterpart_profile_id.in_(own_profile_ids),
+        ))
+    matches = (await db.execute(query.order_by(
+        AcceleratorMatch.status, AcceleratorMatch.created_at.desc()
+    ))).scalars().all()
+    return {
+        "access_role": access_role,
+        "profiles": [match_profile_dict(profile, user, await match_profile_relationship_count(db, profile))
+                     for profile in profiles],
+        "matches": [await matchmaking_match_dict(db, row) for row in matches],
+    }
+
+
+@router.patch("/matches/{match_id}")
+async def update_accelerator_match(
+    match_id: int,
+    payload: MatchStatusUpdate,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    match = (await db.execute(select(AcceleratorMatch).where(
+        AcceleratorMatch.id == match_id
+    ).with_for_update())).scalar_one_or_none()
+    if not match:
+        raise HTTPException(status_code=404, detail="Связка не найдена")
+    cohort = await get_cohort_or_404(db, match.cohort_id)
+    await require_cohort_manager(db, user, cohort)
+    await require_matchmaking_module(db, cohort)
+    if match.status == payload.status:
+        return await matchmaking_match_dict(db, match)
+    profile = await get_match_profile_or_404(db, match.counterpart_profile_id)
+    if payload.status == "active":
+        if not profile.active or await match_profile_relationship_count(db, profile) >= profile.max_matches:
+            raise HTTPException(status_code=409, detail="Кандидат сейчас недоступен")
+        resident_profile = (await db.execute(select(AcceleratorMatchProfile).where(
+            AcceleratorMatchProfile.membership_id == match.resident_membership_id,
+            AcceleratorMatchProfile.active.is_(True),
+        ))).scalar_one_or_none()
+        if not resident_profile or await match_profile_relationship_count(db, resident_profile) >= resident_profile.max_matches:
+            raise HTTPException(status_code=409, detail="Резидент сейчас недоступен")
+        match.status = "active"
+        match.ended_at = None
+        match.ended_by_user_id = None
+        if profile.role == "tracker":
+            await ensure_tracker_match_assignment(db, cohort, match, profile, user.id)
+    else:
+        match.status = "ended"
+        match.ended_at = datetime.utcnow()
+        match.ended_by_user_id = user.id
+        if match.tracker_assignment_id:
+            assignment = await db.get(AcceleratorTrackerAssignment, match.tracker_assignment_id)
+            match.tracker_assignment_id = None
+            if assignment:
+                await db.delete(assignment)
+                await db.flush()
+                await remove_tracker_staff_if_unused(
+                    db, accelerator_id=cohort.accelerator_id,
+                    tracker_user_id=profile.user_id,
+                )
+    await db.flush()
+    membership = await db.get(AcceleratorMembership, match.resident_membership_id)
+    resident = await db.get(User, membership.user_id)
+    counterpart = await db.get(User, profile.user_id)
+    notification_ids = []
+    for recipient in (resident, counterpart):
+        notification = await enqueue_notification(
+            db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+            recipient_email=recipient.email, event_type="matchmaking_match_status_changed",
+            subject="Связка матчмейкинга изменена",
+            body=(f"Статус вашей связки изменён: {'активна' if match.status == 'active' else 'завершена'}."
+                  f"\n\nОткрыть: {os.getenv('FRONTEND_URL', 'https://pitchy.pro').rstrip('/')}/accelerator"),
+            idempotency_key=f"match-status:{match.id}:{match.updated_at.isoformat()}:{recipient.id}",
+        )
+        notification_ids.append(notification.id)
+    add_audit(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        actor_user_id=user.id, action="matchmaking.match_status_changed",
+        target_type="match", target_id=match.id, details={"status": match.status},
+    )
+    await db.commit()
+    for notification_id in notification_ids:
+        background_tasks.add_task(process_notification_event, notification_id)
+    return await matchmaking_match_dict(db, match)
 
 
 @router.put("/memberships/{membership_id}/quota")

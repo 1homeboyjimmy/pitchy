@@ -23,6 +23,9 @@ from models import (
     AcceleratorProgramConfig,
     AcceleratorQuotaUsageEvent,
     AcceleratorMembershipEvent,
+    AcceleratorMatch,
+    AcceleratorMatchProfile,
+    AcceleratorTrackerAssignment,
     AcceleratorParticipantProfile,
     Project,
     User,
@@ -60,6 +63,15 @@ from routers.accelerators import (
     create_tracking_feedback,
     create_tracking_task,
     update_tracking_task,
+    search_matchmaking_candidates,
+    list_matchmaking_profiles,
+    create_matchmaking_pool_profile,
+    upsert_resident_match_profile,
+    matchmaking_recommendations,
+    create_accelerator_match,
+    list_accelerator_matches,
+    my_accelerator_matches,
+    update_accelerator_match,
     get_resident_quota,
     get_program_config,
     publish_homework_assignment,
@@ -110,6 +122,10 @@ from schemas.accelerators import (
     TrackingFeedbackCreate,
     TrackingTaskCreate,
     TrackingTaskUpdate,
+    MatchProfileData,
+    MatchPoolProfileCreate,
+    MatchCreate,
+    MatchStatusUpdate,
 )
 from subscription_service import consume_quota
 from sqlalchemy import func, select
@@ -520,6 +536,7 @@ async def test_role_boundaries_block_cross_accelerator_management_and_quota_chan
             "homework": True,
             "attendance": False,
             "progress_tracking": False,
+            "matchmaking": False,
         }
         assert "legacy_fake_module" not in compatible_config["modules"]
         with pytest.raises(HTTPException) as foreign_management:
@@ -826,6 +843,161 @@ async def test_tracker_report_scope_and_resident_lifecycle():
             cohort["id"], tracker.id, TrackerAssignmentsUpdate(membership_ids=[]), organizer, db
         )
         assert await list_accelerators(tracker, db) == []
+
+
+@pytest.mark.asyncio
+async def test_matchmaking_profiles_recommendations_matches_and_role_boundaries():
+    suffix = uuid.uuid4().hex
+    async with AsyncSessionLocal() as db:
+        admin = User(email=f"admin-match-{suffix}@example.test", name="Admin", is_admin=True)
+        organizer = User(email=f"organizer-match-{suffix}@example.test", name="Organizer")
+        resident = User(email=f"resident-match-{suffix}@example.test", name="Resident")
+        peer = User(email=f"peer-match-{suffix}@example.test", name="Peer")
+        tracker = User(email=f"tracker-match-{suffix}@example.test", name="Tracker")
+        expert = User(email=f"expert-match-{suffix}@example.test", name="Expert")
+        outsider = User(email=f"outsider-match-{suffix}@example.test", name="Outsider")
+        db.add_all([admin, organizer, resident, peer, tracker, expert, outsider])
+        await db.commit()
+        for person in (admin, organizer, resident, peer, tracker, expert, outsider):
+            await db.refresh(person)
+
+        accelerator = await create_accelerator(
+            AcceleratorCreate(name="Matchmaking accelerator"), admin, db
+        )
+        await assign_organizer(
+            accelerator["id"], OrganizerAssign(user_id=organizer.id), admin, db
+        )
+        cohort = await create_cohort(
+            accelerator["id"], CohortCreate(name="Matchmaking cohort"), organizer, db
+        )
+        await update_program_config(
+            cohort["id"], ProgramConfigUpdate(version=1, modules={"matchmaking": True}),
+            organizer, db,
+        )
+        await update_cohort_status(
+            cohort["id"], StatusUpdate(status="accepting"), organizer, db
+        )
+
+        membership_ids = []
+        for index, person in enumerate((resident, peer), start=1):
+            application = await submit_application(
+                cohort["id"],
+                ApplicationCreate(
+                    form_payload={"project_name": f"Match project {index}"},
+                    accept_privacy=True, accept_program_rules=True,
+                ),
+                person, db,
+            )
+            accepted = await accept_application(
+                application["id"], ApplicationReview(), BackgroundTasks(), organizer, db
+            )
+            await enroll_application(application["id"], organizer, db)
+            membership_ids.append(accepted["membership_id"])
+
+        resident_profile = await upsert_resident_match_profile(
+            membership_ids[0],
+            MatchProfileData(
+                bio="B2B SaaS проект",
+                expertise=["продукт"], needs=["продажи", "маркетинг"],
+                industries=["SaaS"], goals=["первые продажи"],
+                preferred_formats=["онлайн"], max_matches=4,
+            ),
+            resident, db,
+        )
+        assert resident_profile["role"] == "resident"
+        await upsert_resident_match_profile(
+            membership_ids[1],
+            MatchProfileData(
+                bio="Основатель с опытом продаж", expertise=["продажи"],
+                industries=["SaaS"], preferred_formats=["онлайн"], max_matches=2,
+            ),
+            peer, db,
+        )
+
+        candidates = await search_matchmaking_candidates(
+            cohort["id"], "expert", "expert-match", organizer, db
+        )
+        assert [row["id"] for row in candidates] == [expert.id]
+        expert_profile = await create_matchmaking_pool_profile(
+            cohort["id"],
+            MatchPoolProfileCreate(
+                user_id=expert.id, role="expert", bio="Эксперт по B2B продажам",
+                expertise=["продажи", "маркетинг"], industries=["SaaS"],
+                goals=["первые продажи"], preferred_formats=["онлайн"], max_matches=3,
+            ),
+            organizer, db,
+        )
+        tracker_profile = await create_matchmaking_pool_profile(
+            cohort["id"],
+            MatchPoolProfileCreate(
+                user_id=tracker.id, role="tracker", bio="Трекер продуктовых команд",
+                expertise=["продажи"], industries=["SaaS"],
+                preferred_formats=["онлайн"], max_matches=3,
+            ),
+            organizer, db,
+        )
+        profiles = await list_matchmaking_profiles(cohort["id"], None, organizer, db)
+        assert {row["role"] for row in profiles} == {"resident", "tracker", "expert"}
+
+        expert_recommendations = await matchmaking_recommendations(
+            membership_ids[0], "expert", resident, db
+        )
+        assert expert_recommendations[0]["profile"]["id"] == expert_profile["id"]
+        assert expert_recommendations[0]["score"] >= 80
+        assert "email" not in expert_recommendations[0]["profile"]
+        with pytest.raises(HTTPException) as outsider_recommendations:
+            await matchmaking_recommendations(
+                membership_ids[0], "expert", outsider, db
+            )
+        assert outsider_recommendations.value.status_code == 403
+
+        expert_match = await create_accelerator_match(
+            membership_ids[0], MatchCreate(counterpart_profile_id=expert_profile["id"]),
+            BackgroundTasks(), organizer, db,
+        )
+        assert expert_match["status"] == "active"
+        assert (await list_accelerators(expert, db))[0]["access_role"] == "expert"
+        assert [row["id"] for row in await list_cohorts(accelerator["id"], expert, db)] == [cohort["id"]]
+        expert_workspace = await my_accelerator_matches(cohort["id"], expert, db)
+        assert expert_workspace["access_role"] == "expert"
+        assert [row["id"] for row in expert_workspace["matches"]] == [expert_match["id"]]
+        with pytest.raises(HTTPException) as expert_cannot_read_residents:
+            await list_residents(cohort["id"], expert, db)
+        assert expert_cannot_read_residents.value.status_code == 403
+
+        tracker_match = await create_accelerator_match(
+            membership_ids[0], MatchCreate(counterpart_profile_id=tracker_profile["id"]),
+            BackgroundTasks(), organizer, db,
+        )
+        tracker_assignment = (await db.execute(select(AcceleratorTrackerAssignment).where(
+            AcceleratorTrackerAssignment.tracker_user_id == tracker.id,
+            AcceleratorTrackerAssignment.membership_id == membership_ids[0],
+        ))).scalar_one()
+        assert tracker_assignment.id > 0
+        tracker_report = await cohort_resident_report(cohort["id"], "json", tracker, db)
+        assert [row["membership_id"] for row in tracker_report["rows"]] == [membership_ids[0]]
+
+        ended = await update_accelerator_match(
+            tracker_match["id"], MatchStatusUpdate(status="ended"),
+            BackgroundTasks(), organizer, db,
+        )
+        assert ended["status"] == "ended"
+        assert (await db.execute(select(func.count(AcceleratorTrackerAssignment.id)).where(
+            AcceleratorTrackerAssignment.id == tracker_assignment.id
+        ))).scalar_one() == 0
+        assert await list_accelerators(tracker, db) == []
+        all_matches = await list_accelerator_matches(cohort["id"], organizer, db)
+        assert {row["status"] for row in all_matches} == {"active", "ended"}
+        assert (await db.execute(select(func.count(AcceleratorNotificationOutbox.id)).where(
+            AcceleratorNotificationOutbox.cohort_id == cohort["id"],
+            AcceleratorNotificationOutbox.event_type.like("matchmaking_%"),
+        ))).scalar_one() >= 6
+        assert (await db.execute(select(func.count(AcceleratorMatch.id)).where(
+            AcceleratorMatch.cohort_id == cohort["id"]
+        ))).scalar_one() == 2
+        assert (await db.execute(select(func.count(AcceleratorMatchProfile.id)).where(
+            AcceleratorMatchProfile.cohort_id == cohort["id"]
+        ))).scalar_one() == 4
 
 
 @pytest.mark.asyncio
