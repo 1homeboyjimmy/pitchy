@@ -986,7 +986,10 @@ async def test_program_attendance_and_candidate_revision_flow(monkeypatch):
         assert checked["checked_in"] is True
         resident_events = await list_resident_events(membership_id, resident, db)
         assert resident_events[0]["attendance"]["status"] == "present"
-        attendance = (await db.execute(select(AcceleratorAttendanceRecord))).scalar_one()
+        attendance = (await db.execute(select(AcceleratorAttendanceRecord).where(
+            AcceleratorAttendanceRecord.event_id == event["id"],
+            AcceleratorAttendanceRecord.membership_id == membership_id,
+        ))).scalar_one()
         assert attendance.checkin_method == "qr"
         audit_actions = set((await db.execute(
             select(AcceleratorAuditLog.action).where(
