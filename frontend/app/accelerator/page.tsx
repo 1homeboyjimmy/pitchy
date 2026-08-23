@@ -18,14 +18,17 @@ import { QuotaManager, type Limits } from "@/components/accelerator/QuotaManager
 import { ResidentWorkspace, type ResidentWorkspaceData } from "@/components/accelerator/ResidentWorkspace";
 import { ResidentReport } from "@/components/accelerator/ResidentReport";
 import { TrackerManager } from "@/components/accelerator/TrackerManager";
+import { TrackingDashboard } from "@/components/accelerator/TrackingDashboard";
+import { TrackerAttendance } from "@/components/accelerator/TrackerAttendance";
+import { TrackerHomework } from "@/components/accelerator/TrackerHomework";
 
 type Accelerator = { id: number; name: string; description?: string | null; status: string; access_role: "global_admin" | "organizer" | "tracker" | "resident" };
 type Cohort = { id: number; accelerator_id: number; name: string; status: string; timezone: string; starts_at?: string | null; ends_at?: string | null; default_quota_config?: Limits | null; application_form_schema: ApplicationFormSchema };
 type ProgramConfig = { cohort_id: number; version: number; modules: Record<string, boolean>; locked_modules: Record<string, boolean> };
 type Resident = { membership_id: number; user_id: number; name: string; email: string; status: string; status_reason?: string | null; trackers?: Array<{ user_id: number; name: string }> };
-type TabKey = "overview" | "applications" | "form" | "program" | "homework" | "attendance" | "trackers" | "reports" | "quotas" | "settings" | "audit";
+type TabKey = "overview" | "applications" | "form" | "program" | "homework" | "attendance" | "trackers" | "reports" | "tracking" | "quotas" | "settings" | "audit";
 
-const MODULE_LABELS: Record<string, string> = { applications: "Заявки", program: "Программа", homework: "Домашние задания", attendance: "Посещаемость" };
+const MODULE_LABELS: Record<string, string> = { applications: "Заявки", program: "Программа", homework: "Домашние задания", attendance: "Посещаемость", progress_tracking: "Трекинг прогресса" };
 const STATUS_LABELS: Record<string, string> = { draft: "Черновик", accepting: "Приём заявок", active: "Идёт", completed: "Завершён", archived: "Архив", accepted: "Принят", enrolled: "Зачислен" };
 const STATUS_TRANSITIONS: Record<string, string[]> = { draft: ["accepting", "archived"], accepting: ["draft", "active", "archived"], active: ["completed", "archived"], completed: ["archived"], archived: [] };
 
@@ -70,10 +73,17 @@ export default function AcceleratorWorkspacePage() {
   useEffect(() => { void loadCohortDetails(); }, [loadCohortDetails]);
 
   const tabs = useMemo(() => {
-    if (isTracker) return [{ key: "reports" as TabKey, label: "Мои резиденты" }];
+    if (isTracker) {
+      const rows: Array<{ key: TabKey; label: string }> = [{ key: "reports", label: "Мои резиденты" }];
+      if (config?.modules.progress_tracking) rows.push({ key: "tracking", label: "Трекинг" });
+      if (config?.modules.homework) rows.push({ key: "homework", label: "Домашние задания" });
+      if (config?.modules.attendance) rows.push({ key: "attendance", label: "Посещаемость" });
+      return rows;
+    }
     const rows: Array<{ key: TabKey; label: string }> = [{ key: "overview", label: "Обзор" }, { key: "applications", label: "Заявки" }, { key: "form", label: "Анкета" }, { key: "program", label: "Программа" }];
     if (config?.modules.homework) rows.push({ key: "homework", label: "Домашние задания" });
     if (config?.modules.attendance) rows.push({ key: "attendance", label: "Посещаемость" });
+    if (config?.modules.progress_tracking) rows.push({ key: "tracking", label: "Трекинг" });
     rows.push({ key: "trackers", label: "Трекеры" }, { key: "reports", label: "Отчётность" });
     if (isAdmin) rows.push({ key: "quotas", label: "Лимиты" });
     rows.push({ key: "settings", label: "Настройки" }, { key: "audit", label: "Журнал" }); return rows;
@@ -104,8 +114,9 @@ export default function AcceleratorWorkspacePage() {
         {tab === "applications" && <ApplicationManager token={token} applications={applications} schema={selectedCohort.application_form_schema || {}} onChanged={loadCohortDetails} />}
         {tab === "form" && <ApplicationFormEditor key={selectedCohort.id} schema={selectedCohort.application_form_schema || {}} publicUrl={`/accelerators/apply/${selectedCohort.id}`} saving={busy === "form"} onSave={saveApplicationForm} />}
         {tab === "program" && <ProgramBuilder cohortId={selectedCohort.id} token={token} />}
-        {tab === "homework" && config?.modules.homework && <HomeworkManager cohortId={selectedCohort.id} token={token} residents={residents} />}
-        {tab === "attendance" && config?.modules.attendance && <AttendanceManager cohortId={selectedCohort.id} token={token} />}
+        {tab === "homework" && config?.modules.homework && (canManage ? <HomeworkManager cohortId={selectedCohort.id} token={token} residents={residents} /> : <TrackerHomework cohortId={selectedCohort.id} token={token} />)}
+        {tab === "attendance" && config?.modules.attendance && (canManage ? <AttendanceManager cohortId={selectedCohort.id} token={token} /> : <TrackerAttendance cohortId={selectedCohort.id} token={token} />)}
+        {tab === "tracking" && config?.modules.progress_tracking && <TrackingDashboard cohortId={selectedCohort.id} token={token} />}
         {tab === "trackers" && canManage && <TrackerManager token={token} cohortId={selectedCohort.id} residents={residents} />}
         {tab === "reports" && <ResidentReport token={token} cohortId={selectedCohort.id} canManage={canManage} onChanged={loadCohortDetails} />}
         {tab === "quotas" && isAdmin && <QuotaManager token={token} cohortId={selectedCohort.id} initialTemplate={selectedCohort.default_quota_config} residents={residents} />}

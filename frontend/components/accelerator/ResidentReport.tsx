@@ -53,7 +53,7 @@ export function ResidentReport({ token, cohortId, canManage, onChanged }: { toke
     if (history[membershipId]) return;
     setBusy(`history-${membershipId}`); setError("");
     try {
-      const events = await getAuthJson<LifecycleEvent[]>(`/api/accelerators/memberships/${membershipId}/events`, token);
+      const events = await getAuthJson<LifecycleEvent[]>(`/api/accelerators/memberships/${membershipId}/lifecycle-events`, token);
       setHistory((current) => ({ ...current, [membershipId]: events }));
     }
     catch (reason) { setOpenHistoryId(null); setError(describeApiError(reason, "Не удалось загрузить историю резидента")); }

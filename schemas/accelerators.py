@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any, Literal
 
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
@@ -286,6 +286,57 @@ class MembershipStatusUpdate(BaseModel):
         if len(value) < 2:
             raise ValueError("Укажите причину изменения статуса")
         return value
+
+
+class ProgressCheckinUpsert(BaseModel):
+    period_start: date | None = None
+    health: Literal["green", "yellow", "red"] = "green"
+    summary: str = Field(min_length=2, max_length=10000)
+    blockers: str | None = Field(default=None, max_length=10000)
+    next_steps: str = Field(min_length=2, max_length=10000)
+    help_needed: str | None = Field(default=None, max_length=10000)
+
+    @field_validator("summary", "next_steps")
+    @classmethod
+    def strip_required_text(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) < 2:
+            raise ValueError("Заполните обязательное поле")
+        return value
+
+    @field_validator("blockers", "help_needed")
+    @classmethod
+    def strip_optional_text(cls, value: str | None) -> str | None:
+        return (value or "").strip() or None
+
+
+class TrackingFeedbackCreate(BaseModel):
+    body: str = Field(min_length=2, max_length=10000)
+
+    @field_validator("body")
+    @classmethod
+    def strip_body(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) < 2:
+            raise ValueError("Добавьте содержательный комментарий")
+        return value
+
+
+class TrackingTaskCreate(BaseModel):
+    title: str = Field(min_length=2, max_length=300)
+    description: str | None = Field(default=None, max_length=10000)
+    due_at: datetime | None = None
+
+    @field_validator("due_at")
+    @classmethod
+    def normalize_due_at(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value.tzinfo is not None:
+            return value.astimezone(timezone.utc).replace(tzinfo=None)
+        return value
+
+
+class TrackingTaskUpdate(BaseModel):
+    status: Literal["open", "done", "cancelled"]
 
 
 class InvitationAccept(BaseModel):

@@ -50,9 +50,16 @@ from routers.accelerators import (
     list_resident_homework,
     list_resident_program_stages,
     list_resident_events,
+    list_event_attendance,
     list_residents,
     list_membership_events,
     cohort_resident_report,
+    tracking_dashboard,
+    membership_tracking,
+    upsert_progress_checkin,
+    create_tracking_feedback,
+    create_tracking_task,
+    update_tracking_task,
     get_resident_quota,
     get_program_config,
     publish_homework_assignment,
@@ -70,6 +77,7 @@ from routers.accelerators import (
     update_cohort_status,
     update_membership_status,
     update_tracker_assignments,
+    mark_event_attendance,
     validate_application_form,
 )
 from schemas.accelerators import (
@@ -97,6 +105,10 @@ from schemas.accelerators import (
     ResidentQuotaLimits,
     StatusUpdate,
     MembershipStatusUpdate,
+    ProgressCheckinUpsert,
+    TrackingFeedbackCreate,
+    TrackingTaskCreate,
+    TrackingTaskUpdate,
 )
 from subscription_service import consume_quota
 from sqlalchemy import func, select
@@ -560,6 +572,15 @@ async def test_tracker_report_scope_and_resident_lifecycle():
         cohort = await create_cohort(
             accelerator["id"], CohortCreate(name="Tracker cohort"), organizer, db
         )
+        await update_program_config(
+            cohort["id"],
+            ProgramConfigUpdate(
+                version=1,
+                modules={"homework": True, "attendance": True, "progress_tracking": True},
+            ),
+            organizer,
+            db,
+        )
         await assign_cohort_quota(
             cohort["id"],
             CohortQuotaAssign(
@@ -616,6 +637,137 @@ async def test_tracker_report_scope_and_resident_lifecycle():
         with pytest.raises(HTTPException) as no_report_access:
             await cohort_resident_report(cohort["id"], "json", outsider, db)
         assert no_report_access.value.status_code == 403
+
+        checkin = await upsert_progress_checkin(
+            membership_ids[0],
+            ProgressCheckinUpsert(
+                health="yellow",
+                summary="Проверили две гипотезы",
+                blockers="Не хватает интервью",
+                next_steps="Провести ещё пять интервью",
+                help_needed="Нужны контакты респондентов",
+            ),
+            BackgroundTasks(),
+            first_resident,
+            db,
+        )
+        assert checkin["health"] == "yellow"
+        feedback = await create_tracking_feedback(
+            membership_ids[0],
+            TrackingFeedbackCreate(body="Сфокусируйтесь на одном сегменте"),
+            BackgroundTasks(),
+            tracker,
+            db,
+        )
+        assert feedback["body"].startswith("Сфокусируйтесь")
+        task = await create_tracking_task(
+            membership_ids[0],
+            TrackingTaskCreate(
+                title="Провести интервью",
+                due_at=datetime.utcnow() + timedelta(days=3),
+            ),
+            BackgroundTasks(),
+            tracker,
+            db,
+        )
+        completed_task = await update_tracking_task(
+            task["id"], TrackingTaskUpdate(status="done"), BackgroundTasks(), first_resident, db
+        )
+        assert completed_task["status"] == "done"
+        tracking = await membership_tracking(membership_ids[0], tracker, db)
+        assert tracking["access_role"] == "tracker"
+        assert len(tracking["checkins"]) == 1
+        assert len(tracking["feedback"]) == 1
+        assert tracking["tasks"][0]["status"] == "done"
+        dashboard = await tracking_dashboard(cohort["id"], tracker, db)
+        assert [row["membership_id"] for row in dashboard["rows"]] == [membership_ids[0]]
+        assert dashboard["rows"][0]["risk"]["last_checkin_health"] == "yellow"
+        with pytest.raises(HTTPException) as tracker_cannot_task_other:
+            await create_tracking_task(
+                membership_ids[1],
+                TrackingTaskCreate(title="Недоступная задача"),
+                BackgroundTasks(),
+                tracker,
+                db,
+            )
+        assert tracker_cannot_task_other.value.status_code == 403
+
+        assignment = await create_homework_assignment(
+            cohort["id"],
+            HomeworkAssignmentCreate(
+                title="Проверка трекера",
+                description="Отправьте короткий ответ",
+                due_at=datetime.utcnow() + timedelta(days=2),
+            ),
+            organizer,
+            db,
+        )
+        await publish_homework_assignment(
+            assignment["id"], BackgroundTasks(), organizer, db
+        )
+        first_submission = await submit_homework(
+            assignment["id"],
+            HomeworkSubmissionUpsert(answer_text="Ответ первого резидента"),
+            BackgroundTasks(),
+            first_resident,
+            db,
+        )
+        second_submission = await submit_homework(
+            assignment["id"],
+            HomeworkSubmissionUpsert(answer_text="Ответ второго резидента"),
+            BackgroundTasks(),
+            second_resident,
+            db,
+        )
+        tracker_submissions = await list_homework_submissions(
+            assignment["id"], tracker, db
+        )
+        assert [row["id"] for row in tracker_submissions] == [first_submission["id"]]
+        await review_homework_submission(
+            first_submission["id"],
+            HomeworkReview(status="accepted"),
+            BackgroundTasks(),
+            tracker,
+            db,
+        )
+        with pytest.raises(HTTPException) as tracker_cannot_review_other:
+            await review_homework_submission(
+                second_submission["id"],
+                HomeworkReview(status="accepted"),
+                BackgroundTasks(),
+                tracker,
+                db,
+            )
+        assert tracker_cannot_review_other.value.status_code == 403
+
+        event = await create_event(
+            cohort["id"],
+            EventCreate(
+                title="Трекерская встреча",
+                starts_at=datetime.utcnow() + timedelta(hours=1),
+                ends_at=datetime.utcnow() + timedelta(hours=2),
+            ),
+            organizer,
+            db,
+        )
+        await publish_event(event["id"], organizer, db)
+        tracker_attendance = await list_event_attendance(event["id"], tracker, db)
+        assert [row["membership_id"] for row in tracker_attendance] == [membership_ids[0]]
+        marked = await mark_event_attendance(
+            event["id"],
+            AttendanceMark(membership_id=membership_ids[0], status="present"),
+            tracker,
+            db,
+        )
+        assert marked["status"] == "present"
+        with pytest.raises(HTTPException) as tracker_cannot_mark_other:
+            await mark_event_attendance(
+                event["id"],
+                AttendanceMark(membership_id=membership_ids[1], status="present"),
+                tracker,
+                db,
+            )
+        assert tracker_cannot_mark_other.value.status_code == 403
 
         with pytest.raises(HTTPException) as tracker_cannot_suspend:
             await update_membership_status(

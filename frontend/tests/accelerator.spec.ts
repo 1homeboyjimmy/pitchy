@@ -40,17 +40,21 @@ test('tracker sees reporting only for assigned residents', async ({ page }) => {
   await page.route('**/api/accelerators', async (route) => route.fulfill({ json: [{ id: 7, name: 'Тестовый акселератор', status: 'active', access_role: 'tracker' }] }));
   await page.route('**/api/accelerators/me/memberships', async (route) => route.fulfill({ json: { memberships: [], effective_quotas: {} } }));
   await page.route('**/api/accelerators/7/cohorts', async (route) => route.fulfill({ json: [{ id: 12, accelerator_id: 7, name: 'Поток 2026', status: 'active', timezone: 'Europe/Moscow', application_form_schema: { title: 'Заявка', fields: [] } }] }));
-  await page.route('**/api/accelerators/cohorts/12/program-config', async (route) => route.fulfill({ json: { cohort_id: 12, version: 1, modules: { applications: true, program: true, homework: true, attendance: true }, locked_modules: { applications: true, program: true } } }));
+  await page.route('**/api/accelerators/cohorts/12/program-config', async (route) => route.fulfill({ json: { cohort_id: 12, version: 1, modules: { applications: true, program: true, homework: true, attendance: true, progress_tracking: true }, locked_modules: { applications: true, program: true } } }));
   await page.route('**/api/accelerators/cohorts/12/residents', async (route) => route.fulfill({ json: [{ membership_id: 101, user_id: 8, name: 'Резидент А', email: 'resident@example.test', status: 'enrolled', trackers: [{ user_id: 5, name: 'Tracker' }] }] }));
   await page.route('**/api/accelerators/cohorts/12/report', async (route) => route.fulfill({ json: {
     access_role: 'tracker',
     summary: { residents: 1, enrolled: 1, suspended: 0, completed: 0, overdue_homework: 1 },
     rows: [{ membership_id: 101, name: 'Резидент А', email: 'resident@example.test', status: 'enrolled', trackers: [{ user_id: 5, name: 'Tracker' }], program: { completed: 2, total: 4, percent: 50 }, homework: { accepted: 1, waiting_review: 0, overdue: 1, total: 2 }, attendance: { present: 3, marked: 4, total: 5 }, quota: {}, last_activity_at: null }],
   } }));
-  await page.route('**/api/accelerators/memberships/101/events', async (route) => route.fulfill({ json: [
+  await page.route('**/api/accelerators/memberships/101/lifecycle-events', async (route) => route.fulfill({ json: [
     { id: 1, from_status: null, to_status: 'accepted', reason: 'Заявка одобрена', created_at: '2026-08-01T10:00:00' },
     { id: 2, from_status: 'accepted', to_status: 'enrolled', reason: 'Зачислен в поток', created_at: '2026-08-02T10:00:00' },
   ] }));
+  await page.route('**/api/accelerators/cohorts/12/tracking-dashboard', async (route) => route.fulfill({ json: {
+    summary: { residents: 1, green: 0, yellow: 1, red: 0, overdue_tasks: 0 },
+    rows: [{ membership_id: 101, name: 'Резидент А', email: 'resident@example.test', status: 'enrolled', program: { percent: 50 }, homework: { overdue: 1 }, attendance: { present: 3, total: 5 }, open_tasks: 1, risk: { level: 'yellow', reasons: ['Нет чек-ина за текущую неделю'], overdue_homework: 1, overdue_tasks: 0, attendance_percent: 60 } }],
+  } }));
 
   await page.goto('/accelerator');
   await expect(page.getByText('Роль: трекер')).toBeVisible();
@@ -63,6 +67,9 @@ test('tracker sees reporting only for assigned residents', async ({ page }) => {
   await page.getByRole('button', { name: 'История', exact: true }).click();
   await expect(page.getByText('Заявка одобрена')).toBeVisible();
   await expect(page.getByText('Зачислен в поток')).toBeVisible();
+  await page.getByRole('button', { name: 'Трекинг', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Трекинг прогресса' })).toBeVisible();
+  await expect(page.getByText('Нужна внимательность')).toBeVisible();
 });
 
 test('participant without a project does not see project questions', async ({ page }) => {

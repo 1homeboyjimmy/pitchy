@@ -12,6 +12,7 @@ type Limits = { messages: number; roadmaps: number; custdev: number; grants: num
 const MODULES = [
   { key: "homework", label: "Домашние задания", text: "Задания, ответы и проверка" },
   { key: "attendance", label: "Посещаемость", text: "События, QR и отметки" },
+  { key: "progress_tracking", label: "Трекинг прогресса", text: "Чек-ины, риски и задачи трекера" },
 ] as const;
 
 export function AcceleratorSetupWizard({ token, onCreated, onCancel }: { token: string; onCreated: (result: SetupResult) => Promise<void> | void; onCancel?: () => void }) {
@@ -26,7 +27,7 @@ export function AcceleratorSetupWizard({ token, onCreated, onCancel }: { token: 
   const [timezone, setTimezone] = useState("Europe/Moscow");
   const [startsAt, setStartsAt] = useState("");
   const [endsAt, setEndsAt] = useState("");
-  const [modules, setModules] = useState({ homework: true, attendance: true });
+  const [modules, setModules] = useState({ homework: true, attendance: true, progress_tracking: true });
   const [limits, setLimits] = useState<Limits>({ messages: 70, roadmaps: 4, custdev: 2, grants: 1 });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 import csv
 import hashlib
 import io
@@ -57,8 +57,11 @@ from models import (
     AcceleratorProgramMaterialProgress,
     AcceleratorProgramStage,
     AcceleratorProgramStageProgress,
+    AcceleratorProgressCheckin,
     AcceleratorResidentQuotaOverride,
     AcceleratorStaff,
+    AcceleratorTrackingFeedback,
+    AcceleratorTrackingTask,
     AcceleratorTrackerAssignment,
     Project,
     User,
@@ -91,6 +94,10 @@ from schemas.accelerators import (
     ResidentQuotaAssign,
     StatusUpdate,
     MembershipStatusUpdate,
+    ProgressCheckinUpsert,
+    TrackingFeedbackCreate,
+    TrackingTaskCreate,
+    TrackingTaskUpdate,
 )
 
 
@@ -101,6 +108,7 @@ DEFAULT_MODULES = {
     "program": True,
     "homework": False,
     "attendance": False,
+    "progress_tracking": False,
 }
 LOCKED_BASE_MODULES = {"applications": True, "program": True}
 COHORT_STATUS_TRANSITIONS = {
@@ -189,6 +197,17 @@ async def require_attendance_module(db: AsyncSession, cohort: AcceleratorCohort)
     ))).scalar_one_or_none()
     if not config or not (config.modules or {}).get("attendance"):
         raise HTTPException(status_code=409, detail="Модуль посещаемости не включён для этого потока")
+    return config
+
+
+async def require_progress_tracking_module(
+    db: AsyncSession, cohort: AcceleratorCohort
+) -> AcceleratorProgramConfig:
+    config = (await db.execute(select(AcceleratorProgramConfig).where(
+        AcceleratorProgramConfig.cohort_id == cohort.id
+    ))).scalar_one_or_none()
+    if not config or not (config.modules or {}).get("progress_tracking"):
+        raise HTTPException(status_code=409, detail="Модуль трекинга прогресса не включён для этого потока")
     return config
 
 
@@ -1674,30 +1693,47 @@ async def list_homework_assignments(
     db: AsyncSession = Depends(get_async_db),
 ):
     cohort = await get_cohort_or_404(db, cohort_id)
-    await require_cohort_manager(db, user, cohort)
+    access_role = await require_cohort_reader(db, user, cohort)
     await require_homework_module(db, cohort)
+    assignment_query = select(AcceleratorHomeworkAssignment).where(
+        AcceleratorHomeworkAssignment.cohort_id == cohort.id,
+        AcceleratorHomeworkAssignment.status != "archived",
+    )
+    assigned_ids: set[int] | None = None
+    if access_role == "tracker":
+        assigned_ids = await tracker_membership_ids(db, user.id, cohort.id)
+        assignment_query = assignment_query.where(AcceleratorHomeworkAssignment.status == "published")
     assignments = (await db.execute(
-        select(AcceleratorHomeworkAssignment)
-        .where(
-            AcceleratorHomeworkAssignment.cohort_id == cohort.id,
-            AcceleratorHomeworkAssignment.status != "archived",
-        )
-        .order_by(AcceleratorHomeworkAssignment.created_at.desc())
+        assignment_query.order_by(AcceleratorHomeworkAssignment.created_at.desc())
     )).scalars().all()
     result = []
-    enrolled_count = (await db.execute(select(func.count(AcceleratorMembership.id)).where(
-        AcceleratorMembership.cohort_id == cohort.id,
-        AcceleratorMembership.role == "resident",
-        AcceleratorMembership.status == "enrolled",
-    ))).scalar_one()
+    if assigned_ids is not None:
+        enrolled_count = (await db.execute(select(func.count(AcceleratorMembership.id)).where(
+            AcceleratorMembership.id.in_(assigned_ids),
+            AcceleratorMembership.status == "enrolled",
+        ))).scalar_one()
+    else:
+        enrolled_count = (await db.execute(select(func.count(AcceleratorMembership.id)).where(
+            AcceleratorMembership.cohort_id == cohort.id,
+            AcceleratorMembership.role == "resident",
+            AcceleratorMembership.status == "enrolled",
+        ))).scalar_one()
     for assignment in assignments:
         target_ids = list((await db.execute(select(AcceleratorHomeworkTarget.membership_id).where(
             AcceleratorHomeworkTarget.assignment_id == assignment.id
         ))).scalars().all())
-        status_rows = (await db.execute(
+        if assigned_ids is not None:
+            target_ids = [membership_id for membership_id in target_ids if membership_id in assigned_ids]
+            if assignment.audience == "selected" and not target_ids:
+                continue
+        status_query = (
             select(AcceleratorHomeworkSubmission.status, func.count(AcceleratorHomeworkSubmission.id))
             .where(AcceleratorHomeworkSubmission.assignment_id == assignment.id)
-            .group_by(AcceleratorHomeworkSubmission.status)
+        )
+        if assigned_ids is not None:
+            status_query = status_query.where(AcceleratorHomeworkSubmission.membership_id.in_(assigned_ids))
+        status_rows = (await db.execute(
+            status_query.group_by(AcceleratorHomeworkSubmission.status)
         )).all()
         status_counts = {status: count for status, count in status_rows}
         result.append({
@@ -2082,19 +2118,29 @@ async def submit_homework(
         db.add(submission)
     await db.flush()
     reviewer = await db.get(User, assignment.created_by_user_id)
-    notification = None
-    if reviewer and reviewer.is_active and reviewer.deleted_at is None:
-        accelerator = await get_accelerator_or_404(db, cohort.accelerator_id)
+    tracker_reviewers = (await db.execute(
+        select(User)
+        .join(AcceleratorTrackerAssignment, AcceleratorTrackerAssignment.tracker_user_id == User.id)
+        .where(AcceleratorTrackerAssignment.membership_id == membership.id)
+    )).scalars().all()
+    reviewers = {
+        row.id: row for row in ([reviewer] if reviewer else []) + list(tracker_reviewers)
+        if row.is_active and row.deleted_at is None
+    }
+    notification_ids = []
+    accelerator = await get_accelerator_or_404(db, cohort.accelerator_id)
+    for recipient in reviewers.values():
         notification = await enqueue_notification(
             db,
             accelerator_id=accelerator.id,
             cohort_id=cohort.id,
-            recipient_email=reviewer.email,
+            recipient_email=recipient.email,
             event_type="homework_submitted",
             subject=f"Получен ответ: {assignment.title}",
             body=f"Резидент {user.name} отправил ответ на задание «{assignment.title}».\n\nОткрыть проверку: {os.getenv('FRONTEND_URL', 'https://pitchy.pro').rstrip('/')}/accelerator",
-            idempotency_key=f"homework-submitted:{submission.id}:{submission.attempt_count}",
+            idempotency_key=f"homework-submitted:{submission.id}:{submission.attempt_count}:{recipient.id}",
         )
+        notification_ids.append(notification.id)
     add_audit(
         db,
         accelerator_id=cohort.accelerator_id,
@@ -2106,8 +2152,8 @@ async def submit_homework(
         details={"assignment_id": assignment.id, "attempt": submission.attempt_count},
     )
     await db.commit()
-    if notification:
-        background_tasks.add_task(process_notification_event, notification.id)
+    for notification_id in notification_ids:
+        background_tasks.add_task(process_notification_event, notification_id)
     data = homework_submission_dict(submission)
     data["is_late"] = bool(assignment.due_at and submission.submitted_at > assignment.due_at)
     return data
@@ -2121,14 +2167,22 @@ async def list_homework_submissions(
 ):
     assignment = await get_homework_assignment_or_404(db, assignment_id)
     cohort = await get_cohort_or_404(db, assignment.cohort_id)
-    await require_cohort_manager(db, user, cohort)
+    access_role = await require_cohort_reader(db, user, cohort)
     await require_homework_module(db, cohort)
-    rows = (await db.execute(
+    submission_query = (
         select(AcceleratorHomeworkSubmission, User)
         .join(AcceleratorMembership, AcceleratorMembership.id == AcceleratorHomeworkSubmission.membership_id)
         .join(User, User.id == AcceleratorMembership.user_id)
         .where(AcceleratorHomeworkSubmission.assignment_id == assignment.id)
-        .order_by(AcceleratorHomeworkSubmission.submitted_at.desc())
+    )
+    if access_role == "tracker":
+        submission_query = submission_query.where(
+            AcceleratorHomeworkSubmission.membership_id.in_(
+                await tracker_membership_ids(db, user.id, cohort.id)
+            )
+        )
+    rows = (await db.execute(
+        submission_query.order_by(AcceleratorHomeworkSubmission.submitted_at.desc())
     )).all()
     result = []
     for submission, resident in rows:
@@ -2153,15 +2207,15 @@ async def review_homework_submission(
         raise HTTPException(status_code=404, detail="Ответ не найден")
     assignment = await get_homework_assignment_or_404(db, submission.assignment_id)
     cohort = await get_cohort_or_404(db, assignment.cohort_id)
-    await require_cohort_manager(db, user, cohort)
     await require_homework_module(db, cohort)
+    membership = await db.get(AcceleratorMembership, submission.membership_id)
+    await require_tracker_membership_access(db, user, membership)
     if submission.status not in ("submitted", "needs_revision"):
         raise HTTPException(status_code=409, detail="Ответ уже проверен")
     submission.status = payload.status
     submission.review_comment = (payload.comment or "").strip() or None
     submission.reviewed_by_user_id = user.id
     submission.reviewed_at = datetime.utcnow()
-    membership = await db.get(AcceleratorMembership, submission.membership_id)
     resident = await db.get(User, membership.user_id) if membership else None
     notification = None
     if resident:
@@ -2231,16 +2285,25 @@ async def list_events(
     db: AsyncSession = Depends(get_async_db),
 ):
     cohort = await get_cohort_or_404(db, cohort_id)
-    await require_cohort_manager(db, user, cohort)
+    access_role = await require_cohort_reader(db, user, cohort)
     await require_attendance_module(db, cohort)
-    rows = (await db.execute(select(AcceleratorEvent).where(
+    event_query = select(AcceleratorEvent).where(
         AcceleratorEvent.cohort_id == cohort.id,
         AcceleratorEvent.status != "archived",
-    ).order_by(AcceleratorEvent.starts_at))).scalars().all()
-    counts = dict((await db.execute(
+    )
+    if access_role == "tracker":
+        event_query = event_query.where(AcceleratorEvent.status == "published")
+    rows = (await db.execute(event_query.order_by(AcceleratorEvent.starts_at))).scalars().all()
+    count_query = (
         select(AcceleratorAttendanceRecord.event_id, func.count(AcceleratorAttendanceRecord.id))
         .where(AcceleratorAttendanceRecord.status == "present")
-        .group_by(AcceleratorAttendanceRecord.event_id)
+    )
+    if access_role == "tracker":
+        count_query = count_query.where(AcceleratorAttendanceRecord.membership_id.in_(
+            await tracker_membership_ids(db, user.id, cohort.id)
+        ))
+    counts = dict((await db.execute(
+        count_query.group_by(AcceleratorAttendanceRecord.event_id)
     )).all())
     return [event_dict(row, attendance_count=counts.get(row.id, 0)) for row in rows]
 
@@ -2420,9 +2483,9 @@ async def list_event_attendance(
     if not event:
         raise HTTPException(status_code=404, detail="Мероприятие не найдено")
     cohort = await get_cohort_or_404(db, event.cohort_id)
-    await require_cohort_manager(db, user, cohort)
+    access_role = await require_cohort_reader(db, user, cohort)
     await require_attendance_module(db, cohort)
-    rows = (await db.execute(
+    attendance_query = (
         select(AcceleratorMembership, User, AcceleratorAttendanceRecord)
         .join(User, User.id == AcceleratorMembership.user_id)
         .outerjoin(AcceleratorAttendanceRecord, (
@@ -2432,8 +2495,12 @@ async def list_event_attendance(
         .where(AcceleratorMembership.cohort_id == cohort.id,
                AcceleratorMembership.role == "resident",
                AcceleratorMembership.status == "enrolled")
-        .order_by(User.name)
-    )).all()
+    )
+    if access_role == "tracker":
+        attendance_query = attendance_query.where(AcceleratorMembership.id.in_(
+            await tracker_membership_ids(db, user.id, cohort.id)
+        ))
+    rows = (await db.execute(attendance_query.order_by(User.name))).all()
     return [{
         "membership_id": membership.id, "name": resident.name, "email": resident.email,
         "status": attendance.status if attendance else "not_marked",
@@ -2453,11 +2520,11 @@ async def mark_event_attendance(
     if not event:
         raise HTTPException(status_code=404, detail="Мероприятие не найдено")
     cohort = await get_cohort_or_404(db, event.cohort_id)
-    await require_cohort_manager(db, user, cohort)
     await require_attendance_module(db, cohort)
     membership = await db.get(AcceleratorMembership, payload.membership_id)
     if not membership or membership.cohort_id != cohort.id or membership.status != "enrolled":
         raise HTTPException(status_code=422, detail="Резидент не зачислен в этот поток")
+    await require_tracker_membership_access(db, user, membership)
     record = (await db.execute(select(AcceleratorAttendanceRecord).where(
         AcceleratorAttendanceRecord.event_id == event.id,
         AcceleratorAttendanceRecord.membership_id == membership.id,
@@ -3143,7 +3210,7 @@ async def update_membership_status(
     }
 
 
-@router.get("/memberships/{membership_id}/events")
+@router.get("/memberships/{membership_id}/lifecycle-events")
 async def list_membership_events(
     membership_id: int,
     user: User = Depends(get_async_current_user),
@@ -3353,6 +3420,432 @@ async def cohort_resident_report(
         },
         "rows": rows,
     }
+
+
+async def tracking_membership_context(
+    db: AsyncSession, membership_id: int, user: User
+) -> tuple[AcceleratorMembership, AcceleratorCohort, str]:
+    membership = await db.get(AcceleratorMembership, membership_id)
+    if not membership or membership.role != "resident":
+        raise HTTPException(status_code=404, detail="Резидент не найден")
+    cohort = await get_cohort_or_404(db, membership.cohort_id)
+    await require_progress_tracking_module(db, cohort)
+    if membership.user_id == user.id:
+        return membership, cohort, "resident"
+    return membership, cohort, await require_tracker_membership_access(db, user, membership)
+
+
+def tracking_task_dict(task: AcceleratorTrackingTask) -> dict:
+    return {
+        "id": task.id,
+        "membership_id": task.membership_id,
+        "created_by_user_id": task.created_by_user_id,
+        "title": task.title,
+        "description": task.description,
+        "status": task.status,
+        "due_at": task.due_at,
+        "completed_at": task.completed_at,
+        "completed_by_user_id": task.completed_by_user_id,
+        "created_at": task.created_at,
+        "updated_at": task.updated_at,
+    }
+
+
+async def membership_tracking_risk(
+    db: AsyncSession, membership: AcceleratorMembership
+) -> dict:
+    now = datetime.utcnow()
+    current_week = date.today() - timedelta(days=date.today().weekday())
+    config = (await db.execute(select(AcceleratorProgramConfig).where(
+        AcceleratorProgramConfig.cohort_id == membership.cohort_id
+    ))).scalar_one_or_none()
+    modules = (config.modules or {}) if config else {}
+    latest_checkin = (await db.execute(
+        select(AcceleratorProgressCheckin)
+        .where(AcceleratorProgressCheckin.membership_id == membership.id)
+        .order_by(AcceleratorProgressCheckin.period_start.desc())
+        .limit(1)
+    )).scalar_one_or_none()
+
+    assignments = list((await db.execute(select(AcceleratorHomeworkAssignment).where(
+        AcceleratorHomeworkAssignment.cohort_id == membership.cohort_id,
+        AcceleratorHomeworkAssignment.status == "published",
+        AcceleratorHomeworkAssignment.due_at.is_not(None),
+        AcceleratorHomeworkAssignment.due_at < now,
+    ))).scalars().all()) if modules.get("homework") else []
+    overdue_homework = 0
+    for assignment in assignments:
+        if assignment.audience == "selected":
+            targeted = (await db.execute(select(AcceleratorHomeworkTarget.id).where(
+                AcceleratorHomeworkTarget.assignment_id == assignment.id,
+                AcceleratorHomeworkTarget.membership_id == membership.id,
+            ))).scalar_one_or_none()
+            if targeted is None:
+                continue
+        accepted_or_waiting = (await db.execute(select(AcceleratorHomeworkSubmission.id).where(
+            AcceleratorHomeworkSubmission.assignment_id == assignment.id,
+            AcceleratorHomeworkSubmission.membership_id == membership.id,
+            AcceleratorHomeworkSubmission.status.in_(("submitted", "accepted")),
+        ))).scalar_one_or_none()
+        overdue_homework += int(accepted_or_waiting is None)
+
+    overdue_tasks = (await db.execute(select(func.count(AcceleratorTrackingTask.id)).where(
+        AcceleratorTrackingTask.membership_id == membership.id,
+        AcceleratorTrackingTask.status == "open",
+        AcceleratorTrackingTask.due_at.is_not(None),
+        AcceleratorTrackingTask.due_at < now,
+    ))).scalar_one()
+    past_event_ids = list((await db.execute(select(AcceleratorEvent.id).where(
+        AcceleratorEvent.cohort_id == membership.cohort_id,
+        AcceleratorEvent.status == "published",
+        AcceleratorEvent.ends_at < now,
+    ))).scalars().all()) if modules.get("attendance") else []
+    present_count = (await db.execute(select(func.count(AcceleratorAttendanceRecord.id)).where(
+        AcceleratorAttendanceRecord.membership_id == membership.id,
+        AcceleratorAttendanceRecord.event_id.in_(past_event_ids),
+        AcceleratorAttendanceRecord.status == "present",
+    ))).scalar_one() if past_event_ids else 0
+
+    activity_values = [membership.updated_at, membership.enrolled_at, membership.accepted_at]
+    for model, field in (
+        (AcceleratorProgressCheckin, AcceleratorProgressCheckin.created_at),
+        (AcceleratorHomeworkSubmission, AcceleratorHomeworkSubmission.submitted_at),
+        (AcceleratorAttendanceRecord, AcceleratorAttendanceRecord.updated_at),
+        (AcceleratorProgramStageProgress, AcceleratorProgramStageProgress.completed_at),
+    ):
+        latest = (await db.execute(select(func.max(field)).where(
+            model.membership_id == membership.id
+        ))).scalar_one()
+        activity_values.append(latest)
+    activity_values = [value for value in activity_values if value is not None]
+    last_activity_at = max(activity_values) if activity_values else None
+    inactive_days = (now - last_activity_at).days if last_activity_at else 999
+    attendance_total = len(past_event_ids)
+    attendance_percent = round(present_count * 100 / attendance_total) if attendance_total else 100
+
+    red_reasons: list[str] = []
+    yellow_reasons: list[str] = []
+    if inactive_days >= 14:
+        red_reasons.append(f"Нет активности {inactive_days} дней")
+    elif inactive_days >= 7:
+        yellow_reasons.append(f"Нет активности {inactive_days} дней")
+    if overdue_tasks:
+        red_reasons.append(f"Просрочено задач: {overdue_tasks}")
+    if overdue_homework >= 2:
+        red_reasons.append(f"Просрочено домашних заданий: {overdue_homework}")
+    elif overdue_homework == 1:
+        yellow_reasons.append("Просрочено домашнее задание")
+    if attendance_total >= 2 and attendance_percent < 50:
+        red_reasons.append(f"Посещаемость {attendance_percent}%")
+    elif attendance_total and present_count < attendance_total:
+        yellow_reasons.append(f"Посещаемость {attendance_percent}%")
+    if latest_checkin and latest_checkin.health == "red":
+        red_reasons.append("Резидент отметил критическое состояние")
+    elif latest_checkin and latest_checkin.health == "yellow":
+        yellow_reasons.append("Резидент отметил сложности")
+    if latest_checkin and latest_checkin.period_start < current_week:
+        yellow_reasons.append("Нет чек-ина за текущую неделю")
+    elif not latest_checkin and membership.enrolled_at and (now - membership.enrolled_at).days >= 7:
+        yellow_reasons.append("Первый чек-ин ещё не заполнен")
+    level = "red" if red_reasons else "yellow" if yellow_reasons else "green"
+    return {
+        "level": level,
+        "reasons": red_reasons + yellow_reasons,
+        "last_activity_at": last_activity_at,
+        "inactive_days": inactive_days,
+        "overdue_homework": overdue_homework,
+        "overdue_tasks": int(overdue_tasks or 0),
+        "attendance_percent": attendance_percent,
+        "last_checkin_at": latest_checkin.created_at if latest_checkin else None,
+        "last_checkin_health": latest_checkin.health if latest_checkin else None,
+    }
+
+
+@router.get("/cohorts/{cohort_id}/tracking-dashboard")
+async def tracking_dashboard(
+    cohort_id: int,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    cohort = await get_cohort_or_404(db, cohort_id)
+    await require_progress_tracking_module(db, cohort)
+    report = await cohort_resident_report(cohort_id, "json", user, db)
+    rows = []
+    for report_row in report["rows"]:
+        membership = await db.get(AcceleratorMembership, report_row["membership_id"])
+        risk = await membership_tracking_risk(db, membership)
+        open_tasks = (await db.execute(select(func.count(AcceleratorTrackingTask.id)).where(
+            AcceleratorTrackingTask.membership_id == membership.id,
+            AcceleratorTrackingTask.status == "open",
+        ))).scalar_one()
+        rows.append({**report_row, "risk": risk, "open_tasks": int(open_tasks or 0)})
+    return {
+        "cohort_id": cohort.id,
+        "access_role": report["access_role"],
+        "summary": {
+            "residents": len(rows),
+            "green": sum(row["risk"]["level"] == "green" for row in rows),
+            "yellow": sum(row["risk"]["level"] == "yellow" for row in rows),
+            "red": sum(row["risk"]["level"] == "red" for row in rows),
+            "overdue_tasks": sum(row["risk"]["overdue_tasks"] for row in rows),
+        },
+        "rows": rows,
+    }
+
+
+@router.get("/memberships/{membership_id}/tracking")
+async def membership_tracking(
+    membership_id: int,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    membership, _, access_role = await tracking_membership_context(db, membership_id, user)
+    checkins = (await db.execute(
+        select(AcceleratorProgressCheckin, User)
+        .join(User, User.id == AcceleratorProgressCheckin.author_user_id)
+        .where(AcceleratorProgressCheckin.membership_id == membership.id)
+        .order_by(AcceleratorProgressCheckin.period_start.desc())
+    )).all()
+    feedback = (await db.execute(
+        select(AcceleratorTrackingFeedback, User)
+        .join(User, User.id == AcceleratorTrackingFeedback.author_user_id)
+        .where(AcceleratorTrackingFeedback.membership_id == membership.id)
+        .order_by(AcceleratorTrackingFeedback.created_at.desc())
+    )).all()
+    tasks = (await db.execute(select(AcceleratorTrackingTask).where(
+        AcceleratorTrackingTask.membership_id == membership.id
+    ).order_by(
+        AcceleratorTrackingTask.status != "open",
+        AcceleratorTrackingTask.due_at.is_(None),
+        AcceleratorTrackingTask.due_at,
+        AcceleratorTrackingTask.created_at.desc(),
+    ))).scalars().all()
+    return {
+        "membership_id": membership.id,
+        "access_role": access_role,
+        "risk": await membership_tracking_risk(db, membership),
+        "checkins": [{
+            "id": row.id, "period_start": row.period_start, "health": row.health,
+            "summary": row.summary, "blockers": row.blockers, "next_steps": row.next_steps,
+            "help_needed": row.help_needed, "created_at": row.created_at,
+            "author": {"id": author.id, "name": author.name},
+        } for row, author in checkins],
+        "feedback": [{
+            "id": row.id, "body": row.body, "created_at": row.created_at,
+            "author": {"id": author.id, "name": author.name},
+        } for row, author in feedback],
+        "tasks": [tracking_task_dict(row) for row in tasks],
+    }
+
+
+@router.post("/memberships/{membership_id}/checkins")
+async def upsert_progress_checkin(
+    membership_id: int,
+    payload: ProgressCheckinUpsert,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    membership, cohort, access_role = await tracking_membership_context(db, membership_id, user)
+    if access_role != "resident" or membership.status != "enrolled":
+        raise HTTPException(status_code=403, detail="Чек-ин заполняет сам зачисленный резидент")
+    today = date.today()
+    requested_period = payload.period_start or today
+    if requested_period > today or requested_period < today - timedelta(days=31):
+        raise HTTPException(status_code=422, detail="Чек-ин можно заполнить только за последние 31 день")
+    period_start = requested_period - timedelta(days=requested_period.weekday())
+    checkin = (await db.execute(select(AcceleratorProgressCheckin).where(
+        AcceleratorProgressCheckin.membership_id == membership.id,
+        AcceleratorProgressCheckin.period_start == period_start,
+    ).with_for_update())).scalar_one_or_none()
+    if not checkin:
+        checkin = AcceleratorProgressCheckin(
+            membership_id=membership.id, author_user_id=user.id, period_start=period_start,
+            summary=payload.summary, next_steps=payload.next_steps,
+        )
+        db.add(checkin)
+    checkin.health = payload.health
+    checkin.summary = payload.summary
+    checkin.blockers = payload.blockers
+    checkin.next_steps = payload.next_steps
+    checkin.help_needed = payload.help_needed
+    await db.flush()
+    tracker_rows = (await db.execute(
+        select(User)
+        .join(AcceleratorTrackerAssignment, AcceleratorTrackerAssignment.tracker_user_id == User.id)
+        .where(AcceleratorTrackerAssignment.membership_id == membership.id)
+    )).scalars().all()
+    notification_ids = []
+    for tracker in tracker_rows:
+        notification = await enqueue_notification(
+            db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+            recipient_email=tracker.email, event_type="progress_checkin_submitted",
+            subject=f"Новый чек-ин: {user.name}",
+            body=f"{user.name} заполнил чек-ин за неделю {period_start.isoformat()}.\n\nОткрыть: {os.getenv('FRONTEND_URL', 'https://pitchy.pro').rstrip('/')}/accelerator",
+            idempotency_key=f"progress-checkin:{checkin.id}:{checkin.updated_at.isoformat()}",
+        )
+        notification_ids.append(notification.id)
+    add_audit(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        actor_user_id=user.id, action="tracking.checkin_upserted",
+        target_type="progress_checkin", target_id=checkin.id,
+        details={"membership_id": membership.id, "health": checkin.health},
+    )
+    await db.commit()
+    for notification_id in notification_ids:
+        background_tasks.add_task(process_notification_event, notification_id)
+    return {"id": checkin.id, "period_start": checkin.period_start, "health": checkin.health}
+
+
+@router.post("/memberships/{membership_id}/tracking-feedback")
+async def create_tracking_feedback(
+    membership_id: int,
+    payload: TrackingFeedbackCreate,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    membership, cohort, access_role = await tracking_membership_context(db, membership_id, user)
+    if access_role == "resident":
+        raise HTTPException(status_code=403, detail="Обратную связь оставляет трекер или организатор")
+    if membership.status not in ("enrolled", "suspended"):
+        raise HTTPException(status_code=409, detail="Обратная связь доступна только активному резиденту")
+    feedback = AcceleratorTrackingFeedback(
+        membership_id=membership.id, author_user_id=user.id, body=payload.body
+    )
+    db.add(feedback)
+    await db.flush()
+    resident = await db.get(User, membership.user_id)
+    notification = await enqueue_notification(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        recipient_email=resident.email, event_type="tracking_feedback_created",
+        subject="Новая обратная связь от трекера",
+        body=f"Здравствуйте, {resident.name}!\n\n{payload.body}\n\nОткрыть: {os.getenv('FRONTEND_URL', 'https://pitchy.pro').rstrip('/')}/accelerator",
+        idempotency_key=f"tracking-feedback:{feedback.id}",
+    )
+    add_audit(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        actor_user_id=user.id, action="tracking.feedback_created",
+        target_type="tracking_feedback", target_id=feedback.id,
+        details={"membership_id": membership.id},
+    )
+    await db.commit()
+    background_tasks.add_task(process_notification_event, notification.id)
+    return {"id": feedback.id, "body": feedback.body, "created_at": feedback.created_at}
+
+
+@router.post("/memberships/{membership_id}/tracking-tasks")
+async def create_tracking_task(
+    membership_id: int,
+    payload: TrackingTaskCreate,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    membership, cohort, access_role = await tracking_membership_context(db, membership_id, user)
+    if access_role == "resident":
+        raise HTTPException(status_code=403, detail="Задачу создаёт трекер или организатор")
+    if membership.status != "enrolled":
+        raise HTTPException(status_code=409, detail="Задачи можно назначать только активному резиденту")
+    if payload.due_at and payload.due_at <= datetime.utcnow():
+        raise HTTPException(status_code=422, detail="Срок задачи должен быть в будущем")
+    task = AcceleratorTrackingTask(
+        membership_id=membership.id, created_by_user_id=user.id,
+        title=payload.title.strip(), description=(payload.description or "").strip() or None,
+        due_at=payload.due_at,
+    )
+    db.add(task)
+    await db.flush()
+    resident = await db.get(User, membership.user_id)
+    notification = await enqueue_notification(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        recipient_email=resident.email, event_type="tracking_task_created",
+        subject=f"Новая задача: {task.title}",
+        body=f"Здравствуйте, {resident.name}!\n\nВам назначена задача «{task.title}».\n\nОткрыть: {os.getenv('FRONTEND_URL', 'https://pitchy.pro').rstrip('/')}/accelerator",
+        idempotency_key=f"tracking-task-created:{task.id}",
+    )
+    add_audit(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        actor_user_id=user.id, action="tracking.task_created",
+        target_type="tracking_task", target_id=task.id,
+        details={"membership_id": membership.id, "due_at": task.due_at.isoformat() if task.due_at else None},
+    )
+    await db.commit()
+    background_tasks.add_task(process_notification_event, notification.id)
+    return tracking_task_dict(task)
+
+
+@router.patch("/tracking-tasks/{task_id}")
+async def update_tracking_task(
+    task_id: int,
+    payload: TrackingTaskUpdate,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    task = (await db.execute(select(AcceleratorTrackingTask).where(
+        AcceleratorTrackingTask.id == task_id
+    ).with_for_update())).scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Задача не найдена")
+    membership, cohort, access_role = await tracking_membership_context(db, task.membership_id, user)
+    if access_role == "resident" and membership.status != "enrolled":
+        raise HTTPException(status_code=403, detail="Задачи доступны только активному резиденту")
+    if access_role == "resident" and payload.status == "cancelled":
+        raise HTTPException(status_code=403, detail="Резидент не может отменить задачу")
+    previous = task.status
+    allowed = {
+        "open": {"done", "cancelled"},
+        "done": {"open"},
+        "cancelled": {"open"},
+    }
+    if payload.status != previous and payload.status not in allowed.get(previous, set()):
+        raise HTTPException(status_code=409, detail="Недопустимый переход статуса задачи")
+    if payload.status == previous:
+        return tracking_task_dict(task)
+    task.status = payload.status
+    if payload.status == "done":
+        task.completed_at = datetime.utcnow()
+        task.completed_by_user_id = user.id
+    else:
+        task.completed_at = None
+        task.completed_by_user_id = None
+    await db.flush()
+    resident = await db.get(User, membership.user_id)
+    tracker_rows = (await db.execute(
+        select(User)
+        .join(AcceleratorTrackerAssignment, AcceleratorTrackerAssignment.tracker_user_id == User.id)
+        .where(AcceleratorTrackerAssignment.membership_id == membership.id)
+    )).scalars().all()
+    creator = await db.get(User, task.created_by_user_id)
+    recipients = {
+        row.id: row for row in ([resident, creator] + list(tracker_rows))
+        if row and row.id != user.id and row.is_active and row.deleted_at is None
+    }
+    status_label = {"open": "возвращена в работу", "done": "выполнена", "cancelled": "отменена"}[task.status]
+    notification_ids = []
+    for recipient in recipients.values():
+        notification = await enqueue_notification(
+            db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+            recipient_email=recipient.email, event_type="tracking_task_status_changed",
+            subject=f"Задача {status_label}: {task.title}",
+            body=(
+                f"Пользователь {user.name} изменил статус задачи «{task.title}»: {status_label}."
+                f"\n\nОткрыть: {os.getenv('FRONTEND_URL', 'https://pitchy.pro').rstrip('/')}/accelerator"
+            ),
+            idempotency_key=f"tracking-task-status:{task.id}:{task.updated_at.isoformat()}:{recipient.id}",
+        )
+        notification_ids.append(notification.id)
+    add_audit(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        actor_user_id=user.id, action="tracking.task_status_changed",
+        target_type="tracking_task", target_id=task.id,
+        details={"membership_id": membership.id, "from": previous, "to": task.status},
+    )
+    await db.commit()
+    for notification_id in notification_ids:
+        background_tasks.add_task(process_notification_event, notification_id)
+    return tracking_task_dict(task)
 
 
 @router.put("/memberships/{membership_id}/quota")
