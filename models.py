@@ -313,9 +313,47 @@ class AcceleratorMembership(Base):
     accepted_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     accepted_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     enrolled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    suspended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    status_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status_changed_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AcceleratorTrackerAssignment(Base):
+    """A tracker can access only explicitly assigned residents."""
+
+    __tablename__ = "accelerator_tracker_assignments"
+    __table_args__ = (
+        UniqueConstraint("tracker_user_id", "membership_id", name="uq_accelerator_tracker_membership"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tracker_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    membership_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_memberships.id", ondelete="CASCADE"), index=True
+    )
+    assigned_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class AcceleratorMembershipEvent(Base):
+    __tablename__ = "accelerator_membership_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    membership_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_memberships.id", ondelete="CASCADE"), index=True
+    )
+    from_status: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    to_status: Mapped[str] = mapped_column(String(30), index=True)
+    actor_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
 
 class AcceleratorApplicationEvent(Base):

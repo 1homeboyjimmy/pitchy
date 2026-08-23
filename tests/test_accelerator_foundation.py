@@ -22,6 +22,7 @@ from models import (
     AcceleratorAuditLog,
     AcceleratorProgramConfig,
     AcceleratorQuotaUsageEvent,
+    AcceleratorMembershipEvent,
     AcceleratorParticipantProfile,
     Project,
     User,
@@ -31,6 +32,7 @@ from routers.accelerators import (
     accept_application,
     assign_cohort_quota,
     assign_organizer,
+    assign_tracker,
     assign_resident_quota,
     create_accelerator,
     create_cohort,
@@ -42,11 +44,15 @@ from routers.accelerators import (
     complete_program_stage,
     enroll_application,
     list_cohorts,
+    list_accelerators,
     list_my_accelerator_memberships,
     list_homework_submissions,
     list_resident_homework,
     list_resident_program_stages,
     list_resident_events,
+    list_residents,
+    list_membership_events,
+    cohort_resident_report,
     get_resident_quota,
     get_program_config,
     publish_homework_assignment,
@@ -62,6 +68,8 @@ from routers.accelerators import (
     update_cohort,
     update_program_config,
     update_cohort_status,
+    update_membership_status,
+    update_tracker_assignments,
     validate_application_form,
 )
 from schemas.accelerators import (
@@ -74,6 +82,8 @@ from schemas.accelerators import (
     CohortUpdate,
     CohortQuotaAssign,
     OrganizerAssign,
+    TrackerAssign,
+    TrackerAssignmentsUpdate,
     InvitationAccept,
     HomeworkAssignmentCreate,
     HomeworkReview,
@@ -86,6 +96,7 @@ from schemas.accelerators import (
     ResidentQuotaAssign,
     ResidentQuotaLimits,
     StatusUpdate,
+    MembershipStatusUpdate,
 )
 from subscription_service import consume_quota
 from sqlalchemy import func, select
@@ -106,6 +117,11 @@ def test_application_form_supports_type_specific_required_fields():
         validate_application_form(schema, {"motivation": "Хочу развить проект"}, "project")
     assert missing_project_name.value.status_code == 422
     assert "project_name" in missing_project_name.value.detail
+
+
+def test_membership_status_requires_meaningful_reason():
+    with pytest.raises(ValidationError):
+        MembershipStatusUpdate(status="suspended", reason="  ")
 
 
 @pytest.mark.asyncio
@@ -518,6 +534,144 @@ async def test_role_boundaries_block_cross_accelerator_management_and_quota_chan
                 db,
             )
         assert organizer_quota.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_tracker_report_scope_and_resident_lifecycle():
+    suffix = uuid.uuid4().hex
+    async with AsyncSessionLocal() as db:
+        admin = User(email=f"admin-tracker-{suffix}@example.test", name="Admin", is_admin=True)
+        organizer = User(email=f"organizer-tracker-{suffix}@example.test", name="Organizer")
+        tracker = User(email=f"tracker-{suffix}@example.test", name="Tracker")
+        outsider = User(email=f"outsider-tracker-{suffix}@example.test", name="Outsider")
+        first_resident = User(email=f"resident-a-{suffix}@example.test", name="Resident A")
+        second_resident = User(email=f"resident-b-{suffix}@example.test", name="Resident B")
+        db.add_all([admin, organizer, tracker, outsider, first_resident, second_resident])
+        await db.commit()
+        for row in (admin, organizer, tracker, outsider, first_resident, second_resident):
+            await db.refresh(row)
+
+        accelerator = await create_accelerator(
+            AcceleratorCreate(name="Tracker accelerator"), admin, db
+        )
+        await assign_organizer(
+            accelerator["id"], OrganizerAssign(user_id=organizer.id), admin, db
+        )
+        cohort = await create_cohort(
+            accelerator["id"], CohortCreate(name="Tracker cohort"), organizer, db
+        )
+        await assign_cohort_quota(
+            cohort["id"],
+            CohortQuotaAssign(
+                limits=ResidentQuotaLimits(messages=70, roadmaps=4, custdev=2, grants=1)
+            ),
+            admin,
+            db,
+        )
+        await update_cohort_status(
+            cohort["id"], StatusUpdate(status="accepting"), organizer, db
+        )
+
+        membership_ids = []
+        for index, resident in enumerate((first_resident, second_resident), start=1):
+            application = await submit_application(
+                cohort["id"],
+                ApplicationCreate(
+                    form_payload={"project_name": f"Project {index}"},
+                    accept_privacy=True,
+                    accept_program_rules=True,
+                ),
+                resident,
+                db,
+            )
+            accepted = await accept_application(
+                application["id"], ApplicationReview(), BackgroundTasks(), organizer, db
+            )
+            await enroll_application(application["id"], organizer, db)
+            membership_ids.append(accepted["membership_id"])
+
+        assigned = await assign_tracker(
+            cohort["id"],
+            TrackerAssign(user_id=tracker.id, membership_ids=[membership_ids[0]]),
+            organizer,
+            db,
+        )
+        assert assigned["membership_ids"] == [membership_ids[0]]
+        tracker_accelerators = await list_accelerators(tracker, db)
+        assert tracker_accelerators[0]["access_role"] == "tracker"
+        tracker_cohorts = await list_cohorts(accelerator["id"], tracker, db)
+        assert [row["id"] for row in tracker_cohorts] == [cohort["id"]]
+        tracker_residents = await list_residents(cohort["id"], tracker, db)
+        assert [row["membership_id"] for row in tracker_residents] == [membership_ids[0]]
+
+        tracker_report = await cohort_resident_report(cohort["id"], "json", tracker, db)
+        assert tracker_report["access_role"] == "tracker"
+        assert [row["membership_id"] for row in tracker_report["rows"]] == [membership_ids[0]]
+        manager_report = await cohort_resident_report(cohort["id"], "json", organizer, db)
+        assert manager_report["summary"]["residents"] == 2
+        csv_report = await cohort_resident_report(cohort["id"], "csv", organizer, db)
+        assert csv_report.body.startswith("\ufeff".encode("utf-8"))
+        assert "Resident A".encode("utf-8") in csv_report.body
+        assert "Сообщения лимит".encode("utf-8") in csv_report.body
+        with pytest.raises(HTTPException) as no_report_access:
+            await cohort_resident_report(cohort["id"], "json", outsider, db)
+        assert no_report_access.value.status_code == 403
+
+        with pytest.raises(HTTPException) as tracker_cannot_suspend:
+            await update_membership_status(
+                membership_ids[0],
+                MembershipStatusUpdate(status="suspended", reason="Нет связи"),
+                tracker,
+                db,
+            )
+        assert tracker_cannot_suspend.value.status_code == 403
+
+        suspended = await update_membership_status(
+            membership_ids[0],
+            MembershipStatusUpdate(status="suspended", reason="Пауза по просьбе резидента"),
+            organizer,
+            db,
+        )
+        assert suspended["status"] == "suspended"
+        assert await accelerator_quota_snapshot(db, first_resident.id, "messages") is None
+        suspended_workspace = await list_my_accelerator_memberships(first_resident, db)
+        assert suspended_workspace["memberships"][0]["modules"] == {}
+
+        resumed = await update_membership_status(
+            membership_ids[0],
+            MembershipStatusUpdate(status="enrolled", reason="Резидент вернулся"),
+            organizer,
+            db,
+        )
+        assert resumed["status"] == "enrolled"
+        assert (await accelerator_quota_snapshot(db, first_resident.id, "messages"))["limit"] == 70
+        completed = await update_membership_status(
+            membership_ids[0],
+            MembershipStatusUpdate(status="completed", reason="Программа успешно завершена"),
+            organizer,
+            db,
+        )
+        assert completed["status"] == "completed"
+        assert await accelerator_quota_snapshot(db, first_resident.id, "messages") is None
+        with pytest.raises(HTTPException) as terminal_status:
+            await update_membership_status(
+                membership_ids[0],
+                MembershipStatusUpdate(status="enrolled", reason="Попытка вернуть"),
+                organizer,
+                db,
+            )
+        assert terminal_status.value.status_code == 409
+        lifecycle = await list_membership_events(membership_ids[0], tracker, db)
+        assert [row["to_status"] for row in lifecycle] == [
+            "accepted", "enrolled", "suspended", "enrolled", "completed"
+        ]
+        assert (await db.execute(select(func.count(AcceleratorMembershipEvent.id)).where(
+            AcceleratorMembershipEvent.membership_id == membership_ids[0]
+        ))).scalar_one() == 5
+        await update_tracker_assignments(
+            cohort["id"], tracker.id, TrackerAssignmentsUpdate(membership_ids=[]), organizer, db
+        )
+        assert await list_accelerators(tracker, db) == []
 
 
 @pytest.mark.asyncio

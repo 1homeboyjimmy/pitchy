@@ -167,6 +167,29 @@ class OrganizerAssign(BaseModel):
     user_id: int = Field(gt=0)
 
 
+class TrackerAssign(BaseModel):
+    user_id: int = Field(gt=0)
+    membership_ids: list[int] = Field(default_factory=list, max_length=500)
+
+    @field_validator("membership_ids")
+    @classmethod
+    def validate_memberships(cls, value: list[int]) -> list[int]:
+        if any(item <= 0 for item in value) or len(set(value)) != len(value):
+            raise ValueError("Резиденты должны быть уникальными положительными ID")
+        return value
+
+
+class TrackerAssignmentsUpdate(BaseModel):
+    membership_ids: list[int] = Field(default_factory=list, max_length=500)
+
+    @field_validator("membership_ids")
+    @classmethod
+    def validate_memberships(cls, value: list[int]) -> list[int]:
+        if any(item <= 0 for item in value) or len(set(value)) != len(value):
+            raise ValueError("Резиденты должны быть уникальными положительными ID")
+        return value
+
+
 class ApplicationCreate(BaseModel):
     form_payload: dict[str, Any]
     project_id: int | None = Field(default=None, gt=0)
@@ -250,6 +273,19 @@ class CohortQuotaAssign(ResidentQuotaAssign):
 
 class StatusUpdate(BaseModel):
     status: Literal["draft", "accepting", "active", "completed", "archived"]
+
+
+class MembershipStatusUpdate(BaseModel):
+    status: Literal["enrolled", "suspended", "completed", "withdrawn"]
+    reason: str = Field(min_length=2, max_length=4000)
+
+    @field_validator("reason")
+    @classmethod
+    def validate_reason(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) < 2:
+            raise ValueError("Укажите причину изменения статуса")
+        return value
 
 
 class InvitationAccept(BaseModel):

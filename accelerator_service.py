@@ -15,6 +15,7 @@ from models import (
     AcceleratorQuotaUsageEvent,
     AcceleratorResidentQuotaOverride,
     AcceleratorStaff,
+    AcceleratorTrackerAssignment,
 )
 
 ACCELERATOR_RESOURCES = ("messages", "roadmaps", "custdev", "grants")
@@ -53,6 +54,54 @@ async def is_accelerator_organizer(db: AsyncSession, user_id: int, accelerator_i
             AcceleratorStaff.role == "organizer",
         )
     )).scalar_one_or_none() is not None
+
+
+async def tracker_membership_ids(
+    db: AsyncSession, user_id: int, cohort_id: int
+) -> set[int]:
+    rows = (await db.execute(
+        select(AcceleratorTrackerAssignment.membership_id)
+        .join(
+            AcceleratorMembership,
+            AcceleratorMembership.id == AcceleratorTrackerAssignment.membership_id,
+        )
+        .where(
+            AcceleratorTrackerAssignment.tracker_user_id == user_id,
+            AcceleratorMembership.cohort_id == cohort_id,
+        )
+    )).scalars().all()
+    return set(rows)
+
+
+async def require_cohort_reader(db: AsyncSession, user, cohort: AcceleratorCohort) -> str:
+    if user.is_admin:
+        return "global_admin"
+    if await is_accelerator_organizer(db, user.id, cohort.accelerator_id):
+        return "organizer"
+    if await tracker_membership_ids(db, user.id, cohort.id):
+        return "tracker"
+    raise HTTPException(status_code=403, detail="Нет доступа к этому потоку")
+
+
+async def require_tracker_membership_access(
+    db: AsyncSession, user, membership: AcceleratorMembership
+) -> str:
+    cohort = await db.get(AcceleratorCohort, membership.cohort_id)
+    if not cohort:
+        raise HTTPException(status_code=404, detail="Поток не найден")
+    if user.is_admin:
+        return "global_admin"
+    if await is_accelerator_organizer(db, user.id, cohort.accelerator_id):
+        return "organizer"
+    assigned = (await db.execute(
+        select(AcceleratorTrackerAssignment.id).where(
+            AcceleratorTrackerAssignment.tracker_user_id == user.id,
+            AcceleratorTrackerAssignment.membership_id == membership.id,
+        )
+    )).scalar_one_or_none()
+    if assigned is not None:
+        return "tracker"
+    raise HTTPException(status_code=403, detail="Резидент не назначен этому трекеру")
 
 
 async def require_cohort_manager(db: AsyncSession, user, cohort: AcceleratorCohort) -> None:

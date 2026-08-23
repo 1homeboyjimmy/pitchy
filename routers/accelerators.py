@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+import csv
 import hashlib
+import io
 import os
 import re
 import secrets
@@ -21,6 +23,9 @@ from accelerator_service import (
     is_accelerator_organizer,
     normalize_resident_limits,
     require_cohort_manager,
+    require_cohort_reader,
+    require_tracker_membership_access,
+    tracker_membership_ids,
 )
 from accelerator_application_service import (
     MANAGER_TRANSITIONS,
@@ -45,6 +50,7 @@ from models import (
     AcceleratorHomeworkSubmission,
     AcceleratorHomeworkTarget,
     AcceleratorMembership,
+    AcceleratorMembershipEvent,
     AcceleratorOrganization,
     AcceleratorProgramConfig,
     AcceleratorProgramMaterial,
@@ -53,6 +59,7 @@ from models import (
     AcceleratorProgramStageProgress,
     AcceleratorResidentQuotaOverride,
     AcceleratorStaff,
+    AcceleratorTrackerAssignment,
     Project,
     User,
 )
@@ -75,12 +82,15 @@ from schemas.accelerators import (
     EventCreate,
     OrganizationCreate,
     OrganizerAssign,
+    TrackerAssign,
+    TrackerAssignmentsUpdate,
     ProgramConfigUpdate,
     ProgramStageCreate,
     ProgramStageReorder,
     PublicApplicationCreate,
     ResidentQuotaAssign,
     StatusUpdate,
+    MembershipStatusUpdate,
 )
 
 
@@ -99,6 +109,13 @@ COHORT_STATUS_TRANSITIONS = {
     "active": {"completed", "archived"},
     "completed": {"archived"},
     "archived": set(),
+}
+MEMBERSHIP_STATUS_TRANSITIONS = {
+    "accepted": {"enrolled", "withdrawn"},
+    "enrolled": {"suspended", "completed", "withdrawn"},
+    "suspended": {"enrolled", "withdrawn"},
+    "completed": set(),
+    "withdrawn": set(),
 }
 
 
@@ -498,17 +515,35 @@ async def list_accelerators(
         access_roles = {row.id: "global_admin" for row in rows}
     else:
         staff_rows = (await db.execute(
-            select(AcceleratorStaff.accelerator_id).where(AcceleratorStaff.user_id == user.id)
-        )).scalars().all()
+            select(AcceleratorStaff.accelerator_id, AcceleratorStaff.role).where(
+                AcceleratorStaff.user_id == user.id,
+                AcceleratorStaff.role == "organizer",
+            )
+        )).all()
+        tracker_accelerator_ids = set((await db.execute(
+            select(AcceleratorCohort.accelerator_id)
+            .join(
+                AcceleratorMembership,
+                AcceleratorMembership.cohort_id == AcceleratorCohort.id,
+            )
+            .join(
+                AcceleratorTrackerAssignment,
+                AcceleratorTrackerAssignment.membership_id == AcceleratorMembership.id,
+            )
+            .where(AcceleratorTrackerAssignment.tracker_user_id == user.id)
+        )).scalars().all())
         resident_rows = (await db.execute(
             select(AcceleratorCohort.accelerator_id)
             .join(AcceleratorMembership, AcceleratorMembership.cohort_id == AcceleratorCohort.id)
             .where(AcceleratorMembership.user_id == user.id)
         )).scalars().all()
-        staff_ids = set(staff_rows)
+        staff_roles = {accelerator_id: role for accelerator_id, role in staff_rows}
+        for tracker_accelerator_id in tracker_accelerator_ids:
+            staff_roles.setdefault(tracker_accelerator_id, "tracker")
+        staff_ids = set(staff_roles)
         resident_ids = set(resident_rows)
         access_roles = {
-            accelerator_id: "organizer" if accelerator_id in staff_ids else "resident"
+            accelerator_id: staff_roles.get(accelerator_id, "resident")
             for accelerator_id in staff_ids | resident_ids
         }
         rows = (await db.execute(
@@ -738,6 +773,278 @@ async def remove_organizer(
     return Response(status_code=204)
 
 
+async def validate_tracker_memberships(
+    db: AsyncSession, cohort_id: int, membership_ids: list[int]
+) -> list[AcceleratorMembership]:
+    if not membership_ids:
+        return []
+    rows = (await db.execute(select(AcceleratorMembership).where(
+        AcceleratorMembership.id.in_(membership_ids),
+        AcceleratorMembership.cohort_id == cohort_id,
+        AcceleratorMembership.role == "resident",
+        AcceleratorMembership.status.in_(("enrolled", "suspended")),
+    ))).scalars().all()
+    if {row.id for row in rows} != set(membership_ids):
+        raise HTTPException(
+            status_code=422,
+            detail="Трекеру можно назначить только зачисленных или приостановленных резидентов этого потока",
+        )
+    return list(rows)
+
+
+async def replace_tracker_assignments(
+    db: AsyncSession,
+    *,
+    cohort: AcceleratorCohort,
+    tracker_user_id: int,
+    membership_ids: list[int],
+    actor_user_id: int,
+) -> None:
+    await validate_tracker_memberships(db, cohort.id, membership_ids)
+    cohort_membership_ids = select(AcceleratorMembership.id).where(
+        AcceleratorMembership.cohort_id == cohort.id
+    )
+    await db.execute(delete(AcceleratorTrackerAssignment).where(
+        AcceleratorTrackerAssignment.tracker_user_id == tracker_user_id,
+        AcceleratorTrackerAssignment.membership_id.in_(cohort_membership_ids),
+    ))
+    for membership_id in membership_ids:
+        db.add(AcceleratorTrackerAssignment(
+            tracker_user_id=tracker_user_id,
+            membership_id=membership_id,
+            assigned_by_user_id=actor_user_id,
+        ))
+
+
+async def remove_tracker_staff_if_unused(
+    db: AsyncSession, *, accelerator_id: int, tracker_user_id: int
+) -> None:
+    await db.flush()
+    remaining = (await db.execute(
+        select(AcceleratorTrackerAssignment.id)
+        .join(
+            AcceleratorMembership,
+            AcceleratorMembership.id == AcceleratorTrackerAssignment.membership_id,
+        )
+        .join(AcceleratorCohort, AcceleratorCohort.id == AcceleratorMembership.cohort_id)
+        .where(
+            AcceleratorTrackerAssignment.tracker_user_id == tracker_user_id,
+            AcceleratorCohort.accelerator_id == accelerator_id,
+        )
+        .limit(1)
+    )).scalar_one_or_none()
+    if remaining is not None:
+        return
+    staff = (await db.execute(select(AcceleratorStaff).where(
+        AcceleratorStaff.accelerator_id == accelerator_id,
+        AcceleratorStaff.user_id == tracker_user_id,
+        AcceleratorStaff.role == "tracker",
+    ))).scalar_one_or_none()
+    if staff:
+        await db.delete(staff)
+
+
+@router.get("/cohorts/{cohort_id}/trackers")
+async def list_trackers(
+    cohort_id: int,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    cohort = await get_cohort_or_404(db, cohort_id)
+    await require_cohort_manager(db, user, cohort)
+    rows = (await db.execute(
+        select(AcceleratorStaff, User)
+        .join(User, User.id == AcceleratorStaff.user_id)
+        .join(
+            AcceleratorTrackerAssignment,
+            AcceleratorTrackerAssignment.tracker_user_id == AcceleratorStaff.user_id,
+        )
+        .join(
+            AcceleratorMembership,
+            AcceleratorMembership.id == AcceleratorTrackerAssignment.membership_id,
+        )
+        .where(
+            AcceleratorStaff.accelerator_id == cohort.accelerator_id,
+            AcceleratorStaff.role == "tracker",
+            AcceleratorMembership.cohort_id == cohort.id,
+        )
+        .distinct()
+        .order_by(User.name, User.email)
+    )).all()
+    result = []
+    for staff, tracker in rows:
+        membership_ids = list((await db.execute(
+            select(AcceleratorTrackerAssignment.membership_id)
+            .join(
+                AcceleratorMembership,
+                AcceleratorMembership.id == AcceleratorTrackerAssignment.membership_id,
+            )
+            .where(
+                AcceleratorTrackerAssignment.tracker_user_id == tracker.id,
+                AcceleratorMembership.cohort_id == cohort.id,
+            )
+            .order_by(AcceleratorTrackerAssignment.membership_id)
+        )).scalars().all())
+        result.append({
+            "staff_id": staff.id,
+            "user_id": tracker.id,
+            "name": tracker.name,
+            "email": tracker.email,
+            "membership_ids": membership_ids,
+        })
+    return result
+
+
+@router.get("/cohorts/{cohort_id}/tracker-candidates")
+async def search_tracker_candidates(
+    cohort_id: int,
+    q: str = Query(min_length=2, max_length=200),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    cohort = await get_cohort_or_404(db, cohort_id)
+    await require_cohort_manager(db, user, cohort)
+    search = f"%{q.strip()}%"
+    organizer_ids = select(AcceleratorStaff.user_id).where(
+        AcceleratorStaff.accelerator_id == cohort.accelerator_id,
+        AcceleratorStaff.role == "organizer",
+    )
+    assigned_here_ids = (
+        select(AcceleratorTrackerAssignment.tracker_user_id)
+        .join(
+            AcceleratorMembership,
+            AcceleratorMembership.id == AcceleratorTrackerAssignment.membership_id,
+        )
+        .where(AcceleratorMembership.cohort_id == cohort.id)
+    )
+    rows = (await db.execute(select(User).where(
+        User.is_active.is_(True),
+        User.deleted_at.is_(None),
+        User.id.not_in(organizer_ids),
+        User.id.not_in(assigned_here_ids),
+        or_(User.name.ilike(search), User.email.ilike(search)),
+    ).order_by(User.name, User.email).limit(20))).scalars().all()
+    return [{"id": row.id, "name": row.name, "email": row.email} for row in rows]
+
+
+@router.post("/cohorts/{cohort_id}/trackers")
+async def assign_tracker(
+    cohort_id: int,
+    payload: TrackerAssign,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    cohort = await get_cohort_or_404(db, cohort_id)
+    await require_cohort_manager(db, user, cohort)
+    if not payload.membership_ids:
+        raise HTTPException(status_code=422, detail="Выберите хотя бы одного резидента")
+    tracker = await db.get(User, payload.user_id)
+    if not tracker or not tracker.is_active or tracker.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Активный пользователь не найден")
+    staff = (await db.execute(select(AcceleratorStaff).where(
+        AcceleratorStaff.accelerator_id == cohort.accelerator_id,
+        AcceleratorStaff.user_id == tracker.id,
+    ))).scalar_one_or_none()
+    if staff and staff.role != "tracker":
+        raise HTTPException(status_code=409, detail="Пользователь уже назначен организатором")
+    if not staff:
+        staff = AcceleratorStaff(
+            accelerator_id=cohort.accelerator_id,
+            user_id=tracker.id,
+            role="tracker",
+            created_by_user_id=user.id,
+        )
+        db.add(staff)
+        await db.flush()
+    await replace_tracker_assignments(
+        db,
+        cohort=cohort,
+        tracker_user_id=tracker.id,
+        membership_ids=payload.membership_ids,
+        actor_user_id=user.id,
+    )
+    add_audit(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        actor_user_id=user.id, action="tracker.assigned", target_type="user",
+        target_id=tracker.id, details={"membership_ids": payload.membership_ids},
+    )
+    await db.commit()
+    return {
+        "staff_id": staff.id, "user_id": tracker.id, "name": tracker.name,
+        "email": tracker.email, "membership_ids": payload.membership_ids,
+    }
+
+
+@router.put("/cohorts/{cohort_id}/trackers/{tracker_user_id}")
+async def update_tracker_assignments(
+    cohort_id: int,
+    tracker_user_id: int,
+    payload: TrackerAssignmentsUpdate,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    cohort = await get_cohort_or_404(db, cohort_id)
+    await require_cohort_manager(db, user, cohort)
+    staff = (await db.execute(select(AcceleratorStaff).where(
+        AcceleratorStaff.accelerator_id == cohort.accelerator_id,
+        AcceleratorStaff.user_id == tracker_user_id,
+        AcceleratorStaff.role == "tracker",
+    ))).scalar_one_or_none()
+    if not staff:
+        raise HTTPException(status_code=404, detail="Трекер не найден")
+    await replace_tracker_assignments(
+        db,
+        cohort=cohort,
+        tracker_user_id=tracker_user_id,
+        membership_ids=payload.membership_ids,
+        actor_user_id=user.id,
+    )
+    await remove_tracker_staff_if_unused(
+        db,
+        accelerator_id=cohort.accelerator_id,
+        tracker_user_id=tracker_user_id,
+    )
+    add_audit(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        actor_user_id=user.id, action="tracker.assignments_updated", target_type="user",
+        target_id=tracker_user_id, details={"membership_ids": payload.membership_ids},
+    )
+    await db.commit()
+    return {"user_id": tracker_user_id, "membership_ids": payload.membership_ids}
+
+
+@router.delete("/cohorts/{cohort_id}/trackers/{tracker_user_id}", status_code=204)
+async def remove_tracker(
+    cohort_id: int,
+    tracker_user_id: int,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    cohort = await get_cohort_or_404(db, cohort_id)
+    await require_cohort_manager(db, user, cohort)
+    cohort_membership_ids = select(AcceleratorMembership.id).where(
+        AcceleratorMembership.cohort_id == cohort.id
+    )
+    result = await db.execute(delete(AcceleratorTrackerAssignment).where(
+        AcceleratorTrackerAssignment.tracker_user_id == tracker_user_id,
+        AcceleratorTrackerAssignment.membership_id.in_(cohort_membership_ids),
+    ))
+    if not result.rowcount:
+        raise HTTPException(status_code=404, detail="Назначения трекера не найдены")
+    await remove_tracker_staff_if_unused(
+        db,
+        accelerator_id=cohort.accelerator_id,
+        tracker_user_id=tracker_user_id,
+    )
+    add_audit(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        actor_user_id=user.id, action="tracker.removed", target_type="user",
+        target_id=tracker_user_id,
+    )
+    await db.commit()
+    return Response(status_code=204)
+
+
 @router.post("/{accelerator_id}/cohorts")
 async def create_cohort(
     accelerator_id: int,
@@ -791,6 +1098,33 @@ async def list_cohorts(
     await get_accelerator_or_404(db, accelerator_id)
     cohort_query = select(AcceleratorCohort).where(AcceleratorCohort.accelerator_id == accelerator_id)
     if not user.is_admin and not await is_accelerator_organizer(db, user.id, accelerator_id):
+        tracker_cohort_ids = (
+            select(AcceleratorMembership.cohort_id)
+            .join(
+                AcceleratorTrackerAssignment,
+                AcceleratorTrackerAssignment.membership_id == AcceleratorMembership.id,
+            )
+            .where(AcceleratorTrackerAssignment.tracker_user_id == user.id)
+        )
+        tracker_has_assignment = (await db.execute(
+            select(AcceleratorTrackerAssignment.id)
+            .join(
+                AcceleratorMembership,
+                AcceleratorMembership.id == AcceleratorTrackerAssignment.membership_id,
+            )
+            .join(AcceleratorCohort, AcceleratorCohort.id == AcceleratorMembership.cohort_id)
+            .where(
+                AcceleratorTrackerAssignment.tracker_user_id == user.id,
+                AcceleratorCohort.accelerator_id == accelerator_id,
+            )
+            .limit(1)
+        )).scalar_one_or_none()
+        if tracker_has_assignment is not None:
+            cohort_query = cohort_query.where(AcceleratorCohort.id.in_(tracker_cohort_ids))
+            rows = (await db.execute(
+                cohort_query.order_by(AcceleratorCohort.created_at.desc())
+            )).scalars().all()
+            return [cohort_dict(row) for row in rows]
         resident_cohort_ids = select(AcceleratorMembership.cohort_id).where(
             AcceleratorMembership.user_id == user.id,
             AcceleratorMembership.role == "resident",
@@ -892,12 +1226,13 @@ async def get_program_config(
 ):
     cohort = await get_cohort_or_404(db, cohort_id)
     if not user.is_admin and not await is_accelerator_organizer(db, user.id, cohort.accelerator_id):
+        tracker_access = bool(await tracker_membership_ids(db, user.id, cohort.id))
         member = (await db.execute(select(AcceleratorMembership.id).where(
             AcceleratorMembership.cohort_id == cohort.id,
             AcceleratorMembership.user_id == user.id,
             AcceleratorMembership.status == "enrolled",
         ))).scalar_one_or_none()
-        if member is None:
+        if member is None and not tracker_access:
             raise HTTPException(status_code=403, detail="Нет доступа к потоку")
     config = (await db.execute(select(AcceleratorProgramConfig).where(
         AcceleratorProgramConfig.cohort_id == cohort.id
@@ -2535,6 +2870,8 @@ async def enroll_application(
         raise HTTPException(status_code=409, detail="Сначала заявку нужно принять")
     membership.status = "enrolled"
     membership.enrolled_at = datetime.utcnow()
+    membership.status_reason = "Зачисление после одобрения заявки"
+    membership.status_changed_by_user_id = user.id
     if cohort.default_quota_config:
         await assign_quota_override(
             db,
@@ -2546,6 +2883,13 @@ async def enroll_application(
             ends_at=cohort.ends_at,
             reason="Шаблон лимитов потока при зачислении",
         )
+    db.add(AcceleratorMembershipEvent(
+        membership_id=membership.id,
+        from_status="accepted",
+        to_status="enrolled",
+        actor_user_id=user.id,
+        reason=membership.status_reason,
+    ))
     add_audit(
         db,
         accelerator_id=cohort.accelerator_id,
@@ -2689,22 +3033,326 @@ async def list_residents(
     db: AsyncSession = Depends(get_async_db),
 ):
     cohort = await get_cohort_or_404(db, cohort_id)
-    await require_cohort_manager(db, user, cohort)
-    rows = (await db.execute(
+    access_role = await require_cohort_reader(db, user, cohort)
+    query = (
         select(AcceleratorMembership, User)
         .join(User, User.id == AcceleratorMembership.user_id)
         .where(AcceleratorMembership.cohort_id == cohort.id, AcceleratorMembership.role == "resident")
         .order_by(AcceleratorMembership.created_at.desc())
-    )).all()
-    return [{
+    )
+    if access_role == "tracker":
+        assigned_ids = await tracker_membership_ids(db, user.id, cohort.id)
+        query = query.where(AcceleratorMembership.id.in_(assigned_ids))
+    rows = (await db.execute(query)).all()
+    result = []
+    for membership, resident in rows:
+        trackers = (await db.execute(
+            select(User.id, User.name)
+            .join(
+                AcceleratorTrackerAssignment,
+                AcceleratorTrackerAssignment.tracker_user_id == User.id,
+            )
+            .where(AcceleratorTrackerAssignment.membership_id == membership.id)
+            .order_by(User.name)
+        )).all()
+        result.append({
+            "membership_id": membership.id,
+            "user_id": resident.id,
+            "name": resident.name,
+            "email": resident.email,
+            "status": membership.status,
+            "status_reason": membership.status_reason,
+            "accepted_at": membership.accepted_at,
+            "enrolled_at": membership.enrolled_at,
+            "suspended_at": membership.suspended_at,
+            "ended_at": membership.ended_at,
+            "trackers": [{"user_id": tracker_id, "name": name} for tracker_id, name in trackers],
+        })
+    return result
+
+
+@router.patch("/memberships/{membership_id}/status")
+async def update_membership_status(
+    membership_id: int,
+    payload: MembershipStatusUpdate,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    membership = (await db.execute(select(AcceleratorMembership).where(
+        AcceleratorMembership.id == membership_id
+    ).with_for_update())).scalar_one_or_none()
+    if not membership:
+        raise HTTPException(status_code=404, detail="Резидент не найден")
+    cohort = await get_cohort_or_404(db, membership.cohort_id)
+    await require_cohort_manager(db, user, cohort)
+    previous = membership.status
+    if payload.status == previous:
+        return {"membership_id": membership.id, "status": membership.status}
+    if payload.status not in MEMBERSHIP_STATUS_TRANSITIONS.get(previous, set()):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Нельзя перевести резидента из статуса «{previous}» в «{payload.status}»",
+        )
+    now = datetime.utcnow()
+    membership.status = payload.status
+    membership.status_reason = payload.reason.strip()
+    membership.status_changed_by_user_id = user.id
+    if payload.status == "enrolled":
+        membership.enrolled_at = membership.enrolled_at or now
+        membership.suspended_at = None
+        membership.ended_at = None
+        if previous == "accepted" and cohort.default_quota_config:
+            await assign_quota_override(
+                db,
+                membership=membership,
+                source="cohort",
+                limits=cohort.default_quota_config,
+                created_by_user_id=(
+                    cohort.default_quota_updated_by_user_id or cohort.created_by_user_id
+                ),
+                starts_at=membership.enrolled_at,
+                ends_at=cohort.ends_at,
+                reason="Шаблон лимитов потока при зачислении",
+            )
+    elif payload.status == "suspended":
+        membership.suspended_at = now
+        membership.ended_at = None
+    elif payload.status in ("completed", "withdrawn"):
+        membership.ended_at = now
+        membership.suspended_at = None
+    db.add(AcceleratorMembershipEvent(
+        membership_id=membership.id,
+        from_status=previous,
+        to_status=payload.status,
+        actor_user_id=user.id,
+        reason=membership.status_reason,
+    ))
+    add_audit(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        actor_user_id=user.id, action="resident.status_changed", target_type="membership",
+        target_id=membership.id,
+        details={"from": previous, "to": payload.status, "reason": membership.status_reason},
+    )
+    await db.commit()
+    return {
         "membership_id": membership.id,
-        "user_id": resident.id,
-        "name": resident.name,
-        "email": resident.email,
         "status": membership.status,
-        "accepted_at": membership.accepted_at,
-        "enrolled_at": membership.enrolled_at,
-    } for membership, resident in rows]
+        "status_reason": membership.status_reason,
+        "suspended_at": membership.suspended_at,
+        "ended_at": membership.ended_at,
+    }
+
+
+@router.get("/memberships/{membership_id}/events")
+async def list_membership_events(
+    membership_id: int,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    membership = await db.get(AcceleratorMembership, membership_id)
+    if not membership:
+        raise HTTPException(status_code=404, detail="Резидент не найден")
+    if user.id != membership.user_id:
+        await require_tracker_membership_access(db, user, membership)
+    rows = (await db.execute(select(AcceleratorMembershipEvent).where(
+        AcceleratorMembershipEvent.membership_id == membership.id
+    ).order_by(AcceleratorMembershipEvent.created_at))).scalars().all()
+    return [{
+        "id": row.id,
+        "from_status": row.from_status,
+        "to_status": row.to_status,
+        "actor_user_id": row.actor_user_id,
+        "reason": row.reason,
+        "created_at": row.created_at,
+    } for row in rows]
+
+
+@router.get("/cohorts/{cohort_id}/report")
+async def cohort_resident_report(
+    cohort_id: int,
+    format: str = Query(default="json", pattern="^(json|csv)$"),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    cohort = await get_cohort_or_404(db, cohort_id)
+    access_role = await require_cohort_reader(db, user, cohort)
+    membership_query = (
+        select(AcceleratorMembership, User)
+        .join(User, User.id == AcceleratorMembership.user_id)
+        .where(
+            AcceleratorMembership.cohort_id == cohort.id,
+            AcceleratorMembership.role == "resident",
+        )
+        .order_by(User.name, User.email)
+    )
+    if access_role == "tracker":
+        membership_query = membership_query.where(
+            AcceleratorMembership.id.in_(await tracker_membership_ids(db, user.id, cohort.id))
+        )
+    membership_rows = (await db.execute(membership_query)).all()
+    membership_ids = [membership.id for membership, _ in membership_rows]
+
+    stage_ids = list((await db.execute(select(AcceleratorProgramStage.id).where(
+        AcceleratorProgramStage.cohort_id == cohort.id,
+        AcceleratorProgramStage.status == "published",
+    ))).scalars().all())
+    stage_progress = set((await db.execute(select(
+        AcceleratorProgramStageProgress.membership_id,
+        AcceleratorProgramStageProgress.stage_id,
+    ).where(
+        AcceleratorProgramStageProgress.membership_id.in_(membership_ids),
+        AcceleratorProgramStageProgress.stage_id.in_(stage_ids),
+    ))).all()) if membership_ids and stage_ids else set()
+
+    assignments = list((await db.execute(select(AcceleratorHomeworkAssignment).where(
+        AcceleratorHomeworkAssignment.cohort_id == cohort.id,
+        AcceleratorHomeworkAssignment.status == "published",
+    ))).scalars().all())
+    assignment_ids = [row.id for row in assignments]
+    targets = set((await db.execute(select(
+        AcceleratorHomeworkTarget.assignment_id,
+        AcceleratorHomeworkTarget.membership_id,
+    ).where(AcceleratorHomeworkTarget.assignment_id.in_(assignment_ids)))).all()) if assignment_ids else set()
+    submissions = {
+        (row.assignment_id, row.membership_id): row
+        for row in (await db.execute(select(AcceleratorHomeworkSubmission).where(
+            AcceleratorHomeworkSubmission.assignment_id.in_(assignment_ids),
+            AcceleratorHomeworkSubmission.membership_id.in_(membership_ids),
+        ))).scalars().all()
+    } if assignment_ids and membership_ids else {}
+
+    event_ids = list((await db.execute(select(AcceleratorEvent.id).where(
+        AcceleratorEvent.cohort_id == cohort.id,
+        AcceleratorEvent.status == "published",
+    ))).scalars().all())
+    attendance = {
+        (row.event_id, row.membership_id): row
+        for row in (await db.execute(select(AcceleratorAttendanceRecord).where(
+            AcceleratorAttendanceRecord.event_id.in_(event_ids),
+            AcceleratorAttendanceRecord.membership_id.in_(membership_ids),
+        ))).scalars().all()
+    } if event_ids and membership_ids else {}
+
+    tracker_rows = (await db.execute(
+        select(AcceleratorTrackerAssignment.membership_id, User.id, User.name)
+        .join(User, User.id == AcceleratorTrackerAssignment.tracker_user_id)
+        .where(AcceleratorTrackerAssignment.membership_id.in_(membership_ids))
+    )).all() if membership_ids else []
+    trackers_by_membership: dict[int, list[dict]] = {}
+    for assigned_membership_id, tracker_id, tracker_name in tracker_rows:
+        trackers_by_membership.setdefault(assigned_membership_id, []).append({
+            "user_id": tracker_id, "name": tracker_name,
+        })
+
+    now = datetime.utcnow()
+    rows = []
+    for membership, resident in membership_rows:
+        applicable = [
+            assignment for assignment in assignments
+            if assignment.audience == "cohort" or (assignment.id, membership.id) in targets
+        ]
+        accepted_homework = 0
+        waiting_homework = 0
+        overdue_homework = 0
+        activity_dates = [membership.updated_at, membership.enrolled_at, membership.accepted_at]
+        for assignment in applicable:
+            submission = submissions.get((assignment.id, membership.id))
+            if submission:
+                activity_dates.append(submission.submitted_at)
+                if submission.status == "accepted":
+                    accepted_homework += 1
+                elif submission.status == "submitted":
+                    waiting_homework += 1
+            if assignment.due_at and assignment.due_at < now and (
+                not submission or submission.status == "needs_revision"
+            ):
+                overdue_homework += 1
+        present = 0
+        marked = 0
+        for event_id in event_ids:
+            record = attendance.get((event_id, membership.id))
+            if record:
+                marked += 1
+                activity_dates.append(record.checked_in_at or record.updated_at)
+                present += int(record.status == "present")
+        completed_stages = sum((membership.id, stage_id) in stage_progress for stage_id in stage_ids)
+        quota = {}
+        for resource in ("messages", "roadmaps", "custdev", "grants"):
+            snapshot = await accelerator_membership_quota_snapshot(db, membership.id, resource)
+            if snapshot:
+                quota[resource] = {
+                    "limit": snapshot["limit"], "used": snapshot["used"],
+                    "remaining": snapshot["remaining"], "source": snapshot["override"].source,
+                }
+        activity_dates = [value for value in activity_dates if value is not None]
+        rows.append({
+            "membership_id": membership.id,
+            "user_id": resident.id,
+            "name": resident.name,
+            "email": resident.email,
+            "status": membership.status,
+            "status_reason": membership.status_reason,
+            "trackers": trackers_by_membership.get(membership.id, []),
+            "program": {
+                "completed": completed_stages,
+                "total": len(stage_ids),
+                "percent": round(completed_stages * 100 / len(stage_ids)) if stage_ids else 0,
+            },
+            "homework": {
+                "accepted": accepted_homework,
+                "waiting_review": waiting_homework,
+                "overdue": overdue_homework,
+                "total": len(applicable),
+            },
+            "attendance": {"present": present, "marked": marked, "total": len(event_ids)},
+            "quota": quota,
+            "last_activity_at": max(activity_dates) if activity_dates else None,
+        })
+
+    if format == "csv":
+        output = io.StringIO()
+        writer = csv.writer(output, delimiter=";")
+        writer.writerow([
+            "Резидент", "Email", "Статус", "Трекеры", "Программа, %",
+            "Домашние задания зачтено", "Просрочено", "Посещено", "Всего событий",
+            "Сообщения лимит", "Сообщения использовано", "Дорожные карты лимит",
+            "Дорожные карты использовано", "Кастдевы лимит", "Кастдевы использовано",
+            "Гранты лимит", "Гранты использовано",
+            "Последняя активность",
+        ])
+        for row in rows:
+            def quota_value(resource: str, key: str):
+                return row["quota"].get(resource, {}).get(key, "")
+
+            writer.writerow([
+                row["name"], row["email"], row["status"],
+                ", ".join(tracker["name"] for tracker in row["trackers"]),
+                row["program"]["percent"], row["homework"]["accepted"],
+                row["homework"]["overdue"], row["attendance"]["present"],
+                row["attendance"]["total"],
+                quota_value("messages", "limit"), quota_value("messages", "used"),
+                quota_value("roadmaps", "limit"), quota_value("roadmaps", "used"),
+                quota_value("custdev", "limit"), quota_value("custdev", "used"),
+                quota_value("grants", "limit"), quota_value("grants", "used"),
+                row["last_activity_at"].isoformat() if row["last_activity_at"] else "",
+            ])
+        return Response(
+            content="\ufeff" + output.getvalue(),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="cohort-{cohort.id}-report.csv"'},
+        )
+    return {
+        "cohort_id": cohort.id,
+        "access_role": access_role,
+        "summary": {
+            "residents": len(rows),
+            "enrolled": sum(row["status"] == "enrolled" for row in rows),
+            "suspended": sum(row["status"] == "suspended" for row in rows),
+            "completed": sum(row["status"] == "completed" for row in rows),
+            "overdue_homework": sum(row["homework"]["overdue"] for row in rows),
+        },
+        "rows": rows,
+    }
 
 
 @router.put("/memberships/{membership_id}/quota")

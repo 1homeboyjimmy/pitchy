@@ -16,12 +16,14 @@ import { OrganizerManager } from "@/components/accelerator/OrganizerManager";
 import { ProgramBuilder } from "@/components/accelerator/ProgramBuilder";
 import { QuotaManager, type Limits } from "@/components/accelerator/QuotaManager";
 import { ResidentWorkspace, type ResidentWorkspaceData } from "@/components/accelerator/ResidentWorkspace";
+import { ResidentReport } from "@/components/accelerator/ResidentReport";
+import { TrackerManager } from "@/components/accelerator/TrackerManager";
 
-type Accelerator = { id: number; name: string; description?: string | null; status: string; access_role: "global_admin" | "organizer" | "resident" };
+type Accelerator = { id: number; name: string; description?: string | null; status: string; access_role: "global_admin" | "organizer" | "tracker" | "resident" };
 type Cohort = { id: number; accelerator_id: number; name: string; status: string; timezone: string; starts_at?: string | null; ends_at?: string | null; default_quota_config?: Limits | null; application_form_schema: ApplicationFormSchema };
 type ProgramConfig = { cohort_id: number; version: number; modules: Record<string, boolean>; locked_modules: Record<string, boolean> };
-type Resident = { membership_id: number; user_id: number; name: string; email: string; status: string };
-type TabKey = "overview" | "applications" | "form" | "program" | "homework" | "attendance" | "quotas" | "settings" | "audit";
+type Resident = { membership_id: number; user_id: number; name: string; email: string; status: string; status_reason?: string | null; trackers?: Array<{ user_id: number; name: string }> };
+type TabKey = "overview" | "applications" | "form" | "program" | "homework" | "attendance" | "trackers" | "reports" | "quotas" | "settings" | "audit";
 
 const MODULE_LABELS: Record<string, string> = { applications: "Заявки", program: "Программа", homework: "Домашние задания", attendance: "Посещаемость" };
 const STATUS_LABELS: Record<string, string> = { draft: "Черновик", accepting: "Приём заявок", active: "Идёт", completed: "Завершён", archived: "Архив", accepted: "Принят", enrolled: "Зачислен" };
@@ -36,7 +38,7 @@ export default function AcceleratorWorkspacePage() {
 
   const selectedAccelerator = accelerators.find((row) => row.id === acceleratorId) || null;
   const selectedCohort = cohorts.find((row) => row.id === cohortId) || null;
-  const isAdmin = Boolean(profile?.is_admin); const isResident = selectedAccelerator?.access_role === "resident"; const canManage = selectedAccelerator?.access_role === "global_admin" || selectedAccelerator?.access_role === "organizer";
+  const isAdmin = Boolean(profile?.is_admin); const isResident = selectedAccelerator?.access_role === "resident"; const isTracker = selectedAccelerator?.access_role === "tracker"; const canManage = selectedAccelerator?.access_role === "global_admin" || selectedAccelerator?.access_role === "organizer"; const canReadCohort = canManage || isTracker;
 
   const loadAccelerators = useCallback(async () => {
     if (!token) { setLoading(false); return; }
@@ -55,26 +57,28 @@ export default function AcceleratorWorkspacePage() {
   }, [acceleratorId, isResident, token]);
 
   const loadCohortDetails = useCallback(async () => {
-    if (!token || !cohortId || !canManage) { setConfig(null); setApplications([]); setResidents([]); return; }
+    if (!token || !cohortId || !canReadCohort) { setConfig(null); setApplications([]); setResidents([]); return; }
     try {
       const [program, applicationRows, residentRows] = await Promise.all([
         getAuthJson<ProgramConfig>(`/api/accelerators/cohorts/${cohortId}/program-config`, token),
-        getAuthJson<AcceleratorApplication[]>(`/api/accelerators/cohorts/${cohortId}/applications`, token),
+        canManage ? getAuthJson<AcceleratorApplication[]>(`/api/accelerators/cohorts/${cohortId}/applications`, token) : Promise.resolve([]),
         getAuthJson<Resident[]>(`/api/accelerators/cohorts/${cohortId}/residents`, token),
       ]);
       setConfig(program); setApplications(applicationRows); setResidents(residentRows);
     } catch (reason) { setError(describeApiError(reason, "Не удалось загрузить данные потока")); }
-  }, [canManage, cohortId, token]);
+  }, [canManage, canReadCohort, cohortId, token]);
   useEffect(() => { void loadCohortDetails(); }, [loadCohortDetails]);
 
   const tabs = useMemo(() => {
+    if (isTracker) return [{ key: "reports" as TabKey, label: "Мои резиденты" }];
     const rows: Array<{ key: TabKey; label: string }> = [{ key: "overview", label: "Обзор" }, { key: "applications", label: "Заявки" }, { key: "form", label: "Анкета" }, { key: "program", label: "Программа" }];
     if (config?.modules.homework) rows.push({ key: "homework", label: "Домашние задания" });
     if (config?.modules.attendance) rows.push({ key: "attendance", label: "Посещаемость" });
+    rows.push({ key: "trackers", label: "Трекеры" }, { key: "reports", label: "Отчётность" });
     if (isAdmin) rows.push({ key: "quotas", label: "Лимиты" });
     rows.push({ key: "settings", label: "Настройки" }, { key: "audit", label: "Журнал" }); return rows;
-  }, [config, isAdmin]);
-  useEffect(() => { if (!tabs.some((item) => item.key === tab)) setTab("overview"); }, [tab, tabs]);
+  }, [config, isAdmin, isTracker]);
+  useEffect(() => { if (!tabs.some((item) => item.key === tab)) setTab(tabs[0]?.key || "overview"); }, [tab, tabs]);
 
   const saveApplicationForm = async (applicationFormSchema: ApplicationFormSchema) => {
     if (!token || !cohortId) return false; setBusy("form"); setError("");
@@ -92,9 +96,9 @@ export default function AcceleratorWorkspacePage() {
     {error && <div role="alert" className="mb-6 rounded-2xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200">{error}</div>}
     {showSetup && isAdmin && <div className="mb-7"><AcceleratorSetupWizard token={token} onCancel={accelerators.length ? () => setShowSetup(false) : undefined} onCreated={async (result) => { await loadAccelerators(); setAcceleratorId(result.accelerator.id); setCohortId(result.cohort.id); setShowSetup(false); setTab("overview"); }} /></div>}
     {!accelerators.length && !showSetup ? <EmptyState isAdmin={isAdmin} onCreate={() => setShowSetup(true)} /> : accelerators.length > 0 && <>
-      <div className={`mb-6 grid gap-3 ${isResident ? "" : "md:grid-cols-2"}`}><SelectCard label="Акселератор"><select value={acceleratorId || ""} onChange={(event) => { setAcceleratorId(Number(event.target.value)); setTab("overview"); }} className="workspace-input">{accelerators.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select><p className="mt-2 text-xs text-white/35">Роль: {selectedAccelerator?.access_role === "global_admin" ? "главный администратор" : selectedAccelerator?.access_role === "organizer" ? "организатор" : "резидент"}</p></SelectCard>{!isResident && <SelectCard label="Поток"><select value={cohortId || ""} onChange={(event) => { setCohortId(Number(event.target.value)); setTab("overview"); }} className="workspace-input" disabled={!cohorts.length}>{cohorts.length ? cohorts.map((row) => <option key={row.id} value={row.id}>{row.name}</option>) : <option value="">Потоки ещё не созданы</option>}</select>{selectedCohort && <p className="mt-2 text-xs text-white/35">{STATUS_LABELS[selectedCohort.status] || selectedCohort.status}</p>}</SelectCard>}</div>
+      <div className={`mb-6 grid gap-3 ${isResident ? "" : "md:grid-cols-2"}`}><SelectCard label="Акселератор"><select value={acceleratorId || ""} onChange={(event) => { setAcceleratorId(Number(event.target.value)); setTab("overview"); }} className="workspace-input">{accelerators.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select><p className="mt-2 text-xs text-white/35">Роль: {selectedAccelerator?.access_role === "global_admin" ? "главный администратор" : selectedAccelerator?.access_role === "organizer" ? "организатор" : selectedAccelerator?.access_role === "tracker" ? "трекер" : "резидент"}</p></SelectCard>{!isResident && <SelectCard label="Поток"><select value={cohortId || ""} onChange={(event) => { setCohortId(Number(event.target.value)); setTab("overview"); }} className="workspace-input" disabled={!cohorts.length}>{cohorts.length ? cohorts.map((row) => <option key={row.id} value={row.id}>{row.name}</option>) : <option value="">Нет назначенных потоков</option>}</select>{selectedCohort && <p className="mt-2 text-xs text-white/35">{STATUS_LABELS[selectedCohort.status] || selectedCohort.status}</p>}</SelectCard>}</div>
       {isResident && acceleratorId && <ResidentWorkspace acceleratorId={acceleratorId} data={residentWorkspace} />}
-      {!isResident && canManage && selectedCohort && <>
+      {!isResident && canReadCohort && selectedCohort && <>
         <nav className="mb-6 flex gap-2 overflow-x-auto pb-2" aria-label="Разделы акселератора">{tabs.map((item) => <button type="button" key={item.key} onClick={() => setTab(item.key)} className={`shrink-0 rounded-full border px-4 py-2 text-sm ${tab === item.key ? "border-white bg-white text-black" : "border-white/10 text-white/50 hover:text-white"}`}>{item.label}</button>)}</nav>
         {tab === "overview" && <Overview accelerator={selectedAccelerator} cohort={selectedCohort} config={config} applications={applications} residents={residents} onCopy={copyApplicationLink} copied={copied} onNavigate={setTab} />}
         {tab === "applications" && <ApplicationManager token={token} applications={applications} schema={selectedCohort.application_form_schema || {}} onChanged={loadCohortDetails} />}
@@ -102,6 +106,8 @@ export default function AcceleratorWorkspacePage() {
         {tab === "program" && <ProgramBuilder cohortId={selectedCohort.id} token={token} />}
         {tab === "homework" && config?.modules.homework && <HomeworkManager cohortId={selectedCohort.id} token={token} residents={residents} />}
         {tab === "attendance" && config?.modules.attendance && <AttendanceManager cohortId={selectedCohort.id} token={token} />}
+        {tab === "trackers" && canManage && <TrackerManager token={token} cohortId={selectedCohort.id} residents={residents} />}
+        {tab === "reports" && <ResidentReport token={token} cohortId={selectedCohort.id} canManage={canManage} onChanged={loadCohortDetails} />}
         {tab === "quotas" && isAdmin && <QuotaManager token={token} cohortId={selectedCohort.id} initialTemplate={selectedCohort.default_quota_config} residents={residents} />}
         {tab === "settings" && <SettingsPanel token={token} isAdmin={isAdmin} accelerator={selectedAccelerator} cohort={selectedCohort} config={config} onConfig={setConfig} onCohort={(updated) => setCohorts((rows) => rows.map((row) => row.id === updated.id ? updated : row))} onAccelerator={(updated) => setAccelerators((rows) => rows.map((row) => row.id === updated.id ? { ...row, ...updated } : row))} onCohortCreated={async (created) => { const rows = await getAuthJson<Cohort[]>(`/api/accelerators/${selectedAccelerator.id}/cohorts`, token); setCohorts(rows); setCohortId(created.id); }} />}
         {tab === "audit" && <AuditLog token={token} acceleratorId={selectedAccelerator.id} />}

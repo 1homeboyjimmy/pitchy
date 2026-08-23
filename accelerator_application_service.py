@@ -21,6 +21,7 @@ from models import (
     AcceleratorCohort,
     AcceleratorInvitation,
     AcceleratorMembership,
+    AcceleratorMembershipEvent,
     AcceleratorParticipantProfile,
     Project,
     User,
@@ -234,6 +235,13 @@ async def approve_application(
     )
     db.add(membership)
     await db.flush()
+    db.add(AcceleratorMembershipEvent(
+        membership_id=membership.id,
+        from_status=None,
+        to_status="accepted",
+        actor_user_id=actor_user_id,
+        reason=comment or "Заявка одобрена",
+    ))
     db.add(AcceleratorParticipantProfile(
         membership_id=membership.id,
         profile={
