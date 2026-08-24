@@ -276,13 +276,9 @@ async def test_team_invitation_contact_privacy_tracker_scope_and_withdrawal_clea
                 db,
             )
         assert _status(immutable_owner) == 409
-        await db.rollback()
-
         with pytest.raises(HTTPException) as project_guard:
             await delete_project(owner.project_id, owner_user, db)
         assert _status(project_guard) == 409
-        await db.rollback()
-
         await update_membership_status(
             candidate.membership_id,
             MembershipStatusUpdate(status="withdrawn", reason="Leaves cohort"),
@@ -346,8 +342,6 @@ async def test_team_candidate_boundaries_capacity_decline_and_expiration():
                 BackgroundTasks(), users[0], db,
             )
         assert _status(has_project) == 409
-        await db.rollback()
-
         first = await invite_team_member(
             team["id"],
             AcceleratorTeamInvitationCreate(counterpart_profile_id=candidate_a.profile_id),
@@ -360,8 +354,6 @@ async def test_team_candidate_boundaries_capacity_decline_and_expiration():
                 BackgroundTasks(), users[0], db,
             )
         assert _status(full) == 409
-        await db.rollback()
-
         declined = await answer_team_invitation(
             first["id"],
             AcceleratorTeamInvitationUpdate(status="declined"),
@@ -383,8 +375,6 @@ async def test_team_candidate_boundaries_capacity_decline_and_expiration():
                 BackgroundTasks(), users[2], db,
             )
         assert _status(expired) == 409
-        await db.rollback()
-
         await update_program_config(
             cohort["id"],
             ProgramConfigUpdate(version=2, modules={"matchmaking": False}),
