@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+import re
 from typing import Any, Literal
 
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
@@ -337,6 +338,138 @@ class TrackingTaskCreate(BaseModel):
 
 class TrackingTaskUpdate(BaseModel):
     status: Literal["open", "done", "cancelled"]
+
+
+class ProjectAuditFinding(BaseModel):
+    title: str = Field(min_length=2, max_length=300)
+    description: str = Field(min_length=2, max_length=5000)
+    severity: Literal["low", "medium", "high"]
+    evidence: str | None = Field(default=None, max_length=3000)
+
+
+class ProjectAuditRecommendation(BaseModel):
+    title: str = Field(min_length=2, max_length=300)
+    description: str = Field(min_length=2, max_length=5000)
+    priority: Literal["low", "medium", "high"]
+    expected_result: str = Field(min_length=2, max_length=3000)
+
+
+class ProjectAuditGeneratedResult(BaseModel):
+    summary: str = Field(min_length=2, max_length=10000)
+    overall_score: int = Field(ge=0, le=100)
+    strengths: list[str] = Field(default_factory=list, max_length=12)
+    findings: list[ProjectAuditFinding] = Field(default_factory=list, max_length=20)
+    recommendations: list[ProjectAuditRecommendation] = Field(default_factory=list, max_length=20)
+    data_gaps: list[str] = Field(default_factory=list, max_length=20)
+
+
+class ProjectAuditCreate(BaseModel):
+    audit_type: Literal["product", "market", "custdev", "business_model", "grant"]
+    focus: str | None = Field(default=None, max_length=5000)
+    client_request_id: str = Field(
+        min_length=8, max_length=64, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]+$"
+    )
+
+    @field_validator("focus")
+    @classmethod
+    def strip_audit_focus(cls, value: str | None) -> str | None:
+        return (value or "").strip() or None
+
+
+class ProjectAuditTaskCreate(BaseModel):
+    recommendation_index: int = Field(ge=0, le=100)
+    due_at: datetime | None = None
+
+    @field_validator("due_at")
+    @classmethod
+    def normalize_audit_task_due_at(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value.tzinfo is not None:
+            return value.astimezone(timezone.utc).replace(tzinfo=None)
+        return value
+
+
+class DemoDayCriterion(BaseModel):
+    key: str = Field(min_length=2, max_length=50, pattern=r"^[a-z][a-z0-9_]*$")
+    label: str = Field(min_length=2, max_length=200)
+    description: str | None = Field(default=None, max_length=1000)
+    weight: int = Field(ge=1, le=100)
+    max_score: int = Field(default=10, ge=2, le=100)
+
+
+class DemoDayCreate(BaseModel):
+    title: str = Field(min_length=2, max_length=300)
+    description: str | None = Field(default=None, max_length=10000)
+    starts_at: datetime | None = None
+    criteria: list[DemoDayCriterion] = Field(min_length=1, max_length=10)
+
+    @field_validator("starts_at")
+    @classmethod
+    def normalize_demo_day_starts_at(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value.tzinfo is not None:
+            return value.astimezone(timezone.utc).replace(tzinfo=None)
+        return value
+
+    @model_validator(mode="after")
+    def validate_demo_day_criteria(self):
+        keys = [criterion.key for criterion in self.criteria]
+        if len(keys) != len(set(keys)):
+            raise ValueError("Критерии не должны повторяться")
+        return self
+
+
+class DemoDayStatusUpdate(BaseModel):
+    status: Literal["open", "scoring", "finalized"]
+
+
+class DemoDayExpertAssign(BaseModel):
+    user_id: int = Field(gt=0)
+
+
+class DemoDayProjectSelect(BaseModel):
+    membership_id: int = Field(gt=0)
+    selection_reason: str | None = Field(default=None, max_length=4000)
+
+
+def normalize_demo_url(value: str | None) -> str | None:
+    normalized = (value or "").strip()
+    if normalized and not re.match(r"^https?://", normalized, flags=re.IGNORECASE):
+        raise ValueError("Ссылка должна начинаться с http:// или https://")
+    return normalized or None
+
+
+class DemoDayMaterialsUpdate(BaseModel):
+    pitch_title: str = Field(min_length=2, max_length=300)
+    summary: str = Field(min_length=2, max_length=10000)
+    presentation_url: str = Field(min_length=8, max_length=2000)
+    video_url: str | None = Field(default=None, max_length=2000)
+    attachments: list[str] = Field(default_factory=list, max_length=10)
+
+    @field_validator("presentation_url", "video_url")
+    @classmethod
+    def validate_demo_url(cls, value: str | None) -> str | None:
+        return normalize_demo_url(value)
+
+    @field_validator("attachments")
+    @classmethod
+    def validate_demo_attachments(cls, value: list[str]) -> list[str]:
+        result: list[str] = []
+        for item in value:
+            normalized = normalize_demo_url(item)
+            if normalized and normalized not in result:
+                result.append(normalized)
+        return result
+
+
+class DemoDayScoreUpsert(BaseModel):
+    scores: dict[str, float] = Field(min_length=1, max_length=10)
+    comment: str | None = Field(default=None, max_length=10000)
+    recommendation: Literal["advance", "consider", "decline"]
+
+
+class DemoDayProjectDecision(BaseModel):
+    score_adjustment: float = Field(default=0, ge=-20, le=20)
+    manager_note: str | None = Field(default=None, max_length=5000)
+    outcome: Literal["winner", "finalist", "participant", "not_selected"] = "participant"
 
 
 def normalize_match_tags(values: list[str]) -> list[str]:

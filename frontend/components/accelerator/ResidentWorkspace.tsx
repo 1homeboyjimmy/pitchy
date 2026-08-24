@@ -8,6 +8,8 @@ import { describeApiError, getAuthJson, postAuthJson } from "@/lib/api";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { ResidentTracking } from "@/components/accelerator/ResidentTracking";
 import { MatchmakingWorkspace } from "@/components/accelerator/MatchmakingWorkspace";
+import { ProjectAuditWorkspace } from "@/components/accelerator/ProjectAuditWorkspace";
+import { DemoDayWorkspace } from "@/components/accelerator/DemoDayWorkspace";
 
 export type ResidentQuota = {
   membership_id: number;
@@ -60,7 +62,7 @@ export function ResidentWorkspace({ acceleratorId, data }: { acceleratorId: numb
 
 function MembershipView({ membership, quotas }: { membership: ResidentMembership; quotas: Record<string, ResidentQuota> }) {
   const enrolled = membership.status === "enrolled";
-  const [section, setSection] = useState<"overview" | "program" | "homework" | "events" | "tracking" | "matching">("overview");
+  const [section, setSection] = useState<"overview" | "program" | "homework" | "events" | "tracking" | "matching" | "project_audit" | "demo_day">("overview");
   const startsAt = formatDate(membership.cohort.starts_at);
   const endsAt = formatDate(membership.cohort.ends_at);
 
@@ -76,7 +78,7 @@ function MembershipView({ membership, quotas }: { membership: ResidentMembership
         {!enrolled && <div className="flex gap-3 p-6 text-sm text-white/55"><Clock3 className="mt-0.5 shrink-0 text-amber-300" size={19} /><div><h3 className="mb-1 text-white">Ожидается зачисление</h3><p>Заявка уже одобрена. Организатор завершит зачисление, после чего здесь появятся программа и лимиты Pitchy.</p></div></div>}
       </section>
 
-      {enrolled && <nav className="flex gap-2 overflow-x-auto pb-1" aria-label="Разделы программы резидента"><ResidentTab active={section === "overview"} onClick={() => setSection("overview")}>Обзор</ResidentTab><ResidentTab active={section === "program"} onClick={() => setSection("program")}>Программа</ResidentTab>{membership.modules.homework && <ResidentTab active={section === "homework"} onClick={() => setSection("homework")}>Домашние задания</ResidentTab>}{membership.modules.attendance && <ResidentTab active={section === "events"} onClick={() => setSection("events")}>Мероприятия</ResidentTab>}{membership.modules.progress_tracking && <ResidentTab active={section === "tracking"} onClick={() => setSection("tracking")}>Трекинг</ResidentTab>}{membership.modules.matchmaking && <ResidentTab active={section === "matching"} onClick={() => setSection("matching")}>Матчмейкинг</ResidentTab>}</nav>}
+      {enrolled && <nav className="flex gap-2 overflow-x-auto pb-1" aria-label="Разделы программы резидента"><ResidentTab active={section === "overview"} onClick={() => setSection("overview")}>Обзор</ResidentTab><ResidentTab active={section === "program"} onClick={() => setSection("program")}>Программа</ResidentTab>{membership.modules.homework && <ResidentTab active={section === "homework"} onClick={() => setSection("homework")}>Домашние задания</ResidentTab>}{membership.modules.attendance && <ResidentTab active={section === "events"} onClick={() => setSection("events")}>Мероприятия</ResidentTab>}{membership.modules.progress_tracking && <ResidentTab active={section === "tracking"} onClick={() => setSection("tracking")}>Трекинг</ResidentTab>}{membership.modules.matchmaking && <ResidentTab active={section === "matching"} onClick={() => setSection("matching")}>Матчмейкинг</ResidentTab>}{membership.modules.project_audit && <ResidentTab active={section === "project_audit"} onClick={() => setSection("project_audit")}>Аудит проекта</ResidentTab>}{membership.modules.demo_day && <ResidentTab active={section === "demo_day"} onClick={() => setSection("demo_day")}>Демо-день</ResidentTab>}</nav>}
 
       {enrolled && section === "overview" && membership.project && <section className="workspace-card"><div className="flex flex-wrap items-center justify-between gap-5"><div className="min-w-0"><p className="mb-2 text-xs uppercase tracking-[.18em] text-white/35">Проект резидента</p><h2 className="truncate text-2xl">{membership.project.name}</h2><div className="mt-4 h-2 w-full max-w-sm overflow-hidden rounded-full bg-white/8"><div className="h-full rounded-full bg-emerald-400" style={{ width: `${Math.max(0, Math.min(100, membership.project.readiness_index))}%` }} /></div><p className="mt-2 text-xs text-white/40">Паспорт заполнен на {membership.project.readiness_index}%</p></div><Link href={`/passport/${membership.project.id}`} className="workspace-button"><FileText size={16} /> Открыть паспорт</Link></div></section>}
 
@@ -91,6 +93,10 @@ function MembershipView({ membership, quotas }: { membership: ResidentMembership
       {enrolled && section === "tracking" && membership.modules.progress_tracking && <ResidentTracking membershipId={membership.membership_id} />}
 
       {enrolled && section === "matching" && membership.modules.matchmaking && <MatchmakingWorkspace cohortId={membership.cohort.id} membershipId={membership.membership_id} />}
+
+      {enrolled && section === "project_audit" && membership.modules.project_audit && <ProjectAuditWorkspace cohortId={membership.cohort.id} membershipId={membership.membership_id} />}
+
+      {enrolled && section === "demo_day" && membership.modules.demo_day && <DemoDayWorkspace cohortId={membership.cohort.id} membershipId={membership.membership_id} />}
 
       {enrolled && section === "overview" && <section className="workspace-card"><h2 className="mb-5 text-xl">Инструменты проекта</h2><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><Action href="/dashboard?tab=chat" label="Чат с аналитиком" icon={MessageSquare} /><Action href="/dashboard?tab=tree" label="Дорожная карта" icon={GitBranch} /><Action href="https://custdev.pitchy.pro/" label="Кастдев" icon={Users} external /><Action href="/grants" label="Гранты" icon={Banknote} /></div></section>}
     </>

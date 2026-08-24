@@ -4,6 +4,8 @@ from datetime import date, datetime, timedelta
 import csv
 import hashlib
 import io
+import json
+import logging
 import os
 import re
 import secrets
@@ -19,6 +21,7 @@ from accelerator_service import (
     accelerator_membership_quota_snapshot,
     accelerator_quota_snapshot,
     assign_quota_override,
+    consume_accelerator_membership_quota,
     has_active_personal_override,
     is_accelerator_organizer,
     normalize_resident_limits,
@@ -27,6 +30,7 @@ from accelerator_service import (
     require_tracker_membership_access,
     tracker_membership_ids,
 )
+from accelerator_project_audit_service import generate_project_audit
 from accelerator_application_service import (
     MANAGER_TRANSITIONS,
     accept_invitation,
@@ -44,6 +48,10 @@ from models import (
     AcceleratorAuditLog,
     AcceleratorAttendanceRecord,
     AcceleratorCohort,
+    AcceleratorDemoDay,
+    AcceleratorDemoDayExpert,
+    AcceleratorDemoDayProject,
+    AcceleratorDemoDayScore,
     AcceleratorEvent,
     AcceleratorInvitation,
     AcceleratorHomeworkAssignment,
@@ -60,6 +68,9 @@ from models import (
     AcceleratorProgramStage,
     AcceleratorProgramStageProgress,
     AcceleratorProgressCheckin,
+    AcceleratorProjectAudit,
+    AcceleratorProjectAuditTaskLink,
+    AcceleratorQuotaUsageEvent,
     AcceleratorResidentQuotaOverride,
     AcceleratorStaff,
     AcceleratorTrackingFeedback,
@@ -100,6 +111,15 @@ from schemas.accelerators import (
     TrackingFeedbackCreate,
     TrackingTaskCreate,
     TrackingTaskUpdate,
+    ProjectAuditCreate,
+    ProjectAuditTaskCreate,
+    DemoDayCreate,
+    DemoDayExpertAssign,
+    DemoDayMaterialsUpdate,
+    DemoDayProjectDecision,
+    DemoDayProjectSelect,
+    DemoDayScoreUpsert,
+    DemoDayStatusUpdate,
     MatchProfileData,
     MatchPoolProfileCreate,
     MatchCreate,
@@ -108,6 +128,7 @@ from schemas.accelerators import (
 
 
 router = APIRouter(prefix="/api/accelerators", tags=["accelerators"])
+logger = logging.getLogger("app.accelerator_project_audit")
 
 DEFAULT_MODULES = {
     "applications": True,
@@ -116,6 +137,8 @@ DEFAULT_MODULES = {
     "attendance": False,
     "progress_tracking": False,
     "matchmaking": False,
+    "project_audit": False,
+    "demo_day": False,
 }
 LOCKED_BASE_MODULES = {"applications": True, "program": True}
 COHORT_STATUS_TRANSITIONS = {
@@ -215,6 +238,28 @@ async def require_progress_tracking_module(
     ))).scalar_one_or_none()
     if not config or not (config.modules or {}).get("progress_tracking"):
         raise HTTPException(status_code=409, detail="Модуль трекинга прогресса не включён для этого потока")
+    return config
+
+
+async def require_project_audit_module(
+    db: AsyncSession, cohort: AcceleratorCohort
+) -> AcceleratorProgramConfig:
+    config = (await db.execute(select(AcceleratorProgramConfig).where(
+        AcceleratorProgramConfig.cohort_id == cohort.id
+    ))).scalar_one_or_none()
+    if not config or not (config.modules or {}).get("project_audit"):
+        raise HTTPException(status_code=409, detail="Модуль аудита проекта не включён для этого потока")
+    return config
+
+
+async def require_demo_day_module(
+    db: AsyncSession, cohort: AcceleratorCohort
+) -> AcceleratorProgramConfig:
+    config = (await db.execute(select(AcceleratorProgramConfig).where(
+        AcceleratorProgramConfig.cohort_id == cohort.id
+    ))).scalar_one_or_none()
+    if not config or not (config.modules or {}).get("demo_day"):
+        raise HTTPException(status_code=409, detail="Модуль демо-дня не включён для этого потока")
     return config
 
 
@@ -583,6 +628,15 @@ async def list_accelerators(
                 AcceleratorMatchProfile.user_id == user.id,
                 AcceleratorMatchProfile.role == "expert",
             )
+        )).scalars().all())
+        expert_accelerator_ids.update((await db.execute(
+            select(AcceleratorCohort.accelerator_id)
+            .join(AcceleratorDemoDay, AcceleratorDemoDay.cohort_id == AcceleratorCohort.id)
+            .join(
+                AcceleratorDemoDayExpert,
+                AcceleratorDemoDayExpert.demo_day_id == AcceleratorDemoDay.id,
+            )
+            .where(AcceleratorDemoDayExpert.user_id == user.id)
         )).scalars().all())
         staff_roles = {accelerator_id: role for accelerator_id, role in staff_rows}
         for tracker_accelerator_id in tracker_accelerator_ids:
@@ -968,6 +1022,7 @@ async def search_tracker_candidates(
     )
     rows = (await db.execute(select(User).where(
         User.is_active.is_(True),
+        User.is_admin.is_(False),
         User.deleted_at.is_(None),
         User.id.not_in(organizer_ids),
         User.id.not_in(assigned_here_ids),
@@ -1164,6 +1219,14 @@ async def list_cohorts(
                 AcceleratorMatch.status == "active",
             )
         )).scalars().all())
+        expert_cohort_ids.update((await db.execute(
+            select(AcceleratorDemoDay.cohort_id)
+            .join(
+                AcceleratorDemoDayExpert,
+                AcceleratorDemoDayExpert.demo_day_id == AcceleratorDemoDay.id,
+            )
+            .where(AcceleratorDemoDayExpert.user_id == user.id)
+        )).scalars().all())
         staff_cohort_ids = tracker_cohort_ids | expert_cohort_ids
         if staff_cohort_ids:
             cohort_query = cohort_query.where(AcceleratorCohort.id.in_(staff_cohort_ids))
@@ -1284,6 +1347,19 @@ async def get_program_config(
             )
             .limit(1)
         )).scalar_one_or_none() is not None
+        if not expert_access:
+            expert_access = (await db.execute(
+                select(AcceleratorDemoDayExpert.id)
+                .join(
+                    AcceleratorDemoDay,
+                    AcceleratorDemoDay.id == AcceleratorDemoDayExpert.demo_day_id,
+                )
+                .where(
+                    AcceleratorDemoDay.cohort_id == cohort.id,
+                    AcceleratorDemoDayExpert.user_id == user.id,
+                )
+                .limit(1)
+            )).scalar_one_or_none() is not None
         member = (await db.execute(select(AcceleratorMembership.id).where(
             AcceleratorMembership.cohort_id == cohort.id,
             AcceleratorMembership.user_id == user.id,
@@ -3884,6 +3960,1240 @@ async def update_tracking_task(
     for notification_id in notification_ids:
         background_tasks.add_task(process_notification_event, notification_id)
     return tracking_task_dict(task)
+
+
+PROJECT_AUDIT_TYPE_LABELS = {
+    "product": "Продукт",
+    "market": "Рынок",
+    "custdev": "CustDev",
+    "business_model": "Бизнес-модель",
+    "grant": "Грантовая готовность",
+}
+
+
+async def project_audit_membership_context(
+    db: AsyncSession, membership_id: int, user: User
+) -> tuple[AcceleratorMembership, AcceleratorCohort, str]:
+    membership = await db.get(AcceleratorMembership, membership_id)
+    if not membership or membership.role != "resident":
+        raise HTTPException(status_code=404, detail="Резидент не найден")
+    cohort = await get_cohort_or_404(db, membership.cohort_id)
+    await require_project_audit_module(db, cohort)
+    if membership.user_id == user.id:
+        access_role = "resident"
+    else:
+        access_role = await require_tracker_membership_access(db, user, membership)
+    if membership.status != "enrolled":
+        raise HTTPException(status_code=409, detail="Аудит доступен только зачисленному резиденту")
+    return membership, cohort, access_role
+
+
+async def project_audit_input_snapshot(
+    db: AsyncSession, membership: AcceleratorMembership
+) -> tuple[Project, dict]:
+    if not membership.project_id:
+        raise HTTPException(
+            status_code=409,
+            detail="Для аудита резиденту необходимо привязать паспорт проекта",
+        )
+    project = await db.get(Project, membership.project_id)
+    if not project or project.user_id != membership.user_id:
+        raise HTTPException(status_code=409, detail="Паспорт проекта резидента недоступен")
+    application = await db.get(AcceleratorApplication, membership.application_id)
+    checkins = (await db.execute(
+        select(AcceleratorProgressCheckin).where(
+            AcceleratorProgressCheckin.membership_id == membership.id
+        ).order_by(AcceleratorProgressCheckin.period_start.desc()).limit(6)
+    )).scalars().all()
+    return project, {
+        "project": {
+            "id": project.id,
+            "name": project.name,
+            "readiness_index": project.readiness_index,
+            "passport": project.passport or {},
+            "passport_updated_at": (
+                project.passport_updated_at.isoformat() if project.passport_updated_at else None
+            ),
+        },
+        "application": {
+            "type": application.application_type if application else None,
+            "answers": application.form_payload if application else {},
+        },
+        "recent_checkins": [{
+            "period_start": row.period_start.isoformat(),
+            "health": row.health,
+            "summary": row.summary,
+            "blockers": row.blockers,
+            "next_steps": row.next_steps,
+            "help_needed": row.help_needed,
+        } for row in checkins],
+    }
+
+
+def project_audit_comparison(current: AcceleratorProjectAudit, previous: AcceleratorProjectAudit | None) -> dict | None:
+    if not previous or current.status != "completed" or previous.status != "completed":
+        return None
+    current_result = current.result or {}
+    previous_result = previous.result or {}
+    current_findings = {
+        str(item.get("title", "")).strip() for item in current_result.get("findings", [])
+        if str(item.get("title", "")).strip()
+    }
+    previous_findings = {
+        str(item.get("title", "")).strip() for item in previous_result.get("findings", [])
+        if str(item.get("title", "")).strip()
+    }
+    return {
+        "previous_audit_id": previous.id,
+        "score_delta": (current.overall_score or 0) - (previous.overall_score or 0),
+        "new_findings": sorted(current_findings - previous_findings),
+        "resolved_findings": sorted(previous_findings - current_findings),
+    }
+
+
+async def project_audit_dict(
+    db: AsyncSession,
+    row: AcceleratorProjectAudit,
+    previous: AcceleratorProjectAudit | None = None,
+) -> dict:
+    membership = await db.get(AcceleratorMembership, row.membership_id)
+    resident = await db.get(User, membership.user_id) if membership else None
+    requester = await db.get(User, row.requested_by_user_id)
+    project = await db.get(Project, row.project_id)
+    links = (await db.execute(
+        select(AcceleratorProjectAuditTaskLink, AcceleratorTrackingTask)
+        .join(
+            AcceleratorTrackingTask,
+            AcceleratorTrackingTask.id == AcceleratorProjectAuditTaskLink.tracking_task_id,
+        )
+        .where(AcceleratorProjectAuditTaskLink.audit_id == row.id)
+        .order_by(AcceleratorProjectAuditTaskLink.recommendation_index)
+    )).all()
+    return {
+        "id": row.id,
+        "cohort_id": row.cohort_id,
+        "membership_id": row.membership_id,
+        "project": {"id": project.id, "name": project.name} if project else None,
+        "resident": {"id": resident.id, "name": resident.name} if resident else None,
+        "requested_by": {"id": requester.id, "name": requester.name} if requester else None,
+        "audit_type": row.audit_type,
+        "audit_type_label": PROJECT_AUDIT_TYPE_LABELS.get(row.audit_type, row.audit_type),
+        "focus": row.focus,
+        "status": row.status,
+        "result": row.result,
+        "overall_score": row.overall_score,
+        "error_message": row.error_message,
+        "quota": {
+            "resource": row.quota_resource,
+            "consumed": row.quota_usage_event_id is not None,
+        },
+        "linked_tasks": [{
+            "recommendation_index": link.recommendation_index,
+            "task": tracking_task_dict(task),
+        } for link, task in links],
+        "comparison": project_audit_comparison(row, previous),
+        "completed_at": row.completed_at,
+        "created_at": row.created_at,
+    }
+
+
+def previous_project_audit(
+    rows: list[AcceleratorProjectAudit], index: int
+) -> AcceleratorProjectAudit | None:
+    current = rows[index]
+    return next((
+        candidate for candidate in rows[index + 1:]
+        if candidate.membership_id == current.membership_id
+        and candidate.audit_type == current.audit_type
+        and candidate.status == "completed"
+    ), None)
+
+
+@router.get("/cohorts/{cohort_id}/project-audits")
+async def list_cohort_project_audits(
+    cohort_id: int,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    cohort = await get_cohort_or_404(db, cohort_id)
+    await require_project_audit_module(db, cohort)
+    access_role = await require_cohort_reader(db, user, cohort)
+    query = (
+        select(AcceleratorProjectAudit)
+        .join(
+            AcceleratorMembership,
+            AcceleratorMembership.id == AcceleratorProjectAudit.membership_id,
+        )
+        .where(AcceleratorProjectAudit.cohort_id == cohort.id)
+        .order_by(AcceleratorProjectAudit.created_at.desc())
+        .limit(300)
+    )
+    if access_role == "tracker":
+        allowed_ids = await tracker_membership_ids(db, user.id, cohort.id)
+        query = query.where(AcceleratorProjectAudit.membership_id.in_(allowed_ids))
+    rows = list((await db.execute(query)).scalars().all())
+    return {
+        "access_role": access_role,
+        "audits": [
+            await project_audit_dict(db, row, previous_project_audit(rows, index))
+            for index, row in enumerate(rows)
+        ],
+    }
+
+
+@router.get("/memberships/{membership_id}/project-audits")
+async def list_membership_project_audits(
+    membership_id: int,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    _, _, access_role = await project_audit_membership_context(db, membership_id, user)
+    rows = list((await db.execute(
+        select(AcceleratorProjectAudit).where(
+            AcceleratorProjectAudit.membership_id == membership_id
+        ).order_by(AcceleratorProjectAudit.created_at.desc()).limit(100)
+    )).scalars().all())
+    return {
+        "access_role": access_role,
+        "audits": [
+            await project_audit_dict(db, row, previous_project_audit(rows, index))
+            for index, row in enumerate(rows)
+        ],
+    }
+
+
+@router.get("/project-audits/{audit_id}")
+async def get_project_audit(
+    audit_id: int,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    row = await db.get(AcceleratorProjectAudit, audit_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Аудит не найден")
+    await project_audit_membership_context(db, row.membership_id, user)
+    previous = (await db.execute(
+        select(AcceleratorProjectAudit).where(
+            AcceleratorProjectAudit.membership_id == row.membership_id,
+            AcceleratorProjectAudit.audit_type == row.audit_type,
+            AcceleratorProjectAudit.status == "completed",
+            AcceleratorProjectAudit.created_at < row.created_at,
+        ).order_by(AcceleratorProjectAudit.created_at.desc()).limit(1)
+    )).scalar_one_or_none()
+    return await project_audit_dict(db, row, previous)
+
+
+@router.post("/memberships/{membership_id}/project-audits")
+async def create_project_audit(
+    membership_id: int,
+    payload: ProjectAuditCreate,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    membership, cohort, _ = await project_audit_membership_context(db, membership_id, user)
+    existing = (await db.execute(select(AcceleratorProjectAudit).where(
+        AcceleratorProjectAudit.membership_id == membership.id,
+        AcceleratorProjectAudit.client_request_id == payload.client_request_id,
+    ))).scalar_one_or_none()
+    if existing:
+        return await project_audit_dict(db, existing)
+
+    project, input_snapshot = await project_audit_input_snapshot(db, membership)
+    quota = await accelerator_membership_quota_snapshot(db, membership.id, "custdev")
+    if quota and quota["limit"] != -1 and quota["remaining"] == 0:
+        raise HTTPException(
+            status_code=402,
+            detail=f"quota_exceeded: лимит резидента custdev исчерпан ({quota['limit']})",
+        )
+    row = AcceleratorProjectAudit(
+        cohort_id=cohort.id,
+        membership_id=membership.id,
+        project_id=project.id,
+        requested_by_user_id=user.id,
+        client_request_id=payload.client_request_id,
+        audit_type=payload.audit_type,
+        focus=payload.focus,
+        input_snapshot=input_snapshot,
+    )
+    db.add(row)
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        existing = (await db.execute(select(AcceleratorProjectAudit).where(
+            AcceleratorProjectAudit.membership_id == membership_id,
+            AcceleratorProjectAudit.client_request_id == payload.client_request_id,
+        ))).scalar_one_or_none()
+        if existing:
+            return await project_audit_dict(db, existing)
+        raise
+    add_audit(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        actor_user_id=user.id, action="project_audit.requested",
+        target_type="project_audit", target_id=row.id,
+        details={"membership_id": membership.id, "audit_type": row.audit_type},
+    )
+    await db.commit()
+
+    try:
+        generated = await generate_project_audit(
+            audit_type=row.audit_type,
+            project_snapshot=row.input_snapshot,
+            focus=row.focus,
+        )
+    except Exception:
+        logger.exception("Project audit generation failed for audit_id=%s", row.id)
+        row.status = "failed"
+        row.error_message = "Сервис анализа временно недоступен. Повторите запрос позже."
+        add_audit(
+            db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+            actor_user_id=user.id, action="project_audit.failed",
+            target_type="project_audit", target_id=row.id,
+            details={"membership_id": membership.id, "reason": "generation_failed"},
+        )
+        await db.commit()
+        raise HTTPException(status_code=503, detail=row.error_message)
+
+    row.result = generated.model_dump(mode="json")
+    row.overall_score = generated.overall_score
+    row.status = "completed"
+    row.completed_at = datetime.utcnow()
+    quota_key = f"accelerator-project-audit:{row.id}"
+    try:
+        consumed = await consume_accelerator_membership_quota(
+            db,
+            membership_id=membership.id,
+            user_id=membership.user_id,
+            resource="custdev",
+            idempotency_key=quota_key,
+            reference_type="accelerator_project_audit",
+            reference_id=str(row.id),
+            metadata={"audit_type": row.audit_type, "requested_by_user_id": user.id},
+        )
+    except HTTPException as exc:
+        row.status = "failed"
+        row.result = None
+        row.overall_score = None
+        row.completed_at = None
+        row.error_message = str(exc.detail)
+        add_audit(
+            db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+            actor_user_id=user.id, action="project_audit.failed",
+            target_type="project_audit", target_id=row.id,
+            details={"membership_id": membership.id, "reason": "quota_exceeded"},
+        )
+        await db.commit()
+        raise
+    if consumed:
+        row.quota_usage_event_id = (await db.execute(
+            select(AcceleratorQuotaUsageEvent.id).where(
+                AcceleratorQuotaUsageEvent.idempotency_key == quota_key
+            )
+        )).scalar_one()
+
+    resident = await db.get(User, membership.user_id)
+    recipients: dict[int, User] = {}
+    if resident and resident.id != user.id:
+        recipients[resident.id] = resident
+    elif resident:
+        trackers = (await db.execute(
+            select(User)
+            .join(
+                AcceleratorTrackerAssignment,
+                AcceleratorTrackerAssignment.tracker_user_id == User.id,
+            )
+            .where(AcceleratorTrackerAssignment.membership_id == membership.id)
+        )).scalars().all()
+        recipients.update({tracker.id: tracker for tracker in trackers if tracker.id != user.id})
+    notification_ids = []
+    for recipient in recipients.values():
+        notification = await enqueue_notification(
+            db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+            recipient_email=recipient.email, event_type="project_audit_completed",
+            subject=f"Готов аудит проекта «{project.name}»",
+            body=(
+                f"Аудит «{PROJECT_AUDIT_TYPE_LABELS[row.audit_type]}» завершён. "
+                f"Итоговая оценка: {row.overall_score}/100.\n\n"
+                f"Открыть: {os.getenv('FRONTEND_URL', 'https://pitchy.pro').rstrip('/')}/accelerator"
+            ),
+            idempotency_key=f"project-audit-completed:{row.id}:{recipient.id}",
+        )
+        notification_ids.append(notification.id)
+    add_audit(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        actor_user_id=user.id, action="project_audit.completed",
+        target_type="project_audit", target_id=row.id,
+        details={
+            "membership_id": membership.id,
+            "audit_type": row.audit_type,
+            "overall_score": row.overall_score,
+            "quota_consumed": consumed,
+        },
+    )
+    await db.commit()
+    for notification_id in notification_ids:
+        background_tasks.add_task(process_notification_event, notification_id)
+    return await project_audit_dict(db, row)
+
+
+@router.post("/project-audits/{audit_id}/tasks")
+async def create_project_audit_task(
+    audit_id: int,
+    payload: ProjectAuditTaskCreate,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    row = await db.get(AcceleratorProjectAudit, audit_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Аудит не найден")
+    membership, cohort, access_role = await project_audit_membership_context(
+        db, row.membership_id, user
+    )
+    if access_role == "resident":
+        raise HTTPException(status_code=403, detail="Задачу создаёт трекер или организатор")
+    await require_progress_tracking_module(db, cohort)
+    if row.status != "completed" or not row.result:
+        raise HTTPException(status_code=409, detail="Задачу можно создать только из завершённого аудита")
+    recommendations = row.result.get("recommendations", [])
+    if payload.recommendation_index >= len(recommendations):
+        raise HTTPException(status_code=422, detail="Рекомендация не найдена")
+    existing = (await db.execute(
+        select(AcceleratorProjectAuditTaskLink, AcceleratorTrackingTask)
+        .join(
+            AcceleratorTrackingTask,
+            AcceleratorTrackingTask.id == AcceleratorProjectAuditTaskLink.tracking_task_id,
+        )
+        .where(
+            AcceleratorProjectAuditTaskLink.audit_id == row.id,
+            AcceleratorProjectAuditTaskLink.recommendation_index == payload.recommendation_index,
+        )
+    )).first()
+    if existing:
+        link, task = existing
+        return {
+            "audit_id": row.id,
+            "recommendation_index": link.recommendation_index,
+            "task": tracking_task_dict(task),
+        }
+    if payload.due_at and payload.due_at <= datetime.utcnow():
+        raise HTTPException(status_code=422, detail="Срок задачи должен быть в будущем")
+    recommendation = recommendations[payload.recommendation_index]
+    task = AcceleratorTrackingTask(
+        membership_id=membership.id,
+        created_by_user_id=user.id,
+        title=str(recommendation.get("title", "Рекомендация аудита"))[:300],
+        description=(
+            f"{recommendation.get('description', '')}\n\n"
+            f"Ожидаемый результат: {recommendation.get('expected_result', 'не указан')}"
+        ).strip(),
+        due_at=payload.due_at,
+    )
+    db.add(task)
+    await db.flush()
+    link = AcceleratorProjectAuditTaskLink(
+        audit_id=row.id,
+        recommendation_index=payload.recommendation_index,
+        tracking_task_id=task.id,
+        created_by_user_id=user.id,
+    )
+    db.add(link)
+    resident = await db.get(User, membership.user_id)
+    notification = await enqueue_notification(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        recipient_email=resident.email, event_type="project_audit_task_created",
+        subject=f"Новая задача по аудиту: {task.title}",
+        body=(
+            f"По результатам аудита проекта создана задача «{task.title}».\n\n"
+            f"Открыть: {os.getenv('FRONTEND_URL', 'https://pitchy.pro').rstrip('/')}/accelerator"
+        ),
+        idempotency_key=f"project-audit-task:{row.id}:{payload.recommendation_index}",
+    )
+    add_audit(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        actor_user_id=user.id, action="project_audit.task_created",
+        target_type="tracking_task", target_id=task.id,
+        details={
+            "membership_id": membership.id,
+            "project_audit_id": row.id,
+            "recommendation_index": payload.recommendation_index,
+        },
+    )
+    await db.commit()
+    background_tasks.add_task(process_notification_event, notification.id)
+    return {
+        "audit_id": row.id,
+        "recommendation_index": payload.recommendation_index,
+        "task": tracking_task_dict(task),
+    }
+
+
+async def demo_day_access(
+    db: AsyncSession, demo_day: AcceleratorDemoDay, user: User
+) -> tuple[AcceleratorCohort, str]:
+    cohort = await get_cohort_or_404(db, demo_day.cohort_id)
+    await require_demo_day_module(db, cohort)
+    if user.is_admin:
+        return cohort, "global_admin"
+    if await is_accelerator_organizer(db, user.id, cohort.accelerator_id):
+        return cohort, "organizer"
+    expert = (await db.execute(select(AcceleratorDemoDayExpert.id).where(
+        AcceleratorDemoDayExpert.demo_day_id == demo_day.id,
+        AcceleratorDemoDayExpert.user_id == user.id,
+    ))).scalar_one_or_none()
+    if expert is not None:
+        return cohort, "expert"
+    resident = (await db.execute(
+        select(AcceleratorDemoDayProject.id)
+        .join(
+            AcceleratorMembership,
+            AcceleratorMembership.id == AcceleratorDemoDayProject.membership_id,
+        )
+        .where(
+            AcceleratorDemoDayProject.demo_day_id == demo_day.id,
+            AcceleratorMembership.user_id == user.id,
+            AcceleratorMembership.role == "resident",
+        )
+    )).scalar_one_or_none()
+    if resident is not None:
+        return cohort, "resident"
+    raise HTTPException(status_code=403, detail="Нет доступа к этому демо-дню")
+
+
+def demo_normalized_score(criteria: list[dict], raw_scores: dict[str, float]) -> float:
+    keys = {str(item.get("key")) for item in criteria}
+    if set(raw_scores) != keys:
+        raise HTTPException(status_code=422, detail="Оцените проект по всем критериям")
+    total_weight = sum(float(item.get("weight", 0)) for item in criteria)
+    if total_weight <= 0:
+        raise HTTPException(status_code=409, detail="Критерии демо-дня настроены некорректно")
+    total = 0.0
+    for criterion in criteria:
+        key = str(criterion["key"])
+        value = float(raw_scores[key])
+        maximum = float(criterion["max_score"])
+        if value < 0 or value > maximum:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Оценка «{criterion['label']}» должна быть от 0 до {maximum:g}",
+            )
+        total += (value / maximum) * float(criterion["weight"])
+    return round(total / total_weight * 100, 2)
+
+
+async def demo_day_dict(
+    db: AsyncSession, demo_day: AcceleratorDemoDay, access_role: str, viewer_id: int
+) -> dict:
+    expert_rows = (await db.execute(
+        select(AcceleratorDemoDayExpert, User)
+        .join(User, User.id == AcceleratorDemoDayExpert.user_id)
+        .where(AcceleratorDemoDayExpert.demo_day_id == demo_day.id)
+        .order_by(User.name, User.email)
+    )).all()
+    project_rows = (await db.execute(
+        select(AcceleratorDemoDayProject, AcceleratorMembership, User, Project)
+        .join(
+            AcceleratorMembership,
+            AcceleratorMembership.id == AcceleratorDemoDayProject.membership_id,
+        )
+        .join(User, User.id == AcceleratorMembership.user_id)
+        .join(Project, Project.id == AcceleratorDemoDayProject.project_id)
+        .where(AcceleratorDemoDayProject.demo_day_id == demo_day.id)
+        .order_by(
+            AcceleratorDemoDayProject.rank.is_(None),
+            AcceleratorDemoDayProject.rank,
+            Project.name,
+        )
+    )).all()
+    project_ids = [row.id for row, _, _, _ in project_rows]
+    score_rows = []
+    if project_ids:
+        score_rows = (await db.execute(
+            select(AcceleratorDemoDayScore, User)
+            .join(User, User.id == AcceleratorDemoDayScore.expert_user_id)
+            .where(AcceleratorDemoDayScore.demo_project_id.in_(project_ids))
+            .order_by(AcceleratorDemoDayScore.submitted_at)
+        )).all()
+    scores_by_project: dict[int, list] = {}
+    for score, expert in score_rows:
+        scores_by_project.setdefault(score.demo_project_id, []).append((score, expert))
+    projects = []
+    for row, membership, resident, project in project_rows:
+        if access_role == "resident" and resident.id != viewer_id:
+            continue
+        evaluations = scores_by_project.get(row.id, [])
+        average = (
+            round(sum(float(score.normalized_score) for score, _ in evaluations) / len(evaluations), 2)
+            if evaluations else None
+        )
+        visible_evaluations = []
+        for score, expert in evaluations:
+            if access_role in ("global_admin", "organizer") or (
+                access_role == "expert" and score.expert_user_id == viewer_id
+            ):
+                visible_evaluations.append({
+                    "id": score.id,
+                    "expert": {"id": expert.id, "name": expert.name},
+                    "scores": score.scores or {},
+                    "normalized_score": float(score.normalized_score),
+                    "comment": score.comment,
+                    "recommendation": score.recommendation,
+                    "submitted_at": score.submitted_at,
+                })
+        projects.append({
+            "id": row.id,
+            "membership_id": membership.id,
+            "resident": {
+                "id": resident.id,
+                "name": resident.name,
+                **({"email": resident.email} if access_role in ("global_admin", "organizer") else {}),
+            },
+            "project": {
+                "id": project.id,
+                "name": project.name,
+                "readiness_index": project.readiness_index,
+            },
+            "selection_reason": row.selection_reason,
+            "pitch_title": row.pitch_title,
+            "summary": row.summary,
+            "presentation_url": row.presentation_url,
+            "video_url": row.video_url,
+            "attachments": row.attachments or [],
+            "submitted_at": row.submitted_at,
+            "evaluation_count": len(evaluations),
+            "average_score": average if access_role in ("global_admin", "organizer") or demo_day.status == "finalized" else None,
+            "score_adjustment": float(row.score_adjustment or 0) if access_role in ("global_admin", "organizer") else None,
+            "manager_note": row.manager_note if access_role in ("global_admin", "organizer") else None,
+            "outcome": row.outcome if access_role in ("global_admin", "organizer") or demo_day.status == "finalized" else None,
+            "final_score": float(row.final_score) if row.final_score is not None and demo_day.status == "finalized" else None,
+            "rank": row.rank if demo_day.status == "finalized" else None,
+            "evaluations": visible_evaluations,
+        })
+    return {
+        "id": demo_day.id,
+        "cohort_id": demo_day.cohort_id,
+        "title": demo_day.title,
+        "description": demo_day.description,
+        "starts_at": demo_day.starts_at,
+        "criteria": demo_day.criteria or [],
+        "status": demo_day.status,
+        "access_role": access_role,
+        "experts": [{
+            "id": assignment.id,
+            "user_id": expert.id,
+            "name": expert.name,
+            **({"email": expert.email} if access_role in ("global_admin", "organizer") else {}),
+        } for assignment, expert in expert_rows],
+        "projects": projects,
+        "finalized_at": demo_day.finalized_at,
+        "created_at": demo_day.created_at,
+    }
+
+
+@router.get("/cohorts/{cohort_id}/demo-days")
+async def list_cohort_demo_days(
+    cohort_id: int,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    cohort = await get_cohort_or_404(db, cohort_id)
+    await require_demo_day_module(db, cohort)
+    if user.is_admin:
+        access_role = "global_admin"
+        query = select(AcceleratorDemoDay).where(AcceleratorDemoDay.cohort_id == cohort.id)
+    elif await is_accelerator_organizer(db, user.id, cohort.accelerator_id):
+        access_role = "organizer"
+        query = select(AcceleratorDemoDay).where(AcceleratorDemoDay.cohort_id == cohort.id)
+    else:
+        access_role = "expert"
+        query = (
+            select(AcceleratorDemoDay)
+            .join(
+                AcceleratorDemoDayExpert,
+                AcceleratorDemoDayExpert.demo_day_id == AcceleratorDemoDay.id,
+            )
+            .where(
+                AcceleratorDemoDay.cohort_id == cohort.id,
+                AcceleratorDemoDayExpert.user_id == user.id,
+            )
+        )
+        allowed = (await db.execute(select(AcceleratorDemoDayExpert.id).join(
+            AcceleratorDemoDay,
+            AcceleratorDemoDay.id == AcceleratorDemoDayExpert.demo_day_id,
+        ).where(
+            AcceleratorDemoDay.cohort_id == cohort.id,
+            AcceleratorDemoDayExpert.user_id == user.id,
+        ).limit(1))).scalar_one_or_none()
+        if allowed is None:
+            raise HTTPException(status_code=403, detail="Нет доступа к демо-дню")
+    rows = (await db.execute(query.order_by(AcceleratorDemoDay.created_at.desc()))).scalars().all()
+    return {
+        "access_role": access_role,
+        "demo_days": [await demo_day_dict(db, row, access_role, user.id) for row in rows],
+    }
+
+
+@router.get("/memberships/{membership_id}/demo-days")
+async def list_membership_demo_days(
+    membership_id: int,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    membership = await db.get(AcceleratorMembership, membership_id)
+    if not membership or membership.user_id != user.id or membership.role != "resident":
+        raise HTTPException(status_code=404, detail="Участие не найдено")
+    cohort = await get_cohort_or_404(db, membership.cohort_id)
+    await require_demo_day_module(db, cohort)
+    rows = (await db.execute(
+        select(AcceleratorDemoDay)
+        .join(
+            AcceleratorDemoDayProject,
+            AcceleratorDemoDayProject.demo_day_id == AcceleratorDemoDay.id,
+        )
+        .where(AcceleratorDemoDayProject.membership_id == membership.id)
+        .order_by(AcceleratorDemoDay.created_at.desc())
+    )).scalars().all()
+    return {
+        "access_role": "resident",
+        "demo_days": [await demo_day_dict(db, row, "resident", user.id) for row in rows],
+    }
+
+
+@router.post("/cohorts/{cohort_id}/demo-days")
+async def create_demo_day(
+    cohort_id: int,
+    payload: DemoDayCreate,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    cohort = await get_cohort_or_404(db, cohort_id)
+    await require_demo_day_module(db, cohort)
+    await require_cohort_manager(db, user, cohort)
+    row = AcceleratorDemoDay(
+        cohort_id=cohort.id,
+        title=payload.title.strip(),
+        description=(payload.description or "").strip() or None,
+        starts_at=payload.starts_at,
+        criteria=[criterion.model_dump(mode="json") for criterion in payload.criteria],
+        created_by_user_id=user.id,
+    )
+    db.add(row)
+    await db.flush()
+    add_audit(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        actor_user_id=user.id, action="demo_day.created",
+        target_type="demo_day", target_id=row.id,
+        details={"title": row.title, "criteria_count": len(row.criteria)},
+    )
+    await db.commit()
+    return await demo_day_dict(db, row, "global_admin" if user.is_admin else "organizer", user.id)
+
+
+@router.get("/cohorts/{cohort_id}/demo-day-expert-candidates")
+async def search_demo_day_expert_candidates(
+    cohort_id: int,
+    q: str = Query(min_length=2, max_length=200),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    cohort = await get_cohort_or_404(db, cohort_id)
+    await require_demo_day_module(db, cohort)
+    await require_cohort_manager(db, user, cohort)
+    resident_ids = select(AcceleratorMembership.user_id).where(
+        AcceleratorMembership.cohort_id == cohort.id,
+        AcceleratorMembership.role == "resident",
+    )
+    organizer_ids = select(AcceleratorStaff.user_id).where(
+        AcceleratorStaff.accelerator_id == cohort.accelerator_id,
+        AcceleratorStaff.role == "organizer",
+    )
+    search = f"%{q.strip()}%"
+    rows = (await db.execute(select(User).where(
+        User.is_active.is_(True),
+        User.deleted_at.is_(None),
+        User.id.not_in(resident_ids),
+        User.id.not_in(organizer_ids),
+        or_(User.name.ilike(search), User.email.ilike(search)),
+    ).order_by(User.name, User.email).limit(20))).scalars().all()
+    return [{"id": row.id, "name": row.name, "email": row.email} for row in rows]
+
+
+@router.post("/demo-days/{demo_day_id}/experts")
+async def assign_demo_day_expert(
+    demo_day_id: int,
+    payload: DemoDayExpertAssign,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    demo_day = await db.get(AcceleratorDemoDay, demo_day_id)
+    if not demo_day:
+        raise HTTPException(status_code=404, detail="Демо-день не найден")
+    cohort, _ = await demo_day_access(db, demo_day, user)
+    await require_cohort_manager(db, user, cohort)
+    if demo_day.status == "finalized":
+        raise HTTPException(status_code=409, detail="Финализированный демо-день нельзя изменить")
+    expert = await db.get(User, payload.user_id)
+    if not expert or not expert.is_active or expert.is_admin or expert.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Активный пользователь не найден")
+    forbidden = (await db.execute(select(AcceleratorMembership.id).where(
+        AcceleratorMembership.cohort_id == cohort.id,
+        AcceleratorMembership.user_id == expert.id,
+        AcceleratorMembership.role == "resident",
+    ))).scalar_one_or_none()
+    if forbidden is not None or await is_accelerator_organizer(db, expert.id, cohort.accelerator_id):
+        raise HTTPException(status_code=409, detail="Резидент или организатор потока не может оценивать этот демо-день")
+    existing = (await db.execute(select(AcceleratorDemoDayExpert).where(
+        AcceleratorDemoDayExpert.demo_day_id == demo_day.id,
+        AcceleratorDemoDayExpert.user_id == expert.id,
+    ))).scalar_one_or_none()
+    if existing:
+        return await demo_day_dict(db, demo_day, "global_admin" if user.is_admin else "organizer", user.id)
+    assignment = AcceleratorDemoDayExpert(
+        demo_day_id=demo_day.id,
+        user_id=expert.id,
+        invited_by_user_id=user.id,
+    )
+    db.add(assignment)
+    await db.flush()
+    notification = await enqueue_notification(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        recipient_email=expert.email, event_type="demo_day_expert_invited",
+        subject=f"Приглашение оценивать «{demo_day.title}»",
+        body=f"Вы приглашены экспертом демо-дня.\n\nОткрыть: {os.getenv('FRONTEND_URL', 'https://pitchy.pro').rstrip('/')}/accelerator",
+        idempotency_key=f"demo-day-expert:{demo_day.id}:{expert.id}",
+    )
+    add_audit(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        actor_user_id=user.id, action="demo_day.expert_assigned",
+        target_type="user", target_id=expert.id,
+        details={"demo_day_id": demo_day.id},
+    )
+    await db.commit()
+    background_tasks.add_task(process_notification_event, notification.id)
+    return await demo_day_dict(db, demo_day, "global_admin" if user.is_admin else "organizer", user.id)
+
+
+@router.delete("/demo-days/{demo_day_id}/experts/{expert_user_id}", status_code=204)
+async def remove_demo_day_expert(
+    demo_day_id: int,
+    expert_user_id: int,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    demo_day = await db.get(AcceleratorDemoDay, demo_day_id)
+    if not demo_day:
+        raise HTTPException(status_code=404, detail="Демо-день не найден")
+    cohort, _ = await demo_day_access(db, demo_day, user)
+    await require_cohort_manager(db, user, cohort)
+    if demo_day.status in ("scoring", "finalized"):
+        raise HTTPException(status_code=409, detail="После начала оценивания состав экспертов зафиксирован")
+    await db.execute(delete(AcceleratorDemoDayExpert).where(
+        AcceleratorDemoDayExpert.demo_day_id == demo_day.id,
+        AcceleratorDemoDayExpert.user_id == expert_user_id,
+    ))
+    add_audit(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        actor_user_id=user.id, action="demo_day.expert_removed",
+        target_type="user", target_id=expert_user_id,
+        details={"demo_day_id": demo_day.id},
+    )
+    await db.commit()
+    return Response(status_code=204)
+
+
+@router.post("/demo-days/{demo_day_id}/projects")
+async def select_demo_day_project(
+    demo_day_id: int,
+    payload: DemoDayProjectSelect,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    demo_day = await db.get(AcceleratorDemoDay, demo_day_id)
+    if not demo_day:
+        raise HTTPException(status_code=404, detail="Демо-день не найден")
+    cohort, _ = await demo_day_access(db, demo_day, user)
+    await require_cohort_manager(db, user, cohort)
+    if demo_day.status not in ("draft", "open"):
+        raise HTTPException(status_code=409, detail="Отбор проектов уже завершён")
+    membership = await db.get(AcceleratorMembership, payload.membership_id)
+    if (
+        not membership or membership.cohort_id != cohort.id
+        or membership.role != "resident" or membership.status != "enrolled"
+    ):
+        raise HTTPException(status_code=404, detail="Зачисленный резидент не найден")
+    if not membership.project_id:
+        raise HTTPException(status_code=409, detail="У резидента нет паспорта проекта")
+    completed_stage = (await db.execute(
+        select(AcceleratorProgramStageProgress.id)
+        .join(
+            AcceleratorProgramStage,
+            AcceleratorProgramStage.id == AcceleratorProgramStageProgress.stage_id,
+        )
+        .where(
+            AcceleratorProgramStageProgress.membership_id == membership.id,
+            AcceleratorProgramStage.cohort_id == cohort.id,
+        ).limit(1)
+    )).scalar_one_or_none()
+    if completed_stage is None:
+        raise HTTPException(status_code=409, detail="Для участия нужно завершить хотя бы один этап программы")
+    existing = (await db.execute(select(AcceleratorDemoDayProject).where(
+        AcceleratorDemoDayProject.demo_day_id == demo_day.id,
+        AcceleratorDemoDayProject.membership_id == membership.id,
+    ))).scalar_one_or_none()
+    if existing:
+        return await demo_day_dict(db, demo_day, "global_admin" if user.is_admin else "organizer", user.id)
+    project = await db.get(Project, membership.project_id)
+    row = AcceleratorDemoDayProject(
+        demo_day_id=demo_day.id,
+        membership_id=membership.id,
+        project_id=project.id,
+        selected_by_user_id=user.id,
+        selection_reason=(payload.selection_reason or "").strip() or None,
+        pitch_title=project.name,
+    )
+    db.add(row)
+    await db.flush()
+    resident = await db.get(User, membership.user_id)
+    notification = await enqueue_notification(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        recipient_email=resident.email, event_type="demo_day_project_selected",
+        subject=f"Проект отобран на «{demo_day.title}»",
+        body=f"Подготовьте презентацию и материалы проекта.\n\nОткрыть: {os.getenv('FRONTEND_URL', 'https://pitchy.pro').rstrip('/')}/accelerator",
+        idempotency_key=f"demo-day-project:{demo_day.id}:{membership.id}",
+    )
+    add_audit(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        actor_user_id=user.id, action="demo_day.project_selected",
+        target_type="demo_day_project", target_id=row.id,
+        details={"demo_day_id": demo_day.id, "membership_id": membership.id},
+    )
+    await db.commit()
+    background_tasks.add_task(process_notification_event, notification.id)
+    return await demo_day_dict(db, demo_day, "global_admin" if user.is_admin else "organizer", user.id)
+
+
+@router.delete("/demo-day-projects/{demo_project_id}", status_code=204)
+async def remove_demo_day_project(
+    demo_project_id: int,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    row = await db.get(AcceleratorDemoDayProject, demo_project_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Проект демо-дня не найден")
+    demo_day = await db.get(AcceleratorDemoDay, row.demo_day_id)
+    cohort, _ = await demo_day_access(db, demo_day, user)
+    await require_cohort_manager(db, user, cohort)
+    if demo_day.status not in ("draft", "open"):
+        raise HTTPException(status_code=409, detail="После начала оценивания отбор зафиксирован")
+    await db.delete(row)
+    add_audit(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        actor_user_id=user.id, action="demo_day.project_removed",
+        target_type="demo_day_project", target_id=demo_project_id,
+        details={"demo_day_id": demo_day.id},
+    )
+    await db.commit()
+    return Response(status_code=204)
+
+
+@router.patch("/demo-day-projects/{demo_project_id}/materials")
+async def update_demo_day_materials(
+    demo_project_id: int,
+    payload: DemoDayMaterialsUpdate,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    row = await db.get(AcceleratorDemoDayProject, demo_project_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Проект демо-дня не найден")
+    demo_day = await db.get(AcceleratorDemoDay, row.demo_day_id)
+    cohort, access_role = await demo_day_access(db, demo_day, user)
+    membership = await db.get(AcceleratorMembership, row.membership_id)
+    if access_role == "resident" and membership.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Можно менять только материалы своего проекта")
+    if access_role == "expert":
+        raise HTTPException(status_code=403, detail="Эксперт не меняет материалы проекта")
+    if demo_day.status != "open":
+        raise HTTPException(status_code=409, detail="Материалы принимаются только на открытом демо-дне")
+    row.pitch_title = payload.pitch_title.strip()
+    row.summary = payload.summary.strip()
+    row.presentation_url = payload.presentation_url
+    row.video_url = payload.video_url
+    row.attachments = payload.attachments
+    row.submitted_at = datetime.utcnow()
+    add_audit(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        actor_user_id=user.id, action="demo_day.materials_submitted",
+        target_type="demo_day_project", target_id=row.id,
+        details={"demo_day_id": demo_day.id, "membership_id": membership.id},
+    )
+    notification_ids = []
+    if access_role == "resident":
+        organizers = (await db.execute(
+            select(User)
+            .join(AcceleratorStaff, AcceleratorStaff.user_id == User.id)
+            .where(
+                AcceleratorStaff.accelerator_id == cohort.accelerator_id,
+                AcceleratorStaff.role == "organizer",
+            )
+        )).scalars().all()
+        for organizer in organizers:
+            notification = await enqueue_notification(
+                db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+                recipient_email=organizer.email, event_type="demo_day_materials_submitted",
+                subject=f"Материалы готовы: {row.pitch_title}",
+                body=f"Резидент отправил презентацию для демо-дня «{demo_day.title}».",
+                idempotency_key=f"demo-day-materials:{row.id}:{row.submitted_at.isoformat()}:{organizer.id}",
+            )
+            notification_ids.append(notification.id)
+    await db.commit()
+    for notification_id in notification_ids:
+        background_tasks.add_task(process_notification_event, notification_id)
+    return await demo_day_dict(db, demo_day, access_role, user.id)
+
+
+@router.patch("/demo-day-projects/{demo_project_id}/decision")
+async def update_demo_day_project_decision(
+    demo_project_id: int,
+    payload: DemoDayProjectDecision,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    row = await db.get(AcceleratorDemoDayProject, demo_project_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Проект демо-дня не найден")
+    demo_day = await db.get(AcceleratorDemoDay, row.demo_day_id)
+    cohort, _ = await demo_day_access(db, demo_day, user)
+    await require_cohort_manager(db, user, cohort)
+    if demo_day.status == "finalized":
+        raise HTTPException(status_code=409, detail="Результаты уже финализированы")
+    row.score_adjustment = payload.score_adjustment
+    row.manager_note = (payload.manager_note or "").strip() or None
+    row.outcome = payload.outcome
+    add_audit(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        actor_user_id=user.id, action="demo_day.decision_updated",
+        target_type="demo_day_project", target_id=row.id,
+        details={
+            "demo_day_id": demo_day.id,
+            "score_adjustment": payload.score_adjustment,
+            "outcome": payload.outcome,
+        },
+    )
+    await db.commit()
+    return await demo_day_dict(db, demo_day, "global_admin" if user.is_admin else "organizer", user.id)
+
+
+@router.put("/demo-day-projects/{demo_project_id}/score")
+async def upsert_demo_day_score(
+    demo_project_id: int,
+    payload: DemoDayScoreUpsert,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    project_row = await db.get(AcceleratorDemoDayProject, demo_project_id)
+    if not project_row:
+        raise HTTPException(status_code=404, detail="Проект демо-дня не найден")
+    demo_day = await db.get(AcceleratorDemoDay, project_row.demo_day_id)
+    cohort, access_role = await demo_day_access(db, demo_day, user)
+    if access_role != "expert":
+        raise HTTPException(status_code=403, detail="Проекты оценивают приглашённые эксперты")
+    if demo_day.status != "scoring":
+        raise HTTPException(status_code=409, detail="Оценивание сейчас закрыто")
+    normalized = demo_normalized_score(demo_day.criteria or [], payload.scores)
+    score = (await db.execute(select(AcceleratorDemoDayScore).where(
+        AcceleratorDemoDayScore.demo_project_id == project_row.id,
+        AcceleratorDemoDayScore.expert_user_id == user.id,
+    ).with_for_update())).scalar_one_or_none()
+    if not score:
+        score = AcceleratorDemoDayScore(
+            demo_project_id=project_row.id,
+            expert_user_id=user.id,
+            scores=payload.scores,
+            normalized_score=normalized,
+            recommendation=payload.recommendation,
+        )
+        db.add(score)
+    score.scores = payload.scores
+    score.normalized_score = normalized
+    score.comment = (payload.comment or "").strip() or None
+    score.recommendation = payload.recommendation
+    score.submitted_at = datetime.utcnow()
+    add_audit(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        actor_user_id=user.id, action="demo_day.score_submitted",
+        target_type="demo_day_project", target_id=project_row.id,
+        details={"demo_day_id": demo_day.id, "normalized_score": normalized},
+    )
+    await db.commit()
+    return await demo_day_dict(db, demo_day, "expert", user.id)
+
+
+@router.patch("/demo-days/{demo_day_id}/status")
+async def update_demo_day_status(
+    demo_day_id: int,
+    payload: DemoDayStatusUpdate,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    demo_day = (await db.execute(select(AcceleratorDemoDay).where(
+        AcceleratorDemoDay.id == demo_day_id
+    ).with_for_update())).scalar_one_or_none()
+    if not demo_day:
+        raise HTTPException(status_code=404, detail="Демо-день не найден")
+    cohort, _ = await demo_day_access(db, demo_day, user)
+    await require_cohort_manager(db, user, cohort)
+    if payload.status == demo_day.status:
+        return await demo_day_dict(db, demo_day, "global_admin" if user.is_admin else "organizer", user.id)
+    allowed = {"draft": {"open"}, "open": {"scoring"}, "scoring": {"finalized"}, "finalized": set()}
+    if payload.status not in allowed.get(demo_day.status, set()):
+        raise HTTPException(status_code=409, detail="Недопустимый переход статуса демо-дня")
+    projects = (await db.execute(select(AcceleratorDemoDayProject).where(
+        AcceleratorDemoDayProject.demo_day_id == demo_day.id
+    ))).scalars().all()
+    if payload.status in ("open", "scoring", "finalized") and not projects:
+        raise HTTPException(status_code=409, detail="Сначала отберите хотя бы один проект")
+    if payload.status == "scoring":
+        expert_count = (await db.execute(select(func.count(AcceleratorDemoDayExpert.id)).where(
+            AcceleratorDemoDayExpert.demo_day_id == demo_day.id
+        ))).scalar_one()
+        if not expert_count:
+            raise HTTPException(status_code=409, detail="Пригласите хотя бы одного эксперта")
+        missing = [row.id for row in projects if not row.submitted_at or not row.presentation_url]
+        if missing:
+            raise HTTPException(status_code=409, detail="Не все проекты отправили презентации")
+    if payload.status == "finalized":
+        score_counts = dict((await db.execute(
+            select(
+                AcceleratorDemoDayScore.demo_project_id,
+                func.count(AcceleratorDemoDayScore.id),
+            ).where(
+                AcceleratorDemoDayScore.demo_project_id.in_([row.id for row in projects])
+            ).group_by(AcceleratorDemoDayScore.demo_project_id)
+        )).all()) if projects else {}
+        if any(score_counts.get(row.id, 0) == 0 for row in projects):
+            raise HTTPException(status_code=409, detail="Каждый проект должен получить хотя бы одну оценку")
+        scores = (await db.execute(select(AcceleratorDemoDayScore).where(
+            AcceleratorDemoDayScore.demo_project_id.in_([row.id for row in projects])
+        ))).scalars().all()
+        by_project: dict[int, list[float]] = {}
+        for score in scores:
+            by_project.setdefault(score.demo_project_id, []).append(float(score.normalized_score))
+        for row in projects:
+            average = sum(by_project[row.id]) / len(by_project[row.id])
+            row.final_score = round(max(0, min(100, average + float(row.score_adjustment or 0))), 2)
+        ranked = sorted(projects, key=lambda row: (-float(row.final_score), row.id))
+        for rank, row in enumerate(ranked, start=1):
+            row.rank = rank
+        demo_day.finalized_at = datetime.utcnow()
+        demo_day.finalized_by_user_id = user.id
+    previous = demo_day.status
+    demo_day.status = payload.status
+    recipients: dict[int, User] = {}
+    if payload.status == "scoring":
+        expert_users = (await db.execute(
+            select(User)
+            .join(AcceleratorDemoDayExpert, AcceleratorDemoDayExpert.user_id == User.id)
+            .where(AcceleratorDemoDayExpert.demo_day_id == demo_day.id)
+        )).scalars().all()
+        recipients.update({person.id: person for person in expert_users})
+    elif payload.status == "finalized":
+        resident_users = (await db.execute(
+            select(User)
+            .join(AcceleratorMembership, AcceleratorMembership.user_id == User.id)
+            .join(
+                AcceleratorDemoDayProject,
+                AcceleratorDemoDayProject.membership_id == AcceleratorMembership.id,
+            )
+            .where(AcceleratorDemoDayProject.demo_day_id == demo_day.id)
+        )).scalars().all()
+        recipients.update({person.id: person for person in resident_users})
+    notification_ids = []
+    for recipient in recipients.values():
+        notification = await enqueue_notification(
+            db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+            recipient_email=recipient.email,
+            event_type=f"demo_day_{payload.status}",
+            subject=(
+                f"Открыто оценивание «{demo_day.title}»"
+                if payload.status == "scoring" else f"Опубликованы результаты «{demo_day.title}»"
+            ),
+            body=f"Откройте рабочее пространство акселератора: {os.getenv('FRONTEND_URL', 'https://pitchy.pro').rstrip('/')}/accelerator",
+            idempotency_key=f"demo-day-status:{demo_day.id}:{payload.status}:{recipient.id}",
+        )
+        notification_ids.append(notification.id)
+    add_audit(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        actor_user_id=user.id, action="demo_day.status_changed",
+        target_type="demo_day", target_id=demo_day.id,
+        details={"from": previous, "to": payload.status},
+    )
+    await db.commit()
+    for notification_id in notification_ids:
+        background_tasks.add_task(process_notification_event, notification_id)
+    return await demo_day_dict(db, demo_day, "global_admin" if user.is_admin else "organizer", user.id)
+
+
+@router.get("/demo-days/{demo_day_id}/export")
+async def export_demo_day(
+    demo_day_id: int,
+    format: str = Query(default="csv", pattern="^(csv|json)$"),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    demo_day = await db.get(AcceleratorDemoDay, demo_day_id)
+    if not demo_day:
+        raise HTTPException(status_code=404, detail="Демо-день не найден")
+    cohort, _ = await demo_day_access(db, demo_day, user)
+    await require_cohort_manager(db, user, cohort)
+    if demo_day.status != "finalized":
+        raise HTTPException(status_code=409, detail="Экспорт доступен после финализации результатов")
+    data = await demo_day_dict(db, demo_day, "global_admin" if user.is_admin else "organizer", user.id)
+    if format == "csv":
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow([
+            "Место", "Проект", "Резидент", "Итоговая оценка", "Средняя оценка экспертов",
+            "Корректировка организатора", "Результат", "Презентация", "Видео",
+        ])
+        for project in data["projects"]:
+            writer.writerow([
+                project["rank"], project["project"]["name"], project["resident"]["name"],
+                project["final_score"], project["average_score"], project["score_adjustment"],
+                project["outcome"], project["presentation_url"], project["video_url"],
+            ])
+        return Response(
+            content="\ufeff" + output.getvalue(),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="demo-day-{demo_day.id}-results.csv"'},
+        )
+    cards = []
+    for project_data in data["projects"]:
+        project = await db.get(Project, project_data["project"]["id"])
+        cards.append({
+            **project_data,
+            "passport": project.passport or {},
+        })
+    content = json.dumps({
+        "demo_day": {
+            "id": demo_day.id,
+            "title": demo_day.title,
+            "criteria": demo_day.criteria or [],
+            "finalized_at": demo_day.finalized_at.isoformat() if demo_day.finalized_at else None,
+        },
+        "project_cards": cards,
+    }, ensure_ascii=False, default=str, indent=2)
+    return Response(
+        content=content,
+        media_type="application/json; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="demo-day-{demo_day.id}-project-cards.json"'},
+    )
 
 
 def match_profile_dict(profile: AcceleratorMatchProfile, person: User, active_matches: int = 0) -> dict:

@@ -417,3 +417,69 @@ async def consume_accelerator_quota(
     ))
     await db.flush()
     return True
+
+
+async def consume_accelerator_membership_quota(
+    db: AsyncSession,
+    *,
+    membership_id: int,
+    user_id: int,
+    resource: str,
+    idempotency_key: str,
+    reference_type: str | None = None,
+    reference_id: str | None = None,
+    metadata: dict | None = None,
+) -> bool:
+    """Debit an override belonging to one exact accelerator membership."""
+    existing = (await db.execute(
+        select(AcceleratorQuotaUsageEvent.id).where(
+            AcceleratorQuotaUsageEvent.idempotency_key == idempotency_key
+        )
+    )).scalar_one_or_none()
+    if existing is not None:
+        return True
+
+    active = await active_membership_quota_override(
+        db, membership_id, resource, for_update=True
+    )
+    if not active:
+        return False
+    override, membership, limit = active
+    if membership.user_id != user_id:
+        raise HTTPException(status_code=409, detail="Квота не принадлежит выбранному резиденту")
+    existing = (await db.execute(
+        select(AcceleratorQuotaUsageEvent.id).where(
+            AcceleratorQuotaUsageEvent.idempotency_key == idempotency_key
+        )
+    )).scalar_one_or_none()
+    if existing is not None:
+        return True
+    period_start = max(
+        override.starts_at,
+        datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0),
+    )
+    used = (await db.execute(
+        select(sa_func.coalesce(sa_func.sum(AcceleratorQuotaUsageEvent.quantity), 0)).where(
+            AcceleratorQuotaUsageEvent.quota_override_id == override.id,
+            AcceleratorQuotaUsageEvent.resource == resource,
+            AcceleratorQuotaUsageEvent.created_at >= period_start,
+        )
+    )).scalar_one()
+    if limit != UNLIMITED and int(used or 0) >= limit:
+        raise HTTPException(
+            status_code=402,
+            detail=f"quota_exceeded: лимит резидента {resource} исчерпан ({limit})",
+        )
+    db.add(AcceleratorQuotaUsageEvent(
+        membership_id=membership.id,
+        quota_override_id=override.id,
+        user_id=user_id,
+        resource=resource,
+        quantity=1,
+        idempotency_key=idempotency_key,
+        reference_type=reference_type,
+        reference_id=reference_id,
+        event_metadata=metadata,
+    ))
+    await db.flush()
+    return True

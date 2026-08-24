@@ -12,6 +12,8 @@ const LABELS: Record<string, string> = {
   "organizer.assigned": "Назначен организатор", "organizer.removed": "Удалён организатор", "application.accepted": "Одобрена заявка", "application.enrolled": "Зачислен резидент",
   "cohort_quota.assigned": "Обновлены лимиты потока", "resident_quota.assigned": "Обновлены лимиты резидента", "program_stage.created": "Создан этап программы", "program_stage.published": "Опубликован этап программы",
   "homework.created": "Создано домашнее задание", "homework.published": "Опубликовано домашнее задание", "event.created": "Создано мероприятие", "event.published": "Опубликовано мероприятие",
+  "project_audit.requested": "Запрошен аудит проекта", "project_audit.completed": "Завершён аудит проекта", "project_audit.failed": "Аудит проекта завершился ошибкой", "project_audit.task_created": "Создана задача по результату аудита",
+  "demo_day.created": "Создан демо-день", "demo_day.project_selected": "Проект отобран на демо-день", "demo_day.project_removed": "Проект снят с демо-дня", "demo_day.expert_assigned": "Эксперт приглашён в жюри", "demo_day.expert_removed": "Эксперт удалён из жюри", "demo_day.materials_submitted": "Отправлены материалы демо-дня", "demo_day.score_submitted": "Эксперт оценил проект", "demo_day.decision_updated": "Обновлено решение жюри", "demo_day.status_changed": "Изменён этап демо-дня",
 };
 
 export function AuditLog({ token, acceleratorId }: { token: string; acceleratorId: number }) {

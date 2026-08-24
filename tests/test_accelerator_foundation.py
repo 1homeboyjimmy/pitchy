@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+import json
 import uuid
 
 import pytest
@@ -25,6 +26,11 @@ from models import (
     AcceleratorMembershipEvent,
     AcceleratorMatch,
     AcceleratorMatchProfile,
+    AcceleratorProjectAudit,
+    AcceleratorProjectAuditTaskLink,
+    AcceleratorDemoDay,
+    AcceleratorDemoDayProject,
+    AcceleratorDemoDayScore,
     AcceleratorTrackerAssignment,
     AcceleratorParticipantProfile,
     Project,
@@ -72,6 +78,20 @@ from routers.accelerators import (
     list_accelerator_matches,
     my_accelerator_matches,
     update_accelerator_match,
+    list_cohort_project_audits,
+    list_membership_project_audits,
+    create_project_audit,
+    create_project_audit_task,
+    create_demo_day,
+    assign_demo_day_expert,
+    select_demo_day_project,
+    update_demo_day_materials,
+    update_demo_day_project_decision,
+    upsert_demo_day_score,
+    update_demo_day_status,
+    list_cohort_demo_days,
+    list_membership_demo_days,
+    export_demo_day,
     get_resident_quota,
     get_program_config,
     publish_homework_assignment,
@@ -126,6 +146,17 @@ from schemas.accelerators import (
     MatchPoolProfileCreate,
     MatchCreate,
     MatchStatusUpdate,
+    ProjectAuditCreate,
+    ProjectAuditGeneratedResult,
+    ProjectAuditTaskCreate,
+    DemoDayCreate,
+    DemoDayCriterion,
+    DemoDayExpertAssign,
+    DemoDayProjectSelect,
+    DemoDayMaterialsUpdate,
+    DemoDayProjectDecision,
+    DemoDayScoreUpsert,
+    DemoDayStatusUpdate,
 )
 from subscription_service import consume_quota
 from sqlalchemy import func, select
@@ -537,6 +568,8 @@ async def test_role_boundaries_block_cross_accelerator_management_and_quota_chan
             "attendance": False,
             "progress_tracking": False,
             "matchmaking": False,
+            "project_audit": False,
+            "demo_day": False,
         }
         assert "legacy_fake_module" not in compatible_config["modules"]
         with pytest.raises(HTTPException) as foreign_management:
@@ -1001,6 +1034,237 @@ async def test_matchmaking_profiles_recommendations_matches_and_role_boundaries(
 
 
 @pytest.mark.asyncio
+async def test_project_audit_uses_membership_quota_scopes_tracker_and_creates_task(monkeypatch):
+    suffix = uuid.uuid4().hex
+    async with AsyncSessionLocal() as db:
+        admin = User(email=f"admin-audit-{suffix}@example.test", name="Admin", is_admin=True)
+        organizer = User(email=f"organizer-audit-{suffix}@example.test", name="Organizer")
+        resident = User(email=f"resident-audit-{suffix}@example.test", name="Resident")
+        tracker = User(email=f"tracker-audit-{suffix}@example.test", name="Tracker")
+        outsider = User(email=f"outsider-audit-{suffix}@example.test", name="Outsider")
+        db.add_all([admin, organizer, resident, tracker, outsider])
+        await db.commit()
+        for person in (admin, organizer, resident, tracker, outsider):
+            await db.refresh(person)
+        project = Project(
+            user_id=resident.id,
+            name="Audit project",
+            passport={
+                "core": {"problem": "Команды теряют знания", "solution": "B2B SaaS"},
+                "market": {"segment": "Продуктовые команды"},
+            },
+            readiness_index=65,
+        )
+        db.add(project)
+        await db.commit()
+        await db.refresh(project)
+
+        accelerator = await create_accelerator(
+            AcceleratorCreate(name="Project audit accelerator"), admin, db
+        )
+        await assign_organizer(
+            accelerator["id"], OrganizerAssign(user_id=organizer.id), admin, db
+        )
+        cohort = await create_cohort(
+            accelerator["id"], CohortCreate(name="Project audit cohort"), organizer, db
+        )
+        await update_program_config(
+            cohort["id"],
+            ProgramConfigUpdate(
+                version=1,
+                modules={"project_audit": True, "progress_tracking": True},
+            ),
+            organizer,
+            db,
+        )
+        await update_cohort_status(
+            cohort["id"], StatusUpdate(status="accepting"), organizer, db
+        )
+        application = await submit_application(
+            cohort["id"],
+            ApplicationCreate(
+                project_id=project.id,
+                form_payload={"project_name": project.name, "traction": "12 интервью"},
+                accept_privacy=True,
+                accept_program_rules=True,
+            ),
+            resident,
+            db,
+        )
+        accepted = await accept_application(
+            application["id"], ApplicationReview(), BackgroundTasks(), organizer, db
+        )
+        await enroll_application(application["id"], organizer, db)
+        membership_id = accepted["membership_id"]
+        await assign_tracker(
+            cohort["id"],
+            TrackerAssign(user_id=tracker.id, membership_ids=[membership_id]),
+            organizer,
+            db,
+        )
+        await assign_resident_quota(
+            membership_id,
+            ResidentQuotaAssign(
+                limits=ResidentQuotaLimits(messages=10, roadmaps=1, custdev=2, grants=0)
+            ),
+            admin,
+            db,
+        )
+
+        generated_results = [
+            ProjectAuditGeneratedResult(
+                summary="Гипотеза проблемы описана, но сегмент слишком широкий.",
+                overall_score=60,
+                strengths=["Проблема сформулирована"],
+                findings=[{
+                    "title": "Слабая сегментация",
+                    "description": "Сегмент требует сужения.",
+                    "severity": "high",
+                    "evidence": "В паспорте указан общий сегмент.",
+                }],
+                recommendations=[{
+                    "title": "Провести пять интервью",
+                    "description": "Проверить проблему на одном подсегменте.",
+                    "priority": "high",
+                    "expected_result": "Пять протоколов и решение по сегменту.",
+                }],
+                data_gaps=["Нет метрик конверсии"],
+            ),
+            ProjectAuditGeneratedResult(
+                summary="Сегмент уточнён, нужно проверить монетизацию.",
+                overall_score=75,
+                strengths=["Сегмент подтверждён интервью"],
+                findings=[{
+                    "title": "Не проверена цена",
+                    "description": "Нет подтверждения готовности платить.",
+                    "severity": "medium",
+                }],
+                recommendations=[{
+                    "title": "Провести тест цены",
+                    "description": "Предложить пилот трём клиентам.",
+                    "priority": "high",
+                    "expected_result": "Не менее одного оплаченного пилота.",
+                }],
+                data_gaps=[],
+            ),
+        ]
+        calls = []
+
+        async def fake_generate_project_audit(**kwargs):
+            calls.append(kwargs)
+            return generated_results[len(calls) - 1]
+
+        monkeypatch.setattr(
+            "routers.accelerators.generate_project_audit", fake_generate_project_audit
+        )
+        first = await create_project_audit(
+            membership_id,
+            ProjectAuditCreate(
+                audit_type="product",
+                focus="Проверить доказательства спроса",
+                client_request_id=f"audit-{suffix}-first",
+            ),
+            BackgroundTasks(),
+            resident,
+            db,
+        )
+        assert first["status"] == "completed"
+        assert first["overall_score"] == 60
+        assert first["quota"]["consumed"] is True
+        assert calls[0]["project_snapshot"]["project"]["passport"]["core"]["solution"] == "B2B SaaS"
+
+        repeated = await create_project_audit(
+            membership_id,
+            ProjectAuditCreate(
+                audit_type="product",
+                client_request_id=f"audit-{suffix}-first",
+            ),
+            BackgroundTasks(),
+            resident,
+            db,
+        )
+        assert repeated["id"] == first["id"]
+        assert len(calls) == 1
+
+        second = await create_project_audit(
+            membership_id,
+            ProjectAuditCreate(
+                audit_type="product",
+                client_request_id=f"audit-{suffix}-second",
+            ),
+            BackgroundTasks(),
+            tracker,
+            db,
+        )
+        assert second["overall_score"] == 75
+        resident_history = await list_membership_project_audits(
+            membership_id, resident, db
+        )
+        assert resident_history["audits"][0]["comparison"]["score_delta"] == 15
+        assert resident_history["audits"][0]["comparison"]["resolved_findings"] == [
+            "Слабая сегментация"
+        ]
+        tracker_history = await list_cohort_project_audits(cohort["id"], tracker, db)
+        assert {row["id"] for row in tracker_history["audits"]} == {
+            first["id"], second["id"]
+        }
+        with pytest.raises(HTTPException) as outsider_history:
+            await list_membership_project_audits(membership_id, outsider, db)
+        assert outsider_history.value.status_code == 403
+
+        task_link = await create_project_audit_task(
+            second["id"],
+            ProjectAuditTaskCreate(recommendation_index=0),
+            BackgroundTasks(),
+            tracker,
+            db,
+        )
+        assert task_link["task"]["title"] == "Провести тест цены"
+        with pytest.raises(HTTPException) as resident_task:
+            await create_project_audit_task(
+                second["id"],
+                ProjectAuditTaskCreate(recommendation_index=0),
+                BackgroundTasks(),
+                resident,
+                db,
+            )
+        assert resident_task.value.status_code == 403
+        assert (await db.execute(select(func.count(AcceleratorProjectAuditTaskLink.id)).where(
+            AcceleratorProjectAuditTaskLink.audit_id == second["id"]
+        ))).scalar_one() == 1
+
+        with pytest.raises(HTTPException) as exhausted:
+            await create_project_audit(
+                membership_id,
+                ProjectAuditCreate(
+                    audit_type="market",
+                    client_request_id=f"audit-{suffix}-exhausted",
+                ),
+                BackgroundTasks(),
+                organizer,
+                db,
+            )
+        assert exhausted.value.status_code == 402
+        assert len(calls) == 2
+        assert (await db.execute(select(func.count(AcceleratorQuotaUsageEvent.id)).where(
+            AcceleratorQuotaUsageEvent.membership_id == membership_id,
+            AcceleratorQuotaUsageEvent.resource == "custdev",
+            AcceleratorQuotaUsageEvent.reference_type == "accelerator_project_audit",
+        ))).scalar_one() == 2
+        assert (await db.execute(select(func.count(AcceleratorProjectAudit.id)).where(
+            AcceleratorProjectAudit.membership_id == membership_id
+        ))).scalar_one() == 2
+        audit_actions = set((await db.execute(select(AcceleratorAuditLog.action).where(
+            AcceleratorAuditLog.accelerator_id == accelerator["id"]
+        ))).scalars().all())
+        assert {
+            "project_audit.requested",
+            "project_audit.completed",
+            "project_audit.task_created",
+        } <= audit_actions
+
+
+@pytest.mark.asyncio
 async def test_free_resident_can_spend_accelerator_message_quota_atomically():
     suffix = uuid.uuid4().hex
     async with AsyncSessionLocal() as db:
@@ -1301,3 +1565,207 @@ async def test_public_application_approval_creates_account_project_profile_and_i
         assert candidate.password_hash
         assert candidate.email_verified is True
         assert invitation.accepted_at is not None
+
+
+@pytest.mark.asyncio
+async def test_demo_day_selection_scoring_ranking_and_exports():
+    suffix = uuid.uuid4().hex
+    async with AsyncSessionLocal() as db:
+        admin = User(email=f"admin-demo-{suffix}@example.test", name="Admin", is_admin=True)
+        organizer = User(email=f"organizer-demo-{suffix}@example.test", name="Organizer")
+        resident = User(email=f"resident-demo-{suffix}@example.test", name="Resident")
+        expert = User(email=f"expert-demo-{suffix}@example.test", name="Expert")
+        outsider = User(email=f"outsider-demo-{suffix}@example.test", name="Outsider")
+        db.add_all([admin, organizer, resident, expert, outsider])
+        await db.commit()
+        for person in (admin, organizer, resident, expert, outsider):
+            await db.refresh(person)
+
+        project = Project(
+            user_id=resident.id,
+            name="Demo project",
+            passport={"core": {"problem": "Ручной процесс", "solution": "Автоматизация"}},
+            readiness_index=80,
+        )
+        db.add(project)
+        await db.commit()
+        await db.refresh(project)
+
+        accelerator = await create_accelerator(
+            AcceleratorCreate(name="Demo day accelerator"), admin, db
+        )
+        await assign_organizer(
+            accelerator["id"], OrganizerAssign(user_id=organizer.id), admin, db
+        )
+        cohort = await create_cohort(
+            accelerator["id"], CohortCreate(name="Demo day cohort"), organizer, db
+        )
+        await update_program_config(
+            cohort["id"],
+            ProgramConfigUpdate(version=1, modules={"demo_day": True}),
+            organizer,
+            db,
+        )
+        await update_cohort_status(
+            cohort["id"], StatusUpdate(status="accepting"), organizer, db
+        )
+        application = await submit_application(
+            cohort["id"],
+            ApplicationCreate(
+                project_id=project.id,
+                form_payload={"project_name": project.name},
+                accept_privacy=True,
+                accept_program_rules=True,
+            ),
+            resident,
+            db,
+        )
+        accepted = await accept_application(
+            application["id"], ApplicationReview(), BackgroundTasks(), organizer, db
+        )
+        await enroll_application(application["id"], organizer, db)
+        membership_id = accepted["membership_id"]
+
+        stage = await create_program_stage(
+            cohort["id"], ProgramStageCreate(title="Проверка проблемы"), organizer, db
+        )
+        await publish_program_stage(stage["id"], organizer, db)
+        await complete_program_stage(stage["id"], resident, db)
+
+        demo_day = await create_demo_day(
+            cohort["id"],
+            DemoDayCreate(
+                title="Demo Day 2026",
+                criteria=[
+                    DemoDayCriterion(key="problem", label="Проблема", weight=60, max_score=10),
+                    DemoDayCriterion(key="market", label="Рынок", weight=40, max_score=10),
+                ],
+            ),
+            organizer,
+            db,
+        )
+        selected = await select_demo_day_project(
+            demo_day["id"],
+            DemoDayProjectSelect(
+                membership_id=membership_id,
+                selection_reason="Завершён обязательный этап",
+            ),
+            BackgroundTasks(),
+            organizer,
+            db,
+        )
+        demo_project_id = selected["projects"][0]["id"]
+        await assign_demo_day_expert(
+            demo_day["id"],
+            DemoDayExpertAssign(user_id=expert.id),
+            BackgroundTasks(),
+            organizer,
+            db,
+        )
+
+        expert_accelerators = await list_accelerators(expert, db)
+        assert expert_accelerators[0]["access_role"] == "expert"
+        assert [row["id"] for row in await list_cohorts(accelerator["id"], expert, db)] == [
+            cohort["id"]
+        ]
+        expert_days = await list_cohort_demo_days(cohort["id"], expert, db)
+        assert expert_days["access_role"] == "expert"
+        with pytest.raises(HTTPException) as outsider_access:
+            await list_cohort_demo_days(cohort["id"], outsider, db)
+        assert outsider_access.value.status_code == 403
+
+        await update_demo_day_status(
+            demo_day["id"], DemoDayStatusUpdate(status="open"), BackgroundTasks(), organizer, db
+        )
+        await update_demo_day_materials(
+            demo_project_id,
+            DemoDayMaterialsUpdate(
+                pitch_title="Demo project pitch",
+                summary="Автоматизируем ручной процесс для продуктовых команд.",
+                presentation_url="https://example.test/pitch.pdf",
+                video_url="https://example.test/video",
+                attachments=["https://example.test/metrics"],
+            ),
+            BackgroundTasks(),
+            resident,
+            db,
+        )
+        await update_demo_day_status(
+            demo_day["id"], DemoDayStatusUpdate(status="scoring"), BackgroundTasks(), organizer, db
+        )
+        with pytest.raises(HTTPException) as organizer_score:
+            await upsert_demo_day_score(
+                demo_project_id,
+                DemoDayScoreUpsert(
+                    scores={"problem": 10, "market": 8}, recommendation="advance"
+                ),
+                organizer,
+                db,
+            )
+        assert organizer_score.value.status_code == 403
+        scored = await upsert_demo_day_score(
+            demo_project_id,
+            DemoDayScoreUpsert(
+                scores={"problem": 10, "market": 8},
+                comment="Есть подтверждённая проблема.",
+                recommendation="advance",
+            ),
+            expert,
+            db,
+        )
+        assert scored["projects"][0]["evaluations"][0]["normalized_score"] == 92
+
+        await update_demo_day_project_decision(
+            demo_project_id,
+            DemoDayProjectDecision(
+                score_adjustment=3,
+                outcome="winner",
+                manager_note="Решение жюри",
+            ),
+            organizer,
+            db,
+        )
+        finalized = await update_demo_day_status(
+            demo_day["id"],
+            DemoDayStatusUpdate(status="finalized"),
+            BackgroundTasks(),
+            organizer,
+            db,
+        )
+        assert finalized["projects"][0]["rank"] == 1
+        assert finalized["projects"][0]["final_score"] == 95
+        assert finalized["projects"][0]["outcome"] == "winner"
+
+        resident_days = await list_membership_demo_days(membership_id, resident, db)
+        assert resident_days["demo_days"][0]["projects"][0]["rank"] == 1
+        assert resident_days["demo_days"][0]["projects"][0]["evaluations"] == []
+
+        csv_export = await export_demo_day(demo_day["id"], "csv", organizer, db)
+        csv_text = csv_export.body.decode("utf-8")
+        assert "Demo project" in csv_text
+        assert "winner" in csv_text
+        json_export = await export_demo_day(demo_day["id"], "json", organizer, db)
+        cards = json.loads(json_export.body)
+        assert cards["project_cards"][0]["passport"]["core"]["solution"] == "Автоматизация"
+
+        assert (await db.execute(select(func.count(AcceleratorDemoDay.id)).where(
+            AcceleratorDemoDay.cohort_id == cohort["id"]
+        ))).scalar_one() == 1
+        assert (await db.execute(select(func.count(AcceleratorDemoDayProject.id)).where(
+            AcceleratorDemoDayProject.demo_day_id == demo_day["id"]
+        ))).scalar_one() == 1
+        assert (await db.execute(select(func.count(AcceleratorDemoDayScore.id)).where(
+            AcceleratorDemoDayScore.demo_project_id == demo_project_id
+        ))).scalar_one() == 1
+        audit_actions = set((await db.execute(select(AcceleratorAuditLog.action).where(
+            AcceleratorAuditLog.accelerator_id == accelerator["id"]
+        ))).scalars().all())
+        assert {
+            "demo_day.created",
+            "demo_day.project_selected",
+            "demo_day.expert_assigned",
+            "demo_day.materials_submitted",
+            "demo_day.score_submitted",
+            "demo_day.decision_updated",
+            "demo_day.status_changed",
+        } <= audit_actions

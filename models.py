@@ -409,6 +409,192 @@ class AcceleratorTrackingTask(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class AcceleratorProjectAudit(Base):
+    """Cohort-scoped AI review of one resident project."""
+
+    __tablename__ = "accelerator_project_audits"
+    __table_args__ = (
+        UniqueConstraint(
+            "membership_id", "client_request_id",
+            name="uq_accelerator_project_audit_request",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    cohort_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_cohorts.id", ondelete="CASCADE"), index=True
+    )
+    membership_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_memberships.id", ondelete="CASCADE"), index=True
+    )
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="RESTRICT"), index=True
+    )
+    requested_by_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), index=True
+    )
+    client_request_id: Mapped[str] = mapped_column(String(64))
+    audit_type: Mapped[str] = mapped_column(String(30), index=True)
+    focus: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(20), default="running", server_default="running", index=True
+    )
+    input_snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+    result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    overall_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    quota_resource: Mapped[str] = mapped_column(
+        String(30), default="custdev", server_default="custdev"
+    )
+    quota_usage_event_id: Mapped[int | None] = mapped_column(
+        ForeignKey("accelerator_quota_usage_events.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
+class AcceleratorProjectAuditTaskLink(Base):
+    __tablename__ = "accelerator_project_audit_task_links"
+    __table_args__ = (
+        UniqueConstraint(
+            "audit_id", "recommendation_index",
+            name="uq_accelerator_project_audit_recommendation",
+        ),
+        UniqueConstraint("tracking_task_id", name="uq_accelerator_project_audit_task"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    audit_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_project_audits.id", ondelete="CASCADE"), index=True
+    )
+    recommendation_index: Mapped[int] = mapped_column(Integer)
+    tracking_task_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_tracking_tasks.id", ondelete="CASCADE"), index=True
+    )
+    created_by_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class AcceleratorDemoDay(Base):
+    __tablename__ = "accelerator_demo_days"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    cohort_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_cohorts.id", ondelete="CASCADE"), index=True
+    )
+    title: Mapped[str] = mapped_column(String(300))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    criteria: Mapped[list] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(
+        String(20), default="draft", server_default="draft", index=True
+    )
+    created_by_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    finalized_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    finalized_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
+class AcceleratorDemoDayExpert(Base):
+    __tablename__ = "accelerator_demo_day_experts"
+    __table_args__ = (
+        UniqueConstraint("demo_day_id", "user_id", name="uq_accelerator_demo_day_expert"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    demo_day_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_demo_days.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    invited_by_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class AcceleratorDemoDayProject(Base):
+    __tablename__ = "accelerator_demo_day_projects"
+    __table_args__ = (
+        UniqueConstraint(
+            "demo_day_id", "membership_id", name="uq_accelerator_demo_day_membership"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    demo_day_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_demo_days.id", ondelete="CASCADE"), index=True
+    )
+    membership_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_memberships.id", ondelete="CASCADE"), index=True
+    )
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="RESTRICT"), index=True
+    )
+    selected_by_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    selection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pitch_title: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    presentation_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    video_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    attachments: Mapped[list] = mapped_column(JSON, default=list)
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    score_adjustment: Mapped[float] = mapped_column(
+        Numeric(6, 2), default=0, server_default="0"
+    )
+    manager_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    outcome: Mapped[str] = mapped_column(
+        String(30), default="participant", server_default="participant", index=True
+    )
+    final_score: Mapped[float | None] = mapped_column(Numeric(6, 2), nullable=True)
+    rank: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
+class AcceleratorDemoDayScore(Base):
+    __tablename__ = "accelerator_demo_day_scores"
+    __table_args__ = (
+        UniqueConstraint(
+            "demo_project_id", "expert_user_id", name="uq_accelerator_demo_day_score"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    demo_project_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_demo_day_projects.id", ondelete="CASCADE"), index=True
+    )
+    expert_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    scores: Mapped[dict] = mapped_column(JSON, default=dict)
+    normalized_score: Mapped[float] = mapped_column(Numeric(6, 2))
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    recommendation: Mapped[str] = mapped_column(String(20), index=True)
+    submitted_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
 class AcceleratorMatchProfile(Base):
     """Cohort-scoped matching data for residents, trackers and experts."""
 
