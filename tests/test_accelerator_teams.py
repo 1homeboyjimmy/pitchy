@@ -86,7 +86,7 @@ async def _enroll_resident(
         ApplicationCreate(
             form_payload={"project_name": f"Project {resident.name}"}
             if with_project
-            else {},
+            else {"motivation": f"Participant application {resident.name}"},
             application_type="project" if with_project else "participant",
             accept_privacy=True,
             accept_program_rules=True,
