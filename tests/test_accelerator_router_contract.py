@@ -32,12 +32,13 @@ def test_accelerator_routes_are_unique_and_modular_routers_are_mounted():
     duplicates: list[tuple[str, str]] = []
     accelerator_routes: set[tuple[str, str]] = set()
     for route in app.routes:
-        if not route.path.startswith("/api/accelerators"):
+        path = getattr(route, "path", None)
+        if not isinstance(path, str) or not path.startswith("/api/accelerators"):
             continue
-        for method in route.methods or set():
+        for method in getattr(route, "methods", None) or set():
             if method in {"HEAD", "OPTIONS"}:
                 continue
-            key = (method, route.path)
+            key = (method, path)
             if key in seen:
                 duplicates.append(key)
             seen.add(key)
