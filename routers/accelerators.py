@@ -6032,7 +6032,6 @@ async def update_accelerator_match(
     return await matchmaking_match_dict(db, match)
 
 
-@router.put("/memberships/{membership_id}/quota")
 async def assign_resident_quota(
     membership_id: int,
     payload: ResidentQuotaAssign,
@@ -6068,7 +6067,6 @@ async def assign_resident_quota(
     return {"id": assignment.id, "membership_id": membership.id, "source": assignment.source, "limits": assignment.limits, "starts_at": assignment.starts_at, "ends_at": assignment.ends_at}
 
 
-@router.put("/cohorts/{cohort_id}/quota-template")
 async def assign_cohort_quota(
     cohort_id: int,
     payload: CohortQuotaAssign,
@@ -6137,7 +6135,6 @@ async def assign_cohort_quota(
     return {"cohort_id": cohort.id, "limits": limits, "affected": affected, "skipped_personal": skipped_personal}
 
 
-@router.get("/memberships/{membership_id}/quota")
 async def get_resident_quota(
     membership_id: int,
     user: User = Depends(get_async_current_user),
@@ -6164,7 +6161,6 @@ async def get_resident_quota(
     return {"membership_id": membership.id, "resources": resources}
 
 
-@router.get("/{accelerator_id}/audit")
 async def list_audit(
     accelerator_id: int,
     limit: int = Query(default=100, ge=1, le=500),

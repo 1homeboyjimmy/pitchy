@@ -73,6 +73,7 @@ RUN python -m pytest \
     tests/test_accelerator_notifications.py \
     tests/test_accelerator_teams.py \
     tests/test_accelerator_alumni.py \
-    tests/test_accelerator_operations.py
+    tests/test_accelerator_operations.py \
+    tests/test_accelerator_router_contract.py
 
 FROM runtime AS production

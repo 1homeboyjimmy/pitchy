@@ -559,6 +559,9 @@ app.include_router(accelerator_alumni_router.router)
 from routers import accelerator_operations as accelerator_operations_router
 app.include_router(accelerator_operations_router.router)
 
+from routers import accelerator_governance as accelerator_governance_router
+app.include_router(accelerator_governance_router.router)
+
 
 allowed_origins = [
     origin.strip()

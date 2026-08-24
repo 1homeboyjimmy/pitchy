@@ -19,6 +19,16 @@ async function mockManagerWorkspace(page: Page) {
   await page.route('**/api/accelerators/cohorts/12/demo-days', async (route) => route.fulfill({ json: { access_role: 'global_admin', demo_days: [{ id: 91, title: 'Demo Day 2026', status: 'finalized', access_role: 'global_admin', criteria: [{ key: 'problem', label: 'Проблема', weight: 100, max_score: 10 }], experts: [{ id: 1, user_id: 9, name: 'Expert', email: 'expert@example.test' }], projects: [{ id: 92, membership_id: 101, resident: { id: 8, name: 'Резидент А', email: 'resident@example.test' }, project: { id: 5, name: 'Проект А', readiness_index: 80 }, pitch_title: 'Проект А', summary: 'Автоматизация процесса', presentation_url: 'https://example.test/pitch', attachments: [], submitted_at: new Date().toISOString(), evaluation_count: 1, average_score: 90, score_adjustment: 2, outcome: 'winner', final_score: 92, rank: 1, evaluations: [] }] }] } }));
   await page.route('**/api/accelerators/cohorts/12/artifacts', async (route) => route.fulfill({ json: { access_role: 'global_admin', artifacts: [{ id: 111, artifact_type: 'chat', status: 'ready', title: 'Разбор гипотезы', summary: 'Гипотеза уточнена и готова к проверке.', visibility: { organizer: true, tracker: false }, updated_at: new Date().toISOString(), details_visible: true, resident: { id: 8, name: 'Резидент А' }, project: { id: 5, name: 'Проект А' }, action: { id: 21, title: 'Разобрать гипотезу', action_type: 'chat' }, stage: { id: 31, title: 'Проверка проблемы' } }] } }));
   await page.route('**/api/accelerators/cohorts/12/teams', async (route) => route.fulfill({ json: { teams: [{ id: 601, name: 'Команда Проекта А', status: 'active', max_members: 5, project: { id: 5, name: 'Проект А' }, owner_membership_id: 101, can_manage: false, members: [{ id: 611, membership_id: 101, role: 'owner', title: 'Основатель', status: 'active', share_contact: true, person: { id: 8, name: 'Резидент А', email: 'resident@example.test' } }, { id: 612, membership_id: 102, role: 'member', title: 'Продажи', status: 'active', share_contact: false, person: { id: 9, name: 'Резидент Б' } }], pending_invitations: [{ id: 621, team_id: 601, status: 'pending', message: null, expires_at: new Date(Date.now() + 86_400_000).toISOString(), created_at: new Date().toISOString(), team: { id: 601, name: 'Команда Проекта А', project: { id: 5, name: 'Проект А' } }, invitee: { membership_id: 103, name: 'Резидент В' }, invited_by: { id: 8, name: 'Резидент А' }, counterpart_profile_id: 43, can_respond: false, can_cancel: false }] }] } }));
+  await page.route('**/api/accelerators/cohorts/12/analytics', async (route) => route.fulfill({ json: { cohort_id: 12, applications: { submitted: 9, accepted: 4 }, residents: { enrolled: 4 }, program: { published_stages: 5, completion_percent: 60 }, homework: { published: 3, submissions: { submitted: 7 } }, attendance: { published_events: 2, attendance_percent: 75 }, quota_usage: { messages: 31 }, artifacts: { ready: 6 }, teams: { active: 1, active_members: 2, average_size: 2 }, demo_day: { projects: 1, outcomes: { winner: 1 } }, alumni: { published_profiles: 0 }, runtime_disabled_modules: {} } }));
+  await page.route('**/api/accelerators/cohorts/12/operations-health', async (route) => route.fulfill({ json: { cohort_id: 12, status: 'warning', summary: { error: 0, warning: 1, info: 0 }, issues: [{ code: 'stale_applications', severity: 'warning', count: 2, message: 'Заявки находятся в работе больше 7 дней', recommended_action: 'Откройте раздел заявок и зафиксируйте решение' }] } }));
+  let runtimeOverrides: Array<Record<string, unknown>> = [];
+  await page.route('**/api/accelerators/runtime-overrides', async (route) => {
+    if (route.request().method() === 'PUT') {
+      const payload = route.request().postDataJSON();
+      runtimeOverrides = payload.disabled ? [{ id: 801, scope_type: payload.scope_type, scope_id: payload.scope_id, module_key: payload.module_key, reason: payload.reason, expires_at: payload.expires_at, active: true }] : [];
+    }
+    await route.fulfill({ json: { overrides: runtimeOverrides } });
+  });
   await page.route('**/api/accelerators/7/organizers', async (route) => route.fulfill({ json: [] }));
   let emailEnabled = false;
   await page.route('**/api/accelerators/notifications/unread-count', async (route) => route.fulfill({ json: { count: 2 } }));
@@ -47,6 +57,14 @@ test('manager workspace is split into focused sections', async ({ page }) => {
   await expect(page.getByRole('navigation', { name: 'Разделы акселератора' })).toContainText('Аудит проекта');
   await expect(page.getByRole('navigation', { name: 'Разделы акселератора' })).toContainText('Демо-день');
   await expect(page.getByRole('navigation', { name: 'Разделы акселератора' })).toContainText('Результаты Pitchy');
+  await page.getByRole('button', { name: 'Состояние', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Операционный обзор' })).toBeVisible();
+  await expect(page.getByText('Заявки находятся в работе больше 7 дней')).toBeVisible();
+  await expect(page.getByText('60%')).toBeVisible();
+  await page.getByPlaceholder('Что произошло и когда проверить снова').fill('Плановые работы');
+  await page.getByRole('button', { name: 'Временно отключить', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Временно отключённые функции' })).toBeVisible();
+  await expect(page.getByText('Плановые работы')).toBeVisible();
   await page.getByRole('button', { name: 'Результаты Pitchy', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Артефакты резидентов' })).toBeVisible();
   await expect(page.getByText('Гипотеза уточнена и готова к проверке.')).toBeVisible();
