@@ -582,6 +582,7 @@ async def test_role_boundaries_block_cross_accelerator_management_and_quota_chan
             "project_audit": False,
             "demo_day": False,
             "pitchy_artifacts": False,
+            "alumni": False,
         }
         assert "legacy_fake_module" not in compatible_config["modules"]
         with pytest.raises(HTTPException) as foreign_management:
