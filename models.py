@@ -772,6 +772,141 @@ class AcceleratorTeamInvitation(Base):
     )
 
 
+class AcceleratorCohortClosure(Base):
+    """Explicit, auditable closing operation for one cohort."""
+
+    __tablename__ = "accelerator_cohort_closures"
+    __table_args__ = (
+        UniqueConstraint("cohort_id", name="uq_accelerator_cohort_closure_cohort"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    cohort_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_cohorts.id", ondelete="CASCADE"), index=True
+    )
+    status: Mapped[str] = mapped_column(
+        String(20), default="preparing", server_default="preparing", index=True
+    )
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    completed_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
+class AcceleratorMembershipClosureDecision(Base):
+    __tablename__ = "accelerator_membership_closure_decisions"
+    __table_args__ = (
+        UniqueConstraint(
+            "closure_id", "membership_id",
+            name="uq_accelerator_closure_membership_decision",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    closure_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_cohort_closures.id", ondelete="CASCADE"), index=True
+    )
+    membership_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_memberships.id", ondelete="CASCADE"), index=True
+    )
+    outcome: Mapped[str] = mapped_column(String(20), index=True)
+    reason: Mapped[str] = mapped_column(Text)
+    decided_by_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
+class AcceleratorResidentSnapshot(Base):
+    """Immutable resident result captured before lifecycle fields are closed."""
+
+    __tablename__ = "accelerator_resident_snapshots"
+    __table_args__ = (
+        UniqueConstraint(
+            "closure_id", "membership_id",
+            name="uq_accelerator_closure_membership_snapshot",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    closure_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_cohort_closures.id", ondelete="CASCADE"), index=True
+    )
+    membership_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_memberships.id", ondelete="CASCADE"), index=True
+    )
+    project_id: Mapped[int | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    checksum: Mapped[str] = mapped_column(String(64), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class AcceleratorAlumniProfile(Base):
+    """Resident-controlled opt-in profile; absence/inactive means private."""
+
+    __tablename__ = "accelerator_alumni_profiles"
+    __table_args__ = (
+        UniqueConstraint("membership_id", name="uq_accelerator_alumni_profile_membership"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    membership_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_memberships.id", ondelete="CASCADE"), index=True
+    )
+    active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("true"), index=True
+    )
+    headline: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    bio: Mapped[str | None] = mapped_column(Text, nullable=True)
+    achievements: Mapped[list] = mapped_column(JSON, default=list)
+    expertise: Mapped[list] = mapped_column(JSON, default=list)
+    interests: Mapped[list] = mapped_column(JSON, default=list)
+    contact_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    consented_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    opted_out_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
+class AcceleratorAlumniCheckin(Base):
+    __tablename__ = "accelerator_alumni_checkins"
+    __table_args__ = (
+        UniqueConstraint(
+            "profile_id", "period_date", name="uq_accelerator_alumni_checkin_period"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    profile_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_alumni_profiles.id", ondelete="CASCADE"), index=True
+    )
+    author_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), index=True
+    )
+    period_date: Mapped[date] = mapped_column(Date, index=True)
+    summary: Mapped[str] = mapped_column(Text)
+    metrics: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
 class AcceleratorApplicationEvent(Base):
     __tablename__ = "accelerator_application_events"
 

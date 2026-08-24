@@ -553,6 +553,9 @@ app.include_router(accelerator_notifications_router.router)
 from routers import accelerator_teams as accelerator_teams_router
 app.include_router(accelerator_teams_router.router)
 
+from routers import accelerator_alumni as accelerator_alumni_router
+app.include_router(accelerator_alumni_router.router)
+
 
 allowed_origins = [
     origin.strip()

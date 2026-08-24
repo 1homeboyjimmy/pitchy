@@ -143,6 +143,7 @@ DEFAULT_MODULES = {
     "project_audit": False,
     "demo_day": False,
     "pitchy_artifacts": False,
+    "alumni": False,
 }
 LOCKED_BASE_MODULES = {"applications": True, "program": True}
 COHORT_STATUS_TRANSITIONS = {
@@ -411,6 +412,14 @@ async def get_cohort_or_404(db: AsyncSession, cohort_id: int) -> AcceleratorCoho
     if not row:
         raise HTTPException(status_code=404, detail="Поток не найден")
     return row
+
+
+def require_mutable_cohort(cohort: AcceleratorCohort) -> None:
+    if cohort.status in {"completed", "archived"}:
+        raise HTTPException(
+            status_code=409,
+            detail="Завершённый поток доступен только для просмотра",
+        )
 
 
 def validate_application_form(schema: dict, payload: dict, application_type: str = "project") -> None:
@@ -757,7 +766,16 @@ async def list_my_accelerator_memberships(
                 "status": project.status,
             } if project else None),
             # Program contents become available only after explicit enrollment.
-            "modules": program.modules if membership.status == "enrolled" else {},
+            "modules": (
+                program.modules
+                if membership.status == "enrolled"
+                else (
+                    {"alumni": True}
+                    if membership.status == "completed"
+                    and (program.modules or {}).get("alumni")
+                    else {}
+                )
+            ),
         })
     effective_quotas = {}
     for resource in ("messages", "roadmaps", "custdev", "grants"):
@@ -1287,6 +1305,11 @@ async def update_cohort_status(
     previous = cohort.status
     if payload.status == previous:
         return cohort_dict(cohort)
+    if payload.status == "completed":
+        raise HTTPException(
+            status_code=409,
+            detail="Завершите поток через итоговые решения по каждому резиденту",
+        )
     allowed = COHORT_STATUS_TRANSITIONS.get(previous, set())
     if payload.status not in allowed:
         raise HTTPException(
@@ -1318,6 +1341,7 @@ async def update_cohort(
 ):
     cohort = await get_cohort_or_404(db, cohort_id)
     await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
     if payload.name is not None:
         cohort.name = payload.name.strip()
     if payload.timezone is not None:
@@ -1402,6 +1426,7 @@ async def update_program_config(
 ):
     cohort = await get_cohort_or_404(db, cohort_id)
     await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
     config = (await db.execute(
         select(AcceleratorProgramConfig)
         .where(AcceleratorProgramConfig.cohort_id == cohort.id)
@@ -1578,6 +1603,7 @@ async def create_program_stage(
 ):
     cohort = await get_cohort_or_404(db, cohort_id)
     await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
     max_position = (await db.execute(select(func.max(AcceleratorProgramStage.position)).where(
         AcceleratorProgramStage.cohort_id == cohort.id
     ))).scalar_one()
@@ -1634,6 +1660,7 @@ async def update_program_stage(
         raise HTTPException(status_code=404, detail="Этап программы не найден")
     cohort = await get_cohort_or_404(db, stage.cohort_id)
     await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
     if stage.status != "draft":
         raise HTTPException(status_code=409, detail="Опубликованный этап нельзя менять")
     stage.title = payload.title.strip()
@@ -1679,6 +1706,7 @@ async def publish_program_stage(
         raise HTTPException(status_code=404, detail="Этап программы не найден")
     cohort = await get_cohort_or_404(db, stage.cohort_id)
     await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
     if stage.status != "draft":
         raise HTTPException(status_code=409, detail="Этап уже опубликован")
     stage.status = "published"
@@ -2017,6 +2045,7 @@ async def create_homework_assignment(
 ):
     cohort = await get_cohort_or_404(db, cohort_id)
     await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
     await require_homework_module(db, cohort)
     await validate_homework_targets(db, cohort.id, payload.target_membership_ids)
     await ensure_stage_for_cohort(db, payload.stage_id, cohort.id)
@@ -2069,6 +2098,7 @@ async def update_homework_assignment(
     cohort = await get_cohort_or_404(db, assignment.cohort_id)
     await require_cohort_manager(db, user, cohort)
     await require_homework_module(db, cohort)
+    require_mutable_cohort(cohort)
     if assignment.status != "draft":
         raise HTTPException(status_code=409, detail="После публикации задание нельзя редактировать")
     await validate_homework_targets(db, cohort.id, payload.target_membership_ids)
@@ -2115,6 +2145,7 @@ async def publish_homework_assignment(
     cohort = await get_cohort_or_404(db, assignment.cohort_id)
     await require_cohort_manager(db, user, cohort)
     await require_homework_module(db, cohort)
+    require_mutable_cohort(cohort)
     if assignment.status != "draft":
         raise HTTPException(status_code=409, detail="Задание уже опубликовано")
     recipients = await homework_recipients(db, assignment)
@@ -2251,6 +2282,7 @@ async def archive_homework_assignment(
     assignment = await get_homework_assignment_or_404(db, assignment_id)
     cohort = await get_cohort_or_404(db, assignment.cohort_id)
     await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
     await require_homework_module(db, cohort)
     if assignment.status == "archived":
         raise HTTPException(status_code=409, detail="Задание уже в архиве")
@@ -2570,6 +2602,7 @@ async def create_event(
 ):
     cohort = await get_cohort_or_404(db, cohort_id)
     await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
     await require_attendance_module(db, cohort)
     await ensure_stage_for_cohort(db, payload.stage_id, cohort.id)
     event = AcceleratorEvent(
@@ -2604,6 +2637,7 @@ async def update_event(
     cohort = await get_cohort_or_404(db, event.cohort_id)
     await require_cohort_manager(db, user, cohort)
     await require_attendance_module(db, cohort)
+    require_mutable_cohort(cohort)
     if event.status != "draft":
         raise HTTPException(status_code=409, detail="Опубликованное мероприятие нельзя менять")
     await ensure_stage_for_cohort(db, payload.stage_id, cohort.id)
@@ -2643,6 +2677,7 @@ async def publish_event(
     cohort = await get_cohort_or_404(db, event.cohort_id)
     await require_cohort_manager(db, user, cohort)
     await require_attendance_module(db, cohort)
+    require_mutable_cohort(cohort)
     if event.status != "draft":
         raise HTTPException(status_code=409, detail="Мероприятие уже опубликовано")
     event.status = "published"
@@ -2715,6 +2750,7 @@ async def archive_event(
         raise HTTPException(status_code=404, detail="Мероприятие не найдено")
     cohort = await get_cohort_or_404(db, event.cohort_id)
     await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
     await require_attendance_module(db, cohort)
     if event.status == "archived":
         raise HTTPException(status_code=409, detail="Мероприятие уже в архиве")
