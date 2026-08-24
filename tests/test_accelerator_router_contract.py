@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import FastAPI
-
 from routers import accelerator_alumni
 from routers import accelerator_artifacts
 from routers import accelerator_governance
@@ -14,7 +12,6 @@ from routers import accelerators
 
 
 def test_accelerator_routes_are_unique_and_modular_routers_are_mounted():
-    app = FastAPI()
     modules = (
         accelerators,
         accelerator_artifacts,
@@ -24,25 +21,24 @@ def test_accelerator_routes_are_unique_and_modular_routers_are_mounted():
         accelerator_operations,
         accelerator_governance,
     )
-    for module in modules:
-        app.include_router(module.router)
     main_source = Path("main.py").read_text(encoding="utf-8")
     assert all(f"app.include_router({module.__name__.split('.')[-1]}_router.router)" in main_source for module in modules)
     seen: set[tuple[str, str]] = set()
     duplicates: list[tuple[str, str]] = []
     accelerator_routes: set[tuple[str, str]] = set()
-    for route in app.routes:
-        path = getattr(route, "path", None)
-        if not isinstance(path, str) or not path.startswith("/api/accelerators"):
-            continue
-        for method in getattr(route, "methods", None) or set():
-            if method in {"HEAD", "OPTIONS"}:
+    for module in modules:
+        for route in module.router.routes:
+            path = getattr(route, "path", None)
+            if not isinstance(path, str) or not path.startswith("/api/accelerators"):
                 continue
-            key = (method, path)
-            if key in seen:
-                duplicates.append(key)
-            seen.add(key)
-            accelerator_routes.add(key)
+            for method in getattr(route, "methods", None) or set():
+                if method in {"HEAD", "OPTIONS"}:
+                    continue
+                key = (method, path)
+                if key in seen:
+                    duplicates.append(key)
+                seen.add(key)
+                accelerator_routes.add(key)
     assert duplicates == []
     assert {
         ("GET", "/api/accelerators/cohorts/{cohort_id}/artifacts"),
