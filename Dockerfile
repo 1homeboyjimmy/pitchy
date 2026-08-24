@@ -70,6 +70,7 @@ RUN python -m pytest \
     tests/test_accelerator_foundation.py \
     tests/test_accelerator_roadmap_context.py \
     tests/test_grant_accelerator_context.py \
-    tests/test_accelerator_notifications.py
+    tests/test_accelerator_notifications.py \
+    tests/test_accelerator_teams.py
 
 FROM runtime AS production

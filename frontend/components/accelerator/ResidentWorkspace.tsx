@@ -93,7 +93,7 @@ function MembershipView({ membership, quotas }: { membership: ResidentMembership
 
       {enrolled && section === "tracking" && membership.modules.progress_tracking && <ResidentTracking membershipId={membership.membership_id} />}
 
-      {enrolled && section === "matching" && membership.modules.matchmaking && <MatchmakingWorkspace cohortId={membership.cohort.id} membershipId={membership.membership_id} />}
+      {enrolled && section === "matching" && membership.modules.matchmaking && <MatchmakingWorkspace cohortId={membership.cohort.id} membershipId={membership.membership_id} project={membership.project} />}
 
       {enrolled && section === "project_audit" && membership.modules.project_audit && <ProjectAuditWorkspace cohortId={membership.cohort.id} membershipId={membership.membership_id} />}
 

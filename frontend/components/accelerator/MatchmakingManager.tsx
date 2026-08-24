@@ -5,6 +5,7 @@ import { Link2, Loader2, Plus, Search, Sparkles, UserRoundCheck } from "lucide-r
 
 import { describeApiError, getAuthJson, patchAuthJson, postAuthJson } from "@/lib/api";
 import type { MatchProfile, MatchRow } from "@/components/accelerator/MatchmakingWorkspace";
+import { TeamManager } from "@/components/accelerator/TeamManager";
 
 type Candidate = { id: number; name: string; email: string };
 type Recommendation = { profile: MatchProfile; score: number; reasons: string[]; existing_status?: string | null };
@@ -95,6 +96,7 @@ export function MatchmakingManager({ cohortId, token }: { cohortId: number; toke
   };
 
   return <div className="space-y-5">
+    <TeamManager cohortId={cohortId} token={token} />
     <section className="workspace-card">
       <div><h2 className="text-xl">Подобрать связку</h2><p className="mt-1 text-sm text-white/40">Алгоритм объясняет оценку, но назначение подтверждает организатор.</p></div>
       <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_220px_auto]"><select value={selectedMembershipId} onChange={(event) => { setSelectedMembershipId(event.target.value); setRecommendations([]); }} className="workspace-input"><option value="">Выберите резидента с заполненным профилем</option>{residents.map((row) => <option key={row.id} value={row.membership_id || ""}>{row.name}</option>)}</select><select value={recommendationRole} onChange={(event) => { setRecommendationRole(event.target.value as MatchProfile["role"]); setRecommendations([]); }} className="workspace-input"><option value="expert">Эксперт</option><option value="tracker">Трекер</option><option value="resident">Другой резидент</option></select><button type="button" onClick={() => void recommend()} disabled={!selectedMembershipId || busy === "recommend"} className="workspace-button"><Sparkles size={15} /> Подобрать</button></div>

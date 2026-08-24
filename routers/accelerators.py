@@ -39,6 +39,7 @@ from accelerator_application_service import (
     transition_application,
 )
 from accelerator_notification_service import enqueue_notification, process_notification_event
+from accelerator_team_service import handle_membership_lifecycle_transition
 from auth import get_async_current_user, require_async_admin
 from db_async import get_async_db
 from models import (
@@ -3439,6 +3440,13 @@ async def update_membership_status(
     elif payload.status in ("completed", "withdrawn"):
         membership.ended_at = now
         membership.suspended_at = None
+    await handle_membership_lifecycle_transition(
+        db,
+        membership=membership,
+        to_status=payload.status,
+        actor_user_id=user.id,
+        reason=membership.status_reason,
+    )
     db.add(AcceleratorMembershipEvent(
         membership_id=membership.id,
         from_status=previous,

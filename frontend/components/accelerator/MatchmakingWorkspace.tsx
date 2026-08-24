@@ -5,6 +5,7 @@ import { Loader2, RefreshCw, Save, Sparkles, Users } from "lucide-react";
 
 import { describeApiError, getAuthJson, putAuthJson } from "@/lib/api";
 import { useAuth } from "@/lib/hooks/useAuth";
+import { TeamWorkspace } from "@/components/accelerator/TeamWorkspace";
 
 export type MatchProfile = {
   id: number; user_id: number; membership_id?: number | null; role: "resident" | "tracker" | "expert";
@@ -25,7 +26,7 @@ const roleLabels = { resident: "резидент", tracker: "трекер", expe
 function joinTags(values: string[]) { return values.join(", "); }
 function parseTags(value: string) { return Array.from(new Set(value.split(",").map((item) => item.trim()).filter(Boolean))); }
 
-export function MatchmakingWorkspace({ cohortId, membershipId }: { cohortId: number; membershipId?: number }) {
+export function MatchmakingWorkspace({ cohortId, membershipId, project }: { cohortId: number; membershipId?: number; project?: { id: number; name: string } | null }) {
   const { token } = useAuth();
   const [me, setMe] = useState<MeData | null>(null);
   const [profile, setProfile] = useState<MatchProfile | null>(null);
@@ -89,6 +90,7 @@ export function MatchmakingWorkspace({ cohortId, membershipId }: { cohortId: num
   if (busy === "load" && !me) return <section className="workspace-card grid place-items-center py-14"><Loader2 className="animate-spin text-white/35" /></section>;
 
   return <div className="space-y-5">
+    {membershipId && <TeamWorkspace membershipId={membershipId} project={project} />}
     <section className="workspace-card">
       <div className="flex flex-wrap items-start justify-between gap-4"><div><h2 className="text-xl">Профиль для подбора</h2><p className="mt-1 text-sm text-white/40">Теги можно вводить через запятую. Чем точнее запросы и опыт, тем полезнее рекомендации.</p></div><button type="button" onClick={() => void load()} className="rounded-full border border-white/10 p-3 text-white/40" aria-label="Обновить"><RefreshCw size={16} /></button></div>
       {!profile && !membershipId ? <p className="mt-5 text-sm text-white/40">Организатор ещё не добавил ваш профиль в пул потока.</p> : <form onSubmit={save} className="mt-6 grid gap-4 sm:grid-cols-2">

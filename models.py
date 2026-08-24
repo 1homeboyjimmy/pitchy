@@ -662,6 +662,116 @@ class AcceleratorMatch(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class AcceleratorTeam(Base):
+    __tablename__ = "accelerator_teams"
+    __table_args__ = (
+        UniqueConstraint("cohort_id", "project_id", name="uq_accelerator_team_project"),
+        UniqueConstraint(
+            "cohort_id", "owner_membership_id", name="uq_accelerator_team_owner"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    cohort_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_cohorts.id", ondelete="CASCADE"), index=True
+    )
+    project_id: Mapped[int | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    owner_membership_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_memberships.id", ondelete="RESTRICT"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(200))
+    max_members: Mapped[int] = mapped_column(Integer, default=5, server_default="5")
+    status: Mapped[str] = mapped_column(
+        String(20), default="active", server_default="active", index=True
+    )
+    created_by_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
+class AcceleratorTeamMember(Base):
+    __tablename__ = "accelerator_team_members"
+    __table_args__ = (
+        Index(
+            "uq_accelerator_team_member_active_membership",
+            "membership_id",
+            unique=True,
+            postgresql_where=text("status = 'active'"),
+            sqlite_where=text("status = 'active'"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    team_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_teams.id", ondelete="CASCADE"), index=True
+    )
+    membership_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_memberships.id", ondelete="CASCADE"), index=True
+    )
+    role: Mapped[str] = mapped_column(
+        String(20), default="member", server_default="member", index=True
+    )
+    title: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    share_contact: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
+    status: Mapped[str] = mapped_column(
+        String(20), default="active", server_default="active", index=True
+    )
+    joined_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    left_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
+class AcceleratorTeamInvitation(Base):
+    __tablename__ = "accelerator_team_invitations"
+    __table_args__ = (
+        Index(
+            "uq_accelerator_team_invitation_pending_invitee",
+            "team_id",
+            "invitee_membership_id",
+            unique=True,
+            postgresql_where=text("status = 'pending'"),
+            sqlite_where=text("status = 'pending'"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    team_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_teams.id", ondelete="CASCADE"), index=True
+    )
+    invitee_membership_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_memberships.id", ondelete="CASCADE"), index=True
+    )
+    source_match_profile_id: Mapped[int | None] = mapped_column(
+        ForeignKey("accelerator_match_profiles.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    invited_by_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), index=True
+    )
+    message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(20), default="pending", server_default="pending", index=True
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    responded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
 class AcceleratorApplicationEvent(Base):
     __tablename__ = "accelerator_application_events"
 

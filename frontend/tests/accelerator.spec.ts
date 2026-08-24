@@ -18,6 +18,7 @@ async function mockManagerWorkspace(page: Page) {
   await page.route('**/api/accelerators/cohorts/12/project-audits', async (route) => route.fulfill({ json: { access_role: 'global_admin', audits: [{ id: 81, membership_id: 101, audit_type: 'product', audit_type_label: 'Продукт', status: 'completed', overall_score: 72, project: { id: 5, name: 'Проект А' }, resident: { id: 8, name: 'Резидент А' }, requested_by: { id: 1, name: 'Admin' }, quota: { resource: 'custdev', consumed: true }, linked_tasks: [], result: { summary: 'Проблема подтверждена, требуется проверить цену.', overall_score: 72, strengths: ['Есть интервью'], findings: [{ title: 'Не проверена цена', description: 'Нет оплаченных пилотов', severity: 'medium' }], recommendations: [{ title: 'Проверить цену', description: 'Предложить три пилота', priority: 'high', expected_result: 'Один оплаченный пилот' }], data_gaps: [] }, created_at: new Date().toISOString() }] } }));
   await page.route('**/api/accelerators/cohorts/12/demo-days', async (route) => route.fulfill({ json: { access_role: 'global_admin', demo_days: [{ id: 91, title: 'Demo Day 2026', status: 'finalized', access_role: 'global_admin', criteria: [{ key: 'problem', label: 'Проблема', weight: 100, max_score: 10 }], experts: [{ id: 1, user_id: 9, name: 'Expert', email: 'expert@example.test' }], projects: [{ id: 92, membership_id: 101, resident: { id: 8, name: 'Резидент А', email: 'resident@example.test' }, project: { id: 5, name: 'Проект А', readiness_index: 80 }, pitch_title: 'Проект А', summary: 'Автоматизация процесса', presentation_url: 'https://example.test/pitch', attachments: [], submitted_at: new Date().toISOString(), evaluation_count: 1, average_score: 90, score_adjustment: 2, outcome: 'winner', final_score: 92, rank: 1, evaluations: [] }] }] } }));
   await page.route('**/api/accelerators/cohorts/12/artifacts', async (route) => route.fulfill({ json: { access_role: 'global_admin', artifacts: [{ id: 111, artifact_type: 'chat', status: 'ready', title: 'Разбор гипотезы', summary: 'Гипотеза уточнена и готова к проверке.', visibility: { organizer: true, tracker: false }, updated_at: new Date().toISOString(), details_visible: true, resident: { id: 8, name: 'Резидент А' }, project: { id: 5, name: 'Проект А' }, action: { id: 21, title: 'Разобрать гипотезу', action_type: 'chat' }, stage: { id: 31, title: 'Проверка проблемы' } }] } }));
+  await page.route('**/api/accelerators/cohorts/12/teams', async (route) => route.fulfill({ json: { teams: [{ id: 601, name: 'Команда Проекта А', status: 'active', max_members: 5, project: { id: 5, name: 'Проект А' }, owner_membership_id: 101, can_manage: false, members: [{ id: 611, membership_id: 101, role: 'owner', title: 'Основатель', status: 'active', share_contact: true, person: { id: 8, name: 'Резидент А', email: 'resident@example.test' } }, { id: 612, membership_id: 102, role: 'member', title: 'Продажи', status: 'active', share_contact: false, person: { id: 9, name: 'Резидент Б' } }], pending_invitations: [{ id: 621, team_id: 601, status: 'pending', message: null, expires_at: new Date(Date.now() + 86_400_000).toISOString(), created_at: new Date().toISOString(), team: { id: 601, name: 'Команда Проекта А', project: { id: 5, name: 'Проект А' } }, invitee: { membership_id: 103, name: 'Резидент В' }, invited_by: { id: 8, name: 'Резидент А' }, counterpart_profile_id: 43, can_respond: false, can_cancel: false }] }] } }));
   await page.route('**/api/accelerators/7/organizers', async (route) => route.fulfill({ json: [] }));
   let emailEnabled = false;
   await page.route('**/api/accelerators/notifications/unread-count', async (route) => route.fulfill({ json: { count: 2 } }));
@@ -57,6 +58,10 @@ test('manager workspace is split into focused sections', async ({ page }) => {
   await expect(page.getByText('Проблема подтверждена, требуется проверить цену.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'В задачи' })).toBeVisible();
   await page.getByRole('button', { name: 'Матчмейкинг', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Команды потока' })).toBeVisible();
+  await expect(page.getByText('Команда Проекта А')).toBeVisible();
+  await expect(page.getByText('resident@example.test')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Принять' })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Подобрать связку' })).toBeVisible();
   await page.getByRole('button', { name: 'Настройки', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Конструктор функций' })).toBeVisible();
@@ -125,6 +130,109 @@ test('resident launches a Pitchy action and controls result visibility', async (
   await page.getByLabel('Организатору').check();
   await page.getByRole('button', { name: 'Сохранить', exact: true }).click();
   await expect.poll(() => updatePayload).toMatchObject({ share_with_organizer: true, share_with_tracker: false });
+});
+
+test('resident creates a team and invites only recommended residents', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('vi_auth_state', 'cookie-session');
+    localStorage.setItem('pitchy_cookie_consent_v2', JSON.stringify({ choice: 'necessary', updatedAt: new Date().toISOString() }));
+  });
+  await page.route('**/me', async (route) => route.fulfill({ json: { id: 8, email: 'resident@example.test', name: 'Резидент А', is_admin: false, is_active: true, email_verified: true, created_at: new Date().toISOString() } }));
+  await page.route('**/api/accelerators', async (route) => route.fulfill({ json: [{ id: 7, name: 'Тестовый акселератор', status: 'active', access_role: 'resident' }] }));
+  await page.route('**/api/accelerators/me/memberships', async (route) => route.fulfill({ json: { memberships: [{ membership_id: 101, application_id: 44, status: 'enrolled', accepted_at: new Date().toISOString(), enrolled_at: new Date().toISOString(), accelerator: { id: 7, name: 'Тестовый акселератор', status: 'active' }, cohort: { id: 12, name: 'Поток 2026', status: 'active', timezone: 'Europe/Moscow' }, project: { id: 5, name: 'Проект А', readiness_index: 70, status: 'active' }, modules: { applications: true, program: true, matchmaking: true } }], effective_quotas: {} } }));
+  await page.route('**/api/accelerators/notifications/unread-count', async (route) => route.fulfill({ json: { count: 0 } }));
+  const residentProfile = { id: 41, user_id: 8, membership_id: 101, role: 'resident', name: 'Резидент А', bio: 'Основатель проекта', expertise: ['продукт'], needs: ['продажи'], industries: ['SaaS'], goals: [], preferred_formats: ['онлайн'], max_matches: 5, active_matches: 0, active: true };
+  await page.route('**/api/accelerators/cohorts/12/matchmaking/me', async (route) => route.fulfill({ json: { access_role: 'resident', profiles: [residentProfile], matches: [] } }));
+  await page.route('**/api/accelerators/memberships/101/match-profile', async (route) => route.fulfill({ json: residentProfile }));
+
+  let teamCreated = false;
+  let teamStatus = 'active';
+  let teamCanManage = true;
+  let viewerLeft = false;
+  let shareContact = false;
+  let incomingInvitations: Array<Record<string, unknown>> = [{ id: 701, team_id: 880, status: 'pending', team: { id: 880, name: 'Команда Альфа', project: { id: 6, name: 'Проект Альфа' } }, invitee: { membership_id: 101, name: 'Резидент А' }, invited_by: { id: 10, name: 'Резидент Г' }, counterpart_profile_id: 41, can_respond: true, can_cancel: false, expires_at: new Date(Date.now() + 86_400_000).toISOString(), created_at: new Date().toISOString(), message: 'Присоединяйтесь к продуктовой команде' }];
+  let pendingInvitations: Array<Record<string, unknown>> = [];
+  let createPayload: Record<string, unknown> | null = null;
+  let answerPayload: Record<string, unknown> | null = null;
+  let invitePayload: Record<string, unknown> | null = null;
+  let contactPayload: Record<string, unknown> | null = null;
+  let memberPayload: Record<string, unknown> | null = null;
+  let archivePayload: Record<string, unknown> | null = null;
+  const currentTeam = () => teamCreated ? { id: 900, name: 'Команда Проект А', status: teamStatus, max_members: 5, project: { id: 5, name: 'Проект А' }, owner_membership_id: teamCanManage ? 101 : 103, can_manage: teamCanManage, members: [{ id: 801, membership_id: 101, role: teamCanManage ? 'owner' : 'member', title: teamCanManage ? 'Основатель' : 'Продукт', status: viewerLeft ? 'left' : 'active', share_contact: shareContact, person: { id: 8, name: 'Резидент А', ...(shareContact ? { email: 'resident@example.test' } : {}) } }, { id: 802, membership_id: 103, role: teamCanManage ? 'member' : 'owner', title: 'Технологии', status: 'active', share_contact: false, person: { id: 11, name: 'Резидент Д' } }], pending_invitations: pendingInvitations } : null;
+  await page.route('**/api/accelerators/memberships/101/team', async (route) => {
+    if (route.request().method() === 'POST') { createPayload = route.request().postDataJSON(); teamCreated = true; }
+    await route.fulfill({ json: route.request().method() === 'GET' ? { team: currentTeam(), invitations: incomingInvitations } : currentTeam() });
+  });
+  await page.route('**/api/accelerators/team-invitations/701', async (route) => {
+    answerPayload = route.request().postDataJSON(); incomingInvitations = [];
+    await route.fulfill({ json: { id: 701, ...answerPayload } });
+  });
+  await page.route('**/api/accelerators/memberships/101/matchmaking/recommendations?role=resident', async (route) => route.fulfill({ json: [
+    { profile: { id: 902, membership_id: 102, role: 'resident', name: 'Резидент Б', bio: 'Эксперт по продажам' }, score: 91, reasons: ['Закрывает запрос: продажи'] },
+    { profile: { id: 903, role: 'expert', name: 'Эксперт В' }, score: 99, reasons: ['Не является резидентом'] },
+  ] }));
+  await page.route('**/api/accelerators/teams/900/invitations', async (route) => {
+    invitePayload = route.request().postDataJSON();
+    pendingInvitations = [{ id: 702, team_id: 900, status: 'pending', message: 'Нужна помощь с первыми продажами', expires_at: new Date(Date.now() + 86_400_000).toISOString(), created_at: new Date().toISOString(), team: { id: 900, name: 'Команда Проект А', project: { id: 5, name: 'Проект А' } }, invitee: { membership_id: 102, name: 'Резидент Б' }, invited_by: { id: 8, name: 'Резидент А' }, counterpart_profile_id: 902, can_respond: false, can_cancel: true }];
+    await route.fulfill({ json: pendingInvitations[0] });
+  });
+  await page.route('**/api/accelerators/team-members/801/contact', async (route) => {
+    contactPayload = route.request().postDataJSON(); shareContact = Boolean(contactPayload?.share_contact);
+    await route.fulfill({ json: currentTeam()?.members[0] });
+  });
+  await page.route('**/api/accelerators/team-members/802', async (route) => {
+    memberPayload = route.request().postDataJSON();
+    await route.fulfill({ json: { id: 802, membership_id: 103, ...memberPayload, status: 'active', share_contact: false, person: { id: 11, name: 'Резидент Д' } } });
+  });
+  await page.route('**/api/accelerators/team-members/801', async (route) => {
+    if (route.request().method() === 'DELETE') viewerLeft = true;
+    await route.fulfill({ json: { ok: true } });
+  });
+  await page.route('**/api/accelerators/teams/900', async (route) => {
+    archivePayload = route.request().postDataJSON();
+    if (archivePayload?.status === 'archived') teamStatus = 'archived';
+    await route.fulfill({ json: currentTeam() });
+  });
+
+  await page.goto('/accelerator');
+  await page.getByRole('button', { name: 'Матчмейкинг', exact: true }).click();
+  await expect(page.getByText('Команда Альфа')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Принять' })).toBeVisible();
+  await page.getByRole('button', { name: 'Отклонить' }).click();
+  await expect.poll(() => answerPayload).toMatchObject({ status: 'declined' });
+  await page.getByLabel('Название', { exact: true }).fill('Команда Проект А');
+  await page.getByRole('button', { name: 'Создать', exact: true }).click();
+  await expect.poll(() => createPayload).toMatchObject({ name: 'Команда Проект А', max_members: 5 });
+  await expect(page.getByRole('heading', { name: 'Команда Проект А' })).toBeVisible();
+  await page.getByRole('button', { name: 'Подобрать резидентов' }).click();
+  await expect(page.getByText('Резидент Б', { exact: true })).toBeVisible();
+  await expect(page.getByText('Эксперт В')).toHaveCount(0);
+  await page.getByLabel('Сообщение для Резидент Б').fill('Нужна помощь с первыми продажами');
+  await page.getByRole('button', { name: 'Пригласить в команду' }).click();
+  await expect.poll(() => invitePayload).toMatchObject({ counterpart_profile_id: 902, message: 'Нужна помощь с первыми продажами' });
+  await expect(page.getByText('Ожидают ответа')).toBeVisible();
+  await page.getByRole('button', { name: 'Открыть контакт Резидент А' }).click();
+  await expect.poll(() => contactPayload).toMatchObject({ share_contact: true });
+  await expect(page.getByText('resident@example.test')).toBeVisible();
+  await page.getByLabel('Роль Резидент Д').selectOption('cofounder');
+  await page.getByRole('button', { name: 'Сохранить роль' }).click();
+  await expect.poll(() => memberPayload).toMatchObject({ role: 'cofounder', title: 'Технологии' });
+  await expect(page.getByLabel('Максимум участников команды')).toHaveAttribute('min', '3');
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: 'Архивировать команду' }).click();
+  await expect.poll(() => archivePayload).toMatchObject({ status: 'archived' });
+  await expect(page.getByText('В архиве', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Подобрать резидентов' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Скрыть контакт Резидент А' })).toHaveCount(0);
+  teamStatus = 'active'; teamCanManage = false;
+  await page.reload();
+  await page.getByRole('button', { name: 'Матчмейкинг', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Покинуть команду' })).toBeVisible();
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: 'Покинуть команду' }).click();
+  await expect(page.getByText('Вы больше не состоите в этой команде. История состава доступна только для просмотра.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Покинуть команду' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Скрыть контакт Резидент А' })).toHaveCount(0);
 });
 
 test('tracker sees reporting only for assigned residents', async ({ page }) => {

@@ -32,6 +32,7 @@ from models import (
     AcceleratorProgramConfig,
     AcceleratorProgramStage,
     AcceleratorProjectAudit,
+    AcceleratorTeam,
     User,
     Project,
     ChatSession,
@@ -286,6 +287,20 @@ async def delete_project(
     db: AsyncSession = Depends(get_async_db),
 ) -> dict:
     project = await _get_owned_project(project_id, user, db)
+    active_team = (await db.execute(
+        select(AcceleratorTeam.id).where(
+            AcceleratorTeam.project_id == project.id,
+            AcceleratorTeam.status == "active",
+        ).limit(1)
+    )).scalar_one_or_none()
+    if active_team is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Проект является основой активной команды акселератора. "
+                "Сначала архивируйте команду."
+            ),
+        )
     protected_reference = None
     for model in (
         AcceleratorMembership,
