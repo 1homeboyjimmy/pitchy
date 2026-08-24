@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+import types
 import uuid
 
 import pytest
@@ -45,7 +47,18 @@ async def _close_stream(response) -> None:
 
 
 @pytest.mark.asyncio
-async def test_contextual_roadmap_debits_exact_membership_once_and_checks_ownership():
+async def test_contextual_roadmap_debits_exact_membership_once_and_checks_ownership(monkeypatch):
+    # Quota and authorization are the integration boundary under test.  Keep
+    # the paid AI pipeline out of this test so CI never needs provider keys.
+    roadmap_analysis = types.ModuleType("roadmap_analysis")
+
+    async def stream_overall(_passport, _project_id):
+        if False:  # pragma: no cover - keep this an async generator
+            yield ""
+
+    roadmap_analysis.stream_overall = stream_overall
+    monkeypatch.setitem(sys.modules, "roadmap_analysis", roadmap_analysis)
+
     suffix = uuid.uuid4().hex[:10]
     async with AsyncSessionLocal() as db:
         admin = User(email=f"admin-roadmap-{suffix}@example.test", name="Admin", is_admin=True)
