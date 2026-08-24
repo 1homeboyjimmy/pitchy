@@ -547,6 +547,9 @@ app.include_router(accelerators_router.router)
 from routers import accelerator_artifacts as accelerator_artifacts_router
 app.include_router(accelerator_artifacts_router.router)
 
+from routers import accelerator_notifications as accelerator_notifications_router
+app.include_router(accelerator_notifications_router.router)
+
 
 allowed_origins = [
     origin.strip()

@@ -7,7 +7,7 @@ import logging
 import os
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,13 +19,47 @@ from models import (
     AcceleratorHomeworkSubmission,
     AcceleratorHomeworkTarget,
     AcceleratorMembership,
+    AcceleratorNotification,
     AcceleratorNotificationOutbox,
+    AcceleratorNotificationPreference,
     AcceleratorProgramConfig,
     User,
 )
 
 
 logger = logging.getLogger(__name__)
+
+
+def _insert_do_nothing(db: AsyncSession, model, values: dict, conflict_column: str):
+    """Build a portable idempotent insert for supported production/test DBs."""
+    dialect = db.get_bind().dialect.name
+    if dialect == "postgresql":
+        from sqlalchemy.dialects.postgresql import insert
+    elif dialect == "sqlite":
+        from sqlalchemy.dialects.sqlite import insert
+    else:  # pragma: no cover - the application supports PostgreSQL and SQLite.
+        raise RuntimeError(f"Unsupported notification database dialect: {dialect}")
+    return insert(model).values(**values).on_conflict_do_nothing(
+        index_elements=[conflict_column]
+    )
+
+
+async def _active_recipient(
+    db: AsyncSession,
+    *,
+    recipient_email: str,
+    recipient_user_id: int | None,
+) -> User | None:
+    filters = [
+        User.is_active.is_(True),
+        User.deleted_at.is_(None),
+        func.lower(User.email) == recipient_email,
+    ]
+    if recipient_user_id is not None:
+        return (await db.execute(
+            select(User).where(User.id == recipient_user_id, *filters)
+        )).scalar_one_or_none()
+    return (await db.execute(select(User).where(*filters))).scalar_one_or_none()
 
 
 async def enqueue_notification(
@@ -38,26 +72,90 @@ async def enqueue_notification(
     subject: str,
     body: str,
     idempotency_key: str,
+    recipient_user_id: int | None = None,
+    action_url: str | None = None,
+    membership_id: int | None = None,
+    event_metadata: dict | None = None,
 ) -> AcceleratorNotificationOutbox:
+    normalized_email = recipient_email.strip().lower()
+    recipient = await _active_recipient(
+        db,
+        recipient_email=normalized_email,
+        recipient_user_id=recipient_user_id,
+    )
+    now = datetime.utcnow()
+
+    # Outbox and in-app delivery use independent unique keys inside the same
+    # caller-owned transaction. This also repairs a historical outbox event
+    # that was committed before in-app notifications existed.
+    await db.execute(_insert_do_nothing(
+        db,
+        AcceleratorNotificationOutbox.__table__,
+        {
+            "accelerator_id": accelerator_id,
+            "cohort_id": cohort_id,
+            "recipient_user_id": recipient.id if recipient else None,
+            "recipient_email": normalized_email,
+            "event_type": event_type,
+            "subject": subject,
+            "body": body,
+            "status": "pending",
+            "attempts": 0,
+            "idempotency_key": idempotency_key,
+            "available_at": now,
+            "created_at": now,
+        },
+        "idempotency_key",
+    ))
     existing = (await db.execute(
         select(AcceleratorNotificationOutbox).where(
             AcceleratorNotificationOutbox.idempotency_key == idempotency_key
         )
     )).scalar_one_or_none()
-    if existing:
-        return existing
-    event = AcceleratorNotificationOutbox(
-        accelerator_id=accelerator_id,
-        cohort_id=cohort_id,
-        recipient_email=recipient_email.strip().lower(),
-        event_type=event_type,
-        subject=subject,
-        body=body,
-        idempotency_key=idempotency_key,
-    )
-    db.add(event)
+    if existing is None:  # Defensive: the insert/select run on one transaction.
+        raise RuntimeError("Notification outbox insert was not persisted")
+    if (
+        existing.recipient_email.strip().lower() != normalized_email
+        or existing.accelerator_id != accelerator_id
+        or existing.cohort_id != cohort_id
+        or existing.event_type != event_type
+    ):
+        raise ValueError("idempotency_key is already used by another notification")
+    if existing.recipient_user_id is not None:
+        recipient = await _active_recipient(
+            db,
+            recipient_email=normalized_email,
+            recipient_user_id=existing.recipient_user_id,
+        )
+    if recipient and existing.recipient_user_id is None:
+        existing.recipient_user_id = recipient.id
+
+    if recipient:
+        await db.execute(_insert_do_nothing(
+            db,
+            # Use the raw table here because the database column is named
+            # ``metadata`` while the safe Declarative attribute is
+            # ``event_metadata`` (``Base.metadata`` is reserved).
+            AcceleratorNotification.__table__,
+            {
+                "user_id": recipient.id,
+                "accelerator_id": existing.accelerator_id,
+                "cohort_id": existing.cohort_id,
+                "membership_id": membership_id,
+                "event_type": existing.event_type,
+                "title": existing.subject,
+                "body": existing.body,
+                "action_url": action_url,
+                "metadata": event_metadata or {},
+                "read_at": None,
+                "idempotency_key": idempotency_key,
+                "created_at": now,
+                "updated_at": now,
+            },
+            "idempotency_key",
+        ))
     await db.flush()
-    return event
+    return existing
 
 
 async def process_notification_event(event_id: int) -> bool:
@@ -68,10 +166,44 @@ async def process_notification_event(event_id: int) -> bool:
             .where(AcceleratorNotificationOutbox.id == event_id)
             .with_for_update()
         )).scalar_one_or_none()
-        if not event or event.status == "sent":
+        if not event or event.status in ("sent", "suppressed"):
             return bool(event)
         if event.available_at > datetime.utcnow():
             return False
+
+        recipient = None
+        if event.recipient_user_id is not None:
+            recipient = (await db.execute(select(User).where(
+                User.id == event.recipient_user_id,
+                User.is_active.is_(True),
+                User.deleted_at.is_(None),
+                func.lower(User.email) == event.recipient_email.strip().lower(),
+            ))).scalar_one_or_none()
+            if recipient is None:
+                event.status = "suppressed"
+                event.last_error = None
+                await db.commit()
+                return True
+        else:
+            recipient = await _active_recipient(
+                db,
+                recipient_email=event.recipient_email.strip().lower(),
+                recipient_user_id=None,
+            )
+            if recipient:
+                event.recipient_user_id = recipient.id
+
+        if recipient:
+            preference = (await db.execute(
+                select(AcceleratorNotificationPreference).where(
+                    AcceleratorNotificationPreference.user_id == recipient.id
+                )
+            )).scalar_one_or_none()
+            if preference and not preference.email_enabled:
+                event.status = "suppressed"
+                event.last_error = None
+                await db.commit()
+                return True
         try:
             await asyncio.to_thread(
                 send_email,

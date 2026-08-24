@@ -19,6 +19,18 @@ async function mockManagerWorkspace(page: Page) {
   await page.route('**/api/accelerators/cohorts/12/demo-days', async (route) => route.fulfill({ json: { access_role: 'global_admin', demo_days: [{ id: 91, title: 'Demo Day 2026', status: 'finalized', access_role: 'global_admin', criteria: [{ key: 'problem', label: 'Проблема', weight: 100, max_score: 10 }], experts: [{ id: 1, user_id: 9, name: 'Expert', email: 'expert@example.test' }], projects: [{ id: 92, membership_id: 101, resident: { id: 8, name: 'Резидент А', email: 'resident@example.test' }, project: { id: 5, name: 'Проект А', readiness_index: 80 }, pitch_title: 'Проект А', summary: 'Автоматизация процесса', presentation_url: 'https://example.test/pitch', attachments: [], submitted_at: new Date().toISOString(), evaluation_count: 1, average_score: 90, score_adjustment: 2, outcome: 'winner', final_score: 92, rank: 1, evaluations: [] }] }] } }));
   await page.route('**/api/accelerators/cohorts/12/artifacts', async (route) => route.fulfill({ json: { access_role: 'global_admin', artifacts: [{ id: 111, artifact_type: 'chat', status: 'ready', title: 'Разбор гипотезы', summary: 'Гипотеза уточнена и готова к проверке.', visibility: { organizer: true, tracker: false }, updated_at: new Date().toISOString(), details_visible: true, resident: { id: 8, name: 'Резидент А' }, project: { id: 5, name: 'Проект А' }, action: { id: 21, title: 'Разобрать гипотезу', action_type: 'chat' }, stage: { id: 31, title: 'Проверка проблемы' } }] } }));
   await page.route('**/api/accelerators/7/organizers', async (route) => route.fulfill({ json: [] }));
+  let emailEnabled = false;
+  await page.route('**/api/accelerators/notifications/unread-count', async (route) => route.fulfill({ json: { count: 2 } }));
+  await page.route('**/api/accelerators/notifications?**', async (route) => route.fulfill({ json: { items: [
+    { id: 501, event_type: 'homework.reviewed', title: 'Домашняя работа принята', body: 'Откройте программу и продолжайте следующий этап.', action_url: '/accelerator?from=notification', read_at: null, created_at: new Date().toISOString() },
+    { id: 502, event_type: 'security.external', title: 'Внешняя ссылка заблокирована', body: 'Такой переход не должен открываться.', action_url: 'javascript:alert(1)', read_at: null, created_at: new Date().toISOString() },
+  ], next_cursor: null } }));
+  await page.route('**/api/accelerators/notifications/preferences', async (route) => {
+    if (route.request().method() === 'PATCH') emailEnabled = Boolean(route.request().postDataJSON().email_enabled);
+    await route.fulfill({ json: { email_enabled: emailEnabled } });
+  });
+  await page.route('**/api/accelerators/notifications/*/read', async (route) => route.fulfill({ json: { ok: true } }));
+  await page.route('**/api/accelerators/notifications/read-all', async (route) => route.fulfill({ json: { ok: true } }));
 }
 
 test('manager workspace is split into focused sections', async ({ page }) => {
@@ -50,6 +62,25 @@ test('manager workspace is split into focused sections', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Конструктор функций' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Матчмейкинг Включён' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Демо-день и экспорт Включён' })).toBeVisible();
+});
+
+test('notification center keeps navigation internal and manages read state', async ({ page }) => {
+  await mockManagerWorkspace(page);
+  await page.goto('/accelerator');
+  await page.getByRole('button', { name: 'Уведомления, непрочитанных: 2' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Уведомления' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText('Домашняя работа принята')).toBeVisible();
+  await expect(dialog.getByText('Внешняя ссылка заблокирована')).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Открыть' })).toHaveCount(1);
+  await dialog.getByLabel('Дублировать на email').check();
+  await expect(dialog.getByLabel('Дублировать на email')).toBeChecked();
+  await dialog.getByRole('listitem').filter({ hasText: 'Внешняя ссылка заблокирована' }).getByRole('button', { name: 'Отметить прочитанным' }).click();
+  await expect(page.getByRole('button', { name: 'Уведомления, непрочитанных: 1' })).toBeVisible();
+  await dialog.getByRole('button', { name: 'Прочитать все' }).click();
+  await expect(page.getByRole('button', { name: 'Уведомления', exact: true })).toBeVisible();
+  await dialog.getByRole('button', { name: 'Открыть' }).click();
+  await expect(page).toHaveURL(/\/accelerator\?from=notification$/);
 });
 
 test('resident launches a Pitchy action and controls result visibility', async ({ page }) => {

@@ -930,6 +930,9 @@ class AcceleratorNotificationOutbox(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     accelerator_id: Mapped[int] = mapped_column(ForeignKey("accelerators.id", ondelete="CASCADE"), index=True)
     cohort_id: Mapped[int | None] = mapped_column(ForeignKey("accelerator_cohorts.id", ondelete="CASCADE"), nullable=True, index=True)
+    recipient_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     recipient_email: Mapped[str] = mapped_column(String(255), index=True)
     event_type: Mapped[str] = mapped_column(String(50), index=True)
     subject: Mapped[str] = mapped_column(String(300))
@@ -941,6 +944,67 @@ class AcceleratorNotificationOutbox(Base):
     sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class AcceleratorNotification(Base):
+    """Private in-app delivery created alongside an accelerator email event."""
+
+    __tablename__ = "accelerator_notifications"
+    __table_args__ = (
+        UniqueConstraint(
+            "idempotency_key", name="uq_accelerator_notification_idempotency"
+        ),
+        Index(
+            "ix_accelerator_notifications_user_read_id",
+            "user_id",
+            "read_at",
+            "id",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    accelerator_id: Mapped[int | None] = mapped_column(
+        ForeignKey("accelerators.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    cohort_id: Mapped[int | None] = mapped_column(
+        ForeignKey("accelerator_cohorts.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    membership_id: Mapped[int | None] = mapped_column(
+        ForeignKey("accelerator_memberships.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    event_type: Mapped[str] = mapped_column(String(80), index=True)
+    title: Mapped[str] = mapped_column(String(300))
+    body: Mapped[str] = mapped_column(Text)
+    action_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    event_metadata: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    idempotency_key: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
+class AcceleratorNotificationPreference(Base):
+    __tablename__ = "accelerator_notification_preferences"
+    __table_args__ = (
+        UniqueConstraint("user_id", name="uq_accelerator_notification_preference_user"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    email_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("true")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
 
 
 class AcceleratorResidentQuotaOverride(Base):
