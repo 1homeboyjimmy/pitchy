@@ -1,9 +1,33 @@
 from __future__ import annotations
 
-from main import app
+from pathlib import Path
+
+from fastapi import FastAPI
+
+from routers import accelerator_alumni
+from routers import accelerator_artifacts
+from routers import accelerator_governance
+from routers import accelerator_notifications
+from routers import accelerator_operations
+from routers import accelerator_teams
+from routers import accelerators
 
 
 def test_accelerator_routes_are_unique_and_modular_routers_are_mounted():
+    app = FastAPI()
+    modules = (
+        accelerators,
+        accelerator_artifacts,
+        accelerator_notifications,
+        accelerator_teams,
+        accelerator_alumni,
+        accelerator_operations,
+        accelerator_governance,
+    )
+    for module in modules:
+        app.include_router(module.router)
+    main_source = Path("main.py").read_text(encoding="utf-8")
+    assert all(f"app.include_router({module.__name__.split('.')[-1]}_router.router)" in main_source for module in modules)
     seen: set[tuple[str, str]] = set()
     duplicates: list[tuple[str, str]] = []
     accelerator_routes: set[tuple[str, str]] = set()
