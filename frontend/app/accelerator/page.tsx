@@ -28,12 +28,13 @@ import { DemoDayWorkspace } from "@/components/accelerator/DemoDayWorkspace";
 import { ArtifactWorkspace } from "@/components/accelerator/ArtifactWorkspace";
 import { NotificationCenter } from "@/components/accelerator/NotificationCenter";
 import { CohortClosure } from "@/components/accelerator/CohortClosure";
+import { AcceleratorOperations } from "@/components/accelerator/AcceleratorOperations";
 
 type Accelerator = { id: number; name: string; description?: string | null; status: string; access_role: "global_admin" | "organizer" | "tracker" | "expert" | "resident" };
 type Cohort = { id: number; accelerator_id: number; name: string; status: string; timezone: string; starts_at?: string | null; ends_at?: string | null; default_quota_config?: Limits | null; application_form_schema: ApplicationFormSchema };
 type ProgramConfig = { cohort_id: number; version: number; modules: Record<string, boolean>; locked_modules: Record<string, boolean> };
 type Resident = { membership_id: number; user_id: number; name: string; email: string; status: string; status_reason?: string | null; trackers?: Array<{ user_id: number; name: string }> };
-type TabKey = "overview" | "applications" | "form" | "program" | "homework" | "attendance" | "trackers" | "reports" | "tracking" | "matching" | "project_audit" | "demo_day" | "artifacts" | "closure" | "quotas" | "settings" | "audit";
+type TabKey = "overview" | "operations" | "applications" | "form" | "program" | "homework" | "attendance" | "trackers" | "reports" | "tracking" | "matching" | "project_audit" | "demo_day" | "artifacts" | "closure" | "quotas" | "settings" | "audit";
 
 const MODULE_LABELS: Record<string, string> = { applications: "Заявки", program: "Программа", homework: "Домашние задания", attendance: "Посещаемость", progress_tracking: "Трекинг прогресса", matchmaking: "Матчмейкинг", project_audit: "Аудит проекта", demo_day: "Демо-день и экспорт", pitchy_artifacts: "Результаты Pitchy", alumni: "Каталог выпускников" };
 const STATUS_LABELS: Record<string, string> = { draft: "Черновик", accepting: "Приём заявок", active: "Идёт", completed: "Завершён", archived: "Архив", accepted: "Принят", enrolled: "Зачислен" };
@@ -91,7 +92,7 @@ export default function AcceleratorWorkspacePage() {
       return rows;
     }
     if (isExpert) { const rows: Array<{ key: TabKey; label: string }> = []; if (config?.modules.matchmaking) rows.push({ key: "matching", label: "Мои связки" }); if (config?.modules.demo_day) rows.push({ key: "demo_day", label: "Демо-день" }); return rows; }
-    const rows: Array<{ key: TabKey; label: string }> = [{ key: "overview", label: "Обзор" }, { key: "applications", label: "Заявки" }, { key: "form", label: "Анкета" }, { key: "program", label: "Программа" }];
+    const rows: Array<{ key: TabKey; label: string }> = [{ key: "overview", label: "Обзор" }, { key: "operations", label: "Состояние" }, { key: "applications", label: "Заявки" }, { key: "form", label: "Анкета" }, { key: "program", label: "Программа" }];
     if (config?.modules.homework) rows.push({ key: "homework", label: "Домашние задания" });
     if (config?.modules.attendance) rows.push({ key: "attendance", label: "Посещаемость" });
     if (config?.modules.progress_tracking) rows.push({ key: "tracking", label: "Трекинг" });
@@ -127,6 +128,7 @@ export default function AcceleratorWorkspacePage() {
       {!isResident && canReadCohort && selectedCohort && <>
         <nav className="mb-6 flex gap-2 overflow-x-auto pb-2" aria-label="Разделы акселератора">{tabs.map((item) => <button type="button" key={item.key} onClick={() => setTab(item.key)} className={`shrink-0 rounded-full border px-4 py-2 text-sm ${tab === item.key ? "border-white bg-white text-black" : "border-white/10 text-white/50 hover:text-white"}`}>{item.label}</button>)}</nav>
         {tab === "overview" && <Overview accelerator={selectedAccelerator} cohort={selectedCohort} config={config} applications={applications} residents={residents} onCopy={copyApplicationLink} copied={copied} onNavigate={setTab} />}
+        {tab === "operations" && canManage && <AcceleratorOperations cohortId={selectedCohort.id} acceleratorId={selectedAccelerator.id} token={token} isAdmin={isAdmin} />}
         {tab === "applications" && <ApplicationManager token={token} applications={applications} schema={selectedCohort.application_form_schema || {}} onChanged={loadCohortDetails} />}
         {tab === "form" && <ApplicationFormEditor key={selectedCohort.id} schema={selectedCohort.application_form_schema || {}} publicUrl={`/accelerators/apply/${selectedCohort.id}`} saving={busy === "form"} onSave={saveApplicationForm} />}
         {tab === "program" && <ProgramBuilder cohortId={selectedCohort.id} token={token} />}

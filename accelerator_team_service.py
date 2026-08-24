@@ -47,6 +47,9 @@ async def get_cohort(db: AsyncSession, cohort_id: int) -> AcceleratorCohort:
 async def require_teams_module(
     db: AsyncSession, cohort: AcceleratorCohort
 ) -> AcceleratorProgramConfig:
+    from accelerator_operations_service import ensure_module_runtime_enabled
+
+    await ensure_module_runtime_enabled(db, module_key="matchmaking", cohort=cohort)
     config = (await db.execute(select(AcceleratorProgramConfig).where(
         AcceleratorProgramConfig.cohort_id == cohort.id
     ))).scalar_one_or_none()

@@ -907,6 +907,37 @@ class AcceleratorAlumniCheckin(Base):
     )
 
 
+class AcceleratorModuleRuntimeOverride(Base):
+    """Operational kill switch, independent from the cohort's saved config."""
+
+    __tablename__ = "accelerator_module_runtime_overrides"
+    __table_args__ = (
+        UniqueConstraint(
+            "scope_key", "module_key", name="uq_accelerator_runtime_scope_module"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    scope_type: Mapped[str] = mapped_column(String(20), index=True)
+    scope_key: Mapped[str] = mapped_column(String(80), index=True)
+    accelerator_id: Mapped[int | None] = mapped_column(
+        ForeignKey("accelerators.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    cohort_id: Mapped[int | None] = mapped_column(
+        ForeignKey("accelerator_cohorts.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    module_key: Mapped[str] = mapped_column(String(50), index=True)
+    reason: Mapped[str] = mapped_column(Text)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    updated_by_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
 class AcceleratorApplicationEvent(Base):
     __tablename__ = "accelerator_application_events"
 

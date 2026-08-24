@@ -218,6 +218,9 @@ def application_dict(row: AcceleratorApplication) -> dict:
 
 
 async def require_homework_module(db: AsyncSession, cohort: AcceleratorCohort) -> AcceleratorProgramConfig:
+    from accelerator_operations_service import ensure_module_runtime_enabled
+
+    await ensure_module_runtime_enabled(db, module_key="homework", cohort=cohort)
     config = (await db.execute(select(AcceleratorProgramConfig).where(
         AcceleratorProgramConfig.cohort_id == cohort.id
     ))).scalar_one_or_none()
@@ -227,6 +230,9 @@ async def require_homework_module(db: AsyncSession, cohort: AcceleratorCohort) -
 
 
 async def require_attendance_module(db: AsyncSession, cohort: AcceleratorCohort) -> AcceleratorProgramConfig:
+    from accelerator_operations_service import ensure_module_runtime_enabled
+
+    await ensure_module_runtime_enabled(db, module_key="attendance", cohort=cohort)
     config = (await db.execute(select(AcceleratorProgramConfig).where(
         AcceleratorProgramConfig.cohort_id == cohort.id
     ))).scalar_one_or_none()
@@ -238,6 +244,9 @@ async def require_attendance_module(db: AsyncSession, cohort: AcceleratorCohort)
 async def require_progress_tracking_module(
     db: AsyncSession, cohort: AcceleratorCohort
 ) -> AcceleratorProgramConfig:
+    from accelerator_operations_service import ensure_module_runtime_enabled
+
+    await ensure_module_runtime_enabled(db, module_key="progress_tracking", cohort=cohort)
     config = (await db.execute(select(AcceleratorProgramConfig).where(
         AcceleratorProgramConfig.cohort_id == cohort.id
     ))).scalar_one_or_none()
@@ -249,6 +258,9 @@ async def require_progress_tracking_module(
 async def require_project_audit_module(
     db: AsyncSession, cohort: AcceleratorCohort
 ) -> AcceleratorProgramConfig:
+    from accelerator_operations_service import ensure_module_runtime_enabled
+
+    await ensure_module_runtime_enabled(db, module_key="project_audit", cohort=cohort)
     config = (await db.execute(select(AcceleratorProgramConfig).where(
         AcceleratorProgramConfig.cohort_id == cohort.id
     ))).scalar_one_or_none()
@@ -260,6 +272,9 @@ async def require_project_audit_module(
 async def require_demo_day_module(
     db: AsyncSession, cohort: AcceleratorCohort
 ) -> AcceleratorProgramConfig:
+    from accelerator_operations_service import ensure_module_runtime_enabled
+
+    await ensure_module_runtime_enabled(db, module_key="demo_day", cohort=cohort)
     config = (await db.execute(select(AcceleratorProgramConfig).where(
         AcceleratorProgramConfig.cohort_id == cohort.id
     ))).scalar_one_or_none()
@@ -271,6 +286,9 @@ async def require_demo_day_module(
 async def require_pitchy_artifacts_module(
     db: AsyncSession, cohort: AcceleratorCohort
 ) -> AcceleratorProgramConfig:
+    from accelerator_operations_service import ensure_module_runtime_enabled
+
+    await ensure_module_runtime_enabled(db, module_key="pitchy_artifacts", cohort=cohort)
     config = (await db.execute(select(AcceleratorProgramConfig).where(
         AcceleratorProgramConfig.cohort_id == cohort.id
     ))).scalar_one_or_none()
@@ -285,6 +303,9 @@ async def require_pitchy_artifacts_module(
 async def require_matchmaking_module(
     db: AsyncSession, cohort: AcceleratorCohort
 ) -> AcceleratorProgramConfig:
+    from accelerator_operations_service import ensure_module_runtime_enabled
+
+    await ensure_module_runtime_enabled(db, module_key="matchmaking", cohort=cohort)
     config = (await db.execute(select(AcceleratorProgramConfig).where(
         AcceleratorProgramConfig.cohort_id == cohort.id
     ))).scalar_one_or_none()
