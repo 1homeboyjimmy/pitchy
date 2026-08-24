@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -12,6 +13,12 @@ import {
   type ProjectListItem, type Roadmap, type RoadmapCheckpoint, type RoadmapField, type RoadmapOverall,
 } from "@/lib/api";
 import { trackMetrikaGoal } from "@/components/analytics/YandexMetrika";
+
+function positiveQueryInt(value: string | null): number | null {
+  if (!value || !/^\d+$/.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
 
 // Геометрия извилистого пути (в координатах viewBox; узлы позиционируются в %).
 const VB_W = 280;
@@ -234,6 +241,10 @@ function CheckpointEditor({
 }
 
 export function RoadmapView() {
+  const searchParams = useSearchParams();
+  const requestedProjectId = positiveQueryInt(searchParams.get("project"));
+  const requestedMembershipId = positiveQueryInt(searchParams.get("accelerator_membership"));
+  const requestedActionId = positiveQueryInt(searchParams.get("accelerator_action"));
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
   const [pid, setPid] = useState<number | null>(null);
   const [roadmap, setRoadmap] = useState<Roadmap | null>(null);
@@ -273,14 +284,28 @@ export function RoadmapView() {
       try {
         const pj = await getProjects(t);
         setProjects(pj);
-        // Не выбираем проект автоматически — стартуем с хаба карт (выбор/создание).
+        // Обычный вход остаётся на хабе. Контекстный переход из программы
+        // открывает только проект, который действительно есть в списке владельца.
+        if (requestedProjectId && pj.some((project) => project.id === requestedProjectId)) {
+          setPid(requestedProjectId);
+        }
       } catch {
         notifyError("Не удалось загрузить проекты");
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [requestedProjectId]);
+
+  const acceleratorContext = useMemo(() => {
+    if (
+      pid == null
+      || pid !== requestedProjectId
+      || requestedMembershipId == null
+      || requestedActionId == null
+    ) return undefined;
+    return { membershipId: requestedMembershipId, actionId: requestedActionId };
+  }, [pid, requestedActionId, requestedMembershipId, requestedProjectId]);
 
   const loadRoadmap = useCallback(async (id: number, keepSel: boolean) => {
     const t = getToken();
@@ -364,7 +389,7 @@ export function RoadmapView() {
     setAnalyzingOverall(true);
     setOverall({ analysis: "", sources: [] });
     try {
-      for await (const ev of streamRoadmapOverall(pid, t)) {
+      for await (const ev of streamRoadmapOverall(pid, t, acceleratorContext)) {
         if (ev.type === "chunk" && ev.content) {
           setOverall((o) => ({ analysis: (o?.analysis || "") + ev.content, sources: o?.sources || [] }));
         } else if (ev.type === "sources" && ev.sources) {

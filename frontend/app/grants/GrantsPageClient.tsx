@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   Banknote, Calendar, Sparkles, Loader, MapPin,
@@ -18,6 +19,12 @@ import { GrantActionsPaywall } from "./GrantActionsPaywall";
 import { useGrantAccess } from "./GrantAccessContext";
 
 const EASE = [0.16, 1, 0.3, 1] as const;
+
+function positiveQueryInt(value: string | null): number | null {
+  if (!value || !/^\d+$/.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
 
 function formatAmount(min: number | null, max: number | null): string | null {
   const fmt = (n: number) => new Intl.NumberFormat("ru-RU").format(n);
@@ -268,6 +275,10 @@ function SupportMeasureCard({ grant, match, href }: { grant: Grant; match?: Gran
 }
 
 export function GrantsPageClient() {
+  const searchParams = useSearchParams();
+  const requestedProjectId = positiveQueryInt(searchParams.get("project"));
+  const requestedMembershipId = positiveQueryInt(searchParams.get("accelerator_membership"));
+  const requestedActionId = positiveQueryInt(searchParams.get("accelerator_action"));
   const { loading: accessLoading, canUseGrantActions } = useGrantAccess();
   const [token, setTok] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -310,6 +321,12 @@ export function GrantsPageClient() {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    if (requestedProjectId && projects.some((project) => project.id === requestedProjectId)) {
+      setActiveProject(requestedProjectId);
+    }
+  }, [projects, requestedProjectId]);
 
   const retryCatalog = async () => {
     if (!token) return;
@@ -387,8 +404,23 @@ export function GrantsPageClient() {
       .slice(0, 12);
   }, [grants]);
 
-  const grantHref = (id: number) =>
-    activeProject != null ? `/grants/${id}?project=${activeProject}` : `/grants/${id}`;
+  const grantHref = (id: number) => {
+    const query = new URLSearchParams();
+    if (activeProject != null) query.set("project", String(activeProject));
+    // Keep accelerator context only while the user is working with the project
+    // that was supplied by the program action. Switching projects is an
+    // ordinary grants flow and must not be attributed to that action.
+    if (
+      activeProject != null
+      && activeProject === requestedProjectId
+      && requestedMembershipId != null
+      && requestedActionId != null
+    ) {
+      query.set("accelerator_membership", String(requestedMembershipId));
+      query.set("accelerator_action", String(requestedActionId));
+    }
+    return query.size ? `/grants/${id}?${query.toString()}` : `/grants/${id}`;
+  };
 
   const catOf = (g: Grant) => g.category || "grant";
   // Какие вкладки реально показывать (только непустые категории).

@@ -751,6 +751,68 @@ class AcceleratorProgramStageProgress(Base):
     completed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class AcceleratorProgramAction(Base):
+    """A contextual hand-off from a program stage into an existing Pitchy tool."""
+
+    __tablename__ = "accelerator_program_actions"
+    __table_args__ = (
+        UniqueConstraint("stage_id", "position", name="uq_accelerator_program_action_position"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    stage_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_program_stages.id", ondelete="CASCADE"), index=True
+    )
+    action_type: Mapped[str] = mapped_column(String(30), index=True)
+    title: Mapped[str] = mapped_column(String(300))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    position: Mapped[int] = mapped_column(Integer)
+    required: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    config: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
+class AcceleratorArtifact(Base):
+    """A permissioned reference to a result owned by the main Pitchy domain."""
+
+    __tablename__ = "accelerator_artifacts"
+    __table_args__ = (
+        UniqueConstraint(
+            "action_id", "membership_id", name="uq_accelerator_artifact_action_membership"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    action_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_program_actions.id", ondelete="CASCADE"), index=True
+    )
+    membership_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_memberships.id", ondelete="CASCADE"), index=True
+    )
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="RESTRICT"), index=True
+    )
+    artifact_type: Mapped[str] = mapped_column(String(30), index=True)
+    status: Mapped[str] = mapped_column(
+        String(20), default="started", server_default="started", index=True
+    )
+    title: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_type: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    source_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    visibility: Mapped[dict] = mapped_column(JSON, default=dict)
+    shared_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
 class AcceleratorHomeworkAssignment(Base):
     __tablename__ = "accelerator_homework_assignments"
 
@@ -1059,6 +1121,18 @@ class ChatSession(Base):
     # Папка проекта, к которой привязан чат. NULL = чат вне проекта
     # (память папки на него не распространяется).
     project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True)
+    # Immutable accelerator launch context. It lets quota accounting debit the
+    # exact cohort that opened the chat instead of another active cohort.
+    accelerator_membership_id: Mapped[int | None] = mapped_column(
+        ForeignKey("accelerator_memberships.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    accelerator_action_id: Mapped[int | None] = mapped_column(
+        ForeignKey("accelerator_program_actions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     user: Mapped["User"] = relationship(back_populates="chat_sessions")
     messages: Mapped[list["ChatMessage"]] = relationship(back_populates="session", cascade="all, delete-orphan")

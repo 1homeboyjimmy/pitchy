@@ -161,6 +161,7 @@ async def consume_quota(
     reference_type: str | None = None,
     reference_id: str | None = None,
     metadata: dict | None = None,
+    accelerator_membership_id: int | None = None,
 ) -> bool:
     """Debit one custom-plan unit. Returns False for legacy users.
 
@@ -181,7 +182,26 @@ async def consume_quota(
         return True
 
     subscription = await get_subscription(db, user.id, for_update=True)
-    accelerator = await _preferred_accelerator_snapshot(db, user, subscription, resource)
+    if accelerator_membership_id is not None:
+        from accelerator_service import consume_accelerator_membership_quota
+
+        handled = await consume_accelerator_membership_quota(
+            db,
+            membership_id=accelerator_membership_id,
+            user_id=user.id,
+            resource=resource,
+            idempotency_key=idempotency_key,
+            reference_type=reference_type,
+            reference_id=reference_id,
+            metadata=metadata,
+        )
+        if handled:
+            return True
+        # The request came from one exact cohort. Falling back to the user's
+        # own subscription is valid; silently charging a different cohort is not.
+        accelerator = None
+    else:
+        accelerator = await _preferred_accelerator_snapshot(db, user, subscription, resource)
     if accelerator:
         from accelerator_service import consume_accelerator_quota
         return await consume_accelerator_quota(

@@ -25,14 +25,15 @@ import { MatchmakingManager } from "@/components/accelerator/MatchmakingManager"
 import { MatchmakingWorkspace } from "@/components/accelerator/MatchmakingWorkspace";
 import { ProjectAuditWorkspace } from "@/components/accelerator/ProjectAuditWorkspace";
 import { DemoDayWorkspace } from "@/components/accelerator/DemoDayWorkspace";
+import { ArtifactWorkspace } from "@/components/accelerator/ArtifactWorkspace";
 
 type Accelerator = { id: number; name: string; description?: string | null; status: string; access_role: "global_admin" | "organizer" | "tracker" | "expert" | "resident" };
 type Cohort = { id: number; accelerator_id: number; name: string; status: string; timezone: string; starts_at?: string | null; ends_at?: string | null; default_quota_config?: Limits | null; application_form_schema: ApplicationFormSchema };
 type ProgramConfig = { cohort_id: number; version: number; modules: Record<string, boolean>; locked_modules: Record<string, boolean> };
 type Resident = { membership_id: number; user_id: number; name: string; email: string; status: string; status_reason?: string | null; trackers?: Array<{ user_id: number; name: string }> };
-type TabKey = "overview" | "applications" | "form" | "program" | "homework" | "attendance" | "trackers" | "reports" | "tracking" | "matching" | "project_audit" | "demo_day" | "quotas" | "settings" | "audit";
+type TabKey = "overview" | "applications" | "form" | "program" | "homework" | "attendance" | "trackers" | "reports" | "tracking" | "matching" | "project_audit" | "demo_day" | "artifacts" | "quotas" | "settings" | "audit";
 
-const MODULE_LABELS: Record<string, string> = { applications: "Заявки", program: "Программа", homework: "Домашние задания", attendance: "Посещаемость", progress_tracking: "Трекинг прогресса", matchmaking: "Матчмейкинг", project_audit: "Аудит проекта", demo_day: "Демо-день и экспорт" };
+const MODULE_LABELS: Record<string, string> = { applications: "Заявки", program: "Программа", homework: "Домашние задания", attendance: "Посещаемость", progress_tracking: "Трекинг прогресса", matchmaking: "Матчмейкинг", project_audit: "Аудит проекта", demo_day: "Демо-день и экспорт", pitchy_artifacts: "Результаты Pitchy" };
 const STATUS_LABELS: Record<string, string> = { draft: "Черновик", accepting: "Приём заявок", active: "Идёт", completed: "Завершён", archived: "Архив", accepted: "Принят", enrolled: "Зачислен" };
 const STATUS_TRANSITIONS: Record<string, string[]> = { draft: ["accepting", "archived"], accepting: ["draft", "active", "archived"], active: ["completed", "archived"], completed: ["archived"], archived: [] };
 
@@ -84,6 +85,7 @@ export default function AcceleratorWorkspacePage() {
       if (config?.modules.attendance) rows.push({ key: "attendance", label: "Посещаемость" });
       if (config?.modules.matchmaking) rows.push({ key: "matching", label: "Матчмейкинг" });
       if (config?.modules.project_audit) rows.push({ key: "project_audit", label: "Аудит проекта" });
+      if (config?.modules.pitchy_artifacts) rows.push({ key: "artifacts", label: "Результаты Pitchy" });
       return rows;
     }
     if (isExpert) { const rows: Array<{ key: TabKey; label: string }> = []; if (config?.modules.matchmaking) rows.push({ key: "matching", label: "Мои связки" }); if (config?.modules.demo_day) rows.push({ key: "demo_day", label: "Демо-день" }); return rows; }
@@ -94,6 +96,7 @@ export default function AcceleratorWorkspacePage() {
     if (config?.modules.matchmaking) rows.push({ key: "matching", label: "Матчмейкинг" });
     if (config?.modules.project_audit) rows.push({ key: "project_audit", label: "Аудит проекта" });
     if (config?.modules.demo_day) rows.push({ key: "demo_day", label: "Демо-день" });
+    if (config?.modules.pitchy_artifacts) rows.push({ key: "artifacts", label: "Результаты Pitchy" });
     rows.push({ key: "trackers", label: "Трекеры" }, { key: "reports", label: "Отчётность" });
     if (isAdmin) rows.push({ key: "quotas", label: "Лимиты" });
     rows.push({ key: "settings", label: "Настройки" }, { key: "audit", label: "Журнал" }); return rows;
@@ -130,6 +133,7 @@ export default function AcceleratorWorkspacePage() {
         {tab === "matching" && config?.modules.matchmaking && (canManage ? <MatchmakingManager cohortId={selectedCohort.id} token={token} /> : <MatchmakingWorkspace cohortId={selectedCohort.id} />)}
         {tab === "project_audit" && config?.modules.project_audit && <ProjectAuditWorkspace cohortId={selectedCohort.id} residents={residents} token={token} canCreateTasks taskIntegrationEnabled={Boolean(config.modules.progress_tracking)} />}
         {tab === "demo_day" && config?.modules.demo_day && <DemoDayWorkspace cohortId={selectedCohort.id} residents={residents} token={token} canManage={canManage} />}
+        {tab === "artifacts" && config?.modules.pitchy_artifacts && <ArtifactWorkspace cohortId={selectedCohort.id} token={token} />}
         {tab === "trackers" && canManage && <TrackerManager token={token} cohortId={selectedCohort.id} residents={residents} />}
         {tab === "reports" && <ResidentReport token={token} cohortId={selectedCohort.id} canManage={canManage} onChanged={loadCohortDetails} />}
         {tab === "quotas" && isAdmin && <QuotaManager token={token} cohortId={selectedCohort.id} initialTemplate={selectedCohort.default_quota_config} residents={residents} />}

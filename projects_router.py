@@ -24,7 +24,18 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from auth import get_async_current_user
 from db_async import get_async_db
-from models import User, Project, ChatSession
+from models import (
+    AcceleratorArtifact,
+    AcceleratorDemoDayProject,
+    AcceleratorMembership,
+    AcceleratorProgramAction,
+    AcceleratorProgramConfig,
+    AcceleratorProgramStage,
+    AcceleratorProjectAudit,
+    User,
+    Project,
+    ChatSession,
+)
 from schemas import (
     ProjectCreateRequest,
     ProjectUpdateRequest,
@@ -51,6 +62,68 @@ async def _get_owned_project(project_id: int, user: User, db: AsyncSession) -> P
     if not project:
         raise HTTPException(status_code=404, detail="Папка проекта не найдена")
     return project
+
+
+async def _validate_accelerator_roadmap_context(
+    db: AsyncSession,
+    *,
+    project: Project,
+    user: User,
+    membership_id: int | None,
+    action_id: int | None,
+) -> tuple[AcceleratorMembership, AcceleratorProgramAction] | None:
+    """Resolve a contextual roadmap launch without widening project access.
+
+    Context parameters travel through a user-controlled URL, so both must be
+    present and must point to the current user's enrolled membership, its
+    canonical project and a published roadmap action in the same cohort.
+    """
+    if membership_id is None and action_id is None:
+        return None
+    if membership_id is None or action_id is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Контекст акселератора должен содержать membership и action",
+        )
+
+    membership = await db.get(AcceleratorMembership, membership_id)
+    if (
+        not membership
+        or membership.user_id != user.id
+        or membership.role != "resident"
+        or membership.status != "enrolled"
+        or membership.project_id != project.id
+    ):
+        # Do not disclose whether a foreign membership exists.
+        raise HTTPException(status_code=404, detail="Контекст дорожной карты не найден")
+
+    row = (await db.execute(
+        select(AcceleratorProgramAction, AcceleratorProgramStage)
+        .join(
+            AcceleratorProgramStage,
+            AcceleratorProgramStage.id == AcceleratorProgramAction.stage_id,
+        )
+        .where(
+            AcceleratorProgramAction.id == action_id,
+            AcceleratorProgramAction.action_type == "roadmap",
+            AcceleratorProgramStage.cohort_id == membership.cohort_id,
+            AcceleratorProgramStage.status == "published",
+        )
+    )).one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="Контекст дорожной карты не найден")
+    action, _stage = row
+    artifact = (await db.execute(select(AcceleratorArtifact.id).where(
+        AcceleratorArtifact.action_id == action.id,
+        AcceleratorArtifact.membership_id == membership.id,
+        AcceleratorArtifact.project_id == project.id,
+    ))).scalar_one_or_none()
+    config = (await db.execute(select(AcceleratorProgramConfig).where(
+        AcceleratorProgramConfig.cohort_id == membership.cohort_id,
+    ))).scalar_one_or_none()
+    if artifact is None or not config or not (config.modules or {}).get("pitchy_artifacts"):
+        raise HTTPException(status_code=404, detail="Контекст дорожной карты не найден")
+    return membership, action
 
 
 def _project_response(project: Project) -> ProjectResponse:
@@ -213,6 +286,26 @@ async def delete_project(
     db: AsyncSession = Depends(get_async_db),
 ) -> dict:
     project = await _get_owned_project(project_id, user, db)
+    protected_reference = None
+    for model in (
+        AcceleratorMembership,
+        AcceleratorArtifact,
+        AcceleratorProjectAudit,
+        AcceleratorDemoDayProject,
+    ):
+        protected_reference = (await db.execute(
+            select(model.id).where(model.project_id == project.id).limit(1)
+        )).scalar_one_or_none()
+        if protected_reference is not None:
+            break
+    if protected_reference is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Проект участвует в акселераторе и хранит отчётную историю. "
+                "Архивируйте его вместо удаления."
+            ),
+        )
     await db.delete(project)
     await db.commit()
     return {"status": "deleted"}
@@ -288,6 +381,9 @@ async def analyze_roadmap_step(
 @router.post("/{project_id}/roadmap/analyze")
 async def analyze_roadmap_overall(
     project_id: int,
+    accelerator_membership: int | None = Query(default=None, gt=0),
+    accelerator_action: int | None = Query(default=None, gt=0),
+    request_id: str | None = Query(default=None, min_length=8, max_length=100),
     user: User = Depends(get_async_current_user),
     db: AsyncSession = Depends(get_async_db),
 ):
@@ -297,6 +393,43 @@ async def analyze_roadmap_overall(
     from fastapi.responses import StreamingResponse
     import roadmap_analysis
     project = await _get_owned_project(project_id, user, db)
+    accelerator_context = await _validate_accelerator_roadmap_context(
+        db,
+        project=project,
+        user=user,
+        membership_id=accelerator_membership,
+        action_id=accelerator_action,
+    )
+    from subscription_service import consume_quota, require_legacy_access
+    if accelerator_context:
+        membership, action = accelerator_context
+        handled = await consume_quota(
+            db,
+            user,
+            "roadmaps",
+            # One program action represents one required result. Retries and
+            # reconnects to its SSE stream must not spend a second unit.
+            idempotency_key=f"accelerator-roadmap-action:{membership.id}:{action.id}",
+            reference_type="accelerator_program_action",
+            reference_id=str(action.id),
+            metadata={"project_id": project.id, "action_type": action.action_type},
+            accelerator_membership_id=membership.id,
+        )
+    else:
+        handled = await consume_quota(
+            db,
+            user,
+            "roadmaps",
+            idempotency_key=f"roadmap-analysis:{user.id}:{request_id or datetime.utcnow().isoformat()}",
+            reference_type="roadmap_analysis",
+            reference_id=str(project.id),
+            metadata={"project_id": project.id},
+        )
+    if not handled:
+        require_legacy_access(user, "roadmaps")
+    # Streaming starts after the response is returned. Persist the debit before
+    # that boundary so disconnects cannot roll it back silently.
+    await db.commit()
     passport = project.passport or {}
     return StreamingResponse(
         roadmap_analysis.stream_overall(passport, project.id),

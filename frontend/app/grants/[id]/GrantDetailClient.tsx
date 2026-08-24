@@ -65,18 +65,26 @@ const FORMAT_LABELS: Record<string, string> = {
   online: "Онлайн", offline: "Офлайн", hybrid: "Гибридный формат",
 };
 
+function positiveQueryInt(value: string | null): number | null {
+  if (!value || !/^\d+$/.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
 export function GrantDetailClient() {
   const { loading: accessLoading, canUseGrantActions } = useGrantAccess();
   const params = useParams();
   const search = useSearchParams();
   const grantId = Number(params.id);
-  const projectParam = search.get("project");
+  const requestedProjectId = positiveQueryInt(search.get("project"));
+  const requestedMembershipId = positiveQueryInt(search.get("accelerator_membership"));
+  const requestedActionId = positiveQueryInt(search.get("accelerator_action"));
 
   const [token, setTok] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [grant, setGrant] = useState<Grant | null>(null);
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
-  const [projectId, setProjectId] = useState<number | null>(projectParam ? Number(projectParam) : null);
+  const [projectId, setProjectId] = useState<number | null>(null);
   const [extra, setExtra] = useState("");
   const [generating, setGenerating] = useState(false);
   const [result, setResult] = useState<GrantApplication | null>(null);
@@ -102,7 +110,13 @@ export function GrantDetailClient() {
         if (projectsResult.status === "fulfilled") {
           const pj = projectsResult.value;
           setProjects(pj);
-          setProjectId((current) => current == null && pj.length > 0 ? pj[0].id : current);
+          setProjectId((current) => {
+            if (current != null && pj.some((project) => project.id === current)) return current;
+            if (requestedProjectId && pj.some((project) => project.id === requestedProjectId)) {
+              return requestedProjectId;
+            }
+            return pj[0]?.id ?? null;
+          });
         } else {
           console.error("Failed to load projects on grant page", projectsResult.reason);
         }
@@ -110,7 +124,7 @@ export function GrantDetailClient() {
         setLoading(false);
       }
     })();
-  }, [grantId]);
+  }, [grantId, requestedProjectId]);
 
   // Объяснение матча: подтягиваем оценку этого гранта под выбранный проект.
   useEffect(() => {
@@ -128,7 +142,21 @@ export function GrantDetailClient() {
     if (!token || projectId == null) return;
     setGenerating(true);
     try {
-      const app = await generateGrantApplication(grantId, projectId, token, extra || undefined);
+      const acceleratorContext = (
+        projectId === requestedProjectId
+        && requestedMembershipId != null
+        && requestedActionId != null
+      ) ? {
+        membershipId: requestedMembershipId,
+        actionId: requestedActionId,
+      } : undefined;
+      const app = await generateGrantApplication(
+        grantId,
+        projectId,
+        token,
+        extra || undefined,
+        acceleratorContext,
+      );
       setResult(app);
       setTracked(true); // заявка попала на канбан «Мои гранты» (стадия «Готовлю»)
     } catch (e) {

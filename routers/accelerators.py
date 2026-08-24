@@ -47,6 +47,7 @@ from models import (
     AcceleratorApplicationEvent,
     AcceleratorAuditLog,
     AcceleratorAttendanceRecord,
+    AcceleratorArtifact,
     AcceleratorCohort,
     AcceleratorDemoDay,
     AcceleratorDemoDayExpert,
@@ -63,6 +64,7 @@ from models import (
     AcceleratorMatchProfile,
     AcceleratorOrganization,
     AcceleratorProgramConfig,
+    AcceleratorProgramAction,
     AcceleratorProgramMaterial,
     AcceleratorProgramMaterialProgress,
     AcceleratorProgramStage,
@@ -139,6 +141,7 @@ DEFAULT_MODULES = {
     "matchmaking": False,
     "project_audit": False,
     "demo_day": False,
+    "pitchy_artifacts": False,
 }
 LOCKED_BASE_MODULES = {"applications": True, "program": True}
 COHORT_STATUS_TRANSITIONS = {
@@ -260,6 +263,20 @@ async def require_demo_day_module(
     ))).scalar_one_or_none()
     if not config or not (config.modules or {}).get("demo_day"):
         raise HTTPException(status_code=409, detail="Модуль демо-дня не включён для этого потока")
+    return config
+
+
+async def require_pitchy_artifacts_module(
+    db: AsyncSession, cohort: AcceleratorCohort
+) -> AcceleratorProgramConfig:
+    config = (await db.execute(select(AcceleratorProgramConfig).where(
+        AcceleratorProgramConfig.cohort_id == cohort.id
+    ))).scalar_one_or_none()
+    if not config or not (config.modules or {}).get("pitchy_artifacts"):
+        raise HTTPException(
+            status_code=409,
+            detail="Связка с инструментами Pitchy не включена для этого потока",
+        )
     return config
 
 
@@ -1419,8 +1436,55 @@ async def update_program_config(
     return {"cohort_id": cohort.id, "version": config.version, "modules": config.modules, "locked_modules": config.locked_modules}
 
 
+async def stage_actions(db: AsyncSession, stage_id: int) -> list[AcceleratorProgramAction]:
+    return list((await db.execute(select(AcceleratorProgramAction).where(
+        AcceleratorProgramAction.stage_id == stage_id
+    ).order_by(AcceleratorProgramAction.position))).scalars().all())
+
+
+def artifact_dict(row: AcceleratorArtifact, *, include_private: bool = True) -> dict:
+    data = {
+        "id": row.id,
+        "action_id": row.action_id,
+        "membership_id": row.membership_id,
+        "project_id": row.project_id,
+        "artifact_type": row.artifact_type,
+        "status": row.status,
+        "title": row.title,
+        "visibility": row.visibility or {},
+        "shared_at": row.shared_at,
+        "completed_at": row.completed_at,
+        "created_at": row.created_at,
+        "updated_at": row.updated_at,
+    }
+    if include_private:
+        data.update({
+            "summary": row.summary,
+            "url": row.url,
+            "source_type": row.source_type,
+            "source_id": row.source_id,
+        })
+    return data
+
+
+def program_action_dict(
+    row: AcceleratorProgramAction, artifact: AcceleratorArtifact | None = None
+) -> dict:
+    return {
+        "id": row.id,
+        "action_type": row.action_type,
+        "title": row.title,
+        "description": row.description,
+        "position": row.position,
+        "required": row.required,
+        "config": row.config or {},
+        "artifact": artifact_dict(artifact) if artifact else None,
+    }
+
+
 async def manager_stage_dict(db: AsyncSession, stage: AcceleratorProgramStage) -> dict:
     materials = await stage_materials(db, stage.id)
+    actions = await stage_actions(db, stage.id)
     homework_ids = list((await db.execute(select(AcceleratorHomeworkAssignment.id).where(
         AcceleratorHomeworkAssignment.stage_id == stage.id
     ))).scalars().all())
@@ -1435,6 +1499,7 @@ async def manager_stage_dict(db: AsyncSession, stage: AcceleratorProgramStage) -
         "status": stage.status,
         "published_at": stage.published_at,
         "materials": [program_material_dict(row) for row in materials],
+        "actions": [program_action_dict(row) for row in actions],
         "homework_assignment_ids": homework_ids,
     }
 
@@ -1452,6 +1517,14 @@ async def resident_program_rows(
     completed_material_ids = set((await db.execute(select(AcceleratorProgramMaterialProgress.material_id).where(
         AcceleratorProgramMaterialProgress.membership_id == membership.id
     ))).scalars().all())
+    artifact_rows = list((await db.execute(select(AcceleratorArtifact).where(
+        AcceleratorArtifact.membership_id == membership.id
+    ))).scalars().all())
+    artifacts_by_action = {row.action_id: row for row in artifact_rows}
+    config = (await db.execute(select(AcceleratorProgramConfig).where(
+        AcceleratorProgramConfig.cohort_id == membership.cohort_id
+    ))).scalar_one_or_none()
+    artifacts_enabled = bool(config and (config.modules or {}).get("pitchy_artifacts"))
     now = datetime.utcnow()
     blocked_by_previous = False
     result = []
@@ -1459,6 +1532,7 @@ async def resident_program_rows(
         locked = blocked_by_previous or bool(stage.unlock_at and stage.unlock_at > now)
         completed = stage.id in completed_stage_ids
         materials = await stage_materials(db, stage.id)
+        actions = await stage_actions(db, stage.id) if artifacts_enabled else []
         result.append({
             "id": stage.id,
             "title": stage.title,
@@ -1469,6 +1543,9 @@ async def resident_program_rows(
             "state": "completed" if completed else "locked" if locked else "available",
             "materials": [] if locked else [
                 program_material_dict(row, completed_material_ids) for row in materials
+            ],
+            "actions": [] if locked else [
+                program_action_dict(row, artifacts_by_action.get(row.id)) for row in actions
             ],
         })
         if stage.required and not completed:
@@ -1525,6 +1602,16 @@ async def create_program_stage(
             position=position,
             required=material.required,
         ))
+    for position, action in enumerate(payload.actions, start=1):
+        db.add(AcceleratorProgramAction(
+            stage_id=stage.id,
+            action_type=action.action_type,
+            title=action.title.strip(),
+            description=(action.description or "").strip() or None,
+            position=position,
+            required=action.required,
+            config=action.config,
+        ))
     add_audit(db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
               actor_user_id=user.id, action="program_stage.created",
               target_type="program_stage", target_id=stage.id)
@@ -1556,12 +1643,22 @@ async def update_program_stage(
     await db.execute(delete(AcceleratorProgramMaterial).where(
         AcceleratorProgramMaterial.stage_id == stage.id
     ))
+    await db.execute(delete(AcceleratorProgramAction).where(
+        AcceleratorProgramAction.stage_id == stage.id
+    ))
     for position, material in enumerate(payload.materials, start=1):
         db.add(AcceleratorProgramMaterial(
             stage_id=stage.id, title=material.title.strip(), kind=material.kind,
             url=(material.url or "").strip() or None,
             content=(material.content or "").strip() or None,
             position=position, required=material.required,
+        ))
+    for position, action in enumerate(payload.actions, start=1):
+        db.add(AcceleratorProgramAction(
+            stage_id=stage.id, action_type=action.action_type,
+            title=action.title.strip(),
+            description=(action.description or "").strip() or None,
+            position=position, required=action.required, config=action.config,
         ))
     add_audit(db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
               actor_user_id=user.id, action="program_stage.updated",
@@ -1618,6 +1715,12 @@ async def duplicate_program_stage(
         db.add(AcceleratorProgramMaterial(
             stage_id=duplicate.id, title=material.title, kind=material.kind, url=material.url,
             content=material.content, position=material.position, required=material.required,
+        ))
+    for action in await stage_actions(db, source.id):
+        db.add(AcceleratorProgramAction(
+            stage_id=duplicate.id, action_type=action.action_type,
+            title=action.title, description=action.description,
+            position=action.position, required=action.required, config=action.config or {},
         ))
     add_audit(db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
               actor_user_id=user.id, action="program_stage.duplicated",
@@ -1784,6 +1887,41 @@ async def complete_program_stage(
         ))).scalar_one_or_none()
         if accepted is None:
             raise HTTPException(status_code=409, detail="Сначала получите зачёт по домашнему заданию этапа")
+    config = (await db.execute(select(AcceleratorProgramConfig).where(
+        AcceleratorProgramConfig.cohort_id == membership.cohort_id
+    ))).scalar_one_or_none()
+    if config and (config.modules or {}).get("pitchy_artifacts"):
+        required_action_ids = set((await db.execute(
+            select(AcceleratorProgramAction.id).where(
+                AcceleratorProgramAction.stage_id == stage.id,
+                AcceleratorProgramAction.required.is_(True),
+            )
+        )).scalars().all())
+        ready_action_ids = set((await db.execute(
+            select(AcceleratorArtifact.action_id).where(
+                AcceleratorArtifact.membership_id == membership.id,
+                AcceleratorArtifact.action_id.in_(required_action_ids),
+                AcceleratorArtifact.status == "ready",
+            )
+        )).scalars().all()) if required_action_ids else set()
+        if required_action_ids - ready_action_ids:
+            raise HTTPException(
+                status_code=409,
+                detail="Сначала завершите обязательные действия в инструментах Pitchy",
+            )
+        unfinished_artifact = (await db.execute(select(AcceleratorArtifact.id).join(
+            AcceleratorProgramAction,
+            AcceleratorProgramAction.id == AcceleratorArtifact.action_id,
+        ).where(
+            AcceleratorArtifact.membership_id == membership.id,
+            AcceleratorProgramAction.stage_id == stage.id,
+            AcceleratorArtifact.status != "ready",
+        ).limit(1))).scalar_one_or_none()
+        if unfinished_artifact is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="Завершите или уберите начатые действия Pitchy",
+            )
     db.add(AcceleratorProgramStageProgress(stage_id=stage.id, membership_id=membership.id))
     cohort = await get_cohort_or_404(db, membership.cohort_id)
     add_audit(

@@ -88,6 +88,7 @@ function DashboardContent() {
   const [usage, setUsage] = useState<UsageResponse | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [hasAccelerator, setHasAccelerator] = useState(false);
+  const requestedSession = searchParams.get("session");
 
   // Prefer the live tier returned by /me/usage (server-side resolved,
   // accounts for expired subscriptions); fall back to /me before the
@@ -141,6 +142,8 @@ function DashboardContent() {
 
     const handleIntentLoad = async () => {
       if (!isLoaded || !token) return;
+      // An explicit deep link wins over a stale local onboarding intent.
+      if (searchParams.get("session")) return;
       const intentId = localStorage.getItem("pitchy_intent_id");
       if (intentId) {
         localStorage.removeItem("pitchy_intent_id");
@@ -157,6 +160,25 @@ function DashboardContent() {
     };
     handleIntentLoad();
   }, [searchParams, isLoaded, token, router]);
+
+  useEffect(() => {
+    if (!isLoaded || !token || !requestedSession || !/^\d+$/.test(requestedSession)) return;
+    const sessionId = Number(requestedSession);
+    if (!Number.isSafeInteger(sessionId) || sessionId <= 0) return;
+    let cancelled = false;
+    getChatSession(sessionId, token)
+      .then((session) => {
+        if (cancelled) return;
+        setActiveSession(session);
+        setActiveTab("chat");
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error(error);
+        notifyError("Не удалось открыть чат по ссылке.");
+      });
+    return () => { cancelled = true; };
+  }, [isLoaded, requestedSession, token]);
 
   useEffect(() => {
     const init = async () => {

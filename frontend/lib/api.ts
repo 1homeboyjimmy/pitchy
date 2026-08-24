@@ -1040,6 +1040,7 @@ export async function getRoadmap(projectId: number, token: string): Promise<Road
 export type RoadmapSource = { url?: string; title?: string };
 export type RoadmapStepAnalysis = { checkpoint_id: string; analysis: string };
 export type RoadmapOverall = { analysis: string; sources: RoadmapSource[] };
+export type AcceleratorToolContext = { membershipId: number; actionId: number };
 
 // ИИ-разбор шага (паспорт + RAG, пайплайн основного чата).
 export async function analyzeRoadmapStep(projectId: number, checkpointId: string, token: string): Promise<RoadmapStepAnalysis> {
@@ -1051,11 +1052,22 @@ export async function analyzeRoadmapStep(projectId: number, checkpointId: string
 
 // Обширная аналитика стартапа — стримом (SSE), как основной чат.
 export type RoadmapStreamEvent = { type: string; content?: string; text?: string; sources?: RoadmapSource[] };
-export async function* streamRoadmapOverall(projectId: number, token: string): AsyncGenerator<RoadmapStreamEvent> {
+export async function* streamRoadmapOverall(
+  projectId: number,
+  token: string,
+  acceleratorContext?: AcceleratorToolContext,
+): AsyncGenerator<RoadmapStreamEvent> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token && token !== COOKIE_SESSION_MARKER) headers.Authorization = `Bearer ${token}`;
   headers["x-pitchy-api"] = "1";
-  const res = await fetch(`${API_BASE}/projects/${projectId}/roadmap/analyze`, {
+  const query = new URLSearchParams();
+  query.set("request_id", crypto.randomUUID());
+  if (acceleratorContext) {
+    query.set("accelerator_membership", String(acceleratorContext.membershipId));
+    query.set("accelerator_action", String(acceleratorContext.actionId));
+  }
+  const suffix = query.size ? `?${query.toString()}` : "";
+  const res = await fetch(`${API_BASE}/projects/${projectId}/roadmap/analyze${suffix}`, {
     method: "POST", headers, body: "{}", credentials: "include",
   });
   if (!res.ok) throw new Error("overall analyze failed");
@@ -1249,11 +1261,20 @@ export async function generateGrantApplication(
   grantId: number,
   projectId: number,
   token: string,
-  extraContext?: string
+  extraContext?: string,
+  acceleratorContext?: AcceleratorToolContext,
 ): Promise<GrantApplication> {
   return postAuthJson<GrantApplication>(
     `/grants/${grantId}/apply`,
-    { project_id: projectId, extra_context: extraContext, request_id: crypto.randomUUID() },
+    {
+      project_id: projectId,
+      extra_context: extraContext,
+      request_id: crypto.randomUUID(),
+      ...(acceleratorContext ? {
+        accelerator_membership_id: acceleratorContext.membershipId,
+        accelerator_action_id: acceleratorContext.actionId,
+      } : {}),
+    },
     token
   );
 }

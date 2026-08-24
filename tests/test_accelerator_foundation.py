@@ -14,6 +14,7 @@ from db_async import AsyncSessionLocal
 from models import (
     AcceleratorApplication,
     AcceleratorApplicationEvent,
+    AcceleratorArtifact,
     AcceleratorInvitation,
     AcceleratorHomeworkAssignment,
     AcceleratorHomeworkSubmission,
@@ -33,8 +34,16 @@ from models import (
     AcceleratorDemoDayScore,
     AcceleratorTrackerAssignment,
     AcceleratorParticipantProfile,
+    ChatMessage,
+    ChatSession,
     Project,
     User,
+)
+from routers.accelerator_artifacts import (
+    launch_program_action,
+    list_cohort_program_artifacts,
+    sync_program_artifact,
+    update_program_artifact,
 )
 from routers.accelerators import (
     accept_accelerator_invitation,
@@ -130,6 +139,8 @@ from schemas.accelerators import (
     HomeworkSubmissionUpsert,
     AttendanceMark,
     EventCreate,
+    AcceleratorArtifactUpdate,
+    ProgramActionCreate,
     ProgramMaterialCreate,
     ProgramStageCreate,
     PublicApplicationCreate,
@@ -570,6 +581,7 @@ async def test_role_boundaries_block_cross_accelerator_management_and_quota_chan
             "matchmaking": False,
             "project_audit": False,
             "demo_day": False,
+            "pitchy_artifacts": False,
         }
         assert "legacy_fake_module" not in compatible_config["modules"]
         with pytest.raises(HTTPException) as foreign_management:
@@ -1769,3 +1781,318 @@ async def test_demo_day_selection_scoring_ranking_and_exports():
             "demo_day.decision_updated",
             "demo_day.status_changed",
         } <= audit_actions
+
+
+@pytest.mark.asyncio
+async def test_stage_actions_artifacts_access_completion_and_visibility():
+    suffix = uuid.uuid4().hex
+    async with AsyncSessionLocal() as db:
+        admin = User(
+            email=f"admin-artifacts-{suffix}@example.test",
+            name="Admin",
+            is_admin=True,
+        )
+        organizer = User(
+            email=f"organizer-artifacts-{suffix}@example.test",
+            name="Organizer",
+        )
+        resident = User(
+            email=f"resident-artifacts-{suffix}@example.test",
+            name="Resident",
+        )
+        other_resident = User(
+            email=f"other-artifacts-{suffix}@example.test",
+            name="Other resident",
+        )
+        tracker = User(
+            email=f"tracker-artifacts-{suffix}@example.test",
+            name="Tracker",
+        )
+        db.add_all([admin, organizer, resident, other_resident, tracker])
+        await db.commit()
+        for person in (admin, organizer, resident, other_resident, tracker):
+            await db.refresh(person)
+
+        project = Project(
+            user_id=resident.id,
+            name="Artifact project",
+            passport={"core": {"problem": "Manual work", "solution": "Automation"}},
+            readiness_index=60,
+        )
+        other_project = Project(
+            user_id=other_resident.id,
+            name="Other artifact project",
+            passport={"core": {"problem": "Other problem", "solution": "Other solution"}},
+            readiness_index=40,
+        )
+        db.add_all([project, other_project])
+        await db.commit()
+        await db.refresh(project)
+        await db.refresh(other_project)
+
+        accelerator = await create_accelerator(
+            AcceleratorCreate(name="Artifacts accelerator"), admin, db
+        )
+        await assign_organizer(
+            accelerator["id"], OrganizerAssign(user_id=organizer.id), admin, db
+        )
+        cohort = await create_cohort(
+            accelerator["id"], CohortCreate(name="Artifacts cohort"), organizer, db
+        )
+        await update_cohort_status(
+            cohort["id"], StatusUpdate(status="accepting"), organizer, db
+        )
+
+        membership_ids: dict[int, int] = {}
+        for person, resident_project in (
+            (resident, project),
+            (other_resident, other_project),
+        ):
+            application = await submit_application(
+                cohort["id"],
+                ApplicationCreate(
+                    project_id=resident_project.id,
+                    form_payload={"project_name": resident_project.name},
+                    accept_privacy=True,
+                    accept_program_rules=True,
+                ),
+                person,
+                db,
+            )
+            accepted = await accept_application(
+                application["id"],
+                ApplicationReview(),
+                BackgroundTasks(),
+                organizer,
+                db,
+            )
+            await enroll_application(application["id"], organizer, db)
+            membership_ids[person.id] = accepted["membership_id"]
+
+        membership_id = membership_ids[resident.id]
+        await assign_tracker(
+            cohort["id"],
+            TrackerAssign(user_id=tracker.id, membership_ids=[membership_id]),
+            organizer,
+            db,
+        )
+
+        first_stage = await create_program_stage(
+            cohort["id"],
+            ProgramStageCreate(
+                title="Validate the problem",
+                actions=[
+                    ProgramActionCreate(
+                        action_type="chat",
+                        title="Discuss interview evidence",
+                        required=True,
+                    )
+                ],
+            ),
+            organizer,
+            db,
+        )
+        second_stage = await create_program_stage(
+            cohort["id"],
+            ProgramStageCreate(
+                title="Build the plan",
+                actions=[
+                    ProgramActionCreate(
+                        action_type="chat",
+                        title="Plan next experiments",
+                    )
+                ],
+            ),
+            organizer,
+            db,
+        )
+        await publish_program_stage(first_stage["id"], organizer, db)
+        await publish_program_stage(second_stage["id"], organizer, db)
+        first_action_id = first_stage["actions"][0]["id"]
+        second_action_id = second_stage["actions"][0]["id"]
+
+        # Actions are hidden and cannot be launched while the module is disabled.
+        disabled_program = await list_resident_program_stages(
+            membership_id, resident, db
+        )
+        assert disabled_program[0]["actions"] == []
+        with pytest.raises(HTTPException) as module_disabled:
+            await launch_program_action(first_action_id, resident, db)
+        assert module_disabled.value.status_code == 409
+
+        await update_program_config(
+            cohort["id"],
+            ProgramConfigUpdate(version=1, modules={"pitchy_artifacts": True}),
+            organizer,
+            db,
+        )
+
+        # A later required stage cannot be used before the previous one is done.
+        with pytest.raises(HTTPException) as unavailable_stage:
+            await launch_program_action(second_action_id, resident, db)
+        assert unavailable_stage.value.status_code == 409
+        assert "закрыт" in unavailable_stage.value.detail
+
+        launched = await launch_program_action(first_action_id, resident, db)
+        artifact_id = launched["artifact"]["id"]
+        own_chat_id = launched["artifact"]["source_id"]
+        assert launched["artifact"]["membership_id"] == membership_id
+        assert launched["artifact"]["project_id"] == project.id
+        assert launched["artifact"]["status"] == "started"
+        assert launched["launch_url"].endswith(f"session={own_chat_id}")
+
+        repeated = await launch_program_action(first_action_id, resident, db)
+        assert repeated["artifact"]["id"] == artifact_id
+        assert repeated["artifact"]["source_id"] == own_chat_id
+        assert repeated["launch_url"].endswith(f"session={own_chat_id}")
+        assert (await db.execute(select(func.count(AcceleratorArtifact.id)).where(
+            AcceleratorArtifact.action_id == first_action_id,
+            AcceleratorArtifact.membership_id == membership_id,
+        ))).scalar_one() == 1
+        assert (await db.execute(select(func.count(ChatSession.id)).where(
+            ChatSession.user_id == resident.id,
+            ChatSession.project_id == project.id,
+        ))).scalar_one() == 1
+        launched_chat = await db.get(ChatSession, int(own_chat_id))
+        assert launched_chat.accelerator_membership_id == membership_id
+        assert launched_chat.accelerator_action_id == first_action_id
+
+        # A required action blocks stage completion until its artifact is ready.
+        with pytest.raises(HTTPException) as required_action:
+            await complete_program_stage(first_stage["id"], resident, db)
+        assert required_action.value.status_code == 409
+        assert "обязательные действия" in required_action.value.detail
+
+        other_launch = await launch_program_action(
+            first_action_id, other_resident, db
+        )
+        with pytest.raises(HTTPException) as artifact_owner:
+            await update_program_artifact(
+                artifact_id,
+                AcceleratorArtifactUpdate(
+                    status="ready",
+                    source_type="chat_session",
+                    source_id=other_launch["artifact"]["source_id"],
+                ),
+                other_resident,
+                db,
+            )
+        assert artifact_owner.value.status_code == 404
+
+        with pytest.raises(HTTPException) as another_owner_source:
+            await update_program_artifact(
+                artifact_id,
+                AcceleratorArtifactUpdate(
+                    status="ready",
+                    source_type="chat_session",
+                    source_id=other_launch["artifact"]["source_id"],
+                ),
+                resident,
+                db,
+            )
+        assert another_owner_source.value.status_code == 404
+
+        unrelated_project = Project(
+            user_id=resident.id,
+            name="Unrelated resident project",
+            passport={"core": {"problem": "Not the accelerator project"}},
+            readiness_index=10,
+        )
+        db.add(unrelated_project)
+        await db.flush()
+        unrelated_chat = ChatSession(
+            user_id=resident.id,
+            project_id=unrelated_project.id,
+            title="Wrong project chat",
+        )
+        db.add(unrelated_chat)
+        await db.commit()
+        await db.refresh(unrelated_chat)
+        with pytest.raises(HTTPException) as cross_project_source:
+            await update_program_artifact(
+                artifact_id,
+                AcceleratorArtifactUpdate(
+                    status="ready",
+                    source_type="chat_session",
+                    source_id=str(unrelated_chat.id),
+                ),
+                resident,
+                db,
+            )
+        assert cross_project_source.value.status_code == 404
+
+        # Private details are redacted for both organizer and assigned tracker.
+        organizer_private = await list_cohort_program_artifacts(
+            cohort["id"], organizer, db
+        )
+        organizer_private_row = next(
+            row for row in organizer_private["artifacts"] if row["id"] == artifact_id
+        )
+        assert organizer_private_row["details_visible"] is False
+        assert "url" not in organizer_private_row
+        assert "source_id" not in organizer_private_row
+
+        tracker_private = await list_cohort_program_artifacts(
+            cohort["id"], tracker, db
+        )
+        assert [row["id"] for row in tracker_private["artifacts"]] == [artifact_id]
+        assert tracker_private["artifacts"][0]["details_visible"] is False
+        assert "summary" not in tracker_private["artifacts"][0]
+
+        db.add(ChatMessage(
+            session_id=int(own_chat_id),
+            role="user",
+            content="Five interviews confirmed the problem.",
+        ))
+        await db.commit()
+        synced = await sync_program_artifact(artifact_id, resident, db)
+        assert synced["status"] == "ready"
+        assert synced["source_id"] == own_chat_id
+
+        # A partial visibility update preserves the canonical source and status.
+        ready = await update_program_artifact(
+            artifact_id,
+            AcceleratorArtifactUpdate(
+                title="Validated interview evidence",
+                summary="Five interviews confirmed the problem.",
+                share_with_organizer=True,
+                share_with_tracker=False,
+            ),
+            resident,
+            db,
+        )
+        assert ready["status"] == "ready"
+        assert ready["visibility"] == {"organizer": True, "tracker": False}
+
+        organizer_shared = await list_cohort_program_artifacts(
+            cohort["id"], organizer, db
+        )
+        organizer_shared_row = next(
+            row for row in organizer_shared["artifacts"] if row["id"] == artifact_id
+        )
+        assert organizer_shared_row["details_visible"] is True
+        assert organizer_shared_row["summary"] == "Five interviews confirmed the problem."
+        assert "source_id" not in organizer_shared_row
+        assert "url" not in organizer_shared_row
+
+        tracker_redacted = await list_cohort_program_artifacts(
+            cohort["id"], tracker, db
+        )
+        assert tracker_redacted["artifacts"][0]["details_visible"] is False
+        assert "url" not in tracker_redacted["artifacts"][0]
+        assert "source_id" not in tracker_redacted["artifacts"][0]
+
+        completed = await complete_program_stage(first_stage["id"], resident, db)
+        assert completed == {"stage_id": first_stage["id"], "completed": True}
+        available_program = await list_resident_program_stages(
+            membership_id, resident, db
+        )
+        assert [row["state"] for row in available_program] == [
+            "completed",
+            "available",
+        ]
+
+        audit_actions = set((await db.execute(select(AcceleratorAuditLog.action).where(
+            AcceleratorAuditLog.accelerator_id == accelerator["id"]
+        ))).scalars().all())
+        assert {"artifact.launched", "artifact.updated", "program_stage.completed"} <= audit_actions

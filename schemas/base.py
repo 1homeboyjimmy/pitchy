@@ -446,6 +446,8 @@ class GrantApplicationGenerateRequest(BaseModel):
     project_id: int
     extra_context: str | None = Field(default=None, max_length=8000)
     request_id: str | None = Field(default=None, max_length=100)
+    accelerator_membership_id: int | None = Field(default=None, gt=0)
+    accelerator_action_id: int | None = Field(default=None, gt=0)
 
 
 class GrantApplicationResponse(BaseModel):

@@ -66,6 +66,9 @@ CMD ["sh", "-c", "python -m alembic upgrade head && exec uvicorn main:app --host
 # CI target: exercising the real runtime image catches missing packages and
 # migration incompatibilities in addition to application-level regressions.
 FROM runtime AS accelerator-tests
-RUN python -m pytest tests/test_accelerator_foundation.py
+RUN python -m pytest \
+    tests/test_accelerator_foundation.py \
+    tests/test_accelerator_roadmap_context.py \
+    tests/test_grant_accelerator_context.py
 
 FROM runtime AS production

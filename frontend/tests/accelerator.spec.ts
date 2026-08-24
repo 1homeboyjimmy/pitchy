@@ -9,7 +9,7 @@ async function mockManagerWorkspace(page: Page) {
   await page.route('**/api/accelerators', async (route) => route.fulfill({ json: [{ id: 7, name: 'Тестовый акселератор', description: 'Программа для команд', status: 'draft', access_role: 'global_admin' }] }));
   await page.route('**/api/accelerators/me/memberships', async (route) => route.fulfill({ json: { memberships: [], effective_quotas: {} } }));
   await page.route('**/api/accelerators/7/cohorts', async (route) => route.fulfill({ json: [{ id: 12, accelerator_id: 7, name: 'Поток 2026', status: 'draft', timezone: 'Europe/Moscow', application_form_schema: { title: 'Заявка', fields: [] }, default_quota_config: { messages: 70, roadmaps: 4, custdev: 2, grants: 1 } }] }));
-  await page.route('**/api/accelerators/cohorts/12/program-config', async (route) => route.fulfill({ json: { cohort_id: 12, version: 1, modules: { applications: true, program: true, homework: true, attendance: false, progress_tracking: true, matchmaking: true, project_audit: true, demo_day: true }, locked_modules: { applications: true, program: true } } }));
+  await page.route('**/api/accelerators/cohorts/12/program-config', async (route) => route.fulfill({ json: { cohort_id: 12, version: 1, modules: { applications: true, program: true, homework: true, attendance: false, progress_tracking: true, matchmaking: true, project_audit: true, demo_day: true, pitchy_artifacts: true }, locked_modules: { applications: true, program: true } } }));
   await page.route('**/api/accelerators/cohorts/12/applications', async (route) => route.fulfill({ json: [] }));
   await page.route('**/api/accelerators/cohorts/12/residents', async (route) => route.fulfill({ json: [] }));
   await page.route('**/api/accelerators/cohorts/12/program-stages', async (route) => route.fulfill({ json: [] }));
@@ -17,6 +17,7 @@ async function mockManagerWorkspace(page: Page) {
   await page.route('**/api/accelerators/cohorts/12/matches', async (route) => route.fulfill({ json: [] }));
   await page.route('**/api/accelerators/cohorts/12/project-audits', async (route) => route.fulfill({ json: { access_role: 'global_admin', audits: [{ id: 81, membership_id: 101, audit_type: 'product', audit_type_label: 'Продукт', status: 'completed', overall_score: 72, project: { id: 5, name: 'Проект А' }, resident: { id: 8, name: 'Резидент А' }, requested_by: { id: 1, name: 'Admin' }, quota: { resource: 'custdev', consumed: true }, linked_tasks: [], result: { summary: 'Проблема подтверждена, требуется проверить цену.', overall_score: 72, strengths: ['Есть интервью'], findings: [{ title: 'Не проверена цена', description: 'Нет оплаченных пилотов', severity: 'medium' }], recommendations: [{ title: 'Проверить цену', description: 'Предложить три пилота', priority: 'high', expected_result: 'Один оплаченный пилот' }], data_gaps: [] }, created_at: new Date().toISOString() }] } }));
   await page.route('**/api/accelerators/cohorts/12/demo-days', async (route) => route.fulfill({ json: { access_role: 'global_admin', demo_days: [{ id: 91, title: 'Demo Day 2026', status: 'finalized', access_role: 'global_admin', criteria: [{ key: 'problem', label: 'Проблема', weight: 100, max_score: 10 }], experts: [{ id: 1, user_id: 9, name: 'Expert', email: 'expert@example.test' }], projects: [{ id: 92, membership_id: 101, resident: { id: 8, name: 'Резидент А', email: 'resident@example.test' }, project: { id: 5, name: 'Проект А', readiness_index: 80 }, pitch_title: 'Проект А', summary: 'Автоматизация процесса', presentation_url: 'https://example.test/pitch', attachments: [], submitted_at: new Date().toISOString(), evaluation_count: 1, average_score: 90, score_adjustment: 2, outcome: 'winner', final_score: 92, rank: 1, evaluations: [] }] }] } }));
+  await page.route('**/api/accelerators/cohorts/12/artifacts', async (route) => route.fulfill({ json: { access_role: 'global_admin', artifacts: [{ id: 111, artifact_type: 'chat', status: 'ready', title: 'Разбор гипотезы', summary: 'Гипотеза уточнена и готова к проверке.', visibility: { organizer: true, tracker: false }, updated_at: new Date().toISOString(), details_visible: true, resident: { id: 8, name: 'Резидент А' }, project: { id: 5, name: 'Проект А' }, action: { id: 21, title: 'Разобрать гипотезу', action_type: 'chat' }, stage: { id: 31, title: 'Проверка проблемы' } }] } }));
   await page.route('**/api/accelerators/7/organizers', async (route) => route.fulfill({ json: [] }));
 }
 
@@ -32,6 +33,10 @@ test('manager workspace is split into focused sections', async ({ page }) => {
   await expect(page.getByRole('navigation', { name: 'Разделы акселератора' })).toContainText('Матчмейкинг');
   await expect(page.getByRole('navigation', { name: 'Разделы акселератора' })).toContainText('Аудит проекта');
   await expect(page.getByRole('navigation', { name: 'Разделы акселератора' })).toContainText('Демо-день');
+  await expect(page.getByRole('navigation', { name: 'Разделы акселератора' })).toContainText('Результаты Pitchy');
+  await page.getByRole('button', { name: 'Результаты Pitchy', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Артефакты резидентов' })).toBeVisible();
+  await expect(page.getByText('Гипотеза уточнена и готова к проверке.')).toBeVisible();
   await page.getByRole('button', { name: 'Демо-день', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Demo Day 2026' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Результаты CSV' })).toBeVisible();
@@ -45,6 +50,50 @@ test('manager workspace is split into focused sections', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Конструктор функций' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Матчмейкинг Включён' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Демо-день и экспорт Включён' })).toBeVisible();
+});
+
+test('resident launches a Pitchy action and controls result visibility', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('vi_auth_state', 'cookie-session');
+    localStorage.setItem('pitchy_cookie_consent_v2', JSON.stringify({ choice: 'necessary', updatedAt: new Date().toISOString() }));
+  });
+  await page.route('**/me', async (route) => route.fulfill({ json: { id: 8, email: 'resident@example.test', name: 'Резидент А', is_admin: false, is_active: true, email_verified: true, created_at: new Date().toISOString() } }));
+  await page.route('**/api/accelerators', async (route) => route.fulfill({ json: [{ id: 7, name: 'Тестовый акселератор', status: 'active', access_role: 'resident' }] }));
+  await page.route('**/api/accelerators/me/memberships', async (route) => route.fulfill({ json: { memberships: [{ membership_id: 101, application_id: 44, status: 'enrolled', accepted_at: new Date().toISOString(), enrolled_at: new Date().toISOString(), accelerator: { id: 7, name: 'Тестовый акселератор', status: 'active' }, cohort: { id: 12, name: 'Поток 2026', status: 'active', timezone: 'Europe/Moscow' }, project: { id: 5, name: 'Проект А', readiness_index: 70, status: 'active' }, modules: { applications: true, program: true, pitchy_artifacts: true } }], effective_quotas: {} } }));
+
+  let artifact: Record<string, unknown> | null = null;
+  const programStages = () => [{ id: 31, title: 'Проверка проблемы', description: 'Проверьте ключевую гипотезу.', required: true, state: 'available', materials: [], actions: [{ id: 21, action_type: 'chat', title: 'Разобрать гипотезу', description: 'Обсудите риски с аналитиком.', required: true, artifact }] }];
+  await page.route('**/api/accelerators/memberships/101/program-stages', async (route) => route.fulfill({ json: programStages() }));
+  await page.route('**/api/accelerators/program/actions/21/launch', async (route) => {
+    artifact = { id: 111, action_id: 21, artifact_type: 'chat', status: 'started', title: 'Разобрать гипотезу', summary: null, url: '/dashboard?tab=chat&session=33', source_type: 'chat_session', source_id: '33', visibility: { organizer: false, tracker: false }, updated_at: new Date().toISOString() };
+    await route.fulfill({ json: { artifact, launch_url: '/dashboard?tab=chat&session=33' } });
+  });
+  await page.route('**/api/accelerators/program/artifacts/111/sync', async (route) => {
+    artifact = { ...artifact, status: 'ready', updated_at: new Date().toISOString() };
+    await route.fulfill({ json: artifact });
+  });
+  let updatePayload: Record<string, unknown> | null = null;
+  await page.route('**/api/accelerators/program/artifacts/111', async (route) => {
+    updatePayload = route.request().postDataJSON();
+    artifact = { ...artifact, visibility: { organizer: true, tracker: false }, updated_at: new Date().toISOString() };
+    await route.fulfill({ json: artifact });
+  });
+
+  await page.goto('/accelerator');
+  await page.getByRole('button', { name: 'Программа', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Действия и результаты' })).toBeVisible();
+  await expect(page.getByText('Разобрать гипотезу', { exact: true })).toBeVisible();
+  const popupPromise = page.waitForEvent('popup');
+  await page.getByRole('button', { name: 'Начать', exact: true }).click();
+  const popup = await popupPromise;
+  await expect(popup).toHaveURL(/dashboard\?tab=chat&session=33/);
+  await popup.close();
+  await expect(page.getByRole('button', { name: 'Проверить диалог' })).toBeVisible();
+  await page.getByRole('button', { name: 'Проверить диалог' }).click();
+  await expect(page.getByText('Готов', { exact: true })).toBeVisible();
+  await page.getByLabel('Организатору').check();
+  await page.getByRole('button', { name: 'Сохранить', exact: true }).click();
+  await expect.poll(() => updatePayload).toMatchObject({ share_with_organizer: true, share_with_tracker: false });
 });
 
 test('tracker sees reporting only for assigned residents', async ({ page }) => {
@@ -157,5 +206,5 @@ test('setup wizard sends one atomic foundation request', async ({ page }) => {
   await page.getByRole('button', { name: /Продолжить/ }).click();
   await page.getByRole('button', { name: /Создать акселератор/ }).click();
   await expect.poll(() => setupPayload).not.toBeNull();
-  expect(setupPayload).toMatchObject({ organization_name: 'Фонд проектов', accelerator_name: 'Летний акселератор', cohort_name: 'Поток 2026', modules: { homework: true, attendance: true, progress_tracking: true, matchmaking: true, project_audit: true, demo_day: true } });
+  expect(setupPayload).toMatchObject({ organization_name: 'Фонд проектов', accelerator_name: 'Летний акселератор', cohort_name: 'Поток 2026', modules: { homework: true, attendance: true, progress_tracking: true, matchmaking: true, project_audit: true, demo_day: true, pitchy_artifacts: true } });
 });

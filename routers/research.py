@@ -48,15 +48,28 @@ async def create_research(payload: ResearchCreate, user: User = Depends(get_asyn
         raise HTTPException(status_code=409, detail="Дождитесь завершения текущего исследования.")
 
     custom_subscription = await get_subscription(db, user.id)
-    if not user.is_admin and is_active(custom_subscription):
-        await consume_quota(
+    quota_handled = False
+    if not user.is_admin:
+        quota_handled = await consume_quota(
             db, user, "messages",
             idempotency_key=f"research:{user.id}:{payload.assistant_client_id or payload.client_id or payload.query[:80]}",
             reference_type="research",
+            reference_id=str(session.id),
+            accelerator_membership_id=session.accelerator_membership_id,
         )
-    elif not user.is_admin and not limits.can_use_research:
+    if (
+        not user.is_admin
+        and not quota_handled
+        and not is_active(custom_subscription)
+        and not limits.can_use_research
+    ):
         raise HTTPException(status_code=403, detail="Полное исследование доступно на тарифах Starter и Pro.")
-    elif not user.is_admin and limits.deep_research != UNLIMITED:
+    elif (
+        not user.is_admin
+        and not quota_handled
+        and not is_active(custom_subscription)
+        and limits.deep_research != UNLIMITED
+    ):
         month_start = start_of_month_utc()
         research_jobs_used = (await db.execute(
             select(sa_func.count())

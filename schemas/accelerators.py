@@ -615,12 +615,23 @@ class ProgramMaterialCreate(BaseModel):
         return self
 
 
+class ProgramActionCreate(BaseModel):
+    action_type: Literal[
+        "chat", "roadmap", "research", "custdev", "grants", "presentation"
+    ]
+    title: str = Field(min_length=2, max_length=300)
+    description: str | None = Field(default=None, max_length=5000)
+    required: bool = False
+    config: dict[str, Any] = Field(default_factory=dict)
+
+
 class ProgramStageCreate(BaseModel):
     title: str = Field(min_length=2, max_length=300)
     description: str | None = Field(default=None, max_length=30000)
     unlock_at: datetime | None = None
     required: bool = True
     materials: list[ProgramMaterialCreate] = Field(default_factory=list, max_length=100)
+    actions: list[ProgramActionCreate] = Field(default_factory=list, max_length=20)
 
     @field_validator("unlock_at")
     @classmethod
@@ -629,6 +640,26 @@ class ProgramStageCreate(BaseModel):
             return value.astimezone(timezone.utc).replace(tzinfo=None)
         return value
 
+
+class AcceleratorArtifactUpdate(BaseModel):
+    status: Literal["started", "ready", "failed"] | None = None
+    title: str | None = Field(default=None, max_length=300)
+    summary: str | None = Field(default=None, max_length=10000)
+    url: str | None = Field(default=None, max_length=2000)
+    source_type: Literal[
+        "chat_session", "research_job", "roadmap", "grant_application", "external"
+    ] | None = None
+    source_id: str | None = Field(default=None, max_length=100)
+    share_with_organizer: bool | None = None
+    share_with_tracker: bool | None = None
+
+    @field_validator("url")
+    @classmethod
+    def validate_artifact_url(cls, value: str | None) -> str | None:
+        value = (value or "").strip()
+        if value and not value.lower().startswith(("https://", "http://", "/")):
+            raise ValueError("Ссылка должна быть внутренним путём или http(s)-адресом")
+        return value or None
 
 class ProgramStageReorder(BaseModel):
     stage_ids: list[int] = Field(min_length=1, max_length=500)

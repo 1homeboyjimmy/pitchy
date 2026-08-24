@@ -114,7 +114,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models import (
     Analysis, ChatMessage as DbChatMessage, ChatSession, ErrorLog,
     User, PromoCampaign, PromoCode, PromoRedemption, Payment, RagLog, ToolResult, SocialAccount, ProjectTree,
-    AdminAuditLog, Project, ResearchJob,
+    AdminAuditLog, AcceleratorArtifact, Project, ResearchJob,
 )
 import passport as passport_lib
 from sqlalchemy import select, func as sa_func
@@ -543,6 +543,9 @@ app.include_router(research_router.router)
 
 from routers import accelerators as accelerators_router
 app.include_router(accelerators_router.router)
+
+from routers import accelerator_artifacts as accelerator_artifacts_router
+app.include_router(accelerator_artifacts_router.router)
 
 
 allowed_origins = [
@@ -2138,6 +2141,14 @@ async def async_check_subscription_limits(
     # rows heuristically. Legacy plans continue through the old logic below.
     from subscription_service import consume_quota, get_subscription, is_active
     custom_subscription = await get_subscription(db, user.id)
+    accelerator_membership_id = None
+    if session_id is not None:
+        accelerator_membership_id = (await db.execute(
+            select(ChatSession.accelerator_membership_id).where(
+                ChatSession.id == session_id,
+                ChatSession.user_id == user.id,
+            )
+        )).scalar_one_or_none()
     resource = None
     if resource_type == "message":
         resource = "messages"
@@ -2153,6 +2164,7 @@ async def async_check_subscription_limits(
             idempotency_key=idempotency_key or f"{resource}:{user.id}:{uuid.uuid4()}",
             reference_type=feature or resource_type,
             reference_id=str(session_id) if session_id is not None else None,
+            accelerator_membership_id=accelerator_membership_id,
         )
         if handled:
             return
@@ -2706,6 +2718,35 @@ async def delete_chat_session(
     session = result.scalar_one_or_none()
     if not session:
         raise HTTPException(status_code=404, detail="Chat session not found")
+    research_source_ids = [str(row_id) for row_id in (await db.execute(select(
+        ResearchJob.id
+    ).where(ResearchJob.session_id == session.id))).scalars().all()]
+    artifact_reference_query = select(AcceleratorArtifact.id).where(
+        (AcceleratorArtifact.source_type == "chat_session")
+        & (AcceleratorArtifact.source_id == str(session.id))
+    )
+    if research_source_ids:
+        artifact_reference_query = select(AcceleratorArtifact.id).where(
+            (
+                (AcceleratorArtifact.source_type == "chat_session")
+                & (AcceleratorArtifact.source_id == str(session.id))
+            )
+            | (
+                (AcceleratorArtifact.source_type == "research_job")
+                & (AcceleratorArtifact.source_id.in_(research_source_ids))
+            )
+        )
+    artifact_reference = (await db.execute(
+        artifact_reference_query.limit(1)
+    )).scalar_one_or_none()
+    if artifact_reference is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Чат связан с результатом программы акселератора. "
+                "Сначала уберите результат из незавершённого этапа."
+            ),
+        )
     from sqlalchemy import delete
     await db.execute(delete(DbChatMessage).where(DbChatMessage.session_id == session.id))
     await db.delete(session)

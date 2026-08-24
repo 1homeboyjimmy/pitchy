@@ -36,7 +36,18 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from auth import get_async_current_user
 from db_async import get_async_db
-from models import User, Project, Grant, GrantApplication, GrantSource
+from models import (
+    AcceleratorArtifact,
+    AcceleratorMembership,
+    AcceleratorProgramAction,
+    AcceleratorProgramConfig,
+    AcceleratorProgramStage,
+    User,
+    Project,
+    Grant,
+    GrantApplication,
+    GrantSource,
+)
 from schemas import (
     GrantResponse,
     GrantMatchResponse,
@@ -85,6 +96,70 @@ async def _get_owned_project(project_id: int, user: User, db: AsyncSession) -> P
     if not project:
         raise HTTPException(status_code=404, detail="Папка проекта не найдена")
     return project
+
+
+async def _validate_accelerator_grant_context(
+    db: AsyncSession,
+    *,
+    project: Project,
+    user: User,
+    membership_id: int | None,
+    action_id: int | None,
+) -> tuple[AcceleratorMembership, AcceleratorProgramAction] | None:
+    """Resolve a launched grants action without trusting its URL parameters."""
+    if membership_id is None and action_id is None:
+        return None
+    if membership_id is None or action_id is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Контекст акселератора должен содержать membership и action",
+        )
+
+    membership = await db.get(AcceleratorMembership, membership_id)
+    if (
+        not membership
+        or membership.user_id != user.id
+        or membership.role != "resident"
+        or membership.status != "enrolled"
+        or membership.project_id != project.id
+    ):
+        raise HTTPException(status_code=404, detail="Контекст грантовой заявки не найден")
+
+    action = (await db.execute(
+        select(AcceleratorProgramAction)
+        .join(
+            AcceleratorProgramStage,
+            AcceleratorProgramStage.id == AcceleratorProgramAction.stage_id,
+        )
+        .where(
+            AcceleratorProgramAction.id == action_id,
+            AcceleratorProgramAction.action_type == "grants",
+            AcceleratorProgramStage.cohort_id == membership.cohort_id,
+            AcceleratorProgramStage.status == "published",
+        )
+    )).scalar_one_or_none()
+    if not action:
+        raise HTTPException(status_code=404, detail="Контекст грантовой заявки не найден")
+
+    artifact_id = (await db.execute(
+        select(AcceleratorArtifact.id).where(
+            AcceleratorArtifact.action_id == action.id,
+            AcceleratorArtifact.membership_id == membership.id,
+            AcceleratorArtifact.project_id == project.id,
+            AcceleratorArtifact.artifact_type == "grants",
+        )
+    )).scalar_one_or_none()
+    config = (await db.execute(select(AcceleratorProgramConfig).where(
+        AcceleratorProgramConfig.cohort_id == membership.cohort_id,
+    ))).scalar_one_or_none()
+    if (
+        artifact_id is None
+        or not config
+        or not (config.modules or {}).get("pitchy_artifacts")
+    ):
+        # The user must launch the action from the accelerator workspace first.
+        raise HTTPException(status_code=404, detail="Контекст грантовой заявки не найден")
+    return membership, action
 
 
 async def _get_visible_grant(grant_id: int, user: User, db: AsyncSession) -> Grant:
@@ -377,6 +452,13 @@ async def generate_application(
         )
 
     project = await _get_owned_project(payload.project_id, user, db)
+    accelerator_context = await _validate_accelerator_grant_context(
+        db,
+        project=project,
+        user=user,
+        membership_id=payload.accelerator_membership_id,
+        action_id=payload.accelerator_action_id,
+    )
 
     from subscription_service import consume_quota, require_legacy_access
     handled = await consume_quota(
@@ -386,6 +468,9 @@ async def generate_application(
         idempotency_key=f"grant:{user.id}:{payload.request_id or f'{grant.id}:{project.id}:{datetime.utcnow().isoformat()}'}",
         reference_type="grant_application",
         reference_id=f"{grant.id}:{project.id}",
+        accelerator_membership_id=(
+            accelerator_context[0].id if accelerator_context is not None else None
+        ),
     )
     if not handled:
         require_legacy_access(user, "grants")
