@@ -26,7 +26,7 @@ dev.pitchy.pro {
 
     # API - Маршруты для бэкенда (Python/FastAPI)
     @api {
-        path /auth* /analysis* /chat* /admin* /health /dev/emails /analyze-startup /me /tree* /api/* /billing*
+        path /auth* /analysis* /chat* /admin* /health /dev/emails /analyze-startup /me /tree* /projects* /api/* /billing*
         not path /api/graph/*
     }
     handle @api {

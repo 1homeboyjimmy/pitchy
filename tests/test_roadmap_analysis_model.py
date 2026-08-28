@@ -6,6 +6,16 @@ import types
 import pytest
 
 
+CORE_PASSPORT = {
+    "core": {
+        "name": "Pitchy",
+        "problem": "Стартапам сложно собрать данные для заявки",
+        "solution": "Единый цифровой паспорт и аналитика проекта",
+        "target_audience": "Основатели технологических стартапов",
+    },
+}
+
+
 @pytest.fixture
 def roadmap_module(monkeypatch):
     """Import the unit under test without initializing the paid RAG client."""
@@ -26,7 +36,6 @@ def roadmap_module(monkeypatch):
 async def test_step_analysis_uses_main_chat_model(monkeypatch, roadmap_module):
     roadmap_analysis = roadmap_module
     monkeypatch.setenv("MAIN_CHAT_MODEL", "provider/main-chat")
-    monkeypatch.setattr(roadmap_analysis, "validate_for_analysis", lambda _text: (True, ""))
 
     async def no_rag(_query):
         return ""
@@ -35,18 +44,18 @@ async def test_step_analysis_uses_main_chat_model(monkeypatch, roadmap_module):
 
     async def fake_call(system_prompt, user_message, model):
         captured["model"] = model
+        captured["user_message"] = user_message
         return "step analysis", None, {"total_tokens": 1}
 
     monkeypatch.setattr(roadmap_analysis, "_rag_context", no_rag)
     monkeypatch.setattr(roadmap_analysis, "call_routerai", fake_call)
 
-    result = await roadmap_analysis.analyze_step(
-        {"core": {"name": "Pitchy"}},
-        checkpoint_id="problem",
-    )
+    passport = {**CORE_PASSPORT, "legal": {"entity_type": "ООО"}}
+    result = await roadmap_analysis.analyze_step(passport, checkpoint_id="legal")
 
     assert result["analysis"] == "step analysis"
     assert captured["model"] == "provider/main-chat"
+    assert "Юр. форма (ООО/ИП/физлицо): ООО" in captured["user_message"]
 
 
 @pytest.mark.asyncio
@@ -64,6 +73,7 @@ async def test_overall_analysis_uses_main_chat_model(monkeypatch, roadmap_module
 
     async def fake_call(system_prompt, user_message, model):
         captured["model"] = model
+        captured["user_message"] = user_message
         return "analysis", None, {"total_tokens": 1}
 
     monkeypatch.setattr(roadmap_analysis, "_rag_context", no_rag)
@@ -80,7 +90,6 @@ async def test_overall_analysis_uses_main_chat_model(monkeypatch, roadmap_module
 async def test_streaming_analysis_uses_main_chat_model(monkeypatch, roadmap_module):
     roadmap_analysis = roadmap_module
     monkeypatch.setenv("MAIN_CHAT_MODEL", "provider/main-chat")
-    monkeypatch.setattr(roadmap_analysis, "validate_for_analysis", lambda _text: (True, ""))
 
     async def no_rag(_query):
         return ""
@@ -92,17 +101,35 @@ async def test_streaming_analysis_uses_main_chat_model(monkeypatch, roadmap_modu
 
     async def fake_stream(system_prompt, user_message, model):
         captured["model"] = model
-        yield {"__usage__": {"total_tokens": 1}}
+        yield "full analysis"
+
+    class EmptyResult:
+        @staticmethod
+        def scalar_one_or_none():
+            return None
+
+    class FakeSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def execute(self, _query):
+            return EmptyResult()
 
     monkeypatch.setattr(roadmap_analysis, "_rag_context", no_rag)
     monkeypatch.setattr(roadmap_analysis, "_web_context", no_web)
     monkeypatch.setattr(roadmap_analysis, "stream_routerai", fake_stream)
+    monkeypatch.setattr(roadmap_analysis, "AsyncSessionLocal", FakeSession)
 
     events = [event async for event in roadmap_analysis.stream_overall(
-        {"core": {"name": "Pitchy"}},
+        CORE_PASSPORT,
         project_id=1,
     )]
 
     payloads = [json.loads(event.removeprefix("data: ")) for event in events]
+    assert any(payload.get("content") == "full analysis" for payload in payloads)
+    assert not any(payload["type"] == "error" for payload in payloads)
     assert payloads[-1]["type"] == "done"
     assert captured["model"] == "provider/main-chat"

@@ -389,17 +389,26 @@ export function RoadmapView() {
     setAnalyzingOverall(true);
     setOverall({ analysis: "", sources: [] });
     try {
+      let receivedContent = false;
+      let streamError = "";
       for await (const ev of streamRoadmapOverall(pid, t, acceleratorContext)) {
         if (ev.type === "chunk" && ev.content) {
+          receivedContent = true;
           setOverall((o) => ({ analysis: (o?.analysis || "") + ev.content, sources: o?.sources || [] }));
         } else if (ev.type === "sources" && ev.sources) {
           setOverall((o) => ({ analysis: o?.analysis || "", sources: ev.sources! }));
         } else if (ev.type === "error") {
-          notifyError(ev.text || "Ошибка генерации аналитики");
+          streamError = ev.text || "Ошибка генерации аналитики";
         }
+      }
+      if (streamError || !receivedContent) {
+        setOverall(null);
+        notifyError(streamError || "Модель не вернула текст аналитики. Попробуйте ещё раз.");
+        return;
       }
       trackMetrikaGoal("roadmap_overall_analysis_completed");
     } catch {
+      setOverall(null);
       notifyError("Не удалось получить аналитику стартапа");
     } finally {
       setAnalyzingOverall(false);
