@@ -242,10 +242,12 @@ async def list_projects(
         )
         counts = {pid: cnt for pid, cnt in cres.all()}
 
+    import roadmap_service
     out = []
     for p in projects:
         item = ProjectListItemResponse.model_validate(p)
         item.readiness_index = passport_lib.compute_readiness(p.passport or {})
+        item.roadmap_progress = roadmap_service.build_roadmap(p.passport or {})["progress"]
         item.session_count = counts.get(p.id, 0)
         out.append(item)
     return out

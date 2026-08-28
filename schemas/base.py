@@ -272,6 +272,7 @@ class ProjectListItemResponse(BaseModel):
     id: int
     name: str
     readiness_index: int = 0
+    roadmap_progress: int = 0
     status: str = "active"
     session_count: int = 0
     updated_at: datetime

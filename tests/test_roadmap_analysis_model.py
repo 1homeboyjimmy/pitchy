@@ -195,3 +195,29 @@ async def test_search_agent_does_not_return_configuration_errors_as_context(monk
 
     assert sources == []
     assert context == ""
+
+
+def test_hypothesis_prompt_does_not_demand_later_stage_metrics(roadmap_module):
+    prompt = roadmap_module._overall_system({
+        **CORE_PASSPORT,
+        "roadmap": {"stage": "hypothesis"},
+        "monetization": {"pricing_hypothesis": "Проверить подписку 990 ₽/месяц"},
+    })
+
+    assert "Не считай отсутствие продаж, MRR, CAC, churn или LTV недостатком" in prompt
+    assert "не как ценовую политику проекта" in prompt
+
+
+def test_roadmap_context_uses_only_fields_available_at_current_stage(roadmap_module):
+    passport = {
+        **CORE_PASSPORT,
+        "roadmap": {"stage": "hypothesis"},
+        "metrics": {"mrr": 120000, "paying_customers": 12},
+        "monetization": {"pricing_hypothesis": "Проверить лицензию на семестр"},
+    }
+
+    text = roadmap_module._roadmap_text(passport)
+
+    assert "Какую цену хотите проверить: Проверить лицензию на семестр" in text
+    assert "MRR, ₽" not in text
+    assert "Средняя регулярная выручка" not in text

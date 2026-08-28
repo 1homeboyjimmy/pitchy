@@ -5,12 +5,12 @@ import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Loader, CheckCircle2, Sparkles, Brain, ExternalLink, ArrowLeft, Plus, Download } from "lucide-react";
+import { Loader, CheckCircle2, Sparkles, Brain, ExternalLink, ArrowLeft, Plus, Download, History, AlertTriangle, ArrowRight } from "lucide-react";
 import { getToken } from "@/lib/auth";
 import { notifyError, notifyInfo } from "@/lib/ui";
 import {
   getProjects, getRoadmap, patchPassport, analyzeRoadmapStep, streamRoadmapOverall, createProject, downloadRoadmapPdf,
-  type ProjectListItem, type Roadmap, type RoadmapCheckpoint, type RoadmapField, type RoadmapOverall,
+  type ProjectListItem, type Roadmap, type RoadmapCheckpoint, type RoadmapField, type RoadmapOverall, type RoadmapStageId,
 } from "@/lib/api";
 import { trackMetrikaGoal } from "@/components/analytics/YandexMetrika";
 
@@ -18,6 +18,12 @@ function positiveQueryInt(value: string | null): number | null {
   if (!value || !/^\d+$/.test(value)) return null;
   const parsed = Number(value);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function formatRoadmapDate(value?: string): string {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString("ru-RU", { dateStyle: "medium", timeStyle: "short" });
 }
 
 // Геометрия извилистого пути (в координатах viewBox; узлы позиционируются в %).
@@ -147,19 +153,27 @@ function CheckpointEditor({
   analysis?: string;
   analyzing?: boolean;
 }) {
-  const [draft, setDraft] = useState<Record<string, string>>(() => {
+  const initialDraft = useMemo(() => {
     const init: Record<string, string> = {};
     cp.fields.forEach((f) => { init[f.path] = fieldToText(f); });
     return init;
-  });
+  }, [cp.fields]);
+  const [draft, setDraft] = useState<Record<string, string>>(initialDraft);
 
   const submit = () => {
     const fields: Record<string, unknown> = {};
     for (const f of cp.fields) {
       const raw = (draft[f.path] ?? "").trim();
-      if (!raw) continue;
+      const initial = (initialDraft[f.path] ?? "").trim();
+      if (raw === initial) continue;
+      if (!raw) {
+        fields[f.path] = f.type === "list" ? [] : null;
+        continue;
+      }
       if (f.type === "number") {
-        const n = Number(raw.replace(/[^\d.-]/g, ""));
+        const numeric = raw.replace(/[^\d.,-]/g, "").replace(",", ".");
+        const n = numeric ? Number(numeric) : Number.NaN;
+        // «Пока не измеряем» is a meaningful stage-appropriate answer, not 0.
         fields[f.path] = Number.isFinite(n) ? n : raw;
       } else if (f.type === "list") {
         fields[f.path] = raw.split("\n").map((s) => s.trim()).filter(Boolean);
@@ -194,22 +208,32 @@ function CheckpointEditor({
               {f.label}
               {f.source === "manual" && <span className="text-emerald-400/50 normal-case tracking-normal">· ваше</span>}
             </label>
-            {f.type === "textarea" || f.type === "list" ? (
+            {f.type === "select" ? (
+              <select
+                value={draft[f.path] ?? ""}
+                onChange={(e) => setDraft((d) => ({ ...d, [f.path]: e.target.value }))}
+                className="w-full bg-neutral-950 rounded-xl p-3 text-white text-sm border border-white/10 focus:border-white/30 outline-none"
+              >
+                <option value="">Выберите вариант</option>
+                {(f.options || []).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            ) : f.type === "textarea" || f.type === "list" ? (
               <textarea
                 value={draft[f.path] ?? ""}
                 onChange={(e) => setDraft((d) => ({ ...d, [f.path]: e.target.value }))}
                 rows={f.type === "list" ? 3 : 2}
-                placeholder={f.type === "list" ? "по одному пункту на строку…" : "…"}
+                placeholder={f.hint || (f.type === "list" ? "по одному пункту на строку…" : "…")}
                 className="w-full bg-white/[0.03] rounded-xl p-3 text-white text-sm border border-white/10 focus:border-white/30 outline-none resize-none placeholder:text-white/25"
               />
             ) : (
               <input
                 value={draft[f.path] ?? ""}
                 onChange={(e) => setDraft((d) => ({ ...d, [f.path]: e.target.value }))}
-                placeholder="…"
+                placeholder={f.hint || "…"}
                 className="w-full bg-white/[0.03] rounded-xl p-3 text-white text-sm border border-white/10 focus:border-white/30 outline-none placeholder:text-white/25"
               />
             )}
+            {f.hint && <p className="mt-1.5 text-[11px] leading-relaxed text-white/30">{f.hint}</p>}
           </div>
         ))}
       </div>
@@ -229,6 +253,11 @@ function CheckpointEditor({
             <Brain size={15} />
             <span className="font-mono text-[10px] uppercase tracking-[0.2em] font-bold">ИИ-разбор шага</span>
           </div>
+          {cp.analysis?.stale && (
+            <div className="mb-3 flex items-start gap-2 rounded-xl border border-amber-300/15 bg-amber-300/[0.05] p-3 text-xs text-amber-100/70">
+              <AlertTriangle size={14} className="mt-0.5 shrink-0" /> Данные раздела изменились. Сохраните его, чтобы получить новый разбор.
+            </div>
+          )}
           {analyzing ? (
             <div className="flex items-center gap-2 text-white/50 text-sm"><Loader className="animate-spin" size={14} /> Анализирую…</div>
           ) : (
@@ -313,6 +342,9 @@ export function RoadmapView() {
     try {
       const r = await getRoadmap(id, t);
       setRoadmap(r);
+      setProjects((prev) => prev.map((project) => (
+        project.id === id ? { ...project, roadmap_progress: r.progress } : project
+      )));
       setStepAnalysis(Object.fromEntries(
         r.checkpoints
           .filter((checkpoint) => checkpoint.analysis?.text)
@@ -349,6 +381,29 @@ export function RoadmapView() {
       notifyError("Не удалось создать проект");
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleStageChange = async (stageId: RoadmapStageId) => {
+    if (pid == null || !roadmap || stageId === roadmap.stage.id) return;
+    const target = roadmap.stages.find((stage) => stage.id === stageId);
+    if (!target?.available) return;
+    const movingForward = roadmap.stages.findIndex((stage) => stage.id === stageId)
+      > roadmap.stages.findIndex((stage) => stage.id === roadmap.stage.id);
+    if (movingForward && !window.confirm(
+      `Перейти на стадию «${target.title}»? Появятся новые вопросы, поэтому процент заполнения карты пересчитается. Все ответы и отчёты сохранятся.`,
+    )) return;
+    const token = getToken();
+    if (!token) return;
+    setSaving(true);
+    try {
+      await patchPassport(pid, { "roadmap.stage": stageId }, token);
+      await loadRoadmap(pid, false);
+      notifyInfo(`Открыта стадия «${target.title}». Предыдущие данные сохранены.`, "Стадия проекта");
+    } catch (error) {
+      notifyError(error instanceof Error ? error.message : "Не удалось изменить стадию проекта");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -413,6 +468,7 @@ export function RoadmapView() {
         return;
       }
       trackMetrikaGoal("roadmap_overall_analysis_completed");
+      await loadRoadmap(pid, true);
     } catch (error) {
       setOverall(null);
       notifyError(error instanceof Error ? error.message : "Не удалось получить аналитику стартапа");
@@ -448,10 +504,10 @@ export function RoadmapView() {
               >
                 <div className="text-white font-medium text-lg mb-3 truncate">{p.name}</div>
                 <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden mb-2">
-                  <div className="h-full bg-white rounded-full transition-all" style={{ width: `${p.readiness_index}%` }} />
+                  <div className="h-full bg-white rounded-full transition-all" style={{ width: `${p.roadmap_progress ?? p.readiness_index}%` }} />
                 </div>
                 <div className="flex items-center justify-between text-white/40 text-xs">
-                  <span>{p.readiness_index}% готовности</span>
+                  <span>{p.roadmap_progress ?? p.readiness_index}% карты</span>
                   <span>{p.session_count} чатов</span>
                 </div>
               </button>
@@ -514,6 +570,27 @@ export function RoadmapView() {
                   </button>
                 </div>
               </div>
+              <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                {roadmap.stages.map((stage, index) => (
+                  <button
+                    key={stage.id}
+                    onClick={() => handleStageChange(stage.id)}
+                    disabled={saving || !stage.available || stage.current}
+                    className={`rounded-2xl border p-3 text-left transition-all ${stage.current
+                      ? "border-white/35 bg-white text-black"
+                      : stage.available
+                        ? "border-white/10 bg-white/[0.03] text-white hover:border-white/25"
+                        : "cursor-not-allowed border-white/5 bg-white/[0.01] text-white/25"}`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-mono text-[10px] uppercase tracking-[0.16em]">{index + 1}. {stage.label}</span>
+                      {stage.completed && <CheckCircle2 size={14} />}
+                      {!stage.current && stage.available && !stage.completed && <ArrowRight size={14} />}
+                    </div>
+                    <p className={`mt-1 text-xs leading-snug ${stage.current ? "text-black/60" : "text-white/35"}`}>{stage.description}</p>
+                  </button>
+                ))}
+              </div>
               <div className="mt-4 h-2 w-full rounded-full bg-white/10 overflow-hidden">
                 <motion.div
                   className="h-full rounded-full bg-gradient-to-r from-white/70 to-white"
@@ -523,7 +600,7 @@ export function RoadmapView() {
                 />
               </div>
               <p className="text-white/40 text-sm mt-4">
-                Каждый шаг пишется в паспорт проекта — чем полнее паспорт, тем точнее подбор грантов и сильнее заявки.
+                Процент учитывает все вопросы, доступные на стадии «{roadmap.stage.title}». При развитии проекта появятся новые поля, а старые ответы сохранятся.
               </p>
             </div>
 
@@ -541,25 +618,35 @@ export function RoadmapView() {
               )}
             </div>
 
-            {/* Общая аналитика стартапа — после прохождения всей карты */}
-            {roadmap.completed === roadmap.total && (
-              <div className="lovable-glass rounded-3xl border border-violet-500/20 p-6 sm:p-7 mt-6">
+            {/* Аналитика доступна на каждой стадии после заполнения ядра идеи. */}
+            <div className="lovable-glass rounded-3xl border border-violet-500/20 p-6 sm:p-7 mt-6">
                 <div className="flex items-center justify-between gap-4 flex-wrap">
                   <div>
                     <div className="flex items-center gap-2 text-violet-300/80 mb-1">
                       <Brain size={16} />
-                      <span className="font-mono text-[10px] uppercase tracking-[0.2em] font-bold">Полная аналитика стартапа</span>
+                      <span className="font-mono text-[10px] uppercase tracking-[0.2em] font-bold">Аналитика текущей стадии</span>
                     </div>
-                    <p className="text-white/50 text-sm">Карта пройдена — соберём обширный разбор по паспорту, рынку и источникам.</p>
+                    <p className="text-white/50 text-sm">
+                      {roadmap.analysis_ready
+                        ? `Разбор стадии «${roadmap.stage.title}» — без требований метрик, которые появятся позже.`
+                        : `Для первого анализа заполните: ${roadmap.analysis_missing.join(", ")}.`}
+                    </p>
                   </div>
                   <button
                     onClick={handleOverall}
-                    disabled={analyzingOverall}
+                    disabled={analyzingOverall || !roadmap.analysis_ready}
                     className="shrink-0 bg-white text-black font-semibold text-sm px-6 py-3 rounded-full hover:bg-neutral-200 transition-all flex items-center gap-2 disabled:opacity-40"
                   >
                     {analyzingOverall ? <><Loader className="animate-spin" size={15} /> Анализирую…</> : <><Sparkles size={15} /> {overall ? "Пересобрать" : "Получить аналитику"}</>}
                   </button>
                 </div>
+
+                {roadmap.analysis?.stale && (
+                  <div className="mt-4 flex items-start gap-2 rounded-2xl border border-amber-300/15 bg-amber-300/[0.05] p-4 text-sm text-amber-100/75">
+                    <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                    <span>После этого отчёта данные или стадия изменились. Старая версия сохранена — пересоберите аналитику для актуального вывода.</span>
+                  </div>
+                )}
 
                 {overall && (
                   <div className="mt-5 pt-5 border-t border-white/10">
@@ -584,8 +671,32 @@ export function RoadmapView() {
                     )}
                   </div>
                 )}
+
+                {roadmap.analysis_history.length > 1 && (
+                  <details className="mt-5 border-t border-white/10 pt-5">
+                    <summary className="flex cursor-pointer list-none items-center gap-2 text-sm text-white/55 hover:text-white/80">
+                      <History size={15} /> История аналитики ({roadmap.analysis_history.length})
+                    </summary>
+                    <div className="mt-3 space-y-3">
+                      {roadmap.analysis_history
+                        .filter((item) => item.generated_at !== roadmap.analysis?.generated_at)
+                        .map((item, index) => (
+                          <details key={`${item.generated_at || index}:${item.stage || "stage"}`} className="rounded-2xl border border-white/10 bg-white/[0.025] p-4">
+                            <summary className="cursor-pointer list-none text-sm text-white/70">
+                              <span className="font-medium">{item.stage_label || "Предыдущая стадия"}</span>
+                              {typeof item.progress === "number" && <span className="ml-2 text-white/35">· {item.progress}%</span>}
+                              {item.generated_at && <span className="ml-2 text-white/35">· {formatRoadmapDate(item.generated_at)}</span>}
+                            </summary>
+                            {item.changed_fields && item.changed_fields.length > 0 && (
+                              <p className="mt-3 text-xs text-white/35">Изменения к этой версии: {item.changed_fields.join(", ")}</p>
+                            )}
+                            <div className="mt-3"><Markdown>{item.text}</Markdown></div>
+                          </details>
+                        ))}
+                    </div>
+                  </details>
+                )}
               </div>
-            )}
           </>
         )}
       </div>

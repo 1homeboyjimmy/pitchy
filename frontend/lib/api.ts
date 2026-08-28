@@ -940,6 +940,7 @@ export type ProjectListItem = {
   id: number;
   name: string;
   readiness_index: number;
+  roadmap_progress?: number;
   status: "active" | "archived";
   session_count: number;
   updated_at: string;
@@ -1005,7 +1006,10 @@ export async function patchPassport(
 export type RoadmapField = {
   path: string;
   label: string;
-  type: "text" | "textarea" | "number" | "list";
+  type: "text" | "textarea" | "number" | "list" | "select";
+  hint?: string;
+  min_stage?: "hypothesis" | "mvp" | "sales";
+  options?: Array<{ value: string; label: string }>;
   filled: boolean;
   value: unknown;
   preview: string | number | null;
@@ -1021,17 +1025,42 @@ export type RoadmapCheckpoint = {
   total: number;
   progress: number;
   fields: RoadmapField[];
-  analysis?: { text: string; generated_at?: string } | null;
+  analysis?: { text: string; generated_at?: string; stale?: boolean } | null;
+};
+export type RoadmapStageId = "hypothesis" | "mvp" | "sales";
+export type RoadmapStage = {
+  id: RoadmapStageId;
+  label: string;
+  title: string;
+  description: string;
+  current?: boolean;
+  completed?: boolean;
+  available?: boolean;
+};
+export type RoadmapAnalysis = {
+  text: string;
+  sources: RoadmapSource[];
+  generated_at?: string;
+  stage?: RoadmapStageId;
+  stage_label?: string;
+  progress?: number;
+  stale?: boolean;
+  changed_fields?: string[];
 };
 export type Roadmap = {
   readiness: number;
   progress: number;
+  stage: RoadmapStage;
+  stages: RoadmapStage[];
   checkpoints: RoadmapCheckpoint[];
   next: string | null;
   completed: number;
   total: number;
-  // Ранее сгенерированная общая аналитика (если есть) — показываем сразу.
-  analysis?: { text: string; sources: RoadmapSource[]; generated_at?: string } | null;
+  analysis_ready: boolean;
+  analysis_missing: string[];
+  analysis?: RoadmapAnalysis | null;
+  analysis_history: RoadmapAnalysis[];
+  derived_metrics?: Record<string, { label: string; value: number; unit: string; formula: string }>;
 };
 
 export async function getRoadmap(projectId: number, token: string): Promise<Roadmap> {

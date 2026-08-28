@@ -22,6 +22,13 @@ def _item_text(value) -> str:
 
 def _field_display(field: dict) -> dict:
     value = field.get("value")
+    if field.get("type") == "select" and value is not None:
+        option = next(
+            (item for item in (field.get("options") or []) if item.get("value") == value),
+            None,
+        )
+        if option:
+            value = option.get("label") or value
     filled = bool(field.get("filled"))
     text = None
     items = None
@@ -88,13 +95,16 @@ def render_roadmap_pdf(project_name: str, roadmap: dict) -> bytes:
         {
             "project_name": project_name or "Проект",
             "date": datetime.now().strftime("%d.%m.%Y"),
-            "readiness": roadmap.get("readiness", 0),
             "progress": roadmap.get("progress", 0),
+            "stage": roadmap.get("stage") or {},
             "completed": roadmap.get("completed", 0),
             "total": roadmap.get("total", 0),
             "checkpoints": checkpoints,
             "analysis_html": analysis_html,
             "analysis_date": analysis_date,
+            "analysis_stale": bool(analysis.get("stale")),
+            "analysis_stage_label": analysis.get("stage_label"),
+            "analysis_progress": analysis.get("progress"),
             "sources": sources,
         },
     )
