@@ -162,7 +162,7 @@ function SignUpContent() {
               disabled={loading}
               className="w-full bg-white text-black font-bold text-sm uppercase tracking-tighter py-5 rounded-full hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-3 shadow-[0_0_40px_rgba(255,255,255,0.1)]"
             >
-              {loading ? "ПРОВЕРКА..." : "ПОДТВЕРДИТЬ КЛЮЧ"}
+              {loading ? "ПРОВЕРКА..." : "ПОДТВЕРДИТЬ"}
             </button>
           </form>
           
