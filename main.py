@@ -105,7 +105,7 @@ import ipaddress
 from redis_client import get_redis
 from slm_dispatcher import slm_dispatcher
 from makura_client import call_makura, stream_makura
-from routerai_client import stream_routerai
+from routerai_client import get_main_chat_model, stream_routerai
 from search_agent import execute_search_agent, execute_deep_research, async_search_with_sources, get_exa_proxy
 from db import SessionLocal, get_db, engine
 from db_async import get_async_db
@@ -5064,7 +5064,7 @@ async def send_chat_message(
                 tags=["main_chat", "deep_search" if getattr(payload, "use_deep_search", False) else "basic_search"]
             )
 
-        main_chat_model = os.getenv("MAIN_CHAT_MODEL", "z-ai/glm-5.2")
+        main_chat_model = get_main_chat_model()
         provider = f"routerai/{main_chat_model}"
         full_response = ""
         full_thoughts = ""

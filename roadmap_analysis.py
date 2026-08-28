@@ -1,8 +1,9 @@
-"""ИИ-аналитика дорожной карты — на пайплайне основного чата.
+"""ИИ-аналитика дорожной карты — на модели основного чата.
 
 НЕ голая модель: собираем тот же контекст, что и основной чат (паспорт проекта
-+ RAG-база знаний + веб-поиск с источниками), и синтезируем тем же glm-5
-(call_makura). Действия инициируются в дорожной карте, но «мозг» — общий.
++ RAG-база знаний + веб-поиск с источниками), и синтезируем через ту же модель,
+которая выбрана в MAIN_CHAT_MODEL. Действия инициируются в дорожной карте, но
+«мозг» — общий.
 
 Два режима:
   • analyze_step      — короткий разбор только что заполненного этапа.
@@ -23,7 +24,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 import passport as plib
 import rag
-from makura_client import call_makura, stream_makura
+from routerai_client import call_routerai, get_main_chat_model, stream_routerai
 from search_agent import async_search_with_sources
 from db_async import AsyncSessionLocal
 from models import Project
@@ -156,7 +157,11 @@ async def analyze_step(passport: dict | None, checkpoint_id: str) -> dict:
         + (f"КОНТЕКСТ (база знаний):\n{rag_ctx}\n\n" if rag_ctx else "")
         + f"РАЗБЕРИ РАЗДЕЛ: «{title}»."
     )
-    raw, _, usage = await call_makura(system_prompt, user_prompt)
+    raw, _, usage = await call_routerai(
+        system_prompt,
+        user_prompt,
+        model=get_main_chat_model(),
+    )
     logger.info(f"roadmap step analysis (cp={checkpoint_id}, tokens={usage})")
     return {"checkpoint_id": checkpoint_id, "analysis": (raw or "").strip(), "usage": usage or {}}
 
@@ -184,15 +189,19 @@ async def analyze_overall(passport: dict | None) -> dict:
         + (f"КОНТЕКСТ:\n{context}\n\n" if context else "")
         + "Сформируй полную аналитику стартапа по разделам выше."
     )
-    raw, _, usage = await call_makura(_OVERALL_SYSTEM, user_prompt)
+    raw, _, usage = await call_routerai(
+        _OVERALL_SYSTEM,
+        user_prompt,
+        model=get_main_chat_model(),
+    )
     logger.info(f"roadmap overall analysis (tokens={usage}, sources={len(sources)})")
     return {"analysis": (raw or "").strip(), "sources": sources[:8], "usage": usage or {}}
 
 
 async def stream_overall(passport: dict | None, project_id: int):
     """Стриминг обширной аналитики (SSE) — как у основного чата: паспорт + RAG +
-    веб-поиск, синтез стримом glm-5. Решает таймаут шлюза на длинном запросе и
-    даёт живую генерацию. Итог сохраняем в passport.assets."""
+    веб-поиск, синтез стримом основной модели чата. Решает таймаут шлюза на
+    длинном запросе и даёт живую генерацию. Итог сохраняем в passport.assets."""
     passport = passport or {}
     core = passport.get("core") or {}
     name = core.get("name") or "стартап"
@@ -234,8 +243,12 @@ async def stream_overall(passport: dict | None, project_id: int):
 
     full = ""
     try:
-        async for chunk in stream_makura(system_prompt=_OVERALL_SYSTEM, user_message=user_prompt):
-            # stream_makura отдаёт строки-контент + dict-сентинелы
+        async for chunk in stream_routerai(
+            system_prompt=_OVERALL_SYSTEM,
+            user_message=user_prompt,
+            model=get_main_chat_model(),
+        ):
+            # stream_routerai отдаёт строки-контент + dict-сентинелы
             # (__thinking__/__usage__) — берём только текстовый контент.
             if isinstance(chunk, str) and chunk:
                 full += chunk

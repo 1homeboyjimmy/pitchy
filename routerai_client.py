@@ -17,6 +17,13 @@ except ImportError:
 
 logger = logging.getLogger("app")
 
+DEFAULT_MAIN_CHAT_MODEL = "z-ai/glm-5.2"
+
+
+def get_main_chat_model() -> str:
+    """Return the single model configured for Pitchy's primary chat pipeline."""
+    return os.getenv("MAIN_CHAT_MODEL", DEFAULT_MAIN_CHAT_MODEL)
+
 
 class RouterAIUpstreamError(RuntimeError):
     """RouterAI returned a provider/WAF error as successful chat content."""
