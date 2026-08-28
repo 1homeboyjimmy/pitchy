@@ -99,10 +99,7 @@ def _get_exa_api_key() -> str:
         logger.warning("EXA_API_KEY is missing. Web search (Exa) is disabled.")
         return ""
     proxy = get_exa_proxy()
-    logger.info(
-        f"Exa configured with key starting with {api_key[:5]}... "
-        f"(egress: {'proxy' if proxy else 'direct'})"
-    )
+    logger.info("Exa configured (egress: %s)", "proxy" if proxy else "direct")
     return api_key
 
 

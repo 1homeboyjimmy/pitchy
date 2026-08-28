@@ -122,26 +122,85 @@ jobs:
           DEV_HOST: ${{ secrets.DEV_HOST }}
           DEV_USERNAME: ${{ secrets.DEV_USERNAME }}
           DEV_SSH_KEY: ${{ secrets.DEV_SSH_KEY }}
+          PROD_HOST: ${{ secrets.VPS_HOST }}
+          PROD_USERNAME: ${{ secrets.VPS_USER }}
+          PROD_SSH_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_ACTOR: ${{ github.actor }}
           RELEASE_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          trap 'rm -f ~/.ssh/dev_deploy_key' EXIT
+          trap 'rm -f ~/.ssh/dev_deploy_key ~/.ssh/prod_read_key' EXIT
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           printf '%s\n' "$DEV_SSH_KEY" > ~/.ssh/dev_deploy_key
+          printf '%s\n' "$PROD_SSH_KEY" > ~/.ssh/prod_read_key
           chmod 600 ~/.ssh/dev_deploy_key
+          chmod 600 ~/.ssh/prod_read_key
           ssh-keyscan -H "$DEV_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+          ssh-keyscan -H "$PROD_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+          # Search is one shared platform capability. Keep staging on the same
+          # Exa credential as the working production chat without storing the
+          # secret in Git or printing it in Actions logs. The value is copied
+          # into staging's host-only .env and then consumed through env_file.
+          EXA_API_KEY="$(
+            ssh -i ~/.ssh/prod_read_key \
+                -o StrictHostKeyChecking=accept-new \
+                "$PROD_USERNAME@$PROD_HOST" \
+                "awk -F= '\$1 == \"EXA_API_KEY\" && length(substr(\$0, index(\$0, \"=\") + 1)) { print substr(\$0, index(\$0, \"=\") + 1); exit }' /opt/ai-startup/.env.runtime /opt/ai-startup/.env 2>/dev/null"
+          )"
+          if [ -z "$EXA_API_KEY" ]; then
+            echo "ERROR: EXA_API_KEY is unavailable in the production chat environment"
+            exit 1
+          fi
+          echo "::add-mask::$EXA_API_KEY"
+          EXA_API_KEY_B64="$(printf '%s' "$EXA_API_KEY" | base64 | tr -d '\n')"
+          echo "::add-mask::$EXA_API_KEY_B64"
+
+          # The production search path may use either supported proxy variable.
+          # Copy the effective value because direct Exa traffic from RU hosts is
+          # blocked even when the API key itself is valid.
+          EXA_HTTPS_PROXY="$(
+            ssh -i ~/.ssh/prod_read_key \
+                -o StrictHostKeyChecking=accept-new \
+                "$PROD_USERNAME@$PROD_HOST" \
+                "value=\$(awk -F= '\$1 == \"EXA_HTTPS_PROXY\" && length(substr(\$0, index(\$0, \"=\") + 1)) { print substr(\$0, index(\$0, \"=\") + 1); exit }' /opt/ai-startup/.env.runtime /opt/ai-startup/.env 2>/dev/null); if [ -z \"\$value\" ]; then value=\$(awk -F= '\$1 == \"SEARCH_HTTPS_PROXY\" && length(substr(\$0, index(\$0, \"=\") + 1)) { print substr(\$0, index(\$0, \"=\") + 1); exit }' /opt/ai-startup/.env.runtime /opt/ai-startup/.env 2>/dev/null); fi; printf '%s' \"\$value\""
+          )"
+          if [ -z "$EXA_HTTPS_PROXY" ]; then
+            echo "ERROR: Exa egress proxy is unavailable in the production chat environment"
+            exit 1
+          fi
+          echo "::add-mask::$EXA_HTTPS_PROXY"
+          EXA_HTTPS_PROXY_B64="$(printf '%s' "$EXA_HTTPS_PROXY" | base64 | tr -d '\n')"
+          echo "::add-mask::$EXA_HTTPS_PROXY_B64"
 
           ssh -i ~/.ssh/dev_deploy_key \
               -o StrictHostKeyChecking=accept-new \
               -o ServerAliveInterval=30 \
               -o ServerAliveCountMax=120 \
               "$DEV_USERNAME@$DEV_HOST" \
-              "GITHUB_TOKEN='$GH_TOKEN' GITHUB_ACTOR='$GH_ACTOR' IMAGE_TAG='$RELEASE_SHA' bash -s" <<'REMOTE_SCRIPT'
+              "GITHUB_TOKEN='$GH_TOKEN' GITHUB_ACTOR='$GH_ACTOR' IMAGE_TAG='$RELEASE_SHA' EXA_API_KEY_B64='$EXA_API_KEY_B64' EXA_HTTPS_PROXY_B64='$EXA_HTTPS_PROXY_B64' bash -s" <<'REMOTE_SCRIPT'
           set -e
           cd /opt/ai-startup
+
+          # Upsert the shared Exa credential atomically. Keep the secret out of
+          # command output and preserve the permissions/owner of the env file.
+          upsert_env_secret() {
+            key="$1"
+            encoded_value="$2"
+            env_tmp="$(mktemp .env.secret.XXXXXX)"
+            grep -v "^${key}=" .env > "$env_tmp" || true
+            printf '%s=' "$key" >> "$env_tmp"
+            printf '%s' "$encoded_value" | base64 -d >> "$env_tmp"
+            printf '\n' >> "$env_tmp"
+            chmod --reference=.env "$env_tmp"
+            chown --reference=.env "$env_tmp" 2>/dev/null || true
+            mv "$env_tmp" .env
+          }
+          upsert_env_secret "EXA_API_KEY" "$EXA_API_KEY_B64"
+          upsert_env_secret "EXA_HTTPS_PROXY" "$EXA_HTTPS_PROXY_B64"
+          unset EXA_API_KEY_B64 EXA_HTTPS_PROXY_B64
 
           # Compose-file selection now lives in env so we don't have to
           # sprinkle -f flags everywhere. Staging layers the small override
@@ -230,6 +289,36 @@ jobs:
             docker compose logs backend --tail=50
             exit 1
           fi
+
+          # A generic HTTP healthcheck is insufficient for the roadmap: accept
+          # the release only when both the main model and web research are
+          # configured in the newly recreated backend container.
+          capability_body="$(docker compose exec -T backend curl -s http://127.0.0.1:8000/health </dev/null || true)"
+          if ! echo "$capability_body" | grep -q '"main_chat":true' || \
+             ! echo "$capability_body" | grep -q '"web_search":true'; then
+            echo "ERROR: roadmap capabilities are unavailable after deploy"
+            echo "$capability_body"
+            exit 1
+          fi
+          echo "Roadmap capabilities OK: main model and web search are configured."
+
+          # Exercise the exact search function used by chat and roadmap. This
+          # catches an invalid key, exhausted account, broken proxy, or provider
+          # response change that a configuration-only check cannot detect.
+          search_ok="false"
+          for i in $(seq 1 3); do
+            if timeout 45 docker compose exec -T backend python -c "import asyncio; from search_agent import async_search_with_sources; sources, _ = asyncio.run(async_search_with_sources('актуальные программы поддержки стартапов Россия', False)); raise SystemExit(0 if sources else 1)" </dev/null; then
+              search_ok="true"
+              break
+            fi
+            echo "Web-search smoke test failed on attempt $i/3"
+            sleep 5
+          done
+          if [ "$search_ok" != "true" ]; then
+            echo "ERROR: live roadmap web-search smoke test failed"
+            exit 1
+          fi
+          echo "Roadmap web-search smoke test passed."
 
           # Cleanup
           docker image prune -af 2>/dev/null || true

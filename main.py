@@ -1397,8 +1397,14 @@ async def health() -> dict:
         "generated_at": data.get("generated_at"),
         "summary": data.get("summary", {}),
         "capabilities": {
-            "main_chat": bool((checks.get("routerai") or {}).get("configured")),
-            "web_search": bool((checks.get("exa") or {}).get("configured")),
+            "main_chat": bool(
+                (checks.get("routerai") or {}).get("configured")
+                and (checks.get("routerai") or {}).get("ok")
+            ),
+            "web_search": bool(
+                (checks.get("exa") or {}).get("configured")
+                and (checks.get("exa") or {}).get("ok")
+            ),
         },
     }
 

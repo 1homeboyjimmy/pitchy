@@ -34,6 +34,7 @@
 - `AUTH_RATE_WINDOW_SECONDS`: Rate limit window in seconds.
 - `AUTH_RATE_MAX`: Max auth requests per window per IP.
 - `EXA_API_KEY`: Exa key for web search.
+- `LOCKBOX_EXA_API_KEY_SECRET_ID` / `..._ENTRY_KEY`: optional Lockbox source for the shared Exa web-search key.
 - `EXA_HTTPS_PROXY`: HTTP CONNECT proxy for `api.exa.ai` (`http://user:pass@host:port`).
   Required on RU hosts — Cloudflare answers 403 there, and the search silently
   degrades to "Интернет-поиск временно недоступен" without it. `SEARCH_HTTPS_PROXY`
