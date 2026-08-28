@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
-import { motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Loader, CheckCircle2, Sparkles, Brain, ExternalLink, ArrowLeft, Plus, Download, History, AlertTriangle, ArrowRight } from "lucide-react";
@@ -590,14 +589,6 @@ export function RoadmapView() {
                     <p className={`mt-1 text-xs leading-snug ${stage.current ? "text-black/60" : "text-white/35"}`}>{stage.description}</p>
                   </button>
                 ))}
-              </div>
-              <div className="mt-4 h-2 w-full rounded-full bg-white/10 overflow-hidden">
-                <motion.div
-                  className="h-full rounded-full bg-gradient-to-r from-white/70 to-white"
-                  initial={{ width: 0 }}
-                  animate={{ width: `${roadmap.progress}%` }}
-                  transition={{ duration: 0.6, ease: "easeOut" }}
-                />
               </div>
               <p className="text-white/40 text-sm mt-4">
                 Процент учитывает все вопросы, доступные на стадии «{roadmap.stage.title}». При развитии проекта появятся новые поля, а старые ответы сохранятся.
