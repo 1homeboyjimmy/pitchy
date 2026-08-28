@@ -75,6 +75,7 @@ RUN python -m pytest \
     tests/test_accelerator_alumni.py \
     tests/test_accelerator_operations.py \
     tests/test_accelerator_router_contract.py \
-    tests/test_roadmap_analysis_model.py
+    tests/test_roadmap_analysis_model.py \
+    tests/test_roadmap_service.py
 
 FROM runtime AS production

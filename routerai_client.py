@@ -25,6 +25,10 @@ def get_main_chat_model() -> str:
     return os.getenv("MAIN_CHAT_MODEL", DEFAULT_MAIN_CHAT_MODEL)
 
 
+def is_routerai_configured() -> bool:
+    return bool((os.getenv("ROUTERAI_API_KEY") or "").strip())
+
+
 class RouterAIUpstreamError(RuntimeError):
     """RouterAI returned a provider/WAF error as successful chat content."""
 

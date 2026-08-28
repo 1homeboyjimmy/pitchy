@@ -1391,10 +1391,15 @@ async def ready(db: AsyncSession = Depends(get_async_db)) -> dict[str, str]:
 async def health() -> dict:
     """Public, redacted health summary; no infrastructure details."""
     data = await _gather_health()
+    checks = data.get("checks") or {}
     return {
         "status": data.get("status", "error"),
         "generated_at": data.get("generated_at"),
         "summary": data.get("summary", {}),
+        "capabilities": {
+            "main_chat": bool((checks.get("routerai") or {}).get("configured")),
+            "web_search": bool((checks.get("exa") or {}).get("configured")),
+        },
     }
 
 

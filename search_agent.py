@@ -152,7 +152,10 @@ async def async_search_with_sources(query: str, use_deep_search: bool = False, t
     
     api_key = _get_exa_api_key()
     if not api_key:
-        return [], "Интернет-поиск отключен (отсутствует EXA_API_KEY)."
+        # Operational state is not evidence. Returning a human-readable error
+        # here caused downstream LLMs to quote internal configuration details
+        # in user-facing reports as if they were source material.
+        return [], ""
 
     try:
         num_results = 10 if use_deep_search else 3
@@ -183,7 +186,7 @@ async def async_search_with_sources(query: str, use_deep_search: bool = False, t
 
         results = payload.get("results") or []
         if not results:
-            return [], "Поиск не дал результатов."
+            return [], ""
 
         for r in results:
             url = r.get("url") or ""
@@ -218,7 +221,12 @@ async def async_search_with_sources(query: str, use_deep_search: bool = False, t
         # chat answers. `ExaSearchError` carries the status code only, and the
         # generic message below covers proxy/timeout failures too.
         logger.error(f"Async Exa search error: {e}")
-        return [], "Интернет-поиск временно недоступен."
+        return [], ""
+
+
+def is_exa_configured() -> bool:
+    """Return whether the current backend process can authenticate to Exa."""
+    return bool(_get_exa_api_key())
 
 async def execute_search_agent(query: str) -> str:
     """Оркестратор для обратной совместимости."""

@@ -7,7 +7,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Loader, CheckCircle2, Sparkles, Brain, ExternalLink, ArrowLeft, Plus, Download } from "lucide-react";
 import { getToken } from "@/lib/auth";
-import { notifyError } from "@/lib/ui";
+import { notifyError, notifyInfo } from "@/lib/ui";
 import {
   getProjects, getRoadmap, patchPassport, analyzeRoadmapStep, streamRoadmapOverall, createProject, downloadRoadmapPdf,
   type ProjectListItem, type Roadmap, type RoadmapCheckpoint, type RoadmapField, type RoadmapOverall,
@@ -313,10 +313,14 @@ export function RoadmapView() {
     try {
       const r = await getRoadmap(id, t);
       setRoadmap(r);
+      setStepAnalysis(Object.fromEntries(
+        r.checkpoints
+          .filter((checkpoint) => checkpoint.analysis?.text)
+          .map((checkpoint) => [checkpoint.id, checkpoint.analysis!.text]),
+      ));
+      setOverall(r.analysis ? { analysis: r.analysis.text, sources: r.analysis.sources || [] } : null);
       if (!keepSel) {
         setSelectedId(r.next || r.checkpoints[0]?.id || null);
-        // Показываем ранее сгенерированный отчёт сразу (не генерируем заново).
-        setOverall(r.analysis ? { analysis: r.analysis.text, sources: r.analysis.sources || [] } : null);
       }
     } catch {
       notifyError("Не удалось загрузить карту");
@@ -399,6 +403,8 @@ export function RoadmapView() {
           setOverall((o) => ({ analysis: o?.analysis || "", sources: ev.sources! }));
         } else if (ev.type === "error") {
           streamError = ev.text || "Ошибка генерации аналитики";
+        } else if (ev.type === "warning" && ev.text) {
+          notifyInfo(ev.text, "Источники");
         }
       }
       if (streamError || !receivedContent) {
@@ -407,9 +413,9 @@ export function RoadmapView() {
         return;
       }
       trackMetrikaGoal("roadmap_overall_analysis_completed");
-    } catch {
+    } catch (error) {
       setOverall(null);
-      notifyError("Не удалось получить аналитику стартапа");
+      notifyError(error instanceof Error ? error.message : "Не удалось получить аналитику стартапа");
     } finally {
       setAnalyzingOverall(false);
     }

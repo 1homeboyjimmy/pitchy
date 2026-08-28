@@ -353,6 +353,14 @@ async def patch_passport(
     помечаются source=manual, поэтому ИИ их потом не перезапишет молча."""
     project = await _get_owned_project(project_id, user, db)
     merged = passport_lib.merge_patch(project.passport or {}, payload.fields, source="manual")
+
+    # A report generated from an older passport must never survive edits as if
+    # it were current. Invalidate the overall report and only the step reports
+    # whose fields changed; unrelated step analyses remain available.
+    if payload.fields:
+        import roadmap_service
+        merged = roadmap_service.invalidate_analyses(merged, set(payload.fields))
+
     project.passport = merged
     project.readiness_index = passport_lib.compute_readiness(merged)
     project.passport_updated_at = datetime.utcnow()
@@ -390,7 +398,11 @@ async def analyze_roadmap_step(
     """ИИ-разбор заполненного этапа (паспорт + RAG, тот же пайплайн, что у чата)."""
     import roadmap_analysis
     project = await _get_owned_project(project_id, user, db)
-    return await roadmap_analysis.analyze_step(project.passport or {}, checkpoint_id)
+    return await roadmap_analysis.analyze_step(
+        project.passport or {},
+        checkpoint_id,
+        project_id=project.id,
+    )
 
 
 @router.post("/{project_id}/roadmap/analyze")
@@ -408,6 +420,18 @@ async def analyze_roadmap_overall(
     from fastapi.responses import StreamingResponse
     import roadmap_analysis
     project = await _get_owned_project(project_id, user, db)
+    passport = project.passport or {}
+    valid, validation_message = roadmap_analysis.validate_passport_for_analysis(passport)
+    if not valid:
+        raise HTTPException(status_code=422, detail=validation_message)
+
+    from routerai_client import is_routerai_configured
+    if not is_routerai_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="Основная модель чата временно не настроена. Попробуйте позже.",
+        )
+
     accelerator_context = await _validate_accelerator_roadmap_context(
         db,
         project=project,
@@ -445,7 +469,6 @@ async def analyze_roadmap_overall(
     # Streaming starts after the response is returned. Persist the debit before
     # that boundary so disconnects cannot roll it back silently.
     await db.commit()
-    passport = project.passport or {}
     return StreamingResponse(
         roadmap_analysis.stream_overall(passport, project.id),
         media_type="text/event-stream",

@@ -72,6 +72,30 @@ CHECKPOINTS: list[dict] = [
 ]
 
 
+def invalidate_analyses(passport: dict, changed_paths: set[str]) -> dict:
+    """Drop reports made stale by a passport edit and preserve other assets."""
+    if not changed_paths:
+        return passport
+
+    updated = dict(passport)
+    assets = dict(updated.get("assets") or {})
+    assets.pop("roadmap_analysis", None)
+    step_analyses = dict(assets.get("roadmap_step_analyses") or {})
+    for checkpoint in CHECKPOINTS:
+        checkpoint_paths = {path for path, _label, _type in checkpoint["fields"]}
+        if changed_paths & checkpoint_paths:
+            step_analyses.pop(checkpoint["id"], None)
+    if step_analyses:
+        assets["roadmap_step_analyses"] = step_analyses
+    else:
+        assets.pop("roadmap_step_analyses", None)
+    if assets:
+        updated["assets"] = assets
+    else:
+        updated.pop("assets", None)
+    return updated
+
+
 def _field_state(passport: dict, path: str, label: str, ftype: str) -> dict:
     value = plib._get_path(passport, path)
     filled = plib._is_filled(value)
@@ -98,6 +122,8 @@ def _field_state(passport: dict, path: str, label: str, ftype: str) -> dict:
 def build_roadmap(passport: dict | None) -> dict:
     """Считает карту из паспорта: чекпоинты со статусами/прогрессом/наградами."""
     passport = passport or {}
+    assets = passport.get("assets") or {}
+    saved_step_analyses = assets.get("roadmap_step_analyses") or {}
     checkpoints: list[dict] = []
     prev_done = True
 
@@ -114,6 +140,13 @@ def build_roadmap(passport: dict | None) -> dict:
             status = "current"
         else:
             status = "locked"
+        saved_step = saved_step_analyses.get(cp["id"]) if isinstance(saved_step_analyses, dict) else None
+        step_analysis = None
+        if isinstance(saved_step, dict) and saved_step.get("text"):
+            step_analysis = {
+                "text": saved_step["text"],
+                "generated_at": saved_step.get("generated_at"),
+            }
         checkpoints.append({
             "id": cp["id"],
             "title": cp["title"],
@@ -124,6 +157,7 @@ def build_roadmap(passport: dict | None) -> dict:
             "total": total,
             "progress": round(filled * 100 / total) if total else 0,
             "fields": fields,
+            "analysis": step_analysis,
         })
         prev_done = prev_done and done
 
@@ -138,7 +172,7 @@ def build_roadmap(passport: dict | None) -> dict:
 
     # Ранее сгенерированная общая аналитика (чтобы фронт показал её сразу, а не
     # предлагал генерировать заново). Лежит в passport.assets.roadmap_analysis.
-    saved = (passport.get("assets") or {}).get("roadmap_analysis")
+    saved = assets.get("roadmap_analysis")
     analysis = None
     if isinstance(saved, dict) and saved.get("text"):
         analysis = {

@@ -1021,6 +1021,7 @@ export type RoadmapCheckpoint = {
   total: number;
   progress: number;
   fields: RoadmapField[];
+  analysis?: { text: string; generated_at?: string } | null;
 };
 export type Roadmap = {
   readiness: number;
@@ -1038,7 +1039,7 @@ export async function getRoadmap(projectId: number, token: string): Promise<Road
 }
 
 export type RoadmapSource = { url?: string; title?: string };
-export type RoadmapStepAnalysis = { checkpoint_id: string; analysis: string };
+export type RoadmapStepAnalysis = { checkpoint_id: string; analysis: string; ok?: boolean };
 export type RoadmapOverall = { analysis: string; sources: RoadmapSource[] };
 export type AcceleratorToolContext = { membershipId: number; actionId: number };
 
@@ -1070,7 +1071,14 @@ export async function* streamRoadmapOverall(
   const res = await fetch(`${API_BASE}/projects/${projectId}/roadmap/analyze${suffix}`, {
     method: "POST", headers, body: "{}", credentials: "include",
   });
-  if (!res.ok) throw new Error("overall analyze failed");
+  if (!res.ok) {
+    let detail = "Не удалось запустить полную аналитику";
+    try {
+      const payload = await res.json() as { detail?: string };
+      if (payload.detail) detail = payload.detail;
+    } catch { /* keep the safe fallback */ }
+    throw new Error(detail);
+  }
   const reader = res.body?.getReader();
   if (!reader) return;
   const decoder = new TextDecoder();

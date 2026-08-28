@@ -67,7 +67,7 @@ async def test_overall_analysis_uses_main_chat_model(monkeypatch, roadmap_module
         return ""
 
     async def no_web(_query, deep=False):
-        return "", []
+        return "", [], None
 
     captured = {}
 
@@ -95,7 +95,7 @@ async def test_streaming_analysis_uses_main_chat_model(monkeypatch, roadmap_modu
         return ""
 
     async def no_web(_query, deep=False):
-        return "", []
+        return "", [], None
 
     captured = {}
 
@@ -133,3 +133,65 @@ async def test_streaming_analysis_uses_main_chat_model(monkeypatch, roadmap_modu
     assert not any(payload["type"] == "error" for payload in payloads)
     assert payloads[-1]["type"] == "done"
     assert captured["model"] == "provider/main-chat"
+
+
+@pytest.mark.asyncio
+async def test_step_analysis_is_persisted(monkeypatch, roadmap_module):
+    roadmap_analysis = roadmap_module
+
+    async def no_rag(_query):
+        return ""
+
+    async def fake_call(system_prompt, user_message, model):
+        return "saved analysis", None, {}
+
+    captured = {}
+
+    async def fake_persist(project_id, checkpoint_id, analysis):
+        captured.update(
+            project_id=project_id,
+            checkpoint_id=checkpoint_id,
+            analysis=analysis,
+        )
+
+    monkeypatch.setattr(roadmap_analysis, "_rag_context", no_rag)
+    monkeypatch.setattr(roadmap_analysis, "call_routerai", fake_call)
+    monkeypatch.setattr(roadmap_analysis, "_persist_step_analysis", fake_persist)
+
+    result = await roadmap_analysis.analyze_step(
+        {**CORE_PASSPORT, "legal": {"entity_type": "ООО"}},
+        "legal",
+        project_id=42,
+    )
+
+    assert result["ok"] is True
+    assert captured == {
+        "project_id": 42,
+        "checkpoint_id": "legal",
+        "analysis": "saved analysis",
+    }
+
+
+@pytest.mark.asyncio
+async def test_web_configuration_failure_never_becomes_evidence(monkeypatch, roadmap_module):
+    roadmap_analysis = roadmap_module
+    monkeypatch.setattr(roadmap_analysis, "is_exa_configured", lambda: False)
+
+    context, sources, warning = await roadmap_analysis._web_context("рынок")
+
+    assert context == ""
+    assert sources == []
+    assert warning
+
+
+@pytest.mark.asyncio
+async def test_search_agent_does_not_return_configuration_errors_as_context(monkeypatch):
+    import search_agent
+
+    monkeypatch.setenv("EXA_API_KEY", "")
+    monkeypatch.setattr(search_agent, "load_dotenv", lambda: None)
+
+    sources, context = await search_agent.async_search_with_sources("рынок стартапов")
+
+    assert sources == []
+    assert context == ""
