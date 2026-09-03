@@ -33,7 +33,8 @@ cryptography>=46.0.5
 flask>=3.1.3
 werkzeug>=3.1.6
 langfuse==2.53.8
-openai>=1.0.0
+# instructor 1.16.x currently requires the OpenAI 2.x API surface.
+openai>=1.0.0,<3.0
 sentry-sdk[fastapi]
 instructor
 pandas
