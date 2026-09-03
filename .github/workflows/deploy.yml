@@ -118,6 +118,11 @@ jobs:
             sudo -n chown -R "$(id -u):$(id -g)" /opt/ai-startup 2>/dev/null || \
               chown -R "$(id -u):$(id -g)" /opt/ai-startup 2>/dev/null || true
           fi
+          # The host can be completely full before Git can even create its
+          # shallow-lock file. Reclaim only disposable Docker cache/old images;
+          # running containers and persistent volumes remain untouched.
+          docker builder prune -af || true
+          docker image prune -af --filter until=168h || true
           # Keep the exception process-local. The deploy account's home may be
           # managed/read-only, so writing ~/.gitconfig can abort the release.
           # Fetch only the release tip to keep disk usage bounded on the VPS.

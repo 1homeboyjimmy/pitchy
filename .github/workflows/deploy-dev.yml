@@ -137,6 +137,10 @@ jobs:
             sudo -n chown -R "$(id -u):$(id -g)" /opt/ai-startup 2>/dev/null || \
               chown -R "$(id -u):$(id -g)" /opt/ai-startup 2>/dev/null || true
           fi
+          # Reclaim disposable Docker cache/old images before Git writes its
+          # shallow-lock file. Running containers and data volumes are kept.
+          docker builder prune -af || true
+          docker image prune -af --filter until=168h || true
           # Pull latest code
           # Keep the exception process-local: ~/.gitconfig may be read-only on
           # the deploy host and must not be needed for a release.
