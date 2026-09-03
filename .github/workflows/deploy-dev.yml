@@ -171,8 +171,8 @@ jobs:
             echo "ERROR: alembic upgrade head exited non-zero on dev"
             exit 1
           fi
-          CURRENT_REV=$(docker compose exec -T backend python -m alembic current </dev/null 2>/dev/null | sed -nE 's/.*: ([^[:space:]]+).*/\1/p' | tail -n 1 || true)
-          HEAD_REV=$(docker compose exec -T backend python -m alembic heads </dev/null 2>/dev/null | sed -nE 's/.*: ([^[:space:]]+).*/\1/p' | tail -n 1 || true)
+          CURRENT_REV=$(docker compose exec -T backend python -m alembic current </dev/null 2>&1 | grep -oE '(202[0-9]{5}_[a-z0-9_]+|[a-f0-9]{12})' | tail -n 1 || true)
+          HEAD_REV=$(docker compose exec -T backend python -m alembic heads </dev/null 2>&1 | grep -oE '(202[0-9]{5}_[a-z0-9_]+|[a-f0-9]{12})' | tail -n 1 || true)
           if [ -z "$CURRENT_REV" ] || [ -z "$HEAD_REV" ] || [ "$CURRENT_REV" != "$HEAD_REV" ]; then
             echo "ERROR: alembic revision mismatch — current=$CURRENT_REV, head=$HEAD_REV"
             exit 1

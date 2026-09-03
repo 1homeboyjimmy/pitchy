@@ -155,8 +155,8 @@ fi
 # Alembic IDs may be hexadecimal or descriptive (the merge revision is the
 # latter). Extract the token after the final colon instead of assuming 12 hex
 # characters.
-CURRENT_REV=$(docker compose --env-file "$RUNTIME_ENV_FILE" exec -T backend python -m alembic current 2>/dev/null | sed -nE 's/.*: ([^[:space:]]+).*/\1/p' | tail -n 1 || true)
-HEAD_REV=$(docker compose --env-file "$RUNTIME_ENV_FILE" exec -T backend python -m alembic heads 2>/dev/null | sed -nE 's/.*: ([^[:space:]]+).*/\1/p' | tail -n 1 || true)
+CURRENT_REV=$(docker compose --env-file "$RUNTIME_ENV_FILE" exec -T backend python -m alembic current 2>&1 | grep -oE '(202[0-9]{5}_[a-z0-9_]+|[a-f0-9]{12})' | tail -n 1 || true)
+HEAD_REV=$(docker compose --env-file "$RUNTIME_ENV_FILE" exec -T backend python -m alembic heads 2>&1 | grep -oE '(202[0-9]{5}_[a-z0-9_]+|[a-f0-9]{12})' | tail -n 1 || true)
 if [[ -z "$CURRENT_REV" || -z "$HEAD_REV" || "$CURRENT_REV" != "$HEAD_REV" ]]; then
   echo "ERROR: alembic revision mismatch — current=${CURRENT_REV:-<empty>}, head=${HEAD_REV:-<empty>}"
   echo "       Investigate before retrying; do NOT auto-rollback (DB may be ahead of code)."
