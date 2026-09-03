@@ -140,7 +140,7 @@ jobs:
           # Pull latest code
           # Keep the exception process-local: ~/.gitconfig may be read-only on
           # the deploy host and must not be needed for a release.
-          git -c safe.directory=/opt/ai-startup fetch origin
+          git -c safe.directory=/opt/ai-startup fetch --no-tags --depth=1 origin dev
           git -c safe.directory=/opt/ai-startup reset --hard origin/dev
 
           # Pull new images

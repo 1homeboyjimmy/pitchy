@@ -120,7 +120,8 @@ jobs:
           fi
           # Keep the exception process-local. The deploy account's home may be
           # managed/read-only, so writing ~/.gitconfig can abort the release.
-          git -c safe.directory=/opt/ai-startup fetch origin
+          # Fetch only the release tip to keep disk usage bounded on the VPS.
+          git -c safe.directory=/opt/ai-startup fetch --no-tags --depth=1 origin main
           git -c safe.directory=/opt/ai-startup reset --hard origin/main
           chmod +x deploy.sh
           ./deploy.sh
