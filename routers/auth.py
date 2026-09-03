@@ -352,9 +352,9 @@ async def verify_email_code(
     response: Response,
     db: AsyncSession = Depends(get_async_db),
 ) -> TokenResponse:
-    from main import _check_rate_limit
+    from main import _check_rate_limit, get_client_ip
 
-    ip = request.client.host if request.client else "unknown"
+    ip = get_client_ip(request)
     _check_rate_limit(ip)
 
     result = await db.execute(
@@ -432,9 +432,12 @@ async def login(
     response: Response,
     db: AsyncSession = Depends(get_async_db),
 ) -> TokenResponse:
-    from main import _check_rate_limit
+    from main import _check_rate_limit, get_client_ip
 
-    ip = request.client.host if request.client else "unknown"
+    # Caddy is the direct peer in production.  Use its trusted, overwritten
+    # X-Real-IP value so the auth limit applies per visitor rather than to the
+    # entire site behind the proxy.
+    ip = get_client_ip(request)
     _check_rate_limit(ip)
 
     result = await db.execute(
@@ -564,10 +567,10 @@ async def request_password_reset(
     leak which addresses are registered. Code expires in 15 min and is
     stored hashed.
     """
-    from main import _check_rate_limit
+    from main import _check_rate_limit, get_client_ip
     import email_templates
 
-    ip = request.client.host if request.client else "unknown"
+    ip = get_client_ip(request)
     _check_rate_limit(ip)
     res = await db.execute(
         select(User).where(User.email == payload.email, User.deleted_at.is_(None))
@@ -594,9 +597,9 @@ async def reset_password(
     request: Request,
     db: AsyncSession = Depends(get_async_db),
 ) -> dict:
-    from main import _check_rate_limit
+    from main import _check_rate_limit, get_client_ip
 
-    ip = request.client.host if request.client else "unknown"
+    ip = get_client_ip(request)
     _check_rate_limit(ip)
 
     res = await db.execute(

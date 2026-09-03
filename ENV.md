@@ -40,6 +40,8 @@
   is accepted as a fallback so a box also running the media stack can share one value.
 - `EXA_BASE_URL`: Override the Exa API base (default `https://api.exa.ai`).
 - `EXA_TIMEOUT_SECONDS`: Search request timeout (default `30`).
+- `YANDEX_CLIENT_ID`, `YANDEX_CLIENT_SECRET`: Yandex OAuth application credentials.
+- `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`: optional social-login credentials.
 
 ## Frontend
 
