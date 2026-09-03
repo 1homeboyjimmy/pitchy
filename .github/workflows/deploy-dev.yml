@@ -137,11 +137,11 @@ jobs:
             sudo -n chown -R "$(id -u):$(id -g)" /opt/ai-startup 2>/dev/null || \
               chown -R "$(id -u):$(id -g)" /opt/ai-startup 2>/dev/null || true
           fi
-          git config --global --add safe.directory /opt/ai-startup
-
           # Pull latest code
-          git fetch origin
-          git reset --hard origin/dev
+          # Keep the exception process-local: ~/.gitconfig may be read-only on
+          # the deploy host and must not be needed for a release.
+          git -c safe.directory=/opt/ai-startup fetch origin
+          git -c safe.directory=/opt/ai-startup reset --hard origin/dev
 
           # Pull new images
           docker compose pull -q || echo "WARNING: Some images failed to pull"

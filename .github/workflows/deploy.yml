@@ -118,10 +118,10 @@ jobs:
             sudo -n chown -R "$(id -u):$(id -g)" /opt/ai-startup 2>/dev/null || \
               chown -R "$(id -u):$(id -g)" /opt/ai-startup 2>/dev/null || true
           fi
-          git config --global --add safe.directory /opt/ai-startup
-
-          git fetch origin
-          git reset --hard origin/main
+          # Keep the exception process-local. The deploy account's home may be
+          # managed/read-only, so writing ~/.gitconfig can abort the release.
+          git -c safe.directory=/opt/ai-startup fetch origin
+          git -c safe.directory=/opt/ai-startup reset --hard origin/main
           chmod +x deploy.sh
           ./deploy.sh
           REMOTE_SCRIPT
