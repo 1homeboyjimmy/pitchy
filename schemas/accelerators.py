@@ -251,10 +251,6 @@ class PublicApplicationCreate(BaseModel):
             raise ValueError("Для подачи заявки необходимо согласие")
         return value
 
-
-class CohortExpertAssign(BaseModel):
-    user_id: int = Field(gt=0)
-
     @field_validator("telegram")
     @classmethod
     def validate_telegram(cls, value: str) -> str:
@@ -271,6 +267,10 @@ class CohortExpertAssign(BaseModel):
         if not cleaned or any(len(item) > 80 for item in cleaned):
             raise ValueError("Укажите от 1 до 20 компетенций до 80 символов")
         return cleaned
+
+
+class CohortExpertAssign(BaseModel):
+    user_id: int = Field(gt=0)
 
 
 class ApplicationReview(BaseModel):
