@@ -708,7 +708,7 @@ async def test_tracker_report_scope_and_resident_lifecycle():
             accepted = await accept_application(
                 application["id"], ApplicationReview(), BackgroundTasks(), organizer, db
             )
-            await enroll_application(application["id"], person, db)
+            await enroll_application(application["id"], resident, db)
             membership_ids.append(accepted["membership_id"])
 
         assigned = await assign_tracker(
