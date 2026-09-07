@@ -30,6 +30,7 @@ type User = {
     email: string;
     is_admin: boolean;
     is_active: boolean;
+    email_verified: boolean;
     subscription_tier: string;
     created_at: string;
     privacy_consent_at?: string | null;
@@ -784,6 +785,7 @@ export function AdminView() {
                                         <tr>
                                             <th className="px-6 py-4 font-bold">ПОЛЬЗОВАТЕЛЬ</th>
                                             <th className="px-6 py-4 font-bold">СТАТУС & РОЛЬ</th>
+                                            <th className="px-6 py-4 font-bold text-center">ПОЧТА</th>
                                             <th className="px-6 py-4 font-bold">ДАТА РЕГИСТРАЦИИ</th>
                                             <th className="px-6 py-4 font-bold text-center">ТАРИФ</th>
                                             <th className="px-6 py-4 font-bold text-center">СОГЛАСИЯ</th>
@@ -810,6 +812,14 @@ export function AdminView() {
                                                             <span className="text-[10px] font-mono-label uppercase tracking-widest bg-red-500/10 text-red-400 px-2 py-0.5 border border-red-500/20 mt-1">Заблокирован</span>
                                                         )}
                                                     </div>
+                                                </td>
+                                                <td className="px-6 py-4 text-center">
+                                                    <span className={`inline-flex items-center px-2 py-0.5 border text-[10px] font-mono-label uppercase tracking-widest ${u.email_verified
+                                                        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                                        : 'bg-amber-500/10 text-amber-300 border-amber-500/20'
+                                                        }`} title={u.email_verified ? 'Email подтверждён' : 'Email не подтверждён'}>
+                                                        {u.email_verified ? 'Подтверждена' : 'Не подтверждена'}
+                                                    </span>
                                                 </td>
                                                 <td className="px-6 py-4 text-white/70 text-[13px]">
                                                     {u.created_at ? adminDate(u.created_at)!.toLocaleDateString("ru-RU", { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : "—"}
