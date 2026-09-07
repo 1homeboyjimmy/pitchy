@@ -8,7 +8,7 @@ export type ApplicationFormField = {
   label: string;
   description?: string;
   placeholder?: string;
-  type?: "text" | "email" | "number" | "textarea" | "select";
+  type?: "text" | "email" | "number" | "textarea" | "select" | "multiselect" | "scale" | "date" | "url" | "telegram" | "file";
   required?: boolean;
   application_types?: Array<"project" | "participant">;
   options?: Array<string | { value: string; label: string }>;
@@ -29,6 +29,12 @@ const FIELD_TYPES: Array<{ value: NonNullable<ApplicationFormField["type"]>; lab
   { value: "number", label: "Число" },
   { value: "email", label: "Email" },
   { value: "select", label: "Выбор из списка" },
+  { value: "multiselect", label: "Несколько вариантов" },
+  { value: "scale", label: "Шкала 1–10" },
+  { value: "date", label: "Дата" },
+  { value: "url", label: "Ссылка" },
+  { value: "telegram", label: "Telegram" },
+  { value: "file", label: "Файлы" },
 ];
 
 function normalize(schema: ApplicationFormSchema): { title: string; description: string; fields: EditableField[] } {
@@ -103,7 +109,7 @@ export function ApplicationFormEditor({
       setError("У каждого вопроса должно быть название.");
       return;
     }
-    if (fields.some((field) => field.type === "select" && field.options.filter(Boolean).length < 2)) {
+    if (fields.some((field) => ["select", "multiselect"].includes(field.type || "") && field.options.filter(Boolean).length < 2)) {
       setError("Для поля с выбором укажите минимум два варианта.");
       return;
     }
@@ -120,7 +126,7 @@ export function ApplicationFormEditor({
       application_types: field.application_types,
       ...(field.description?.trim() ? { description: field.description.trim() } : {}),
       ...(field.placeholder?.trim() ? { placeholder: field.placeholder.trim() } : {}),
-      ...(field.type === "select" ? { options: field.options.map((option) => option.trim()).filter(Boolean) } : {}),
+      ...(["select", "multiselect"].includes(field.type || "") ? { options: field.options.map((option) => option.trim()).filter(Boolean) } : {}),
     }));
     const wasSaved = await onSave({
       title: title.trim(),
@@ -163,7 +169,7 @@ export function ApplicationFormEditor({
               <label className="text-sm text-white/60">Подсказка<input value={field.placeholder || ""} onChange={(event) => patchField(index, { placeholder: event.target.value })} maxLength={500} placeholder="Текст внутри поля" className="workspace-input mt-2" /></label>
               <label className="text-sm text-white/60">Системный ключ<input value={field.key} onChange={(event) => patchField(index, { key: event.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_") })} maxLength={64} className="workspace-input mt-2 font-mono" /></label>
               <label className="text-sm text-white/60 sm:col-span-2">Пояснение<input value={field.description || ""} onChange={(event) => patchField(index, { description: event.target.value })} maxLength={1000} placeholder="Необязательный комментарий под полем" className="workspace-input mt-2" /></label>
-              {field.type === "select" && <label className="text-sm text-white/60 sm:col-span-2">Варианты ответа<textarea value={field.options.join("\n")} onChange={(event) => patchField(index, { options: event.target.value.split("\n") })} rows={4} placeholder={"Один вариант на строку\nВторой вариант"} className="workspace-input mt-2 resize-y" /></label>}
+              {["select", "multiselect"].includes(field.type || "") && <label className="text-sm text-white/60 sm:col-span-2">Варианты ответа<textarea value={field.options.join("\n")} onChange={(event) => patchField(index, { options: event.target.value.split("\n") })} rows={4} placeholder={"Один вариант на строку\nВторой вариант"} className="workspace-input mt-2 resize-y" /></label>}
             </div>
             <div className="mt-4 flex flex-wrap gap-x-6 gap-y-3 text-sm text-white/60">
               <label className="flex items-center gap-3"><input type="checkbox" checked={Boolean(field.required)} onChange={(event) => patchField(index, { required: event.target.checked })} /> Обязательный вопрос</label>

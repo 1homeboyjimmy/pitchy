@@ -80,6 +80,7 @@ services:
     volumes:
       - lockbox_secrets:/run/secrets
       - admin_docs:/app/admin_docs
+      - accelerator_uploads:/app/accelerator_uploads
     env_file:
       - ${APP_ENV_FILE:-.env}
     command: uvicorn main:app --host 0.0.0.0 --port 8000
@@ -244,6 +245,7 @@ volumes:
   caddy_config:
   lockbox_secrets:
   admin_docs:
+  accelerator_uploads:
   loki_data:
   grafana_data:
   crowdsec_db:

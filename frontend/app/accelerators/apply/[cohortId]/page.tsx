@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, CheckCircle2, Loader2, Send } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Loader2, Paperclip, Send, X } from "lucide-react";
 
 import { describeApiError, getJson, postJson } from "@/lib/api";
 
@@ -12,7 +12,7 @@ type FormField = {
   label?: string;
   description?: string;
   placeholder?: string;
-  type?: "text" | "email" | "number" | "textarea" | "select";
+  type?: "text" | "email" | "number" | "textarea" | "select" | "multiselect" | "scale" | "date" | "url" | "telegram" | "file";
   required?: boolean;
   application_types?: Array<"project" | "participant">;
   options?: Array<string | { value: string; label: string }>;
@@ -34,8 +34,11 @@ export default function AcceleratorApplicationPage() {
   const [submitted, setSubmitted] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [telegram, setTelegram] = useState("");
+  const [competencies, setCompetencies] = useState("");
   const [applicationType, setApplicationType] = useState<"project" | "participant">("project");
-  const [values, setValues] = useState<Record<string, string>>({});
+  const [values, setValues] = useState<Record<string, string | string[]>>({});
+  const [uploadingField, setUploadingField] = useState("");
   const [privacy, setPrivacy] = useState(false);
   const [rules, setRules] = useState(false);
 
@@ -68,6 +71,8 @@ export default function AcceleratorApplicationPage() {
       await postJson(`/api/accelerators/public/cohorts/${cohortId}/applications`, {
         applicant_name: name,
         applicant_email: email,
+        telegram,
+        competencies: competencies.split(",").map((item) => item.trim()).filter(Boolean),
         application_type: applicationType,
         form_payload: values,
         accept_privacy: privacy,
@@ -80,6 +85,25 @@ export default function AcceleratorApplicationPage() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const uploadFiles = async (fieldKey: string, files: FileList | null) => {
+    if (!files?.length) return;
+    const existing = Array.isArray(values[fieldKey]) ? values[fieldKey] as string[] : [];
+    if (existing.length + files.length > 5) { setError("К одному вопросу можно прикрепить не более пяти файлов."); return; }
+    setUploadingField(fieldKey); setError("");
+    try {
+      const uploaded: string[] = [];
+      for (const file of Array.from(files)) {
+        const body = new FormData(); body.append("file", file);
+        const response = await fetch(`/api/accelerators/public/cohorts/${cohortId}/application-files`, { method: "POST", body });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.detail || "Не удалось загрузить файл");
+        uploaded.push(data.url);
+      }
+      setValues((current) => ({ ...current, [fieldKey]: [...existing, ...uploaded] }));
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Не удалось загрузить файл"); }
+    finally { setUploadingField(""); }
   };
 
   if (loading) {
@@ -119,6 +143,10 @@ export default function AcceleratorApplicationPage() {
             <Field label="Имя и фамилия" required><input value={name} onChange={(e) => setName(e.target.value)} required minLength={2} className="form-input" autoComplete="name" /></Field>
             <Field label="Email" required><input value={email} onChange={(e) => setEmail(e.target.value)} required type="email" className="form-input" autoComplete="email" /></Field>
           </div>
+          <div className="grid gap-5 sm:grid-cols-2">
+            <Field label="Telegram" description="Например, @username" required><input value={telegram} onChange={(e) => setTelegram(e.target.value)} required pattern="(?:https?://t\.me/|@)?[A-Za-z0-9_]{5,32}" className="form-input" autoComplete="off" /></Field>
+            <Field label="Компетенции" description="Перечислите через запятую: маркетинг, продажи, разработка" required><input value={competencies} onChange={(e) => setCompetencies(e.target.value)} required minLength={2} className="form-input" /></Field>
+          </div>
           <Field label="Тип заявки" required>
             <select value={applicationType} onChange={(e) => setApplicationType(e.target.value as "project" | "participant")} className="form-input">
               <option value="project">Проект / стартап</option><option value="participant">Участник без проекта</option>
@@ -128,14 +156,20 @@ export default function AcceleratorApplicationPage() {
           {fields.map((field) => (
             <Field key={field.key} label={field.label || field.key} description={field.description} required={required.has(field.key)}>
               {field.type === "textarea" ? (
-                <textarea rows={5} value={values[field.key] || ""} onChange={(e) => setValues((current) => ({ ...current, [field.key]: e.target.value }))} required={required.has(field.key)} placeholder={field.placeholder} className="form-input resize-y" />
+                <textarea rows={5} value={String(values[field.key] || "")} onChange={(e) => setValues((current) => ({ ...current, [field.key]: e.target.value }))} required={required.has(field.key)} placeholder={field.placeholder} className="form-input resize-y" />
               ) : field.type === "select" ? (
-                <select value={values[field.key] || ""} onChange={(e) => setValues((current) => ({ ...current, [field.key]: e.target.value }))} required={required.has(field.key)} className="form-input">
+                <select value={String(values[field.key] || "")} onChange={(e) => setValues((current) => ({ ...current, [field.key]: e.target.value }))} required={required.has(field.key)} className="form-input">
                   <option value="">Выберите вариант</option>
                   {(field.options || []).map((option) => { const item = typeof option === "string" ? { value: option, label: option } : option; return <option key={item.value} value={item.value}>{item.label}</option>; })}
                 </select>
+              ) : field.type === "multiselect" ? (
+                <select multiple value={Array.isArray(values[field.key]) ? values[field.key] as string[] : []} onChange={(e) => setValues((current) => ({ ...current, [field.key]: Array.from(e.target.selectedOptions, (option) => option.value) }))} required={required.has(field.key)} className="form-input min-h-32">
+                  {(field.options || []).map((option) => { const item = typeof option === "string" ? { value: option, label: option } : option; return <option key={item.value} value={item.value}>{item.label}</option>; })}
+                </select>
+              ) : field.type === "file" ? (
+                <div className="rounded-2xl border border-dashed border-white/15 p-4"><label className="inline-flex cursor-pointer items-center gap-2 text-sm text-white/70"><Paperclip size={16} />{uploadingField === field.key ? "Загружаем…" : "Прикрепить файлы"}<input type="file" multiple className="sr-only" disabled={uploadingField === field.key} accept=".jpg,.jpeg,.png,.webp,.pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.txt,.md,.mp3,.wav,.m4a,.mp4,.mov,.webm" onChange={(e) => void uploadFiles(field.key, e.target.files)} /></label>{Array.isArray(values[field.key]) && <div className="mt-3 space-y-2">{(values[field.key] as string[]).map((url, index) => <div key={url} className="flex items-center justify-between rounded-xl bg-white/[0.04] px-3 py-2 text-xs text-white/55"><span>Файл {index + 1}</span><button type="button" onClick={() => setValues((current) => ({ ...current, [field.key]: (current[field.key] as string[]).filter((item) => item !== url) }))} aria-label="Убрать файл"><X size={14} /></button></div>)}</div>}</div>
               ) : (
-                <input type={field.type === "number" ? "number" : field.type === "email" ? "email" : "text"} value={values[field.key] || ""} onChange={(e) => setValues((current) => ({ ...current, [field.key]: e.target.value }))} required={required.has(field.key)} placeholder={field.placeholder} className="form-input" />
+                <input type={field.type === "number" || field.type === "scale" ? "number" : field.type === "email" ? "email" : field.type === "date" ? "date" : field.type === "url" ? "url" : "text"} min={field.type === "scale" ? 1 : undefined} max={field.type === "scale" ? 10 : undefined} value={String(values[field.key] || "")} onChange={(e) => setValues((current) => ({ ...current, [field.key]: e.target.value }))} required={required.has(field.key)} placeholder={field.placeholder} className="form-input" />
               )}
             </Field>
           ))}

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowUpRight, Banknote, CalendarDays, Check, Clock3, ExternalLink, FileText, GitBranch, Loader2, LockKeyhole, MapPin, MessageSquare, Rocket, Send, Users } from "lucide-react";
+import { ArrowUpRight, Banknote, CalendarDays, Check, Clock3, ExternalLink, FileText, GitBranch, Loader2, LockKeyhole, MapPin, MessageSquare, Paperclip, Rocket, Send, Users, X } from "lucide-react";
 
 import { describeApiError, getAuthJson, postAuthJson } from "@/lib/api";
 import { useAuth } from "@/lib/hooks/useAuth";
@@ -203,22 +203,31 @@ type HomeworkSubmission = {
   submitted_at: string;
   review_comment?: string | null;
   is_late: boolean;
+  score?: number | null;
+  passed?: boolean | null;
 };
 type HomeworkAssignment = {
   id: number;
+  cohort_id: number;
   title: string;
   description: string;
   due_at?: string | null;
   allow_resubmit: boolean;
   is_overdue: boolean;
   submission?: HomeworkSubmission | null;
+  assignment_type: "text_files" | "quiz";
+  submission_mode: "individual" | "team";
+  quiz_questions: Array<{ id: string; prompt: string; options: Array<{ id: string; label: string }> }>;
+  passing_score?: number | null;
+  max_attempts: number;
 };
 
 function ResidentHomework({ membershipId }: { membershipId: number }) {
   const { token } = useAuth();
   const [assignments, setAssignments] = useState<HomeworkAssignment[]>([]);
   const [answers, setAnswers] = useState<Record<number, string>>({});
-  const [links, setLinks] = useState<Record<number, string>>({});
+  const [files, setFiles] = useState<Record<number, string[]>>({});
+  const [quizAnswers, setQuizAnswers] = useState<Record<number, Record<string, string>>>({});
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<number | null>(null);
   const [error, setError] = useState("");
@@ -230,7 +239,7 @@ function ResidentHomework({ membershipId }: { membershipId: number }) {
       const rows = await getAuthJson<HomeworkAssignment[]>(`/api/accelerators/memberships/${membershipId}/homework`, token);
       setAssignments(rows);
       setAnswers(Object.fromEntries(rows.map((row) => [row.id, row.submission?.answer_text || ""])));
-      setLinks(Object.fromEntries(rows.map((row) => [row.id, (row.submission?.attachments || []).join("\n")])));
+      setFiles(Object.fromEntries(rows.map((row) => [row.id, row.submission?.attachments || []])));
     } catch (reason) { setError(describeApiError(reason, "Не удалось загрузить домашние задания")); }
     finally { setLoading(false); }
   }, [membershipId, token]);
@@ -243,18 +252,36 @@ function ResidentHomework({ membershipId }: { membershipId: number }) {
     try {
       await postAuthJson(`/api/accelerators/homework/${assignmentId}/submission`, {
         answer_text: answers[assignmentId] || null,
-        attachments: (links[assignmentId] || "").split("\n").map((item) => item.trim()).filter(Boolean),
+        attachments: files[assignmentId] || [],
+        quiz_answers: quizAnswers[assignmentId] || {},
       }, token);
       await load();
     } catch (reason) { setError(describeApiError(reason, "Не удалось отправить ответ")); }
     finally { setBusy(null); }
   };
 
+  const upload = async (assignment: HomeworkAssignment, selected: FileList | null) => {
+    if (!token || !selected?.length) return;
+    setBusy(assignment.id); setError("");
+    try {
+      const uploaded: string[] = [];
+      for (const file of Array.from(selected)) {
+        const body = new FormData(); body.append("file", file);
+        const response = await fetch(`/api/accelerators/cohorts/${assignment.cohort_id}/homework-files`, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.detail || "Не удалось загрузить файл");
+        uploaded.push(data.url);
+      }
+      setFiles((current) => ({ ...current, [assignment.id]: [...(current[assignment.id] || []), ...uploaded].slice(0, 10) }));
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Не удалось загрузить файл"); }
+    finally { setBusy(null); }
+  };
+
   return (
     <section className="workspace-card"><div className="mb-5"><h2 className="text-xl">Домашние задания</h2><p className="mt-1 text-sm text-white/40">Ответ можно дополнять после комментария организатора.</p></div>{error && <p role="alert" className="mb-4 rounded-2xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200">{error}</p>}{loading ? <Loader2 className="mx-auto animate-spin text-white/40" /> : !assignments.length ? <p className="py-5 text-center text-sm text-white/35">Опубликованных заданий пока нет.</p> : <div className="space-y-4">{assignments.map((assignment) => {
       const submission = assignment.submission;
-      const canSubmit = !submission || submission.status === "needs_revision" || (assignment.allow_resubmit && submission.status !== "accepted");
-      return <article key={assignment.id} className="rounded-2xl border border-white/9 bg-white/[0.02] p-4 sm:p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="text-lg">{assignment.title}</h3>{assignment.due_at && <p className={`mt-1 text-xs ${assignment.is_overdue ? "text-red-300" : "text-white/35"}`}><Clock3 size={12} className="mr-1 inline" />До {new Date(assignment.due_at).toLocaleString("ru-RU")}</p>}</div>{submission && <span className={`rounded-full px-2 py-1 text-xs ${submission.status === "accepted" ? "bg-emerald-400/10 text-emerald-300" : submission.status === "needs_revision" ? "bg-amber-400/10 text-amber-200" : "bg-white/7 text-white/50"}`}>{submission.status === "accepted" ? "Зачтено" : submission.status === "needs_revision" ? "На доработке" : "Отправлено"}</span>}</div><p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-white/55">{assignment.description}</p>{submission?.review_comment && <div className="mt-4 rounded-2xl border border-amber-300/15 bg-amber-300/[0.05] p-4"><p className="text-xs uppercase tracking-[.14em] text-amber-200/60">Комментарий организатора</p><p className="mt-2 text-sm text-white/60">{submission.review_comment}</p></div>}{submission && <p className="mt-3 text-xs text-white/30">Попытка {submission.attempt_count}{submission.is_late ? " · отправлено после дедлайна" : ""}</p>}{canSubmit && <div className="mt-5 space-y-3"><textarea value={answers[assignment.id] || ""} onChange={(event) => setAnswers({ ...answers, [assignment.id]: event.target.value })} rows={5} placeholder="Ваш ответ и основные выводы" className="workspace-input resize-y" /><textarea value={links[assignment.id] || ""} onChange={(event) => setLinks({ ...links, [assignment.id]: event.target.value })} rows={2} placeholder={"Ссылки на материалы — по одной на строку"} className="workspace-input resize-y" /><div className="flex justify-end"><button onClick={() => void submit(assignment.id)} disabled={busy === assignment.id} className="workspace-button">{busy === assignment.id ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />} {submission ? "Отправить повторно" : "Отправить ответ"}</button></div></div>}</article>;
+      const canSubmit = !submission || submission.status === "needs_revision" || (assignment.allow_resubmit && submission.status !== "accepted" && (assignment.assignment_type !== "quiz" || submission.attempt_count < assignment.max_attempts));
+      return <article key={assignment.id} className="rounded-2xl border border-white/9 bg-white/[0.02] p-4 sm:p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><div className="mb-2 flex gap-2"><span className="rounded-full bg-white/7 px-2 py-1 text-xs text-white/45">{assignment.assignment_type === "quiz" ? "Тест" : "Текст или файлы"}</span>{assignment.submission_mode === "team" && <span className="rounded-full bg-blue-400/10 px-2 py-1 text-xs text-blue-200">Командное</span>}</div><h3 className="text-lg">{assignment.title}</h3>{assignment.due_at && <p className={`mt-1 text-xs ${assignment.is_overdue ? "text-red-300" : "text-white/35"}`}><Clock3 size={12} className="mr-1 inline" />До {new Date(assignment.due_at).toLocaleString("ru-RU")}</p>}</div>{submission && <span className={`rounded-full px-2 py-1 text-xs ${submission.status === "accepted" ? "bg-emerald-400/10 text-emerald-300" : submission.status === "needs_revision" ? "bg-amber-400/10 text-amber-200" : "bg-white/7 text-white/50"}`}>{submission.status === "accepted" ? "Зачтено" : submission.status === "needs_revision" ? "На доработке" : assignment.assignment_type === "quiz" ? "Не пройдено" : "Отправлено"}</span>}</div><p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-white/55">{assignment.description}</p>{submission?.review_comment && <div className="mt-4 rounded-2xl border border-amber-300/15 bg-amber-300/[0.05] p-4"><p className="text-xs uppercase tracking-[.14em] text-amber-200/60">Комментарий трекера</p><p className="mt-2 text-sm text-white/60">{submission.review_comment}</p></div>}{submission && <p className="mt-3 text-xs text-white/30">Попытка {submission.attempt_count}{submission.score != null ? ` · результат ${submission.score}%` : ""}{submission.is_late ? " · отправлено после дедлайна" : ""}</p>}{canSubmit && <div className="mt-5 space-y-3">{assignment.assignment_type === "quiz" ? <div className="space-y-4">{assignment.quiz_questions.map((question, index) => <fieldset key={question.id} className="rounded-2xl border border-white/8 p-4"><legend className="px-2 text-sm text-white/70">{index + 1}. {question.prompt}</legend><div className="mt-2 space-y-2">{question.options.map((option) => <label key={option.id} className="flex items-center gap-3 rounded-xl bg-white/[0.025] p-3 text-sm text-white/60"><input type="radio" name={`answer-${assignment.id}-${question.id}`} checked={quizAnswers[assignment.id]?.[question.id] === option.id} onChange={() => setQuizAnswers((current) => ({ ...current, [assignment.id]: { ...(current[assignment.id] || {}), [question.id]: option.id } }))} />{option.label}</label>)}</div></fieldset>)}</div> : <><textarea value={answers[assignment.id] || ""} onChange={(event) => setAnswers({ ...answers, [assignment.id]: event.target.value })} rows={5} placeholder="Ваш ответ и основные выводы" className="workspace-input resize-y" /><div className="rounded-2xl border border-dashed border-white/15 p-4"><label className="inline-flex cursor-pointer items-center gap-2 text-sm text-white/65"><Paperclip size={15} />Прикрепить файлы<input type="file" multiple className="sr-only" onChange={(event) => void upload(assignment, event.target.files)} /></label>{(files[assignment.id] || []).map((url, index) => <div key={url} className="mt-2 flex items-center justify-between rounded-xl bg-white/[0.04] px-3 py-2 text-xs text-white/50"><a href={url} target="_blank">Файл {index + 1}</a><button type="button" onClick={() => setFiles((current) => ({ ...current, [assignment.id]: current[assignment.id].filter((item) => item !== url) }))}><X size={13} /></button></div>)}</div></>}<div className="flex justify-end"><button onClick={() => void submit(assignment.id)} disabled={busy === assignment.id} className="workspace-button">{busy === assignment.id ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />} {submission ? "Отправить повторно" : "Отправить ответ"}</button></div></div>}</article>;
     })}</div>}</section>
   );
 }

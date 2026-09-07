@@ -9,9 +9,10 @@ import logging
 import os
 import re
 import secrets
+from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
-from fastapi.responses import Response
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse, Response
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -56,8 +57,11 @@ from models import (
     AcceleratorDemoDayProject,
     AcceleratorDemoDayScore,
     AcceleratorEvent,
+    AcceleratorEventHomeworkLink,
+    AcceleratorFile,
     AcceleratorInvitation,
     AcceleratorHomeworkAssignment,
+    AcceleratorHomeworkAttempt,
     AcceleratorHomeworkSubmission,
     AcceleratorHomeworkTarget,
     AcceleratorMembership,
@@ -81,6 +85,8 @@ from models import (
     AcceleratorTrackingFeedback,
     AcceleratorTrackingTask,
     AcceleratorTrackerAssignment,
+    AcceleratorTeam,
+    AcceleratorTeamMember,
     Project,
     User,
 )
@@ -95,6 +101,7 @@ from schemas.accelerators import (
     CohortCreate,
     CohortUpdate,
     CohortQuotaAssign,
+    CohortExpertAssign,
     InvitationAccept,
     HomeworkAssignmentCreate,
     HomeworkReview,
@@ -412,9 +419,13 @@ def homework_submission_dict(row: AcceleratorHomeworkSubmission, *, resident: Us
         "id": row.id,
         "assignment_id": row.assignment_id,
         "membership_id": row.membership_id,
+        "team_id": row.team_id,
         "resident": ({"id": resident.id, "name": resident.name, "email": resident.email} if resident else None),
         "answer_text": row.answer_text,
         "attachments": row.attachments or [],
+        "quiz_answers": row.quiz_answers or {},
+        "score": row.score,
+        "passed": row.passed,
         "status": row.status,
         "attempt_count": row.attempt_count,
         "submitted_at": row.submitted_at,
@@ -462,10 +473,146 @@ def validate_application_form(schema: dict, payload: dict, application_type: str
             continue
         if field.get("required"):
             required.add(field["key"])
+        value = payload.get(field["key"])
+        if field.get("type") == "file" and value not in (None, "", []):
+            if not isinstance(value, list) or len(value) > 5 or any(
+                not isinstance(item, str) or not item.startswith("/api/accelerators/files/")
+                for item in value
+            ):
+                raise HTTPException(status_code=422, detail=f"Поле {field['key']}: прикрепите не более пяти загруженных файлов")
     required -= hidden_keys
     missing = [key for key in sorted(required) if payload.get(key) in (None, "", [])]
     if missing:
         raise HTTPException(status_code=422, detail=f"Не заполнены обязательные поля: {', '.join(missing)}")
+
+
+ACCELERATOR_UPLOAD_DIR = Path(os.getenv("ACCELERATOR_UPLOAD_DIR", "accelerator_uploads"))
+ACCELERATOR_FILE_RULES = {
+    ".jpg": ("image/jpeg", 10), ".jpeg": ("image/jpeg", 10),
+    ".png": ("image/png", 10), ".webp": ("image/webp", 10),
+    ".pdf": ("application/pdf", 25),
+    ".doc": ("application/msword", 25),
+    ".docx": ("application/vnd.openxmlformats-officedocument.wordprocessingml.document", 25),
+    ".xls": ("application/vnd.ms-excel", 25),
+    ".xlsx": ("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 25),
+    ".csv": ("text/csv", 25),
+    ".ppt": ("application/vnd.ms-powerpoint", 50),
+    ".pptx": ("application/vnd.openxmlformats-officedocument.presentationml.presentation", 50),
+    ".txt": ("text/plain", 10), ".md": ("text/markdown", 10),
+    ".mp3": ("audio/mpeg", 100), ".wav": ("audio/wav", 100),
+    ".m4a": ("audio/mp4", 100),
+    ".mp4": ("video/mp4", 500), ".mov": ("video/quicktime", 500),
+    ".webm": ("video/webm", 500),
+}
+
+
+async def save_accelerator_file(
+    db: AsyncSession,
+    *,
+    cohort: AcceleratorCohort,
+    upload: UploadFile,
+    purpose: str,
+    uploader_user_id: int | None,
+) -> AcceleratorFile:
+    original_name = Path(upload.filename or "").name.strip()
+    extension = Path(original_name).suffix.lower()
+    rule = ACCELERATOR_FILE_RULES.get(extension)
+    if not original_name or not rule:
+        raise HTTPException(status_code=415, detail="Этот формат файла не поддерживается")
+    expected_mime, max_mb = rule
+    supplied_mime = (upload.content_type or "").lower().split(";", 1)[0]
+    compatible_mimes = {expected_mime, "application/octet-stream"}
+    if extension == ".csv":
+        compatible_mimes.add("application/vnd.ms-excel")
+    if extension == ".md":
+        compatible_mimes.add("text/plain")
+    if supplied_mime and supplied_mime not in compatible_mimes:
+        raise HTTPException(status_code=415, detail="Тип файла не соответствует его расширению")
+    token = secrets.token_urlsafe(32)
+    stored_name = f"{token}{extension}"
+    ACCELERATOR_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    path = ACCELERATOR_UPLOAD_DIR / stored_name
+    max_bytes = max_mb * 1024 * 1024
+    size = 0
+    try:
+        with path.open("wb") as target:
+            while chunk := await upload.read(1024 * 1024):
+                size += len(chunk)
+                if size > max_bytes:
+                    raise HTTPException(status_code=413, detail=f"Максимальный размер этого формата — {max_mb} МБ")
+                target.write(chunk)
+        if not size:
+            raise HTTPException(status_code=400, detail="Файл пуст")
+    except Exception:
+        path.unlink(missing_ok=True)
+        raise
+    row = AcceleratorFile(
+        token=token,
+        cohort_id=cohort.id,
+        uploader_user_id=uploader_user_id,
+        purpose=purpose,
+        original_name=original_name[:500],
+        stored_name=stored_name,
+        mime_type=expected_mime,
+        size_bytes=size,
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return row
+
+
+def accelerator_file_dict(row: AcceleratorFile) -> dict:
+    return {
+        "name": row.original_name,
+        "mime_type": row.mime_type,
+        "size_bytes": row.size_bytes,
+        "url": f"/api/accelerators/files/{row.token}",
+    }
+
+
+def accelerator_file_tokens(value) -> set[str]:
+    tokens: set[str] = set()
+    if isinstance(value, dict):
+        for item in value.values():
+            tokens.update(accelerator_file_tokens(item))
+    elif isinstance(value, list):
+        for item in value:
+            tokens.update(accelerator_file_tokens(item))
+    elif isinstance(value, str) and value.startswith("/api/accelerators/files/"):
+        tokens.add(value.rsplit("/", 1)[-1])
+    return tokens
+
+
+async def claim_accelerator_files(
+    db: AsyncSession,
+    *,
+    cohort_id: int,
+    tokens: set[str],
+    purpose: str,
+    application_id: int | None = None,
+    submission_id: int | None = None,
+    uploader_user_id: int | None = None,
+) -> None:
+    if not tokens:
+        return
+    rows = list((await db.execute(select(AcceleratorFile).where(
+        AcceleratorFile.token.in_(tokens)
+    ).with_for_update())).scalars().all())
+    if len(rows) != len(tokens) or any(
+        row.cohort_id != cohort_id
+        or row.purpose != purpose
+        or (row.application_id is not None and row.application_id != application_id)
+        or (row.submission_id is not None and row.submission_id != submission_id)
+        or (uploader_user_id is not None and row.uploader_user_id != uploader_user_id)
+        for row in rows
+    ):
+        raise HTTPException(status_code=422, detail="Один из файлов недоступен или уже использован")
+    if sum(row.size_bytes for row in rows) > 1024 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Общий размер файлов превышает 1 ГБ")
+    for row in rows:
+        row.application_id = application_id
+        row.submission_id = submission_id
 
 
 def setup_slug(name: str) -> str:
@@ -2054,6 +2201,11 @@ async def list_homework_assignments(
             "stage_id": assignment.stage_id,
             "title": assignment.title,
             "description": assignment.description,
+            "assignment_type": assignment.assignment_type,
+            "submission_mode": assignment.submission_mode,
+            "quiz_questions": assignment.quiz_config or [],
+            "passing_score": assignment.passing_score,
+            "max_attempts": assignment.max_attempts,
             "due_at": assignment.due_at,
             "status": assignment.status,
             "audience": assignment.audience,
@@ -2090,6 +2242,11 @@ async def create_homework_assignment(
         due_at=payload.due_at,
         audience=payload.audience,
         allow_resubmit=payload.allow_resubmit,
+        assignment_type=payload.assignment_type,
+        submission_mode=payload.submission_mode,
+        quiz_config=payload.quiz_questions or None,
+        passing_score=payload.passing_score,
+        max_attempts=payload.max_attempts,
         created_by_user_id=user.id,
         updated_by_user_id=user.id,
     )
@@ -2142,6 +2299,11 @@ async def update_homework_assignment(
     assignment.due_at = payload.due_at
     assignment.audience = payload.audience
     assignment.allow_resubmit = payload.allow_resubmit
+    assignment.assignment_type = payload.assignment_type
+    assignment.submission_mode = payload.submission_mode
+    assignment.quiz_config = payload.quiz_questions or None
+    assignment.passing_score = payload.passing_score
+    assignment.max_attempts = payload.max_attempts
     assignment.updated_by_user_id = user.id
     await db.execute(delete(AcceleratorHomeworkTarget).where(
         AcceleratorHomeworkTarget.assignment_id == assignment.id
@@ -2289,6 +2451,9 @@ async def duplicate_homework_assignment(
         title=f"{source.title} — копия", description=source.description,
         due_at=source.due_at if source.due_at and source.due_at > datetime.utcnow() else None,
         audience=source.audience, allow_resubmit=source.allow_resubmit,
+        assignment_type=source.assignment_type, submission_mode=source.submission_mode,
+        quiz_config=source.quiz_config, passing_score=source.passing_score,
+        max_attempts=source.max_attempts,
         created_by_user_id=user.id, updated_by_user_id=user.id,
     )
     db.add(duplicate)
@@ -2357,8 +2522,15 @@ async def list_resident_homework(
         AcceleratorHomeworkAssignment.due_at,
         AcceleratorHomeworkAssignment.published_at.desc(),
     ))).scalars().all()
+    active_team_id = (await db.execute(select(AcceleratorTeamMember.team_id).where(
+        AcceleratorTeamMember.membership_id == membership.id,
+        AcceleratorTeamMember.status == "active",
+    ))).scalar_one_or_none()
+    submission_scope = [AcceleratorHomeworkSubmission.membership_id == membership.id]
+    if active_team_id is not None:
+        submission_scope.append(AcceleratorHomeworkSubmission.team_id == active_team_id)
     submissions = (await db.execute(select(AcceleratorHomeworkSubmission).where(
-        AcceleratorHomeworkSubmission.membership_id == membership.id,
+        or_(*submission_scope),
         AcceleratorHomeworkSubmission.assignment_id.in_([row.id for row in assignments]),
     ))).scalars().all() if assignments else []
     by_assignment = {submission.assignment_id: submission for submission in submissions}
@@ -2370,9 +2542,25 @@ async def list_resident_homework(
             submission_data["is_late"] = bool(assignment.due_at and submission.submitted_at > assignment.due_at)
         result.append({
             "id": assignment.id,
+            "cohort_id": assignment.cohort_id,
             "stage_id": assignment.stage_id,
             "title": assignment.title,
             "description": assignment.description,
+            "assignment_type": assignment.assignment_type,
+            "submission_mode": assignment.submission_mode,
+            "quiz_questions": [
+                {
+                    "id": question.get("id"),
+                    "prompt": question.get("prompt"),
+                    "options": [
+                        {"id": option.get("id"), "label": option.get("label")}
+                        for option in question.get("options", [])
+                    ],
+                }
+                for question in (assignment.quiz_config or [])
+            ],
+            "passing_score": assignment.passing_score,
+            "max_attempts": assignment.max_attempts,
             "due_at": assignment.due_at,
             "allow_resubmit": assignment.allow_resubmit,
             "published_at": assignment.published_at,
@@ -2408,17 +2596,56 @@ async def submit_homework(
         ))).scalar_one_or_none()
         if targeted is None:
             raise HTTPException(status_code=404, detail="Домашнее задание недоступно")
+    team_id = None
+    if assignment.submission_mode == "team":
+        team_id = (await db.execute(select(AcceleratorTeamMember.team_id).where(
+            AcceleratorTeamMember.membership_id == membership.id,
+            AcceleratorTeamMember.status == "active",
+        ))).scalar_one_or_none()
+        if team_id is None:
+            raise HTTPException(status_code=409, detail="Для командного задания сначала вступите в команду")
+    if assignment.assignment_type == "quiz":
+        if payload.answer_text or payload.attachments:
+            raise HTTPException(status_code=422, detail="Для теста отправьте ответы на вопросы")
+        questions = assignment.quiz_config or []
+        expected_ids = {str(question.get("id")) for question in questions}
+        if set(payload.quiz_answers) != expected_ids:
+            raise HTTPException(status_code=422, detail="Ответьте на все вопросы теста")
+        correct = sum(
+            1 for question in questions
+            if payload.quiz_answers.get(str(question.get("id"))) == next(
+                (str(option.get("id")) for option in question.get("options", []) if option.get("correct") is True),
+                None,
+            )
+        )
+        score = round(correct * 100 / len(questions))
+        passed = score >= int(assignment.passing_score or 0)
+    else:
+        if payload.quiz_answers:
+            raise HTTPException(status_code=422, detail="Для этого задания отправьте текст или файлы")
+        score = None
+        passed = None
+    submission_filter = [AcceleratorHomeworkSubmission.assignment_id == assignment.id]
+    submission_filter.append(
+        AcceleratorHomeworkSubmission.team_id == team_id
+        if team_id is not None
+        else AcceleratorHomeworkSubmission.membership_id == membership.id
+    )
     submission = (await db.execute(select(AcceleratorHomeworkSubmission).where(
-        AcceleratorHomeworkSubmission.assignment_id == assignment.id,
-        AcceleratorHomeworkSubmission.membership_id == membership.id,
+        *submission_filter
     ).with_for_update())).scalar_one_or_none()
     now = datetime.utcnow()
     if submission:
+        if assignment.assignment_type == "quiz" and submission.attempt_count >= assignment.max_attempts:
+            raise HTTPException(status_code=409, detail="Количество попыток теста исчерпано")
         if not assignment.allow_resubmit and submission.status in ("submitted", "accepted"):
             raise HTTPException(status_code=409, detail="Повторная отправка для этого задания отключена")
         submission.answer_text = (payload.answer_text or "").strip() or None
         submission.attachments = payload.attachments
-        submission.status = "submitted"
+        submission.quiz_answers = payload.quiz_answers or None
+        submission.score = score
+        submission.passed = passed
+        submission.status = "accepted" if passed is True else "submitted"
         submission.attempt_count += 1
         submission.submitted_at = now
         submission.reviewed_by_user_id = None
@@ -2428,13 +2655,34 @@ async def submit_homework(
         submission = AcceleratorHomeworkSubmission(
             assignment_id=assignment.id,
             membership_id=membership.id,
+            team_id=team_id,
             answer_text=(payload.answer_text or "").strip() or None,
             attachments=payload.attachments,
-            status="submitted",
+            quiz_answers=payload.quiz_answers or None,
+            score=score,
+            passed=passed,
+            status="accepted" if passed is True else "submitted",
             submitted_at=now,
         )
         db.add(submission)
     await db.flush()
+    await claim_accelerator_files(
+        db,
+        cohort_id=cohort.id,
+        tokens=accelerator_file_tokens(payload.attachments),
+        purpose="homework",
+        submission_id=submission.id,
+        uploader_user_id=user.id,
+    )
+    db.add(AcceleratorHomeworkAttempt(
+        submission_id=submission.id,
+        attempt_number=submission.attempt_count,
+        answer_text=submission.answer_text,
+        attachments=submission.attachments or [],
+        quiz_answers=submission.quiz_answers,
+        score=submission.score,
+        passed=submission.passed,
+    ))
     reviewer = await db.get(User, assignment.created_by_user_id)
     tracker_reviewers = (await db.execute(
         select(User)
@@ -2524,6 +2772,8 @@ async def review_homework_submission(
     if not submission:
         raise HTTPException(status_code=404, detail="Ответ не найден")
     assignment = await get_homework_assignment_or_404(db, submission.assignment_id)
+    if assignment.assignment_type == "quiz":
+        raise HTTPException(status_code=409, detail="Результат теста рассчитывается автоматически")
     cohort = await get_cohort_or_404(db, assignment.cohort_id)
     await require_homework_module(db, cohort)
     membership = await db.get(AcceleratorMembership, submission.membership_id)
@@ -2570,7 +2820,78 @@ async def review_homework_submission(
     return homework_submission_dict(submission, resident=resident)
 
 
-def event_dict(row: AcceleratorEvent, *, attendance_count: int = 0, attendance: AcceleratorAttendanceRecord | None = None) -> dict:
+@router.get("/homework/submissions/{submission_id}/attempts")
+async def list_homework_attempts(
+    submission_id: int,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    submission = await db.get(AcceleratorHomeworkSubmission, submission_id)
+    if not submission:
+        raise HTTPException(status_code=404, detail="Ответ не найден")
+    assignment = await get_homework_assignment_or_404(db, submission.assignment_id)
+    cohort = await get_cohort_or_404(db, assignment.cohort_id)
+    membership = await db.get(AcceleratorMembership, submission.membership_id)
+    if not membership:
+        raise HTTPException(status_code=404, detail="Участник не найден")
+    if membership.user_id != user.id:
+        await require_tracker_membership_access(db, user, membership)
+    await require_homework_module(db, cohort)
+    rows = (await db.execute(select(AcceleratorHomeworkAttempt).where(
+        AcceleratorHomeworkAttempt.submission_id == submission.id
+    ).order_by(AcceleratorHomeworkAttempt.attempt_number.desc()))).scalars().all()
+    return [{
+        "id": row.id,
+        "attempt_number": row.attempt_number,
+        "answer_text": row.answer_text,
+        "attachments": row.attachments or [],
+        "quiz_answers": row.quiz_answers or {},
+        "score": row.score,
+        "passed": row.passed,
+        "created_at": row.created_at,
+    } for row in rows]
+
+
+async def event_homework_links(db: AsyncSession, event_id: int) -> list[dict]:
+    rows = (await db.execute(
+        select(AcceleratorEventHomeworkLink, AcceleratorHomeworkAssignment)
+        .join(AcceleratorHomeworkAssignment, AcceleratorHomeworkAssignment.id == AcceleratorEventHomeworkLink.assignment_id)
+        .where(AcceleratorEventHomeworkLink.event_id == event_id)
+        .order_by(AcceleratorEventHomeworkLink.position, AcceleratorEventHomeworkLink.id)
+    )).all()
+    return [{
+        "assignment_id": link.assignment_id,
+        "relation": link.relation,
+        "title": assignment.title,
+        "status": assignment.status,
+    } for link, assignment in rows]
+
+
+async def replace_event_homework_links(
+    db: AsyncSession, event: AcceleratorEvent, links: list[dict]
+) -> None:
+    assignment_ids = [row["assignment_id"] for row in links]
+    if assignment_ids:
+        valid_ids = set((await db.execute(select(AcceleratorHomeworkAssignment.id).where(
+            AcceleratorHomeworkAssignment.id.in_(assignment_ids),
+            AcceleratorHomeworkAssignment.cohort_id == event.cohort_id,
+            AcceleratorHomeworkAssignment.status != "archived",
+        ))).scalars().all())
+        if valid_ids != set(assignment_ids):
+            raise HTTPException(status_code=422, detail="Одно из домашних заданий не относится к этому потоку")
+    await db.execute(delete(AcceleratorEventHomeworkLink).where(
+        AcceleratorEventHomeworkLink.event_id == event.id
+    ))
+    for position, row in enumerate(links):
+        db.add(AcceleratorEventHomeworkLink(
+            event_id=event.id,
+            assignment_id=row["assignment_id"],
+            relation=row["relation"],
+            position=position,
+        ))
+
+
+def event_dict(row: AcceleratorEvent, *, attendance_count: int = 0, attendance: AcceleratorAttendanceRecord | None = None, homework_links: list[dict] | None = None) -> dict:
     frontend_url = os.getenv("FRONTEND_URL", "https://pitchy.pro").rstrip("/")
     return {
         "id": row.id,
@@ -2578,11 +2899,17 @@ def event_dict(row: AcceleratorEvent, *, attendance_count: int = 0, attendance: 
         "stage_id": row.stage_id,
         "title": row.title,
         "description": row.description,
+        "event_type": row.event_type,
+        "host_name": row.host_name,
         "starts_at": row.starts_at,
         "ends_at": row.ends_at,
         "event_format": row.event_format,
         "location": row.location,
         "meeting_url": row.meeting_url,
+        "online_platform": row.online_platform,
+        "recording_url": row.recording_url,
+        "venue_details": row.venue_details,
+        "homework_links": homework_links or [],
         "status": row.status,
         "checkin_opens_minutes": row.checkin_opens_minutes,
         "checkin_closes_minutes": row.checkin_closes_minutes,
@@ -2624,7 +2951,11 @@ async def list_events(
     counts = dict((await db.execute(
         count_query.group_by(AcceleratorAttendanceRecord.event_id)
     )).all())
-    return [event_dict(row, attendance_count=counts.get(row.id, 0)) for row in rows]
+    return [event_dict(
+        row,
+        attendance_count=counts.get(row.id, 0),
+        homework_links=await event_homework_links(db, row.id),
+    ) for row in rows]
 
 
 @router.post("/cohorts/{cohort_id}/events")
@@ -2642,9 +2973,13 @@ async def create_event(
     event = AcceleratorEvent(
         cohort_id=cohort.id, stage_id=payload.stage_id, title=payload.title.strip(),
         description=(payload.description or "").strip() or None,
+        event_type=payload.event_type, host_name=(payload.host_name or "").strip() or None,
         starts_at=payload.starts_at, ends_at=payload.ends_at,
         event_format=payload.event_format, location=(payload.location or "").strip() or None,
         meeting_url=(payload.meeting_url or "").strip() or None,
+        online_platform=(payload.online_platform or "").strip() or None,
+        recording_url=(payload.recording_url or "").strip() or None,
+        venue_details=(payload.venue_details or "").strip() or None,
         checkin_code=secrets.token_urlsafe(24),
         checkin_opens_minutes=payload.checkin_opens_minutes,
         checkin_closes_minutes=payload.checkin_closes_minutes,
@@ -2652,10 +2987,11 @@ async def create_event(
     )
     db.add(event)
     await db.flush()
+    await replace_event_homework_links(db, event, payload.homework_links)
     add_audit(db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
               actor_user_id=user.id, action="event.created", target_type="event", target_id=event.id)
     await db.commit()
-    return event_dict(event)
+    return event_dict(event, homework_links=await event_homework_links(db, event.id))
 
 
 @router.put("/events/{event_id}")
@@ -2678,14 +3014,20 @@ async def update_event(
     event.stage_id = payload.stage_id
     event.title = payload.title.strip()
     event.description = (payload.description or "").strip() or None
+    event.event_type = payload.event_type
+    event.host_name = (payload.host_name or "").strip() or None
     event.starts_at = payload.starts_at
     event.ends_at = payload.ends_at
     event.event_format = payload.event_format
     event.location = (payload.location or "").strip() or None
     event.meeting_url = (payload.meeting_url or "").strip() or None
+    event.online_platform = (payload.online_platform or "").strip() or None
+    event.recording_url = (payload.recording_url or "").strip() or None
+    event.venue_details = (payload.venue_details or "").strip() or None
     event.checkin_opens_minutes = payload.checkin_opens_minutes
     event.checkin_closes_minutes = payload.checkin_closes_minutes
     event.updated_by_user_id = user.id
+    await replace_event_homework_links(db, event, payload.homework_links)
     add_audit(
         db,
         accelerator_id=cohort.accelerator_id,
@@ -2696,7 +3038,7 @@ async def update_event(
         target_id=event.id,
     )
     await db.commit()
-    return event_dict(event)
+    return event_dict(event, homework_links=await event_homework_links(db, event.id))
 
 
 @router.post("/events/{event_id}/publish")
@@ -2720,7 +3062,7 @@ async def publish_event(
     add_audit(db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
               actor_user_id=user.id, action="event.published", target_type="event", target_id=event.id)
     await db.commit()
-    return event_dict(event)
+    return event_dict(event, homework_links=await event_homework_links(db, event.id))
 
 
 @router.get("/events/{event_id}/qr")
@@ -2758,8 +3100,11 @@ async def duplicate_event(
     duplicate = AcceleratorEvent(
         cohort_id=source.cohort_id, stage_id=source.stage_id,
         title=f"{source.title} — копия", description=source.description,
+        event_type=source.event_type, host_name=source.host_name,
         starts_at=source.starts_at, ends_at=source.ends_at,
         event_format=source.event_format, location=source.location, meeting_url=source.meeting_url,
+        online_platform=source.online_platform, recording_url=source.recording_url,
+        venue_details=source.venue_details,
         checkin_code=secrets.token_urlsafe(24),
         checkin_opens_minutes=source.checkin_opens_minutes,
         checkin_closes_minutes=source.checkin_closes_minutes,
@@ -2767,11 +3112,13 @@ async def duplicate_event(
     )
     db.add(duplicate)
     await db.flush()
+    source_links = await event_homework_links(db, source.id)
+    await replace_event_homework_links(db, duplicate, source_links)
     add_audit(db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
               actor_user_id=user.id, action="event.duplicated", target_type="event",
               target_id=duplicate.id, details={"source_id": source.id})
     await db.commit()
-    return event_dict(duplicate)
+    return event_dict(duplicate, homework_links=await event_homework_links(db, duplicate.id))
 
 
 @router.post("/events/{event_id}/archive")
@@ -2888,7 +3235,11 @@ async def list_resident_events(
         AcceleratorAttendanceRecord.event_id.in_([event.id for event in events]),
     ))).scalars().all() if events else []
     by_event = {row.event_id: row for row in records}
-    return [event_dict(event, attendance=by_event.get(event.id)) for event in events]
+    return [event_dict(
+        event,
+        attendance=by_event.get(event.id),
+        homework_links=await event_homework_links(db, event.id),
+    ) for event in events]
 
 
 @router.post("/attendance/check-in/{code}")
@@ -3032,6 +3383,63 @@ async def get_public_application_form(
     }
 
 
+@router.post("/public/cohorts/{cohort_id}/application-files")
+async def upload_public_application_file(
+    cohort_id: int,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_async_db),
+):
+    cohort = await get_cohort_or_404(db, cohort_id)
+    if cohort.status != "accepting":
+        raise HTTPException(status_code=409, detail="Приём заявок в этот поток закрыт")
+    row = await save_accelerator_file(
+        db, cohort=cohort, upload=file, purpose="application", uploader_user_id=None
+    )
+    return accelerator_file_dict(row)
+
+
+@router.post("/cohorts/{cohort_id}/homework-files")
+async def upload_homework_file(
+    cohort_id: int,
+    file: UploadFile = File(...),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    cohort = await get_cohort_or_404(db, cohort_id)
+    membership = (await db.execute(select(AcceleratorMembership).where(
+        AcceleratorMembership.cohort_id == cohort.id,
+        AcceleratorMembership.user_id == user.id,
+        AcceleratorMembership.role == "resident",
+        AcceleratorMembership.status == "enrolled",
+    ))).scalar_one_or_none()
+    if not membership:
+        raise HTTPException(status_code=403, detail="Файлы заданий доступны зачисленным резидентам")
+    await require_homework_module(db, cohort)
+    row = await save_accelerator_file(
+        db, cohort=cohort, upload=file, purpose="homework", uploader_user_id=user.id
+    )
+    return accelerator_file_dict(row)
+
+
+@router.get("/files/{token}")
+async def download_accelerator_file(
+    token: str,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    row = (await db.execute(select(AcceleratorFile).where(
+        AcceleratorFile.token == token
+    ))).scalar_one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="Файл не найден")
+    cohort = await get_cohort_or_404(db, row.cohort_id)
+    await require_cohort_reader(db, user, cohort)
+    path = ACCELERATOR_UPLOAD_DIR / row.stored_name
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Файл не найден в хранилище")
+    return FileResponse(path, media_type=row.mime_type, filename=row.original_name)
+
+
 @router.post("/public/cohorts/{cohort_id}/applications")
 async def submit_public_application(
     cohort_id: int,
@@ -3062,12 +3470,23 @@ async def submit_public_application(
         applicant_email=email,
         application_type=payload.application_type,
         status="draft",
-        form_payload=payload.form_payload,
+        form_payload={
+            **payload.form_payload,
+            "telegram": payload.telegram,
+            "competencies": payload.competencies,
+        },
         privacy_consent_at=now,
         program_rules_consent_at=now,
     )
     db.add(application)
     await db.flush()
+    await claim_accelerator_files(
+        db,
+        cohort_id=cohort.id,
+        tokens=accelerator_file_tokens(payload.form_payload),
+        purpose="application",
+        application_id=application.id,
+    )
     record_application_event(
         db,
         application=application,
@@ -5690,6 +6109,51 @@ async def search_matchmaking_candidates(
         or_(User.name.ilike(search), User.email.ilike(search)),
     ).order_by(User.name, User.email).limit(20))).scalars().all()
     return [{"id": row.id, "name": row.name, "email": row.email} for row in rows]
+
+
+@router.get("/cohorts/{cohort_id}/expert")
+async def get_cohort_expert(
+    cohort_id: int,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    cohort = await get_cohort_or_404(db, cohort_id)
+    await require_cohort_reader(db, user, cohort)
+    await require_matchmaking_module(db, cohort)
+    expert = await db.get(User, cohort.expert_user_id) if cohort.expert_user_id else None
+    return {"user_id": expert.id, "name": expert.name, "email": expert.email} if expert else None
+
+
+@router.put("/cohorts/{cohort_id}/expert")
+async def assign_cohort_expert(
+    cohort_id: int,
+    payload: CohortExpertAssign,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    cohort = (await db.execute(select(AcceleratorCohort).where(
+        AcceleratorCohort.id == cohort_id
+    ).with_for_update())).scalar_one_or_none()
+    if not cohort:
+        raise HTTPException(status_code=404, detail="Поток не найден")
+    await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
+    await require_matchmaking_module(db, cohort)
+    profile = (await db.execute(select(AcceleratorMatchProfile).where(
+        AcceleratorMatchProfile.cohort_id == cohort.id,
+        AcceleratorMatchProfile.user_id == payload.user_id,
+        AcceleratorMatchProfile.role == "expert",
+        AcceleratorMatchProfile.active.is_(True),
+    ))).scalar_one_or_none()
+    expert = await db.get(User, payload.user_id)
+    if not profile or not expert or not expert.is_active or expert.deleted_at is not None:
+        raise HTTPException(status_code=422, detail="Сначала добавьте эксперта в пул этого потока")
+    cohort.expert_user_id = expert.id
+    add_audit(db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id, actor_user_id=user.id,
+              action="cohort.expert_assigned", target_type="cohort", target_id=cohort.id,
+              details={"expert_user_id": expert.id})
+    await db.commit()
+    return {"user_id": expert.id, "name": expert.name, "email": expert.email}
 
 
 @router.get("/cohorts/{cohort_id}/matchmaking/profiles")

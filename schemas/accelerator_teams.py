@@ -14,12 +14,13 @@ class AcceleratorTeamCreate(BaseModel):
 class AcceleratorTeamUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=200)
     max_members: int | None = Field(default=None, ge=2, le=20)
+    recruiting_open: bool | None = None
     status: Literal["archived"] | None = None
     reason: str | None = Field(default=None, max_length=2000)
 
     @model_validator(mode="after")
     def require_change(self):
-        if not ({"name", "max_members", "status"} & self.model_fields_set):
+        if not ({"name", "max_members", "recruiting_open", "status"} & self.model_fields_set):
             raise ValueError("Укажите изменение команды")
         return self
 
@@ -31,6 +32,19 @@ class AcceleratorTeamInvitationCreate(BaseModel):
 
 class AcceleratorTeamInvitationUpdate(BaseModel):
     status: Literal["accepted", "declined"]
+
+
+class AcceleratorTeamApplicationCreate(BaseModel):
+    message: str | None = Field(default=None, max_length=1000)
+    desired_role: str | None = Field(default=None, max_length=120)
+
+
+class AcceleratorTeamApplicationUpdate(BaseModel):
+    status: Literal["accepted", "declined", "cancelled"]
+
+
+class AcceleratorTeamCaptainTransfer(BaseModel):
+    membership_id: int = Field(gt=0)
 
 
 class AcceleratorTeamMemberUpdate(BaseModel):
@@ -101,6 +115,7 @@ class AcceleratorTeamResponse(BaseModel):
     name: str
     status: Literal["active", "archived"]
     max_members: int
+    recruiting_open: bool = True
     owner_membership_id: int
     project: AcceleratorTeamProject | None = None
     can_manage: bool

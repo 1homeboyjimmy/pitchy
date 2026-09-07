@@ -3,7 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Link2, Loader2, Plus, Search, Sparkles, UserRoundCheck } from "lucide-react";
 
-import { describeApiError, getAuthJson, patchAuthJson, postAuthJson } from "@/lib/api";
+import { describeApiError, getAuthJson, patchAuthJson, postAuthJson, putAuthJson } from "@/lib/api";
 import type { MatchProfile, MatchRow } from "@/components/accelerator/MatchmakingWorkspace";
 import { TeamManager } from "@/components/accelerator/TeamManager";
 
@@ -15,6 +15,7 @@ const parseTags = (value: string) => Array.from(new Set(value.split(",").map((it
 
 export function MatchmakingManager({ cohortId, token }: { cohortId: number; token: string }) {
   const [profiles, setProfiles] = useState<MatchProfile[]>([]);
+  const [currentExpert, setCurrentExpert] = useState<{ user_id: number; name: string; email: string } | null>(null);
   const [matches, setMatches] = useState<MatchRow[]>([]);
   const [selectedMembershipId, setSelectedMembershipId] = useState("");
   const [recommendationRole, setRecommendationRole] = useState<MatchProfile["role"]>("expert");
@@ -30,11 +31,12 @@ export function MatchmakingManager({ cohortId, token }: { cohortId: number; toke
   const load = useCallback(async () => {
     setBusy("load"); setError("");
     try {
-      const [profileRows, matchRows] = await Promise.all([
+      const [profileRows, matchRows, expert] = await Promise.all([
         getAuthJson<MatchProfile[]>(`/api/accelerators/cohorts/${cohortId}/matchmaking/profiles`, token),
         getAuthJson<MatchRow[]>(`/api/accelerators/cohorts/${cohortId}/matches`, token),
+        getAuthJson<{ user_id: number; name: string; email: string } | null>(`/api/accelerators/cohorts/${cohortId}/expert`, token),
       ]);
-      setProfiles(profileRows); setMatches(matchRows);
+      setProfiles(profileRows); setMatches(matchRows); setCurrentExpert(expert);
       const residents = profileRows.filter((row) => row.role === "resident" && row.active);
       setSelectedMembershipId((current) => current && residents.some((row) => String(row.membership_id) === current) ? current : String(residents[0]?.membership_id || ""));
     } catch (reason) { setError(describeApiError(reason, "Не удалось загрузить матчмейкинг")); }
@@ -95,14 +97,22 @@ export function MatchmakingManager({ cohortId, token }: { cohortId: number; toke
     finally { setBusy(""); }
   };
 
+  const assignExpert = async (userId: number) => {
+    setBusy("expert"); setError("");
+    try { setCurrentExpert(await putAuthJson(`/api/accelerators/cohorts/${cohortId}/expert`, { user_id: userId }, token)); }
+    catch (reason) { setError(describeApiError(reason, "Не удалось назначить эксперта потока")); }
+    finally { setBusy(""); }
+  };
+
   return <div className="space-y-5">
     <TeamManager cohortId={cohortId} token={token} />
-    <section className="workspace-card">
+    <section className="workspace-card"><h2 className="text-xl">Эксперт потока</h2><p className="mt-1 text-sm text-white/40">Эксперт назначается один раз для всего потока и виден всем участникам.</p><div className="mt-5 flex flex-wrap items-center gap-3"><select value={currentExpert?.user_id || ""} onChange={(event) => void assignExpert(Number(event.target.value))} className="workspace-input !w-auto"><option value="">Выберите эксперта</option>{pool.filter((row) => row.role === "expert" && row.active).map((row) => <option key={row.id} value={row.user_id}>{row.name}</option>)}</select>{currentExpert && <span className="text-sm text-emerald-300">Назначен: {currentExpert.name}</span>}</div></section>
+    {false && <section className="workspace-card">
       <div><h2 className="text-xl">Подобрать связку</h2><p className="mt-1 text-sm text-white/40">Алгоритм объясняет оценку, но назначение подтверждает организатор.</p></div>
       <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_220px_auto]"><select value={selectedMembershipId} onChange={(event) => { setSelectedMembershipId(event.target.value); setRecommendations([]); }} className="workspace-input"><option value="">Выберите резидента с заполненным профилем</option>{residents.map((row) => <option key={row.id} value={row.membership_id || ""}>{row.name}</option>)}</select><select value={recommendationRole} onChange={(event) => { setRecommendationRole(event.target.value as MatchProfile["role"]); setRecommendations([]); }} className="workspace-input"><option value="expert">Эксперт</option><option value="tracker">Трекер</option><option value="resident">Другой резидент</option></select><button type="button" onClick={() => void recommend()} disabled={!selectedMembershipId || busy === "recommend"} className="workspace-button"><Sparkles size={15} /> Подобрать</button></div>
       {!residents.length && <p className="mt-4 rounded-2xl bg-amber-400/10 p-4 text-sm text-amber-100">Резиденты должны заполнить профиль в своём кабинете. После этого они появятся в подборе.</p>}
       <div className="mt-5 grid gap-3 md:grid-cols-2">{recommendations.map((item) => <article key={item.profile.id} className="rounded-2xl border border-white/10 p-4"><div className="flex items-start justify-between gap-3"><div><p>{item.profile.name}</p><p className="text-xs text-white/35">{roleLabels[item.profile.role]} · {item.profile.active_matches}/{item.profile.max_matches} связок</p></div><span className="rounded-full bg-emerald-400/10 px-2 py-1 text-xs text-emerald-300">{item.score}%</span></div>{item.profile.bio && <p className="mt-3 text-sm text-white/55">{item.profile.bio}</p>}<p className="mt-3 text-xs text-white/40">{item.reasons.join(" · ")}</p><button type="button" onClick={() => void confirm(item.profile.id)} disabled={Boolean(item.existing_status === "active" || busy)} className="workspace-button mt-4"><Link2 size={14} /> {item.existing_status === "active" ? "Уже связаны" : "Подтвердить"}</button></article>)}</div>
-    </section>
+    </section>}
 
     <section className="workspace-card">
       <h2 className="flex items-center gap-2 text-xl"><Plus size={18} /> Добавить трекера или эксперта в пул</h2>

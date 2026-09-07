@@ -8,7 +8,10 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 
-APPLICATION_FIELD_TYPES = {"text", "email", "number", "textarea", "select"}
+APPLICATION_FIELD_TYPES = {
+    "text", "email", "number", "textarea", "select", "multiselect",
+    "scale", "date", "url", "telegram", "file",
+}
 
 
 def validate_timezone_name(value: str) -> str:
@@ -74,7 +77,7 @@ def validate_application_form_schema(value: dict[str, Any] | None) -> dict[str, 
                 raise ValueError(
                     f"Поле {key}: application_types должен содержать project и/или participant"
                 )
-        if field_type == "select":
+        if field_type in {"select", "multiselect"}:
             if not isinstance(options, list) or len(options) < 2 or len(options) > 50:
                 raise ValueError(f"Поле {key}: укажите от 2 до 50 вариантов ответа")
             for option in options:
@@ -233,6 +236,8 @@ class ApplicationCreate(BaseModel):
 class PublicApplicationCreate(BaseModel):
     applicant_name: str = Field(min_length=2, max_length=200)
     applicant_email: EmailStr
+    telegram: str = Field(min_length=2, max_length=100)
+    competencies: list[str] = Field(min_length=1, max_length=20)
     application_type: Literal["project", "participant"] = "project"
     form_payload: dict[str, Any]
     accept_privacy: bool
@@ -245,6 +250,27 @@ class PublicApplicationCreate(BaseModel):
         if value is not True:
             raise ValueError("Для подачи заявки необходимо согласие")
         return value
+
+
+class CohortExpertAssign(BaseModel):
+    user_id: int = Field(gt=0)
+
+    @field_validator("telegram")
+    @classmethod
+    def validate_telegram(cls, value: str) -> str:
+        value = value.strip()
+        if not re.fullmatch(r"(?:https?://t\.me/|@)?[A-Za-z0-9_]{5,32}", value):
+            raise ValueError("Укажите Telegram в формате @username или t.me/username")
+        username = value.rstrip("/").rsplit("/", 1)[-1].lstrip("@")
+        return f"@{username}"
+
+    @field_validator("competencies")
+    @classmethod
+    def validate_competencies(cls, value: list[str]) -> list[str]:
+        cleaned = list(dict.fromkeys(item.strip() for item in value if item.strip()))
+        if not cleaned or any(len(item) > 80 for item in cleaned):
+            raise ValueError("Укажите от 1 до 20 компетенций до 80 символов")
+        return cleaned
 
 
 class ApplicationReview(BaseModel):
@@ -563,6 +589,11 @@ class HomeworkAssignmentCreate(BaseModel):
     target_membership_ids: list[int] = Field(default_factory=list, max_length=500)
     allow_resubmit: bool = True
     stage_id: int | None = Field(default=None, gt=0)
+    assignment_type: Literal["text_files", "quiz"] = "text_files"
+    submission_mode: Literal["individual", "team"] = "individual"
+    quiz_questions: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
+    passing_score: int | None = Field(default=None, ge=0, le=100)
+    max_attempts: int = Field(default=1, ge=1, le=20)
 
     @field_validator("due_at")
     @classmethod
@@ -586,12 +617,44 @@ class HomeworkAssignmentCreate(BaseModel):
             raise ValueError("Выберите хотя бы одного резидента")
         if self.audience == "cohort":
             self.target_membership_ids = []
+        if self.assignment_type == "quiz":
+            if not self.quiz_questions:
+                raise ValueError("Добавьте хотя бы один вопрос теста")
+            if self.passing_score is None:
+                raise ValueError("Укажите проходной балл теста")
+            question_ids: set[str] = set()
+            for index, question in enumerate(self.quiz_questions, start=1):
+                question_id = str(question.get("id") or "").strip()
+                prompt = str(question.get("prompt") or "").strip()
+                options = question.get("options")
+                if not question_id or not prompt or question_id in question_ids:
+                    raise ValueError(f"Проверьте вопрос теста №{index}")
+                if not isinstance(options, list) or len(options) < 2 or len(options) > 12:
+                    raise ValueError(f"У вопроса №{index} должно быть от 2 до 12 вариантов")
+                correct = 0
+                option_ids: set[str] = set()
+                for option in options:
+                    option_id = str(option.get("id") or "").strip() if isinstance(option, dict) else ""
+                    label = str(option.get("label") or "").strip() if isinstance(option, dict) else ""
+                    if not option_id or not label or option_id in option_ids:
+                        raise ValueError(f"Проверьте варианты ответа вопроса №{index}")
+                    option_ids.add(option_id)
+                    correct += int(option.get("correct") is True)
+                if correct != 1:
+                    raise ValueError(f"У вопроса №{index} должен быть один правильный ответ")
+                question_ids.add(question_id)
+        else:
+            self.quiz_questions = []
+            self.passing_score = None
+            if self.max_attempts != 1:
+                self.max_attempts = 1
         return self
 
 
 class HomeworkSubmissionUpsert(BaseModel):
     answer_text: str | None = Field(default=None, max_length=30000)
     attachments: list[str] = Field(default_factory=list, max_length=10)
+    quiz_answers: dict[str, str] = Field(default_factory=dict)
 
     @field_validator("attachments")
     @classmethod
@@ -599,15 +662,15 @@ class HomeworkSubmissionUpsert(BaseModel):
         cleaned = []
         for item in value:
             item = item.strip()
-            if len(item) > 2000 or not item.lower().startswith(("https://", "http://")):
-                raise ValueError("Материал должен быть корректной http(s)-ссылкой")
+            if len(item) > 2000 or not item.lower().startswith(("https://", "http://", "/api/accelerators/files/")):
+                raise ValueError("Материал должен быть загруженным файлом или корректной http(s)-ссылкой")
             cleaned.append(item)
         return cleaned
 
     @model_validator(mode="after")
     def require_answer(self):
-        if not (self.answer_text or "").strip() and not self.attachments:
-            raise ValueError("Добавьте текст ответа или ссылку на материал")
+        if not (self.answer_text or "").strip() and not self.attachments and not self.quiz_answers:
+            raise ValueError("Добавьте текст, файл или ответы теста")
         return self
 
 
@@ -699,11 +762,17 @@ class ProgramStageReorder(BaseModel):
 class EventCreate(BaseModel):
     title: str = Field(min_length=2, max_length=300)
     description: str | None = Field(default=None, max_length=30000)
+    event_type: Literal["webinar", "workshop", "tracker_session", "expert_session", "networking", "other"] = "webinar"
+    host_name: str | None = Field(default=None, max_length=300)
     starts_at: datetime
     ends_at: datetime
     event_format: Literal["online", "offline", "hybrid"] = "online"
     location: str | None = Field(default=None, max_length=500)
     meeting_url: str | None = Field(default=None, max_length=2000)
+    online_platform: str | None = Field(default=None, max_length=120)
+    recording_url: str | None = Field(default=None, max_length=2000)
+    venue_details: str | None = Field(default=None, max_length=2000)
+    homework_links: list[dict[str, Any]] = Field(default_factory=list, max_length=50)
     stage_id: int | None = Field(default=None, gt=0)
     checkin_opens_minutes: int = Field(default=120, ge=0, le=1440)
     checkin_closes_minutes: int = Field(default=180, ge=0, le=1440)
@@ -721,8 +790,21 @@ class EventCreate(BaseModel):
             raise ValueError("Окончание мероприятия должно быть позже начала")
         if self.event_format in ("offline", "hybrid") and not (self.location or "").strip():
             raise ValueError("Для очного или гибридного мероприятия укажите место")
+        if self.event_format in ("online", "hybrid") and not (self.meeting_url or "").strip():
+            raise ValueError("Для онлайн- или гибридного мероприятия укажите ссылку на подключение")
         if self.meeting_url and not self.meeting_url.strip().lower().startswith(("https://", "http://")):
             raise ValueError("Ссылка на подключение должна начинаться с http:// или https://")
+        if self.recording_url and not self.recording_url.strip().lower().startswith(("https://", "http://")):
+            raise ValueError("Ссылка на запись должна начинаться с http:// или https://")
+        assignment_ids: set[int] = set()
+        for link in self.homework_links:
+            assignment_id = link.get("assignment_id") if isinstance(link, dict) else None
+            relation = link.get("relation") if isinstance(link, dict) else None
+            if not isinstance(assignment_id, int) or assignment_id <= 0 or relation not in {"before", "during", "after"}:
+                raise ValueError("Проверьте связанные задания и их роль")
+            if assignment_id in assignment_ids:
+                raise ValueError("Одно задание нельзя прикрепить к мероприятию дважды")
+            assignment_ids.add(assignment_id)
         return self
 
 

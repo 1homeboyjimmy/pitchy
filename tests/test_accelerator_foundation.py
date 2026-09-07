@@ -846,6 +846,7 @@ async def test_tracker_report_scope_and_resident_lifecycle():
                 title="Трекерская встреча",
                 starts_at=datetime.utcnow() + timedelta(hours=1),
                 ends_at=datetime.utcnow() + timedelta(hours=2),
+                meeting_url="https://example.com/tracker-meeting",
             ),
             organizer,
             db,
@@ -1543,6 +1544,8 @@ async def test_public_application_approval_creates_account_project_profile_and_i
             PublicApplicationCreate(
                 applicant_name="Иван Кандидат",
                 applicant_email=candidate_email,
+                telegram="@ivan_candidate",
+                competencies=["продажи", "маркетинг"],
                 form_payload={
                     "project_name": "Новый проект",
                     "problem": "Ручной процесс занимает неделю",

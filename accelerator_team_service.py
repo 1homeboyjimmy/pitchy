@@ -405,6 +405,7 @@ async def team_dict(
         "name": team.name,
         "status": team.status,
         "max_members": team.max_members,
+        "recruiting_open": bool(team.recruiting_open),
         "owner_membership_id": team.owner_membership_id,
         "project": ({"id": project.id, "name": project.name} if project else None),
         "can_manage": can_manage,
@@ -1005,7 +1006,7 @@ async def update_team(
     if owner_actor and owner.status != "enrolled":
         raise HTTPException(status_code=409, detail="Участие владельца команды не активно")
     fields = payload.model_fields_set
-    if manager and not owner_actor and ({"name", "max_members"} & fields):
+    if manager and not owner_actor and ({"name", "max_members", "recruiting_open"} & fields):
         raise HTTPException(
             status_code=403,
             detail="Менеджер может только принудительно архивировать команду",
@@ -1026,6 +1027,8 @@ async def update_team(
                 detail=f"Сейчас занято или зарезервировано мест: {used}",
             )
         team.max_members = payload.max_members
+    if "recruiting_open" in fields and payload.recruiting_open is not None:
+        team.recruiting_open = payload.recruiting_open
     if payload.status == "archived":
         notification_ids.extend(await archive_team_rows(
             db,

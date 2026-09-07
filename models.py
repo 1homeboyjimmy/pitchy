@@ -241,6 +241,9 @@ class AcceleratorCohort(Base):
     timezone: Mapped[str] = mapped_column(String(80), default="Europe/Moscow", server_default="Europe/Moscow")
     starts_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     ends_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    expert_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     application_form_schema: Mapped[dict] = mapped_column(JSON, default=dict)
     default_quota_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     default_quota_updated_by_user_id: Mapped[int | None] = mapped_column(
@@ -295,6 +298,31 @@ class AcceleratorApplication(Base):
     submitted_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AcceleratorFile(Base):
+    __tablename__ = "accelerator_files"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    cohort_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_cohorts.id", ondelete="CASCADE"), index=True
+    )
+    uploader_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    application_id: Mapped[int | None] = mapped_column(
+        ForeignKey("accelerator_applications.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    submission_id: Mapped[int | None] = mapped_column(
+        ForeignKey("accelerator_homework_submissions.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    purpose: Mapped[str] = mapped_column(String(30), index=True)
+    original_name: Mapped[str] = mapped_column(String(500))
+    stored_name: Mapped[str] = mapped_column(String(160), unique=True)
+    mime_type: Mapped[str] = mapped_column(String(160))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
 
 class AcceleratorMembership(Base):
@@ -683,6 +711,9 @@ class AcceleratorTeam(Base):
     )
     name: Mapped[str] = mapped_column(String(200))
     max_members: Mapped[int] = mapped_column(Integer, default=5, server_default="5")
+    recruiting_open: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("true")
+    )
     status: Mapped[str] = mapped_column(
         String(20), default="active", server_default="active", index=True
     )
@@ -765,6 +796,42 @@ class AcceleratorTeamInvitation(Base):
         String(20), default="pending", server_default="pending", index=True
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    responded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
+class AcceleratorTeamApplication(Base):
+    """A resident's request to join an existing cohort team."""
+
+    __tablename__ = "accelerator_team_applications"
+    __table_args__ = (
+        Index(
+            "uq_accelerator_team_application_pending_membership",
+            "membership_id",
+            unique=True,
+            postgresql_where=text("status = 'pending'"),
+            sqlite_where=text("status = 'pending'"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    team_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_teams.id", ondelete="CASCADE"), index=True
+    )
+    membership_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_memberships.id", ondelete="CASCADE"), index=True
+    )
+    message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    desired_role: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(20), default="pending", server_default="pending", index=True
+    )
+    responded_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     responded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -1099,6 +1166,15 @@ class AcceleratorHomeworkAssignment(Base):
     )
     title: Mapped[str] = mapped_column(String(300))
     description: Mapped[str] = mapped_column(Text)
+    assignment_type: Mapped[str] = mapped_column(
+        String(30), default="text_files", server_default="text_files", index=True
+    )
+    submission_mode: Mapped[str] = mapped_column(
+        String(20), default="individual", server_default="individual", index=True
+    )
+    quiz_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    passing_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     due_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(30), default="draft", server_default="draft", index=True)
     audience: Mapped[str] = mapped_column(String(30), default="cohort", server_default="cohort")
@@ -1127,13 +1203,27 @@ class AcceleratorHomeworkSubmission(Base):
     __tablename__ = "accelerator_homework_submissions"
     __table_args__ = (
         UniqueConstraint("assignment_id", "membership_id", name="uq_accelerator_homework_submission_membership"),
+        Index(
+            "uq_accelerator_homework_submission_team",
+            "assignment_id",
+            "team_id",
+            unique=True,
+            postgresql_where=text("team_id IS NOT NULL"),
+            sqlite_where=text("team_id IS NOT NULL"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     assignment_id: Mapped[int] = mapped_column(ForeignKey("accelerator_homework_assignments.id", ondelete="CASCADE"), index=True)
     membership_id: Mapped[int] = mapped_column(ForeignKey("accelerator_memberships.id", ondelete="CASCADE"), index=True)
+    team_id: Mapped[int | None] = mapped_column(
+        ForeignKey("accelerator_teams.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     answer_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     attachments: Mapped[list] = mapped_column(JSON, default=list)
+    quiz_answers: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    passed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     status: Mapped[str] = mapped_column(String(30), default="submitted", server_default="submitted", index=True)
     attempt_count: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     submitted_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
@@ -1142,6 +1232,25 @@ class AcceleratorHomeworkSubmission(Base):
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AcceleratorHomeworkAttempt(Base):
+    __tablename__ = "accelerator_homework_attempts"
+    __table_args__ = (
+        UniqueConstraint("submission_id", "attempt_number", name="uq_accelerator_homework_attempt_number"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    submission_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_homework_submissions.id", ondelete="CASCADE"), index=True
+    )
+    attempt_number: Mapped[int] = mapped_column(Integer)
+    answer_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    attachments: Mapped[list] = mapped_column(JSON, default=list)
+    quiz_answers: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    passed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
 
 class AcceleratorEvent(Base):
@@ -1154,11 +1263,18 @@ class AcceleratorEvent(Base):
     )
     title: Mapped[str] = mapped_column(String(300))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    event_type: Mapped[str] = mapped_column(
+        String(30), default="webinar", server_default="webinar", index=True
+    )
+    host_name: Mapped[str | None] = mapped_column(String(300), nullable=True)
     starts_at: Mapped[datetime] = mapped_column(DateTime, index=True)
     ends_at: Mapped[datetime] = mapped_column(DateTime, index=True)
     event_format: Mapped[str] = mapped_column(String(20), default="online", server_default="online")
     location: Mapped[str | None] = mapped_column(String(500), nullable=True)
     meeting_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    online_platform: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    recording_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    venue_details: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(30), default="draft", server_default="draft", index=True)
     checkin_code: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     checkin_opens_minutes: Mapped[int] = mapped_column(Integer, default=120, server_default="120")
@@ -1168,6 +1284,26 @@ class AcceleratorEvent(Base):
     published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AcceleratorEventHomeworkLink(Base):
+    __tablename__ = "accelerator_event_homework_links"
+    __table_args__ = (
+        UniqueConstraint("event_id", "assignment_id", name="uq_accelerator_event_homework_assignment"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    event_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_events.id", ondelete="CASCADE"), index=True
+    )
+    assignment_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_homework_assignments.id", ondelete="CASCADE"), index=True
+    )
+    relation: Mapped[str] = mapped_column(
+        String(20), default="after", server_default="after", index=True
+    )
+    position: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
 class AcceleratorAttendanceRecord(Base):
