@@ -15,12 +15,13 @@ depends_on = None
 
 
 def upgrade():
-    op.add_column("accelerator_cohorts", sa.Column("expert_user_id", sa.Integer(), nullable=True))
-    op.create_foreign_key(
-        "fk_accelerator_cohorts_expert_user_id_users",
-        "accelerator_cohorts", "users", ["expert_user_id"], ["id"], ondelete="SET NULL",
-    )
-    op.create_index("ix_accelerator_cohorts_expert_user_id", "accelerator_cohorts", ["expert_user_id"])
+    with op.batch_alter_table("accelerator_cohorts") as batch:
+        batch.add_column(sa.Column("expert_user_id", sa.Integer(), nullable=True))
+        batch.create_foreign_key(
+            "fk_accelerator_cohorts_expert_user_id_users",
+            "users", ["expert_user_id"], ["id"], ondelete="SET NULL",
+        )
+        batch.create_index("ix_accelerator_cohorts_expert_user_id", ["expert_user_id"])
 
     op.add_column("accelerator_teams", sa.Column("recruiting_open", sa.Boolean(), server_default=sa.text("true"), nullable=False))
 
@@ -78,6 +79,7 @@ def upgrade():
         "uq_accelerator_team_application_pending_membership",
         "accelerator_team_applications", ["membership_id"], unique=True,
         postgresql_where=sa.text("status = 'pending'"),
+        sqlite_where=sa.text("status = 'pending'"),
     )
 
     op.add_column("accelerator_homework_assignments", sa.Column("assignment_type", sa.String(length=30), server_default="text_files", nullable=False))
@@ -88,20 +90,22 @@ def upgrade():
     op.create_index("ix_accelerator_homework_assignments_assignment_type", "accelerator_homework_assignments", ["assignment_type"])
     op.create_index("ix_accelerator_homework_assignments_submission_mode", "accelerator_homework_assignments", ["submission_mode"])
 
-    op.add_column("accelerator_homework_submissions", sa.Column("team_id", sa.Integer(), nullable=True))
-    op.add_column("accelerator_homework_submissions", sa.Column("quiz_answers", sa.JSON(), nullable=True))
-    op.add_column("accelerator_homework_submissions", sa.Column("score", sa.Integer(), nullable=True))
-    op.add_column("accelerator_homework_submissions", sa.Column("passed", sa.Boolean(), nullable=True))
-    op.create_foreign_key(
-        "fk_accelerator_homework_submissions_team_id_teams",
-        "accelerator_homework_submissions", "accelerator_teams", ["team_id"], ["id"], ondelete="SET NULL",
-    )
-    op.create_index("ix_accelerator_homework_submissions_team_id", "accelerator_homework_submissions", ["team_id"])
-    op.create_index(
-        "uq_accelerator_homework_submission_team",
-        "accelerator_homework_submissions", ["assignment_id", "team_id"], unique=True,
-        postgresql_where=sa.text("team_id IS NOT NULL"),
-    )
+    with op.batch_alter_table("accelerator_homework_submissions") as batch:
+        batch.add_column(sa.Column("team_id", sa.Integer(), nullable=True))
+        batch.add_column(sa.Column("quiz_answers", sa.JSON(), nullable=True))
+        batch.add_column(sa.Column("score", sa.Integer(), nullable=True))
+        batch.add_column(sa.Column("passed", sa.Boolean(), nullable=True))
+        batch.create_foreign_key(
+            "fk_accelerator_homework_submissions_team_id_teams",
+            "accelerator_teams", ["team_id"], ["id"], ondelete="SET NULL",
+        )
+        batch.create_index("ix_accelerator_homework_submissions_team_id", ["team_id"])
+        batch.create_index(
+            "uq_accelerator_homework_submission_team",
+            ["assignment_id", "team_id"], unique=True,
+            postgresql_where=sa.text("team_id IS NOT NULL"),
+            sqlite_where=sa.text("team_id IS NOT NULL"),
+        )
     op.create_table(
         "accelerator_homework_attempts",
         sa.Column("id", sa.Integer(), primary_key=True),
@@ -148,11 +152,12 @@ def downgrade():
     for column in ("venue_details", "recording_url", "online_platform", "host_name", "event_type"):
         op.drop_column("accelerator_events", column)
     op.drop_table("accelerator_homework_attempts")
-    op.drop_index("uq_accelerator_homework_submission_team", table_name="accelerator_homework_submissions")
-    op.drop_index("ix_accelerator_homework_submissions_team_id", table_name="accelerator_homework_submissions")
-    op.drop_constraint("fk_accelerator_homework_submissions_team_id_teams", "accelerator_homework_submissions", type_="foreignkey")
-    for column in ("passed", "score", "quiz_answers", "team_id"):
-        op.drop_column("accelerator_homework_submissions", column)
+    with op.batch_alter_table("accelerator_homework_submissions") as batch:
+        batch.drop_index("uq_accelerator_homework_submission_team")
+        batch.drop_index("ix_accelerator_homework_submissions_team_id")
+        batch.drop_constraint("fk_accelerator_homework_submissions_team_id_teams", type_="foreignkey")
+        for column in ("passed", "score", "quiz_answers", "team_id"):
+            batch.drop_column(column)
     op.drop_index("ix_accelerator_homework_assignments_submission_mode", table_name="accelerator_homework_assignments")
     op.drop_index("ix_accelerator_homework_assignments_assignment_type", table_name="accelerator_homework_assignments")
     for column in ("max_attempts", "passing_score", "quiz_config", "submission_mode", "assignment_type"):
@@ -160,6 +165,7 @@ def downgrade():
     op.drop_table("accelerator_team_applications")
     op.drop_column("accelerator_teams", "recruiting_open")
     op.drop_table("accelerator_files")
-    op.drop_index("ix_accelerator_cohorts_expert_user_id", table_name="accelerator_cohorts")
-    op.drop_constraint("fk_accelerator_cohorts_expert_user_id_users", "accelerator_cohorts", type_="foreignkey")
-    op.drop_column("accelerator_cohorts", "expert_user_id")
+    with op.batch_alter_table("accelerator_cohorts") as batch:
+        batch.drop_index("ix_accelerator_cohorts_expert_user_id")
+        batch.drop_constraint("fk_accelerator_cohorts_expert_user_id_users", type_="foreignkey")
+        batch.drop_column("expert_user_id")
