@@ -58,7 +58,12 @@ export function CohortClosure({ cohortId, token, onCompleted }: { cohortId: numb
     const draft = drafts[membershipId];
     if (!draft?.reason.trim()) { setError("Для итогового решения нужна причина."); return; }
     setBusy(`decision-${membershipId}`); setError("");
-    try { apply(await putAuthJson<ClosureData>(`/api/accelerators/cohorts/${cohortId}/closure/decisions/${membershipId}`, { ...draft, reason: draft.reason.trim() }, token)); }
+    try {
+      const next = await putAuthJson<ClosureData>(`/api/accelerators/cohorts/${cohortId}/closure/decisions/${membershipId}`, { ...draft, reason: draft.reason.trim() }, token);
+      setData(next);
+      const saved = next.residents.find((resident) => resident.membership_id === membershipId)?.decision;
+      if (saved) setDrafts((current) => ({ ...current, [membershipId]: { outcome: saved.outcome, reason: saved.reason } }));
+    }
     catch (reason) { setError(describeApiError(reason, "Не удалось сохранить решение")); }
     finally { setBusy(""); }
   };
@@ -73,7 +78,7 @@ export function CohortClosure({ cohortId, token, onCompleted }: { cohortId: numb
   };
   const decided = useMemo(() => data?.residents.filter((row) => row.decision).length || 0, [data]);
 
-  if (!data) return <section className="workspace-card grid min-h-48 place-items-center"><Loader2 className="animate-spin text-white/35" /></section>;
+  if (!data) return <section className="workspace-card grid min-h-48 place-items-center">{error ? <div className="text-center"><p role="alert" className="text-sm text-red-200">{error}</p><button type="button" onClick={() => void load()} className="workspace-button mt-4 !bg-transparent !text-white"><RefreshCw size={15} /> Повторить</button></div> : <Loader2 className="animate-spin text-white/35" />}</section>;
   const completed = data.closure?.status === "completed";
   return <div className="space-y-6">
     <section className="workspace-card">

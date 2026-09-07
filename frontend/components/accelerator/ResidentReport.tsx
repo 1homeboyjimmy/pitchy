@@ -19,7 +19,7 @@ type LifecycleEvent = { id: number; from_status?: string | null; to_status: stri
 
 const STATUS_LABELS: Record<string, string> = { accepted: "Принят", enrolled: "Зачислен", suspended: "Приостановлен", completed: "Завершил", withdrawn: "Выбыл" };
 const TRANSITIONS: Record<string, Array<{ status: string; label: string }>> = {
-  accepted: [{ status: "enrolled", label: "Зачислить" }, { status: "withdrawn", label: "Отметить выбытие" }],
+  accepted: [{ status: "withdrawn", label: "Отметить выбытие" }],
   enrolled: [{ status: "suspended", label: "Приостановить" }, { status: "completed", label: "Завершил программу" }, { status: "withdrawn", label: "Отметить выбытие" }],
   suspended: [{ status: "enrolled", label: "Возобновить" }, { status: "withdrawn", label: "Отметить выбытие" }],
 };

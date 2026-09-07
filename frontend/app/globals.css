@@ -127,6 +127,47 @@
   }
 }
 
+/* Shared accelerator workspace primitives. Participant pages use the same
+   surfaces, inputs and actions as the organizer workspace. */
+.workspace-card {
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.025);
+  border-radius: 1.5rem;
+  padding: 1.25rem;
+}
+
+.workspace-input {
+  width: 100%;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #111;
+  padding: 0.75rem 1rem;
+  color: #fff;
+  outline: none;
+}
+
+.workspace-input option {
+  color: #fff;
+  background: #111;
+}
+
+.workspace-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border-radius: 999px;
+  background: #fff;
+  padding: 0.7rem 1rem;
+  color: #000;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.workspace-button:disabled {
+  opacity: 0.45;
+}
+
 /* ─── Glassmorphism ─── */
 .liquid-glass {
   background: rgba(255, 255, 255, 0.03);

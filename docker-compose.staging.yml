@@ -22,6 +22,7 @@ services:
     image: ghcr.io/1homeboyjimmy/pitchy/backend:dev
     environment:
       APP_ENV: staging
+      FRONTEND_URL: https://dev.pitchy.pro
     # Apply migrations at container startup on dev. The base compose sets
     # `command: uvicorn ...`, which SHADOWS the image's Dockerfile CMD
     # (`alembic upgrade head && exec uvicorn`) — so on staging the only thing

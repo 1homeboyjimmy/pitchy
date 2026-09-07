@@ -12,6 +12,7 @@ import { ProjectAuditWorkspace } from "@/components/accelerator/ProjectAuditWork
 import { DemoDayWorkspace } from "@/components/accelerator/DemoDayWorkspace";
 import { ResidentArtifacts } from "@/components/accelerator/ResidentArtifacts";
 import { AlumniWorkspace } from "@/components/accelerator/AlumniWorkspace";
+import { ResidentToday } from "@/components/accelerator/ResidentToday";
 
 export type ResidentQuota = {
   membership_id: number;
@@ -41,6 +42,9 @@ export type ResidentWorkspaceData = {
   effective_quotas: Record<string, ResidentQuota>;
 };
 
+type ResidentSection = "today" | "program" | "homework" | "events" | "tracking" | "matching" | "project_audit" | "demo_day" | "tools";
+type ResidentNavigationGroup = { key: string; label: string; sections: Array<{ id: ResidentSection; label: string }> };
+
 const QUOTA_META = {
   messages: { label: "Сообщения", icon: MessageSquare },
   roadmaps: { label: "Дорожные карты", icon: GitBranch },
@@ -53,21 +57,53 @@ function formatDate(value?: string | null) {
   return new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", year: "numeric" }).format(new Date(value));
 }
 
-export function ResidentWorkspace({ acceleratorId, data }: { acceleratorId: number; data: ResidentWorkspaceData | null }) {
+export function ResidentWorkspace({ acceleratorId, data, onChanged }: { acceleratorId: number; data: ResidentWorkspaceData | null; onChanged: () => Promise<void> }) {
   const memberships = (data?.memberships || []).filter((membership) => membership.accelerator.id === acceleratorId);
   if (!memberships.length) {
     return <section className="workspace-card py-12 text-center"><Rocket className="mx-auto mb-4 text-white/30" /><h2 className="text-2xl">Участие не найдено</h2><p className="mt-3 text-white/40">Обновите страницу или обратитесь к организатору потока.</p></section>;
   }
 
-  return <div className="space-y-7">{memberships.map((membership) => <MembershipView key={membership.membership_id} membership={membership} quotas={data?.effective_quotas || {}} />)}</div>;
+  return <div className="space-y-7">{memberships.map((membership) => <ResidentMembershipView key={membership.membership_id} membership={membership} quotas={data?.effective_quotas || {}} onChanged={onChanged} />)}</div>;
 }
 
-function MembershipView({ membership, quotas }: { membership: ResidentMembership; quotas: Record<string, ResidentQuota> }) {
+export function ResidentMembershipView({ membership, quotas, onChanged }: { membership: ResidentMembership; quotas: Record<string, ResidentQuota>; onChanged: () => Promise<void> }) {
+  const { token } = useAuth();
   const enrolled = membership.status === "enrolled";
   const completed = membership.status === "completed";
-  const [section, setSection] = useState<"overview" | "program" | "homework" | "events" | "tracking" | "matching" | "project_audit" | "demo_day">("overview");
+  const [section, setSection] = useState<ResidentSection>("today");
+  const [joining, setJoining] = useState(false);
+  const [joinError, setJoinError] = useState("");
   const startsAt = formatDate(membership.cohort.starts_at);
   const endsAt = formatDate(membership.cohort.ends_at);
+  const navigationGroups: ResidentNavigationGroup[] = [
+    { key: "today", label: "Сегодня", sections: [{ id: "today" as const, label: "Сегодня" }] },
+    { key: "path", label: "Мой путь", sections: [
+      { id: "program" as const, label: "Программа" },
+      ...(membership.modules.homework ? [{ id: "homework" as const, label: "Домашние задания" }] : []),
+      ...(membership.modules.attendance ? [{ id: "events" as const, label: "Календарь" }] : []),
+    ] },
+    { key: "project", label: membership.project ? "Мой проект" : "Мой профиль", sections: [
+      { id: "tools" as const, label: membership.project ? "Проект и инструменты" : "Инструменты" },
+      ...(membership.modules.project_audit ? [{ id: "project_audit" as const, label: "Аудит проекта" }] : []),
+    ] },
+    { key: "support", label: "Поддержка", sections: [
+      ...(membership.modules.progress_tracking ? [{ id: "tracking" as const, label: "Трекинг" }] : []),
+      ...(membership.modules.matchmaking ? [{ id: "matching" as const, label: "Команда и эксперты" }] : []),
+    ] },
+    { key: "results", label: "Результаты", sections: [
+      ...(membership.modules.demo_day ? [{ id: "demo_day" as const, label: "Демо-день" }] : []),
+    ] },
+  ].filter((group) => group.sections.length > 0);
+  const activeGroup = navigationGroups.find((group) => group.sections.some((item) => item.id === section)) || navigationGroups[0];
+  const join = async () => {
+    if (!token) return;
+    setJoining(true); setJoinError("");
+    try {
+      await postAuthJson(`/api/accelerators/applications/${membership.application_id}/enroll`, {}, token);
+      await onChanged();
+    } catch (reason) { setJoinError(describeApiError(reason, "Не удалось подтвердить участие")); }
+    finally { setJoining(false); }
+  };
 
   return (
     <>
@@ -78,15 +114,22 @@ function MembershipView({ membership, quotas }: { membership: ResidentMembership
             <span className={`rounded-full px-3 py-1.5 text-sm ${enrolled || completed ? "bg-emerald-400/10 text-emerald-300" : "bg-amber-400/10 text-amber-200"}`}>{enrolled ? "Зачислен" : completed ? "Выпускник" : membership.status === "accepted" ? "Принят" : membership.status}</span>
           </div>
         </div>
-        {!enrolled && !completed && <div className="flex gap-3 p-6 text-sm text-white/55"><Clock3 className="mt-0.5 shrink-0 text-amber-300" size={19} /><div><h3 className="mb-1 text-white">Ожидается зачисление</h3><p>Заявка уже одобрена. Организатор завершит зачисление, после чего здесь появятся программа и лимиты Pitchy.</p></div></div>}
+        {membership.status === "accepted" && <div className="p-6"><div className="flex gap-3 text-sm text-white/55"><Clock3 className="mt-0.5 shrink-0 text-amber-300" size={19} /><div><h3 className="mb-1 text-white">Вас приняли в программу</h3><p>Подтвердите участие, чтобы открыть программу и получить назначенные лимиты Pitchy.</p></div></div><button type="button" onClick={() => void join()} disabled={joining} className="workspace-button mt-5">{joining && <Loader2 size={15} className="animate-spin" />} Начать участие</button>{joinError && <p role="alert" className="mt-4 text-sm text-red-200">{joinError}</p>}</div>}
+        {membership.status === "suspended" && <div className="flex gap-3 p-6 text-sm text-white/55"><Clock3 className="mt-0.5 shrink-0 text-amber-300" size={19} /><div><h3 className="mb-1 text-white">Участие приостановлено</h3><p>Для восстановления доступа обратитесь к организатору потока.</p></div></div>}
+        {membership.status === "withdrawn" && <div className="flex gap-3 p-6 text-sm text-white/55"><Clock3 className="mt-0.5 shrink-0 text-white/35" size={19} /><div><h3 className="mb-1 text-white">Участие завершено</h3><p>Рабочие разделы этого потока больше недоступны.</p></div></div>}
         {completed && <div className="flex gap-3 p-6 text-sm text-white/55"><Check className="mt-0.5 shrink-0 text-emerald-300" size={19} /><div><h3 className="mb-1 text-white">Программа завершена</h3><p>Итоговый снимок результатов сохранён. Публикация профиля выпускника остаётся полностью добровольной.</p></div></div>}
       </section>
 
-      {enrolled && <nav className="flex gap-2 overflow-x-auto pb-1" aria-label="Разделы программы резидента"><ResidentTab active={section === "overview"} onClick={() => setSection("overview")}>Обзор</ResidentTab><ResidentTab active={section === "program"} onClick={() => setSection("program")}>Программа</ResidentTab>{membership.modules.homework && <ResidentTab active={section === "homework"} onClick={() => setSection("homework")}>Домашние задания</ResidentTab>}{membership.modules.attendance && <ResidentTab active={section === "events"} onClick={() => setSection("events")}>Мероприятия</ResidentTab>}{membership.modules.progress_tracking && <ResidentTab active={section === "tracking"} onClick={() => setSection("tracking")}>Трекинг</ResidentTab>}{membership.modules.matchmaking && <ResidentTab active={section === "matching"} onClick={() => setSection("matching")}>Матчмейкинг</ResidentTab>}{membership.modules.project_audit && <ResidentTab active={section === "project_audit"} onClick={() => setSection("project_audit")}>Аудит проекта</ResidentTab>}{membership.modules.demo_day && <ResidentTab active={section === "demo_day"} onClick={() => setSection("demo_day")}>Демо-день</ResidentTab>}</nav>}
+      {enrolled && <div className="space-y-3">
+        <nav className="grid grid-cols-2 gap-2 sm:flex sm:overflow-x-auto" aria-label="Основные разделы кабинета участника">{navigationGroups.map((group) => <ResidentTab key={group.key} active={activeGroup.key === group.key} onClick={() => setSection(group.sections[0].id)}>{group.label}</ResidentTab>)}</nav>
+        {activeGroup.sections.length > 1 && <nav className="flex gap-2 overflow-x-auto pb-1" aria-label={`Подразделы: ${activeGroup.label}`}>{activeGroup.sections.map((item) => <ResidentSubTab key={item.id} active={section === item.id} onClick={() => setSection(item.id)}>{item.label}</ResidentSubTab>)}</nav>}
+      </div>}
 
-      {enrolled && section === "overview" && membership.project && <section className="workspace-card"><div className="flex flex-wrap items-center justify-between gap-5"><div className="min-w-0"><p className="mb-2 text-xs uppercase tracking-[.18em] text-white/35">Проект резидента</p><h2 className="truncate text-2xl">{membership.project.name}</h2><div className="mt-4 h-2 w-full max-w-sm overflow-hidden rounded-full bg-white/8"><div className="h-full rounded-full bg-emerald-400" style={{ width: `${Math.max(0, Math.min(100, membership.project.readiness_index))}%` }} /></div><p className="mt-2 text-xs text-white/40">Паспорт заполнен на {membership.project.readiness_index}%</p></div><Link href={`/passport/${membership.project.id}`} className="workspace-button"><FileText size={16} /> Открыть паспорт</Link></div></section>}
+      {enrolled && section === "today" && <ResidentToday membership={membership} onNavigate={setSection} />}
 
-      {enrolled && section === "overview" && <section className="workspace-card"><h2 className="mb-5 text-xl">Лимиты Pitchy</h2><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{Object.entries(QUOTA_META).map(([resource, meta]) => { const quota = quotas[resource]; const Icon = meta.icon; const appliesHere = quota?.membership_id === membership.membership_id; return <article key={resource} className="rounded-2xl border border-white/8 bg-white/[0.02] p-4"><Icon size={18} className="mb-4 text-white/40" /><p className="text-sm text-white/45">{meta.label}</p><p className="mt-1 text-2xl">{appliesHere ? quota.limit === -1 ? "∞" : quota.remaining : "—"}</p><p className="mt-1 text-xs text-white/30">{appliesHere ? quota.limit === -1 ? "Без ограничений" : `из ${quota.limit}, использовано ${quota.used}` : "Не назначено этому потоку"}</p></article>; })}</div></section>}
+      {enrolled && section === "tools" && membership.project && <section className="workspace-card"><div className="flex flex-wrap items-center justify-between gap-5"><div className="min-w-0"><p className="mb-2 text-xs uppercase tracking-[.18em] text-white/35">Проект резидента</p><h2 className="truncate text-2xl">{membership.project.name}</h2><div className="mt-4 h-2 w-full max-w-sm overflow-hidden rounded-full bg-white/8"><div className="h-full rounded-full bg-emerald-400" style={{ width: `${Math.max(0, Math.min(100, membership.project.readiness_index))}%` }} /></div><p className="mt-2 text-xs text-white/40">Паспорт заполнен на {membership.project.readiness_index}%</p></div><Link href={`/passport/${membership.project.id}`} className="workspace-button"><FileText size={16} /> Открыть паспорт</Link></div></section>}
+
+      {enrolled && section === "tools" && <section className="workspace-card"><h2 className="mb-5 text-xl">Лимиты Pitchy</h2><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{Object.entries(QUOTA_META).map(([resource, meta]) => { const quota = quotas[resource]; const Icon = meta.icon; const appliesHere = quota?.membership_id === membership.membership_id; return <article key={resource} className="rounded-2xl border border-white/8 bg-white/[0.02] p-4"><Icon size={18} className="mb-4 text-white/40" /><p className="text-sm text-white/45">{meta.label}</p><p className="mt-1 text-2xl">{appliesHere ? quota.limit === -1 ? "∞" : quota.remaining : "—"}</p><p className="mt-1 text-xs text-white/30">{appliesHere ? quota.limit === -1 ? "Без ограничений" : `из ${quota.limit}, использовано ${quota.used}` : "Не назначено этому потоку"}</p></article>; })}</div></section>}
 
       {enrolled && section === "program" && <div className="space-y-6"><ResidentProgram membershipId={membership.membership_id} />{membership.modules.pitchy_artifacts && <ResidentArtifacts membershipId={membership.membership_id} />}</div>}
 
@@ -102,7 +145,7 @@ function MembershipView({ membership, quotas }: { membership: ResidentMembership
 
       {enrolled && section === "demo_day" && membership.modules.demo_day && <DemoDayWorkspace cohortId={membership.cohort.id} membershipId={membership.membership_id} />}
 
-      {enrolled && section === "overview" && <section className="workspace-card"><h2 className="mb-5 text-xl">Инструменты проекта</h2><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><Action href="/dashboard?tab=chat" label="Чат с аналитиком" icon={MessageSquare} /><Action href="/dashboard?tab=tree" label="Дорожная карта" icon={GitBranch} /><Action href="https://custdev.pitchy.pro/" label="Кастдев" icon={Users} external /><Action href="/grants" label="Гранты" icon={Banknote} /></div></section>}
+      {enrolled && section === "tools" && <section className="workspace-card"><h2 className="mb-5 text-xl">Инструменты проекта</h2><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><Action href="/dashboard?tab=chat" label="Чат с аналитиком" icon={MessageSquare} /><Action href="/dashboard?tab=tree" label="Дорожная карта" icon={GitBranch} /><Action href="https://custdev.pitchy.pro/" label="Кастдев" icon={Users} external /><Action href="/grants" label="Гранты" icon={Banknote} /></div></section>}
 
       {completed && membership.modules.alumni && <AlumniWorkspace membershipId={membership.membership_id} cohortId={membership.cohort.id} />}
     </>
@@ -110,7 +153,11 @@ function MembershipView({ membership, quotas }: { membership: ResidentMembership
 }
 
 function ResidentTab({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return <button type="button" onClick={onClick} className={`shrink-0 rounded-full border px-4 py-2 text-sm ${active ? "border-white bg-white text-black" : "border-white/10 text-white/50"}`}>{children}</button>;
+  return <button type="button" onClick={onClick} className={`min-h-11 shrink-0 rounded-2xl border px-5 py-2.5 text-sm transition ${active ? "border-white bg-white text-black" : "border-white/10 bg-white/[0.015] text-white/50 hover:border-white/20 hover:text-white"}`}>{children}</button>;
+}
+
+function ResidentSubTab({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return <button type="button" onClick={onClick} className={`shrink-0 rounded-full border px-4 py-2 text-sm transition ${active ? "border-white/30 bg-white/10 text-white" : "border-white/8 text-white/40 hover:text-white/70"}`}>{children}</button>;
 }
 
 function Action({ href, label, icon: Icon, external }: { href: string; label: string; icon: typeof Rocket; external?: boolean }) {

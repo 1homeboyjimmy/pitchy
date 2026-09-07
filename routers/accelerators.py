@@ -35,6 +35,7 @@ from accelerator_application_service import (
     MANAGER_TRANSITIONS,
     accept_invitation,
     approve_application,
+    create_application_invitation,
     record_application_event,
     transition_application,
 )
@@ -63,6 +64,7 @@ from models import (
     AcceleratorMembershipEvent,
     AcceleratorMatch,
     AcceleratorMatchProfile,
+    AcceleratorNotificationOutbox,
     AcceleratorOrganization,
     AcceleratorProgramConfig,
     AcceleratorProgramAction,
@@ -154,7 +156,9 @@ COHORT_STATUS_TRANSITIONS = {
     "archived": set(),
 }
 MEMBERSHIP_STATUS_TRANSITIONS = {
-    "accepted": {"enrolled", "withdrawn"},
+    # The resident confirms joining the cohort themselves. Managers may only
+    # withdraw an accepted invitation; they do not perform a second enrollment.
+    "accepted": {"withdrawn"},
     "enrolled": {"suspended", "completed", "withdrawn"},
     "suspended": {"enrolled", "withdrawn"},
     "completed": set(),
@@ -1097,6 +1101,7 @@ async def assign_tracker(
 ):
     cohort = await get_cohort_or_404(db, cohort_id)
     await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
     if not payload.membership_ids:
         raise HTTPException(status_code=422, detail="Выберите хотя бы одного резидента")
     tracker = await db.get(User, payload.user_id)
@@ -1146,6 +1151,7 @@ async def update_tracker_assignments(
 ):
     cohort = await get_cohort_or_404(db, cohort_id)
     await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
     staff = (await db.execute(select(AcceleratorStaff).where(
         AcceleratorStaff.accelerator_id == cohort.accelerator_id,
         AcceleratorStaff.user_id == tracker_user_id,
@@ -1183,6 +1189,7 @@ async def remove_tracker(
 ):
     cohort = await get_cohort_or_404(db, cohort_id)
     await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
     cohort_membership_ids = select(AcceleratorMembership.id).where(
         AcceleratorMembership.cohort_id == cohort.id
     )
@@ -1751,6 +1758,7 @@ async def duplicate_program_stage(
         raise HTTPException(status_code=404, detail="Этап программы не найден")
     cohort = await get_cohort_or_404(db, source.cohort_id)
     await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
     max_position = (await db.execute(select(func.max(AcceleratorProgramStage.position)).where(
         AcceleratorProgramStage.cohort_id == cohort.id
     ))).scalar_one() or 0
@@ -1790,6 +1798,7 @@ async def archive_program_stage(
         raise HTTPException(status_code=404, detail="Этап программы не найден")
     cohort = await get_cohort_or_404(db, stage.cohort_id)
     await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
     if stage.status == "archived":
         raise HTTPException(status_code=409, detail="Этап уже в архиве")
     stage.status = "archived"
@@ -1811,6 +1820,7 @@ async def reorder_program_stages(
 ):
     cohort = await get_cohort_or_404(db, cohort_id)
     await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
     stages = list((await db.execute(select(AcceleratorProgramStage).where(
         AcceleratorProgramStage.cohort_id == cohort.id,
         AcceleratorProgramStage.status != "archived",
@@ -2118,8 +2128,8 @@ async def update_homework_assignment(
         raise HTTPException(status_code=404, detail="Домашнее задание не найдено")
     cohort = await get_cohort_or_404(db, assignment.cohort_id)
     await require_cohort_manager(db, user, cohort)
-    await require_homework_module(db, cohort)
     require_mutable_cohort(cohort)
+    await require_homework_module(db, cohort)
     if assignment.status != "draft":
         raise HTTPException(status_code=409, detail="После публикации задание нельзя редактировать")
     await validate_homework_targets(db, cohort.id, payload.target_membership_ids)
@@ -2220,6 +2230,7 @@ async def remind_homework_assignment(
     assignment = await get_homework_assignment_or_404(db, assignment_id)
     cohort = await get_cohort_or_404(db, assignment.cohort_id)
     await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
     await require_homework_module(db, cohort)
     if assignment.status != "published":
         raise HTTPException(status_code=409, detail="Напоминание доступно только для опубликованного задания")
@@ -2271,6 +2282,7 @@ async def duplicate_homework_assignment(
     source = await get_homework_assignment_or_404(db, assignment_id)
     cohort = await get_cohort_or_404(db, source.cohort_id)
     await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
     await require_homework_module(db, cohort)
     duplicate = AcceleratorHomeworkAssignment(
         cohort_id=source.cohort_id, stage_id=source.stage_id,
@@ -2516,6 +2528,7 @@ async def review_homework_submission(
     await require_homework_module(db, cohort)
     membership = await db.get(AcceleratorMembership, submission.membership_id)
     await require_tracker_membership_access(db, user, membership)
+    require_mutable_cohort(cohort)
     if submission.status not in ("submitted", "needs_revision"):
         raise HTTPException(status_code=409, detail="Ответ уже проверен")
     submission.status = payload.status
@@ -2740,6 +2753,7 @@ async def duplicate_event(
         raise HTTPException(status_code=404, detail="Мероприятие не найдено")
     cohort = await get_cohort_or_404(db, source.cohort_id)
     await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
     await require_attendance_module(db, cohort)
     duplicate = AcceleratorEvent(
         cohort_id=source.cohort_id, stage_id=source.stage_id,
@@ -2835,6 +2849,7 @@ async def mark_event_attendance(
     if not membership or membership.cohort_id != cohort.id or membership.status != "enrolled":
         raise HTTPException(status_code=422, detail="Резидент не зачислен в этот поток")
     await require_tracker_membership_access(db, user, membership)
+    require_mutable_cohort(cohort)
     record = (await db.execute(select(AcceleratorAttendanceRecord).where(
         AcceleratorAttendanceRecord.event_id == event.id,
         AcceleratorAttendanceRecord.membership_id == membership.id,
@@ -3084,11 +3099,21 @@ async def list_applications(
 ):
     cohort = await get_cohort_or_404(db, cohort_id)
     await require_cohort_manager(db, user, cohort)
-    query = select(AcceleratorApplication).where(AcceleratorApplication.cohort_id == cohort.id)
+    query = (
+        select(AcceleratorApplication, AcceleratorMembership.status)
+        .outerjoin(
+            AcceleratorMembership,
+            AcceleratorMembership.application_id == AcceleratorApplication.id,
+        )
+        .where(AcceleratorApplication.cohort_id == cohort.id)
+    )
     if status:
         query = query.where(AcceleratorApplication.status == status)
-    rows = (await db.execute(query.order_by(AcceleratorApplication.submitted_at.desc()))).scalars().all()
-    return [application_dict(row) for row in rows]
+    rows = (await db.execute(query.order_by(AcceleratorApplication.submitted_at.desc()))).all()
+    return [
+        {**application_dict(application), "membership_status": membership_status}
+        for application, membership_status in rows
+    ]
 
 
 @router.post("/applications/{application_id}/accept")
@@ -3106,6 +3131,7 @@ async def accept_application(
         raise HTTPException(status_code=404, detail="Заявка не найдена")
     cohort = await get_cohort_or_404(db, application.cohort_id)
     await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
     accelerator = await get_accelerator_or_404(db, cohort.accelerator_id)
     try:
         result = await approve_application(
@@ -3147,6 +3173,71 @@ async def accept_application(
     }
 
 
+@router.post("/applications/{application_id}/resend-invitation")
+async def resend_application_invitation(
+    application_id: int,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    application = await db.get(AcceleratorApplication, application_id)
+    if not application:
+        raise HTTPException(status_code=404, detail="Заявка не найдена")
+    cohort = await get_cohort_or_404(db, application.cohort_id)
+    await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
+    membership = (await db.execute(select(AcceleratorMembership).where(
+        AcceleratorMembership.application_id == application.id
+    ))).scalar_one_or_none()
+    if application.status != "approved" or not membership or membership.status != "accepted":
+        raise HTTPException(status_code=409, detail="Повторное приглашение доступно только до подтверждения участия")
+    resident = await db.get(User, membership.user_id)
+    if not resident or not resident.email:
+        raise HTTPException(status_code=409, detail="У участника нет доступного email")
+    recent_reminder = (await db.execute(select(AcceleratorNotificationOutbox.id).where(
+        AcceleratorNotificationOutbox.event_type == "application_invitation_resent",
+        AcceleratorNotificationOutbox.idempotency_key.like(
+            f"application-invitation-resent:{application.id}:%"
+        ),
+        AcceleratorNotificationOutbox.created_at >= datetime.utcnow() - timedelta(minutes=1),
+    ).limit(1))).scalar_one_or_none()
+    if recent_reminder is not None:
+        raise HTTPException(status_code=429, detail="Приглашение уже отправлено. Повторите через минуту")
+    frontend_url = os.getenv("FRONTEND_URL", "https://pitchy.pro").rstrip("/")
+    if resident.password_hash:
+        action_url = f"{frontend_url}/login?next=/accelerator"
+        instruction = "Войдите в аккаунт и подтвердите начало участия"
+        invitation_version = datetime.utcnow().isoformat()
+    else:
+        invitation, raw_token = await create_application_invitation(db, application, resident)
+        action_url = f"{frontend_url}/accelerator-invite?token={raw_token}"
+        instruction = "Установите пароль, затем подтвердите начало участия"
+        invitation_version = invitation.expires_at.isoformat()
+    notification = await enqueue_notification(
+        db,
+        accelerator_id=cohort.accelerator_id,
+        cohort_id=cohort.id,
+        recipient_email=resident.email,
+        event_type="application_invitation_resent",
+        subject=f"Напоминание об участии в потоке «{cohort.name}»",
+        body=f"Здравствуйте, {resident.name}!\n\n{instruction}:\n\n{action_url}",
+        idempotency_key=f"application-invitation-resent:{application.id}:{invitation_version}",
+    )
+    add_audit(
+        db,
+        accelerator_id=cohort.accelerator_id,
+        cohort_id=cohort.id,
+        actor_user_id=user.id,
+        action="application.invitation_resent",
+        target_type="application",
+        target_id=application.id,
+        details={"membership_id": membership.id},
+    )
+    await db.commit()
+    background_tasks.add_task(process_notification_event, notification.id)
+    return {"application_id": application.id, "membership_id": membership.id, "sent": True}
+
+
 @router.patch("/applications/{application_id}/status")
 async def update_application_status(
     application_id: int,
@@ -3162,6 +3253,7 @@ async def update_application_status(
         raise HTTPException(status_code=404, detail="Заявка не найдена")
     cohort = await get_cohort_or_404(db, application.cohort_id)
     await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
     previous = application.status
     transition_application(
         db,
@@ -3237,17 +3329,20 @@ async def enroll_application(
     if not application:
         raise HTTPException(status_code=404, detail="Заявка не найдена")
     cohort = await get_cohort_or_404(db, application.cohort_id)
-    await require_cohort_manager(db, user, cohort)
+    if cohort.status in {"completed", "archived"}:
+        raise HTTPException(status_code=409, detail="Поток уже завершён")
     membership = (await db.execute(
         select(AcceleratorMembership)
         .where(AcceleratorMembership.application_id == application.id)
         .with_for_update()
     )).scalar_one_or_none()
-    if application.status != "approved" or not membership or membership.status != "accepted":
-        raise HTTPException(status_code=409, detail="Сначала заявку нужно принять")
+    if not membership or membership.user_id != user.id or membership.role != "resident":
+        raise HTTPException(status_code=404, detail="Принятое участие не найдено")
+    if application.status != "approved" or membership.status != "accepted":
+        raise HTTPException(status_code=409, detail="Участие уже подтверждено или больше недоступно")
     membership.status = "enrolled"
     membership.enrolled_at = datetime.utcnow()
-    membership.status_reason = "Зачисление после одобрения заявки"
+    membership.status_reason = "Участник подтвердил участие"
     membership.status_changed_by_user_id = user.id
     if cohort.default_quota_config:
         await assign_quota_override(
@@ -3258,7 +3353,7 @@ async def enroll_application(
             created_by_user_id=cohort.default_quota_updated_by_user_id or cohort.created_by_user_id,
             starts_at=membership.enrolled_at,
             ends_at=cohort.ends_at,
-            reason="Шаблон лимитов потока при зачислении",
+            reason="Шаблон лимитов потока после подтверждения участия",
         )
     db.add(AcceleratorMembershipEvent(
         membership_id=membership.id,
@@ -3275,6 +3370,7 @@ async def enroll_application(
         action="resident.enrolled",
         target_type="membership",
         target_id=membership.id,
+        details={"source": "resident_confirmation"},
     )
     await db.commit()
     return {"membership_id": membership.id, "status": membership.status, "enrolled_at": membership.enrolled_at}
@@ -3368,6 +3464,7 @@ async def submit_application_revision(
 ):
     application = await application_by_revision_token(db, token)
     cohort = await get_cohort_or_404(db, application.cohort_id)
+    require_mutable_cohort(cohort)
     validate_application_form(
         cohort.application_form_schema or {}, payload.form_payload, application.application_type
     )
@@ -3462,6 +3559,7 @@ async def update_membership_status(
         raise HTTPException(status_code=404, detail="Резидент не найден")
     cohort = await get_cohort_or_404(db, membership.cohort_id)
     await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
     previous = membership.status
     if payload.status == previous:
         return {"membership_id": membership.id, "status": membership.status}
@@ -4023,6 +4121,7 @@ async def create_tracking_feedback(
     db: AsyncSession = Depends(get_async_db),
 ):
     membership, cohort, access_role = await tracking_membership_context(db, membership_id, user)
+    require_mutable_cohort(cohort)
     if access_role == "resident":
         raise HTTPException(status_code=403, detail="Обратную связь оставляет трекер или организатор")
     if membership.status not in ("enrolled", "suspended"):
@@ -4060,6 +4159,7 @@ async def create_tracking_task(
     db: AsyncSession = Depends(get_async_db),
 ):
     membership, cohort, access_role = await tracking_membership_context(db, membership_id, user)
+    require_mutable_cohort(cohort)
     if access_role == "resident":
         raise HTTPException(status_code=403, detail="Задачу создаёт трекер или организатор")
     if membership.status != "enrolled":
@@ -4106,6 +4206,7 @@ async def update_tracking_task(
     if not task:
         raise HTTPException(status_code=404, detail="Задача не найдена")
     membership, cohort, access_role = await tracking_membership_context(db, task.membership_id, user)
+    require_mutable_cohort(cohort)
     if access_role == "resident" and membership.status != "enrolled":
         raise HTTPException(status_code=403, detail="Задачи доступны только активному резиденту")
     if access_role == "resident" and payload.status == "cancelled":
@@ -4395,6 +4496,7 @@ async def create_project_audit(
     db: AsyncSession = Depends(get_async_db),
 ):
     membership, cohort, _ = await project_audit_membership_context(db, membership_id, user)
+    require_mutable_cohort(cohort)
     existing = (await db.execute(select(AcceleratorProjectAudit).where(
         AcceleratorProjectAudit.membership_id == membership.id,
         AcceleratorProjectAudit.client_request_id == payload.client_request_id,
@@ -4554,6 +4656,7 @@ async def create_project_audit_task(
     membership, cohort, access_role = await project_audit_membership_context(
         db, row.membership_id, user
     )
+    require_mutable_cohort(cohort)
     if access_role == "resident":
         raise HTTPException(status_code=403, detail="Задачу создаёт трекер или организатор")
     await require_progress_tracking_module(db, cohort)
@@ -4873,6 +4976,7 @@ async def create_demo_day(
     cohort = await get_cohort_or_404(db, cohort_id)
     await require_demo_day_module(db, cohort)
     await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
     row = AcceleratorDemoDay(
         cohort_id=cohort.id,
         title=payload.title.strip(),
@@ -4935,6 +5039,7 @@ async def assign_demo_day_expert(
         raise HTTPException(status_code=404, detail="Демо-день не найден")
     cohort, _ = await demo_day_access(db, demo_day, user)
     await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
     if demo_day.status == "finalized":
         raise HTTPException(status_code=409, detail="Финализированный демо-день нельзя изменить")
     expert = await db.get(User, payload.user_id)
@@ -4990,6 +5095,7 @@ async def remove_demo_day_expert(
         raise HTTPException(status_code=404, detail="Демо-день не найден")
     cohort, _ = await demo_day_access(db, demo_day, user)
     await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
     if demo_day.status in ("scoring", "finalized"):
         raise HTTPException(status_code=409, detail="После начала оценивания состав экспертов зафиксирован")
     await db.execute(delete(AcceleratorDemoDayExpert).where(
@@ -5019,6 +5125,7 @@ async def select_demo_day_project(
         raise HTTPException(status_code=404, detail="Демо-день не найден")
     cohort, _ = await demo_day_access(db, demo_day, user)
     await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
     if demo_day.status not in ("draft", "open"):
         raise HTTPException(status_code=409, detail="Отбор проектов уже завершён")
     membership = await db.get(AcceleratorMembership, payload.membership_id)
@@ -5090,6 +5197,7 @@ async def remove_demo_day_project(
     demo_day = await db.get(AcceleratorDemoDay, row.demo_day_id)
     cohort, _ = await demo_day_access(db, demo_day, user)
     await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
     if demo_day.status not in ("draft", "open"):
         raise HTTPException(status_code=409, detail="После начала оценивания отбор зафиксирован")
     await db.delete(row)
@@ -5116,6 +5224,7 @@ async def update_demo_day_materials(
         raise HTTPException(status_code=404, detail="Проект демо-дня не найден")
     demo_day = await db.get(AcceleratorDemoDay, row.demo_day_id)
     cohort, access_role = await demo_day_access(db, demo_day, user)
+    require_mutable_cohort(cohort)
     membership = await db.get(AcceleratorMembership, row.membership_id)
     if access_role == "resident" and membership.user_id != user.id:
         raise HTTPException(status_code=403, detail="Можно менять только материалы своего проекта")
@@ -5173,6 +5282,7 @@ async def update_demo_day_project_decision(
     demo_day = await db.get(AcceleratorDemoDay, row.demo_day_id)
     cohort, _ = await demo_day_access(db, demo_day, user)
     await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
     if demo_day.status == "finalized":
         raise HTTPException(status_code=409, detail="Результаты уже финализированы")
     row.score_adjustment = payload.score_adjustment
@@ -5204,6 +5314,7 @@ async def upsert_demo_day_score(
         raise HTTPException(status_code=404, detail="Проект демо-дня не найден")
     demo_day = await db.get(AcceleratorDemoDay, project_row.demo_day_id)
     cohort, access_role = await demo_day_access(db, demo_day, user)
+    require_mutable_cohort(cohort)
     if access_role != "expert":
         raise HTTPException(status_code=403, detail="Проекты оценивают приглашённые эксперты")
     if demo_day.status != "scoring":
@@ -5252,6 +5363,7 @@ async def update_demo_day_status(
         raise HTTPException(status_code=404, detail="Демо-день не найден")
     cohort, _ = await demo_day_access(db, demo_day, user)
     await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
     if payload.status == demo_day.status:
         return await demo_day_dict(db, demo_day, "global_admin" if user.is_admin else "organizer", user.id)
     allowed = {"draft": {"open"}, "open": {"scoring"}, "scoring": {"finalized"}, "finalized": set()}
@@ -5611,6 +5723,7 @@ async def create_matchmaking_pool_profile(
 ):
     cohort = await get_cohort_or_404(db, cohort_id)
     await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
     await require_matchmaking_module(db, cohort)
     person = await db.get(User, payload.user_id)
     if not person or not person.is_active or person.deleted_at is not None:
@@ -5663,6 +5776,7 @@ async def update_matchmaking_profile(
         raise HTTPException(status_code=403, detail="Можно менять только свой профиль")
     if not manager and payload.active != profile.active:
         raise HTTPException(status_code=403, detail="Статус профиля меняет организатор")
+    require_mutable_cohort(cohort)
     apply_match_profile_data(profile, payload, user.id)
     add_audit(
         db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
@@ -5714,6 +5828,7 @@ async def upsert_resident_match_profile(
     manager = user.is_admin or await is_accelerator_organizer(db, user.id, cohort.accelerator_id)
     if not manager and membership.user_id != user.id:
         raise HTTPException(status_code=403, detail="Можно менять только свой профиль")
+    require_mutable_cohort(cohort)
     profile = (await db.execute(select(AcceleratorMatchProfile).where(
         AcceleratorMatchProfile.membership_id == membership.id
     ).with_for_update())).scalar_one_or_none()
@@ -5834,6 +5949,7 @@ async def create_accelerator_match(
         raise HTTPException(status_code=404, detail="Активный резидент не найден")
     cohort = await get_cohort_or_404(db, membership.cohort_id)
     await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
     await require_matchmaking_module(db, cohort)
     profile = await get_match_profile_or_404(db, payload.counterpart_profile_id)
     if profile.cohort_id != cohort.id or not profile.active or profile.user_id == membership.user_id:
@@ -5974,6 +6090,7 @@ async def update_accelerator_match(
         raise HTTPException(status_code=404, detail="Связка не найдена")
     cohort = await get_cohort_or_404(db, match.cohort_id)
     await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
     await require_matchmaking_module(db, cohort)
     if match.status == payload.status:
         return await matchmaking_match_dict(db, match)

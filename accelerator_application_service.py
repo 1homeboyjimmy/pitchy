@@ -174,7 +174,7 @@ async def _resolve_project(
     return project
 
 
-async def _create_invitation(
+async def create_application_invitation(
     db: AsyncSession, application: AcceleratorApplication, user: User
 ) -> tuple[AcceleratorInvitation, str]:
     raw_token = secrets.token_urlsafe(32)
@@ -265,22 +265,23 @@ async def approve_application(
 
     frontend_url = os.getenv("FRONTEND_URL", "https://pitchy.pro").rstrip("/")
     if created_user or not user.password_hash:
-        _, raw_token = await _create_invitation(db, application, user)
+        _, raw_token = await create_application_invitation(db, application, user)
         action_url = f"{frontend_url}/accelerator-invite?token={raw_token}"
-        subject = f"Вы приняты в акселератор «{accelerator.name}»"
+        subject = f"Вас приняли в акселератор «{accelerator.name}»"
         body = (
             f"Здравствуйте, {user.name}!\n\n"
-            f"Ваша заявка в поток «{cohort.name}» одобрена. "
+            f"Ваша заявка в поток «{cohort.name}» принята. "
             f"Установите пароль и активируйте единый аккаунт Pitchy по ссылке:\n\n{action_url}\n\n"
-            "Ссылка действует 72 часа и может быть использована один раз."
+            "Ссылка действует 72 часа и может быть использована один раз. "
+            "После входа подтвердите начало участия в кабинете акселератора."
         )
     else:
-        action_url = f"{frontend_url}/login"
-        subject = f"Вы приняты в акселератор «{accelerator.name}»"
+        action_url = f"{frontend_url}/login?next=/accelerator"
+        subject = f"Вас приняли в акселератор «{accelerator.name}»"
         body = (
             f"Здравствуйте, {user.name}!\n\n"
-            f"Ваша заявка в поток «{cohort.name}» одобрена. "
-            f"Войдите в существующий аккаунт Pitchy:\n\n{action_url}"
+            f"Ваша заявка в поток «{cohort.name}» принята. "
+            f"Войдите в существующий аккаунт Pitchy и подтвердите начало участия:\n\n{action_url}"
         )
     notification = await enqueue_notification(
         db,

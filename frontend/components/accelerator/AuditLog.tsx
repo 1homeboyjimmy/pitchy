@@ -9,7 +9,7 @@ type AuditRow = { id: number; actor_user_id?: number | null; action: string; tar
 const LABELS: Record<string, string> = {
   "accelerator.created": "Создан акселератор", "accelerator.setup_completed": "Завершена первичная настройка", "accelerator.updated": "Изменены настройки акселератора",
   "cohort.created": "Создан поток", "cohort.updated": "Изменены настройки потока", "cohort.status_changed": "Изменён статус потока", "program_config.updated": "Изменён набор модулей",
-  "organizer.assigned": "Назначен организатор", "organizer.removed": "Удалён организатор", "application.accepted": "Одобрена заявка", "application.enrolled": "Зачислен резидент",
+  "organizer.assigned": "Назначен организатор", "organizer.removed": "Удалён организатор", "application.accepted": "Принята заявка", "application.enrolled": "Зачислен резидент", "resident.enrolled": "Участник подтвердил участие",
   "cohort_quota.assigned": "Обновлены лимиты потока", "resident_quota.assigned": "Обновлены лимиты резидента", "program_stage.created": "Создан этап программы", "program_stage.published": "Опубликован этап программы",
   "homework.created": "Создано домашнее задание", "homework.published": "Опубликовано домашнее задание", "event.created": "Создано мероприятие", "event.published": "Опубликовано мероприятие",
   "project_audit.requested": "Запрошен аудит проекта", "project_audit.completed": "Завершён аудит проекта", "project_audit.failed": "Аудит проекта завершился ошибкой", "project_audit.task_created": "Создана задача по результату аудита",

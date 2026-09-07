@@ -61,6 +61,7 @@ from routers.accelerators import (
     complete_program_material,
     complete_program_stage,
     enroll_application,
+    list_applications,
     list_cohorts,
     list_accelerators,
     list_my_accelerator_memberships,
@@ -106,6 +107,7 @@ from routers.accelerators import (
     publish_homework_assignment,
     publish_event,
     publish_program_stage,
+    resend_application_invitation,
     review_homework_submission,
     submit_public_application,
     submit_application,
@@ -123,6 +125,7 @@ from routers.accelerators import (
 )
 from schemas.accelerators import (
     AcceleratorCreate,
+    AcceleratorSetupCreate,
     ApplicationCreate,
     ApplicationReview,
     ApplicationRevisionUpdate,
@@ -188,6 +191,23 @@ def test_application_form_supports_type_specific_required_fields():
         validate_application_form(schema, {"motivation": "Хочу развить проект"}, "project")
     assert missing_project_name.value.status_code == 422
     assert "project_name" in missing_project_name.value.detail
+
+
+def test_cohort_timezones_require_real_iana_names():
+    assert CohortCreate(name="Moscow cohort").timezone == "Europe/Moscow"
+    assert CohortCreate(name="London cohort", timezone="Europe/London").timezone == "Europe/London"
+    assert CohortUpdate(timezone="Asia/Yekaterinburg").timezone == "Asia/Yekaterinburg"
+    with pytest.raises(ValidationError):
+        CohortCreate(name="Invalid timezone", timezone="Not/AZone")
+    with pytest.raises(ValidationError):
+        CohortUpdate(timezone="GMT+3")
+    with pytest.raises(ValidationError):
+        AcceleratorSetupCreate(
+            organization_name="Test organization",
+            accelerator_name="Test accelerator",
+            cohort_name="Test cohort",
+            timezone="Not/AZone",
+        )
 
 
 def test_membership_status_requires_meaningful_reason():
@@ -319,11 +339,26 @@ async def test_application_enrollment_and_per_resident_quota_precedence():
             db,
         )
         assert accepted["membership_status"] == "accepted"
+        listed_applications = await list_applications(cohort["id"], None, organizer, db)
+        assert listed_applications[0]["membership_status"] == "accepted"
+        resent = await resend_application_invitation(
+            application["id"], BackgroundTasks(), organizer, db
+        )
+        assert resent["sent"] is True
+        with pytest.raises(HTTPException) as repeated_reminder:
+            await resend_application_invitation(
+                application["id"], BackgroundTasks(), organizer, db
+            )
+        assert repeated_reminder.value.status_code == 429
         accepted_workspace = await list_my_accelerator_memberships(resident, db)
         assert accepted_workspace["memberships"][0]["status"] == "accepted"
         assert accepted_workspace["memberships"][0]["modules"] == {}
 
-        enrolled = await enroll_application(application["id"], organizer, db)
+        with pytest.raises(HTTPException) as manager_cannot_confirm:
+            await enroll_application(application["id"], organizer, db)
+        assert manager_cannot_confirm.value.status_code == 404
+
+        enrolled = await enroll_application(application["id"], resident, db)
         assert enrolled["status"] == "enrolled"
         membership_id = enrolled["membership_id"]
 
@@ -402,7 +437,7 @@ async def test_application_enrollment_and_per_resident_quota_precedence():
         await accept_application(
             other_application["id"], ApplicationReview(), BackgroundTasks(), organizer, db
         )
-        other_enrolled = await enroll_application(other_application["id"], organizer, db)
+        other_enrolled = await enroll_application(other_application["id"], other_resident, db)
 
         homework = await create_homework_assignment(
             cohort["id"],
@@ -517,7 +552,7 @@ async def test_application_enrollment_and_per_resident_quota_precedence():
         second_accepted = await accept_application(
             second_application["id"], ApplicationReview(), BackgroundTasks(), admin, db
         )
-        await enroll_application(second_application["id"], admin, db)
+        await enroll_application(second_application["id"], resident, db)
         await assign_resident_quota(
             second_accepted["membership_id"],
             ResidentQuotaAssign(
@@ -673,7 +708,7 @@ async def test_tracker_report_scope_and_resident_lifecycle():
             accepted = await accept_application(
                 application["id"], ApplicationReview(), BackgroundTasks(), organizer, db
             )
-            await enroll_application(application["id"], organizer, db)
+            await enroll_application(application["id"], person, db)
             membership_ids.append(accepted["membership_id"])
 
         assigned = await assign_tracker(
@@ -937,7 +972,7 @@ async def test_matchmaking_profiles_recommendations_matches_and_role_boundaries(
             accepted = await accept_application(
                 application["id"], ApplicationReview(), BackgroundTasks(), organizer, db
             )
-            await enroll_application(application["id"], organizer, db)
+            await enroll_application(application["id"], person, db)
             membership_ids.append(accepted["membership_id"])
 
         resident_profile = await upsert_resident_match_profile(
@@ -1107,7 +1142,7 @@ async def test_project_audit_uses_membership_quota_scopes_tracker_and_creates_ta
         accepted = await accept_application(
             application["id"], ApplicationReview(), BackgroundTasks(), organizer, db
         )
-        await enroll_application(application["id"], organizer, db)
+        await enroll_application(application["id"], resident, db)
         membership_id = accepted["membership_id"]
         await assign_tracker(
             cohort["id"],
@@ -1311,7 +1346,7 @@ async def test_free_resident_can_spend_accelerator_message_quota_atomically():
         accepted = await accept_application(
             application["id"], ApplicationReview(), BackgroundTasks(), admin, db
         )
-        await enroll_application(application["id"], admin, db)
+        await enroll_application(application["id"], resident, db)
         await assign_resident_quota(
             accepted["membership_id"],
             ResidentQuotaAssign(
@@ -1399,7 +1434,7 @@ async def test_program_attendance_and_candidate_revision_flow(monkeypatch):
             cohort["id"], ApplicationCreate(form_payload={"project_name": "Resident project"}, accept_privacy=True, accept_program_rules=True), resident, db,
         )
         accepted = await accept_application(application["id"], ApplicationReview(), BackgroundTasks(), admin, db)
-        await enroll_application(application["id"], admin, db)
+        await enroll_application(application["id"], resident, db)
         membership_id = accepted["membership_id"]
 
         first = await create_program_stage(
@@ -1636,7 +1671,7 @@ async def test_demo_day_selection_scoring_ranking_and_exports():
         accepted = await accept_application(
             application["id"], ApplicationReview(), BackgroundTasks(), organizer, db
         )
-        await enroll_application(application["id"], organizer, db)
+        await enroll_application(application["id"], resident, db)
         membership_id = accepted["membership_id"]
 
         stage = await create_program_stage(
@@ -1867,7 +1902,7 @@ async def test_stage_actions_artifacts_access_completion_and_visibility():
                 organizer,
                 db,
             )
-            await enroll_application(application["id"], organizer, db)
+            await enroll_application(application["id"], person, db)
             membership_ids[person.id] = accepted["membership_id"]
 
         membership_id = membership_ids[resident.id]

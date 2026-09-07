@@ -101,7 +101,7 @@ async def _enroll_resident(
         manager,
         db,
     )
-    await enroll_application(application["id"], manager, db)
+    await enroll_application(application["id"], resident, db)
     return ResidentContext(
         user=resident,
         membership_id=accepted["membership_id"],

@@ -3,11 +3,20 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 import re
 from typing import Any, Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 
 APPLICATION_FIELD_TYPES = {"text", "email", "number", "textarea", "select"}
+
+
+def validate_timezone_name(value: str) -> str:
+    try:
+        ZoneInfo(value)
+    except (ZoneInfoNotFoundError, ValueError) as exc:
+        raise ValueError("Укажите существующий часовой пояс IANA, например Europe/Moscow") from exc
+    return value
 
 
 def validate_application_form_schema(value: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -112,6 +121,11 @@ class AcceleratorSetupCreate(BaseModel):
     modules: dict[str, bool] = Field(default_factory=dict)
     default_quota_config: dict[str, int] | None = None
 
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str) -> str:
+        return validate_timezone_name(value)
+
     @field_validator("application_form_schema")
     @classmethod
     def validate_form_schema(cls, value: dict[str, Any]) -> dict[str, Any]:
@@ -145,6 +159,11 @@ class CohortCreate(BaseModel):
     ends_at: datetime | None = None
     application_form_schema: dict[str, Any] = Field(default_factory=dict)
 
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str) -> str:
+        return validate_timezone_name(value)
+
     @field_validator("application_form_schema")
     @classmethod
     def validate_form_schema(cls, value: dict[str, Any]) -> dict[str, Any]:
@@ -157,6 +176,11 @@ class CohortUpdate(BaseModel):
     starts_at: datetime | None = None
     ends_at: datetime | None = None
     application_form_schema: dict[str, Any] | None = None
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str | None) -> str | None:
+        return validate_timezone_name(value) if value is not None else None
 
     @field_validator("application_form_schema")
     @classmethod

@@ -35,6 +35,7 @@ type Cohort = { id: number; accelerator_id: number; name: string; status: string
 type ProgramConfig = { cohort_id: number; version: number; modules: Record<string, boolean>; locked_modules: Record<string, boolean> };
 type Resident = { membership_id: number; user_id: number; name: string; email: string; status: string; status_reason?: string | null; trackers?: Array<{ user_id: number; name: string }> };
 type TabKey = "overview" | "operations" | "applications" | "form" | "program" | "homework" | "attendance" | "trackers" | "reports" | "tracking" | "matching" | "project_audit" | "demo_day" | "artifacts" | "closure" | "quotas" | "settings" | "audit";
+type NavigationGroup = { key: string; label: string; items: Array<{ key: TabKey; label: string }> };
 
 const MODULE_LABELS: Record<string, string> = { applications: "Заявки", program: "Программа", homework: "Домашние задания", attendance: "Посещаемость", progress_tracking: "Трекинг прогресса", matchmaking: "Матчмейкинг", project_audit: "Аудит проекта", demo_day: "Демо-день и экспорт", pitchy_artifacts: "Результаты Pitchy", alumni: "Каталог выпускников" };
 const STATUS_LABELS: Record<string, string> = { draft: "Черновик", accepting: "Приём заявок", active: "Идёт", completed: "Завершён", archived: "Архив", accepted: "Принят", enrolled: "Зачислен" };
@@ -49,7 +50,10 @@ export default function AcceleratorWorkspacePage() {
 
   const selectedAccelerator = accelerators.find((row) => row.id === acceleratorId) || null;
   const selectedCohort = cohorts.find((row) => row.id === cohortId) || null;
-  const isAdmin = Boolean(profile?.is_admin); const isResident = selectedAccelerator?.access_role === "resident"; const isTracker = selectedAccelerator?.access_role === "tracker"; const isExpert = selectedAccelerator?.access_role === "expert"; const canManage = selectedAccelerator?.access_role === "global_admin" || selectedAccelerator?.access_role === "organizer"; const canReadCohort = canManage || isTracker || isExpert;
+  const selectedResidentMembership = residentWorkspace?.memberships.find((membership) => membership.accelerator.id === acceleratorId) || null;
+  const hasResidentMembership = Boolean(selectedResidentMembership);
+  const isResident = selectedAccelerator?.access_role === "resident";
+  const isAdmin = Boolean(profile?.is_admin); const isTracker = !isResident && selectedAccelerator?.access_role === "tracker"; const isExpert = !isResident && selectedAccelerator?.access_role === "expert"; const canManage = !isResident && (selectedAccelerator?.access_role === "global_admin" || selectedAccelerator?.access_role === "organizer"); const canReadCohort = canManage || isTracker || isExpert;
 
   const loadAccelerators = useCallback(async () => {
     if (!token) { setLoading(false); return; }
@@ -80,6 +84,33 @@ export default function AcceleratorWorkspacePage() {
   }, [canManage, canReadCohort, cohortId, isExpert, token]);
   useEffect(() => { void loadCohortDetails(); }, [loadCohortDetails]);
 
+  const managerGroups = useMemo<NavigationGroup[]>(() => {
+    if (!canManage) return [];
+    const participants: NavigationGroup["items"] = [{ key: "reports", label: "Список участников" }];
+    if (config?.modules.progress_tracking) participants.push({ key: "tracking", label: "Трекинг" });
+    participants.push({ key: "trackers", label: "Назначения" });
+    if (config?.modules.matchmaking) participants.push({ key: "matching", label: "Подбор и команды" });
+    if (config?.modules.project_audit) participants.push({ key: "project_audit", label: "Аудит проектов" });
+    const program: NavigationGroup["items"] = [{ key: "program", label: "Этапы и материалы" }];
+    if (config?.modules.homework) program.push({ key: "homework", label: "Домашние задания" });
+    if (config?.modules.attendance) program.push({ key: "attendance", label: "Календарь и посещаемость" });
+    const results: NavigationGroup["items"] = [];
+    if (config?.modules.pitchy_artifacts) results.push({ key: "artifacts", label: "Результаты Pitchy" });
+    if (config?.modules.demo_day) results.push({ key: "demo_day", label: "Демо-день" });
+    results.push({ key: "closure", label: "Завершение потока" });
+    const settings: NavigationGroup["items"] = [{ key: "settings", label: "Поток и функции" }];
+    if (isAdmin) settings.push({ key: "quotas", label: "Лимиты" });
+    settings.push({ key: "audit", label: "Журнал изменений" });
+    return [
+      { key: "overview", label: "Обзор", items: [{ key: "overview", label: "Рабочая сводка" }, { key: "operations", label: "Состояние системы" }] },
+      { key: "applications", label: "Заявки", items: [{ key: "applications", label: "Отбор кандидатов" }, { key: "form", label: "Анкета и ссылка" }] },
+      { key: "participants", label: "Участники", items: participants },
+      { key: "program", label: "Программа", items: program },
+      { key: "results", label: "Результаты", items: results },
+      { key: "settings", label: "Настройки", items: settings },
+    ];
+  }, [canManage, config, isAdmin]);
+
   const tabs = useMemo(() => {
     if (isTracker) {
       const rows: Array<{ key: TabKey; label: string }> = [{ key: "reports", label: "Мои резиденты" }];
@@ -92,20 +123,10 @@ export default function AcceleratorWorkspacePage() {
       return rows;
     }
     if (isExpert) { const rows: Array<{ key: TabKey; label: string }> = []; if (config?.modules.matchmaking) rows.push({ key: "matching", label: "Мои связки" }); if (config?.modules.demo_day) rows.push({ key: "demo_day", label: "Демо-день" }); return rows; }
-    const rows: Array<{ key: TabKey; label: string }> = [{ key: "overview", label: "Обзор" }, { key: "operations", label: "Состояние" }, { key: "applications", label: "Заявки" }, { key: "form", label: "Анкета" }, { key: "program", label: "Программа" }];
-    if (config?.modules.homework) rows.push({ key: "homework", label: "Домашние задания" });
-    if (config?.modules.attendance) rows.push({ key: "attendance", label: "Посещаемость" });
-    if (config?.modules.progress_tracking) rows.push({ key: "tracking", label: "Трекинг" });
-    if (config?.modules.matchmaking) rows.push({ key: "matching", label: "Матчмейкинг" });
-    if (config?.modules.project_audit) rows.push({ key: "project_audit", label: "Аудит проекта" });
-    if (config?.modules.demo_day) rows.push({ key: "demo_day", label: "Демо-день" });
-    if (config?.modules.pitchy_artifacts) rows.push({ key: "artifacts", label: "Результаты Pitchy" });
-    rows.push({ key: "trackers", label: "Трекеры" }, { key: "reports", label: "Отчётность" });
-    rows.push({ key: "closure", label: "Завершение потока" });
-    if (isAdmin) rows.push({ key: "quotas", label: "Лимиты" });
-    rows.push({ key: "settings", label: "Настройки" }, { key: "audit", label: "Журнал" }); return rows;
-  }, [config, isAdmin, isExpert, isTracker]);
+    return managerGroups.flatMap((group) => group.items);
+  }, [config, isExpert, isTracker, managerGroups]);
   useEffect(() => { if (!tabs.some((item) => item.key === tab)) setTab(tabs[0]?.key || "overview"); }, [tab, tabs]);
+  const activeManagerGroup = managerGroups.find((group) => group.items.some((item) => item.key === tab)) || managerGroups[0];
 
   const saveApplicationForm = async (applicationFormSchema: ApplicationFormSchema) => {
     if (!token || !cohortId) return false; setBusy("form"); setError("");
@@ -123,10 +144,10 @@ export default function AcceleratorWorkspacePage() {
     {error && <div role="alert" className="mb-6 rounded-2xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200">{error}</div>}
     {showSetup && isAdmin && <div className="mb-7"><AcceleratorSetupWizard token={token} onCancel={accelerators.length ? () => setShowSetup(false) : undefined} onCreated={async (result) => { await loadAccelerators(); setAcceleratorId(result.accelerator.id); setCohortId(result.cohort.id); setShowSetup(false); setTab("overview"); }} /></div>}
     {!accelerators.length && !showSetup ? <EmptyState isAdmin={isAdmin} onCreate={() => setShowSetup(true)} /> : accelerators.length > 0 && <>
-      <div className={`mb-6 grid gap-3 ${isResident ? "" : "md:grid-cols-2"}`}><SelectCard label="Акселератор"><select value={acceleratorId || ""} onChange={(event) => { setAcceleratorId(Number(event.target.value)); setTab("overview"); }} className="workspace-input">{accelerators.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select><p className="mt-2 text-xs text-white/35">Роль: {selectedAccelerator?.access_role === "global_admin" ? "главный администратор" : selectedAccelerator?.access_role === "organizer" ? "организатор" : selectedAccelerator?.access_role === "tracker" ? "трекер" : selectedAccelerator?.access_role === "expert" ? "эксперт" : "резидент"}</p></SelectCard>{!isResident && <SelectCard label="Поток"><select value={cohortId || ""} onChange={(event) => { setCohortId(Number(event.target.value)); setTab("overview"); }} className="workspace-input" disabled={!cohorts.length}>{cohorts.length ? cohorts.map((row) => <option key={row.id} value={row.id}>{row.name}</option>) : <option value="">Нет назначенных потоков</option>}</select>{selectedCohort && <p className="mt-2 text-xs text-white/35">{STATUS_LABELS[selectedCohort.status] || selectedCohort.status}</p>}</SelectCard>}</div>
-      {isResident && acceleratorId && <ResidentWorkspace acceleratorId={acceleratorId} data={residentWorkspace} />}
+      <div className={`mb-6 grid gap-3 ${isResident ? "" : "md:grid-cols-2"}`}><SelectCard label="Акселератор"><select value={acceleratorId || ""} onChange={(event) => { setAcceleratorId(Number(event.target.value)); setTab("overview"); }} className="workspace-input">{accelerators.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select><p className="mt-2 text-xs text-white/35">Роль: {isResident ? "участник" : selectedAccelerator?.access_role === "global_admin" ? "главный администратор" : selectedAccelerator?.access_role === "organizer" ? "организатор" : selectedAccelerator?.access_role === "tracker" ? "трекер" : selectedAccelerator?.access_role === "expert" ? "эксперт" : "участник"}</p>{hasResidentMembership && selectedAccelerator?.access_role !== "resident" && selectedResidentMembership && <div className="mt-3 flex flex-wrap gap-2" aria-label="Контекст работы"><Link href={`/accelerator/my/${selectedResidentMembership.membership_id}`} className="rounded-full border border-white/10 px-3 py-2 text-xs text-white/45 hover:text-white">Моё участие</Link><span className="rounded-full border border-white bg-white px-3 py-2 text-xs text-black">{selectedAccelerator?.access_role === "organizer" || selectedAccelerator?.access_role === "global_admin" ? "Я организатор" : selectedAccelerator?.access_role === "tracker" ? "Я трекер" : "Я эксперт"}</span></div>}</SelectCard>{!isResident && <SelectCard label="Поток"><select value={cohortId || ""} onChange={(event) => { setCohortId(Number(event.target.value)); setTab("overview"); }} className="workspace-input" disabled={!cohorts.length}>{cohorts.length ? cohorts.map((row) => <option key={row.id} value={row.id}>{row.name}</option>) : <option value="">Нет назначенных потоков</option>}</select>{selectedCohort && <p className="mt-2 text-xs text-white/35">{STATUS_LABELS[selectedCohort.status] || selectedCohort.status}</p>}</SelectCard>}</div>
+      {isResident && acceleratorId && <ResidentWorkspace acceleratorId={acceleratorId} data={residentWorkspace} onChanged={loadAccelerators} />}
       {!isResident && canReadCohort && selectedCohort && <>
-        <nav className="mb-6 flex gap-2 overflow-x-auto pb-2" aria-label="Разделы акселератора">{tabs.map((item) => <button type="button" key={item.key} onClick={() => setTab(item.key)} className={`shrink-0 rounded-full border px-4 py-2 text-sm ${tab === item.key ? "border-white bg-white text-black" : "border-white/10 text-white/50 hover:text-white"}`}>{item.label}</button>)}</nav>
+        {canManage ? <div className="mb-6 space-y-3"><nav className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6" aria-label="Основные разделы акселератора">{managerGroups.map((group) => <button type="button" key={group.key} onClick={() => setTab(group.items[0].key)} className={`rounded-2xl border px-4 py-3 text-sm transition ${activeManagerGroup?.key === group.key ? "border-white bg-white text-black" : "border-white/10 text-white/50 hover:border-white/20 hover:text-white"}`}>{group.label}</button>)}</nav>{activeManagerGroup && activeManagerGroup.items.length > 1 && <nav className="flex gap-2 overflow-x-auto pb-1" aria-label={`Подразделы: ${activeManagerGroup.label}`}>{activeManagerGroup.items.map((item) => <button type="button" key={item.key} onClick={() => setTab(item.key)} className={`shrink-0 rounded-full border px-3.5 py-2 text-sm ${tab === item.key ? "border-white/35 bg-white/10 text-white" : "border-white/8 text-white/40 hover:text-white"}`}>{item.label}</button>)}</nav>}</div> : <nav className="mb-6 flex gap-2 overflow-x-auto pb-2" aria-label="Разделы акселератора">{tabs.map((item) => <button type="button" key={item.key} onClick={() => setTab(item.key)} className={`shrink-0 rounded-full border px-4 py-2 text-sm ${tab === item.key ? "border-white bg-white text-black" : "border-white/10 text-white/50 hover:text-white"}`}>{item.label}</button>)}</nav>}
         {tab === "overview" && <Overview accelerator={selectedAccelerator} cohort={selectedCohort} config={config} applications={applications} residents={residents} onCopy={copyApplicationLink} copied={copied} onNavigate={setTab} />}
         {tab === "operations" && canManage && <AcceleratorOperations cohortId={selectedCohort.id} acceleratorId={selectedAccelerator.id} token={token} isAdmin={isAdmin} />}
         {tab === "applications" && <ApplicationManager token={token} applications={applications} schema={selectedCohort.application_form_schema || {}} onChanged={loadCohortDetails} />}
@@ -146,17 +167,52 @@ export default function AcceleratorWorkspacePage() {
         {tab === "settings" && <SettingsPanel token={token} isAdmin={isAdmin} accelerator={selectedAccelerator} cohort={selectedCohort} config={config} onConfig={setConfig} onCohort={(updated) => setCohorts((rows) => rows.map((row) => row.id === updated.id ? updated : row))} onAccelerator={(updated) => setAccelerators((rows) => rows.map((row) => row.id === updated.id ? { ...row, ...updated } : row))} onCohortCreated={async (created) => { const rows = await getAuthJson<Cohort[]>(`/api/accelerators/${selectedAccelerator.id}/cohorts`, token); setCohorts(rows); setCohortId(created.id); }} />}
         {tab === "audit" && <AuditLog token={token} acceleratorId={selectedAccelerator.id} />}
       </>}
-      {!isResident && canManage && !selectedCohort && <section className="workspace-card text-center"><h2 className="text-2xl">Создайте первый поток</h2><p className="mt-2 text-white/40">Откройте мастер нового акселератора или добавьте поток в настройках существующего.</p>{isAdmin && <button type="button" onClick={() => setShowSetup(true)} className="workspace-button mt-5">Открыть мастер</button>}</section>}
+      {!isResident && canManage && !selectedCohort && selectedAccelerator && <FirstCohortSetup token={token} accelerator={selectedAccelerator} onCreated={async (created) => { const rows = await getAuthJson<Cohort[]>(`/api/accelerators/${selectedAccelerator.id}/cohorts`, token); setCohorts(rows); setCohortId(created.id); setTab("overview"); }} />}
     </>}
-  </div><style jsx global>{`.workspace-card{border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.025);border-radius:1.5rem;padding:1.25rem}.workspace-input{width:100%;border-radius:1rem;border:1px solid rgba(255,255,255,.12);background:#111;padding:.75rem 1rem;color:#fff;outline:none}.workspace-input option{color:#fff;background:#111}.workspace-button{display:inline-flex;align-items:center;justify-content:center;gap:.4rem;border-radius:999px;background:#fff;padding:.7rem 1rem;color:#000;font-size:.875rem;font-weight:600}.workspace-button:disabled{opacity:.45}`}</style></main>;
+  </div></main>;
 }
 
 function Overview({ accelerator, cohort, config, applications, residents, onCopy, copied, onNavigate }: { accelerator: Accelerator; cohort: Cohort; config: ProgramConfig | null; applications: AcceleratorApplication[]; residents: Resident[]; onCopy: () => Promise<void>; copied: boolean; onNavigate: (tab: TabKey) => void }) {
   const newApplications = applications.filter((row) => ["submitted", "under_review", "needs_info", "waitlisted"].includes(row.status)).length;
+  const withoutTracker = residents.filter((resident) => ["enrolled", "suspended"].includes(resident.status) && !(resident.trackers || []).length).length;
+  const nextSteps = cohort.status === "draft" ? [
+    { title: "Проверьте анкету", text: "Настройте вопросы и публичную ссылку до открытия набора.", tab: "form" as TabKey },
+    { title: "Соберите программу", text: "Добавьте первые этапы и материалы для участников.", tab: "program" as TabKey },
+    { title: "Откройте набор", text: "Когда всё готово, переведите поток в приём заявок.", tab: "settings" as TabKey },
+  ] : cohort.status === "accepting" ? [
+    { title: `${newApplications} заявок ждут решения`, text: "Откройте выжимки и обработайте очередь кандидатов.", tab: "applications" as TabKey },
+    { title: "Подготовьте старт", text: "Проверьте первый этап, задания и календарь потока.", tab: "program" as TabKey },
+    { title: "Проверьте состав функций", text: "Оставьте участникам только нужные рабочие разделы.", tab: "settings" as TabKey },
+  ] : cohort.status === "active" ? [
+    { title: "Участники требуют внимания", text: "Проверьте прогресс, открытые задачи и последние чек-ины.", tab: config?.modules.progress_tracking ? "tracking" as TabKey : "reports" as TabKey },
+    { title: "Очередь программы", text: "Проверьте ответы на ДЗ и подготовьте ближайшее событие.", tab: config?.modules.homework ? "homework" as TabKey : "program" as TabKey },
+    { title: "Подготовьте результаты", text: "Следите за артефактами и готовностью к демо-дню.", tab: config?.modules.pitchy_artifacts ? "artifacts" as TabKey : "reports" as TabKey },
+  ] : [
+    { title: "Итоги потока", text: "Откройте зафиксированные решения и результаты участников.", tab: "closure" as TabKey },
+    { title: "Отчётность", text: "Сверьте итоговый прогресс и выгрузите данные.", tab: "reports" as TabKey },
+    { title: "История изменений", text: "Проверьте действия, выполненные во время потока.", tab: "audit" as TabKey },
+  ];
   return <div className="space-y-6"><section className="workspace-card"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs uppercase tracking-[.17em] text-white/30">{STATUS_LABELS[cohort.status] || cohort.status}</p><h2 className="mt-2 text-3xl">{cohort.name}</h2><p className="mt-2 max-w-2xl text-sm text-white/45">{accelerator.description || "Добавьте описание акселератора в настройках."}</p></div><button type="button" onClick={() => void onCopy()} className="workspace-button"><Clipboard size={15} /> {copied ? "Скопировано" : "Ссылка на заявку"}</button></div></section>
-    <div className="grid gap-4 sm:grid-cols-3"><Stat label="Заявки в работе" value={newApplications} onClick={() => onNavigate("applications")} /><Stat label="Резиденты" value={residents.length} /><Stat label="Модули" value={Object.values(config?.modules || {}).filter(Boolean).length} onClick={() => onNavigate("settings")} /></div>
-    <section className="workspace-card"><h3 className="text-lg">Что делать дальше</h3><div className="mt-4 grid gap-3 md:grid-cols-3"><Quick title="Настройте анкету" text="Разделите вопросы для проектов и участников." onClick={() => onNavigate("form")} /><Quick title="Соберите программу" text="Добавьте этапы и материалы, затем опубликуйте." onClick={() => onNavigate("program")} /><Quick title="Откройте набор" text="Проверьте настройки и переведите поток в приём заявок." onClick={() => onNavigate("settings")} /></div></section>
+    <div className="grid gap-4 sm:grid-cols-3"><Stat label="Заявки в работе" value={newApplications} onClick={() => onNavigate("applications")} /><Stat label="Участники" value={residents.length} onClick={() => onNavigate("reports")} /><Stat label="Без трекера" value={withoutTracker} onClick={() => onNavigate("trackers")} /></div>
+    <section className="workspace-card"><h3 className="text-lg">Рабочая очередь</h3><div className="mt-4 grid gap-3 md:grid-cols-3">{nextSteps.map((step) => <Quick key={step.title} title={step.title} text={step.text} onClick={() => onNavigate(step.tab)} />)}</div></section>
   </div>;
+}
+
+function FirstCohortSetup({ token, accelerator, onCreated }: { token: string; accelerator: Accelerator; onCreated: (cohort: Cohort) => Promise<void> }) {
+  const [name, setName] = useState("");
+  const [timezone, setTimezone] = useState("Europe/Moscow");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setBusy(true); setError("");
+    try {
+      const cohort = await postAuthJson<Cohort>(`/api/accelerators/${accelerator.id}/cohorts`, { name: name.trim(), timezone, application_form_schema: defaultApplicationSchema(name.trim()) }, token);
+      await onCreated(cohort);
+    } catch (reason) { setError(describeApiError(reason, "Не удалось создать поток")); }
+    finally { setBusy(false); }
+  };
+  return <section className="workspace-card mx-auto max-w-2xl"><p className="text-xs uppercase tracking-[.18em] text-white/30">{accelerator.name}</p><h2 className="mt-2 text-2xl">Создайте первый поток</h2><p className="mt-2 text-sm text-white/40">Базовая анкета и обязательные разделы будут подготовлены автоматически. Остальные функции можно включить после создания.</p><form onSubmit={submit} className="mt-6 grid gap-4 sm:grid-cols-2"><Label text="Название потока"><input value={name} onChange={(event) => setName(event.target.value)} required minLength={2} placeholder="Например, Осень 2026" className="workspace-input mt-2" /></Label><Label text="Часовой пояс"><input value={timezone} onChange={(event) => setTimezone(event.target.value)} required placeholder="Europe/Moscow" className="workspace-input mt-2" /></Label><button disabled={busy || name.trim().length < 2} className="workspace-button sm:col-span-2 sm:justify-self-start">{busy && <Loader2 size={15} className="animate-spin" />} Создать поток</button></form>{error && <p role="alert" className="mt-4 rounded-2xl border border-red-400/20 bg-red-400/10 p-4 text-sm text-red-200">{error}</p>}</section>;
 }
 
 function SettingsPanel({ token, isAdmin, accelerator, cohort, config, onConfig, onCohort, onAccelerator, onCohortCreated }: { token: string; isAdmin: boolean; accelerator: Accelerator; cohort: Cohort; config: ProgramConfig | null; onConfig: (row: ProgramConfig) => void; onCohort: (row: Cohort) => void; onAccelerator: (row: Partial<Accelerator> & { id: number }) => void; onCohortCreated: (row: Cohort) => Promise<void> }) {
@@ -164,10 +220,12 @@ function SettingsPanel({ token, isAdmin, accelerator, cohort, config, onConfig, 
   useEffect(() => { setAcceleratorName(accelerator.name); setDescription(accelerator.description || ""); }, [accelerator]);
   useEffect(() => { setCohortName(cohort.name); setTimezone(cohort.timezone || "Europe/Moscow"); setStartsAt(toLocal(cohort.starts_at)); setEndsAt(toLocal(cohort.ends_at)); }, [cohort]);
   const updateModule = async (key: string, value: boolean) => { if (!config) return; setBusy(`module-${key}`); try { onConfig(await patchAuthJson<ProgramConfig>(`/api/accelerators/cohorts/${cohort.id}/program-config`, { version: config.version, modules: { [key]: value } }, token)); } catch (reason) { setError(describeApiError(reason, "Не удалось изменить модуль")); } finally { setBusy(""); } };
-  const save = async () => { setBusy("save"); setError(""); try { const [updatedAccelerator, updatedCohort] = await Promise.all([patchAuthJson<Partial<Accelerator> & { id: number }>(`/api/accelerators/${accelerator.id}`, { name: acceleratorName, description }, token), patchAuthJson<Cohort>(`/api/accelerators/cohorts/${cohort.id}`, { name: cohortName, timezone, starts_at: startsAt || null, ends_at: endsAt || null }, token)]); onAccelerator(updatedAccelerator); onCohort(updatedCohort); } catch (reason) { setError(describeApiError(reason, "Не удалось сохранить настройки")); } finally { setBusy(""); } };
+  const saveAccelerator = async () => { setBusy("accelerator"); setError(""); try { onAccelerator(await patchAuthJson<Partial<Accelerator> & { id: number }>(`/api/accelerators/${accelerator.id}`, { name: acceleratorName, description }, token)); } catch (reason) { setError(describeApiError(reason, "Не удалось сохранить акселератор")); } finally { setBusy(""); } };
+  const saveCohort = async () => { setBusy("cohort"); setError(""); try { onCohort(await patchAuthJson<Cohort>(`/api/accelerators/cohorts/${cohort.id}`, { name: cohortName, timezone, starts_at: startsAt || null, ends_at: endsAt || null }, token)); } catch (reason) { setError(describeApiError(reason, "Не удалось сохранить поток")); } finally { setBusy(""); } };
   const statusChange = async (next: string) => { if (!window.confirm(`Изменить статус потока на «${STATUS_LABELS[next]}»?`)) return; setBusy("status"); try { onCohort(await patchAuthJson<Cohort>(`/api/accelerators/cohorts/${cohort.id}/status`, { status: next }, token)); } catch (reason) { setError(describeApiError(reason, "Не удалось изменить статус")); } finally { setBusy(""); } };
   const createCohort = async (event: FormEvent) => { event.preventDefault(); setBusy("new-cohort"); try { const created = await postAuthJson<Cohort>(`/api/accelerators/${accelerator.id}/cohorts`, { name: newCohortName, timezone: "Europe/Moscow", application_form_schema: defaultApplicationSchema(newCohortName) }, token); setNewCohortName(""); await onCohortCreated(created); } catch (reason) { setError(describeApiError(reason, "Не удалось создать поток")); } finally { setBusy(""); } };
-  return <div className="space-y-6"><section className="workspace-card"><h2 className="text-xl">Основные настройки</h2><div className="mt-5 grid gap-4 sm:grid-cols-2"><Label text="Акселератор"><input value={acceleratorName} onChange={(event) => setAcceleratorName(event.target.value)} className="workspace-input mt-2" /></Label><Label text="Поток"><input value={cohortName} onChange={(event) => setCohortName(event.target.value)} className="workspace-input mt-2" /></Label><Label text="Часовой пояс"><input value={timezone} onChange={(event) => setTimezone(event.target.value)} className="workspace-input mt-2" /></Label><Label text="Описание"><textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={3} className="workspace-input mt-2 resize-y" /></Label><Label text="Начало"><input type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} className="workspace-input mt-2" /></Label><Label text="Окончание"><input type="datetime-local" value={endsAt} onChange={(event) => setEndsAt(event.target.value)} className="workspace-input mt-2" /></Label></div><button type="button" onClick={() => void save()} disabled={Boolean(busy)} className="workspace-button mt-5">Сохранить настройки</button></section>
+  return <div className="space-y-6"><section className="workspace-card"><h2 className="text-xl">Настройки акселератора</h2><p className="mt-1 text-sm text-white/40">Название и описание относятся ко всем потокам.</p><div className="mt-5 grid gap-4 sm:grid-cols-2"><Label text="Название"><input value={acceleratorName} onChange={(event) => setAcceleratorName(event.target.value)} className="workspace-input mt-2" /></Label><Label text="Описание"><textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={3} className="workspace-input mt-2 resize-y" /></Label></div><button type="button" onClick={() => void saveAccelerator()} disabled={Boolean(busy)} className="workspace-button mt-5">Сохранить акселератор</button></section>
+    <section className="workspace-card"><h2 className="text-xl">Настройки текущего потока</h2><p className="mt-1 text-sm text-white/40">Название, расписание и часовой пояс действуют только для выбранного потока.</p><div className="mt-5 grid gap-4 sm:grid-cols-2"><Label text="Поток"><input value={cohortName} onChange={(event) => setCohortName(event.target.value)} className="workspace-input mt-2" /></Label><Label text="Часовой пояс"><input list="accelerator-timezones" value={timezone} onChange={(event) => setTimezone(event.target.value)} className="workspace-input mt-2" /><datalist id="accelerator-timezones"><option value="Europe/Moscow" /><option value="Asia/Yekaterinburg" /><option value="Asia/Novosibirsk" /><option value="Asia/Vladivostok" /><option value="Europe/London" /><option value="UTC" /></datalist></Label><Label text="Начало"><input type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} className="workspace-input mt-2" /></Label><Label text="Окончание"><input type="datetime-local" value={endsAt} onChange={(event) => setEndsAt(event.target.value)} className="workspace-input mt-2" /></Label></div><button type="button" onClick={() => void saveCohort()} disabled={Boolean(busy)} className="workspace-button mt-5">Сохранить поток</button></section>
     <section className="workspace-card"><h2 className="text-xl">Статус потока</h2><p className="mt-1 text-sm text-white/40">Открытие и архивирование выполняются здесь. Активный поток завершается только через итоговое решение по каждому резиденту.</p><div className="mt-4 flex flex-wrap gap-2"><span className="rounded-full border border-white/15 px-4 py-2 text-sm">Сейчас: {STATUS_LABELS[cohort.status] || cohort.status}</span>{(STATUS_TRANSITIONS[cohort.status] || []).map((next) => <button type="button" key={next} onClick={() => void statusChange(next)} disabled={Boolean(busy)} className="workspace-button !bg-transparent !text-white">Перевести: {STATUS_LABELS[next]}</button>)}</div></section>
     <section className="workspace-card"><div className="mb-5 flex items-start gap-3"><Settings2 className="mt-1 text-white/45" /><div><h2 className="text-xl">Конструктор функций</h2><p className="text-sm text-white/40">Здесь только готовые модули. Заявки и программа обязательны.</p></div></div><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{config && Object.entries(config.modules).map(([key, enabled]) => { const locked = key in config.locked_modules; return <button type="button" key={key} disabled={locked || Boolean(busy)} onClick={() => void updateModule(key, !enabled)} className={`rounded-2xl border p-4 text-left ${enabled ? "border-emerald-400/25 bg-emerald-400/[.07]" : "border-white/10"}`}><span className="flex justify-between gap-3 text-sm">{MODULE_LABELS[key] || key}{enabled && <Check size={16} className="text-emerald-400" />}</span><span className="mt-2 block text-xs text-white/30">{locked ? "Обязательный" : enabled ? "Включён" : "Выключен"}</span></button>; })}</div></section>
     <section className="workspace-card"><h2 className="text-xl">Добавить поток</h2><form onSubmit={createCohort} className="mt-4 flex flex-col gap-3 sm:flex-row"><input value={newCohortName} onChange={(event) => setNewCohortName(event.target.value)} required minLength={2} placeholder="Название нового потока" className="workspace-input" /><button disabled={Boolean(busy)} className="workspace-button shrink-0">Создать с базовой анкетой</button></form></section>

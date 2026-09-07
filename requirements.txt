@@ -1,4 +1,5 @@
 fastapi
+tzdata
 uvicorn
 requests
 python-dotenv

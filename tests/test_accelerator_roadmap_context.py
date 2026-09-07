@@ -97,7 +97,7 @@ async def test_contextual_roadmap_debits_exact_membership_once_and_checks_owners
         accepted = await accept_application(
             application["id"], ApplicationReview(), BackgroundTasks(), admin, db
         )
-        await enroll_application(application["id"], admin, db)
+        await enroll_application(application["id"], resident, db)
         await assign_resident_quota(
             accepted["membership_id"],
             ResidentQuotaAssign(

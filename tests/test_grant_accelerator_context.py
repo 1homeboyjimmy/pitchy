@@ -73,7 +73,7 @@ async def test_grant_generation_uses_only_a_launched_exact_accelerator_context(m
         accepted = await accept_application(
             application["id"], ApplicationReview(), BackgroundTasks(), admin, db
         )
-        await enroll_application(application["id"], admin, db)
+        await enroll_application(application["id"], resident, db)
         await update_program_config(
             cohort["id"],
             ProgramConfigUpdate(version=1, modules={"pitchy_artifacts": True}),

@@ -99,7 +99,7 @@ async def _context(db, suffix: str):
         accepted = await accept_application(
             application["id"], ApplicationReview(), BackgroundTasks(), organizer, db
         )
-        await enroll_application(application["id"], organizer, db)
+        await enroll_application(application["id"], person, db)
         memberships.append(accepted["membership_id"])
     await update_cohort_status(cohort["id"], StatusUpdate(status="active"), organizer, db)
     return admin, organizer, first, second, outsider, accelerator, cohort, memberships
