@@ -52,6 +52,11 @@ from routers.accelerators import (
     update_membership_status,
     update_program_config,
     upsert_resident_match_profile,
+    create_homework_assignment,
+    publish_homework_assignment,
+    submit_homework,
+    review_homework_submission,
+    homework_review_queue,
 )
 from schemas.accelerator_teams import (
     AcceleratorTeamContactUpdate,
@@ -75,6 +80,9 @@ from schemas.accelerators import (
     ProgramConfigUpdate,
     StatusUpdate,
     TrackerAssign,
+    HomeworkAssignmentCreate,
+    HomeworkSubmissionUpsert,
+    HomeworkReview,
 )
 
 
@@ -552,6 +560,52 @@ async def test_team_tracker_replaces_legacy_personal_assignments_and_grants_scop
                 db,
             )
         assert _status(team_member_personal_tracker) == 422
+
+        await update_program_config(
+            cohort["id"],
+            ProgramConfigUpdate(
+                version=2, modules={"matchmaking": True, "homework": True}
+            ),
+            organizer,
+            db,
+        )
+        team_homework = await create_homework_assignment(
+            cohort["id"],
+            HomeworkAssignmentCreate(
+                title="Team answer",
+                description="Submit one shared answer",
+                submission_mode="team",
+            ),
+            organizer,
+            db,
+        )
+        await publish_homework_assignment(
+            team_homework["id"], BackgroundTasks(), organizer, db
+        )
+        submission = await submit_homework(
+            team_homework["id"],
+            HomeworkSubmissionUpsert(answer_text="Shared team result"),
+            BackgroundTasks(),
+            member_user,
+            db,
+        )
+        assert submission["team_id"] == team["id"]
+        tracker_queue = await homework_review_queue(
+            cohort["id"], None, None, None, team["id"], team_tracker.id,
+            "review_pending", team_tracker, db,
+        )
+        assert [row["id"] for row in tracker_queue["items"]] == [submission["id"]]
+        await review_homework_submission(
+            submission["id"], HomeworkReview(status="accepted"),
+            BackgroundTasks(), team_tracker, db,
+        )
+        with pytest.raises(HTTPException) as former_tracker_cannot_review_team:
+            await review_homework_submission(
+                submission["id"],
+                HomeworkReview(status="needs_revision", comment="No access"),
+                BackgroundTasks(), old_tracker_a, db,
+            )
+        assert _status(former_tracker_cannot_review_team) == 403
 
 
 @pytest.mark.asyncio

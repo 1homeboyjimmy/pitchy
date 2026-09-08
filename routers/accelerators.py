@@ -108,6 +108,8 @@ from schemas.accelerators import (
     CohortExpertAssign,
     InvitationAccept,
     HomeworkAssignmentCreate,
+    HomeworkPitchyCohortUpdate,
+    HomeworkPitchyToolsUpdate,
     HomeworkReview,
     HomeworkSubmissionUpsert,
     AttendanceMark,
@@ -208,6 +210,7 @@ def cohort_dict(row: AcceleratorCohort) -> dict:
         "application_form_schema": row.application_form_schema or {},
         "application_form_version": row.application_form_version,
         "application_form_has_draft": row.application_form_draft is not None,
+        "homework_pitchy_enabled": bool(row.homework_pitchy_enabled),
         "default_quota_config": row.default_quota_config,
         "created_at": row.created_at,
         "updated_at": row.updated_at,
@@ -442,6 +445,89 @@ def homework_submission_dict(row: AcceleratorHomeworkSubmission, *, resident: Us
         "reviewed_at": row.reviewed_at,
         "is_late": False,
     }
+
+
+def homework_display_status(
+    assignment: AcceleratorHomeworkAssignment,
+    submission: AcceleratorHomeworkSubmission | None,
+) -> str:
+    if submission:
+        if assignment.assignment_type == "quiz" and submission.passed is False:
+            return "needs_revision"
+        return {
+            "submitted": "review_pending",
+            "needs_revision": "needs_revision",
+            "accepted": "accepted",
+        }.get(submission.status, submission.status)
+    if assignment.due_at and assignment.due_at < datetime.utcnow():
+        return "overdue"
+    return "not_started"
+
+
+async def homework_review_access(
+    db: AsyncSession,
+    *,
+    user: User,
+    cohort: AcceleratorCohort,
+    submission: AcceleratorHomeworkSubmission,
+) -> str:
+    if user.is_admin or await is_accelerator_organizer(
+        db, user.id, cohort.accelerator_id
+    ):
+        return "manager"
+    if submission.team_id is not None:
+        assigned = (await db.execute(
+            select(AcceleratorTeamTrackerAssignment.id).where(
+                AcceleratorTeamTrackerAssignment.team_id == submission.team_id,
+                AcceleratorTeamTrackerAssignment.tracker_user_id == user.id,
+            )
+        )).scalar_one_or_none()
+        if assigned is not None:
+            return "tracker"
+        raise HTTPException(
+            status_code=403,
+            detail="Командный ответ проверяет назначенный трекер команды",
+        )
+    membership = await db.get(AcceleratorMembership, submission.membership_id)
+    if membership and membership.id in await tracker_membership_ids(
+        db, user.id, cohort.id
+    ):
+        return "tracker"
+    raise HTTPException(status_code=403, detail="Нет доступа к проверке этого ответа")
+
+
+def homework_quiz_results(
+    assignment: AcceleratorHomeworkAssignment,
+    attempt: AcceleratorHomeworkAttempt,
+) -> list[dict]:
+    answers = attempt.quiz_answers or {}
+    result = []
+    for question in assignment.quiz_config or []:
+        question_id = str(question.get("id") or "")
+        selected_id = answers.get(question_id)
+        options = question.get("options") or []
+        selected = next(
+            (option for option in options if str(option.get("id")) == selected_id),
+            None,
+        )
+        correct = next(
+            (option for option in options if option.get("correct") is True),
+            None,
+        )
+        result.append({
+            "question_id": question_id,
+            "prompt": question.get("prompt"),
+            "selected_option_id": selected_id,
+            "selected_option_label": selected.get("label") if selected else None,
+            "correct_option_id": str(correct.get("id")) if correct else None,
+            "correct_option_label": correct.get("label") if correct else None,
+            "correct": bool(
+                selected_id is not None
+                and correct
+                and selected_id == str(correct.get("id"))
+            ),
+        })
+    return result
 
 
 async def get_accelerator_or_404(db: AsyncSession, accelerator_id: int) -> Accelerator:
@@ -2430,6 +2516,8 @@ async def list_homework_assignments(
             "quiz_questions": assignment.quiz_config or [],
             "passing_score": assignment.passing_score,
             "max_attempts": assignment.max_attempts,
+            "pitchy_enabled": bool(cohort.homework_pitchy_enabled),
+            "pitchy_tools": assignment.pitchy_tools or [],
             "due_at": assignment.due_at,
             "status": assignment.status,
             "audience": assignment.audience,
@@ -2441,6 +2529,207 @@ async def list_homework_assignments(
             "submission_counts": status_counts,
         })
     return result
+
+
+@router.get("/cohorts/{cohort_id}/homework-review-queue")
+async def homework_review_queue(
+    cohort_id: int,
+    stage_id: int | None = Query(default=None, gt=0),
+    assignment_id: int | None = Query(default=None, gt=0),
+    membership_id: int | None = Query(default=None, gt=0),
+    team_id: int | None = Query(default=None, gt=0),
+    tracker_user_id: int | None = Query(default=None, gt=0),
+    status: str | None = Query(
+        default=None,
+        pattern="^(review_pending|submitted|needs_revision|accepted)$",
+    ),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    cohort = await get_cohort_or_404(db, cohort_id)
+    access_role = await require_cohort_reader(db, user, cohort)
+    await require_homework_module(db, cohort)
+    query = (
+        select(
+            AcceleratorHomeworkSubmission,
+            AcceleratorHomeworkAssignment,
+            AcceleratorMembership,
+            User,
+            AcceleratorTeam,
+        )
+        .join(
+            AcceleratorHomeworkAssignment,
+            AcceleratorHomeworkAssignment.id
+            == AcceleratorHomeworkSubmission.assignment_id,
+        )
+        .join(
+            AcceleratorMembership,
+            AcceleratorMembership.id
+            == AcceleratorHomeworkSubmission.membership_id,
+        )
+        .join(User, User.id == AcceleratorMembership.user_id)
+        .outerjoin(
+            AcceleratorTeam,
+            AcceleratorTeam.id == AcceleratorHomeworkSubmission.team_id,
+        )
+        .where(AcceleratorHomeworkAssignment.cohort_id == cohort.id)
+    )
+    if stage_id is not None:
+        query = query.where(AcceleratorHomeworkAssignment.stage_id == stage_id)
+    if assignment_id is not None:
+        query = query.where(
+            AcceleratorHomeworkSubmission.assignment_id == assignment_id
+        )
+    if membership_id is not None:
+        query = query.where(
+            AcceleratorHomeworkSubmission.membership_id == membership_id
+        )
+    if team_id is not None:
+        query = query.where(AcceleratorHomeworkSubmission.team_id == team_id)
+    if status == "review_pending":
+        query = query.where(
+            AcceleratorHomeworkSubmission.status == "submitted",
+            or_(
+                AcceleratorHomeworkAssignment.assignment_type != "quiz",
+                AcceleratorHomeworkSubmission.passed.is_not(False),
+            ),
+        )
+    elif status == "needs_revision":
+        query = query.where(or_(
+            AcceleratorHomeworkSubmission.status == "needs_revision",
+            (
+                (AcceleratorHomeworkAssignment.assignment_type == "quiz")
+                & AcceleratorHomeworkSubmission.passed.is_(False)
+            ),
+        ))
+    elif status == "submitted":
+        query = query.where(AcceleratorHomeworkSubmission.status == "submitted")
+    elif status == "accepted":
+        query = query.where(AcceleratorHomeworkSubmission.status == "accepted")
+    rows = (await db.execute(
+        query.order_by(
+            AcceleratorHomeworkSubmission.status != "submitted",
+            AcceleratorHomeworkSubmission.submitted_at,
+        )
+    )).all()
+    result = []
+    for submission, assignment, membership, resident, team in rows:
+        if access_role == "tracker":
+            try:
+                await homework_review_access(
+                    db, user=user, cohort=cohort, submission=submission
+                )
+            except HTTPException:
+                continue
+        if submission.team_id is not None:
+            tracker_ids = list((await db.execute(
+                select(AcceleratorTeamTrackerAssignment.tracker_user_id).where(
+                    AcceleratorTeamTrackerAssignment.team_id == submission.team_id
+                )
+            )).scalars().all())
+        else:
+            tracker_ids = sorted(
+                await membership_tracker_user_ids(db, membership.id)
+            )
+        if tracker_user_id is not None and tracker_user_id not in tracker_ids:
+            continue
+        tracker_rows = (await db.execute(
+            select(User.id, User.name).where(User.id.in_(tracker_ids))
+        )).all() if tracker_ids else []
+        data = homework_submission_dict(submission, resident=resident)
+        data.update({
+            "display_status": homework_display_status(assignment, submission),
+            "assignment": {
+                "id": assignment.id,
+                "title": assignment.title,
+                "stage_id": assignment.stage_id,
+                "assignment_type": assignment.assignment_type,
+                "submission_mode": assignment.submission_mode,
+                "due_at": assignment.due_at,
+                "passing_score": assignment.passing_score,
+                "max_attempts": assignment.max_attempts,
+            },
+            "team": {"id": team.id, "name": team.name} if team else None,
+            "trackers": [
+                {"id": tracker_id, "name": tracker_name}
+                for tracker_id, tracker_name in tracker_rows
+            ],
+        })
+        result.append(data)
+    return {"access_role": access_role, "items": result}
+
+
+@router.put("/cohorts/{cohort_id}/homework-pitchy")
+async def update_homework_pitchy_feature(
+    cohort_id: int,
+    payload: HomeworkPitchyCohortUpdate,
+    admin: User = Depends(require_async_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    if not admin.is_admin:
+        raise HTTPException(status_code=403, detail="Требуются права глобального администратора")
+    cohort = await get_cohort_or_404(db, cohort_id)
+    require_mutable_cohort(cohort)
+    await require_homework_module(db, cohort)
+    previous = bool(cohort.homework_pitchy_enabled)
+    cohort.homework_pitchy_enabled = payload.enabled
+    add_audit(
+        db,
+        accelerator_id=cohort.accelerator_id,
+        cohort_id=cohort.id,
+        actor_user_id=admin.id,
+        action="homework.pitchy_feature_updated",
+        target_type="cohort",
+        target_id=cohort.id,
+        details={"enabled": payload.enabled, "previous_enabled": previous},
+    )
+    await db.commit()
+    return {"cohort_id": cohort.id, "enabled": payload.enabled}
+
+
+@router.put("/homework/{assignment_id}/pitchy-tools")
+async def update_homework_pitchy_tools(
+    assignment_id: int,
+    payload: HomeworkPitchyToolsUpdate,
+    admin: User = Depends(require_async_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    if not admin.is_admin:
+        raise HTTPException(status_code=403, detail="Требуются права глобального администратора")
+    assignment = (await db.execute(
+        select(AcceleratorHomeworkAssignment)
+        .where(AcceleratorHomeworkAssignment.id == assignment_id)
+        .with_for_update()
+    )).scalar_one_or_none()
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Домашнее задание не найдено")
+    cohort = await get_cohort_or_404(db, assignment.cohort_id)
+    require_mutable_cohort(cohort)
+    await require_homework_module(db, cohort)
+    if payload.tools and not cohort.homework_pitchy_enabled:
+        raise HTTPException(
+            status_code=409,
+            detail="Сначала включите инструменты Pitchy для потока",
+        )
+    previous = assignment.pitchy_tools or []
+    assignment.pitchy_tools = list(payload.tools)
+    assignment.updated_by_user_id = admin.id
+    add_audit(
+        db,
+        accelerator_id=cohort.accelerator_id,
+        cohort_id=cohort.id,
+        actor_user_id=admin.id,
+        action="homework.pitchy_tools_updated",
+        target_type="homework_assignment",
+        target_id=assignment.id,
+        details={"tools": payload.tools, "previous_tools": previous},
+    )
+    await db.commit()
+    return {
+        "assignment_id": assignment.id,
+        "pitchy_enabled": bool(cohort.homework_pitchy_enabled),
+        "pitchy_tools": assignment.pitchy_tools,
+    }
 
 
 @router.post("/cohorts/{cohort_id}/homework")
@@ -2621,16 +2910,41 @@ async def remind_homework_assignment(
     if assignment.status != "published":
         raise HTTPException(status_code=409, detail="Напоминание доступно только для опубликованного задания")
     recipients = await homework_recipients(db, assignment)
-    completed_or_waiting_ids = set((await db.execute(select(AcceleratorHomeworkSubmission.membership_id).where(
-        AcceleratorHomeworkSubmission.assignment_id == assignment.id,
-        AcceleratorHomeworkSubmission.status.in_(("accepted", "submitted")),
-    ))).scalars().all())
+    completed_statuses = (
+        ("accepted",)
+        if assignment.assignment_type == "quiz"
+        else ("accepted", "submitted")
+    )
+    completed_or_waiting_ids = set((await db.execute(
+        select(AcceleratorHomeworkSubmission.membership_id).where(
+            AcceleratorHomeworkSubmission.assignment_id == assignment.id,
+            AcceleratorHomeworkSubmission.status.in_(completed_statuses),
+        )
+    )).scalars().all())
+    completed_team_ids = set((await db.execute(
+        select(AcceleratorHomeworkSubmission.team_id).where(
+            AcceleratorHomeworkSubmission.assignment_id == assignment.id,
+            AcceleratorHomeworkSubmission.team_id.is_not(None),
+            AcceleratorHomeworkSubmission.status.in_(completed_statuses),
+        )
+    )).scalars().all())
     accelerator = await get_accelerator_or_404(db, cohort.accelerator_id)
     frontend_url = os.getenv("FRONTEND_URL", "https://pitchy.pro").rstrip("/")
     notification_ids = []
     today = datetime.utcnow().date().isoformat()
     for membership, resident in recipients:
-        if membership.id in completed_or_waiting_ids:
+        membership_team_id = None
+        if assignment.submission_mode == "team":
+            membership_team_id = (await db.execute(
+                select(AcceleratorTeamMember.team_id).where(
+                    AcceleratorTeamMember.membership_id == membership.id,
+                    AcceleratorTeamMember.status == "active",
+                )
+            )).scalar_one_or_none()
+        if (
+            membership.id in completed_or_waiting_ids
+            or membership_team_id in completed_team_ids
+        ):
             continue
         notification = await enqueue_notification(
             db,
@@ -2677,7 +2991,7 @@ async def duplicate_homework_assignment(
         audience=source.audience, allow_resubmit=source.allow_resubmit,
         assignment_type=source.assignment_type, submission_mode=source.submission_mode,
         quiz_config=source.quiz_config, passing_score=source.passing_score,
-        max_attempts=source.max_attempts,
+        max_attempts=source.max_attempts, pitchy_tools=source.pitchy_tools or [],
         created_by_user_id=user.id, updated_by_user_id=user.id,
     )
     db.add(duplicate)
@@ -2785,10 +3099,17 @@ async def list_resident_homework(
             ],
             "passing_score": assignment.passing_score,
             "max_attempts": assignment.max_attempts,
+            "pitchy_enabled": bool(cohort.homework_pitchy_enabled),
+            "pitchy_tools": (
+                assignment.pitchy_tools or []
+                if cohort.homework_pitchy_enabled
+                else []
+            ),
             "due_at": assignment.due_at,
             "allow_resubmit": assignment.allow_resubmit,
             "published_at": assignment.published_at,
             "is_overdue": bool(assignment.due_at and assignment.due_at < datetime.utcnow() and not submission),
+            "display_status": homework_display_status(assignment, submission),
             "submission": submission_data,
         })
     return result
@@ -2906,6 +3227,13 @@ async def submit_homework(
         quiz_answers=submission.quiz_answers,
         score=submission.score,
         passed=submission.passed,
+        review_status=(
+            "accepted"
+            if submission.passed is True
+            else "needs_revision"
+            if assignment.assignment_type == "quiz"
+            else "submitted"
+        ),
     ))
     reviewer = await db.get(User, assignment.created_by_user_id)
     effective_tracker_ids = await membership_tracker_user_ids(db, membership.id)
@@ -2975,6 +3303,14 @@ async def list_homework_submissions(
     )).all()
     result = []
     for submission, resident in rows:
+        if access_role == "tracker" and submission.team_id is not None:
+            team_tracker_id = (await db.execute(
+                select(AcceleratorTeamTrackerAssignment.tracker_user_id).where(
+                    AcceleratorTeamTrackerAssignment.team_id == submission.team_id
+                )
+            )).scalar_one_or_none()
+            if team_tracker_id != user.id:
+                continue
         data = homework_submission_dict(submission, resident=resident)
         data["is_late"] = bool(assignment.due_at and submission.submitted_at > assignment.due_at)
         result.append(data)
@@ -3000,14 +3336,38 @@ async def review_homework_submission(
     cohort = await get_cohort_or_404(db, assignment.cohort_id)
     await require_homework_module(db, cohort)
     membership = await db.get(AcceleratorMembership, submission.membership_id)
-    await require_tracker_membership_access(db, user, membership)
+    access_role = await homework_review_access(
+        db, user=user, cohort=cohort, submission=submission
+    )
     require_mutable_cohort(cohort)
-    if submission.status not in ("submitted", "needs_revision"):
+    if access_role == "tracker" and submission.status not in (
+        "submitted", "needs_revision"
+    ):
         raise HTTPException(status_code=409, detail="Ответ уже проверен")
+    if access_role == "manager" and submission.status not in (
+        "submitted", "needs_revision", "accepted"
+    ):
+        raise HTTPException(status_code=409, detail="Ответ нельзя проверить")
+    if submission.status == payload.status:
+        raise HTTPException(status_code=409, detail="У ответа уже выбран этот статус")
+    previous_status = submission.status
+    previous_reviewer_user_id = submission.reviewed_by_user_id
     submission.status = payload.status
     submission.review_comment = (payload.comment or "").strip() or None
     submission.reviewed_by_user_id = user.id
     submission.reviewed_at = datetime.utcnow()
+    current_attempt = (await db.execute(
+        select(AcceleratorHomeworkAttempt).where(
+            AcceleratorHomeworkAttempt.submission_id == submission.id,
+            AcceleratorHomeworkAttempt.attempt_number
+            == submission.attempt_count,
+        )
+    )).scalar_one_or_none()
+    if current_attempt:
+        current_attempt.review_status = payload.status
+        current_attempt.review_comment = submission.review_comment
+        current_attempt.reviewed_by_user_id = user.id
+        current_attempt.reviewed_at = submission.reviewed_at
     resident = await db.get(User, membership.user_id) if membership else None
     notification = None
     if resident:
@@ -3035,7 +3395,14 @@ async def review_homework_submission(
         action="homework.reviewed",
         target_type="homework_submission",
         target_id=submission.id,
-        details={"status": payload.status, "assignment_id": assignment.id},
+        details={
+            "status": payload.status,
+            "previous_status": previous_status,
+            "assignment_id": assignment.id,
+            "previous_reviewer_user_id": previous_reviewer_user_id,
+            "manager_override": access_role == "manager"
+            and previous_status in {"accepted", "needs_revision"},
+        },
     )
     await db.commit()
     if notification:
@@ -3058,7 +3425,26 @@ async def list_homework_attempts(
     if not membership:
         raise HTTPException(status_code=404, detail="Участник не найден")
     if membership.user_id != user.id:
-        await require_tracker_membership_access(db, user, membership)
+        team_member = None
+        if submission.team_id is not None:
+            team_member = (await db.execute(
+                select(AcceleratorTeamMember.id)
+                .join(
+                    AcceleratorMembership,
+                    AcceleratorMembership.id
+                    == AcceleratorTeamMember.membership_id,
+                )
+                .where(
+                    AcceleratorTeamMember.team_id == submission.team_id,
+                    AcceleratorTeamMember.status == "active",
+                    AcceleratorMembership.user_id == user.id,
+                )
+                .limit(1)
+            )).scalar_one_or_none()
+        if team_member is None:
+            await homework_review_access(
+                db, user=user, cohort=cohort, submission=submission
+            )
     await require_homework_module(db, cohort)
     rows = (await db.execute(select(AcceleratorHomeworkAttempt).where(
         AcceleratorHomeworkAttempt.submission_id == submission.id
@@ -3071,6 +3457,13 @@ async def list_homework_attempts(
         "quiz_answers": row.quiz_answers or {},
         "score": row.score,
         "passed": row.passed,
+        "review_status": row.review_status,
+        "review_comment": row.review_comment,
+        "reviewed_by_user_id": row.reviewed_by_user_id,
+        "reviewed_at": row.reviewed_at,
+        "quiz_results": homework_quiz_results(assignment, row)
+        if assignment.assignment_type == "quiz"
+        else [],
         "created_at": row.created_at,
     } for row in rows]
 
@@ -3659,7 +4052,53 @@ async def download_accelerator_file(
     if not row:
         raise HTTPException(status_code=404, detail="Файл не найден")
     cohort = await get_cohort_or_404(db, row.cohort_id)
-    await require_cohort_reader(db, user, cohort)
+    allowed = bool(
+        user.is_admin
+        or await is_accelerator_organizer(db, user.id, cohort.accelerator_id)
+    )
+    if not allowed and row.purpose == "application" and row.application_id:
+        application = await db.get(AcceleratorApplication, row.application_id)
+        allowed = bool(application and application.user_id == user.id)
+    if not allowed and row.purpose == "homework":
+        if row.submission_id:
+            submission = await db.get(
+                AcceleratorHomeworkSubmission, row.submission_id
+            )
+            if submission:
+                membership = await db.get(
+                    AcceleratorMembership, submission.membership_id
+                )
+                allowed = bool(membership and membership.user_id == user.id)
+                if not allowed and submission.team_id is not None:
+                    allowed = (await db.execute(
+                        select(AcceleratorTeamMember.id)
+                        .join(
+                            AcceleratorMembership,
+                            AcceleratorMembership.id
+                            == AcceleratorTeamMember.membership_id,
+                        )
+                        .where(
+                            AcceleratorTeamMember.team_id == submission.team_id,
+                            AcceleratorTeamMember.status == "active",
+                            AcceleratorMembership.user_id == user.id,
+                        )
+                        .limit(1)
+                    )).scalar_one_or_none() is not None
+                if not allowed:
+                    try:
+                        await homework_review_access(
+                            db,
+                            user=user,
+                            cohort=cohort,
+                            submission=submission,
+                        )
+                        allowed = True
+                    except HTTPException:
+                        allowed = False
+        else:
+            allowed = row.uploader_user_id == user.id
+    if not allowed:
+        raise HTTPException(status_code=404, detail="Файл не найден")
     path = ACCELERATOR_UPLOAD_DIR / row.stored_name
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Файл не найден в хранилище")

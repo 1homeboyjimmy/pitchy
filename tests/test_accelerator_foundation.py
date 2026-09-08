@@ -18,6 +18,7 @@ from models import (
     AcceleratorArtifact,
     AcceleratorInvitation,
     AcceleratorHomeworkAssignment,
+    AcceleratorHomeworkAttempt,
     AcceleratorHomeworkSubmission,
     AcceleratorAttendanceRecord,
     AcceleratorEvent,
@@ -68,6 +69,8 @@ from routers.accelerators import (
     list_accelerators,
     list_my_accelerator_memberships,
     list_homework_submissions,
+    homework_review_queue,
+    list_homework_attempts,
     list_resident_homework,
     list_resident_program_stages,
     list_resident_events,
@@ -111,6 +114,8 @@ from routers.accelerators import (
     publish_program_stage,
     resend_application_invitation,
     review_homework_submission,
+    update_homework_pitchy_feature,
+    update_homework_pitchy_tools,
     submit_public_application,
     submit_application,
     submit_homework,
@@ -147,6 +152,8 @@ from schemas.accelerators import (
     InvitationAccept,
     HomeworkAssignmentCreate,
     HomeworkReview,
+    HomeworkPitchyCohortUpdate,
+    HomeworkPitchyToolsUpdate,
     HomeworkSubmissionUpsert,
     AttendanceMark,
     EventCreate,
@@ -483,7 +490,6 @@ async def test_application_enrollment_and_per_resident_quota_precedence():
             assignment.id,
             HomeworkSubmissionUpsert(
                 answer_text="Провели пять интервью, три респондента подтвердили проблему.",
-                attachments=["https://example.com/interviews"],
             ),
             BackgroundTasks(),
             resident,
@@ -2225,3 +2231,148 @@ async def test_stage_actions_artifacts_access_completion_and_visibility():
             AcceleratorAuditLog.accelerator_id == accelerator["id"]
         ))).scalars().all())
         assert {"artifact.launched", "artifact.updated", "program_stage.completed"} <= audit_actions
+
+
+@pytest.mark.asyncio
+async def test_homework_quiz_history_review_queue_and_admin_pitchy_controls():
+    suffix = uuid.uuid4().hex[:10]
+    async with AsyncSessionLocal() as db:
+        admin = User(email=f"hw-admin-{suffix}@example.test", name="Admin", is_admin=True)
+        organizer = User(email=f"hw-organizer-{suffix}@example.test", name="Organizer")
+        resident = User(email=f"hw-resident-{suffix}@example.test", name="Resident")
+        db.add_all([admin, organizer, resident])
+        await db.commit()
+        for user in (admin, organizer, resident):
+            await db.refresh(user)
+
+        accelerator = await create_accelerator(
+            AcceleratorCreate(name=f"Homework accelerator {suffix}"), admin, db
+        )
+        await assign_organizer(
+            accelerator["id"], OrganizerAssign(user_id=organizer.id), admin, db
+        )
+        cohort = await create_cohort(
+            accelerator["id"], CohortCreate(name="Homework cohort"), organizer, db
+        )
+        await update_program_config(
+            cohort["id"], ProgramConfigUpdate(version=1, modules={"homework": True}), organizer, db
+        )
+        await update_cohort_status(
+            cohort["id"], StatusUpdate(status="accepting"), organizer, db
+        )
+        application = await submit_application(
+            cohort["id"],
+            ApplicationCreate(
+                form_payload={"motivation": "Learn"},
+                application_type="participant",
+                accept_privacy=True,
+                accept_program_rules=True,
+            ),
+            resident,
+            db,
+        )
+        await accept_application(
+            application["id"], ApplicationReview(), BackgroundTasks(), organizer, db
+        )
+        enrolled = await enroll_application(application["id"], resident, db)
+
+        quiz = await create_homework_assignment(
+            cohort["id"],
+            HomeworkAssignmentCreate(
+                title="Product test",
+                description="Choose an answer",
+                assignment_type="quiz",
+                passing_score=100,
+                max_attempts=2,
+                quiz_questions=[{
+                    "id": "q1",
+                    "prompt": "What comes first?",
+                    "options": [
+                        {"id": "wrong", "label": "Scale", "correct": False},
+                        {"id": "right", "label": "Validate", "correct": True},
+                    ],
+                }],
+            ),
+            organizer,
+            db,
+        )
+        await publish_homework_assignment(quiz["id"], BackgroundTasks(), organizer, db)
+
+        with pytest.raises(HTTPException) as organizer_cannot_enable_pitchy:
+            await update_homework_pitchy_feature(
+                cohort["id"], HomeworkPitchyCohortUpdate(enabled=True), organizer, db
+            )
+        assert organizer_cannot_enable_pitchy.value.status_code == 403
+        enabled = await update_homework_pitchy_feature(
+            cohort["id"], HomeworkPitchyCohortUpdate(enabled=True), admin, db
+        )
+        assert enabled["enabled"] is True
+        marked = await update_homework_pitchy_tools(
+            quiz["id"], HomeworkPitchyToolsUpdate(tools=["research", "presentation"]), admin, db
+        )
+        assert marked["pitchy_tools"] == ["research", "presentation"]
+
+        failed = await submit_homework(
+            quiz["id"], HomeworkSubmissionUpsert(quiz_answers={"q1": "wrong"}),
+            BackgroundTasks(), resident, db,
+        )
+        assert failed["status"] == "submitted"
+        resident_rows = await list_resident_homework(enrolled["membership_id"], resident, db)
+        assert resident_rows[0]["display_status"] == "needs_revision"
+        assert resident_rows[0]["pitchy_tools"] == ["research", "presentation"]
+        failed_attempts = await list_homework_attempts(failed["id"], resident, db)
+        assert failed_attempts[0]["review_status"] == "needs_revision"
+        assert failed_attempts[0]["quiz_results"] == [{
+            "question_id": "q1",
+            "prompt": "What comes first?",
+            "selected_option_id": "wrong",
+            "selected_option_label": "Scale",
+            "correct_option_id": "right",
+            "correct_option_label": "Validate",
+            "correct": False,
+        }]
+        passed = await submit_homework(
+            quiz["id"], HomeworkSubmissionUpsert(quiz_answers={"q1": "right"}),
+            BackgroundTasks(), resident, db,
+        )
+        assert passed["status"] == "accepted"
+        attempts = await list_homework_attempts(passed["id"], organizer, db)
+        assert [row["attempt_number"] for row in attempts] == [2, 1]
+        assert attempts[0]["review_status"] == "accepted"
+        assert attempts[0]["quiz_results"][0]["correct"] is True
+
+        text_assignment = await create_homework_assignment(
+            cohort["id"], HomeworkAssignmentCreate(
+                title="Interview notes", description="Text or attachment"
+            ), organizer, db,
+        )
+        await publish_homework_assignment(
+            text_assignment["id"], BackgroundTasks(), organizer, db
+        )
+        text_submission = await submit_homework(
+            text_assignment["id"], HomeworkSubmissionUpsert(answer_text="Three interviews"),
+            BackgroundTasks(), resident, db,
+        )
+        queue = await homework_review_queue(
+            cohort["id"], None, text_assignment["id"], None, None, None,
+            "review_pending", organizer, db,
+        )
+        assert [row["id"] for row in queue["items"]] == [text_submission["id"]]
+        await review_homework_submission(
+            text_submission["id"], HomeworkReview(status="accepted", comment="Accepted"),
+            BackgroundTasks(), organizer, db,
+        )
+        await review_homework_submission(
+            text_submission["id"], HomeworkReview(status="needs_revision", comment="Add quotes"),
+            BackgroundTasks(), organizer, db,
+        )
+        reviewed_attempt = (await db.execute(select(AcceleratorHomeworkAttempt).where(
+            AcceleratorHomeworkAttempt.submission_id == text_submission["id"]
+        ))).scalar_one()
+        assert reviewed_attempt.review_status == "needs_revision"
+        assert reviewed_attempt.review_comment == "Add quotes"
+        audit = (await db.execute(select(AcceleratorAuditLog).where(
+            AcceleratorAuditLog.action == "homework.reviewed",
+            AcceleratorAuditLog.target_id == text_submission["id"],
+        ).order_by(AcceleratorAuditLog.id.desc()))).scalars().first()
+        assert audit.details["manager_override"] is True

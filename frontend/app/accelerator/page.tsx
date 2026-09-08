@@ -12,6 +12,7 @@ import { ApplicationManager, type AcceleratorApplication } from "@/components/ac
 import { AttendanceManager } from "@/components/accelerator/AttendanceManager";
 import { AuditLog } from "@/components/accelerator/AuditLog";
 import { HomeworkManager } from "@/components/accelerator/HomeworkManager";
+import { HomeworkReviewQueue } from "@/components/accelerator/HomeworkReviewQueue";
 import { OrganizerManager } from "@/components/accelerator/OrganizerManager";
 import { ProgramBuilder } from "@/components/accelerator/ProgramBuilder";
 import { QuotaManager, type Limits } from "@/components/accelerator/QuotaManager";
@@ -20,7 +21,6 @@ import { ResidentReport } from "@/components/accelerator/ResidentReport";
 import { TrackerManager } from "@/components/accelerator/TrackerManager";
 import { TrackingDashboard } from "@/components/accelerator/TrackingDashboard";
 import { TrackerAttendance } from "@/components/accelerator/TrackerAttendance";
-import { TrackerHomework } from "@/components/accelerator/TrackerHomework";
 import { MatchmakingManager } from "@/components/accelerator/MatchmakingManager";
 import { MatchmakingWorkspace } from "@/components/accelerator/MatchmakingWorkspace";
 import { ProjectAuditWorkspace } from "@/components/accelerator/ProjectAuditWorkspace";
@@ -31,7 +31,7 @@ import { CohortClosure } from "@/components/accelerator/CohortClosure";
 import { AcceleratorOperations } from "@/components/accelerator/AcceleratorOperations";
 
 type Accelerator = { id: number; name: string; description?: string | null; status: string; access_role: "global_admin" | "organizer" | "tracker" | "expert" | "resident" };
-type Cohort = { id: number; accelerator_id: number; name: string; status: string; timezone: string; starts_at?: string | null; ends_at?: string | null; default_quota_config?: Limits | null; application_form_schema: ApplicationFormSchema };
+type Cohort = { id: number; accelerator_id: number; name: string; status: string; timezone: string; starts_at?: string | null; ends_at?: string | null; default_quota_config?: Limits | null; application_form_schema: ApplicationFormSchema; homework_pitchy_enabled: boolean };
 type ProgramConfig = { cohort_id: number; version: number; modules: Record<string, boolean>; locked_modules: Record<string, boolean> };
 type Resident = { membership_id: number; user_id: number; name: string; email: string; status: string; status_reason?: string | null; trackers?: Array<{ user_id: number; name: string }> };
 type TabKey = "overview" | "operations" | "applications" | "form" | "program" | "homework" | "attendance" | "trackers" | "reports" | "tracking" | "matching" | "project_audit" | "demo_day" | "artifacts" | "closure" | "quotas" | "settings" | "audit";
@@ -147,7 +147,7 @@ export default function AcceleratorWorkspacePage() {
         {tab === "applications" && <ApplicationManager token={token} applications={applications} schema={selectedCohort.application_form_schema || {}} onChanged={loadCohortDetails} />}
         {tab === "form" && <ApplicationFormEditor key={selectedCohort.id} schema={selectedCohort.application_form_schema || {}} cohortId={selectedCohort.id} token={token} publicUrl={`/accelerators/apply/${selectedCohort.id}`} onPublished={loadCohortDetails} />}
         {tab === "program" && <ProgramBuilder cohortId={selectedCohort.id} token={token} />}
-        {tab === "homework" && config?.modules.homework && (canManage ? <HomeworkManager cohortId={selectedCohort.id} token={token} residents={residents} /> : <TrackerHomework cohortId={selectedCohort.id} token={token} />)}
+        {tab === "homework" && config?.modules.homework && <div className="space-y-6"><HomeworkReviewQueue cohortId={selectedCohort.id} token={token} />{canManage && <HomeworkManager cohortId={selectedCohort.id} token={token} residents={residents} isAdmin={isAdmin} pitchyEnabled={selectedCohort.homework_pitchy_enabled} />}</div>}
         {tab === "attendance" && config?.modules.attendance && (canManage ? <AttendanceManager cohortId={selectedCohort.id} token={token} /> : <TrackerAttendance cohortId={selectedCohort.id} token={token} />)}
         {tab === "tracking" && config?.modules.progress_tracking && <TrackingDashboard cohortId={selectedCohort.id} token={token} />}
         {tab === "matching" && config?.modules.matchmaking && (canManage ? <MatchmakingManager cohortId={selectedCohort.id} token={token} /> : <MatchmakingWorkspace cohortId={selectedCohort.id} />)}

@@ -697,8 +697,8 @@ class HomeworkSubmissionUpsert(BaseModel):
         cleaned = []
         for item in value:
             item = item.strip()
-            if len(item) > 2000 or not item.lower().startswith(("https://", "http://", "/api/accelerators/files/")):
-                raise ValueError("Материал должен быть загруженным файлом или корректной http(s)-ссылкой")
+            if len(item) > 2000 or not item.startswith("/api/accelerators/files/"):
+                raise ValueError("Файл ответа должен быть загружен в защищённое хранилище акселератора")
             cleaned.append(item)
         return cleaned
 
@@ -841,6 +841,26 @@ class EventCreate(BaseModel):
                 raise ValueError("Одно задание нельзя прикрепить к мероприятию дважды")
             assignment_ids.add(assignment_id)
         return self
+
+
+PitchyHomeworkTool = Literal[
+    "chat", "research", "roadmap", "custdev", "grants", "presentation"
+]
+
+
+class HomeworkPitchyCohortUpdate(BaseModel):
+    enabled: bool
+
+
+class HomeworkPitchyToolsUpdate(BaseModel):
+    tools: list[PitchyHomeworkTool] = Field(default_factory=list, max_length=6)
+
+    @field_validator("tools")
+    @classmethod
+    def unique_tools(cls, value: list[str]) -> list[str]:
+        if len(set(value)) != len(value):
+            raise ValueError("Инструменты Pitchy не должны повторяться")
+        return value
 
 
 class AttendanceMark(BaseModel):

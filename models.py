@@ -247,6 +247,9 @@ class AcceleratorCohort(Base):
     application_form_schema: Mapped[dict] = mapped_column(JSON, default=dict)
     application_form_draft: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     application_form_version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    homework_pitchy_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
     default_quota_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     default_quota_updated_by_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
@@ -1221,6 +1224,9 @@ class AcceleratorHomeworkAssignment(Base):
     quiz_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     passing_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     max_attempts: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    pitchy_tools: Mapped[list] = mapped_column(
+        JSON, default=list, server_default=text("'[]'")
+    )
     due_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(30), default="draft", server_default="draft", index=True)
     audience: Mapped[str] = mapped_column(String(30), default="cohort", server_default="cohort")
@@ -1296,6 +1302,14 @@ class AcceleratorHomeworkAttempt(Base):
     quiz_answers: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     passed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    review_status: Mapped[str | None] = mapped_column(
+        String(30), nullable=True, index=True
+    )
+    review_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewed_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
 
