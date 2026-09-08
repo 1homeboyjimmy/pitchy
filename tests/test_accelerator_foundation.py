@@ -14,6 +14,7 @@ from db_async import AsyncSessionLocal
 from models import (
     AcceleratorApplication,
     AcceleratorApplicationEvent,
+    AcceleratorApplicationFormVersion,
     AcceleratorArtifact,
     AcceleratorInvitation,
     AcceleratorHomeworkAssignment,
@@ -46,6 +47,7 @@ from routers.accelerator_artifacts import (
     update_program_artifact,
 )
 from routers.accelerators import (
+    accelerator_file_signature_matches,
     accept_accelerator_invitation,
     accept_application,
     assign_cohort_quota,
@@ -113,6 +115,11 @@ from routers.accelerators import (
     submit_application,
     submit_homework,
     get_application_revision,
+    get_public_application_form,
+    get_application_form_draft,
+    list_application_form_versions,
+    publish_application_form,
+    save_application_form_draft,
     submit_application_revision,
     update_application_status,
     update_cohort,
@@ -127,6 +134,7 @@ from schemas.accelerators import (
     AcceleratorCreate,
     AcceleratorSetupCreate,
     ApplicationCreate,
+    ApplicationFormDraftUpdate,
     ApplicationReview,
     ApplicationRevisionUpdate,
     ApplicationStatusUpdate,
@@ -271,7 +279,12 @@ async def test_application_enrollment_and_per_resident_quota_precedence():
             organizer,
             db,
         )
+        assert updated_cohort["application_form_schema"].get("title") is None
+        draft = await get_application_form_draft(cohort["id"], organizer, db)
+        assert draft["draft_schema"]["title"] == "Анкета первого потока"
+        updated_cohort = await publish_application_form(cohort["id"], organizer, db)
         assert updated_cohort["application_form_schema"]["title"] == "Анкета первого потока"
+        assert updated_cohort["application_form_version"] == 2
         with pytest.raises(HTTPException) as disabled_homework:
             await create_homework_assignment(
                 cohort["id"],
@@ -1408,6 +1421,83 @@ def test_application_form_schema_rejects_duplicate_keys_and_invalid_select():
                 {"key": "stage", "label": "Стадия", "type": "select", "options": ["Идея"]},
             ]
         })
+    with pytest.raises(ValidationError):
+        ApplicationFormDraftUpdate(schema={
+            "sections": [{"key": "project", "title": "Проект"}],
+            "fields": [{"key": "team", "label": "Команда", "section": "unknown"}],
+        })
+
+
+def test_application_file_signature_validation_rejects_spoofed_content():
+    assert accelerator_file_signature_matches(".pdf", b"%PDF-1.7\n") is True
+    assert accelerator_file_signature_matches(".docx", b"PK\x03\x04archive") is True
+    assert accelerator_file_signature_matches(".png", b"plain text renamed to png") is False
+    assert accelerator_file_signature_matches(".mp4", b"plain text renamed to mp4") is False
+
+
+@pytest.mark.asyncio
+async def test_application_form_versions_keep_submitted_schema_snapshot():
+    suffix = uuid.uuid4().hex
+    async with AsyncSessionLocal() as db:
+        admin = User(email=f"form-admin-{suffix}@example.test", name="Admin", is_admin=True)
+        db.add(admin)
+        await db.commit()
+        await db.refresh(admin)
+        accelerator = await create_accelerator(AcceleratorCreate(name="Versioned forms"), admin, db)
+        cohort = await create_cohort(
+            accelerator["id"],
+            CohortCreate(name="Form cohort", application_form_schema={
+                "title": "Версия 1",
+                "fields": [{"key": "motivation", "label": "Мотивация", "required": True}],
+            }),
+            admin, db,
+        )
+        await update_cohort_status(cohort["id"], StatusUpdate(status="accepting"), admin, db)
+
+        draft_schema = {
+            "title": "Версия 2",
+            "sections": [{"key": "experience", "title": "Опыт"}],
+            "fields": [{
+                "key": "motivation", "label": "Почему вы участвуете?", "type": "textarea",
+                "required": True, "section": "experience",
+            }],
+        }
+        await save_application_form_draft(
+            cohort["id"], ApplicationFormDraftUpdate(schema=draft_schema), admin, db,
+        )
+        before_publish = await get_public_application_form(cohort["id"], db)
+        assert before_publish["published_version"] == 1
+        assert before_publish["form_schema"]["title"] == "Версия 1"
+        published = await publish_application_form(cohort["id"], admin, db)
+        assert published["application_form_version"] == 2
+
+        submitted = await submit_public_application(
+            cohort["id"],
+            PublicApplicationCreate(
+                applicant_name="Public Candidate",
+                applicant_email=f"form-candidate-{suffix}@example.test",
+                telegram="@form_candidate",
+                competencies=["Product"],
+                form_payload={"motivation": "Проверить гипотезу"},
+                accept_privacy=True,
+                accept_program_rules=True,
+            ), db,
+        )
+        application = await db.get(AcceleratorApplication, submitted["id"])
+        assert application.form_version == 2
+        assert application.form_schema_snapshot["title"] == "Версия 2"
+
+        await save_application_form_draft(
+            cohort["id"], ApplicationFormDraftUpdate(schema={**draft_schema, "title": "Версия 3"}), admin, db,
+        )
+        await publish_application_form(cohort["id"], admin, db)
+        await db.refresh(application)
+        assert application.form_version == 2
+        assert application.form_schema_snapshot["title"] == "Версия 2"
+        versions = await list_application_form_versions(cohort["id"], admin, db)
+        assert [row["version"] for row in versions] == [3, 2, 1]
+        assert (await get_application_form_draft(cohort["id"], admin, db))["has_unpublished_changes"] is False
+        assert (await db.execute(select(func.count(AcceleratorApplicationFormVersion.id)))).scalar_one() >= 3
 
 
 @pytest.mark.asyncio

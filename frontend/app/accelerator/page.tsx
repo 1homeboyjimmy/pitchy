@@ -46,7 +46,7 @@ export default function AcceleratorWorkspacePage() {
   const [accelerators, setAccelerators] = useState<Accelerator[]>([]); const [profile, setProfile] = useState<UserResponse | null>(null); const [acceleratorId, setAcceleratorId] = useState<number | null>(null);
   const [cohorts, setCohorts] = useState<Cohort[]>([]); const [cohortId, setCohortId] = useState<number | null>(null); const [config, setConfig] = useState<ProgramConfig | null>(null);
   const [applications, setApplications] = useState<AcceleratorApplication[]>([]); const [residents, setResidents] = useState<Resident[]>([]); const [residentWorkspace, setResidentWorkspace] = useState<ResidentWorkspaceData | null>(null);
-  const [tab, setTab] = useState<TabKey>("overview"); const [showSetup, setShowSetup] = useState(false); const [loading, setLoading] = useState(true); const [busy, setBusy] = useState(""); const [error, setError] = useState(""); const [copied, setCopied] = useState(false);
+  const [tab, setTab] = useState<TabKey>("overview"); const [showSetup, setShowSetup] = useState(false); const [loading, setLoading] = useState(true); const [error, setError] = useState(""); const [copied, setCopied] = useState(false);
 
   const selectedAccelerator = accelerators.find((row) => row.id === acceleratorId) || null;
   const selectedCohort = cohorts.find((row) => row.id === cohortId) || null;
@@ -128,12 +128,6 @@ export default function AcceleratorWorkspacePage() {
   useEffect(() => { if (!tabs.some((item) => item.key === tab)) setTab(tabs[0]?.key || "overview"); }, [tab, tabs]);
   const activeManagerGroup = managerGroups.find((group) => group.items.some((item) => item.key === tab)) || managerGroups[0];
 
-  const saveApplicationForm = async (applicationFormSchema: ApplicationFormSchema) => {
-    if (!token || !cohortId) return false; setBusy("form"); setError("");
-    try { const updated = await patchAuthJson<Cohort>(`/api/accelerators/cohorts/${cohortId}`, { application_form_schema: applicationFormSchema }, token); setCohorts((rows) => rows.map((row) => row.id === updated.id ? updated : row)); return true; }
-    catch (reason) { setError(describeApiError(reason, "Не удалось сохранить анкету")); return false; }
-    finally { setBusy(""); }
-  };
   const copyApplicationLink = async () => { if (!cohortId) return; await navigator.clipboard.writeText(`${window.location.origin}/accelerators/apply/${cohortId}`); setCopied(true); window.setTimeout(() => setCopied(false), 1600); };
 
   if (!isLoaded || loading) return <main className="min-h-[100dvh] grid place-items-center bg-black text-white"><Loader2 className="animate-spin text-white/40" /></main>;
@@ -151,7 +145,7 @@ export default function AcceleratorWorkspacePage() {
         {tab === "overview" && <Overview accelerator={selectedAccelerator} cohort={selectedCohort} config={config} applications={applications} residents={residents} onCopy={copyApplicationLink} copied={copied} onNavigate={setTab} />}
         {tab === "operations" && canManage && <AcceleratorOperations cohortId={selectedCohort.id} acceleratorId={selectedAccelerator.id} token={token} isAdmin={isAdmin} />}
         {tab === "applications" && <ApplicationManager token={token} applications={applications} schema={selectedCohort.application_form_schema || {}} onChanged={loadCohortDetails} />}
-        {tab === "form" && <ApplicationFormEditor key={selectedCohort.id} schema={selectedCohort.application_form_schema || {}} publicUrl={`/accelerators/apply/${selectedCohort.id}`} saving={busy === "form"} onSave={saveApplicationForm} />}
+        {tab === "form" && <ApplicationFormEditor key={selectedCohort.id} schema={selectedCohort.application_form_schema || {}} cohortId={selectedCohort.id} token={token} publicUrl={`/accelerators/apply/${selectedCohort.id}`} onPublished={loadCohortDetails} />}
         {tab === "program" && <ProgramBuilder cohortId={selectedCohort.id} token={token} />}
         {tab === "homework" && config?.modules.homework && (canManage ? <HomeworkManager cohortId={selectedCohort.id} token={token} residents={residents} /> : <TrackerHomework cohortId={selectedCohort.id} token={token} />)}
         {tab === "attendance" && config?.modules.attendance && (canManage ? <AttendanceManager cohortId={selectedCohort.id} token={token} /> : <TrackerAttendance cohortId={selectedCohort.id} token={token} />)}

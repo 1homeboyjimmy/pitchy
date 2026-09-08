@@ -48,6 +48,7 @@ from models import (
     Accelerator,
     AcceleratorApplication,
     AcceleratorApplicationEvent,
+    AcceleratorApplicationFormVersion,
     AcceleratorAuditLog,
     AcceleratorAttendanceRecord,
     AcceleratorArtifact,
@@ -95,6 +96,7 @@ from schemas.accelerators import (
     AcceleratorSetupCreate,
     AcceleratorUpdate,
     ApplicationRevisionUpdate,
+    ApplicationFormDraftUpdate,
     ApplicationCreate,
     ApplicationReview,
     ApplicationStatusUpdate,
@@ -202,6 +204,8 @@ def cohort_dict(row: AcceleratorCohort) -> dict:
         "starts_at": row.starts_at,
         "ends_at": row.ends_at,
         "application_form_schema": row.application_form_schema or {},
+        "application_form_version": row.application_form_version,
+        "application_form_has_draft": row.application_form_draft is not None,
         "default_quota_config": row.default_quota_config,
         "created_at": row.created_at,
         "updated_at": row.updated_at,
@@ -219,6 +223,8 @@ def application_dict(row: AcceleratorApplication) -> dict:
         "application_type": row.application_type,
         "status": row.status,
         "form_payload": row.form_payload or {},
+        "form_version": row.form_version,
+        "form_schema_snapshot": row.form_schema_snapshot or {},
         "reviewed_by_user_id": row.reviewed_by_user_id,
         "review_comment": row.review_comment,
         "submitted_at": row.submitted_at,
@@ -506,6 +512,29 @@ ACCELERATOR_FILE_RULES = {
 }
 
 
+def accelerator_file_signature_matches(extension: str, head: bytes) -> bool:
+    if extension in {".txt", ".md", ".csv"}:
+        return b"\x00" not in head
+    if extension in {".doc", ".xls", ".ppt"}:
+        return head.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1")
+    if extension in {".docx", ".xlsx", ".pptx"}:
+        return head.startswith(b"PK\x03\x04")
+    checks = {
+        ".jpg": head.startswith(b"\xff\xd8\xff"),
+        ".jpeg": head.startswith(b"\xff\xd8\xff"),
+        ".png": head.startswith(b"\x89PNG\r\n\x1a\n"),
+        ".webp": head.startswith(b"RIFF") and head[8:12] == b"WEBP",
+        ".pdf": head.startswith(b"%PDF-"),
+        ".mp3": head.startswith(b"ID3") or head.startswith((b"\xff\xfb", b"\xff\xf3", b"\xff\xf2")),
+        ".wav": head.startswith(b"RIFF") and head[8:12] == b"WAVE",
+        ".m4a": head[4:8] == b"ftyp",
+        ".mp4": head[4:8] == b"ftyp",
+        ".mov": head[4:8] == b"ftyp",
+        ".webm": head.startswith(b"\x1a\x45\xdf\xa3"),
+    }
+    return checks.get(extension, False)
+
+
 async def save_accelerator_file(
     db: AsyncSession,
     *,
@@ -514,6 +543,14 @@ async def save_accelerator_file(
     purpose: str,
     uploader_user_id: int | None,
 ) -> AcceleratorFile:
+    stale_rows = list((await db.execute(select(AcceleratorFile).where(
+        AcceleratorFile.application_id.is_(None),
+        AcceleratorFile.submission_id.is_(None),
+        AcceleratorFile.created_at < datetime.utcnow() - timedelta(hours=24),
+    ).limit(200))).scalars().all())
+    for stale in stale_rows:
+        (ACCELERATOR_UPLOAD_DIR / stale.stored_name).unlink(missing_ok=True)
+        await db.delete(stale)
     original_name = Path(upload.filename or "").name.strip()
     extension = Path(original_name).suffix.lower()
     rule = ACCELERATOR_FILE_RULES.get(extension)
@@ -534,15 +571,20 @@ async def save_accelerator_file(
     path = ACCELERATOR_UPLOAD_DIR / stored_name
     max_bytes = max_mb * 1024 * 1024
     size = 0
+    head = b""
     try:
         with path.open("wb") as target:
             while chunk := await upload.read(1024 * 1024):
+                if len(head) < 32:
+                    head = (head + chunk)[:32]
                 size += len(chunk)
                 if size > max_bytes:
                     raise HTTPException(status_code=413, detail=f"Максимальный размер этого формата — {max_mb} МБ")
                 target.write(chunk)
         if not size:
             raise HTTPException(status_code=400, detail="Файл пуст")
+        if not accelerator_file_signature_matches(extension, head):
+            raise HTTPException(status_code=415, detail="Содержимое файла не соответствует его расширению")
     except Exception:
         path.unlink(missing_ok=True)
         raise
@@ -560,6 +602,17 @@ async def save_accelerator_file(
     await db.commit()
     await db.refresh(row)
     return row
+
+
+def add_initial_form_version(
+    db: AsyncSession, cohort: AcceleratorCohort, *, publisher_user_id: int | None
+) -> None:
+    db.add(AcceleratorApplicationFormVersion(
+        cohort_id=cohort.id,
+        version=cohort.application_form_version or 1,
+        schema=cohort.application_form_schema or {},
+        published_by_user_id=publisher_user_id,
+    ))
 
 
 def accelerator_file_dict(row: AcceleratorFile) -> dict:
@@ -724,6 +777,7 @@ async def setup_accelerator(
     )
     db.add(cohort)
     await db.flush()
+    add_initial_form_version(db, cohort, publisher_user_id=admin.id)
     modules = {**DEFAULT_MODULES, **payload.modules}
     db.add(AcceleratorProgramConfig(
         cohort_id=cohort.id,
@@ -1383,6 +1437,7 @@ async def create_cohort(
     )
     db.add(cohort)
     await db.flush()
+    add_initial_form_version(db, cohort, publisher_user_id=user.id)
     db.add(AcceleratorProgramConfig(
         cohort_id=cohort.id,
         version=1,
@@ -1528,7 +1583,9 @@ async def update_cohort(
     if cohort.starts_at and cohort.ends_at and cohort.ends_at <= cohort.starts_at:
         raise HTTPException(status_code=422, detail="Дата окончания потока должна быть позже даты начала")
     if payload.application_form_schema is not None:
-        cohort.application_form_schema = payload.application_form_schema
+        # Backward-compatible clients save a working draft. Publishing is an
+        # explicit action so a live public form never changes by accident.
+        cohort.application_form_draft = payload.application_form_schema
     add_audit(
         db,
         accelerator_id=cohort.accelerator_id,
@@ -1542,6 +1599,110 @@ async def update_cohort(
     await db.commit()
     await db.refresh(cohort)
     return cohort_dict(cohort)
+
+
+@router.get("/cohorts/{cohort_id}/application-form/draft")
+async def get_application_form_draft(
+    cohort_id: int,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    cohort = await get_cohort_or_404(db, cohort_id)
+    await require_cohort_manager(db, user, cohort)
+    return {
+        "cohort_id": cohort.id,
+        "published_version": cohort.application_form_version,
+        "published_schema": cohort.application_form_schema or {},
+        "draft_schema": cohort.application_form_draft or cohort.application_form_schema or {},
+        "has_unpublished_changes": cohort.application_form_draft is not None,
+    }
+
+
+@router.put("/cohorts/{cohort_id}/application-form/draft")
+async def save_application_form_draft(
+    cohort_id: int,
+    payload: ApplicationFormDraftUpdate,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    cohort = await get_cohort_or_404(db, cohort_id)
+    await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
+    cohort.application_form_draft = payload.schema
+    add_audit(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        actor_user_id=user.id, action="application_form.draft_saved",
+        target_type="cohort", target_id=cohort.id,
+        details={"published_version": cohort.application_form_version},
+    )
+    await db.commit()
+    return {
+        "cohort_id": cohort.id,
+        "published_version": cohort.application_form_version,
+        "draft_schema": cohort.application_form_draft,
+        "has_unpublished_changes": True,
+    }
+
+
+@router.post("/cohorts/{cohort_id}/application-form/publish")
+async def publish_application_form(
+    cohort_id: int,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    cohort = (await db.execute(
+        select(AcceleratorCohort)
+        .where(AcceleratorCohort.id == cohort_id)
+        .with_for_update()
+    )).scalar_one_or_none()
+    if not cohort:
+        raise HTTPException(status_code=404, detail="Поток не найден")
+    await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
+    if cohort.application_form_draft is None:
+        raise HTTPException(status_code=409, detail="Нет неопубликованных изменений анкеты")
+    next_version = (cohort.application_form_version or 1) + 1
+    cohort.application_form_schema = cohort.application_form_draft
+    cohort.application_form_draft = None
+    cohort.application_form_version = next_version
+    db.add(AcceleratorApplicationFormVersion(
+        cohort_id=cohort.id,
+        version=next_version,
+        schema=cohort.application_form_schema,
+        published_by_user_id=user.id,
+    ))
+    add_audit(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        actor_user_id=user.id, action="application_form.published",
+        target_type="cohort", target_id=cohort.id,
+        details={"version": next_version},
+    )
+    await db.commit()
+    await db.refresh(cohort)
+    return cohort_dict(cohort)
+
+
+@router.get("/cohorts/{cohort_id}/application-form/versions")
+async def list_application_form_versions(
+    cohort_id: int,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    cohort = await get_cohort_or_404(db, cohort_id)
+    await require_cohort_manager(db, user, cohort)
+    rows = (await db.execute(
+        select(AcceleratorApplicationFormVersion)
+        .where(AcceleratorApplicationFormVersion.cohort_id == cohort.id)
+        .order_by(AcceleratorApplicationFormVersion.version.desc())
+    )).scalars().all()
+    return [{
+        "id": row.id,
+        "version": row.version,
+        "schema": row.schema or {},
+        "published_by_user_id": row.published_by_user_id,
+        "published_at": row.published_at,
+        "current": row.version == cohort.application_form_version,
+    } for row in rows]
 
 
 @router.get("/cohorts/{cohort_id}/program-config")
@@ -3341,6 +3502,8 @@ async def submit_application(
         application_type=payload.application_type,
         status="draft",
         form_payload=payload.form_payload,
+        form_version=cohort.application_form_version,
+        form_schema_snapshot=cohort.application_form_schema or {},
         privacy_consent_at=datetime.utcnow(),
         program_rules_consent_at=datetime.utcnow(),
     )
@@ -3380,6 +3543,7 @@ async def get_public_application_form(
         "accelerator": accelerator_dict(accelerator),
         "cohort": cohort_dict(cohort),
         "form_schema": cohort.application_form_schema or {},
+        "published_version": cohort.application_form_version,
     }
 
 
@@ -3475,6 +3639,8 @@ async def submit_public_application(
             "telegram": payload.telegram,
             "competencies": payload.competencies,
         },
+        form_version=cohort.application_form_version,
+        form_schema_snapshot=cohort.application_form_schema or {},
         privacy_consent_at=now,
         program_rules_consent_at=now,
     )
@@ -3869,7 +4035,8 @@ async def get_application_revision(
         "form_payload": application.form_payload or {},
         "review_comment": application.review_comment,
         "revision_expires_at": application.revision_expires_at,
-        "form_schema": cohort.application_form_schema or {},
+        "form_schema": application.form_schema_snapshot or cohort.application_form_schema or {},
+        "form_version": application.form_version,
         "cohort": {"id": cohort.id, "name": cohort.name},
         "accelerator": {"id": accelerator.id, "name": accelerator.name},
     }
@@ -3885,10 +4052,19 @@ async def submit_application_revision(
     cohort = await get_cohort_or_404(db, application.cohort_id)
     require_mutable_cohort(cohort)
     validate_application_form(
-        cohort.application_form_schema or {}, payload.form_payload, application.application_type
+        application.form_schema_snapshot or cohort.application_form_schema or {},
+        payload.form_payload,
+        application.application_type,
     )
     previous = application.status
     application.form_payload = payload.form_payload
+    await claim_accelerator_files(
+        db,
+        cohort_id=cohort.id,
+        tokens=accelerator_file_tokens(payload.form_payload),
+        purpose="application",
+        application_id=application.id,
+    )
     application.revision_token_hash = None
     application.revision_requested_at = None
     application.revision_expires_at = None

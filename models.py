@@ -245,6 +245,8 @@ class AcceleratorCohort(Base):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
     application_form_schema: Mapped[dict] = mapped_column(JSON, default=dict)
+    application_form_draft: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    application_form_version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     default_quota_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     default_quota_updated_by_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
@@ -252,6 +254,24 @@ class AcceleratorCohort(Base):
     created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AcceleratorApplicationFormVersion(Base):
+    __tablename__ = "accelerator_application_form_versions"
+    __table_args__ = (
+        UniqueConstraint("cohort_id", "version", name="uq_accelerator_form_version"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    cohort_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_cohorts.id", ondelete="CASCADE"), index=True
+    )
+    version: Mapped[int] = mapped_column(Integer)
+    schema: Mapped[dict] = mapped_column(JSON, default=dict)
+    published_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    published_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
 
 class AcceleratorProgramConfig(Base):
@@ -288,6 +308,8 @@ class AcceleratorApplication(Base):
     application_type: Mapped[str] = mapped_column(String(30), default="project", server_default="project")
     status: Mapped[str] = mapped_column(String(30), default="submitted", server_default="submitted", index=True)
     form_payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    form_version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    form_schema_snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
     privacy_consent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     program_rules_consent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     reviewed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)

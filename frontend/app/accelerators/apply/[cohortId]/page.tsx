@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowLeft, CheckCircle2, Loader2, Paperclip, Send, X } from "lucide-react";
@@ -16,12 +16,16 @@ type FormField = {
   required?: boolean;
   application_types?: Array<"project" | "participant">;
   options?: Array<string | { value: string; label: string }>;
+  section?: string;
 };
+
+type FormSection = { key: string; title: string; description?: string };
 
 type PublicForm = {
   accelerator: { id: number; name: string; description?: string | null };
   cohort: { id: number; name: string; starts_at?: string | null; ends_at?: string | null };
-  form_schema: { title?: string; description?: string; fields?: FormField[]; required?: string[] };
+  form_schema: { title?: string; description?: string; fields?: FormField[]; required?: string[]; sections?: FormSection[] };
+  published_version: number;
 };
 
 export default function AcceleratorApplicationPage() {
@@ -41,6 +45,8 @@ export default function AcceleratorApplicationPage() {
   const [uploadingField, setUploadingField] = useState("");
   const [privacy, setPrivacy] = useState(false);
   const [rules, setRules] = useState(false);
+  const [step, setStep] = useState(0);
+  const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -62,6 +68,33 @@ export default function AcceleratorApplicationPage() {
     () => new Set([...(form?.form_schema.required || []), ...fields.filter((field) => field.required).map((field) => field.key)]),
     [fields, form],
   );
+  const steps = useMemo(() => {
+    const configured = form?.form_schema.sections || [];
+    const configuredKeys = new Set(configured.map((section) => section.key));
+    const hasOther = fields.some((field) => !field.section || !configuredKeys.has(field.section));
+    return [
+      { key: "__common", title: "О вас", description: "Контакты и формат участия" },
+      ...configured,
+      ...(hasOther ? [{ key: "__questions", title: configured.length ? "Дополнительно" : "Анкета", description: "Вопросы программы" }] : []),
+    ];
+  }, [fields, form]);
+  const activeStep = Math.min(step, Math.max(steps.length - 1, 0));
+  const activeSection = steps[activeStep]?.key || "__common";
+  const visibleFields = useMemo(() => {
+    if (activeSection === "__common") return [];
+    const configuredKeys = new Set((form?.form_schema.sections || []).map((section) => section.key));
+    return fields.filter((field) => activeSection === "__questions"
+      ? !field.section || !configuredKeys.has(field.section)
+      : field.section === activeSection);
+  }, [activeSection, fields, form]);
+
+  useEffect(() => { setStep(0); }, [applicationType]);
+
+  const nextStep = () => {
+    if (!formRef.current?.reportValidity()) return;
+    setStep((current) => Math.min(current + 1, steps.length - 1));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -138,7 +171,10 @@ export default function AcceleratorApplicationPage() {
         <h1 className="text-4xl sm:text-6xl tracking-tight">{form.form_schema.title || `Заявка в поток «${form.cohort.name}»`}</h1>
         <p className="mt-5 max-w-2xl text-white/50 leading-relaxed">{form.form_schema.description || form.accelerator.description || "Расскажите о себе и проекте. Аккаунт Pitchy будет создан только после одобрения заявки."}</p>
 
-        <form onSubmit={submit} className="mt-10 space-y-6 rounded-3xl border border-white/10 bg-white/[0.025] p-5 sm:p-8">
+        <div className="mt-10"><div className="mb-3 flex items-center justify-between text-xs text-white/40"><span>Шаг {activeStep + 1} из {steps.length}</span><span>{Math.round(((activeStep + 1) / steps.length) * 100)}%</span></div><div className="h-1.5 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-white transition-[width]" style={{ width: `${((activeStep + 1) / steps.length) * 100}%` }} /></div><h2 className="mt-6 text-2xl">{steps[activeStep]?.title}</h2>{steps[activeStep]?.description && <p className="mt-2 text-sm text-white/40">{steps[activeStep].description}</p>}</div>
+
+        <form ref={formRef} onSubmit={submit} className="mt-5 space-y-6 rounded-3xl border border-white/10 bg-white/[0.025] p-5 sm:p-8">
+          {activeSection === "__common" && <>
           <div className="grid gap-5 sm:grid-cols-2">
             <Field label="Имя и фамилия" required><input value={name} onChange={(e) => setName(e.target.value)} required minLength={2} className="form-input" autoComplete="name" /></Field>
             <Field label="Email" required><input value={email} onChange={(e) => setEmail(e.target.value)} required type="email" className="form-input" autoComplete="email" /></Field>
@@ -152,8 +188,9 @@ export default function AcceleratorApplicationPage() {
               <option value="project">Проект / стартап</option><option value="participant">Участник без проекта</option>
             </select>
           </Field>
+          </>}
 
-          {fields.map((field) => (
+          {visibleFields.map((field) => (
             <Field key={field.key} label={field.label || field.key} description={field.description} required={required.has(field.key)}>
               {field.type === "textarea" ? (
                 <textarea rows={5} value={String(values[field.key] || "")} onChange={(e) => setValues((current) => ({ ...current, [field.key]: e.target.value }))} required={required.has(field.key)} placeholder={field.placeholder} className="form-input resize-y" />
@@ -174,10 +211,10 @@ export default function AcceleratorApplicationPage() {
             </Field>
           ))}
 
-          <label className="flex cursor-pointer gap-3 text-sm text-white/60"><input type="checkbox" checked={privacy} onChange={(e) => setPrivacy(e.target.checked)} required className="mt-1" /><span>Согласен на обработку персональных данных согласно <Link href="/privacy" target="_blank" className="text-white underline">политике конфиденциальности</Link>.</span></label>
-          <label className="flex cursor-pointer gap-3 text-sm text-white/60"><input type="checkbox" checked={rules} onChange={(e) => setRules(e.target.checked)} required className="mt-1" /><span>Принимаю правила программы акселератора и подтверждаю достоверность данных.</span></label>
+          {activeStep === steps.length - 1 && <><label className="flex cursor-pointer gap-3 text-sm text-white/60"><input type="checkbox" checked={privacy} onChange={(e) => setPrivacy(e.target.checked)} required className="mt-1" /><span>Согласен на обработку персональных данных согласно <Link href="/privacy" target="_blank" className="text-white underline">политике конфиденциальности</Link>.</span></label>
+          <label className="flex cursor-pointer gap-3 text-sm text-white/60"><input type="checkbox" checked={rules} onChange={(e) => setRules(e.target.checked)} required className="mt-1" /><span>Принимаю правила программы акселератора и подтверждаю достоверность данных.</span></label></>}
           {error && <p role="alert" className="rounded-2xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200">{error}</p>}
-          <button disabled={submitting} className="flex w-full items-center justify-center gap-2 rounded-full bg-white px-6 py-4 font-semibold text-black transition hover:bg-neutral-200 disabled:opacity-50">{submitting ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />} Отправить заявку</button>
+          <div className="flex flex-wrap items-center justify-between gap-3">{activeStep > 0 ? <button type="button" onClick={() => setStep((current) => current - 1)} className="rounded-full border border-white/15 px-6 py-3 text-sm text-white/65">Назад</button> : <span />}{activeStep < steps.length - 1 ? <button type="button" onClick={nextStep} className="rounded-full bg-white px-7 py-3 font-semibold text-black">Продолжить</button> : <button disabled={submitting} className="flex items-center justify-center gap-2 rounded-full bg-white px-7 py-3 font-semibold text-black transition hover:bg-neutral-200 disabled:opacity-50">{submitting ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />} Отправить заявку</button>}</div>
         </form>
       </div>
       <style jsx global>{`.form-input { width: 100%; border-radius: 1rem; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.04); padding: .85rem 1rem; color: white; outline: none; } .form-input:focus { border-color: rgba(255,255,255,.4); } .form-input option { color: black; }`}</style>

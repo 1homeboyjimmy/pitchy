@@ -33,6 +33,29 @@ def validate_application_form_schema(value: dict[str, Any] | None) -> dict[str, 
         raise ValueError("Заголовок анкеты должен быть строкой до 300 символов")
     if description is not None and (not isinstance(description, str) or len(description) > 4000):
         raise ValueError("Описание анкеты должно быть строкой до 4000 символов")
+    sections = value.get("sections", [])
+    if not isinstance(sections, list) or len(sections) > 20:
+        raise ValueError("Анкета может содержать не более 20 разделов")
+    section_keys: set[str] = set()
+    for index, section in enumerate(sections, start=1):
+        if not isinstance(section, dict):
+            raise ValueError(f"Раздел анкеты №{index} должен быть объектом")
+        section_key = section.get("key")
+        section_title = section.get("title")
+        if (
+            not isinstance(section_key, str)
+            or not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", section_key)
+            or section_key in section_keys
+        ):
+            raise ValueError(f"Некорректный или повторяющийся ключ раздела №{index}")
+        if not isinstance(section_title, str) or not section_title.strip() or len(section_title) > 200:
+            raise ValueError(f"У раздела №{index} должно быть название до 200 символов")
+        section_description = section.get("description")
+        if section_description is not None and (
+            not isinstance(section_description, str) or len(section_description) > 1000
+        ):
+            raise ValueError(f"Описание раздела №{index} слишком длинное")
+        section_keys.add(section_key)
     required = value.get("required", [])
     if not isinstance(required, list) or len(required) > 100:
         raise ValueError("Список обязательных полей анкеты некорректен")
@@ -67,6 +90,9 @@ def validate_application_form_schema(value: dict[str, Any] | None) -> dict[str, 
                 raise ValueError(f"Поле {key}: значение {text_key} слишком длинное")
         options = field.get("options", [])
         application_types = field.get("application_types")
+        section_key = field.get("section")
+        if section_key is not None and section_key not in section_keys:
+            raise ValueError(f"Поле {key}: указан неизвестный раздел")
         if application_types is not None:
             if (
                 not isinstance(application_types, list)
@@ -90,6 +116,15 @@ def validate_application_form_schema(value: dict[str, Any] | None) -> dict[str, 
                 else:
                     raise ValueError(f"Поле {key}: некорректный вариант ответа")
     return value
+
+
+class ApplicationFormDraftUpdate(BaseModel):
+    schema: dict[str, Any]
+
+    @field_validator("schema")
+    @classmethod
+    def validate_schema(cls, value: dict[str, Any]) -> dict[str, Any]:
+        return validate_application_form_schema(value) or {}
 
 
 class OrganizationCreate(BaseModel):
