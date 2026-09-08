@@ -1475,7 +1475,7 @@ async def test_application_form_versions_keep_submitted_schema_snapshot():
             cohort["id"],
             PublicApplicationCreate(
                 applicant_name="Public Candidate",
-                applicant_email=f"form-candidate-{suffix}@example.test",
+                applicant_email=f"form-candidate-{suffix}@example.com",
                 telegram="@form_candidate",
                 competencies=["Product"],
                 form_payload={"motivation": "Проверить гипотезу"},

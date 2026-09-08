@@ -1628,7 +1628,7 @@ async def save_application_form_draft(
     cohort = await get_cohort_or_404(db, cohort_id)
     await require_cohort_manager(db, user, cohort)
     require_mutable_cohort(cohort)
-    cohort.application_form_draft = payload.schema
+    cohort.application_form_draft = payload.form_schema
     add_audit(
         db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
         actor_user_id=user.id, action="application_form.draft_saved",

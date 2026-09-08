@@ -119,9 +119,9 @@ def validate_application_form_schema(value: dict[str, Any] | None) -> dict[str, 
 
 
 class ApplicationFormDraftUpdate(BaseModel):
-    schema: dict[str, Any]
+    form_schema: dict[str, Any] = Field(alias="schema")
 
-    @field_validator("schema")
+    @field_validator("form_schema")
     @classmethod
     def validate_schema(cls, value: dict[str, Any]) -> dict[str, Any]:
         return validate_application_form_schema(value) or {}
