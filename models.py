@@ -439,7 +439,70 @@ class AcceleratorTrackingFeedback(Base):
     )
     author_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
     body: Mapped[str] = mapped_column(Text)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class AcceleratorRecommendation(Base):
+    __tablename__ = "accelerator_recommendations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    membership_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_memberships.id", ondelete="CASCADE"), index=True
+    )
+    created_by_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), index=True
+    )
+    title: Mapped[str] = mapped_column(String(300))
+    description: Mapped[str] = mapped_column(Text)
+    section: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    href: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(20), default="active", server_default="active", index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
+class AcceleratorRecommendationDismissal(Base):
+    __tablename__ = "accelerator_recommendation_dismissals"
+    __table_args__ = (
+        UniqueConstraint(
+            "membership_id", "recommendation_key",
+            name="uq_accelerator_recommendation_dismissal_key",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    membership_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_memberships.id", ondelete="CASCADE"), index=True
+    )
+    recommendation_key: Mapped[str] = mapped_column(String(160), index=True)
+    reason_fingerprint: Mapped[str] = mapped_column(String(64))
+    dismissed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class AcceleratorTodayRecommendationCache(Base):
+    __tablename__ = "accelerator_today_recommendation_cache"
+    __table_args__ = (
+        UniqueConstraint("membership_id", name="uq_accelerator_today_cache_membership"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    membership_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_memberships.id", ondelete="CASCADE"), index=True
+    )
+    state_fingerprint: Mapped[str] = mapped_column(String(64), index=True)
+    recommendations: Mapped[list] = mapped_column(JSON, default=list, server_default=text("'[]'"))
+    generated_by: Mapped[str] = mapped_column(
+        String(30), default="deterministic", server_default="deterministic"
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
 
 
 class AcceleratorTrackingTask(Base):

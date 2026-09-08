@@ -927,3 +927,39 @@ class AttendanceMark(BaseModel):
     membership_id: int = Field(gt=0)
     status: Literal["present", "absent", "excused"]
     comment: str | None = Field(default=None, max_length=4000)
+
+
+class FeedbackRead(BaseModel):
+    feedback_ids: list[int] = Field(default_factory=list, max_length=100)
+
+    @field_validator("feedback_ids")
+    @classmethod
+    def unique_feedback_ids(cls, value: list[int]) -> list[int]:
+        if any(item <= 0 for item in value) or len(set(value)) != len(value):
+            raise ValueError("Отзывы должны иметь уникальные положительные ID")
+        return value
+
+
+class RecommendationCreate(BaseModel):
+    title: str = Field(min_length=2, max_length=300)
+    description: str = Field(min_length=2, max_length=10000)
+    section: Literal["program", "homework", "tracking", "matching", "project_audit"] | None = None
+    href: str | None = Field(default=None, max_length=2000)
+
+    @field_validator("href")
+    @classmethod
+    def validate_href(cls, value: str | None) -> str | None:
+        normalized = (value or "").strip()
+        if normalized and not normalized.startswith(("/", "https://", "http://")):
+            raise ValueError("Ссылка должна быть внутренним путём или http(s)-адресом")
+        return normalized or None
+
+
+class TodayAIRecommendation(BaseModel):
+    key: str = Field(min_length=1, max_length=160)
+    title: str = Field(min_length=2, max_length=300)
+    description: str = Field(min_length=2, max_length=1000)
+
+
+class TodayAIRecommendationSelection(BaseModel):
+    recommendations: list[TodayAIRecommendation] = Field(default_factory=list, max_length=3)

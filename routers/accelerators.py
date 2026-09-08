@@ -45,6 +45,7 @@ from accelerator_notification_service import enqueue_notification, process_notif
 from accelerator_team_service import handle_membership_lifecycle_transition
 from auth import get_async_current_user, require_async_admin
 from db_async import get_async_db
+from llm_client import get_instructor_client
 from models import (
     Accelerator,
     AcceleratorApplication,
@@ -83,10 +84,13 @@ from models import (
     AcceleratorProjectAudit,
     AcceleratorProjectAuditTaskLink,
     AcceleratorQuotaUsageEvent,
+    AcceleratorRecommendation,
+    AcceleratorRecommendationDismissal,
     AcceleratorResidentQuotaOverride,
     AcceleratorStaff,
     AcceleratorTrackingFeedback,
     AcceleratorTrackingTask,
+    AcceleratorTodayRecommendationCache,
     AcceleratorTrackerAssignment,
     AcceleratorTeam,
     AcceleratorTeamMember,
@@ -118,6 +122,7 @@ from schemas.accelerators import (
     EventCancel,
     EventFollowupUpdate,
     EventReschedule,
+    FeedbackRead,
     OrganizationCreate,
     OrganizerAssign,
     TrackerAssign,
@@ -125,6 +130,8 @@ from schemas.accelerators import (
     ProgramConfigUpdate,
     ProgramStageCreate,
     ProgramStageReorder,
+    RecommendationCreate,
+    TodayAIRecommendationSelection,
     PublicApplicationCreate,
     ResidentQuotaAssign,
     StatusUpdate,
@@ -5549,6 +5556,7 @@ async def membership_tracking(
         } for row, author in checkins],
         "feedback": [{
             "id": row.id, "body": row.body, "created_at": row.created_at,
+            "read_at": row.read_at,
             "author": {"id": author.id, "name": author.name},
         } for row, author in feedback],
         "tasks": [tracking_task_dict(row) for row in tasks],
@@ -7848,3 +7856,442 @@ async def list_audit(
         "details": row.details,
         "created_at": row.created_at,
     } for row in rows]
+
+
+def today_card_fingerprint(card: dict) -> str:
+    reason = card.get("reason") or {}
+    return hashlib.sha256(
+        json.dumps(reason, sort_keys=True, ensure_ascii=False, default=str).encode("utf-8")
+    ).hexdigest()
+
+
+async def today_recommendation_candidates(
+    db: AsyncSession,
+    membership: AcceleratorMembership,
+    *,
+    stages: list[dict],
+    homework: list[dict],
+    modules: dict,
+) -> list[dict]:
+    rows: list[dict] = []
+    manual = (await db.execute(
+        select(AcceleratorRecommendation, User)
+        .join(User, User.id == AcceleratorRecommendation.created_by_user_id)
+        .where(
+            AcceleratorRecommendation.membership_id == membership.id,
+            AcceleratorRecommendation.status == "active",
+        )
+        .order_by(AcceleratorRecommendation.created_at.desc())
+    )).all()
+    for recommendation, author in manual:
+        rows.append({
+            "key": f"manual:{recommendation.id}",
+            "title": recommendation.title,
+            "description": recommendation.description,
+            "source": f"От {author.name}",
+            "source_type": "manual",
+            "section": recommendation.section,
+            "href": recommendation.href,
+            "priority": 0,
+            "reason": {"recommendation_id": recommendation.id, "updated_at": recommendation.updated_at},
+        })
+
+    current_stage = next((stage for stage in stages if stage.get("state") == "available"), None)
+    if current_stage:
+        incomplete = [
+            material for material in current_stage.get("materials", [])
+            if material.get("required") and not material.get("completed")
+        ]
+        rows.append({
+            "key": f"stage:{current_stage['id']}",
+            "title": f"Продолжить этап «{current_stage['title']}»",
+            "description": (
+                f"Осталось обязательных материалов: {len(incomplete)}."
+                if incomplete else "Закрепите результат этапа и переходите к следующему шагу."
+            ),
+            "source": "Текущий этап",
+            "source_type": "system",
+            "section": "program",
+            "href": None,
+            "priority": 1,
+            "reason": {"stage_id": current_stage["id"], "incomplete_material_ids": [row["id"] for row in incomplete]},
+        })
+
+    project = await db.get(Project, membership.project_id) if membership.project_id else None
+    if project:
+        readiness = max(0, min(100, project.readiness_index or 0))
+        if readiness < 100:
+            rows.append({
+                "key": "passport",
+                "title": "Дополнить паспорт проекта",
+                "description": f"Сейчас заполнено {readiness}%. Полный контекст сделает анализ и следующие шаги точнее.",
+                "source": "Состояние проекта",
+                "source_type": "system",
+                "section": None,
+                "href": f"/passport/{project.id}",
+                "priority": 2,
+                "reason": {"project_id": project.id, "readiness": readiness},
+            })
+
+    if modules.get("project_audit") and project:
+        latest_audit = (await db.execute(
+            select(AcceleratorProjectAudit)
+            .where(AcceleratorProjectAudit.membership_id == membership.id)
+            .order_by(AcceleratorProjectAudit.created_at.desc())
+            .limit(1)
+        )).scalar_one_or_none()
+        if not latest_audit or latest_audit.status == "failed":
+            rows.append({
+                "key": "project-audit",
+                "title": "Проверить проект аудитом",
+                "description": "Получите список сильных сторон, рисков и следующих проверок для текущего этапа.",
+                "source": "Состояние проекта",
+                "source_type": "system",
+                "section": "project_audit",
+                "href": None,
+                "priority": 2,
+                "reason": {"latest_audit_id": latest_audit.id if latest_audit else None, "status": latest_audit.status if latest_audit else "missing"},
+            })
+        elif latest_audit.status == "completed" and (latest_audit.overall_score or 0) < 70:
+            rows.append({
+                "key": f"project-audit-result:{latest_audit.id}",
+                "title": "Разобрать риски из аудита проекта",
+                "description": "Выберите одну рекомендацию аудита и превратите её в следующий проверяемый шаг.",
+                "source": "Аудит проекта",
+                "source_type": "system",
+                "section": "project_audit",
+                "href": None,
+                "priority": 2,
+                "reason": {"audit_id": latest_audit.id, "score": latest_audit.overall_score, "updated_at": latest_audit.updated_at},
+            })
+
+    pending_homework = [row["id"] for row in homework if row.get("display_status") == "not_started"]
+    if pending_homework:
+        rows.append({
+            "key": "homework-next",
+            "title": "Выбрать следующее домашнее задание",
+            "description": "Откройте список заданий и запланируйте ближайшую отправку.",
+            "source": "Программа",
+            "source_type": "system",
+            "section": "homework",
+            "href": None,
+            "priority": 2,
+            "reason": {"pending_assignment_ids": pending_homework},
+        })
+
+    for row in rows:
+        row["reason_fingerprint"] = today_card_fingerprint(row)
+        row.pop("reason", None)
+    return rows
+
+
+async def cache_system_recommendations(
+    db: AsyncSession, membership_id: int, recommendations: list[dict]
+) -> list[dict]:
+    system_rows = [row for row in recommendations if row["source_type"] == "system"]
+    state_fingerprint = hashlib.sha256(
+        json.dumps(system_rows, sort_keys=True, ensure_ascii=False, default=str).encode("utf-8")
+    ).hexdigest()
+    cache = (await db.execute(
+        select(AcceleratorTodayRecommendationCache)
+        .where(AcceleratorTodayRecommendationCache.membership_id == membership_id)
+        .with_for_update()
+    )).scalar_one_or_none()
+    if cache and cache.state_fingerprint == state_fingerprint:
+        return cache.recommendations or system_rows
+    if not cache:
+        cache = AcceleratorTodayRecommendationCache(membership_id=membership_id)
+        db.add(cache)
+    selected_rows = system_rows
+    generated_by = "deterministic_fallback"
+    if (
+        os.getenv("ACCELERATOR_TODAY_AI_ENABLED", "").lower() in {"1", "true", "yes"}
+        and os.getenv("ROUTERAI_API_KEY")
+        and system_rows
+    ):
+        try:
+            client = get_instructor_client("routerai")
+            result = await client.chat.completions.create(
+                model=os.getenv("ACCELERATOR_TODAY_AI_MODEL", "openai/gpt-4.1-mini"),
+                response_model=TodayAIRecommendationSelection,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "Выбери до трёх рекомендаций для участника акселератора. "
+                            "Разрешено использовать только переданные key. Можно упростить "
+                            "заголовок и описание, нельзя добавлять новые факты, советы или key. "
+                            "Отвечай по-русски."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": json.dumps(system_rows, ensure_ascii=False, default=str),
+                    },
+                ],
+                temperature=0.1,
+                max_tokens=1200,
+                max_retries=1,
+            )
+            allowed = {row["key"]: row for row in system_rows}
+            selected_rows = []
+            used: set[str] = set()
+            for item in result.recommendations:
+                if item.key not in allowed or item.key in used:
+                    continue
+                used.add(item.key)
+                selected_rows.append({
+                    **allowed[item.key],
+                    "title": item.title.strip(),
+                    "description": item.description.strip(),
+                })
+            if selected_rows:
+                generated_by = "ai"
+            else:
+                selected_rows = system_rows
+        except Exception:
+            logger.exception(
+                "accelerator today AI recommendations unavailable",
+                extra={"membership_id": membership_id},
+            )
+    cache.state_fingerprint = state_fingerprint
+    cache.recommendations = selected_rows
+    cache.generated_by = generated_by
+    return selected_rows
+
+
+@router.get("/memberships/{membership_id}/today")
+async def membership_today(
+    membership_id: int,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    membership = await get_resident_membership(db, membership_id, user)
+    cohort = await get_cohort_or_404(db, membership.cohort_id)
+    config = (await db.execute(select(AcceleratorProgramConfig).where(
+        AcceleratorProgramConfig.cohort_id == cohort.id
+    ))).scalar_one()
+    modules = config.modules or {}
+    unavailable: list[str] = []
+    stages: list[dict] = []
+    homework: list[dict] = []
+    events: list[dict] = []
+    tracking: dict = {"feedback": [], "tasks": [], "checkins": [], "risk": None}
+
+    async def load_section(name: str, loader, fallback):
+        try:
+            return await loader()
+        except Exception:
+            logger.exception("accelerator today section unavailable", extra={"section": name, "membership_id": membership.id})
+            unavailable.append(name)
+            return fallback
+
+    if modules.get("program", True):
+        stages = await load_section("program", lambda: resident_program_rows(db, membership), [])
+    if modules.get("homework"):
+        homework = await load_section("homework", lambda: list_resident_homework(membership.id, user, db), [])
+    if modules.get("attendance"):
+        events = await load_section("events", lambda: list_resident_events(membership.id, user, db), [])
+    if modules.get("progress_tracking"):
+        tracking = await load_section(
+            "tracking", lambda: membership_tracking(membership.id, user, db),
+            {"feedback": [], "tasks": [], "checkins": [], "risk": None},
+        )
+
+    now = datetime.utcnow()
+    required_actions: list[dict] = []
+    for task in tracking.get("tasks", []):
+        due_at = task.get("due_at")
+        if task.get("status") == "open" and due_at:
+            required_actions.append({
+                "key": f"task:{task['id']}", "title": task["title"],
+                "description": task.get("description") or "Задача от организатора или трекера.",
+                "due_at": due_at, "section": "tracking",
+                "kind": "task", "overdue": due_at < now,
+            })
+    for assignment in homework:
+        status = assignment.get("display_status")
+        if status in {"needs_revision", "overdue"}:
+            submission = assignment.get("submission") or {}
+            required_actions.append({
+                "key": f"homework:{assignment['id']}",
+                "title": f"Доработать: {assignment['title']}" if status == "needs_revision" else assignment["title"],
+                "description": submission.get("review_comment") or ("Срок задания прошёл." if status == "overdue" else "Нужно повторно отправить ответ."),
+                "due_at": assignment.get("due_at"), "section": "homework",
+                "kind": "homework", "overdue": status == "overdue",
+            })
+    current_stage = next((row for row in stages if row.get("state") == "available"), None)
+    if current_stage:
+        required_material = next((row for row in current_stage.get("materials", []) if row.get("required") and not row.get("completed")), None)
+        if required_material:
+            required_actions.append({
+                "key": f"material:{required_material['id']}", "title": required_material["title"],
+                "description": f"Обязательный материал этапа «{current_stage['title']}».",
+                "due_at": None, "section": "program", "kind": "material", "overdue": False,
+            })
+    required_actions.sort(key=lambda row: (not row["overdue"], row["due_at"] is None, row["due_at"] or datetime.max))
+
+    upcoming = [{
+        "key": f"event:{row['id']}", "kind": "event", "title": row["title"],
+        "starts_at": row["starts_at"], "description": row.get("location") or ("Онлайн-встреча" if row.get("meeting_url") else None),
+        "section": "program",
+    } for row in events if row.get("status") == "published" and row["starts_at"] >= now]
+    upcoming.extend({
+        "key": f"deadline:{row['id']}", "kind": "deadline", "title": row["title"],
+        "starts_at": row["due_at"], "description": "Срок домашнего задания", "section": "homework",
+    } for row in homework if row.get("due_at") and row.get("display_status") not in {"accepted", "overdue"})
+    upcoming = sorted(upcoming, key=lambda row: row["starts_at"])[:3]
+
+    feedback = [row for row in tracking.get("feedback", []) if not row.get("read_at")]
+    completed_stages = sum(row.get("state") == "completed" for row in stages)
+    project = await db.get(Project, membership.project_id) if membership.project_id else None
+    project_readiness = max(0, min(100, project.readiness_index or 0)) if project else None
+    tracker_ids = await membership_tracker_user_ids(db, membership.id)
+    trackers = (await db.execute(select(User).where(User.id.in_(tracker_ids)).order_by(User.name))).scalars().all() if tracker_ids else []
+
+    candidates = await today_recommendation_candidates(
+        db, membership, stages=stages, homework=homework, modules=modules
+    )
+    system_cached = await cache_system_recommendations(db, membership.id, candidates)
+    candidates = [row for row in candidates if row["source_type"] == "manual"] + system_cached
+    dismissals = (await db.execute(select(AcceleratorRecommendationDismissal).where(
+        AcceleratorRecommendationDismissal.membership_id == membership.id
+    ))).scalars().all()
+    dismissal_by_key = {row.recommendation_key: row for row in dismissals}
+    visible: list[dict] = []
+    hidden: list[dict] = []
+    for recommendation in sorted(candidates, key=lambda row: (row["priority"], row["key"])):
+        dismissal = dismissal_by_key.get(recommendation["key"])
+        if dismissal and dismissal.reason_fingerprint == recommendation["reason_fingerprint"]:
+            hidden.append(recommendation)
+        else:
+            visible.append(recommendation)
+    await db.commit()
+    return {
+        "membership_id": membership.id,
+        "generated_at": now,
+        "timezone": cohort.timezone,
+        "required_actions": required_actions,
+        "upcoming": upcoming,
+        "unread_feedback": feedback[:5],
+        "progress": {
+            "percent": round(completed_stages * 100 / len(stages)) if stages else 0,
+            "completed_stages": completed_stages,
+            "total_stages": len(stages),
+            "current_stage": {"id": current_stage["id"], "title": current_stage["title"]} if current_stage else None,
+            "project_readiness": project_readiness,
+        },
+        "support": {
+            "enabled": bool(modules.get("progress_tracking")),
+            "trackers": [{"id": row.id, "name": row.name, "email": row.email} for row in trackers],
+            "risk": tracking.get("risk"),
+        },
+        "recommendations": visible[:3],
+        "dismissed_recommendations": hidden,
+        "unavailable_sections": unavailable,
+    }
+
+
+@router.post("/memberships/{membership_id}/feedback/read")
+async def mark_membership_feedback_read(
+    membership_id: int,
+    payload: FeedbackRead,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    membership = await get_resident_membership(db, membership_id, user)
+    query = select(AcceleratorTrackingFeedback).where(
+        AcceleratorTrackingFeedback.membership_id == membership.id,
+        AcceleratorTrackingFeedback.read_at.is_(None),
+    )
+    if payload.feedback_ids:
+        query = query.where(AcceleratorTrackingFeedback.id.in_(payload.feedback_ids))
+    rows = (await db.execute(query.with_for_update())).scalars().all()
+    read_at = datetime.utcnow()
+    for row in rows:
+        row.read_at = read_at
+    await db.commit()
+    return {"membership_id": membership.id, "read_feedback_ids": [row.id for row in rows], "read_at": read_at}
+
+
+@router.post("/memberships/{membership_id}/recommendations")
+async def create_membership_recommendation(
+    membership_id: int,
+    payload: RecommendationCreate,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    membership = await db.get(AcceleratorMembership, membership_id)
+    if not membership or membership.role != "resident":
+        raise HTTPException(status_code=404, detail="Резидент не найден")
+    cohort = await get_cohort_or_404(db, membership.cohort_id)
+    access_role = await require_tracker_membership_access(db, user, membership)
+    if access_role not in {"global_admin", "organizer", "tracker"}:
+        raise HTTPException(status_code=403, detail="Нет доступа к рекомендациям резидента")
+    require_mutable_cohort(cohort)
+    recommendation = AcceleratorRecommendation(
+        membership_id=membership.id,
+        created_by_user_id=user.id,
+        title=payload.title.strip(),
+        description=payload.description.strip(),
+        section=payload.section,
+        href=payload.href,
+    )
+    db.add(recommendation)
+    await db.flush()
+    add_audit(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        actor_user_id=user.id, action="recommendation.created",
+        target_type="recommendation", target_id=recommendation.id,
+        details={"membership_id": membership.id},
+    )
+    await db.commit()
+    return {"id": recommendation.id, "key": f"manual:{recommendation.id}"}
+
+
+@router.post("/memberships/{membership_id}/recommendations/{recommendation_key:path}/dismiss")
+async def dismiss_membership_recommendation(
+    membership_id: int,
+    recommendation_key: str,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    membership = await get_resident_membership(db, membership_id, user)
+    today = await membership_today(membership.id, user, db)
+    candidates = today["recommendations"] + today["dismissed_recommendations"]
+    recommendation = next((row for row in candidates if row["key"] == recommendation_key), None)
+    if not recommendation:
+        raise HTTPException(status_code=404, detail="Рекомендация не найдена")
+    dismissal = (await db.execute(
+        select(AcceleratorRecommendationDismissal)
+        .where(
+            AcceleratorRecommendationDismissal.membership_id == membership.id,
+            AcceleratorRecommendationDismissal.recommendation_key == recommendation_key,
+        )
+        .with_for_update()
+    )).scalar_one_or_none()
+    if not dismissal:
+        dismissal = AcceleratorRecommendationDismissal(
+            membership_id=membership.id, recommendation_key=recommendation_key
+        )
+        db.add(dismissal)
+    dismissal.reason_fingerprint = recommendation["reason_fingerprint"]
+    dismissal.dismissed_at = datetime.utcnow()
+    await db.commit()
+    return {"key": recommendation_key, "dismissed": True}
+
+
+@router.delete("/memberships/{membership_id}/recommendations/{recommendation_key:path}/dismissal")
+async def restore_membership_recommendation(
+    membership_id: int,
+    recommendation_key: str,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    membership = await get_resident_membership(db, membership_id, user)
+    await db.execute(delete(AcceleratorRecommendationDismissal).where(
+        AcceleratorRecommendationDismissal.membership_id == membership.id,
+        AcceleratorRecommendationDismissal.recommendation_key == recommendation_key,
+    ))
+    await db.commit()
+    return Response(status_code=204)

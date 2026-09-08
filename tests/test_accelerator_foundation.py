@@ -32,6 +32,9 @@ from models import (
     AcceleratorMatchProfile,
     AcceleratorProjectAudit,
     AcceleratorProjectAuditTaskLink,
+    AcceleratorRecommendation,
+    AcceleratorRecommendationDismissal,
+    AcceleratorTodayRecommendationCache,
     AcceleratorDemoDay,
     AcceleratorDemoDayProject,
     AcceleratorDemoDayScore,
@@ -138,6 +141,11 @@ from routers.accelerators import (
     update_membership_status,
     update_tracker_assignments,
     mark_event_attendance,
+    mark_membership_feedback_read,
+    membership_today,
+    create_membership_recommendation,
+    dismiss_membership_recommendation,
+    restore_membership_recommendation,
     validate_application_form,
 )
 from schemas.accelerators import (
@@ -165,12 +173,14 @@ from schemas.accelerators import (
     EventReschedule,
     EventCancel,
     EventFollowupUpdate,
+    FeedbackRead,
     AcceleratorArtifactUpdate,
     ProgramActionCreate,
     ProgramMaterialCreate,
     ProgramStageCreate,
     PublicApplicationCreate,
     ProgramConfigUpdate,
+    RecommendationCreate,
     ResidentQuotaAssign,
     ResidentQuotaLimits,
     StatusUpdate,
@@ -2579,3 +2589,179 @@ async def test_homework_quiz_history_review_queue_and_admin_pitchy_controls():
             AcceleratorAuditLog.target_id == text_submission["id"],
         ).order_by(AcceleratorAuditLog.id.desc()))).scalars().first()
         assert audit.details["manager_override"] is True
+
+
+@pytest.mark.asyncio
+async def test_resident_today_aggregate_feedback_and_persistent_recommendations(monkeypatch):
+    suffix = uuid.uuid4().hex[:10]
+    async with AsyncSessionLocal() as db:
+        organizer = User(email=f"today-organizer-{suffix}@example.test", name="Организатор", is_admin=True)
+        tracker = User(email=f"today-tracker-{suffix}@example.test", name="Трекер")
+        resident = User(email=f"today-resident-{suffix}@example.test", name="Резидент")
+        db.add_all([organizer, tracker, resident])
+        await db.commit()
+        for row in (organizer, tracker, resident):
+            await db.refresh(row)
+
+        project = Project(
+            user_id=resident.id,
+            name="Проект резидента",
+            passport={"core": {"problem": "Проверить спрос"}},
+            readiness_index=35,
+        )
+        db.add(project)
+        await db.commit()
+        await db.refresh(project)
+
+        accelerator = await create_accelerator(
+            AcceleratorCreate(name=f"Today accelerator {suffix}"), organizer, db
+        )
+        cohort = await create_cohort(
+            accelerator["id"], CohortCreate(name="Today cohort"), organizer, db
+        )
+        await update_program_config(
+            cohort["id"],
+            ProgramConfigUpdate(
+                version=1,
+                modules={"attendance": True, "progress_tracking": True},
+            ),
+            organizer,
+            db,
+        )
+        await update_cohort_status(
+            cohort["id"], StatusUpdate(status="accepting"), organizer, db
+        )
+        application = await submit_application(
+            cohort["id"],
+            ApplicationCreate(
+                form_payload={"project_name": "Проект резидента"},
+                project_id=project.id,
+                accept_privacy=True,
+                accept_program_rules=True,
+            ),
+            resident,
+            db,
+        )
+        accepted = await accept_application(
+            application["id"], ApplicationReview(), BackgroundTasks(), organizer, db
+        )
+        await enroll_application(application["id"], resident, db)
+        membership_id = accepted["membership_id"]
+        await assign_tracker(
+            cohort["id"],
+            TrackerAssign(user_id=tracker.id, membership_ids=[membership_id]),
+            organizer,
+            db,
+        )
+
+        stage = await create_program_stage(
+            cohort["id"],
+            ProgramStageCreate(
+                title="Проверка гипотезы",
+                materials=[
+                    ProgramMaterialCreate(
+                        title="Методика интервью",
+                        kind="link",
+                        url="https://example.com/interviews",
+                    )
+                ],
+            ),
+            organizer,
+            db,
+        )
+        await publish_program_stage(stage["id"], organizer, db)
+        event = await create_event(
+            cohort["id"],
+            EventCreate(
+                title="Встреча с трекером",
+                starts_at=datetime.utcnow() + timedelta(days=1),
+                ends_at=datetime.utcnow() + timedelta(days=1, hours=1),
+                event_format="online",
+                meeting_url="https://example.com/today-meet",
+            ),
+            organizer,
+            db,
+        )
+        await publish_event(event["id"], organizer, db)
+        feedback = await create_tracking_feedback(
+            membership_id,
+            TrackingFeedbackCreate(body="Сузьте первый сегмент аудитории"),
+            BackgroundTasks(),
+            tracker,
+            db,
+        )
+        await create_tracking_task(
+            membership_id,
+            TrackingTaskCreate(
+                title="Провести интервью",
+                due_at=datetime.utcnow() + timedelta(days=2),
+            ),
+            BackgroundTasks(),
+            tracker,
+            db,
+        )
+        manual = await create_membership_recommendation(
+            membership_id,
+            RecommendationCreate(
+                title="Сверить сценарий интервью",
+                description="Покажите вопросы трекеру до первых встреч.",
+                section="tracking",
+            ),
+            tracker,
+            db,
+        )
+
+        today = await membership_today(membership_id, resident, db)
+        assert today["unavailable_sections"] == []
+        assert today["required_actions"][0]["title"] == "Провести интервью"
+        assert today["upcoming"][0]["title"] == "Встреча с трекером"
+        assert today["unread_feedback"][0]["id"] == feedback["id"]
+        await db.refresh(project)
+        assert today["progress"]["project_readiness"] == project.readiness_index
+        assert today["support"]["trackers"][0]["id"] == tracker.id
+        assert len(today["recommendations"]) == 3
+        assert today["recommendations"][0]["key"] == manual["key"]
+
+        read = await mark_membership_feedback_read(
+            membership_id, FeedbackRead(feedback_ids=[feedback["id"]]), resident, db
+        )
+        assert read["read_feedback_ids"] == [feedback["id"]]
+        assert (await membership_today(membership_id, resident, db))["unread_feedback"] == []
+
+        await dismiss_membership_recommendation(
+            membership_id, f"stage:{stage['id']}", resident, db
+        )
+        dismissed = await membership_today(membership_id, resident, db)
+        assert f"stage:{stage['id']}" in {
+            row["key"] for row in dismissed["dismissed_recommendations"]
+        }
+
+        await complete_program_material(stage["materials"][0]["id"], resident, db)
+        changed_reason = await membership_today(membership_id, resident, db)
+        assert f"stage:{stage['id']}" in {
+            row["key"] for row in changed_reason["recommendations"]
+        }
+
+        await dismiss_membership_recommendation(
+            membership_id, manual["key"], resident, db
+        )
+        await restore_membership_recommendation(
+            membership_id, manual["key"], resident, db
+        )
+        restored = await membership_today(membership_id, resident, db)
+        assert manual["key"] in {row["key"] for row in restored["recommendations"]}
+
+        cache = (await db.execute(select(AcceleratorTodayRecommendationCache).where(
+            AcceleratorTodayRecommendationCache.membership_id == membership_id
+        ))).scalar_one()
+        assert cache.generated_by == "deterministic_fallback"
+        assert (await db.execute(select(func.count(AcceleratorRecommendation.id)))).scalar_one() >= 1
+        assert (await db.execute(select(func.count(AcceleratorRecommendationDismissal.id)))).scalar_one() >= 1
+
+        async def unavailable_events(*_args, **_kwargs):
+            raise RuntimeError("events unavailable")
+
+        monkeypatch.setattr("routers.accelerators.list_resident_events", unavailable_events)
+        partial = await membership_today(membership_id, resident, db)
+        assert partial["unavailable_sections"] == ["events"]
+        assert partial["required_actions"]
