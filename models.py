@@ -748,6 +748,30 @@ class AcceleratorTeam(Base):
     )
 
 
+class AcceleratorTeamTrackerAssignment(Base):
+    """One tracker responsible for the whole active team."""
+
+    __tablename__ = "accelerator_team_tracker_assignments"
+    __table_args__ = (
+        UniqueConstraint("team_id", name="uq_accelerator_team_tracker_team"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    team_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_teams.id", ondelete="CASCADE"), index=True
+    )
+    tracker_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    assigned_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
 class AcceleratorTeamMember(Base):
     __tablename__ = "accelerator_team_members"
     __table_args__ = (

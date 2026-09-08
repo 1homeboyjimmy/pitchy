@@ -15,22 +15,30 @@ from models import (
     AcceleratorMatchProfile,
     AcceleratorMembership,
     AcceleratorNotificationOutbox,
+    AcceleratorStaff,
     AcceleratorTeam,
+    AcceleratorTeamApplication,
     AcceleratorTeamInvitation,
     AcceleratorTeamMember,
+    AcceleratorTeamTrackerAssignment,
     AcceleratorTrackerAssignment,
     Project,
     User,
 )
 from projects_router import delete_project
 from routers.accelerator_teams import (
+    assign_team_tracker,
     answer_team_invitation,
     create_membership_team,
+    create_team_application,
     get_membership_team,
     invite_team_member,
     list_cohort_teams,
     patch_team_member,
     patch_team_member_contact,
+    delete_team_member,
+    tracker_work_queue,
+    transfer_team_captain,
 )
 from routers.accelerators import (
     accept_application,
@@ -39,6 +47,7 @@ from routers.accelerators import (
     create_cohort,
     enroll_application,
     submit_application,
+    assign_tracker,
     update_cohort_status,
     update_membership_status,
     update_program_config,
@@ -47,9 +56,12 @@ from routers.accelerators import (
 from schemas.accelerator_teams import (
     AcceleratorTeamContactUpdate,
     AcceleratorTeamCreate,
+    AcceleratorTeamApplicationCreate,
+    AcceleratorTeamCaptainTransfer,
     AcceleratorTeamInvitationCreate,
     AcceleratorTeamInvitationUpdate,
     AcceleratorTeamMemberUpdate,
+    AcceleratorTeamTrackerAssign,
     AcceleratorTeamUpdate,
 )
 from schemas.accelerators import (
@@ -62,6 +74,7 @@ from schemas.accelerators import (
     OrganizerAssign,
     ProgramConfigUpdate,
     StatusUpdate,
+    TrackerAssign,
 )
 
 
@@ -248,12 +261,12 @@ async def test_team_invitation_contact_privacy_tracker_scope_and_withdrawal_clea
         )
         assert shared_candidate["person"]["email"] == candidate_user.email
 
-        db.add(AcceleratorTrackerAssignment(
-            tracker_user_id=tracker.id,
-            membership_id=candidate.membership_id,
-            assigned_by_user_id=organizer.id,
-        ))
-        await db.commit()
+        await assign_team_tracker(
+            team["id"],
+            AcceleratorTeamTrackerAssign(tracker_user_id=tracker.id),
+            organizer,
+            db,
+        )
         tracker_view = await get_membership_team(candidate.membership_id, tracker, db)
         assert tracker_view["invitations"] == []
         assert all(
@@ -436,3 +449,195 @@ async def test_owner_withdrawal_archives_team_and_cancels_pending_invitations():
         archived = next(row for row in manager_view["teams"] if row["id"] == team["id"])
         assert archived["status"] == "archived"
         assert archived["can_manage"] is False
+
+
+@pytest.mark.asyncio
+async def test_team_tracker_replaces_legacy_personal_assignments_and_grants_scope():
+    suffix = uuid.uuid4().hex[:10]
+    async with AsyncSessionLocal() as db:
+        _, organizer, accelerator, cohort = await _create_cohort_context(db, suffix)
+        owner_user = User(email=f"tracker-owner-{suffix}@example.test", name="Tracker owner")
+        member_user = User(email=f"tracker-member-{suffix}@example.test", name="Tracker member")
+        old_tracker_a = User(email=f"old-tracker-a-{suffix}@example.test", name="Old tracker A")
+        old_tracker_b = User(email=f"old-tracker-b-{suffix}@example.test", name="Old tracker B")
+        team_tracker = User(email=f"team-tracker-{suffix}@example.test", name="Team tracker")
+        db.add_all([owner_user, member_user, old_tracker_a, old_tracker_b, team_tracker])
+        await db.commit()
+
+        owner = await _enroll_resident(
+            db, cohort_id=cohort["id"], manager=organizer,
+            resident=owner_user, with_project=True,
+        )
+        member = await _enroll_resident(
+            db, cohort_id=cohort["id"], manager=organizer,
+            resident=member_user, with_project=False,
+        )
+        await _add_resident_match_profile(db, member)
+        team = await create_membership_team(
+            owner.membership_id,
+            AcceleratorTeamCreate(name="Tracked team", max_members=3),
+            owner_user,
+            db,
+        )
+        invitation = await invite_team_member(
+            team["id"],
+            AcceleratorTeamInvitationCreate(counterpart_profile_id=member.profile_id),
+            BackgroundTasks(), owner_user, db,
+        )
+        await answer_team_invitation(
+            invitation["id"],
+            AcceleratorTeamInvitationUpdate(status="accepted"),
+            BackgroundTasks(), member_user, db,
+        )
+
+        db.add_all([
+            AcceleratorStaff(
+                accelerator_id=accelerator["id"], user_id=old_tracker_a.id,
+                role="tracker", created_by_user_id=organizer.id,
+            ),
+            AcceleratorStaff(
+                accelerator_id=accelerator["id"], user_id=old_tracker_b.id,
+                role="tracker", created_by_user_id=organizer.id,
+            ),
+            AcceleratorTrackerAssignment(
+                tracker_user_id=old_tracker_a.id,
+                membership_id=owner.membership_id,
+                assigned_by_user_id=organizer.id,
+            ),
+            AcceleratorTrackerAssignment(
+                tracker_user_id=old_tracker_b.id,
+                membership_id=member.membership_id,
+                assigned_by_user_id=organizer.id,
+            ),
+        ])
+        await db.commit()
+
+        queue = await tracker_work_queue(cohort["id"], organizer, db)
+        conflict = next(row for row in queue["teams"] if row["team_id"] == team["id"])
+        assert conflict["issue"] == "conflict"
+        assert {row["id"] for row in conflict["personal_trackers"]} == {
+            old_tracker_a.id, old_tracker_b.id,
+        }
+
+        assigned = await assign_team_tracker(
+            team["id"],
+            AcceleratorTeamTrackerAssign(tracker_user_id=team_tracker.id),
+            organizer,
+            db,
+        )
+        assert assigned["tracker"]["id"] == team_tracker.id
+        assert (await db.execute(select(func.count(AcceleratorTrackerAssignment.id)).where(
+            AcceleratorTrackerAssignment.membership_id.in_(
+                [owner.membership_id, member.membership_id]
+            )
+        ))).scalar_one() == 0
+        team_assignment = (await db.execute(select(AcceleratorTeamTrackerAssignment).where(
+            AcceleratorTeamTrackerAssignment.team_id == team["id"]
+        ))).scalar_one()
+        assert team_assignment.tracker_user_id == team_tracker.id
+
+        tracker_view = await get_membership_team(member.membership_id, team_tracker, db)
+        assert tracker_view["team"]["tracker"]["id"] == team_tracker.id
+        queue = await tracker_work_queue(cohort["id"], organizer, db)
+        assert all(row["team_id"] != team["id"] for row in queue["teams"])
+
+        with pytest.raises(HTTPException) as team_member_personal_tracker:
+            await assign_tracker(
+                cohort["id"],
+                TrackerAssign(
+                    user_id=old_tracker_a.id,
+                    membership_ids=[member.membership_id],
+                ),
+                organizer,
+                db,
+            )
+        assert _status(team_member_personal_tracker) == 422
+
+
+@pytest.mark.asyncio
+async def test_captain_must_transfer_and_last_member_closes_team_applications():
+    suffix = uuid.uuid4().hex[:10]
+    async with AsyncSessionLocal() as db:
+        _, organizer, _, cohort = await _create_cohort_context(db, suffix)
+        owner_user = User(email=f"captain-owner-{suffix}@example.test", name="Captain owner")
+        member_user = User(email=f"captain-member-{suffix}@example.test", name="Captain member")
+        applicant_user = User(email=f"captain-applicant-{suffix}@example.test", name="Team applicant")
+        db.add_all([owner_user, member_user, applicant_user])
+        await db.commit()
+        owner = await _enroll_resident(
+            db, cohort_id=cohort["id"], manager=organizer,
+            resident=owner_user, with_project=True,
+        )
+        member = await _enroll_resident(
+            db, cohort_id=cohort["id"], manager=organizer,
+            resident=member_user, with_project=False,
+        )
+        applicant = await _enroll_resident(
+            db, cohort_id=cohort["id"], manager=organizer,
+            resident=applicant_user, with_project=False,
+        )
+        await _add_resident_match_profile(db, member)
+        team = await create_membership_team(
+            owner.membership_id,
+            AcceleratorTeamCreate(name="Captain transfer team", max_members=4),
+            owner_user,
+            db,
+        )
+        invitation = await invite_team_member(
+            team["id"],
+            AcceleratorTeamInvitationCreate(counterpart_profile_id=member.profile_id),
+            BackgroundTasks(), owner_user, db,
+        )
+        await answer_team_invitation(
+            invitation["id"],
+            AcceleratorTeamInvitationUpdate(status="accepted"),
+            BackgroundTasks(), member_user, db,
+        )
+        owner_view = await get_membership_team(owner.membership_id, owner_user, db)
+        owner_member = next(
+            row for row in owner_view["team"]["members"]
+            if row["membership_id"] == owner.membership_id
+        )
+        with pytest.raises(HTTPException) as captain_leave:
+            await delete_team_member(
+                owner_member["id"], BackgroundTasks(), owner_user, db
+            )
+        assert _status(captain_leave) == 409
+
+        await transfer_team_captain(
+            team["id"],
+            AcceleratorTeamCaptainTransfer(membership_id=member.membership_id),
+            owner_user,
+            db,
+        )
+        await delete_team_member(
+            owner_member["id"], BackgroundTasks(), owner_user, db
+        )
+        member_view = await get_membership_team(member.membership_id, member_user, db)
+        assert member_view["team"]["owner_membership_id"] == member.membership_id
+        assert sum(
+            row["status"] == "active" for row in member_view["team"]["members"]
+        ) == 1
+
+        application = await create_team_application(
+            team["id"],
+            AcceleratorTeamApplicationCreate(message="Let me join"),
+            applicant_user,
+            db,
+        )
+        sole_captain = next(
+            row for row in member_view["team"]["members"]
+            if row["membership_id"] == member.membership_id
+        )
+        closed = await delete_team_member(
+            sole_captain["id"], BackgroundTasks(), member_user, db
+        )
+        assert closed["status"] == "archived"
+        stored_application = await db.get(AcceleratorTeamApplication, application["id"])
+        assert stored_application.status == "cancelled"
+        audit = (await db.execute(select(AcceleratorAuditLog).where(
+            AcceleratorAuditLog.cohort_id == cohort["id"],
+            AcceleratorAuditLog.action == "team.closed_by_last_member",
+        ).order_by(AcceleratorAuditLog.id.desc()))).scalars().first()
+        assert audit is not None
+        assert application["id"] in audit.details["cancelled_application_ids"]

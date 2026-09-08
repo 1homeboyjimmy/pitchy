@@ -4,13 +4,14 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from fastapi import HTTPException
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from accelerator_notification_service import enqueue_notification
 from accelerator_service import (
     add_audit,
     is_accelerator_organizer,
+    tracker_membership_ids,
 )
 from models import (
     AcceleratorCohort,
@@ -18,8 +19,10 @@ from models import (
     AcceleratorMembership,
     AcceleratorProgramConfig,
     AcceleratorTeam,
+    AcceleratorTeamApplication,
     AcceleratorTeamInvitation,
     AcceleratorTeamMember,
+    AcceleratorTeamTrackerAssignment,
     AcceleratorTrackerAssignment,
     Project,
     User,
@@ -78,11 +81,7 @@ async def membership_read_access(
         return "resident"
     if await is_manager(db, user, cohort):
         return "manager"
-    assigned = (await db.execute(select(AcceleratorTrackerAssignment.id).where(
-        AcceleratorTrackerAssignment.membership_id == membership.id,
-        AcceleratorTrackerAssignment.tracker_user_id == user.id,
-    ))).scalar_one_or_none()
-    if assigned is not None:
+    if membership.id in await tracker_membership_ids(db, user.id, cohort.id):
         return "tracker"
     raise HTTPException(status_code=403, detail="Нет доступа к команде резидента")
 
@@ -333,6 +332,12 @@ async def team_dict(
     cohort = await get_cohort(db, team.cohort_id)
     project = await db.get(Project, team.project_id) if team.project_id else None
     owner = await owner_membership(db, team)
+    tracker_assignment = (await db.execute(
+        select(AcceleratorTeamTrackerAssignment).where(
+            AcceleratorTeamTrackerAssignment.team_id == team.id
+        )
+    )).scalar_one_or_none()
+    tracker = await db.get(User, tracker_assignment.tracker_user_id) if tracker_assignment else None
     viewer_member = (await db.execute(
         select(AcceleratorTeamMember)
         .join(
@@ -408,6 +413,7 @@ async def team_dict(
         "recruiting_open": bool(team.recruiting_open),
         "owner_membership_id": team.owner_membership_id,
         "project": ({"id": project.id, "name": project.name} if project else None),
+        "tracker": ({"id": tracker.id, "name": tracker.name} if tracker else None),
         "can_manage": can_manage,
         "members": members,
         "pending_invitations": invitations,
@@ -811,6 +817,13 @@ async def respond_team_invitation(
             created_at=now,
             updated_at=now,
         ))
+        team_tracker = (await db.execute(select(AcceleratorTeamTrackerAssignment.id).where(
+            AcceleratorTeamTrackerAssignment.team_id == team.id
+        ))).scalar_one_or_none()
+        if team_tracker is not None:
+            await db.execute(delete(AcceleratorTrackerAssignment).where(
+                AcceleratorTrackerAssignment.membership_id == candidate.id
+            ))
         invitation.status = "accepted"
         invitation.responded_at = now
         notification_ids.extend(await _cancel_other_pending_invitations(
@@ -929,6 +942,10 @@ async def archive_team_rows(
         AcceleratorTeamInvitation.team_id == team.id,
         AcceleratorTeamInvitation.status == "pending",
     ).with_for_update())).scalars().all())
+    applications = list((await db.execute(select(AcceleratorTeamApplication).where(
+        AcceleratorTeamApplication.team_id == team.id,
+        AcceleratorTeamApplication.status == "pending",
+    ).with_for_update())).scalars().all())
     notification_ids: list[int] = []
     for member in members:
         membership = await db.get(AcceleratorMembership, member.membership_id)
@@ -965,6 +982,10 @@ async def archive_team_rows(
                 idempotency_key=f"team-invitation-removed:{invitation.id}",
                 metadata={"team_id": team.id, "invitation_id": invitation.id},
             ))
+    for application in applications:
+        application.status = "cancelled"
+        application.responded_by_user_id = actor_user_id
+        application.responded_at = now
     team.status = "archived"
     add_audit(
         db,
@@ -978,6 +999,7 @@ async def archive_team_rows(
             "reason": reason,
             "left_member_ids": [row.id for row in members],
             "cancelled_invitation_ids": [row.id for row in invitations],
+            "cancelled_application_ids": [row.id for row in applications],
         },
     )
     return notification_ids
@@ -1168,10 +1190,21 @@ async def remove_team_member(
     if member.status != "active":
         raise HTTPException(status_code=409, detail="Участник уже покинул команду")
     if member.membership_id == team.owner_membership_id or member.role == "owner":
-        raise HTTPException(
-            status_code=409,
-            detail="Владелец не может покинуть команду; архивируйте её",
+        if await active_member_count(db, team.id) > 1:
+            raise HTTPException(
+                status_code=409,
+                detail="Сначала передайте капитанство другому участнику команды",
+            )
+        notification_ids = await archive_team_rows(
+            db,
+            team=team,
+            cohort=cohort,
+            actor_user_id=user.id,
+            reason="Единственный участник покинул команду",
+            audit_action="team.closed_by_last_member",
         )
+        await db.flush()
+        return team, notification_ids
     member.status = "left"
     member.left_at = datetime.utcnow()
     notification_ids: list[int] = []

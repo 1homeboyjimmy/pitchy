@@ -47,6 +47,10 @@ class AcceleratorTeamCaptainTransfer(BaseModel):
     membership_id: int = Field(gt=0)
 
 
+class AcceleratorTeamTrackerAssign(BaseModel):
+    tracker_user_id: int = Field(gt=0)
+
+
 class AcceleratorTeamMemberUpdate(BaseModel):
     role: Literal["cofounder", "member"] | None = None
     title: str | None = Field(default=None, max_length=200)
@@ -118,6 +122,7 @@ class AcceleratorTeamResponse(BaseModel):
     recruiting_open: bool = True
     owner_membership_id: int
     project: AcceleratorTeamProject | None = None
+    tracker: AcceleratorTeamPerson | None = None
     can_manage: bool
     members: list[AcceleratorTeamMemberResponse]
     pending_invitations: list[AcceleratorTeamInvitationResponse]

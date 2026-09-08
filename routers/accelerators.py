@@ -25,6 +25,7 @@ from accelerator_service import (
     consume_accelerator_membership_quota,
     has_active_personal_override,
     is_accelerator_organizer,
+    membership_tracker_user_ids,
     normalize_resident_limits,
     require_cohort_manager,
     require_cohort_reader,
@@ -88,6 +89,7 @@ from models import (
     AcceleratorTrackerAssignment,
     AcceleratorTeam,
     AcceleratorTeamMember,
+    AcceleratorTeamTrackerAssignment,
     Project,
     User,
 )
@@ -867,6 +869,18 @@ async def list_accelerators(
             )
             .where(AcceleratorTrackerAssignment.tracker_user_id == user.id)
         )).scalars().all())
+        tracker_accelerator_ids.update((await db.execute(
+            select(AcceleratorCohort.accelerator_id)
+            .join(AcceleratorTeam, AcceleratorTeam.cohort_id == AcceleratorCohort.id)
+            .join(
+                AcceleratorTeamTrackerAssignment,
+                AcceleratorTeamTrackerAssignment.team_id == AcceleratorTeam.id,
+            )
+            .where(
+                AcceleratorTeamTrackerAssignment.tracker_user_id == user.id,
+                AcceleratorTeam.status == "active",
+            )
+        )).scalars().all())
         resident_rows = (await db.execute(
             select(AcceleratorCohort.accelerator_id)
             .join(AcceleratorMembership, AcceleratorMembership.cohort_id == AcceleratorCohort.id)
@@ -1154,6 +1168,15 @@ async def validate_tracker_memberships(
             status_code=422,
             detail="Трекеру можно назначить только зачисленных или приостановленных резидентов этого потока",
         )
+    team_membership = (await db.execute(select(AcceleratorTeamMember.membership_id).where(
+        AcceleratorTeamMember.membership_id.in_(membership_ids),
+        AcceleratorTeamMember.status == "active",
+    ).limit(1))).scalar_one_or_none()
+    if team_membership is not None:
+        raise HTTPException(
+            status_code=422,
+            detail="Персонального трекера можно назначить только участнику без команды",
+        )
     return list(rows)
 
 
@@ -1173,6 +1196,10 @@ async def replace_tracker_assignments(
         AcceleratorTrackerAssignment.tracker_user_id == tracker_user_id,
         AcceleratorTrackerAssignment.membership_id.in_(cohort_membership_ids),
     ))
+    if membership_ids:
+        await db.execute(delete(AcceleratorTrackerAssignment).where(
+            AcceleratorTrackerAssignment.membership_id.in_(membership_ids),
+        ))
     for membership_id in membership_ids:
         db.add(AcceleratorTrackerAssignment(
             tracker_user_id=tracker_user_id,
@@ -1200,6 +1227,19 @@ async def remove_tracker_staff_if_unused(
     )).scalar_one_or_none()
     if remaining is not None:
         return
+    team_remaining = (await db.execute(
+        select(AcceleratorTeamTrackerAssignment.id)
+        .join(AcceleratorTeam, AcceleratorTeam.id == AcceleratorTeamTrackerAssignment.team_id)
+        .join(AcceleratorCohort, AcceleratorCohort.id == AcceleratorTeam.cohort_id)
+        .where(
+            AcceleratorTeamTrackerAssignment.tracker_user_id == tracker_user_id,
+            AcceleratorCohort.accelerator_id == accelerator_id,
+            AcceleratorTeam.status == "active",
+        )
+        .limit(1)
+    )).scalar_one_or_none()
+    if team_remaining is not None:
+        return
     staff = (await db.execute(select(AcceleratorStaff).where(
         AcceleratorStaff.accelerator_id == accelerator_id,
         AcceleratorStaff.user_id == tracker_user_id,
@@ -1220,20 +1260,10 @@ async def list_trackers(
     rows = (await db.execute(
         select(AcceleratorStaff, User)
         .join(User, User.id == AcceleratorStaff.user_id)
-        .join(
-            AcceleratorTrackerAssignment,
-            AcceleratorTrackerAssignment.tracker_user_id == AcceleratorStaff.user_id,
-        )
-        .join(
-            AcceleratorMembership,
-            AcceleratorMembership.id == AcceleratorTrackerAssignment.membership_id,
-        )
         .where(
             AcceleratorStaff.accelerator_id == cohort.accelerator_id,
             AcceleratorStaff.role == "tracker",
-            AcceleratorMembership.cohort_id == cohort.id,
         )
-        .distinct()
         .order_by(User.name, User.email)
     )).all()
     result = []
@@ -1250,12 +1280,23 @@ async def list_trackers(
             )
             .order_by(AcceleratorTrackerAssignment.membership_id)
         )).scalars().all())
+        team_ids = list((await db.execute(
+            select(AcceleratorTeamTrackerAssignment.team_id)
+            .join(AcceleratorTeam, AcceleratorTeam.id == AcceleratorTeamTrackerAssignment.team_id)
+            .where(
+                AcceleratorTeamTrackerAssignment.tracker_user_id == tracker.id,
+                AcceleratorTeam.cohort_id == cohort.id,
+                AcceleratorTeam.status == "active",
+            )
+            .order_by(AcceleratorTeamTrackerAssignment.team_id)
+        )).scalars().all())
         result.append({
             "staff_id": staff.id,
             "user_id": tracker.id,
             "name": tracker.name,
             "email": tracker.email,
             "membership_ids": membership_ids,
+            "team_ids": team_ids,
         })
     return result
 
@@ -1282,12 +1323,19 @@ async def search_tracker_candidates(
         )
         .where(AcceleratorMembership.cohort_id == cohort.id)
     )
+    team_assigned_here_ids = (
+        select(AcceleratorTeamTrackerAssignment.tracker_user_id)
+        .join(AcceleratorTeam, AcceleratorTeam.id == AcceleratorTeamTrackerAssignment.team_id)
+        .where(AcceleratorTeam.cohort_id == cohort.id)
+        .where(AcceleratorTeam.status == "active")
+    )
     rows = (await db.execute(select(User).where(
         User.is_active.is_(True),
         User.is_admin.is_(False),
         User.deleted_at.is_(None),
         User.id.not_in(organizer_ids),
         User.id.not_in(assigned_here_ids),
+        User.id.not_in(team_assigned_here_ids),
         or_(User.name.ilike(search), User.email.ilike(search)),
     ).order_by(User.name, User.email).limit(20))).scalars().all()
     return [{"id": row.id, "name": row.name, "email": row.email} for row in rows]
@@ -1398,7 +1446,13 @@ async def remove_tracker(
         AcceleratorTrackerAssignment.tracker_user_id == tracker_user_id,
         AcceleratorTrackerAssignment.membership_id.in_(cohort_membership_ids),
     ))
-    if not result.rowcount:
+    team_result = await db.execute(delete(AcceleratorTeamTrackerAssignment).where(
+        AcceleratorTeamTrackerAssignment.tracker_user_id == tracker_user_id,
+        AcceleratorTeamTrackerAssignment.team_id.in_(
+            select(AcceleratorTeam.id).where(AcceleratorTeam.cohort_id == cohort.id)
+        ),
+    ))
+    if not result.rowcount and not team_result.rowcount:
         raise HTTPException(status_code=404, detail="Назначения трекера не найдены")
     await remove_tracker_staff_if_unused(
         db,
@@ -1475,6 +1529,15 @@ async def list_cohorts(
                 AcceleratorTrackerAssignment.membership_id == AcceleratorMembership.id,
             )
             .where(AcceleratorTrackerAssignment.tracker_user_id == user.id)
+        )).scalars().all())
+        tracker_cohort_ids.update((await db.execute(
+            select(AcceleratorTeam.cohort_id)
+            .join(
+                AcceleratorTeamTrackerAssignment,
+                AcceleratorTeamTrackerAssignment.team_id == AcceleratorTeam.id,
+            )
+            .where(AcceleratorTeamTrackerAssignment.tracker_user_id == user.id)
+            .where(AcceleratorTeam.status == "active")
         )).scalars().all())
         expert_cohort_ids = set((await db.execute(
             select(AcceleratorMatch.cohort_id)
@@ -2845,11 +2908,10 @@ async def submit_homework(
         passed=submission.passed,
     ))
     reviewer = await db.get(User, assignment.created_by_user_id)
+    effective_tracker_ids = await membership_tracker_user_ids(db, membership.id)
     tracker_reviewers = (await db.execute(
-        select(User)
-        .join(AcceleratorTrackerAssignment, AcceleratorTrackerAssignment.tracker_user_id == User.id)
-        .where(AcceleratorTrackerAssignment.membership_id == membership.id)
-    )).scalars().all()
+        select(User).where(User.id.in_(effective_tracker_ids))
+    )).scalars().all() if effective_tracker_ids else []
     reviewers = {
         row.id: row for row in ([reviewer] if reviewer else []) + list(tracker_reviewers)
         if row.is_active and row.deleted_at is None
@@ -4115,15 +4177,12 @@ async def list_residents(
     rows = (await db.execute(query)).all()
     result = []
     for membership, resident in rows:
+        effective_tracker_ids = await membership_tracker_user_ids(db, membership.id)
         trackers = (await db.execute(
             select(User.id, User.name)
-            .join(
-                AcceleratorTrackerAssignment,
-                AcceleratorTrackerAssignment.tracker_user_id == User.id,
-            )
-            .where(AcceleratorTrackerAssignment.membership_id == membership.id)
+            .where(User.id.in_(effective_tracker_ids))
             .order_by(User.name)
-        )).all()
+        )).all() if effective_tracker_ids else []
         result.append({
             "membership_id": membership.id,
             "user_id": resident.id,
@@ -4315,6 +4374,21 @@ async def cohort_resident_report(
         .join(User, User.id == AcceleratorTrackerAssignment.tracker_user_id)
         .where(AcceleratorTrackerAssignment.membership_id.in_(membership_ids))
     )).all() if membership_ids else []
+    team_tracker_rows = (await db.execute(
+        select(AcceleratorTeamMember.membership_id, User.id, User.name)
+        .join(AcceleratorTeam, AcceleratorTeam.id == AcceleratorTeamMember.team_id)
+        .join(
+            AcceleratorTeamTrackerAssignment,
+            AcceleratorTeamTrackerAssignment.team_id == AcceleratorTeam.id,
+        )
+        .join(User, User.id == AcceleratorTeamTrackerAssignment.tracker_user_id)
+        .where(
+            AcceleratorTeamMember.membership_id.in_(membership_ids),
+            AcceleratorTeamMember.status == "active",
+            AcceleratorTeam.status == "active",
+        )
+    )).all() if membership_ids else []
+    tracker_rows = list(tracker_rows) + list(team_tracker_rows)
     trackers_by_membership: dict[int, list[dict]] = {}
     for assigned_membership_id, tracker_id, tracker_name in tracker_rows:
         trackers_by_membership.setdefault(assigned_membership_id, []).append({
@@ -4680,11 +4754,10 @@ async def upsert_progress_checkin(
     checkin.next_steps = payload.next_steps
     checkin.help_needed = payload.help_needed
     await db.flush()
+    effective_tracker_ids = await membership_tracker_user_ids(db, membership.id)
     tracker_rows = (await db.execute(
-        select(User)
-        .join(AcceleratorTrackerAssignment, AcceleratorTrackerAssignment.tracker_user_id == User.id)
-        .where(AcceleratorTrackerAssignment.membership_id == membership.id)
-    )).scalars().all()
+        select(User).where(User.id.in_(effective_tracker_ids))
+    )).scalars().all() if effective_tracker_ids else []
     notification_ids = []
     for tracker in tracker_rows:
         notification = await enqueue_notification(
@@ -4825,11 +4898,10 @@ async def update_tracking_task(
         task.completed_by_user_id = None
     await db.flush()
     resident = await db.get(User, membership.user_id)
+    effective_tracker_ids = await membership_tracker_user_ids(db, membership.id)
     tracker_rows = (await db.execute(
-        select(User)
-        .join(AcceleratorTrackerAssignment, AcceleratorTrackerAssignment.tracker_user_id == User.id)
-        .where(AcceleratorTrackerAssignment.membership_id == membership.id)
-    )).scalars().all()
+        select(User).where(User.id.in_(effective_tracker_ids))
+    )).scalars().all() if effective_tracker_ids else []
     creator = await db.get(User, task.created_by_user_id)
     recipients = {
         row.id: row for row in ([resident, creator] + list(tracker_rows))
@@ -5197,14 +5269,10 @@ async def create_project_audit(
     if resident and resident.id != user.id:
         recipients[resident.id] = resident
     elif resident:
+        effective_tracker_ids = await membership_tracker_user_ids(db, membership.id)
         trackers = (await db.execute(
-            select(User)
-            .join(
-                AcceleratorTrackerAssignment,
-                AcceleratorTrackerAssignment.tracker_user_id == User.id,
-            )
-            .where(AcceleratorTrackerAssignment.membership_id == membership.id)
-        )).scalars().all()
+            select(User).where(User.id.in_(effective_tracker_ids))
+        )).scalars().all() if effective_tracker_ids else []
         recipients.update({tracker.id: tracker for tracker in trackers if tracker.id != user.id})
     notification_ids = []
     for recipient in recipients.values():
@@ -6324,10 +6392,14 @@ async def assign_cohort_expert(
     expert = await db.get(User, payload.user_id)
     if not profile or not expert or not expert.is_active or expert.deleted_at is not None:
         raise HTTPException(status_code=422, detail="Сначала добавьте эксперта в пул этого потока")
+    previous_expert_user_id = cohort.expert_user_id
     cohort.expert_user_id = expert.id
     add_audit(db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id, actor_user_id=user.id,
               action="cohort.expert_assigned", target_type="cohort", target_id=cohort.id,
-              details={"expert_user_id": expert.id})
+              details={
+                  "expert_user_id": expert.id,
+                  "previous_expert_user_id": previous_expert_user_id,
+              })
     await db.commit()
     return {"user_id": expert.id, "name": expert.name, "email": expert.email}
 

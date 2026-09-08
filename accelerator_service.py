@@ -15,6 +15,9 @@ from models import (
     AcceleratorQuotaUsageEvent,
     AcceleratorResidentQuotaOverride,
     AcceleratorStaff,
+    AcceleratorTeam,
+    AcceleratorTeamMember,
+    AcceleratorTeamTrackerAssignment,
     AcceleratorTrackerAssignment,
 )
 
@@ -59,7 +62,7 @@ async def is_accelerator_organizer(db: AsyncSession, user_id: int, accelerator_i
 async def tracker_membership_ids(
     db: AsyncSession, user_id: int, cohort_id: int
 ) -> set[int]:
-    rows = (await db.execute(
+    individual_rows = (await db.execute(
         select(AcceleratorTrackerAssignment.membership_id)
         .join(
             AcceleratorMembership,
@@ -70,7 +73,47 @@ async def tracker_membership_ids(
             AcceleratorMembership.cohort_id == cohort_id,
         )
     )).scalars().all()
-    return set(rows)
+    team_rows = (await db.execute(
+        select(AcceleratorTeamMember.membership_id)
+        .join(
+            AcceleratorTeam,
+            AcceleratorTeam.id == AcceleratorTeamMember.team_id,
+        )
+        .join(
+            AcceleratorTeamTrackerAssignment,
+            AcceleratorTeamTrackerAssignment.team_id == AcceleratorTeam.id,
+        )
+        .where(
+            AcceleratorTeamTrackerAssignment.tracker_user_id == user_id,
+            AcceleratorTeam.cohort_id == cohort_id,
+            AcceleratorTeam.status == "active",
+            AcceleratorTeamMember.status == "active",
+        )
+    )).scalars().all()
+    return set(individual_rows) | set(team_rows)
+
+
+async def membership_tracker_user_ids(
+    db: AsyncSession, membership_id: int
+) -> set[int]:
+    """Return the effective personal or team tracker for one membership."""
+    personal = (await db.execute(select(AcceleratorTrackerAssignment.tracker_user_id).where(
+        AcceleratorTrackerAssignment.membership_id == membership_id
+    ))).scalars().all()
+    team = (await db.execute(
+        select(AcceleratorTeamTrackerAssignment.tracker_user_id)
+        .join(
+            AcceleratorTeamMember,
+            AcceleratorTeamMember.team_id == AcceleratorTeamTrackerAssignment.team_id,
+        )
+        .join(AcceleratorTeam, AcceleratorTeam.id == AcceleratorTeamMember.team_id)
+        .where(
+            AcceleratorTeamMember.membership_id == membership_id,
+            AcceleratorTeamMember.status == "active",
+            AcceleratorTeam.status == "active",
+        )
+    )).scalars().all()
+    return set(personal) | set(team)
 
 
 async def require_cohort_reader(db: AsyncSession, user, cohort: AcceleratorCohort) -> str:
@@ -93,13 +136,7 @@ async def require_tracker_membership_access(
         return "global_admin"
     if await is_accelerator_organizer(db, user.id, cohort.accelerator_id):
         return "organizer"
-    assigned = (await db.execute(
-        select(AcceleratorTrackerAssignment.id).where(
-            AcceleratorTrackerAssignment.tracker_user_id == user.id,
-            AcceleratorTrackerAssignment.membership_id == membership.id,
-        )
-    )).scalar_one_or_none()
-    if assigned is not None:
+    if membership.id in await tracker_membership_ids(db, user.id, membership.cohort_id):
         return "tracker"
     raise HTTPException(status_code=403, detail="Резидент не назначен этому трекеру")
 

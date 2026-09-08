@@ -20,8 +20,6 @@ export type MatchRow = {
 };
 type MeData = { access_role: string; profiles: MatchProfile[]; matches: MatchRow[] };
 
-const roleLabels = { resident: "резидент", tracker: "трекер", expert: "эксперт" };
-
 function joinTags(values: string[]) { return values.join(", "); }
 function parseTags(value: string) { return Array.from(new Set(value.split(",").map((item) => item.trim()).filter(Boolean))); }
 
@@ -79,7 +77,7 @@ export function MatchmakingWorkspace({ cohortId, membershipId, project }: { coho
 
   return <div className="space-y-5">
     {membershipId && <TeamWorkspace membershipId={membershipId} project={project} />}
-    <section className="workspace-card">
+    {!membershipId && <section className="workspace-card">
       <div className="flex flex-wrap items-start justify-between gap-4"><div><h2 className="text-xl">Профиль для подбора</h2><p className="mt-1 text-sm text-white/40">Теги можно вводить через запятую. Чем точнее запросы и опыт, тем полезнее рекомендации.</p></div><button type="button" onClick={() => void load()} className="rounded-full border border-white/10 p-3 text-white/40" aria-label="Обновить"><RefreshCw size={16} /></button></div>
       {!profile && !membershipId ? <p className="mt-5 text-sm text-white/40">Организатор ещё не добавил ваш профиль в пул потока.</p> : <form onSubmit={save} className="mt-6 grid gap-4 sm:grid-cols-2">
         <label className="text-sm text-white/55 sm:col-span-2">О себе<textarea value={form.bio} onChange={(event) => setForm({ ...form, bio: event.target.value })} rows={3} className="workspace-input mt-2 resize-y" /></label>
@@ -91,9 +89,9 @@ export function MatchmakingWorkspace({ cohortId, membershipId, project }: { coho
         <label className="text-sm text-white/55">Максимум активных связок<input type="number" min={1} max={100} value={form.maxMatches} onChange={(event) => setForm({ ...form, maxMatches: Number(event.target.value) })} className="workspace-input mt-2" /></label>
         <div className="sm:col-span-2"><button disabled={busy === "save" || (!profile && !membershipId)} className="workspace-button"><Save size={15} /> Сохранить профиль</button></div>
       </form>}
-    </section>
+    </section>}
 
-    <section className="workspace-card"><h2 className="flex items-center gap-2 text-xl"><Users size={18} /> Мои связки</h2><div className="mt-5 grid gap-3 md:grid-cols-2">{(me?.matches || []).map((match) => { const residentSide = Boolean(membershipId); const person = residentSide ? match.counterpart : match.resident; return <article key={match.id} className="rounded-2xl border border-white/10 p-4"><div className="flex items-start justify-between gap-3"><div><p>{person.name}</p><p className="text-xs text-white/35">{residentSide ? roleLabels[match.counterpart_role] : "резидент"}</p></div><span className={`rounded-full px-2 py-1 text-xs ${match.status === "active" ? "bg-emerald-400/10 text-emerald-300" : "bg-white/5 text-white/35"}`}>{match.status === "active" ? "Активна" : "Завершена"}</span></div><p className="mt-3 text-sm text-white/45">{match.reasons.join(" · ")}</p></article>; })}{!me?.matches.length && <p className="text-sm text-white/35">Подтверждённых связок пока нет.</p>}</div></section>
+    {!membershipId && <section className="workspace-card"><h2 className="flex items-center gap-2 text-xl"><Users size={18} /> Мои связки</h2><div className="mt-5 grid gap-3 md:grid-cols-2">{(me?.matches || []).map((match) => { const person = match.resident; return <article key={match.id} className="rounded-2xl border border-white/10 p-4"><div className="flex items-start justify-between gap-3"><div><p>{person.name}</p><p className="text-xs text-white/35">резидент</p></div><span className={`rounded-full px-2 py-1 text-xs ${match.status === "active" ? "bg-emerald-400/10 text-emerald-300" : "bg-white/5 text-white/35"}`}>{match.status === "active" ? "Активна" : "Завершена"}</span></div><p className="mt-3 text-sm text-white/45">{match.reasons.join(" · ")}</p></article>; })}{!me?.matches.length && <p className="text-sm text-white/35">Подтверждённых связок пока нет.</p>}</div></section>}
     {error && <p role="alert" className="rounded-2xl border border-red-400/20 bg-red-400/10 p-4 text-sm text-red-200">{error}</p>}
   </div>;
 }
