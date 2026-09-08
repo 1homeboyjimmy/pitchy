@@ -59,6 +59,7 @@ from models import (
     AcceleratorDemoDayProject,
     AcceleratorDemoDayScore,
     AcceleratorEvent,
+    AcceleratorEventChange,
     AcceleratorEventHomeworkLink,
     AcceleratorFile,
     AcceleratorInvitation,
@@ -114,6 +115,9 @@ from schemas.accelerators import (
     HomeworkSubmissionUpsert,
     AttendanceMark,
     EventCreate,
+    EventCancel,
+    EventFollowupUpdate,
+    EventReschedule,
     OrganizationCreate,
     OrganizerAssign,
     TrackerAssign,
@@ -367,6 +371,69 @@ async def stage_materials(db: AsyncSession, stage_id: int) -> list[AcceleratorPr
     return list((await db.execute(select(AcceleratorProgramMaterial).where(
         AcceleratorProgramMaterial.stage_id == stage_id
     ).order_by(AcceleratorProgramMaterial.position))).scalars().all())
+
+
+async def stage_timeline(
+    db: AsyncSession,
+    stage: AcceleratorProgramStage,
+    *,
+    published_only: bool,
+) -> list[dict]:
+    materials = await stage_materials(db, stage.id)
+    homework_query = select(AcceleratorHomeworkAssignment).where(
+        AcceleratorHomeworkAssignment.stage_id == stage.id,
+        AcceleratorHomeworkAssignment.status != "archived",
+    )
+    event_query = select(AcceleratorEvent).where(
+        AcceleratorEvent.stage_id == stage.id,
+        AcceleratorEvent.status != "archived",
+    )
+    if published_only:
+        homework_query = homework_query.where(
+            AcceleratorHomeworkAssignment.status == "published"
+        )
+        event_query = event_query.where(
+            AcceleratorEvent.status.in_(("published", "completed", "cancelled"))
+        )
+    homework = (await db.execute(homework_query)).scalars().all()
+    events = (await db.execute(event_query)).scalars().all()
+    timeline = [{
+        "key": f"material:{material.id}",
+        "kind": "material",
+        "id": material.id,
+        "title": material.title,
+        "sort_at": stage.unlock_at,
+        "required": material.required,
+        "status": None,
+    } for material in materials]
+    timeline.extend({
+        "key": f"homework:{assignment.id}",
+        "kind": "homework",
+        "id": assignment.id,
+        "title": assignment.title,
+        "sort_at": assignment.due_at,
+        "required": True,
+        "status": assignment.status,
+    } for assignment in homework)
+    timeline.extend({
+        "key": f"event:{event.id}",
+        "kind": "event",
+        "id": event.id,
+        "title": event.title,
+        "sort_at": event.starts_at,
+        "required": False,
+        "status": event.status,
+        "event_format": event.event_format,
+    } for event in events)
+    return sorted(
+        timeline,
+        key=lambda item: (
+            item["sort_at"] is None,
+            item["sort_at"] or datetime.max,
+            item["kind"],
+            item["id"],
+        ),
+    )
 
 
 async def ensure_stage_for_cohort(
@@ -2012,12 +2079,14 @@ async def manager_stage_dict(db: AsyncSession, stage: AcceleratorProgramStage) -
         "materials": [program_material_dict(row) for row in materials],
         "actions": [program_action_dict(row) for row in actions],
         "homework_assignment_ids": homework_ids,
+        "timeline": await stage_timeline(db, stage, published_only=False),
     }
 
 
 async def resident_program_rows(
     db: AsyncSession, membership: AcceleratorMembership
 ) -> list[dict]:
+    await complete_due_events(db, membership.cohort_id)
     stages = list((await db.execute(select(AcceleratorProgramStage).where(
         AcceleratorProgramStage.cohort_id == membership.cohort_id,
         AcceleratorProgramStage.status == "published",
@@ -2058,6 +2127,9 @@ async def resident_program_rows(
             "actions": [] if locked else [
                 program_action_dict(row, artifacts_by_action.get(row.id)) for row in actions
             ],
+            "timeline": [] if locked else await stage_timeline(
+                db, stage, published_only=True
+            ),
         })
         if stage.required and not completed:
             blocked_by_previous = True
@@ -2072,6 +2144,7 @@ async def list_program_stages(
 ):
     cohort = await get_cohort_or_404(db, cohort_id)
     await require_cohort_manager(db, user, cohort)
+    await complete_due_events(db, cohort.id)
     rows = (await db.execute(select(AcceleratorProgramStage).where(
         AcceleratorProgramStage.cohort_id == cohort.id,
         AcceleratorProgramStage.status != "archived",
@@ -3507,7 +3580,98 @@ async def replace_event_homework_links(
         ))
 
 
-def event_dict(row: AcceleratorEvent, *, attendance_count: int = 0, attendance: AcceleratorAttendanceRecord | None = None, homework_links: list[dict] | None = None) -> dict:
+def event_schedule_snapshot(row: AcceleratorEvent) -> dict:
+    return {
+        "starts_at": row.starts_at.isoformat(),
+        "ends_at": row.ends_at.isoformat(),
+        "status": row.status,
+        "event_format": row.event_format,
+        "location": row.location,
+        "meeting_url": row.meeting_url,
+    }
+
+
+def add_event_change(
+    db: AsyncSession,
+    event: AcceleratorEvent,
+    *,
+    action: str,
+    actor_user_id: int | None,
+    reason: str | None = None,
+    before: dict | None = None,
+) -> None:
+    db.add(AcceleratorEventChange(
+        event_id=event.id,
+        actor_user_id=actor_user_id,
+        action=action,
+        reason=reason,
+        before=before,
+        after=event_schedule_snapshot(event),
+    ))
+
+
+async def complete_due_events(db: AsyncSession, cohort_id: int) -> int:
+    rows = list((await db.execute(
+        select(AcceleratorEvent)
+        .where(
+            AcceleratorEvent.cohort_id == cohort_id,
+            AcceleratorEvent.status == "published",
+            AcceleratorEvent.ends_at <= datetime.utcnow(),
+        )
+        .with_for_update()
+    )).scalars().all())
+    now = datetime.utcnow()
+    for event in rows:
+        before = event_schedule_snapshot(event)
+        event.status = "completed"
+        event.completed_at = now
+        add_event_change(
+            db, event, action="completed", actor_user_id=None, before=before
+        )
+    if rows:
+        await db.commit()
+    return len(rows)
+
+
+async def enqueue_event_change_notifications(
+    db: AsyncSession,
+    *,
+    cohort: AcceleratorCohort,
+    event: AcceleratorEvent,
+    event_type: str,
+    subject: str,
+    body: str,
+) -> list[int]:
+    accelerator = await get_accelerator_or_404(db, cohort.accelerator_id)
+    recipients = (await db.execute(
+        select(User).join(
+            AcceleratorMembership,
+            AcceleratorMembership.user_id == User.id,
+        ).where(
+            AcceleratorMembership.cohort_id == cohort.id,
+            AcceleratorMembership.role == "resident",
+            AcceleratorMembership.status == "enrolled",
+            User.is_active.is_(True),
+            User.deleted_at.is_(None),
+        )
+    )).scalars().all()
+    ids = []
+    for recipient in recipients:
+        notification = await enqueue_notification(
+            db,
+            accelerator_id=accelerator.id,
+            cohort_id=cohort.id,
+            recipient_email=recipient.email,
+            event_type=event_type,
+            subject=subject,
+            body=body,
+            idempotency_key=f"{event_type}:{event.id}:{event.updated_at.isoformat()}:{recipient.id}",
+        )
+        ids.append(notification.id)
+    return ids
+
+
+def event_dict(row: AcceleratorEvent, *, attendance_count: int = 0, attendance: AcceleratorAttendanceRecord | None = None, homework_links: list[dict] | None = None, timezone: str | None = None) -> dict:
     frontend_url = os.getenv("FRONTEND_URL", "https://pitchy.pro").rstrip("/")
     return {
         "id": row.id,
@@ -3525,8 +3689,16 @@ def event_dict(row: AcceleratorEvent, *, attendance_count: int = 0, attendance: 
         "online_platform": row.online_platform,
         "recording_url": row.recording_url,
         "venue_details": row.venue_details,
+        "map_url": row.map_url,
+        "outcome": row.outcome,
+        "next_step": row.next_step,
+        "post_materials": row.post_materials or [],
+        "cancellation_reason": row.cancellation_reason,
+        "cancelled_at": row.cancelled_at,
+        "completed_at": row.completed_at,
         "homework_links": homework_links or [],
         "status": row.status,
+        "timezone": timezone,
         "checkin_opens_minutes": row.checkin_opens_minutes,
         "checkin_closes_minutes": row.checkin_closes_minutes,
         "checkin_url": f"{frontend_url}/accelerator/check-in/{row.checkin_code}",
@@ -3549,12 +3721,15 @@ async def list_events(
     cohort = await get_cohort_or_404(db, cohort_id)
     access_role = await require_cohort_reader(db, user, cohort)
     await require_attendance_module(db, cohort)
+    await complete_due_events(db, cohort.id)
     event_query = select(AcceleratorEvent).where(
         AcceleratorEvent.cohort_id == cohort.id,
         AcceleratorEvent.status != "archived",
     )
     if access_role == "tracker":
-        event_query = event_query.where(AcceleratorEvent.status == "published")
+        event_query = event_query.where(
+            AcceleratorEvent.status.in_(("published", "completed", "cancelled"))
+        )
     rows = (await db.execute(event_query.order_by(AcceleratorEvent.starts_at))).scalars().all()
     count_query = (
         select(AcceleratorAttendanceRecord.event_id, func.count(AcceleratorAttendanceRecord.id))
@@ -3571,6 +3746,7 @@ async def list_events(
         row,
         attendance_count=counts.get(row.id, 0),
         homework_links=await event_homework_links(db, row.id),
+        timezone=cohort.timezone,
     ) for row in rows]
 
 
@@ -3596,6 +3772,10 @@ async def create_event(
         online_platform=(payload.online_platform or "").strip() or None,
         recording_url=(payload.recording_url or "").strip() or None,
         venue_details=(payload.venue_details or "").strip() or None,
+        map_url=(payload.map_url or "").strip() or None,
+        outcome=(payload.outcome or "").strip() or None,
+        next_step=(payload.next_step or "").strip() or None,
+        post_materials=payload.post_materials,
         checkin_code=secrets.token_urlsafe(24),
         checkin_opens_minutes=payload.checkin_opens_minutes,
         checkin_closes_minutes=payload.checkin_closes_minutes,
@@ -3604,10 +3784,11 @@ async def create_event(
     db.add(event)
     await db.flush()
     await replace_event_homework_links(db, event, payload.homework_links)
+    add_event_change(db, event, action="created", actor_user_id=user.id)
     add_audit(db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
               actor_user_id=user.id, action="event.created", target_type="event", target_id=event.id)
     await db.commit()
-    return event_dict(event, homework_links=await event_homework_links(db, event.id))
+    return event_dict(event, homework_links=await event_homework_links(db, event.id), timezone=cohort.timezone)
 
 
 @router.put("/events/{event_id}")
@@ -3627,6 +3808,7 @@ async def update_event(
     if event.status != "draft":
         raise HTTPException(status_code=409, detail="Опубликованное мероприятие нельзя менять")
     await ensure_stage_for_cohort(db, payload.stage_id, cohort.id)
+    before = event_schedule_snapshot(event)
     event.stage_id = payload.stage_id
     event.title = payload.title.strip()
     event.description = (payload.description or "").strip() or None
@@ -3640,10 +3822,17 @@ async def update_event(
     event.online_platform = (payload.online_platform or "").strip() or None
     event.recording_url = (payload.recording_url or "").strip() or None
     event.venue_details = (payload.venue_details or "").strip() or None
+    event.map_url = (payload.map_url or "").strip() or None
+    event.outcome = (payload.outcome or "").strip() or None
+    event.next_step = (payload.next_step or "").strip() or None
+    event.post_materials = payload.post_materials
     event.checkin_opens_minutes = payload.checkin_opens_minutes
     event.checkin_closes_minutes = payload.checkin_closes_minutes
     event.updated_by_user_id = user.id
     await replace_event_homework_links(db, event, payload.homework_links)
+    add_event_change(
+        db, event, action="updated", actor_user_id=user.id, before=before
+    )
     add_audit(
         db,
         accelerator_id=cohort.accelerator_id,
@@ -3654,7 +3843,7 @@ async def update_event(
         target_id=event.id,
     )
     await db.commit()
-    return event_dict(event, homework_links=await event_homework_links(db, event.id))
+    return event_dict(event, homework_links=await event_homework_links(db, event.id), timezone=cohort.timezone)
 
 
 @router.post("/events/{event_id}/publish")
@@ -3675,10 +3864,210 @@ async def publish_event(
     event.status = "published"
     event.published_at = datetime.utcnow()
     event.updated_by_user_id = user.id
+    add_event_change(db, event, action="published", actor_user_id=user.id)
     add_audit(db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
               actor_user_id=user.id, action="event.published", target_type="event", target_id=event.id)
     await db.commit()
-    return event_dict(event, homework_links=await event_homework_links(db, event.id))
+    return event_dict(event, homework_links=await event_homework_links(db, event.id), timezone=cohort.timezone)
+
+
+@router.post("/events/{event_id}/reschedule")
+async def reschedule_event(
+    event_id: int,
+    payload: EventReschedule,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    event = (await db.execute(
+        select(AcceleratorEvent)
+        .where(AcceleratorEvent.id == event_id)
+        .with_for_update()
+    )).scalar_one_or_none()
+    if not event:
+        raise HTTPException(status_code=404, detail="Мероприятие не найдено")
+    cohort = await get_cohort_or_404(db, event.cohort_id)
+    await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
+    await require_attendance_module(db, cohort)
+    if event.status != "published":
+        raise HTTPException(status_code=409, detail="Перенести можно опубликованное мероприятие")
+    before = event_schedule_snapshot(event)
+    event.starts_at = payload.starts_at
+    event.ends_at = payload.ends_at
+    event.updated_by_user_id = user.id
+    event.updated_at = datetime.utcnow()
+    add_event_change(
+        db,
+        event,
+        action="rescheduled",
+        actor_user_id=user.id,
+        reason=payload.reason.strip(),
+        before=before,
+    )
+    notification_ids = await enqueue_event_change_notifications(
+        db,
+        cohort=cohort,
+        event=event,
+        event_type="event_rescheduled",
+        subject=f"Мероприятие перенесено: {event.title}",
+        body=(
+            f"Новая дата: {event.starts_at.isoformat()} — {event.ends_at.isoformat()} "
+            f"({cohort.timezone}).\n\nПричина: {payload.reason.strip()}"
+        ),
+    )
+    add_audit(
+        db,
+        accelerator_id=cohort.accelerator_id,
+        cohort_id=cohort.id,
+        actor_user_id=user.id,
+        action="event.rescheduled",
+        target_type="event",
+        target_id=event.id,
+        details={"reason": payload.reason.strip(), "before": before},
+    )
+    await db.commit()
+    for notification_id in notification_ids:
+        background_tasks.add_task(process_notification_event, notification_id)
+    return event_dict(
+        event,
+        homework_links=await event_homework_links(db, event.id),
+        timezone=cohort.timezone,
+    )
+
+
+@router.post("/events/{event_id}/cancel")
+async def cancel_event(
+    event_id: int,
+    payload: EventCancel,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    event = (await db.execute(
+        select(AcceleratorEvent)
+        .where(AcceleratorEvent.id == event_id)
+        .with_for_update()
+    )).scalar_one_or_none()
+    if not event:
+        raise HTTPException(status_code=404, detail="Мероприятие не найдено")
+    cohort = await get_cohort_or_404(db, event.cohort_id)
+    await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
+    await require_attendance_module(db, cohort)
+    if event.status != "published":
+        raise HTTPException(status_code=409, detail="Отменить можно опубликованное мероприятие")
+    before = event_schedule_snapshot(event)
+    event.status = "cancelled"
+    event.cancellation_reason = payload.reason.strip()
+    event.cancelled_at = datetime.utcnow()
+    event.updated_by_user_id = user.id
+    event.updated_at = event.cancelled_at
+    add_event_change(
+        db,
+        event,
+        action="cancelled",
+        actor_user_id=user.id,
+        reason=event.cancellation_reason,
+        before=before,
+    )
+    notification_ids = await enqueue_event_change_notifications(
+        db,
+        cohort=cohort,
+        event=event,
+        event_type="event_cancelled",
+        subject=f"Мероприятие отменено: {event.title}",
+        body=f"Причина отмены: {event.cancellation_reason}",
+    )
+    add_audit(
+        db,
+        accelerator_id=cohort.accelerator_id,
+        cohort_id=cohort.id,
+        actor_user_id=user.id,
+        action="event.cancelled",
+        target_type="event",
+        target_id=event.id,
+        details={"reason": event.cancellation_reason, "before": before},
+    )
+    await db.commit()
+    for notification_id in notification_ids:
+        background_tasks.add_task(process_notification_event, notification_id)
+    return event_dict(
+        event,
+        homework_links=await event_homework_links(db, event.id),
+        timezone=cohort.timezone,
+    )
+
+
+@router.put("/events/{event_id}/followup")
+async def update_event_followup(
+    event_id: int,
+    payload: EventFollowupUpdate,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    event = (await db.execute(
+        select(AcceleratorEvent)
+        .where(AcceleratorEvent.id == event_id)
+        .with_for_update()
+    )).scalar_one_or_none()
+    if not event:
+        raise HTTPException(status_code=404, detail="Мероприятие не найдено")
+    cohort = await get_cohort_or_404(db, event.cohort_id)
+    await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
+    await require_attendance_module(db, cohort)
+    if event.status not in {"published", "completed"}:
+        raise HTTPException(status_code=409, detail="Итоги доступны после публикации мероприятия")
+    event.recording_url = (payload.recording_url or "").strip() or None
+    event.outcome = (payload.outcome or "").strip() or None
+    event.next_step = (payload.next_step or "").strip() or None
+    event.post_materials = payload.post_materials
+    event.updated_by_user_id = user.id
+    add_event_change(db, event, action="followup_updated", actor_user_id=user.id)
+    add_audit(
+        db,
+        accelerator_id=cohort.accelerator_id,
+        cohort_id=cohort.id,
+        actor_user_id=user.id,
+        action="event.followup_updated",
+        target_type="event",
+        target_id=event.id,
+    )
+    await db.commit()
+    return event_dict(
+        event,
+        homework_links=await event_homework_links(db, event.id),
+        timezone=cohort.timezone,
+    )
+
+
+@router.get("/events/{event_id}/history")
+async def list_event_history(
+    event_id: int,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    event = await db.get(AcceleratorEvent, event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Мероприятие не найдено")
+    cohort = await get_cohort_or_404(db, event.cohort_id)
+    await require_cohort_manager(db, user, cohort)
+    rows = (await db.execute(
+        select(AcceleratorEventChange, User)
+        .outerjoin(User, User.id == AcceleratorEventChange.actor_user_id)
+        .where(AcceleratorEventChange.event_id == event.id)
+        .order_by(AcceleratorEventChange.created_at.desc(), AcceleratorEventChange.id.desc())
+    )).all()
+    return [{
+        "id": change.id,
+        "action": change.action,
+        "reason": change.reason,
+        "before": change.before,
+        "after": change.after,
+        "created_at": change.created_at,
+        "actor": {"id": actor.id, "name": actor.name} if actor else None,
+    } for change, actor in rows]
 
 
 @router.get("/events/{event_id}/qr")
@@ -3720,7 +4109,9 @@ async def duplicate_event(
         starts_at=source.starts_at, ends_at=source.ends_at,
         event_format=source.event_format, location=source.location, meeting_url=source.meeting_url,
         online_platform=source.online_platform, recording_url=source.recording_url,
-        venue_details=source.venue_details,
+        venue_details=source.venue_details, map_url=source.map_url,
+        outcome=source.outcome, next_step=source.next_step,
+        post_materials=source.post_materials or [],
         checkin_code=secrets.token_urlsafe(24),
         checkin_opens_minutes=source.checkin_opens_minutes,
         checkin_closes_minutes=source.checkin_closes_minutes,
@@ -3730,6 +4121,7 @@ async def duplicate_event(
     await db.flush()
     source_links = await event_homework_links(db, source.id)
     await replace_event_homework_links(db, duplicate, source_links)
+    add_event_change(db, duplicate, action="created", actor_user_id=user.id)
     add_audit(db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
               actor_user_id=user.id, action="event.duplicated", target_type="event",
               target_id=duplicate.id, details={"source_id": source.id})
@@ -3842,9 +4234,10 @@ async def list_resident_events(
     membership = await get_resident_membership(db, membership_id, user)
     cohort = await get_cohort_or_404(db, membership.cohort_id)
     await require_attendance_module(db, cohort)
+    await complete_due_events(db, cohort.id)
     events = (await db.execute(select(AcceleratorEvent).where(
         AcceleratorEvent.cohort_id == cohort.id,
-        AcceleratorEvent.status == "published",
+        AcceleratorEvent.status.in_(("published", "completed", "cancelled")),
     ).order_by(AcceleratorEvent.starts_at))).scalars().all()
     records = (await db.execute(select(AcceleratorAttendanceRecord).where(
         AcceleratorAttendanceRecord.membership_id == membership.id,
@@ -3855,6 +4248,7 @@ async def list_resident_events(
         event,
         attendance=by_event.get(event.id),
         homework_links=await event_homework_links(db, event.id),
+        timezone=cohort.timezone,
     ) for event in events]
 
 
@@ -3866,7 +4260,7 @@ async def check_in_to_event(
 ):
     event = (await db.execute(select(AcceleratorEvent).where(
         AcceleratorEvent.checkin_code == code,
-        AcceleratorEvent.status == "published",
+        AcceleratorEvent.status.in_(("published", "completed")),
     ))).scalar_one_or_none()
     if not event:
         raise HTTPException(status_code=404, detail="Ссылка отметки недействительна")

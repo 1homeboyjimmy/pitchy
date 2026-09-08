@@ -7,9 +7,10 @@ import {
   ArrowUp,
   Banknote,
   BookOpen,
+  CalendarDays,
   Check,
+  ClipboardCheck,
   Copy,
-  ExternalLink,
   FileSearch,
   GitBranch,
   Loader2,
@@ -56,6 +57,16 @@ export type ProgramStage = {
   materials: Material[];
   actions: ProgramAction[];
   homework_assignment_ids: number[];
+  timeline: Array<{
+    key: string;
+    kind: "material" | "homework" | "event";
+    id: number;
+    title: string;
+    sort_at?: string | null;
+    required: boolean;
+    status?: string | null;
+    event_format?: "online" | "offline" | "hybrid";
+  }>;
 };
 
 const ACTION_META: Record<ProgramActionType, { label: string; defaultTitle: string; icon: typeof MessageSquare }> = {
@@ -297,7 +308,7 @@ export function ProgramBuilder({ cohortId, token }: { cohortId: number; token: s
           </div>
         </div>
         {(stage.actions || []).length > 0 && <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{stage.actions.map((action, actionIndex) => { const meta = ACTION_META[action.action_type]; const Icon = meta.icon; return <div key={action.id || `${action.action_type}-${actionIndex}`} className="flex items-center gap-3 rounded-xl border border-violet-300/10 bg-violet-300/[0.03] p-3 text-sm text-white/60"><Icon size={15} className="text-violet-200/60" /><span className="truncate">{action.title}</span>{action.required && <Check size={13} className="ml-auto text-emerald-400" />}</div>; })}</div>}
-        {stage.materials.length > 0 && <div className="mt-3 grid gap-2 sm:grid-cols-2">{stage.materials.map((material) => <div key={material.id || material.title} className="flex items-center gap-3 rounded-xl bg-black/25 p-3 text-sm text-white/55">{material.kind === "text" ? <BookOpen size={15} /> : <ExternalLink size={15} />}<span className="truncate">{material.title}</span>{material.required && <Check size={13} className="ml-auto text-emerald-400" />}</div>)}</div>}
+        {(stage.timeline || []).length > 0 && <div className="mt-4 rounded-2xl border border-white/8 bg-black/20 p-4"><p className="mb-3 text-xs uppercase tracking-[.16em] text-white/30">Хронология этапа</p><div className="space-y-2">{stage.timeline.map((item) => { const Icon = item.kind === "event" ? CalendarDays : item.kind === "homework" ? ClipboardCheck : BookOpen; return <div key={item.key} className="flex items-center gap-3 rounded-xl bg-white/[0.025] p-3"><Icon size={15} className="shrink-0 text-white/40" /><div className="min-w-0 flex-1"><p className="truncate text-sm text-white/65">{item.title}</p><p className="mt-0.5 text-xs text-white/30">{item.kind === "event" ? `Мероприятие${item.event_format ? ` · ${item.event_format === "online" ? "онлайн" : item.event_format === "offline" ? "очно" : "гибрид"}` : ""}` : item.kind === "homework" ? "Домашнее задание" : "Материал"}{item.sort_at ? ` · ${new Date(item.sort_at).toLocaleString("ru-RU")}` : ""}</p></div>{item.required && <Check size={13} className="shrink-0 text-emerald-400" />}</div>; })}</div></div>}
       </article>)}
     </div>
   </section>;

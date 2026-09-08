@@ -22,6 +22,7 @@ from models import (
     AcceleratorHomeworkSubmission,
     AcceleratorAttendanceRecord,
     AcceleratorEvent,
+    AcceleratorEventChange,
     AcceleratorNotificationOutbox,
     AcceleratorAuditLog,
     AcceleratorProgramConfig,
@@ -75,6 +76,7 @@ from routers.accelerators import (
     list_resident_program_stages,
     list_resident_events,
     list_event_attendance,
+    list_event_history,
     list_residents,
     list_membership_events,
     cohort_resident_report,
@@ -111,6 +113,9 @@ from routers.accelerators import (
     get_program_config,
     publish_homework_assignment,
     publish_event,
+    reschedule_event,
+    cancel_event,
+    update_event_followup,
     publish_program_stage,
     resend_application_invitation,
     review_homework_submission,
@@ -157,6 +162,9 @@ from schemas.accelerators import (
     HomeworkSubmissionUpsert,
     AttendanceMark,
     EventCreate,
+    EventReschedule,
+    EventCancel,
+    EventFollowupUpdate,
     AcceleratorArtifactUpdate,
     ProgramActionCreate,
     ProgramMaterialCreate,
@@ -1601,6 +1609,201 @@ async def test_program_attendance_and_candidate_revision_flow(monkeypatch):
         assert revised["status"] == "under_review"
         with pytest.raises(HTTPException):
             await get_application_revision("revision-token", db)
+
+
+def test_event_formats_and_change_payloads_are_validated():
+    now = datetime.utcnow()
+    with pytest.raises(ValidationError):
+        EventCreate(
+            title="Очная встреча",
+            starts_at=now,
+            ends_at=now + timedelta(hours=1),
+            event_format="offline",
+        )
+    with pytest.raises(ValidationError):
+        EventCreate(
+            title="Онлайн-встреча",
+            starts_at=now,
+            ends_at=now + timedelta(hours=1),
+            event_format="online",
+        )
+    with pytest.raises(ValidationError):
+        EventReschedule(
+            starts_at=now + timedelta(hours=2),
+            ends_at=now + timedelta(hours=1),
+            reason="Изменение расписания",
+        )
+    with pytest.raises(ValidationError):
+        EventFollowupUpdate(post_materials=[{"title": "Материал", "url": "ftp://example.test"}])
+
+
+@pytest.mark.asyncio
+async def test_event_reschedule_cancel_completion_history_and_program_timeline():
+    suffix = uuid.uuid4().hex
+    async with AsyncSessionLocal() as db:
+        admin = User(email=f"admin-events-{suffix}@example.test", name="Admin", is_admin=True)
+        resident = User(email=f"resident-events-{suffix}@example.test", name="Resident")
+        db.add_all([admin, resident])
+        await db.commit()
+        await db.refresh(admin)
+        await db.refresh(resident)
+
+        accelerator = await create_accelerator(
+            AcceleratorCreate(name="Event workflow accelerator"), admin, db
+        )
+        cohort = await create_cohort(
+            accelerator["id"],
+            CohortCreate(name="Event workflow cohort", application_form_schema={"required": ["project_name"]}),
+            admin,
+            db,
+        )
+        await update_program_config(
+            cohort["id"],
+            ProgramConfigUpdate(version=1, modules={"attendance": True, "homework": True}),
+            admin,
+            db,
+        )
+        await update_cohort_status(cohort["id"], StatusUpdate(status="accepting"), admin, db)
+        application = await submit_application(
+            cohort["id"],
+            ApplicationCreate(form_payload={"project_name": "Event project"}, accept_privacy=True, accept_program_rules=True),
+            resident,
+            db,
+        )
+        accepted = await accept_application(application["id"], ApplicationReview(), BackgroundTasks(), admin, db)
+        await enroll_application(application["id"], resident, db)
+
+        stage = await create_program_stage(
+            cohort["id"], ProgramStageCreate(title="Проверка решения"), admin, db
+        )
+        first_homework = await create_homework_assignment(
+            cohort["id"],
+            HomeworkAssignmentCreate(title="Подготовить вопросы", description="Список вопросов", stage_id=stage["id"]),
+            admin,
+            db,
+        )
+        second_homework = await create_homework_assignment(
+            cohort["id"],
+            HomeworkAssignmentCreate(title="Зафиксировать итоги", description="Краткий итог", stage_id=stage["id"]),
+            admin,
+            db,
+        )
+        await publish_homework_assignment(first_homework["id"], BackgroundTasks(), admin, db)
+        await publish_homework_assignment(second_homework["id"], BackgroundTasks(), admin, db)
+        await publish_program_stage(stage["id"], admin, db)
+
+        starts_at = datetime.utcnow() + timedelta(days=2)
+        event = await create_event(
+            cohort["id"],
+            EventCreate(
+                title="Гибридный воркшоп",
+                description="Разбор интервью",
+                event_type="workshop",
+                host_name="Анна Трекер",
+                starts_at=starts_at,
+                ends_at=starts_at + timedelta(hours=2),
+                event_format="hybrid",
+                location="Москва, ул. Примерная, 1",
+                meeting_url="https://meet.example.test/workshop",
+                online_platform="Meet",
+                venue_details="Вход со двора",
+                map_url="https://maps.example.test/workshop",
+                stage_id=stage["id"],
+                homework_links=[
+                    {"assignment_id": first_homework["id"], "relation": "before"},
+                    {"assignment_id": second_homework["id"], "relation": "after"},
+                ],
+            ),
+            admin,
+            db,
+        )
+        await publish_event(event["id"], admin, db)
+        moved_start = starts_at + timedelta(days=1)
+        moved = await reschedule_event(
+            event["id"],
+            EventReschedule(
+                starts_at=moved_start,
+                ends_at=moved_start + timedelta(hours=2),
+                reason="Ведущий освободился на следующий день",
+            ),
+            BackgroundTasks(),
+            admin,
+            db,
+        )
+        assert moved["starts_at"] == moved_start
+        assert moved["timezone"] == "Europe/Moscow"
+        assert len(moved["homework_links"]) == 2
+
+        followup = await update_event_followup(
+            event["id"],
+            EventFollowupUpdate(
+                recording_url="https://video.example.test/workshop",
+                outcome="Команды проверили гипотезы",
+                next_step="Провести ещё пять интервью",
+                post_materials=[{"title": "Шаблон интервью", "url": "https://docs.example.test/template"}],
+            ),
+            admin,
+            db,
+        )
+        assert followup["outcome"] == "Команды проверили гипотезы"
+        assert followup["post_materials"][0]["title"] == "Шаблон интервью"
+
+        stored_event = await db.get(AcceleratorEvent, event["id"])
+        stored_event.starts_at = datetime.utcnow() - timedelta(hours=2)
+        stored_event.ends_at = datetime.utcnow() - timedelta(minutes=30)
+        await db.commit()
+        resident_events = await list_resident_events(accepted["membership_id"], resident, db)
+        completed = next(row for row in resident_events if row["id"] == event["id"])
+        assert completed["status"] == "completed"
+        assert completed["recording_url"] == "https://video.example.test/workshop"
+        assert completed["homework_links"][0]["title"] == "Подготовить вопросы"
+
+        cancelled_event = await create_event(
+            cohort["id"],
+            EventCreate(
+                title="Вебинар для отмены",
+                starts_at=datetime.utcnow() + timedelta(days=5),
+                ends_at=datetime.utcnow() + timedelta(days=5, hours=1),
+                event_format="online",
+                meeting_url="https://meet.example.test/cancelled",
+                stage_id=stage["id"],
+            ),
+            admin,
+            db,
+        )
+        await publish_event(cancelled_event["id"], admin, db)
+        cancelled = await cancel_event(
+            cancelled_event["id"],
+            EventCancel(reason="Спикер заболел"),
+            BackgroundTasks(),
+            admin,
+            db,
+        )
+        assert cancelled["status"] == "cancelled"
+        assert cancelled["cancellation_reason"] == "Спикер заболел"
+
+        event_history = await list_event_history(event["id"], admin, db)
+        assert {row["action"] for row in event_history} >= {
+            "created", "published", "rescheduled", "followup_updated", "completed"
+        }
+        cancelled_history = await list_event_history(cancelled_event["id"], admin, db)
+        assert next(row for row in cancelled_history if row["action"] == "cancelled")["reason"] == "Спикер заболел"
+
+        notifications = (await db.execute(select(AcceleratorNotificationOutbox).where(
+            AcceleratorNotificationOutbox.cohort_id == cohort["id"],
+            AcceleratorNotificationOutbox.event_type.in_(("event_rescheduled", "event_cancelled")),
+        ))).scalars().all()
+        assert {row.event_type for row in notifications} == {"event_rescheduled", "event_cancelled"}
+        assert {row.recipient_email for row in notifications} == {resident.email}
+
+        stages = await list_resident_program_stages(accepted["membership_id"], resident, db)
+        timeline = stages[0]["timeline"]
+        assert {row["key"] for row in timeline} >= {
+            f"homework:{first_homework['id']}",
+            f"homework:{second_homework['id']}",
+            f"event:{event['id']}",
+            f"event:{cancelled_event['id']}",
+        }
 
 
 @pytest.mark.asyncio

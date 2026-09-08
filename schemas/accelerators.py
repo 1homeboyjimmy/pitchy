@@ -807,6 +807,10 @@ class EventCreate(BaseModel):
     online_platform: str | None = Field(default=None, max_length=120)
     recording_url: str | None = Field(default=None, max_length=2000)
     venue_details: str | None = Field(default=None, max_length=2000)
+    map_url: str | None = Field(default=None, max_length=2000)
+    outcome: str | None = Field(default=None, max_length=10000)
+    next_step: str | None = Field(default=None, max_length=5000)
+    post_materials: list[dict[str, Any]] = Field(default_factory=list, max_length=50)
     homework_links: list[dict[str, Any]] = Field(default_factory=list, max_length=50)
     stage_id: int | None = Field(default=None, gt=0)
     checkin_opens_minutes: int = Field(default=120, ge=0, le=1440)
@@ -831,6 +835,17 @@ class EventCreate(BaseModel):
             raise ValueError("Ссылка на подключение должна начинаться с http:// или https://")
         if self.recording_url and not self.recording_url.strip().lower().startswith(("https://", "http://")):
             raise ValueError("Ссылка на запись должна начинаться с http:// или https://")
+        if self.map_url and not self.map_url.strip().lower().startswith(("https://", "http://")):
+            raise ValueError("Ссылка на карту должна начинаться с http:// или https://")
+        material_urls: set[str] = set()
+        for material in self.post_materials:
+            title = str(material.get("title") or "").strip() if isinstance(material, dict) else ""
+            url = str(material.get("url") or "").strip() if isinstance(material, dict) else ""
+            if not title or len(title) > 300 or not url.lower().startswith(("https://", "http://")):
+                raise ValueError("У каждого итогового материала должны быть название и http(s)-ссылка")
+            if url in material_urls:
+                raise ValueError("Ссылки на итоговые материалы не должны повторяться")
+            material_urls.add(url)
         assignment_ids: set[int] = set()
         for link in self.homework_links:
             assignment_id = link.get("assignment_id") if isinstance(link, dict) else None
@@ -840,6 +855,51 @@ class EventCreate(BaseModel):
             if assignment_id in assignment_ids:
                 raise ValueError("Одно задание нельзя прикрепить к мероприятию дважды")
             assignment_ids.add(assignment_id)
+        return self
+
+
+class EventReschedule(BaseModel):
+    starts_at: datetime
+    ends_at: datetime
+    reason: str = Field(min_length=2, max_length=4000)
+
+    @field_validator("starts_at", "ends_at")
+    @classmethod
+    def normalize_event_datetime(cls, value: datetime) -> datetime:
+        if value.tzinfo is not None:
+            return value.astimezone(timezone.utc).replace(tzinfo=None)
+        return value
+
+    @model_validator(mode="after")
+    def validate_schedule(self):
+        if self.ends_at <= self.starts_at:
+            raise ValueError("Окончание мероприятия должно быть позже начала")
+        return self
+
+
+class EventCancel(BaseModel):
+    reason: str = Field(min_length=2, max_length=4000)
+
+
+class EventFollowupUpdate(BaseModel):
+    recording_url: str | None = Field(default=None, max_length=2000)
+    outcome: str | None = Field(default=None, max_length=10000)
+    next_step: str | None = Field(default=None, max_length=5000)
+    post_materials: list[dict[str, Any]] = Field(default_factory=list, max_length=50)
+
+    @model_validator(mode="after")
+    def validate_followup(self):
+        if self.recording_url and not self.recording_url.strip().lower().startswith(("https://", "http://")):
+            raise ValueError("Ссылка на запись должна начинаться с http:// или https://")
+        seen: set[str] = set()
+        for material in self.post_materials:
+            title = str(material.get("title") or "").strip() if isinstance(material, dict) else ""
+            url = str(material.get("url") or "").strip() if isinstance(material, dict) else ""
+            if not title or len(title) > 300 or not url.lower().startswith(("https://", "http://")):
+                raise ValueError("У каждого итогового материала должны быть название и http(s)-ссылка")
+            if url in seen:
+                raise ValueError("Ссылки на итоговые материалы не должны повторяться")
+            seen.add(url)
         return self
 
 

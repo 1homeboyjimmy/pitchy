@@ -1335,6 +1335,13 @@ class AcceleratorEvent(Base):
     online_platform: Mapped[str | None] = mapped_column(String(120), nullable=True)
     recording_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     venue_details: Mapped[str | None] = mapped_column(Text, nullable=True)
+    map_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    outcome: Mapped[str | None] = mapped_column(Text, nullable=True)
+    next_step: Mapped[str | None] = mapped_column(Text, nullable=True)
+    post_materials: Mapped[list] = mapped_column(JSON, default=list, server_default=text("'[]'"))
+    cancellation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     status: Mapped[str] = mapped_column(String(30), default="draft", server_default="draft", index=True)
     checkin_code: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     checkin_opens_minutes: Mapped[int] = mapped_column(Integer, default=120, server_default="120")
@@ -1344,6 +1351,23 @@ class AcceleratorEvent(Base):
     published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AcceleratorEventChange(Base):
+    __tablename__ = "accelerator_event_changes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    event_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_events.id", ondelete="CASCADE"), index=True
+    )
+    actor_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    action: Mapped[str] = mapped_column(String(30), index=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    before: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    after: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
 
 class AcceleratorEventHomeworkLink(Base):

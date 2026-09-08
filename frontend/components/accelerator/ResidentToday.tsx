@@ -23,7 +23,7 @@ import {
 import { getAuthJson } from "@/lib/api";
 import { useAuth } from "@/lib/hooks/useAuth";
 
-type ResidentSection = "program" | "homework" | "events" | "tracking" | "matching" | "project_audit";
+type ResidentSection = "program" | "homework" | "tracking" | "matching" | "project_audit";
 
 type TodayMembership = {
   membership_id: number;
@@ -194,7 +194,7 @@ export function ResidentToday({ membership, onNavigate }: { membership: TodayMem
         title: event.title,
         description: event.location || (event.meeting_url ? "Онлайн-встреча" : "Место уточняется"),
         meta: formatDateTime(event.starts_at, membership.cohort.timezone),
-        section: "events" as const,
+        section: "program" as const,
         urgency: safeDate(event.starts_at)?.getTime() || Number.MAX_SAFE_INTEGER,
       }));
     const deadlineCards = homework

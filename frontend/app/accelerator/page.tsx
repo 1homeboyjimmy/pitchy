@@ -91,9 +91,7 @@ export default function AcceleratorWorkspacePage() {
     participants.push({ key: "trackers", label: "Назначения" });
     if (config?.modules.matchmaking) participants.push({ key: "matching", label: "Подбор и команды" });
     if (config?.modules.project_audit) participants.push({ key: "project_audit", label: "Аудит проектов" });
-    const program: NavigationGroup["items"] = [{ key: "program", label: "Этапы и материалы" }];
-    if (config?.modules.homework) program.push({ key: "homework", label: "Домашние задания" });
-    if (config?.modules.attendance) program.push({ key: "attendance", label: "Календарь и посещаемость" });
+    const program: NavigationGroup["items"] = [{ key: "program", label: "Программа" }];
     const results: NavigationGroup["items"] = [];
     if (config?.modules.pitchy_artifacts) results.push({ key: "artifacts", label: "Результаты Pitchy" });
     if (config?.modules.demo_day) results.push({ key: "demo_day", label: "Демо-день" });
@@ -146,7 +144,11 @@ export default function AcceleratorWorkspacePage() {
         {tab === "operations" && canManage && <AcceleratorOperations cohortId={selectedCohort.id} acceleratorId={selectedAccelerator.id} token={token} isAdmin={isAdmin} />}
         {tab === "applications" && <ApplicationManager token={token} applications={applications} schema={selectedCohort.application_form_schema || {}} onChanged={loadCohortDetails} />}
         {tab === "form" && <ApplicationFormEditor key={selectedCohort.id} schema={selectedCohort.application_form_schema || {}} cohortId={selectedCohort.id} token={token} publicUrl={`/accelerators/apply/${selectedCohort.id}`} onPublished={loadCohortDetails} />}
-        {tab === "program" && <ProgramBuilder cohortId={selectedCohort.id} token={token} />}
+        {tab === "program" && <div className="space-y-6">
+          <ProgramBuilder cohortId={selectedCohort.id} token={token} />
+          {config?.modules.attendance && <AttendanceManager cohortId={selectedCohort.id} token={token} />}
+          {config?.modules.homework && <><HomeworkReviewQueue cohortId={selectedCohort.id} token={token} /><HomeworkManager cohortId={selectedCohort.id} token={token} residents={residents} isAdmin={isAdmin} pitchyEnabled={selectedCohort.homework_pitchy_enabled} /></>}
+        </div>}
         {tab === "homework" && config?.modules.homework && <div className="space-y-6"><HomeworkReviewQueue cohortId={selectedCohort.id} token={token} />{canManage && <HomeworkManager cohortId={selectedCohort.id} token={token} residents={residents} isAdmin={isAdmin} pitchyEnabled={selectedCohort.homework_pitchy_enabled} />}</div>}
         {tab === "attendance" && config?.modules.attendance && (canManage ? <AttendanceManager cohortId={selectedCohort.id} token={token} /> : <TrackerAttendance cohortId={selectedCohort.id} token={token} />)}
         {tab === "tracking" && config?.modules.progress_tracking && <TrackingDashboard cohortId={selectedCohort.id} token={token} />}
