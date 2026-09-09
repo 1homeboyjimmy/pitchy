@@ -105,8 +105,8 @@ export function ResidentMembershipView({ membership, quotas, onChanged }: { memb
   };
 
   return (
-    <>
-      <section className="workspace-card overflow-hidden !p-0">
+    <div className="space-y-6 sm:space-y-8" data-testid="resident-membership-workspace">
+      <section className="workspace-card overflow-hidden !p-0" data-testid="resident-membership-header">
         <div className="border-b border-white/8 bg-gradient-to-br from-white/[0.07] to-transparent p-6 sm:p-8">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div><p className="mb-2 text-xs uppercase tracking-[.18em] text-white/35">{membership.accelerator.name}</p><h2 className="text-3xl sm:text-4xl">{membership.cohort.name}</h2><p className="mt-3 text-sm text-white/45">{startsAt && endsAt ? `${startsAt} — ${endsAt}` : startsAt ? `Начало ${startsAt}` : "Даты уточняются организатором"}</p></div>
@@ -119,7 +119,7 @@ export function ResidentMembershipView({ membership, quotas, onChanged }: { memb
         {completed && <div className="flex gap-3 p-6 text-sm text-white/55"><Check className="mt-0.5 shrink-0 text-emerald-300" size={19} /><div><h3 className="mb-1 text-white">Программа завершена</h3><p>Итоговый снимок результатов сохранён. Публикация профиля выпускника остаётся полностью добровольной.</p></div></div>}
       </section>
 
-      {enrolled && <div className="space-y-3">
+      {enrolled && <div className="space-y-3" data-testid="resident-navigation">
         <nav className="grid grid-cols-2 gap-2 sm:flex sm:overflow-x-auto" aria-label="Основные разделы кабинета участника">{navigationGroups.map((group) => <ResidentTab key={group.key} active={activeGroup.key === group.key} onClick={() => setSection(group.sections[0].id)}>{group.label}</ResidentTab>)}</nav>
         {activeGroup.sections.length > 1 && <nav className="flex gap-2 overflow-x-auto pb-1" aria-label={`Подразделы: ${activeGroup.label}`}>{activeGroup.sections.map((item) => <ResidentSubTab key={item.id} active={section === item.id} onClick={() => setSection(item.id)}>{item.label}</ResidentSubTab>)}</nav>}
       </div>}
@@ -145,7 +145,7 @@ export function ResidentMembershipView({ membership, quotas, onChanged }: { memb
       {enrolled && section === "tools" && <section className="workspace-card"><h2 className="mb-5 text-xl">Инструменты проекта</h2><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><Action href="/dashboard?tab=chat" label="Чат с аналитиком" icon={MessageSquare} /><Action href="/dashboard?tab=tree" label="Дорожная карта" icon={GitBranch} /><Action href="https://custdev.pitchy.pro/" label="Кастдев" icon={Users} external /><Action href="/grants" label="Гранты" icon={Banknote} /></div></section>}
 
       {completed && membership.modules.alumni && <AlumniWorkspace membershipId={membership.membership_id} cohortId={membership.cohort.id} />}
-    </>
+    </div>
   );
 }
 

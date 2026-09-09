@@ -308,6 +308,25 @@ test('resident Today page prioritizes required work and keeps improvements optio
   await expect(page.getByText('Дополнить паспорт проекта')).toBeVisible();
   await expect(page.getByText('Проверить проект аудитом')).toBeVisible();
 
+  for (const width of [360, 768, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/accelerator');
+    await expect(page).toHaveURL(/\/accelerator\/my\/101$/);
+    const spacing = await page.evaluate(() => {
+      const header = document.querySelector<HTMLElement>('[data-testid="resident-membership-header"]')?.getBoundingClientRect();
+      const navigation = document.querySelector<HTMLElement>('[data-testid="resident-navigation"]')?.getBoundingClientRect();
+      const content = document.querySelector<HTMLElement>('[data-testid="resident-today"]')?.getBoundingClientRect();
+      return {
+        headerToNavigation: header && navigation ? navigation.top - header.bottom : -1,
+        navigationToContent: navigation && content ? content.top - navigation.bottom : -1,
+        overflow: document.documentElement.scrollWidth > window.innerWidth + 1,
+      };
+    });
+    expect(spacing.headerToNavigation, `header/nav spacing at ${width}px`).toBeGreaterThanOrEqual(width >= 768 ? 30 : 22);
+    expect(spacing.navigationToContent, `nav/content spacing at ${width}px`).toBeGreaterThanOrEqual(width >= 768 ? 30 : 22);
+    expect(spacing.overflow, `participant page must not overflow at ${width}px`).toBe(false);
+  }
+
   await page.getByLabel('Скрыть рекомендацию «Дополнить паспорт проекта»').click();
   await expect(page.getByText('Дополнить паспорт проекта')).toHaveCount(0);
   await expect(page.getByText('Найти подходящего эксперта')).toBeVisible();
