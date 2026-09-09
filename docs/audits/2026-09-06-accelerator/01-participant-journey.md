@@ -229,3 +229,9 @@ TypeScript и пять целевых Chromium-сценариев прошли �
 Полная браузерная приёмка после B11: 60 из 60 проверок в Chromium, Firefox и WebKit. TypeScript, ESLint без ошибок и production build также успешны.
 
 Коммит B11 `582db1e` развёрнут на dev запуском `34362700135`; серверные проверки, обе сборки, Alembic HEAD, health-check и smoke-проверка успешны. Задачи B09–B11 закрыты.
+
+## Production-приёмка от 2026-09-09
+
+Раздел участника и весь согласованный путь акселератора выпущены на production коммитом `3d377bb`. Перед выпуском тот же код прошёл полный dev workflow `34381111247`; production workflow `34381215079` повторно выполнил серверные тесты акселератора и сборки backend/frontend.
+
+Production-база доведена до Alembic HEAD `20260909_accelerator_prod_merge`. Внутренние проверки схемы и готовности прошли, публичные `/health`, `/ready` и `/accelerator` отвечают HTTP 200.
