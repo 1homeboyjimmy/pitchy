@@ -6,7 +6,8 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { SideNavBar } from "@/components/internal/SideNavBar";
 import { InternalTopNavBar } from "@/components/internal/InternalTopNavBar";
 import { getToken } from "@/lib/auth";
-import { getMe, type UserResponse } from "@/lib/api";
+import { getAuthJson, getMe, type UserResponse } from "@/lib/api";
+import { acceleratorEntryHref, type AcceleratorAccess, type AcceleratorMembershipAccess } from "@/lib/acceleratorAccess";
 import { fetchUsage, type UsageResponse } from "@/lib/planLimits";
 import { notifyTierGate } from "@/lib/ui";
 import { Providers } from "../providers";
@@ -23,6 +24,7 @@ export default function GrantsLayout({ children }: { children: React.ReactNode }
   const router = useRouter();
   const [userProfile, setUserProfile] = useState<UserResponse | null>(null);
   const [usage, setUsage] = useState<UsageResponse | null>(null);
+  const [acceleratorHref, setAcceleratorHref] = useState<string | null>(null);
   const [accessLoading, setAccessLoading] = useState(true);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -32,13 +34,16 @@ export default function GrantsLayout({ children }: { children: React.ReactNode }
     if (!token) return;
     let cancelled = false;
     (async () => {
-      const [user, usageData] = await Promise.all([
+      const [user, usageData, acceleratorRows, acceleratorWorkspace] = await Promise.all([
         getMe(token).catch(() => null),
         fetchUsage(token).catch(() => null),
+        getAuthJson<AcceleratorAccess[]>("/api/accelerators", token).catch(() => []),
+        getAuthJson<{ memberships: AcceleratorMembershipAccess[] }>("/api/accelerators/me/memberships", token).catch(() => ({ memberships: [] })),
       ]);
       if (cancelled) return;
       setUserProfile(user);
       setUsage(usageData);
+      setAcceleratorHref(acceleratorEntryHref(acceleratorWorkspace.memberships, acceleratorRows, Boolean(user?.is_admin)));
       setAccessLoading(false);
     })();
     return () => { cancelled = true; };
@@ -74,6 +79,7 @@ export default function GrantsLayout({ children }: { children: React.ReactNode }
         activeTab="grants"
         setActiveTab={handleSetActiveTab}
         isAdmin={userProfile?.is_admin}
+        acceleratorHref={acceleratorHref}
         isMobileOpen={isMobileSidebarOpen}
         onMobileClose={() => setIsMobileSidebarOpen(false)}
         isCollapsed={isSidebarCollapsed}

@@ -10,6 +10,7 @@ import { AdminView } from "@/components/dashboard/AdminView";
 import { RoadmapView } from "@/components/dashboard/RoadmapView";
 import { PlatformOnboarding } from "@/components/dashboard/PlatformOnboarding";
 import { SideNavBar } from "@/components/internal/SideNavBar";
+import { acceleratorEntryHref, type AcceleratorAccess, type AcceleratorMembershipAccess } from "@/lib/acceleratorAccess";
 import { InternalTopNavBar } from "@/components/internal/InternalTopNavBar";
 import { TopNavBar } from "@/components/shared/TopNavBar";
 import { QuotaCard } from "@/components/dashboard/QuotaCard";
@@ -87,7 +88,7 @@ function DashboardContent() {
   const [isContextImportOpen, setIsContextImportOpen] = useState(false);
   const [usage, setUsage] = useState<UsageResponse | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [hasAccelerator, setHasAccelerator] = useState(false);
+  const [acceleratorHref, setAcceleratorHref] = useState<string | null>(null);
   const requestedSession = searchParams.get("session");
 
   // Prefer the live tier returned by /me/usage (server-side resolved,
@@ -188,17 +189,18 @@ function DashboardContent() {
         return;
       }
       try {
-        const [sessionsList, user, usageData, acceleratorRows] = await Promise.all([
+        const [sessionsList, user, usageData, acceleratorRows, acceleratorWorkspace] = await Promise.all([
           getChatSessions(token).catch(() => []),
           getMe(token).catch(() => null),
           fetchUsage(token).catch(() => null),
-          getAuthJson<Array<{ id: number }>>("/api/accelerators", token).catch(() => []),
+          getAuthJson<AcceleratorAccess[]>("/api/accelerators", token).catch(() => []),
+          getAuthJson<{ memberships: AcceleratorMembershipAccess[] }>("/api/accelerators/me/memberships", token).catch(() => ({ memberships: [] })),
         ]);
         setSessions(sessionsList);
         setUserProfile(user);
         setShowOnboarding(Boolean(user && !user.onboarding_completed_at));
         setUsage(usageData);
-        setHasAccelerator(Boolean(user?.is_admin || acceleratorRows.length));
+        setAcceleratorHref(acceleratorEntryHref(acceleratorWorkspace.memberships, acceleratorRows, Boolean(user?.is_admin)));
       } catch (e) {
         console.error(e);
       } finally {
@@ -333,7 +335,7 @@ function DashboardContent() {
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         isAdmin={userProfile?.is_admin}
-        hasAccelerator={hasAccelerator}
+        acceleratorHref={acceleratorHref}
         isMobileOpen={isMobileSidebarOpen}
         onMobileClose={() => setIsMobileSidebarOpen(false)}
         isCollapsed={isSidebarCollapsed}

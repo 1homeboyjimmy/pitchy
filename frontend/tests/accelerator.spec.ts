@@ -1,5 +1,29 @@
 import { expect, test, type Page } from '@playwright/test';
 
+type DashboardAccessState = {
+  isAdmin: boolean;
+  accelerators: Array<{ id: number; access_role: 'global_admin' | 'organizer' | 'tracker' | 'expert' | 'resident' }>;
+  memberships: Array<{ membership_id: number; status: string; accelerator: { id: number } }>;
+};
+
+async function mockDashboardAccess(page: Page, state: DashboardAccessState) {
+  await page.addInitScript(() => {
+    localStorage.setItem('vi_auth_state', 'cookie-session');
+    localStorage.setItem('pitchy_cookie_consent_v2', JSON.stringify({ choice: 'necessary', updatedAt: new Date().toISOString() }));
+  });
+  await page.route(/\/chat\/sessions(?:\?.*)?$/, async (route) => route.fulfill({ json: [] }));
+  await page.route(/\/me\/usage(?:\?.*)?$/, async (route) => route.fulfill({ json: {
+    tier: 'free',
+    limits: { messages: 5, search_messages: 0, custdev: 0, roadmaps: 1, deep_research: 0, grants: 0, can_use_deep_search: false, can_use_research: false, can_use_presentation: false, can_use_import_context: false, can_use_tree: true, can_use_custdev: false },
+    usage: { messages: 0, search_messages: 0, custdev: 0, roadmaps: 0, deep_research: 0, grants: 0 },
+    remaining: { messages: 5, search_messages: 0, custdev: 0, roadmaps: 1, deep_research: 0, grants: 0 },
+    period_start: new Date().toISOString(),
+  } }));
+  await page.route(/\/me(?:\?.*)?$/, async (route) => route.fulfill({ json: { id: 18, email: 'viewer@example.test', name: 'Пользователь', is_admin: state.isAdmin, is_active: true, email_verified: true, onboarding_completed_at: new Date().toISOString(), created_at: new Date().toISOString() } }));
+  await page.route(/\/api\/accelerators\/me\/memberships(?:\?.*)?$/, async (route) => route.fulfill({ json: { memberships: state.memberships, effective_quotas: {} } }));
+  await page.route(/\/api\/accelerators(?:\?.*)?$/, async (route) => route.fulfill({ json: state.accelerators.map((row) => ({ ...row, name: 'Тестовый акселератор', status: 'active' })) }));
+}
+
 async function mockManagerWorkspace(page: Page) {
   await page.addInitScript(() => {
     localStorage.setItem('vi_auth_state', 'cookie-session');
@@ -312,6 +336,9 @@ test('resident Today page prioritizes required work and keeps improvements optio
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/accelerator');
     await expect(page).toHaveURL(/\/accelerator\/my\/101$/);
+    await expect(page.getByTestId('resident-membership-header')).toBeVisible();
+    await expect(page.getByTestId('resident-navigation')).toBeVisible();
+    await expect(page.getByTestId('resident-today')).toBeVisible();
     const spacing = await page.evaluate(() => {
       const header = document.querySelector<HTMLElement>('[data-testid="resident-membership-header"]')?.getBoundingClientRect();
       const navigation = document.querySelector<HTMLElement>('[data-testid="resident-navigation"]')?.getBoundingClientRect();
@@ -399,6 +426,66 @@ test('direct accelerator route stays safe without any access', async ({ page }) 
   await expect(page.getByRole('heading', { name: 'Нет доступных акселераторов' })).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Основные разделы акселератора' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Новый акселератор' })).toHaveCount(0);
+});
+
+test('dashboard hides accelerator without access on desktop and mobile', async ({ page }) => {
+  const state: DashboardAccessState = { isAdmin: false, accelerators: [], memberships: [] };
+  await mockDashboardAccess(page, state);
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const desktopAccess = page.waitForResponse(/\/api\/accelerators\/me\/memberships(?:\?.*)?$/);
+  await page.goto('/dashboard');
+  await desktopAccess;
+  await expect(page.getByRole('link', { name: 'Акселератор' })).toHaveCount(0);
+
+  await page.setViewportSize({ width: 360, height: 800 });
+  const mobileAccess = page.waitForResponse(/\/api\/accelerators\/me\/memberships(?:\?.*)?$/);
+  await page.reload();
+  await mobileAccess;
+  await page.getByRole('button', { name: 'Открыть меню', exact: true }).click();
+  await expect(page.getByRole('link', { name: 'Акселератор' })).toHaveCount(0);
+});
+
+test('dashboard accelerator entry follows participant and staff roles', async ({ page }) => {
+  test.setTimeout(60_000);
+  const state: DashboardAccessState = {
+    isAdmin: false,
+    accelerators: [{ id: 7, access_role: 'resident' }],
+    memberships: [{ membership_id: 101, status: 'enrolled', accelerator: { id: 7 } }],
+  };
+  await mockDashboardAccess(page, state);
+
+  await page.goto('/dashboard');
+  await expect(page.getByRole('link', { name: 'Акселератор' })).toHaveAttribute('href', '/accelerator/my/101');
+
+  state.accelerators = [{ id: 7, access_role: 'expert' }];
+  await page.reload();
+  await expect(page.getByRole('link', { name: 'Акселератор' })).toHaveAttribute('href', '/accelerator/my/101');
+
+  state.memberships = [];
+  for (const role of ['organizer', 'tracker', 'expert'] as const) {
+    state.accelerators = [{ id: 7, access_role: role }];
+    await page.reload();
+    await expect(page.getByRole('link', { name: 'Акселератор' })).toHaveAttribute('href', '/accelerator?context=staff');
+  }
+
+  state.isAdmin = true;
+  state.accelerators = [];
+  await page.reload();
+  await expect(page.getByRole('link', { name: 'Акселератор' })).toHaveAttribute('href', '/accelerator?context=staff');
+});
+
+test('grants shell uses the same accelerator access rule', async ({ page }) => {
+  const state: DashboardAccessState = { isAdmin: false, accelerators: [], memberships: [] };
+  await mockDashboardAccess(page, state);
+
+  await page.goto('/grants');
+  await expect(page.getByRole('link', { name: 'Акселератор' })).toHaveCount(0);
+
+  state.accelerators = [{ id: 7, access_role: 'resident' }];
+  state.memberships = [{ membership_id: 101, status: 'enrolled', accelerator: { id: 7 } }];
+  await page.reload();
+  await expect(page.getByRole('link', { name: 'Акселератор' })).toHaveAttribute('href', '/accelerator/my/101');
 });
 
 test('resident launches a Pitchy action and controls result visibility', async ({ page }) => {

@@ -111,7 +111,7 @@ export function InternalTopNavBar({ activeTab, compactDashboard = false }: Props
           <button
             onClick={() => setIsPagesMenuOpen((v) => !v)}
             className="md:hidden p-2 text-white/80 hover:text-white bg-black/70 backdrop-blur-md border border-white/10 rounded-lg active:scale-95 transition-colors"
-            aria-label={isPagesMenuOpen ? "Закрыть меню" : "Открыть меню"}
+            aria-label={isPagesMenuOpen ? "Закрыть меню страниц" : "Открыть меню страниц"}
           >
             {isPagesMenuOpen ? <X size={20} /> : <Menu size={20} />}
           </button>

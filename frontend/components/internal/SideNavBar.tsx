@@ -12,7 +12,7 @@ interface Props {
   activeTab: string;
   setActiveTab: (t: string) => void;
   isAdmin?: boolean;
-  hasAccelerator?: boolean;
+  acceleratorHref?: string | null;
   isMobileOpen?: boolean;
   onMobileClose?: () => void;
   isCollapsed?: boolean;
@@ -28,7 +28,7 @@ export function SideNavBar({
   activeTab,
   setActiveTab,
   isAdmin,
-  hasAccelerator,
+  acceleratorHref,
   isMobileOpen,
   onMobileClose,
   isCollapsed,
@@ -51,8 +51,8 @@ export function SideNavBar({
     },
   ];
 
-  if (hasAccelerator || isAdmin) {
-    topNavItems.push({ id: "accelerator", label: "Акселератор", icon: Rocket, href: "/accelerator", locked: false });
+  if (acceleratorHref) {
+    topNavItems.push({ id: "accelerator", label: "Акселератор", icon: Rocket, href: acceleratorHref, locked: false });
   }
 
   if (isAdmin) {
