@@ -287,9 +287,6 @@ class PublicApplicationCreate(BaseModel):
         return value
 
 
-class MembershipTrackerUpdate(BaseModel):
-    tracker_user_id: int | None = Field(default=None, gt=0)
-
     @field_validator("telegram")
     @classmethod
     def validate_telegram(cls, value: str) -> str:
@@ -306,6 +303,10 @@ class MembershipTrackerUpdate(BaseModel):
         if not cleaned or any(len(item) > 80 for item in cleaned):
             raise ValueError("Укажите от 1 до 20 компетенций до 80 символов")
         return cleaned
+
+
+class MembershipTrackerUpdate(BaseModel):
+    tracker_user_id: int | None = Field(default=None, gt=0)
 
 
 class CohortExpertAssign(BaseModel):
