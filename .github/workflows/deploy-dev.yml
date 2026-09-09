@@ -219,11 +219,15 @@ jobs:
             sudo -n chown -R "$(id -u):$(id -g)" /opt/ai-startup 2>/dev/null || \
               chown -R "$(id -u):$(id -g)" /opt/ai-startup 2>/dev/null || true
           fi
-          git config --global --add safe.directory /opt/ai-startup
-
+          # Reclaim disposable Docker cache/old images before Git writes its
+          # shallow-lock file. Running containers and data volumes are kept.
+          docker builder prune -af || true
+          docker image prune -af --filter until=168h || true
           # Pull latest code
-          git fetch origin
-          git reset --hard origin/dev
+          # Keep the exception process-local: ~/.gitconfig may be read-only on
+          # the deploy host and must not be needed for a release.
+          git -c safe.directory=/opt/ai-startup fetch --no-tags --depth=1 origin dev
+          git -c safe.directory=/opt/ai-startup reset --hard origin/dev
 
           # Pull new images
           docker compose pull -q || echo "WARNING: Some images failed to pull"
@@ -249,8 +253,8 @@ jobs:
             echo "ERROR: alembic upgrade head exited non-zero on dev"
             exit 1
           fi
-          CURRENT_REV=$(docker compose exec -T backend python -m alembic current </dev/null 2>/dev/null | grep -oE '[a-z0-9]{12}' | head -n 1 || true)
-          HEAD_REV=$(docker compose exec -T backend python -m alembic heads </dev/null 2>/dev/null | grep -oE '[a-z0-9]{12}' | head -n 1 || true)
+          CURRENT_REV=$(docker compose exec -T backend python -m alembic current </dev/null 2>&1 | grep -oE '(202[0-9]{5}_[a-z0-9_]+|[a-f0-9]{12})' | tail -n 1 || true)
+          HEAD_REV=$(docker compose exec -T backend python -m alembic heads </dev/null 2>&1 | grep -oE '(202[0-9]{5}_[a-z0-9_]+|[a-f0-9]{12})' | tail -n 1 || true)
           if [ -z "$CURRENT_REV" ] || [ -z "$HEAD_REV" ] || [ "$CURRENT_REV" != "$HEAD_REV" ]; then
             echo "ERROR: alembic revision mismatch — current=$CURRENT_REV, head=$HEAD_REV"
             exit 1

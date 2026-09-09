@@ -26,6 +26,18 @@ class YandexSSO(SSOBase):
         }
 
     async def openid_from_response(self, response: dict, session: dict | None = None) -> OpenID:
+        # Yandex ID requires the ``OAuth`` auth scheme for the user-info
+        # endpoint. Some fastapi-sso/oauthlib combinations send ``Bearer``
+        # first; retry with the scheme documented by Yandex when that request
+        # did not return a user identity.
+        if not response.get("id") and session is not None and self.access_token:
+            userinfo = await session.get(
+                "https://login.yandex.ru/info",
+                headers={"Authorization": f"OAuth {self.access_token}"},
+            )
+            userinfo.raise_for_status()
+            response = userinfo.json()
+
         # Yandex может вернуть default_email = "" (пустая строка): например,
         # когда у приложения нет доступа к почте или у аккаунта не задан
         # основной адрес. Пустая строка не проходит EmailStr-валидацию и

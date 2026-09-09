@@ -141,10 +141,16 @@ jobs:
             sudo -n chown -R "$(id -u):$(id -g)" /opt/ai-startup 2>/dev/null || \
               chown -R "$(id -u):$(id -g)" /opt/ai-startup 2>/dev/null || true
           fi
-          git config --global --add safe.directory /opt/ai-startup
-
-          git fetch origin
-          git reset --hard origin/main
+          # The host can be completely full before Git can even create its
+          # shallow-lock file. Reclaim only disposable Docker cache/old images;
+          # running containers and persistent volumes remain untouched.
+          docker builder prune -af || true
+          docker image prune -af --filter until=168h || true
+          # Keep the exception process-local. The deploy account's home may be
+          # managed/read-only, so writing ~/.gitconfig can abort the release.
+          # Fetch only the release tip to keep disk usage bounded on the VPS.
+          git -c safe.directory=/opt/ai-startup fetch --no-tags --depth=1 origin main
+          git -c safe.directory=/opt/ai-startup reset --hard origin/main
           chmod +x deploy.sh
           ./deploy.sh
           REMOTE_SCRIPT

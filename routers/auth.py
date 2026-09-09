@@ -352,9 +352,9 @@ async def verify_email_code(
     response: Response,
     db: AsyncSession = Depends(get_async_db),
 ) -> TokenResponse:
-    from main import _check_rate_limit
+    from main import _check_rate_limit, get_client_ip
 
-    ip = request.client.host if request.client else "unknown"
+    ip = get_client_ip(request)
     _check_rate_limit(ip)
 
     result = await db.execute(
@@ -432,9 +432,12 @@ async def login(
     response: Response,
     db: AsyncSession = Depends(get_async_db),
 ) -> TokenResponse:
-    from main import _check_rate_limit
+    from main import _check_rate_limit, get_client_ip
 
-    ip = request.client.host if request.client else "unknown"
+    # Caddy is the direct peer in production.  Use its trusted, overwritten
+    # X-Real-IP value so the auth limit applies per visitor rather than to the
+    # entire site behind the proxy.
+    ip = get_client_ip(request)
     _check_rate_limit(ip)
 
     result = await db.execute(
@@ -564,10 +567,10 @@ async def request_password_reset(
     leak which addresses are registered. Code expires in 15 min and is
     stored hashed.
     """
-    from main import _check_rate_limit
+    from main import _check_rate_limit, get_client_ip
     import email_templates
 
-    ip = request.client.host if request.client else "unknown"
+    ip = get_client_ip(request)
     _check_rate_limit(ip)
     res = await db.execute(
         select(User).where(User.email == payload.email, User.deleted_at.is_(None))
@@ -594,9 +597,9 @@ async def reset_password(
     request: Request,
     db: AsyncSession = Depends(get_async_db),
 ) -> dict:
-    from main import _check_rate_limit
+    from main import _check_rate_limit, get_client_ip
 
-    ip = request.client.host if request.client else "unknown"
+    ip = get_client_ip(request)
     _check_rate_limit(ip)
 
     res = await db.execute(
@@ -641,13 +644,18 @@ async def sso_login(
     from main import yandex_sso, github_sso, google_sso
 
     if provider == "yandex":
-        redirect = await yandex_sso.get_login_redirect()
+        sso = yandex_sso
     elif provider == "github":
-        redirect = await github_sso.get_login_redirect()
+        sso = github_sso
     elif provider == "google":
-        redirect = await google_sso.get_login_redirect()
+        sso = google_sso
     else:
         raise HTTPException(status_code=404, detail="Provider not found")
+
+    # fastapi-sso keeps the OAuth client state on the provider instance and
+    # requires its async context manager for safe per-request isolation.
+    async with sso:
+        redirect = await sso.get_login_redirect()
 
     safe_next = _safe_next_path(next_path)
     if safe_next:
@@ -684,7 +692,11 @@ async def sso_callback(
         raise HTTPException(status_code=404, detail="Provider not found")
 
     try:
-        openid_user = await sso.verify_and_process(request)
+        # fastapi-sso >= 0.16 resets and locks the OAuth client in this
+        # context. Without it, current releases can reject the callback with
+        # a generic SSO failure (most visible on Yandex).
+        async with sso:
+            openid_user = await sso.verify_and_process(request)
     except Exception as e:
         import traceback
         error_details = traceback.format_exc()
