@@ -18,7 +18,7 @@ httpx
 redis
 prometheus_client
 fastapi-sso>=0.7.0
-pydantic-settings
+pydantic-settings>=2.0.0,<3.0.0
 beautifulsoup4
 langchain-text-splitters
 python-dateutil
