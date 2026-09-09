@@ -208,7 +208,8 @@ async def test_explicit_cohort_closure_snapshots_and_opt_in_alumni_privacy():
             AcceleratorResidentSnapshot.membership_id.in_(membership_ids)
         ))).scalar_one() == 2
         assert (await db.execute(select(func.count(AcceleratorNotificationOutbox.id)).where(
-            AcceleratorNotificationOutbox.idempotency_key.like("cohort-completed:%")
+            AcceleratorNotificationOutbox.idempotency_key.like("cohort-completed:%"),
+            AcceleratorNotificationOutbox.membership_id.in_(membership_ids),
         ))).scalar_one() == 2
 
         own_snapshot = await get_membership_closure_snapshot(membership_ids[0], first, db)
