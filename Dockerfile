@@ -67,14 +67,8 @@ CMD ["sh", "-c", "python -m alembic upgrade head && exec uvicorn main:app --host
 # migration incompatibilities in addition to application-level regressions.
 FROM runtime AS accelerator-tests
 RUN python -m pytest \
-    tests/test_accelerator_foundation.py \
-    tests/test_accelerator_roadmap_context.py \
+    tests/test_accelerator_*.py \
     tests/test_grant_accelerator_context.py \
-    tests/test_accelerator_notifications.py \
-    tests/test_accelerator_teams.py \
-    tests/test_accelerator_alumni.py \
-    tests/test_accelerator_operations.py \
-    tests/test_accelerator_router_contract.py \
     tests/test_roadmap_analysis_model.py \
     tests/test_roadmap_service.py
 

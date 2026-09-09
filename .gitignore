@@ -30,6 +30,7 @@ frontend/app kimi/
 # AI agent files
 .agent/
 .gemini/
+.claude/worktrees/
 
 # IDE
 .vscode/
