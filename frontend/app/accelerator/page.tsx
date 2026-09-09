@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Check, Clipboard, LayoutDashboard, Loader2, LogIn, RefreshCw, Rocket, Settings2 } from "lucide-react";
 
 import { describeApiError, getAuthJson, getMe, patchAuthJson, postAuthJson, type UserResponse } from "@/lib/api";
@@ -30,6 +31,7 @@ import { NotificationCenter } from "@/components/accelerator/NotificationCenter"
 import { CohortClosure } from "@/components/accelerator/CohortClosure";
 import { AcceleratorOperations } from "@/components/accelerator/AcceleratorOperations";
 import { ParticipantDrawer } from "@/components/accelerator/ParticipantDrawer";
+import { preferredParticipantMembership, staffAccelerators } from "@/lib/acceleratorAccess";
 
 type Accelerator = { id: number; name: string; description?: string | null; status: string; access_role: "global_admin" | "organizer" | "tracker" | "expert" | "resident" };
 type Cohort = { id: number; accelerator_id: number; name: string; status: string; timezone: string; starts_at?: string | null; ends_at?: string | null; default_quota_config?: Limits | null; application_form_schema: ApplicationFormSchema; homework_pitchy_enabled: boolean };
@@ -43,6 +45,7 @@ const STATUS_LABELS: Record<string, string> = { draft: "Черновик", accep
 const STATUS_TRANSITIONS: Record<string, string[]> = { draft: ["accepting", "archived"], accepting: ["draft", "active", "archived"], active: ["archived"], completed: ["archived"], archived: [] };
 
 export default function AcceleratorWorkspacePage() {
+  const router = useRouter();
   const { token, isLoaded } = useAuth();
   const [accelerators, setAccelerators] = useState<Accelerator[]>([]); const [profile, setProfile] = useState<UserResponse | null>(null); const [acceleratorId, setAcceleratorId] = useState<number | null>(null);
   const [cohorts, setCohorts] = useState<Cohort[]>([]); const [cohortId, setCohortId] = useState<number | null>(null); const [config, setConfig] = useState<ProgramConfig | null>(null);
@@ -81,13 +84,24 @@ export default function AcceleratorWorkspacePage() {
 
   const loadAccelerators = useCallback(async () => {
     if (!token) { setLoading(false); return; }
+    let redirecting = false;
     try {
       const [rows, user, workspace] = await Promise.all([getAuthJson<Accelerator[]>("/api/accelerators", token), getMe(token), getAuthJson<ResidentWorkspaceData>("/api/accelerators/me/memberships", token)]);
-      setAccelerators(rows); setProfile(user); setResidentWorkspace(workspace); setShowSetup(Boolean(user.is_admin && !rows.length));
-      setAcceleratorId((current) => current && rows.some((row) => row.id === current) ? current : rows[0]?.id || null);
+      const participantMembership = preferredParticipantMembership(workspace.memberships);
+      const requestedStaffContext = new URLSearchParams(window.location.search).get("context") === "staff";
+      const serviceRows = staffAccelerators(rows);
+      const canOpenStaffContext = Boolean(user.is_admin || serviceRows.length);
+      if (participantMembership && (!requestedStaffContext || !canOpenStaffContext)) {
+        redirecting = true;
+        router.replace(`/accelerator/my/${participantMembership.membership_id}`);
+        return;
+      }
+      const visibleRows = requestedStaffContext ? serviceRows : rows;
+      setAccelerators(visibleRows); setProfile(user); setResidentWorkspace(workspace); setShowSetup(Boolean(user.is_admin && !visibleRows.length));
+      setAcceleratorId((current) => current && visibleRows.some((row) => row.id === current) ? current : visibleRows[0]?.id || null);
     } catch (reason) { setError(describeApiError(reason, "Не удалось загрузить акселераторы")); }
-    finally { setLoading(false); }
-  }, [token]);
+    finally { if (!redirecting) setLoading(false); }
+  }, [router, token]);
   useEffect(() => { void loadAccelerators(); }, [loadAccelerators]);
 
   useEffect(() => {

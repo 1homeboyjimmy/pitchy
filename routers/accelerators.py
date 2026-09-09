@@ -1136,6 +1136,7 @@ async def list_my_accelerator_memberships(
         .where(
             AcceleratorMembership.user_id == user.id,
             AcceleratorMembership.role == "resident",
+            AcceleratorMembership.status != "withdrawn",
         )
         .order_by(AcceleratorMembership.created_at.desc())
     )).all()

@@ -230,6 +230,7 @@ test('accepted participant confirms joining without a second manager action', as
   await page.route('**/api/accelerators/notifications/unread-count', async (route) => route.fulfill({ json: { count: 0 } }));
 
   await page.goto('/accelerator');
+  await expect(page).toHaveURL(/\/accelerator\/my\/101$/);
   await expect(page.getByText('Принят', { exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Вас приняли в программу' })).toBeVisible();
   await page.getByRole('button', { name: 'Начать участие' }).click();
@@ -294,6 +295,7 @@ test('resident Today page prioritizes required work and keeps improvements optio
   await page.route('**/api/accelerators/notifications/unread-count', async (route) => route.fulfill({ json: { count: 0 } }));
 
   await page.goto('/accelerator');
+  await expect(page).toHaveURL(/\/accelerator\/my\/101$/);
   await expect(page.getByRole('heading', { name: 'Сегодня', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Нужно сделать' })).toBeVisible();
   await expect(page.getByText('Доработать: Сценарий интервью')).toBeVisible();
@@ -313,7 +315,7 @@ test('resident Today page prioritizes required work and keeps improvements optio
   await expect(page.getByRole('heading', { name: 'Еженедельный чек-ин' })).toBeVisible();
 });
 
-test('participant workspace stays reachable when the same user has a staff role', async ({ page }) => {
+test('combined role starts as participant and opens staff context explicitly', async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem('vi_auth_state', 'cookie-session');
     localStorage.setItem('pitchy_cookie_consent_v2', JSON.stringify({ choice: 'necessary', updatedAt: new Date().toISOString() }));
@@ -332,12 +334,52 @@ test('participant workspace stays reachable when the same user has a staff role'
   await page.route('**/api/accelerators/notifications/unread-count', async (route) => route.fulfill({ json: { count: 0 } }));
 
   await page.goto('/accelerator');
-  const participantLink = page.getByRole('link', { name: 'Моё участие' });
-  await expect(participantLink).toHaveAttribute('href', '/accelerator/my/101');
-  await participantLink.click();
   await expect(page).toHaveURL(/\/accelerator\/my\/101$/);
   await expect(page.getByRole('heading', { name: 'Сегодня', exact: true })).toBeVisible();
   await expect(page.getByText('Роль: эксперт')).toHaveCount(0);
+  const staffLink = page.getByRole('link', { name: 'Служебный кабинет' });
+  await expect(staffLink).toHaveAttribute('href', '/accelerator?context=staff&accelerator=7');
+  await staffLink.click();
+  await expect(page).toHaveURL(/\/accelerator\?.*context=staff/);
+  await expect(page.getByText('Роль: эксперт')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Сегодня', exact: true })).toHaveCount(0);
+});
+
+test('participant query parameters cannot open staff context', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('vi_auth_state', 'cookie-session');
+    localStorage.setItem('pitchy_cookie_consent_v2', JSON.stringify({ choice: 'necessary', updatedAt: new Date().toISOString() }));
+  });
+  const membership = { membership_id: 101, application_id: 44, status: 'enrolled', accepted_at: new Date().toISOString(), enrolled_at: new Date().toISOString(), accelerator: { id: 7, name: 'Тестовый акселератор', status: 'active' }, cohort: { id: 12, name: 'Поток 2026', status: 'active', timezone: 'Europe/Moscow' }, project: null, modules: {} };
+  await page.route('**/me', async (route) => route.fulfill({ json: { id: 8, email: 'resident@example.test', name: 'Резидент А', is_admin: false, is_active: true, email_verified: true, created_at: new Date().toISOString() } }));
+  await page.route('**/api/accelerators', async (route) => route.fulfill({ json: [{ id: 7, name: 'Тестовый акселератор', status: 'active', access_role: 'resident' }] }));
+  await page.route('**/api/accelerators/me/memberships', async (route) => route.fulfill({ json: { memberships: [membership], effective_quotas: {} } }));
+  await page.route('**/api/accelerators/memberships/101/today', async (route) => route.fulfill({ json: {
+    membership_id: 101, generated_at: new Date().toISOString(), timezone: 'Europe/Moscow', required_actions: [], upcoming: [], unread_feedback: [],
+    progress: { percent: 0, completed_stages: 0, total_stages: 0, project_readiness: 0 }, support: { enabled: false, trackers: [] }, recommendations: [], dismissed_recommendations: [], unavailable_sections: [],
+  } }));
+  await page.route('**/api/accelerators/notifications/unread-count', async (route) => route.fulfill({ json: { count: 0 } }));
+
+  await page.goto('/accelerator?context=staff&section=applications&cohort=12&resident=99');
+  await expect(page).toHaveURL(/\/accelerator\/my\/101$/);
+  await expect(page.getByRole('heading', { name: 'Сегодня', exact: true })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Основные разделы акселератора' })).toHaveCount(0);
+});
+
+test('direct accelerator route stays safe without any access', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('vi_auth_state', 'cookie-session');
+    localStorage.setItem('pitchy_cookie_consent_v2', JSON.stringify({ choice: 'necessary', updatedAt: new Date().toISOString() }));
+  });
+  await page.route('**/me', async (route) => route.fulfill({ json: { id: 18, email: 'viewer@example.test', name: 'Без доступа', is_admin: false, is_active: true, email_verified: true, created_at: new Date().toISOString() } }));
+  await page.route('**/api/accelerators', async (route) => route.fulfill({ json: [] }));
+  await page.route('**/api/accelerators/me/memberships', async (route) => route.fulfill({ json: { memberships: [], effective_quotas: {} } }));
+  await page.route('**/api/accelerators/notifications/unread-count', async (route) => route.fulfill({ json: { count: 0 } }));
+
+  await page.goto('/accelerator?context=staff&section=settings');
+  await expect(page.getByRole('heading', { name: 'Нет доступных акселераторов' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Основные разделы акселератора' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Новый акселератор' })).toHaveCount(0);
 });
 
 test('resident launches a Pitchy action and controls result visibility', async ({ page }) => {

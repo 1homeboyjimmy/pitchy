@@ -966,6 +966,18 @@ async def test_tracker_report_scope_and_resident_lifecycle():
             cohort["id"], tracker.id, TrackerAssignmentsUpdate(membership_ids=[]), organizer, db
         )
         assert await list_accelerators(tracker, db) == []
+        withdrawn = await update_membership_status(
+            membership_ids[1],
+            MembershipStatusUpdate(status="withdrawn", reason="Участник покинул поток"),
+            organizer,
+            db,
+        )
+        assert withdrawn["status"] == "withdrawn"
+        withdrawn_workspace = await list_my_accelerator_memberships(second_resident, db)
+        assert all(
+            row["membership_id"] != membership_ids[1]
+            for row in withdrawn_workspace["memberships"]
+        )
 
 
 @pytest.mark.asyncio
