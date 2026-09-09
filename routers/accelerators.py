@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 import csv
 import hashlib
 import io
@@ -10,6 +10,7 @@ import os
 import re
 import secrets
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, Response
@@ -80,6 +81,7 @@ from models import (
     AcceleratorProgramMaterialProgress,
     AcceleratorProgramStage,
     AcceleratorProgramStageProgress,
+    AcceleratorParticipantProfile,
     AcceleratorProgressCheckin,
     AcceleratorProjectAudit,
     AcceleratorProjectAuditTaskLink,
@@ -127,6 +129,7 @@ from schemas.accelerators import (
     OrganizerAssign,
     TrackerAssign,
     TrackerAssignmentsUpdate,
+    MembershipTrackerUpdate,
     ProgramConfigUpdate,
     ProgramStageCreate,
     ProgramStageReorder,
@@ -1511,8 +1514,6 @@ async def assign_tracker(
     cohort = await get_cohort_or_404(db, cohort_id)
     await require_cohort_manager(db, user, cohort)
     require_mutable_cohort(cohort)
-    if not payload.membership_ids:
-        raise HTTPException(status_code=422, detail="Выберите хотя бы одного резидента")
     tracker = await db.get(User, payload.user_id)
     if not tracker or not tracker.is_active or tracker.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Активный пользователь не найден")
@@ -7856,6 +7857,251 @@ async def list_audit(
         "details": row.details,
         "created_at": row.created_at,
     } for row in rows]
+
+
+@router.put("/memberships/{membership_id}/tracker")
+async def set_membership_tracker(
+    membership_id: int,
+    payload: MembershipTrackerUpdate,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    membership = await db.get(AcceleratorMembership, membership_id)
+    if not membership or membership.role != "resident":
+        raise HTTPException(status_code=404, detail="Резидент не найден")
+    cohort = await get_cohort_or_404(db, membership.cohort_id)
+    await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
+    team_member = (await db.execute(select(AcceleratorTeamMember).join(
+        AcceleratorTeam, AcceleratorTeam.id == AcceleratorTeamMember.team_id
+    ).where(
+        AcceleratorTeamMember.membership_id == membership.id,
+        AcceleratorTeamMember.status == "active",
+        AcceleratorTeam.status == "active",
+    ))).scalar_one_or_none()
+    if team_member:
+        raise HTTPException(
+            status_code=409,
+            detail="Участнику команды трекер назначается через карточку команды",
+        )
+    await db.execute(delete(AcceleratorTrackerAssignment).where(
+        AcceleratorTrackerAssignment.membership_id == membership.id
+    ))
+    tracker = None
+    if payload.tracker_user_id:
+        tracker = (await db.execute(select(User).join(
+            AcceleratorStaff,
+            AcceleratorStaff.user_id == User.id,
+        ).where(
+            User.id == payload.tracker_user_id,
+            User.is_active.is_(True),
+            User.deleted_at.is_(None),
+            AcceleratorStaff.accelerator_id == cohort.accelerator_id,
+            AcceleratorStaff.role == "tracker",
+        ))).scalar_one_or_none()
+        if not tracker:
+            raise HTTPException(status_code=404, detail="Трекер акселератора не найден")
+        db.add(AcceleratorTrackerAssignment(
+            tracker_user_id=tracker.id,
+            membership_id=membership.id,
+            assigned_by_user_id=user.id,
+        ))
+    add_audit(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        actor_user_id=user.id, action="resident.tracker_changed",
+        target_type="membership", target_id=membership.id,
+        details={"tracker_user_id": tracker.id if tracker else None},
+    )
+    await db.commit()
+    return {
+        "membership_id": membership.id,
+        "tracker": ({"user_id": tracker.id, "name": tracker.name} if tracker else None),
+    }
+
+
+@router.get("/cohorts/{cohort_id}/work-summary")
+async def cohort_work_summary(
+    cohort_id: int,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    cohort = await get_cohort_or_404(db, cohort_id)
+    await require_cohort_manager(db, user, cohort)
+    config = (await db.execute(select(AcceleratorProgramConfig).where(
+        AcceleratorProgramConfig.cohort_id == cohort.id
+    ))).scalar_one_or_none()
+    modules = config.modules or {} if config else {}
+    applications = list((await db.execute(select(AcceleratorApplication).where(
+        AcceleratorApplication.cohort_id == cohort.id,
+        AcceleratorApplication.status.in_(("submitted", "under_review", "needs_info", "waitlisted")),
+    ).order_by(AcceleratorApplication.submitted_at))).scalars().all())
+    pending_homework = []
+    if modules.get("homework"):
+        pending_homework = list((await db.execute(select(
+            AcceleratorHomeworkSubmission, AcceleratorHomeworkAssignment
+        ).join(
+            AcceleratorHomeworkAssignment,
+            AcceleratorHomeworkAssignment.id == AcceleratorHomeworkSubmission.assignment_id,
+        ).where(
+            AcceleratorHomeworkAssignment.cohort_id == cohort.id,
+            AcceleratorHomeworkSubmission.status == "submitted",
+        ).order_by(AcceleratorHomeworkSubmission.submitted_at))).all())
+    active_teams = list((await db.execute(select(AcceleratorTeam).where(
+        AcceleratorTeam.cohort_id == cohort.id,
+        AcceleratorTeam.status == "active",
+    ))).scalars().all())
+    assigned_team_ids = set((await db.execute(select(AcceleratorTeamTrackerAssignment.team_id).where(
+        AcceleratorTeamTrackerAssignment.team_id.in_([row.id for row in active_teams])
+    ))).scalars().all()) if active_teams else set()
+    memberships = list((await db.execute(select(AcceleratorMembership).where(
+        AcceleratorMembership.cohort_id == cohort.id,
+        AcceleratorMembership.role == "resident",
+        AcceleratorMembership.status.in_(("enrolled", "suspended")),
+    ))).scalars().all())
+    membership_ids = [row.id for row in memberships]
+    teamed_ids = set((await db.execute(select(AcceleratorTeamMember.membership_id).where(
+        AcceleratorTeamMember.membership_id.in_(membership_ids),
+        AcceleratorTeamMember.status == "active",
+    ))).scalars().all()) if membership_ids else set()
+    personally_tracked = set((await db.execute(select(AcceleratorTrackerAssignment.membership_id).where(
+        AcceleratorTrackerAssignment.membership_id.in_(membership_ids)
+    ))).scalars().all()) if membership_ids else set()
+    people = {row.id: row for row in (await db.execute(select(User).where(
+        User.id.in_([membership.user_id for membership in memberships])
+    ))).scalars().all()} if memberships else {}
+    risks = []
+    if modules.get("progress_tracking"):
+        for membership in memberships:
+            risk = await membership_tracking_risk(db, membership)
+            if risk["level"] != "green":
+                risks.append({
+                    "membership_id": membership.id,
+                    "name": people.get(membership.user_id).name if people.get(membership.user_id) else "Резидент",
+                    **risk,
+                })
+    try:
+        cohort_zone = ZoneInfo(cohort.timezone or "UTC")
+    except Exception:
+        cohort_zone = ZoneInfo("UTC")
+    local_day = datetime.now(cohort_zone).date()
+    day_start = datetime.combine(local_day, time.min, tzinfo=cohort_zone).astimezone(timezone.utc).replace(tzinfo=None)
+    day_end = datetime.combine(local_day + timedelta(days=1), time.min, tzinfo=cohort_zone).astimezone(timezone.utc).replace(tzinfo=None)
+    events = list((await db.execute(select(AcceleratorEvent).where(
+        AcceleratorEvent.cohort_id == cohort.id,
+        AcceleratorEvent.status.in_(("published", "completed")),
+        AcceleratorEvent.starts_at < day_end,
+        AcceleratorEvent.ends_at >= day_start,
+    ).order_by(AcceleratorEvent.starts_at))).scalars().all())
+    untracked_members = [row for row in memberships if row.id not in teamed_ids and row.id not in personally_tracked]
+    return {
+        "cohort_id": cohort.id,
+        "counts": {
+            "new_applications": len(applications),
+            "pending_homework": len(pending_homework),
+            "teams_without_tracker": sum(row.id not in assigned_team_ids for row in active_teams),
+            "participants_without_tracker": len(untracked_members),
+            "risks": len(risks),
+            "today_events": len(events),
+        },
+        "applications": [{"id": row.id, "name": row.applicant_name, "status": row.status} for row in applications[:10]],
+        "pending_homework": [{"submission_id": row.id, "membership_id": row.membership_id, "assignment": assignment.title} for row, assignment in pending_homework[:10]],
+        "teams_without_tracker": [{"id": row.id, "name": row.name} for row in active_teams if row.id not in assigned_team_ids],
+        "participants_without_tracker": [{"membership_id": row.id, "name": people.get(row.user_id).name if people.get(row.user_id) else "Резидент"} for row in untracked_members],
+        "risks": sorted(risks, key=lambda row: (row["level"] != "red", -(row["inactive_days"] or 0)))[:10],
+        "today_events": [{"id": row.id, "title": row.title, "starts_at": row.starts_at, "ends_at": row.ends_at, "format": row.event_format} for row in events],
+    }
+
+
+@router.get("/memberships/{membership_id}/organizer-card")
+async def membership_organizer_card(
+    membership_id: int,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    membership = await db.get(AcceleratorMembership, membership_id)
+    if not membership or membership.role != "resident":
+        raise HTTPException(status_code=404, detail="Резидент не найден")
+    cohort = await get_cohort_or_404(db, membership.cohort_id)
+    access_role = await require_tracker_membership_access(db, user, membership)
+    can_manage = access_role in ("global_admin", "organizer")
+    person = await db.get(User, membership.user_id)
+    application = await db.get(AcceleratorApplication, membership.application_id)
+    profile = (await db.execute(select(AcceleratorParticipantProfile).where(
+        AcceleratorParticipantProfile.membership_id == membership.id
+    ))).scalar_one_or_none()
+    project = await db.get(Project, membership.project_id) if membership.project_id else None
+    team_row = (await db.execute(select(AcceleratorTeamMember, AcceleratorTeam).join(
+        AcceleratorTeam, AcceleratorTeam.id == AcceleratorTeamMember.team_id
+    ).where(
+        AcceleratorTeamMember.membership_id == membership.id,
+        AcceleratorTeamMember.status == "active",
+        AcceleratorTeam.status == "active",
+    ))).first()
+    tracker_ids = await membership_tracker_user_ids(db, membership.id)
+    trackers = list((await db.execute(select(User).where(User.id.in_(tracker_ids)))).scalars().all()) if tracker_ids else []
+    tracker_options = []
+    if can_manage:
+        tracker_options = list((await db.execute(select(User).join(
+            AcceleratorStaff, AcceleratorStaff.user_id == User.id
+        ).where(
+            AcceleratorStaff.accelerator_id == cohort.accelerator_id,
+            AcceleratorStaff.role == "tracker",
+            User.is_active.is_(True), User.deleted_at.is_(None),
+        ).order_by(User.name))).scalars().all())
+    assignments = list((await db.execute(select(AcceleratorHomeworkAssignment).where(
+        AcceleratorHomeworkAssignment.cohort_id == cohort.id,
+        AcceleratorHomeworkAssignment.status == "published",
+    ))).scalars().all())
+    submission_scope = AcceleratorHomeworkSubmission.membership_id == membership.id
+    if team_row:
+        submission_scope = or_(
+            submission_scope,
+            AcceleratorHomeworkSubmission.team_id == team_row[1].id,
+        )
+    submissions = list((await db.execute(select(AcceleratorHomeworkSubmission).where(
+        submission_scope
+    ).order_by(AcceleratorHomeworkSubmission.submitted_at.desc()))).scalars().all())
+    assignment_titles = {row.id: row.title for row in assignments}
+    checkins = list((await db.execute(select(AcceleratorProgressCheckin).where(
+        AcceleratorProgressCheckin.membership_id == membership.id
+    ).order_by(AcceleratorProgressCheckin.period_start.desc()).limit(5))).scalars().all())
+    feedback = list((await db.execute(select(AcceleratorTrackingFeedback).where(
+        AcceleratorTrackingFeedback.membership_id == membership.id
+    ).order_by(AcceleratorTrackingFeedback.created_at.desc()).limit(5))).scalars().all())
+    audit = (await db.execute(select(AcceleratorProjectAudit).where(
+        AcceleratorProjectAudit.membership_id == membership.id
+    ).order_by(AcceleratorProjectAudit.created_at.desc()).limit(1))).scalar_one_or_none()
+    lifecycle = list((await db.execute(select(AcceleratorMembershipEvent).where(
+        AcceleratorMembershipEvent.membership_id == membership.id
+    ).order_by(AcceleratorMembershipEvent.created_at.desc()).limit(10))).scalars().all())
+    risk = await membership_tracking_risk(db, membership)
+    last_candidates = [(membership.updated_at, "Профиль участия обновлён")]
+    last_candidates += [(row.submitted_at, f"Отправлено ДЗ «{assignment_titles.get(row.assignment_id, 'Задание')}»") for row in submissions[:1]]
+    last_candidates += [(row.created_at, "Заполнен чек-ин") for row in checkins[:1]]
+    last_candidates += [(row.created_at, "Получена обратная связь") for row in feedback[:1]]
+    last_candidates += [(row.created_at, "Запущен аудит проекта") for row in ([audit] if audit else [])]
+    last_at, last_title = max((row for row in last_candidates if row[0]), key=lambda row: row[0])
+    return {
+        "membership_id": membership.id,
+        "access_role": access_role,
+        "can_manage": can_manage,
+        "available_statuses": sorted(MEMBERSHIP_STATUS_TRANSITIONS.get(membership.status, set())),
+        "person": {"id": person.id, "name": person.name, "email": person.email} if person else None,
+        "membership": {"status": membership.status, "status_reason": membership.status_reason, "accepted_at": membership.accepted_at, "enrolled_at": membership.enrolled_at},
+        "application": ({"id": application.id, "type": application.application_type, "status": application.status, "form_version": application.form_version, "answers": application.form_payload, "submitted_at": application.submitted_at} if application else None),
+        "profile": profile.profile if profile else {},
+        "project": ({"id": project.id, "name": project.name, "readiness": project.readiness_index, "status": project.status} if project else None),
+        "team": ({"id": team_row[1].id, "name": team_row[1].name, "role": team_row[0].role} if team_row else None),
+        "trackers": [{"user_id": row.id, "name": row.name, "email": row.email} for row in trackers],
+        "tracker_options": [{"user_id": row.id, "name": row.name, "email": row.email} for row in tracker_options],
+        "homework": {"published": len(assignments), "accepted": sum(row.status == "accepted" for row in submissions), "pending": sum(row.status == "submitted" for row in submissions), "overdue": risk["overdue_homework"], "submissions": [{"id": row.id, "title": assignment_titles.get(row.assignment_id, "Задание"), "status": row.status, "submitted_at": row.submitted_at} for row in submissions[:8]]},
+        "risk": risk,
+        "checkins": [{"id": row.id, "period_start": row.period_start, "health": row.health, "summary": row.summary, "blockers": row.blockers} for row in checkins],
+        "feedback": [{"id": row.id, "body": row.body, "read_at": row.read_at, "created_at": row.created_at} for row in feedback],
+        "audit": ({"id": audit.id, "type": audit.audit_type, "status": audit.status, "score": audit.overall_score, "created_at": audit.created_at} if audit else None),
+        "lifecycle": [{"id": row.id, "from_status": row.from_status, "to_status": row.to_status, "reason": row.reason, "created_at": row.created_at} for row in lifecycle],
+        "last_action": {"title": last_title, "at": last_at},
+    }
 
 
 def today_card_fingerprint(card: dict) -> str:

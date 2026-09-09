@@ -20,6 +20,15 @@ class CohortClosureComplete(BaseModel):
     summary: str | None = Field(default=None, max_length=10000)
 
 
+class ClosureExceptionUpdate(BaseModel):
+    reason: str = Field(min_length=2, max_length=4000)
+
+    @field_validator("reason")
+    @classmethod
+    def clean_reason(cls, value: str) -> str:
+        return value.strip()
+
+
 class AlumniProfileUpdate(BaseModel):
     headline: str | None = Field(default=None, max_length=200)
     bio: str | None = Field(default=None, max_length=5000)

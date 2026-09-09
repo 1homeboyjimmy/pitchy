@@ -1,98 +1,37 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Archive, CheckCircle2, Loader2, RefreshCw, Save, Users } from "lucide-react";
+import { AlertTriangle, Archive, CheckCircle2, ChevronLeft, ChevronRight, Loader2, RefreshCw, Save } from "lucide-react";
+import { deleteAuth, describeApiError, getAuthJson, postAuthJson, putAuthJson } from "@/lib/api";
 
-import { describeApiError, getAuthJson, postAuthJson, putAuthJson } from "@/lib/api";
-
-type Decision = { outcome: "completed" | "withdrawn"; reason: string; updated_at?: string };
-type ClosureResident = {
-  membership_id: number;
-  name: string;
-  email?: string | null;
-  status: string;
-  project_id?: number | null;
-  decision?: Decision | null;
-  snapshot_ready: boolean;
-};
-type ClosureData = {
-  cohort_id: number;
-  cohort_status: string;
-  closure?: { id: number; status: string; summary?: string | null; completed_at?: string | null } | null;
-  residents: ClosureResident[];
-  missing_decision_membership_ids: number[];
-  blockers: string[];
-  can_complete: boolean;
-};
-type Draft = { outcome: "completed" | "withdrawn"; reason: string };
+type Decision = { outcome: "completed" | "withdrawn"; reason: string };
+type Resident = { membership_id: number; name: string; email?: string | null; status: string; decision?: Decision | null; snapshot_ready: boolean };
+type Blocker = { key: string; title: string; description: string; count: number; exception?: { reason: string } | null };
+type Preview = { membership_id: number; name: string; outcome: string; project?: { name?: string; readiness_index?: number } | null; program: { published: number; completed: number }; homework: { published: number; accepted: number }; attendance: { published_events: number; present: number }; tracking: { tasks: number; done: number; checkins: number }; artifacts: { total: number; ready: number }; team?: { name: string; role: string } | null };
+type Data = { cohort_status: string; closure?: { status: string; summary?: string | null } | null; residents: Resident[]; missing_decision_membership_ids: number[]; operational_blockers: Blocker[]; unresolved_blocker_keys: string[]; snapshot_previews: Preview[]; blockers: string[]; can_complete: boolean };
+const STEPS = ["Блокеры", "Решения", "Предпросмотр", "Итог", "Подтверждение"];
 
 export function CohortClosure({ cohortId, token, onCompleted }: { cohortId: number; token: string; onCompleted?: () => Promise<void> | void }) {
-  const [data, setData] = useState<ClosureData | null>(null);
-  const [drafts, setDrafts] = useState<Record<number, Draft>>({});
-  const [summary, setSummary] = useState("");
-  const [busy, setBusy] = useState("");
-  const [error, setError] = useState("");
-
-  const apply = useCallback((next: ClosureData) => {
-    setData(next);
-    setSummary(next.closure?.summary || "");
-    setDrafts(Object.fromEntries(next.residents.map((resident) => [resident.membership_id, {
-      outcome: resident.decision?.outcome || (resident.status === "accepted" ? "withdrawn" : "completed"),
-      reason: resident.decision?.reason || "",
-    }])));
-  }, []);
-  const load = useCallback(async () => {
-    setError("");
-    try { apply(await getAuthJson<ClosureData>(`/api/accelerators/cohorts/${cohortId}/closure`, token)); }
-    catch (reason) { setError(describeApiError(reason, "Не удалось загрузить завершение потока")); }
-  }, [apply, cohortId, token]);
+  const [data, setData] = useState<Data | null>(null); const [drafts, setDrafts] = useState<Record<number, Decision>>({}); const [exceptions, setExceptions] = useState<Record<string, string>>({}); const [summary, setSummary] = useState(""); const [step, setStep] = useState(0); const [busy, setBusy] = useState(""); const [error, setError] = useState("");
+  const apply = useCallback((next: Data) => { setData(next); setSummary(next.closure?.summary || ""); setDrafts(Object.fromEntries(next.residents.map((row) => [row.membership_id, { outcome: row.decision?.outcome || (row.status === "accepted" ? "withdrawn" : "completed"), reason: row.decision?.reason || "" }]))); setExceptions(Object.fromEntries(next.operational_blockers.map((row) => [row.key, row.exception?.reason || ""]))); }, []);
+  const load = useCallback(async () => { setError(""); try { apply(await getAuthJson<Data>(`/api/accelerators/cohorts/${cohortId}/closure`, token)); } catch (reason) { setError(describeApiError(reason, "Не удалось загрузить завершение потока")); } }, [apply, cohortId, token]);
   useEffect(() => { void load(); }, [load]);
-
-  const prepare = async () => {
-    setBusy("prepare"); setError("");
-    try { apply(await postAuthJson<ClosureData>(`/api/accelerators/cohorts/${cohortId}/closure/prepare`, {}, token)); }
-    catch (reason) { setError(describeApiError(reason, "Не удалось начать завершение потока")); }
-    finally { setBusy(""); }
-  };
-  const saveDecision = async (membershipId: number) => {
-    const draft = drafts[membershipId];
-    if (!draft?.reason.trim()) { setError("Для итогового решения нужна причина."); return; }
-    setBusy(`decision-${membershipId}`); setError("");
-    try {
-      const next = await putAuthJson<ClosureData>(`/api/accelerators/cohorts/${cohortId}/closure/decisions/${membershipId}`, { ...draft, reason: draft.reason.trim() }, token);
-      setData(next);
-      const saved = next.residents.find((resident) => resident.membership_id === membershipId)?.decision;
-      if (saved) setDrafts((current) => ({ ...current, [membershipId]: { outcome: saved.outcome, reason: saved.reason } }));
-    }
-    catch (reason) { setError(describeApiError(reason, "Не удалось сохранить решение")); }
-    finally { setBusy(""); }
-  };
-  const complete = async () => {
-    if (!data?.can_complete || !window.confirm("Завершить поток? Результаты будут зафиксированы, а рабочие разделы станут доступны только для чтения.")) return;
-    setBusy("complete"); setError("");
-    try {
-      apply(await postAuthJson<ClosureData>(`/api/accelerators/cohorts/${cohortId}/closure/complete`, { summary: summary.trim() || null }, token));
-      await onCompleted?.();
-    } catch (reason) { setError(describeApiError(reason, "Не удалось завершить поток")); }
-    finally { setBusy(""); }
-  };
-  const decided = useMemo(() => data?.residents.filter((row) => row.decision).length || 0, [data]);
-
-  if (!data) return <section className="workspace-card grid min-h-48 place-items-center">{error ? <div className="text-center"><p role="alert" className="text-sm text-red-200">{error}</p><button type="button" onClick={() => void load()} className="workspace-button mt-4 !bg-transparent !text-white"><RefreshCw size={15} /> Повторить</button></div> : <Loader2 className="animate-spin text-white/35" />}</section>;
-  const completed = data.closure?.status === "completed";
-  return <div className="space-y-6">
-    <section className="workspace-card">
-      <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs uppercase tracking-[.18em] text-white/30">Жизненный цикл потока</p><h2 className="mt-2 text-2xl">Итоговые решения и снимки</h2><p className="mt-2 max-w-3xl text-sm text-white/45">Перед завершением выберите результат для каждого активного резидента. Система сохранит неизменяемый снимок программы, отчётности, артефактов, команды и расхода лимитов.</p></div><button type="button" onClick={() => void load()} className="rounded-full border border-white/10 p-3 text-white/40" aria-label="Обновить завершение"><RefreshCw size={16} /></button></div>
-      <div className="mt-5 grid gap-3 sm:grid-cols-3"><Stat label="Резидентов" value={data.residents.length} /><Stat label="Решения готовы" value={decided} /><Stat label="Осталось" value={data.missing_decision_membership_ids.length} /></div>
-      {!data.closure && data.cohort_status === "active" && <button type="button" onClick={() => void prepare()} disabled={Boolean(busy)} className="workspace-button mt-5"><Archive size={15} /> Подготовить завершение</button>}
-      {completed && <div className="mt-5 rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.06] p-4 text-sm text-emerald-100"><CheckCircle2 size={17} className="mr-2 inline" />Поток завершён. Итоговые снимки сохранены, обычные изменения состава и программы заморожены.</div>}
-    </section>
-
-    {data.closure && <section className="workspace-card"><h2 className="text-xl">Решения по резидентам</h2><div className="mt-5 space-y-3">{data.residents.map((resident) => { const draft = drafts[resident.membership_id] || { outcome: "completed", reason: "" }; return <article key={resident.membership_id} className="rounded-2xl border border-white/9 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p>{resident.name}</p><p className="mt-1 text-xs text-white/35">{resident.email || "Контакт недоступен"} · {resident.status}</p></div>{resident.snapshot_ready && <span className="rounded-full bg-emerald-400/10 px-2 py-1 text-xs text-emerald-300">Снимок готов</span>}</div>{!completed && <div className="mt-4 grid gap-3 md:grid-cols-[180px_1fr_auto]"><select value={draft.outcome} onChange={(event) => setDrafts((current) => ({ ...current, [resident.membership_id]: { ...draft, outcome: event.target.value as Draft["outcome"] } }))} className="workspace-input" aria-label={`Итог ${resident.name}`}><option value="completed" disabled={resident.status === "accepted"}>Выпускник</option><option value="withdrawn">Выбыл</option></select><input value={draft.reason} onChange={(event) => setDrafts((current) => ({ ...current, [resident.membership_id]: { ...draft, reason: event.target.value } }))} minLength={2} maxLength={4000} placeholder="Причина итогового решения" className="workspace-input" aria-label={`Причина ${resident.name}`} /><button type="button" onClick={() => void saveDecision(resident.membership_id)} disabled={Boolean(busy)} className="workspace-button"><Save size={14} /> Сохранить</button></div>}{completed && resident.decision && <p className="mt-3 text-sm text-white/45">{resident.decision.outcome === "completed" ? "Выпускник" : "Выбыл"}: {resident.decision.reason}</p>}</article>; })}{!data.residents.length && <p className="text-sm text-white/35">В потоке нет активных резидентов.</p>}</div></section>}
-
-    {data.closure && !completed && <section className="workspace-card"><h2 className="text-xl">Финальная фиксация</h2><textarea value={summary} onChange={(event) => setSummary(event.target.value)} rows={4} maxLength={10000} placeholder="Итог потока, результаты и важные замечания" className="workspace-input mt-4 resize-y" /><button type="button" onClick={() => void complete()} disabled={!data.can_complete || Boolean(busy)} className="workspace-button mt-4"><CheckCircle2 size={15} /> Завершить поток</button>{data.blockers.length > 0 && <ul className="mt-4 space-y-1 text-sm text-amber-100">{data.blockers.map((blocker) => <li key={blocker}>• {blocker}</li>)}</ul>}</section>}
+  const prepare = async () => { setBusy("prepare"); try { apply(await postAuthJson<Data>(`/api/accelerators/cohorts/${cohortId}/closure/prepare`, {}, token)); } catch (reason) { setError(describeApiError(reason, "Не удалось начать завершение")); } finally { setBusy(""); } };
+  const saveException = async (blocker: Blocker) => { const reason = exceptions[blocker.key]?.trim(); if (!reason) { setError("Для осознанного исключения укажите причину."); return; } setBusy(`exception-${blocker.key}`); try { apply(await putAuthJson<Data>(`/api/accelerators/cohorts/${cohortId}/closure/exceptions/${blocker.key}`, { reason }, token)); } catch (value) { setError(describeApiError(value, "Не удалось сохранить исключение")); } finally { setBusy(""); } };
+  const removeException = async (blocker: Blocker) => { setBusy(`exception-${blocker.key}`); try { await deleteAuth(`/api/accelerators/cohorts/${cohortId}/closure/exceptions/${blocker.key}`, token); await load(); } catch (value) { setError(describeApiError(value, "Не удалось отменить исключение")); } finally { setBusy(""); } };
+  const saveDecision = async (resident: Resident) => { const draft = drafts[resident.membership_id]; if (!draft?.reason.trim()) { setError("Для решения по участнику нужна причина."); return; } setBusy(`decision-${resident.membership_id}`); try { apply(await putAuthJson<Data>(`/api/accelerators/cohorts/${cohortId}/closure/decisions/${resident.membership_id}`, { ...draft, reason: draft.reason.trim() }, token)); } catch (value) { setError(describeApiError(value, "Не удалось сохранить решение")); } finally { setBusy(""); } };
+  const complete = async () => { if (!data?.can_complete || !window.confirm("Зафиксировать результаты и завершить поток?")) return; setBusy("complete"); try { apply(await postAuthJson<Data>(`/api/accelerators/cohorts/${cohortId}/closure/complete`, { summary: summary.trim() || null }, token)); await onCompleted?.(); } catch (value) { setError(describeApiError(value, "Не удалось завершить поток")); } finally { setBusy(""); } };
+  const completed = data?.closure?.status === "completed"; const decided = useMemo(() => data?.residents.filter((row) => row.decision).length || 0, [data]);
+  if (!data) return <section className="workspace-card grid min-h-48 place-items-center">{error ? <p role="alert" className="text-red-200">{error}</p> : <Loader2 className="animate-spin text-white/35" />}</section>;
+  return <div className="space-y-5"><section className="workspace-card"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs uppercase tracking-[.18em] text-white/30">Мастер завершения потока</p><h2 className="mt-2 text-2xl">Проверьте всё перед фиксацией</h2><p className="mt-2 text-sm text-white/45">Обязательные проблемы требуют решения или осознанного исключения с причиной. Каждое действие сохраняется в журнале.</p></div><button type="button" onClick={() => void load()} aria-label="Обновить" className="rounded-full border border-white/10 p-3 text-white/45"><RefreshCw size={16} /></button></div>{!data.closure && data.cohort_status === "active" && <button type="button" onClick={() => void prepare()} disabled={Boolean(busy)} className="workspace-button mt-5"><Archive size={15} /> Начать завершение</button>}{completed && <p className="mt-5 rounded-2xl border border-emerald-400/20 bg-emerald-400/[.06] p-4 text-emerald-100"><CheckCircle2 size={17} className="mr-2 inline" />Поток завершён, снимки результатов зафиксированы.</p>}</section>
+    {data.closure && !completed && <><nav className="grid grid-cols-2 gap-2 sm:grid-cols-5" aria-label="Шаги завершения">{STEPS.map((label, index) => <button type="button" key={label} onClick={() => setStep(index)} className={`rounded-xl border px-3 py-3 text-sm ${step === index ? "border-white bg-white text-black" : "border-white/10 text-white/45"}`}>{index + 1}. {label}</button>)}</nav>
+      {step === 0 && <section className="workspace-card"><h3 className="text-xl">Обязательные блокеры</h3><p className="mt-1 text-sm text-white/40">Сначала закройте рабочие хвосты. Если завершение с ними осознанно, сохраните конкретную причину.</p><div className="mt-5 space-y-3">{data.operational_blockers.map((row) => <article key={row.key} className={`rounded-2xl border p-4 ${row.exception ? "border-emerald-400/20" : "border-amber-400/20"}`}><div className="flex gap-3"><AlertTriangle className="mt-1 shrink-0 text-amber-300" size={18} /><div><p>{row.title} · {row.count}</p><p className="mt-1 text-sm text-white/40">{row.description}</p></div></div><textarea value={exceptions[row.key] || ""} onChange={(event) => setExceptions((current) => ({ ...current, [row.key]: event.target.value }))} placeholder="Почему поток можно завершить с этим блокером" className="workspace-input mt-4 resize-y" /><div className="mt-3 flex gap-2"><button type="button" onClick={() => void saveException(row)} disabled={Boolean(busy)} className="workspace-button"><Save size={14} /> {row.exception ? "Обновить причину" : "Принять исключение"}</button>{row.exception && <button type="button" onClick={() => void removeException(row)} className="rounded-xl border border-white/10 px-4 text-sm">Отменить</button>}</div></article>)}{!data.operational_blockers.length && <p className="rounded-2xl border border-emerald-400/20 p-4 text-sm text-emerald-200">Обязательных блокеров нет.</p>}</div></section>}
+      {step === 1 && <section className="workspace-card"><h3 className="text-xl">Решения по участникам</h3><p className="mt-1 text-sm text-white/40">Сохранено {decided} из {data.residents.length}.</p><div className="mt-5 space-y-3">{data.residents.map((row) => { const draft = drafts[row.membership_id]; return <article key={row.membership_id} className="rounded-2xl border border-white/10 p-4"><p>{row.name}</p><p className="text-xs text-white/35">{row.email}</p><div className="mt-3 grid gap-3 md:grid-cols-[180px_1fr_auto]"><select value={draft.outcome} onChange={(event) => setDrafts((current) => ({ ...current, [row.membership_id]: { ...draft, outcome: event.target.value as Decision["outcome"] } }))} className="workspace-input"><option value="completed" disabled={row.status === "accepted"}>Выпускник</option><option value="withdrawn">Выбыл</option></select><input value={draft.reason} onChange={(event) => setDrafts((current) => ({ ...current, [row.membership_id]: { ...draft, reason: event.target.value } }))} placeholder="Причина решения" className="workspace-input" /><button type="button" onClick={() => void saveDecision(row)} className="workspace-button"><Save size={14} /> Сохранить</button></div></article>; })}</div></section>}
+      {step === 2 && <section className="workspace-card"><h3 className="text-xl">Предпросмотр итоговых снимков</h3>{data.missing_decision_membership_ids.length > 0 ? <p className="mt-4 text-amber-200">Сначала сохраните решения по всем участникам.</p> : <div className="mt-5 space-y-3">{data.snapshot_previews.map((row) => <article key={row.membership_id} className="rounded-2xl border border-white/10 p-4"><div className="flex justify-between gap-3"><p>{row.name}</p><span className="text-sm text-white/40">{row.outcome === "completed" ? "Выпускник" : "Выбыл"}</span></div><div className="mt-3 grid grid-cols-2 gap-2 text-sm text-white/50 sm:grid-cols-4"><span>Программа {row.program.completed}/{row.program.published}</span><span>ДЗ {row.homework.accepted}/{row.homework.published}</span><span>Посещение {row.attendance.present}/{row.attendance.published_events}</span><span>Артефакты {row.artifacts.ready}/{row.artifacts.total}</span></div></article>)}</div>}</section>}
+      {step === 3 && <section className="workspace-card"><h3 className="text-xl">Итог потока</h3><textarea value={summary} onChange={(event) => setSummary(event.target.value)} rows={6} maxLength={10000} placeholder="Результаты потока, выводы и важные замечания" className="workspace-input mt-4 resize-y" /></section>}
+      {step === 4 && <section className="workspace-card"><h3 className="text-xl">Подтверждение</h3><div className="mt-4 grid gap-3 sm:grid-cols-3"><Stat label="Резидентов" value={data.residents.length} /><Stat label="Решений" value={decided} /><Stat label="Исключений" value={data.operational_blockers.filter((row) => row.exception).length} /></div>{data.blockers.length > 0 && <ul className="mt-4 text-sm text-amber-200">{data.blockers.map((row) => <li key={row}>• {row}</li>)}</ul>}<button type="button" onClick={() => void complete()} disabled={!data.can_complete || Boolean(busy)} className="workspace-button mt-5"><CheckCircle2 size={15} /> Завершить поток</button></section>}
+      <div className="flex justify-between"><button type="button" disabled={step === 0} onClick={() => setStep((value) => value - 1)} className="rounded-xl border border-white/10 px-4 py-3 text-sm disabled:opacity-30"><ChevronLeft size={15} className="mr-1 inline" /> Назад</button><button type="button" disabled={step === STEPS.length - 1} onClick={() => setStep((value) => value + 1)} className="workspace-button disabled:opacity-30">Далее <ChevronRight size={15} /></button></div></>}
     {error && <p role="alert" className="rounded-2xl border border-red-400/20 bg-red-400/10 p-4 text-sm text-red-200">{error}</p>}
   </div>;
 }
-
-function Stat({ label, value }: { label: string; value: number }) { return <div className="rounded-2xl border border-white/8 p-4"><p className="text-2xl">{value}</p><p className="mt-1 text-xs text-white/35"><Users size={12} className="mr-1 inline" />{label}</p></div>; }
+function Stat({ label, value }: { label: string; value: number }) { return <div className="rounded-2xl border border-white/10 p-4"><p className="text-2xl">{value}</p><p className="text-xs text-white/35">{label}</p></div>; }

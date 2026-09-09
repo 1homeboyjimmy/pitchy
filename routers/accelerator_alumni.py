@@ -9,6 +9,7 @@ from accelerator_alumni_service import (
     cohort_alumni_payload,
     closure_payload,
     complete_closure,
+    delete_closure_exception,
     get_alumni_profile_payload,
     get_cohort,
     opt_out_alumni_profile,
@@ -17,6 +18,7 @@ from accelerator_alumni_service import (
     upsert_alumni_checkin,
     upsert_alumni_profile,
     upsert_closure_decision,
+    upsert_closure_exception,
 )
 from accelerator_notification_service import process_notification_event
 from accelerator_service import require_cohort_manager
@@ -28,6 +30,7 @@ from schemas.accelerator_alumni import (
     AlumniProfileUpdate,
     CohortClosureComplete,
     ClosureDecisionUpdate,
+    ClosureExceptionUpdate,
 )
 
 
@@ -82,6 +85,37 @@ async def put_cohort_closure_decision(
         membership_id=membership_id,
         payload=payload,
         user=user,
+    )
+    await db.commit()
+    return await closure_payload(db, cohort=cohort, user=user)
+
+
+@router.put("/cohorts/{cohort_id}/closure/exceptions/{blocker_key}")
+async def put_cohort_closure_exception(
+    cohort_id: int,
+    blocker_key: str,
+    payload: ClosureExceptionUpdate,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    cohort = await get_cohort(db, cohort_id)
+    await upsert_closure_exception(
+        db, cohort=cohort, blocker_key=blocker_key, payload=payload, user=user
+    )
+    await db.commit()
+    return await closure_payload(db, cohort=cohort, user=user)
+
+
+@router.delete("/cohorts/{cohort_id}/closure/exceptions/{blocker_key}")
+async def delete_cohort_closure_exception(
+    cohort_id: int,
+    blocker_key: str,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    cohort = await get_cohort(db, cohort_id)
+    await delete_closure_exception(
+        db, cohort=cohort, blocker_key=blocker_key, user=user
     )
     await db.commit()
     return await closure_payload(db, cohort=cohort, user=user)

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timedelta
 import uuid
 
 import pytest
@@ -15,6 +15,7 @@ from models import (
     AcceleratorMembership,
     AcceleratorNotificationOutbox,
     AcceleratorResidentSnapshot,
+    AcceleratorTrackingTask,
     User,
 )
 from routers.accelerator_alumni import (
@@ -27,6 +28,8 @@ from routers.accelerator_alumni import (
     post_complete_cohort_closure,
     post_prepare_cohort_closure,
     put_cohort_closure_decision,
+    put_cohort_closure_exception,
+    delete_cohort_closure_exception,
     put_membership_alumni_checkin,
     put_membership_alumni_profile,
 )
@@ -45,6 +48,7 @@ from schemas.accelerator_alumni import (
     AlumniProfileUpdate,
     CohortClosureComplete,
     ClosureDecisionUpdate,
+    ClosureExceptionUpdate,
 )
 from schemas.accelerators import (
     AcceleratorCreate,
@@ -103,6 +107,54 @@ async def _context(db, suffix: str):
         memberships.append(accepted["membership_id"])
     await update_cohort_status(cohort["id"], StatusUpdate(status="active"), organizer, db)
     return admin, organizer, first, second, outsider, accelerator, cohort, memberships
+
+
+@pytest.mark.asyncio
+async def test_closure_blockers_require_reasoned_exception_and_expose_preview():
+    suffix = uuid.uuid4().hex[:10]
+    async with AsyncSessionLocal() as db:
+        _, organizer, _, _, _, _, cohort, membership_ids = await _context(db, suffix)
+        db.add(AcceleratorTrackingTask(
+            membership_id=membership_ids[0],
+            created_by_user_id=organizer.id,
+            title="Просроченный итог",
+            status="open",
+            due_at=datetime.utcnow() - timedelta(days=1),
+        ))
+        await db.commit()
+        await post_prepare_cohort_closure(cohort["id"], organizer, db)
+        for membership_id in membership_ids:
+            await put_cohort_closure_decision(
+                cohort["id"], membership_id,
+                ClosureDecisionUpdate(outcome="completed", reason="Программа завершена"),
+                organizer, db,
+            )
+        payload = await get_cohort_closure(cohort["id"], organizer, db)
+        assert payload["unresolved_blocker_keys"] == ["overdue_tracking_tasks"]
+        assert len(payload["snapshot_previews"]) == 2
+        assert payload["can_complete"] is False
+
+        accepted = await put_cohort_closure_exception(
+            cohort["id"], "overdue_tracking_tasks",
+            ClosureExceptionUpdate(reason="Задача перенесена во внешнее сопровождение"),
+            organizer, db,
+        )
+        assert accepted["unresolved_blocker_keys"] == []
+        assert accepted["can_complete"] is True
+        removed = await delete_cohort_closure_exception(
+            cohort["id"], "overdue_tracking_tasks", organizer, db
+        )
+        assert removed["can_complete"] is False
+        await put_cohort_closure_exception(
+            cohort["id"], "overdue_tracking_tasks",
+            ClosureExceptionUpdate(reason="Задача перенесена во внешнее сопровождение"),
+            organizer, db,
+        )
+        completed = await post_complete_cohort_closure(
+            cohort["id"], CohortClosureComplete(summary="Поток закрыт осознанно"),
+            BackgroundTasks(), organizer, db,
+        )
+        assert completed["closure"]["status"] == "completed"
 
 
 @pytest.mark.asyncio

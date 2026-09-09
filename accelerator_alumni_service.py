@@ -17,8 +17,10 @@ from models import (
     AcceleratorAlumniProfile,
     AcceleratorArtifact,
     AcceleratorAttendanceRecord,
+    AcceleratorApplication,
     AcceleratorCohort,
     AcceleratorCohortClosure,
+    AcceleratorClosureException,
     AcceleratorDemoDayProject,
     AcceleratorEvent,
     AcceleratorHomeworkAssignment,
@@ -42,6 +44,7 @@ from schemas.accelerator_alumni import (
     AlumniCheckinUpsert,
     AlumniProfileUpdate,
     ClosureDecisionUpdate,
+    ClosureExceptionUpdate,
 )
 
 
@@ -130,6 +133,128 @@ async def eligible_memberships(
     return list((await db.execute(query)).scalars().all())
 
 
+async def closure_operational_blockers(
+    db: AsyncSession,
+    *,
+    cohort: AcceleratorCohort,
+    closure: AcceleratorCohortClosure | None,
+) -> list[dict]:
+    pending_homework = int((await db.execute(select(func.count(AcceleratorHomeworkSubmission.id)).join(
+        AcceleratorHomeworkAssignment,
+        AcceleratorHomeworkAssignment.id == AcceleratorHomeworkSubmission.assignment_id,
+    ).where(
+        AcceleratorHomeworkAssignment.cohort_id == cohort.id,
+        AcceleratorHomeworkSubmission.status == "submitted",
+    ))).scalar_one() or 0)
+    overdue_tasks = int((await db.execute(select(func.count(AcceleratorTrackingTask.id)).join(
+        AcceleratorMembership,
+        AcceleratorMembership.id == AcceleratorTrackingTask.membership_id,
+    ).where(
+        AcceleratorMembership.cohort_id == cohort.id,
+        AcceleratorTrackingTask.status == "open",
+        AcceleratorTrackingTask.due_at.is_not(None),
+        AcceleratorTrackingTask.due_at < datetime.utcnow(),
+    ))).scalar_one() or 0)
+    open_applications = int((await db.execute(select(func.count(AcceleratorApplication.id)).where(
+        AcceleratorApplication.cohort_id == cohort.id,
+        AcceleratorApplication.status.in_(("submitted", "under_review", "needs_info", "waitlisted")),
+    ))).scalar_one() or 0)
+    exception_rows = {}
+    if closure:
+        exception_rows = {
+            row.blocker_key: row
+            for row in (await db.execute(select(AcceleratorClosureException).where(
+                AcceleratorClosureException.closure_id == closure.id
+            ))).scalars().all()
+        }
+    specs = (
+        ("pending_homework_review", "Ответы на ДЗ ждут проверки", pending_homework, "Проверьте ответы или зафиксируйте причину завершения с открытой очередью."),
+        ("overdue_tracking_tasks", "Есть просроченные обязательные задачи", overdue_tasks, "Закройте задачи или зафиксируйте осознанное исключение."),
+        ("open_applications", "Остались заявки без итогового решения", open_applications, "Примите итоговое решение по кандидатам до завершения потока."),
+    )
+    result = []
+    for key, title, count, description in specs:
+        if count <= 0:
+            continue
+        exception = exception_rows.get(key)
+        result.append({
+            "key": key,
+            "title": title,
+            "description": description,
+            "count": count,
+            "exception": ({
+                "reason": exception.reason,
+                "created_by_user_id": exception.created_by_user_id,
+                "updated_at": exception.updated_at,
+            } if exception else None),
+        })
+    return result
+
+
+async def upsert_closure_exception(
+    db: AsyncSession,
+    *,
+    cohort: AcceleratorCohort,
+    blocker_key: str,
+    payload: ClosureExceptionUpdate,
+    user: User,
+) -> AcceleratorClosureException:
+    await require_cohort_manager(db, user, cohort)
+    closure = await prepare_closure(db, cohort=cohort, user=user)
+    blockers = await closure_operational_blockers(db, cohort=cohort, closure=closure)
+    if blocker_key not in {row["key"] for row in blockers}:
+        raise HTTPException(status_code=404, detail="Активный блокер не найден")
+    row = (await db.execute(select(AcceleratorClosureException).where(
+        AcceleratorClosureException.closure_id == closure.id,
+        AcceleratorClosureException.blocker_key == blocker_key,
+    ).with_for_update())).scalar_one_or_none()
+    if row:
+        row.reason = payload.reason
+        row.created_by_user_id = user.id
+    else:
+        row = AcceleratorClosureException(
+            closure_id=closure.id,
+            blocker_key=blocker_key,
+            reason=payload.reason,
+            created_by_user_id=user.id,
+        )
+        db.add(row)
+    await db.flush()
+    add_audit(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        actor_user_id=user.id, action="cohort.closure_exception_set",
+        target_type="cohort_closure", target_id=closure.id,
+        details={"blocker_key": blocker_key, "reason": payload.reason},
+    )
+    return row
+
+
+async def delete_closure_exception(
+    db: AsyncSession,
+    *,
+    cohort: AcceleratorCohort,
+    blocker_key: str,
+    user: User,
+) -> None:
+    await require_cohort_manager(db, user, cohort)
+    closure = await get_closure(db, cohort.id, lock=True)
+    if not closure or closure.status != "preparing":
+        raise HTTPException(status_code=409, detail="Завершение потока не подготавливается")
+    row = (await db.execute(select(AcceleratorClosureException).where(
+        AcceleratorClosureException.closure_id == closure.id,
+        AcceleratorClosureException.blocker_key == blocker_key,
+    ).with_for_update())).scalar_one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="Исключение не найдено")
+    await db.delete(row)
+    add_audit(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        actor_user_id=user.id, action="cohort.closure_exception_removed",
+        target_type="cohort_closure", target_id=closure.id,
+        details={"blocker_key": blocker_key},
+    )
+
+
 async def closure_payload(
     db: AsyncSession, *, cohort: AcceleratorCohort, user: User
 ) -> dict:
@@ -180,11 +305,40 @@ async def closure_payload(
             "snapshot_ready": membership.id in snapshot_ids,
         })
     missing = [row["membership_id"] for row in residents if not row["decision"]]
+    operational_blockers = await closure_operational_blockers(
+        db, cohort=cohort, closure=closure
+    )
+    unresolved_operational = [
+        row for row in operational_blockers if not row["exception"]
+    ]
+    snapshot_previews = []
+    if closure and closure.status == "preparing" and not missing:
+        for membership in memberships:
+            preview = await build_snapshot_payload(
+                db,
+                membership=membership,
+                cohort=cohort,
+                decision=decisions[membership.id],
+            )
+            snapshot_previews.append({
+                "membership_id": membership.id,
+                "name": people.get(membership.id).name if people.get(membership.id) else "Резидент",
+                "outcome": decisions[membership.id].outcome,
+                "project": preview.get("project"),
+                "program": preview.get("program"),
+                "homework": preview.get("homework"),
+                "attendance": preview.get("attendance"),
+                "tracking": preview.get("tracking"),
+                "artifacts": preview.get("artifacts"),
+                "team": preview.get("team"),
+            })
     blockers = []
     if cohort.status not in {"active", "completed"}:
         blockers.append("Завершить можно только активный поток")
     if missing:
         blockers.append(f"Не выбрано решение для резидентов: {len(missing)}")
+    if unresolved_operational:
+        blockers.append(f"Не разобраны обязательные блокеры: {len(unresolved_operational)}")
     return {
         "cohort_id": cohort.id,
         "cohort_status": cohort.status,
@@ -196,9 +350,13 @@ async def closure_payload(
         } if closure else None),
         "residents": residents,
         "missing_decision_membership_ids": missing,
+        "operational_blockers": operational_blockers,
+        "unresolved_blocker_keys": [row["key"] for row in unresolved_operational],
+        "snapshot_previews": snapshot_previews,
         "blockers": blockers,
         "can_complete": bool(
-            closure and closure.status == "preparing" and cohort.status == "active" and not missing
+            closure and closure.status == "preparing" and cohort.status == "active"
+            and not missing and not unresolved_operational
         ),
     }
 
@@ -406,6 +564,17 @@ async def complete_closure(
         raise HTTPException(
             status_code=409,
             detail=f"Не выбрано итоговое решение для резидентов: {len(missing)}",
+        )
+    unresolved = [
+        row for row in await closure_operational_blockers(
+            db, cohort=cohort, closure=closure
+        )
+        if not row["exception"]
+    ]
+    if unresolved:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Не разобраны обязательные блокеры: {len(unresolved)}",
         )
     now = datetime.utcnow()
     notification_ids: list[int] = []

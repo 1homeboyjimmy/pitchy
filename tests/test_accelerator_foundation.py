@@ -143,6 +143,9 @@ from routers.accelerators import (
     mark_event_attendance,
     mark_membership_feedback_read,
     membership_today,
+    cohort_work_summary,
+    membership_organizer_card,
+    set_membership_tracker,
     create_membership_recommendation,
     dismiss_membership_recommendation,
     restore_membership_recommendation,
@@ -162,6 +165,7 @@ from schemas.accelerators import (
     OrganizerAssign,
     TrackerAssign,
     TrackerAssignmentsUpdate,
+    MembershipTrackerUpdate,
     InvitationAccept,
     HomeworkAssignmentCreate,
     HomeworkReview,
@@ -2765,3 +2769,23 @@ async def test_resident_today_aggregate_feedback_and_persistent_recommendations(
         partial = await membership_today(membership_id, resident, db)
         assert partial["unavailable_sections"] == ["events"]
         assert partial["required_actions"]
+
+        card = await membership_organizer_card(membership_id, organizer, db)
+        assert card["person"]["name"] == resident.name
+        assert card["project"]["id"] == project.id
+        assert card["trackers"][0]["user_id"] == tracker.id
+        assert card["feedback"][0]["id"] == feedback["id"]
+        assert card["last_action"]["at"] is not None
+
+        await set_membership_tracker(
+            membership_id, MembershipTrackerUpdate(tracker_user_id=None), organizer, db
+        )
+        work_summary = await cohort_work_summary(cohort["id"], organizer, db)
+        assert work_summary["counts"]["participants_without_tracker"] == 1
+        assert work_summary["participants_without_tracker"][0]["membership_id"] == membership_id
+        await set_membership_tracker(
+            membership_id,
+            MembershipTrackerUpdate(tracker_user_id=tracker.id),
+            organizer,
+            db,
+        )

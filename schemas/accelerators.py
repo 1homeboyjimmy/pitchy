@@ -286,6 +286,10 @@ class PublicApplicationCreate(BaseModel):
             raise ValueError("Для подачи заявки необходимо согласие")
         return value
 
+
+class MembershipTrackerUpdate(BaseModel):
+    tracker_user_id: int | None = Field(default=None, gt=0)
+
     @field_validator("telegram")
     @classmethod
     def validate_telegram(cls, value: str) -> str:

@@ -980,6 +980,29 @@ class AcceleratorCohortClosure(Base):
     )
 
 
+class AcceleratorClosureException(Base):
+    """An organizer's explicit, reasoned acceptance of one closure blocker."""
+
+    __tablename__ = "accelerator_closure_exceptions"
+    __table_args__ = (
+        UniqueConstraint("closure_id", "blocker_key", name="uq_accelerator_closure_exception_key"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    closure_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_cohort_closures.id", ondelete="CASCADE"), index=True
+    )
+    blocker_key: Mapped[str] = mapped_column(String(80), index=True)
+    reason: Mapped[str] = mapped_column(Text)
+    created_by_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
 class AcceleratorMembershipClosureDecision(Base):
     __tablename__ = "accelerator_membership_closure_decisions"
     __table_args__ = (

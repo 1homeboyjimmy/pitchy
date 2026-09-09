@@ -29,12 +29,13 @@ import { ArtifactWorkspace } from "@/components/accelerator/ArtifactWorkspace";
 import { NotificationCenter } from "@/components/accelerator/NotificationCenter";
 import { CohortClosure } from "@/components/accelerator/CohortClosure";
 import { AcceleratorOperations } from "@/components/accelerator/AcceleratorOperations";
+import { ParticipantDrawer } from "@/components/accelerator/ParticipantDrawer";
 
 type Accelerator = { id: number; name: string; description?: string | null; status: string; access_role: "global_admin" | "organizer" | "tracker" | "expert" | "resident" };
 type Cohort = { id: number; accelerator_id: number; name: string; status: string; timezone: string; starts_at?: string | null; ends_at?: string | null; default_quota_config?: Limits | null; application_form_schema: ApplicationFormSchema; homework_pitchy_enabled: boolean };
 type ProgramConfig = { cohort_id: number; version: number; modules: Record<string, boolean>; locked_modules: Record<string, boolean> };
 type Resident = { membership_id: number; user_id: number; name: string; email: string; status: string; status_reason?: string | null; trackers?: Array<{ user_id: number; name: string }> };
-type TabKey = "overview" | "operations" | "applications" | "form" | "program" | "homework" | "attendance" | "trackers" | "reports" | "tracking" | "matching" | "project_audit" | "demo_day" | "artifacts" | "closure" | "quotas" | "settings" | "audit";
+type TabKey = "overview" | "applications" | "form" | "program" | "homework" | "attendance" | "trackers" | "reports" | "tracking" | "matching" | "project_audit" | "demo_day" | "artifacts" | "closure" | "quotas" | "settings" | "audit";
 type NavigationGroup = { key: string; label: string; items: Array<{ key: TabKey; label: string }> };
 
 const MODULE_LABELS: Record<string, string> = { applications: "Заявки", program: "Программа", homework: "Домашние задания", attendance: "Посещаемость", progress_tracking: "Трекинг прогресса", matchmaking: "Матчмейкинг", project_audit: "Аудит проекта", demo_day: "Демо-день и экспорт", pitchy_artifacts: "Результаты Pitchy", alumni: "Каталог выпускников" };
@@ -47,6 +48,28 @@ export default function AcceleratorWorkspacePage() {
   const [cohorts, setCohorts] = useState<Cohort[]>([]); const [cohortId, setCohortId] = useState<number | null>(null); const [config, setConfig] = useState<ProgramConfig | null>(null);
   const [applications, setApplications] = useState<AcceleratorApplication[]>([]); const [residents, setResidents] = useState<Resident[]>([]); const [residentWorkspace, setResidentWorkspace] = useState<ResidentWorkspaceData | null>(null);
   const [tab, setTab] = useState<TabKey>("overview"); const [showSetup, setShowSetup] = useState(false); const [loading, setLoading] = useState(true); const [error, setError] = useState(""); const [copied, setCopied] = useState(false);
+  const [selectedMembershipId, setSelectedMembershipId] = useState<number | null>(null); const [reportQuery, setReportQuery] = useState(""); const [reportStatus, setReportStatus] = useState("all"); const [urlReady, setUrlReady] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const savedTab = params.get("section") as TabKey | null;
+    if (savedTab) setTab(savedTab);
+    const savedAccelerator = Number(params.get("accelerator")); if (savedAccelerator > 0) setAcceleratorId(savedAccelerator);
+    const savedCohort = Number(params.get("cohort")); if (savedCohort > 0) setCohortId(savedCohort);
+    const savedResident = Number(params.get("resident")); if (savedResident > 0) setSelectedMembershipId(savedResident);
+    setReportQuery(params.get("q") || ""); setReportStatus(params.get("status") || "all"); setUrlReady(true);
+  }, []);
+  useEffect(() => {
+    if (!urlReady) return;
+    const params = new URLSearchParams(window.location.search);
+    params.set("section", tab);
+    if (acceleratorId) params.set("accelerator", String(acceleratorId)); else params.delete("accelerator");
+    if (cohortId) params.set("cohort", String(cohortId)); else params.delete("cohort");
+    if (selectedMembershipId) params.set("resident", String(selectedMembershipId)); else params.delete("resident");
+    if (tab === "reports" && reportQuery) params.set("q", reportQuery); else params.delete("q");
+    if (tab === "reports" && reportStatus !== "all") params.set("status", reportStatus); else params.delete("status");
+    window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
+  }, [acceleratorId, cohortId, reportQuery, reportStatus, selectedMembershipId, tab, urlReady]);
 
   const selectedAccelerator = accelerators.find((row) => row.id === acceleratorId) || null;
   const selectedCohort = cohorts.find((row) => row.id === cohortId) || null;
@@ -88,7 +111,6 @@ export default function AcceleratorWorkspacePage() {
     if (!canManage) return [];
     const participants: NavigationGroup["items"] = [{ key: "reports", label: "Список участников" }];
     if (config?.modules.progress_tracking) participants.push({ key: "tracking", label: "Трекинг" });
-    participants.push({ key: "trackers", label: "Назначения" });
     if (config?.modules.matchmaking) participants.push({ key: "matching", label: "Подбор и команды" });
     if (config?.modules.project_audit) participants.push({ key: "project_audit", label: "Аудит проектов" });
     const program: NavigationGroup["items"] = [{ key: "program", label: "Программа" }];
@@ -97,10 +119,11 @@ export default function AcceleratorWorkspacePage() {
     if (config?.modules.demo_day) results.push({ key: "demo_day", label: "Демо-день" });
     results.push({ key: "closure", label: "Завершение потока" });
     const settings: NavigationGroup["items"] = [{ key: "settings", label: "Поток и функции" }];
+    settings.push({ key: "trackers", label: "Команда трекеров" });
     if (isAdmin) settings.push({ key: "quotas", label: "Лимиты" });
     settings.push({ key: "audit", label: "Журнал изменений" });
     return [
-      { key: "overview", label: "Обзор", items: [{ key: "overview", label: "Рабочая сводка" }, { key: "operations", label: "Состояние системы" }] },
+      { key: "overview", label: "Обзор", items: [{ key: "overview", label: "Рабочая сводка" }] },
       { key: "applications", label: "Заявки", items: [{ key: "applications", label: "Отбор кандидатов" }, { key: "form", label: "Анкета и ссылка" }] },
       { key: "participants", label: "Участники", items: participants },
       { key: "program", label: "Программа", items: program },
@@ -140,8 +163,7 @@ export default function AcceleratorWorkspacePage() {
       {isResident && acceleratorId && <ResidentWorkspace acceleratorId={acceleratorId} data={residentWorkspace} onChanged={loadAccelerators} />}
       {!isResident && canReadCohort && selectedCohort && <>
         {canManage ? <div className="mb-6 space-y-3"><nav className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6" aria-label="Основные разделы акселератора">{managerGroups.map((group) => <button type="button" key={group.key} onClick={() => setTab(group.items[0].key)} className={`rounded-2xl border px-4 py-3 text-sm transition ${activeManagerGroup?.key === group.key ? "border-white bg-white text-black" : "border-white/10 text-white/50 hover:border-white/20 hover:text-white"}`}>{group.label}</button>)}</nav>{activeManagerGroup && activeManagerGroup.items.length > 1 && <nav className="flex gap-2 overflow-x-auto pb-1" aria-label={`Подразделы: ${activeManagerGroup.label}`}>{activeManagerGroup.items.map((item) => <button type="button" key={item.key} onClick={() => setTab(item.key)} className={`shrink-0 rounded-full border px-3.5 py-2 text-sm ${tab === item.key ? "border-white/35 bg-white/10 text-white" : "border-white/8 text-white/40 hover:text-white"}`}>{item.label}</button>)}</nav>}</div> : <nav className="mb-6 flex gap-2 overflow-x-auto pb-2" aria-label="Разделы акселератора">{tabs.map((item) => <button type="button" key={item.key} onClick={() => setTab(item.key)} className={`shrink-0 rounded-full border px-4 py-2 text-sm ${tab === item.key ? "border-white bg-white text-black" : "border-white/10 text-white/50 hover:text-white"}`}>{item.label}</button>)}</nav>}
-        {tab === "overview" && <Overview accelerator={selectedAccelerator} cohort={selectedCohort} config={config} applications={applications} residents={residents} onCopy={copyApplicationLink} copied={copied} onNavigate={setTab} />}
-        {tab === "operations" && canManage && <AcceleratorOperations cohortId={selectedCohort.id} acceleratorId={selectedAccelerator.id} token={token} isAdmin={isAdmin} />}
+        {tab === "overview" && <Overview accelerator={selectedAccelerator} cohort={selectedCohort} config={config} token={token} isAdmin={isAdmin} onCopy={copyApplicationLink} copied={copied} onNavigate={setTab} onOpenParticipant={setSelectedMembershipId} />}
         {tab === "applications" && <ApplicationManager token={token} applications={applications} schema={selectedCohort.application_form_schema || {}} onChanged={loadCohortDetails} />}
         {tab === "form" && <ApplicationFormEditor key={selectedCohort.id} schema={selectedCohort.application_form_schema || {}} cohortId={selectedCohort.id} token={token} publicUrl={`/accelerators/apply/${selectedCohort.id}`} onPublished={loadCohortDetails} />}
         {tab === "program" && <div className="space-y-6">
@@ -151,48 +173,38 @@ export default function AcceleratorWorkspacePage() {
         </div>}
         {tab === "homework" && config?.modules.homework && <div className="space-y-6"><HomeworkReviewQueue cohortId={selectedCohort.id} token={token} />{canManage && <HomeworkManager cohortId={selectedCohort.id} token={token} residents={residents} isAdmin={isAdmin} pitchyEnabled={selectedCohort.homework_pitchy_enabled} />}</div>}
         {tab === "attendance" && config?.modules.attendance && (canManage ? <AttendanceManager cohortId={selectedCohort.id} token={token} /> : <TrackerAttendance cohortId={selectedCohort.id} token={token} />)}
-        {tab === "tracking" && config?.modules.progress_tracking && <TrackingDashboard cohortId={selectedCohort.id} token={token} />}
+        {tab === "tracking" && config?.modules.progress_tracking && <TrackingDashboard cohortId={selectedCohort.id} token={token} onOpenParticipant={setSelectedMembershipId} />}
         {tab === "matching" && config?.modules.matchmaking && (canManage ? <MatchmakingManager cohortId={selectedCohort.id} token={token} /> : <MatchmakingWorkspace cohortId={selectedCohort.id} />)}
         {tab === "project_audit" && config?.modules.project_audit && <ProjectAuditWorkspace cohortId={selectedCohort.id} residents={residents} token={token} canCreateTasks taskIntegrationEnabled={Boolean(config.modules.progress_tracking)} />}
         {tab === "demo_day" && config?.modules.demo_day && <DemoDayWorkspace cohortId={selectedCohort.id} residents={residents} token={token} canManage={canManage} />}
         {tab === "artifacts" && config?.modules.pitchy_artifacts && <ArtifactWorkspace cohortId={selectedCohort.id} token={token} />}
         {tab === "trackers" && canManage && <TrackerManager token={token} cohortId={selectedCohort.id} residents={residents} />}
-        {tab === "reports" && <ResidentReport token={token} cohortId={selectedCohort.id} canManage={canManage} onChanged={loadCohortDetails} />}
+        {tab === "reports" && <ResidentReport token={token} cohortId={selectedCohort.id} canManage={canManage} onChanged={loadCohortDetails} onOpenParticipant={setSelectedMembershipId} initialQuery={reportQuery} initialStatus={reportStatus} onFiltersChange={(query, status) => { setReportQuery(query); setReportStatus(status); }} />}
         {tab === "closure" && canManage && <CohortClosure cohortId={selectedCohort.id} token={token} onCompleted={async () => { await loadAccelerators(); await loadCohortDetails(); }} />}
         {tab === "quotas" && isAdmin && <QuotaManager token={token} cohortId={selectedCohort.id} initialTemplate={selectedCohort.default_quota_config} residents={residents} />}
         {tab === "settings" && <SettingsPanel token={token} isAdmin={isAdmin} accelerator={selectedAccelerator} cohort={selectedCohort} config={config} onConfig={setConfig} onCohort={(updated) => setCohorts((rows) => rows.map((row) => row.id === updated.id ? updated : row))} onAccelerator={(updated) => setAccelerators((rows) => rows.map((row) => row.id === updated.id ? { ...row, ...updated } : row))} onCohortCreated={async (created) => { const rows = await getAuthJson<Cohort[]>(`/api/accelerators/${selectedAccelerator.id}/cohorts`, token); setCohorts(rows); setCohortId(created.id); }} />}
         {tab === "audit" && <AuditLog token={token} acceleratorId={selectedAccelerator.id} />}
+        {selectedMembershipId && <ParticipantDrawer membershipId={selectedMembershipId} token={token} onClose={() => setSelectedMembershipId(null)} onChanged={loadCohortDetails} />}
       </>}
       {!isResident && canManage && !selectedCohort && selectedAccelerator && <FirstCohortSetup token={token} accelerator={selectedAccelerator} onCreated={async (created) => { const rows = await getAuthJson<Cohort[]>(`/api/accelerators/${selectedAccelerator.id}/cohorts`, token); setCohorts(rows); setCohortId(created.id); setTab("overview"); }} />}
     </>}
   </div></main>;
 }
 
-function Overview({ accelerator, cohort, config, applications, residents, onCopy, copied, onNavigate }: { accelerator: Accelerator; cohort: Cohort; config: ProgramConfig | null; applications: AcceleratorApplication[]; residents: Resident[]; onCopy: () => Promise<void>; copied: boolean; onNavigate: (tab: TabKey) => void }) {
-  const newApplications = applications.filter((row) => ["submitted", "under_review", "needs_info", "waitlisted"].includes(row.status)).length;
-  const withoutTracker = residents.filter((resident) => ["enrolled", "suspended"].includes(resident.status) && !(resident.trackers || []).length).length;
-  const nextSteps = cohort.status === "draft" ? [
-    { title: "Проверьте анкету", text: "Настройте вопросы и публичную ссылку до открытия набора.", tab: "form" as TabKey },
-    { title: "Соберите программу", text: "Добавьте первые этапы и материалы для участников.", tab: "program" as TabKey },
-    { title: "Откройте набор", text: "Когда всё готово, переведите поток в приём заявок.", tab: "settings" as TabKey },
-  ] : cohort.status === "accepting" ? [
-    { title: `${newApplications} заявок ждут решения`, text: "Откройте выжимки и обработайте очередь кандидатов.", tab: "applications" as TabKey },
-    { title: "Подготовьте старт", text: "Проверьте первый этап, задания и календарь потока.", tab: "program" as TabKey },
-    { title: "Проверьте состав функций", text: "Оставьте участникам только нужные рабочие разделы.", tab: "settings" as TabKey },
-  ] : cohort.status === "active" ? [
-    { title: "Участники требуют внимания", text: "Проверьте прогресс, открытые задачи и последние чек-ины.", tab: config?.modules.progress_tracking ? "tracking" as TabKey : "reports" as TabKey },
-    { title: "Очередь программы", text: "Проверьте ответы на ДЗ и подготовьте ближайшее событие.", tab: config?.modules.homework ? "homework" as TabKey : "program" as TabKey },
-    { title: "Подготовьте результаты", text: "Следите за артефактами и готовностью к демо-дню.", tab: config?.modules.pitchy_artifacts ? "artifacts" as TabKey : "reports" as TabKey },
-  ] : [
-    { title: "Итоги потока", text: "Откройте зафиксированные решения и результаты участников.", tab: "closure" as TabKey },
-    { title: "Отчётность", text: "Сверьте итоговый прогресс и выгрузите данные.", tab: "reports" as TabKey },
-    { title: "История изменений", text: "Проверьте действия, выполненные во время потока.", tab: "audit" as TabKey },
-  ];
+type WorkSummary = { counts: { new_applications: number; pending_homework: number; teams_without_tracker: number; participants_without_tracker: number; risks: number; today_events: number }; participants_without_tracker: Array<{ membership_id: number; name: string }>; risks: Array<{ membership_id: number; name: string; level: string; reasons: string[] }>; today_events: Array<{ id: number; title: string; starts_at: string; format: string }> };
+function Overview({ accelerator, cohort, token, isAdmin, onCopy, copied, onNavigate, onOpenParticipant }: { accelerator: Accelerator; cohort: Cohort; config: ProgramConfig | null; token: string; isAdmin: boolean; onCopy: () => Promise<void>; copied: boolean; onNavigate: (tab: TabKey) => void; onOpenParticipant: (id: number) => void }) {
+  const [summary, setSummary] = useState<WorkSummary | null>(null); const [summaryError, setSummaryError] = useState("");
+  const load = useCallback(async () => { try { setSummary(await getAuthJson<WorkSummary>(`/api/accelerators/cohorts/${cohort.id}/work-summary`, token)); setSummaryError(""); } catch (reason) { setSummaryError(describeApiError(reason, "Не удалось загрузить рабочую сводку")); } }, [cohort.id, token]);
+  useEffect(() => { let active = true; getAuthJson<WorkSummary>(`/api/accelerators/cohorts/${cohort.id}/work-summary`, token).then((row) => { if (active) { setSummary(row); setSummaryError(""); } }).catch((reason) => { if (active) setSummaryError(describeApiError(reason, "Не удалось загрузить рабочую сводку")); }); return () => { active = false; }; }, [cohort.id, token]);
+  const counts = summary?.counts;
   return <div className="space-y-6"><section className="workspace-card"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs uppercase tracking-[.17em] text-white/30">{STATUS_LABELS[cohort.status] || cohort.status}</p><h2 className="mt-2 text-3xl">{cohort.name}</h2><p className="mt-2 max-w-2xl text-sm text-white/45">{accelerator.description || "Добавьте описание акселератора в настройках."}</p></div><button type="button" onClick={() => void onCopy()} className="workspace-button"><Clipboard size={15} /> {copied ? "Скопировано" : "Ссылка на заявку"}</button></div></section>
-    <div className="grid gap-4 sm:grid-cols-3"><Stat label="Заявки в работе" value={newApplications} onClick={() => onNavigate("applications")} /><Stat label="Участники" value={residents.length} onClick={() => onNavigate("reports")} /><Stat label="Без трекера" value={withoutTracker} onClick={() => onNavigate("trackers")} /></div>
-    <section className="workspace-card"><h3 className="text-lg">Рабочая очередь</h3><div className="mt-4 grid gap-3 md:grid-cols-3">{nextSteps.map((step) => <Quick key={step.title} title={step.title} text={step.text} onClick={() => onNavigate(step.tab)} />)}</div></section>
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"><Stat label="Новые заявки" value={counts?.new_applications || 0} onClick={() => onNavigate("applications")} /><Stat label="ДЗ на проверке" value={counts?.pending_homework || 0} onClick={() => onNavigate("program")} /><Stat label="Без трекера" value={(counts?.teams_without_tracker || 0) + (counts?.participants_without_tracker || 0)} onClick={() => onNavigate("matching")} /><Stat label="Риски" value={counts?.risks || 0} onClick={() => onNavigate("reports")} /><Stat label="События сегодня" value={counts?.today_events || 0} onClick={() => onNavigate("program")} /><Stat label="Очередь команд" value={counts?.teams_without_tracker || 0} onClick={() => onNavigate("matching")} /></div>
+    <section className="workspace-card"><div className="flex items-center justify-between"><div><h3 className="text-lg">Что требует внимания</h3><p className="mt-1 text-sm text-white/35">Сводка рассчитана сервером по текущему состоянию потока.</p></div><button type="button" onClick={() => void load()} aria-label="Обновить рабочую сводку" className="rounded-full border border-white/10 p-3 text-white/45"><RefreshCw size={15} /></button></div><div className="mt-5 grid gap-4 lg:grid-cols-3"><Queue title="Участники без трекера">{summary?.participants_without_tracker.map((row) => <button type="button" key={row.membership_id} onClick={() => onOpenParticipant(row.membership_id)} className="block w-full rounded-xl border border-white/8 p-3 text-left text-sm hover:border-white/20">{row.name}</button>)}</Queue><Queue title="Риски">{summary?.risks.map((row) => <button type="button" key={row.membership_id} onClick={() => onOpenParticipant(row.membership_id)} className="block w-full rounded-xl border border-white/8 p-3 text-left text-sm hover:border-white/20"><span>{row.name}</span><span className="mt-1 block text-xs text-white/35">{row.reasons[0] || "Требует внимания"}</span></button>)}</Queue><Queue title="Сегодня">{summary?.today_events.map((row) => <button type="button" key={row.id} onClick={() => onNavigate("program")} className="block w-full rounded-xl border border-white/8 p-3 text-left text-sm hover:border-white/20">{new Date(row.starts_at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })} · {row.title}</button>)}</Queue></div>{summaryError && <p role="alert" className="mt-4 text-sm text-red-200">{summaryError}</p>}</section>
+    <AcceleratorOperations cohortId={cohort.id} acceleratorId={accelerator.id} token={token} isAdmin={isAdmin} />
   </div>;
 }
+
+function Queue({ title, children }: { title: string; children: React.ReactNode }) { return <div><h4 className="mb-3 text-sm text-white/50">{title}</h4><div className="space-y-2">{children || <p className="text-sm text-white/30">Очередь пуста</p>}</div></div>; }
 
 function FirstCohortSetup({ token, accelerator, onCreated }: { token: string; accelerator: Accelerator; onCreated: (cohort: Cohort) => Promise<void> }) {
   const [name, setName] = useState("");
@@ -234,6 +246,5 @@ function toLocal(value?: string | null) { if (!value) return ""; const date = ne
 function SelectCard({ label, children }: { label: string; children: React.ReactNode }) { return <section className="workspace-card"><p className="mb-2 text-xs uppercase tracking-[.18em] text-white/35">{label}</p>{children}</section>; }
 function Label({ text, children }: { text: string; children: React.ReactNode }) { return <label className="text-sm text-white/60">{text}{children}</label>; }
 function Stat({ label, value, onClick }: { label: string; value: number; onClick?: () => void }) { const Tag = onClick ? "button" : "div"; return <Tag type={onClick ? "button" : undefined} onClick={onClick} className="workspace-card w-full text-left"><p className="text-3xl">{value}</p><p className="mt-2 text-sm text-white/40">{label}</p></Tag>; }
-function Quick({ title, text, onClick }: { title: string; text: string; onClick: () => void }) { return <button type="button" onClick={onClick} className="rounded-2xl border border-white/10 p-4 text-left hover:border-white/25"><span>{title}</span><span className="mt-2 block text-sm text-white/35">{text}</span></button>; }
 function EmptyState({ isAdmin, onCreate }: { isAdmin: boolean; onCreate: () => void }) { return <section className="workspace-card py-12 text-center"><LayoutDashboard className="mx-auto mb-4 text-white/25" size={38} /><h2 className="text-2xl">Нет доступных акселераторов</h2><p className="mx-auto mt-3 max-w-lg text-white/40">{isAdmin ? "Создайте первый акселератор — мастер сразу подготовит организацию, поток, анкету, функции и лимиты." : "Главный администратор должен назначить вас организатором или зачислить резидентом."}</p>{isAdmin && <button type="button" onClick={onCreate} className="workspace-button mt-6">Начать настройку</button>}</section>; }
 function Empty({ icon: Icon, title, text, children }: { icon: typeof Rocket; title: string; text: string; children?: React.ReactNode }) { return <main className="min-h-[100dvh] grid place-items-center bg-black px-5 text-white"><section className="max-w-lg text-center"><Icon className="mx-auto mb-5 text-white/35" size={42} /><h1 className="mb-4 text-3xl">{title}</h1><p className="mb-8 text-white/45">{text}</p>{children}</section></main>; }
