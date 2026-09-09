@@ -144,7 +144,10 @@ done
 # the operator can investigate. We do NOT auto-rollback here: a partial
 # migration plus a code rollback leaves the schema ahead of the code,
 # which is worse than leaving things stopped and investigating.
-if ! timeout 60 docker compose --env-file "$RUNTIME_ENV_FILE" exec -T backend python -m alembic upgrade head; then
+# A cold production backend can spend tens of seconds importing the app before
+# Alembic starts executing migrations. Keep a finite guard, but leave enough
+# time for a first rollout that applies the full accelerator migration chain.
+if ! timeout 300 docker compose --env-file "$RUNTIME_ENV_FILE" exec -T backend python -m alembic upgrade head; then
   echo "ERROR: alembic upgrade head exited non-zero. Aborting deploy."
   exit 1
 fi
