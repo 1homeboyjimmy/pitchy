@@ -21,6 +21,14 @@ async function mockManagerWorkspace(page: Page) {
   await page.route('**/api/accelerators/cohorts/12/teams', async (route) => route.fulfill({ json: { teams: [{ id: 601, name: 'Команда Проекта А', status: 'active', max_members: 5, project: { id: 5, name: 'Проект А' }, owner_membership_id: 101, can_manage: false, members: [{ id: 611, membership_id: 101, role: 'owner', title: 'Основатель', status: 'active', share_contact: true, person: { id: 8, name: 'Резидент А', email: 'resident@example.test' } }, { id: 612, membership_id: 102, role: 'member', title: 'Продажи', status: 'active', share_contact: false, person: { id: 9, name: 'Резидент Б' } }], pending_invitations: [{ id: 621, team_id: 601, status: 'pending', message: null, expires_at: new Date(Date.now() + 86_400_000).toISOString(), created_at: new Date().toISOString(), team: { id: 601, name: 'Команда Проекта А', project: { id: 5, name: 'Проект А' } }, invitee: { membership_id: 103, name: 'Резидент В' }, invited_by: { id: 8, name: 'Резидент А' }, counterpart_profile_id: 43, can_respond: false, can_cancel: false }] }] } }));
   await page.route('**/api/accelerators/cohorts/12/analytics', async (route) => route.fulfill({ json: { cohort_id: 12, applications: { submitted: 9, accepted: 4 }, residents: { enrolled: 4 }, program: { published_stages: 5, completion_percent: 60 }, homework: { published: 3, submissions: { submitted: 7 } }, attendance: { published_events: 2, attendance_percent: 75 }, quota_usage: { messages: 31 }, artifacts: { ready: 6 }, teams: { active: 1, active_members: 2, average_size: 2 }, demo_day: { projects: 1, outcomes: { winner: 1 } }, alumni: { published_profiles: 0 }, runtime_disabled_modules: {} } }));
   await page.route('**/api/accelerators/cohorts/12/operations-health', async (route) => route.fulfill({ json: { cohort_id: 12, status: 'warning', summary: { error: 0, warning: 1, info: 0 }, issues: [{ code: 'stale_applications', severity: 'warning', count: 2, message: 'Заявки находятся в работе больше 7 дней', recommended_action: 'Откройте раздел заявок и зафиксируйте решение' }] } }));
+  await page.route('**/api/accelerators/cohorts/12/work-summary', async (route) => route.fulfill({ json: {
+    cohort_id: 12,
+    counts: { new_applications: 2, pending_homework: 3, teams_without_tracker: 1, participants_without_tracker: 1, risks: 1, today_events: 1 },
+    new_applications: [], pending_homework: [], teams_without_tracker: [],
+    participants_without_tracker: [{ membership_id: 101, name: 'Резидент А' }],
+    risks: [{ membership_id: 101, name: 'Резидент А', level: 'yellow', reasons: ['Просрочено обязательное действие'] }],
+    today_events: [{ id: 301, title: 'Разбор недели', starts_at: new Date().toISOString(), format: 'online' }],
+  } }));
   let runtimeOverrides: Array<Record<string, unknown>> = [];
   await page.route('**/api/accelerators/runtime-overrides', async (route) => {
     if (route.request().method() === 'PUT') {
@@ -57,10 +65,13 @@ test('manager workspace is split into focused sections', async ({ page }) => {
   await expect(mainNavigation).toContainText('Настройки');
   await expect(mainNavigation.getByRole('button')).toHaveCount(6);
   await page.getByRole('button', { name: 'Программа', exact: true }).click();
-  await expect(page.getByRole('navigation', { name: 'Подразделы: Программа' })).toContainText('Домашние задания');
-  await expect(page.getByRole('navigation', { name: 'Подразделы: Программа' })).not.toContainText('Посещаемость');
+  await expect(page.getByRole('heading', { name: 'Этапы программы' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Единая очередь проверки' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Домашние задания' })).toBeVisible();
   await page.getByRole('button', { name: 'Обзор', exact: true }).click();
-  await page.getByRole('button', { name: 'Состояние системы', exact: true }).click();
+  await expect(page.getByText('Новые заявки').first()).toBeVisible();
+  await expect(page.getByText('ДЗ на проверке').first()).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Что требует внимания' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Операционный обзор' })).toBeVisible();
   await expect(page.getByText('Заявки находятся в работе больше 7 дней')).toBeVisible();
   await expect(page.getByText('60%')).toBeVisible();
@@ -85,11 +96,50 @@ test('manager workspace is split into focused sections', async ({ page }) => {
   await expect(page.getByText('Команда Проекта А')).toBeVisible();
   await expect(page.getByText('resident@example.test')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Принять' })).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'Подобрать связку' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Эксперт потока' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'История матчмейкинга' })).toBeVisible();
   await page.getByRole('button', { name: 'Настройки', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Конструктор функций' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Матчмейкинг Включён' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Демо-день и экспорт Включён' })).toBeVisible();
+});
+
+test('organizer workspace fits the agreed screen widths', async ({ page }) => {
+  await mockManagerWorkspace(page);
+  for (const width of [360, 768, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/accelerator');
+    await expect(page.getByRole('heading', { name: 'Поток 2026' })).toBeVisible();
+    const hasPageOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
+    expect(hasPageOverflow, `page must not overflow at ${width}px`).toBe(false);
+    await expect(page.getByRole('navigation', { name: 'Основные разделы акселератора' })).toBeVisible();
+  }
+});
+
+test('participant card opens and closes from the keyboard with restored focus', async ({ page }) => {
+  await mockManagerWorkspace(page);
+  await page.route('**/api/accelerators/memberships/101/organizer-card', async (route) => route.fulfill({ json: {
+    membership_id: 101, access_role: 'global_admin', can_manage: true, available_statuses: ['suspended'],
+    person: { name: 'Резидент А', email: 'resident@example.test' },
+    membership: { status: 'enrolled', enrolled_at: new Date().toISOString() },
+    application: { id: 44, type: 'project', status: 'approved', form_version: 1, answers: { project_name: 'Проект А' }, submitted_at: new Date().toISOString() },
+    profile: { telegram: '@resident', competencies: ['продукт'] }, project: { id: 5, name: 'Проект А', readiness: 72, status: 'active' }, team: null,
+    trackers: [], tracker_options: [],
+    homework: { published: 2, accepted: 1, pending: 0, overdue: 0, submissions: [] },
+    risk: { level: 'yellow', reasons: ['Просрочено обязательное действие'], overdue_tasks: 1, overdue_homework: 0, last_activity_at: new Date().toISOString() },
+    checkins: [], feedback: [], audit: null, lifecycle: [], last_action: { title: 'Подтвердил участие', at: new Date().toISOString() },
+  } }));
+
+  await page.goto('/accelerator');
+  const trigger = page.getByRole('button', { name: 'Резидент А' }).first();
+  await trigger.focus();
+  await page.keyboard.press('Enter');
+  const dialog = page.getByRole('dialog', { name: 'Карточка участника' });
+  await expect(dialog).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Закрыть карточку' })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(trigger).toBeFocused();
 });
 
 test('manager sees an application summary and accepted participation state', async ({ page }) => {
@@ -215,11 +265,37 @@ test('resident Today page prioritizes required work and keeps improvements optio
     ],
     feedback: [{ id: 81, body: 'Фокус на одном сегменте сделает интервью точнее.', created_at: new Date().toISOString(), author: { name: 'Анна, трекер' } }],
   } }));
+  let recommendationDismissed = false;
+  await page.route('**/api/accelerators/memberships/101/recommendations/*/dismiss', async (route) => {
+    recommendationDismissed = true;
+    await route.fulfill({ json: { ok: true } });
+  });
+  await page.route('**/api/accelerators/memberships/101/today', async (route) => route.fulfill({ json: {
+    membership_id: 101, generated_at: new Date().toISOString(), timezone: 'Europe/Moscow',
+    required_actions: [
+      { key: 'homework:51', title: 'Доработать: Сценарий интервью', description: 'Добавьте вопросы о прошлом поведении.', due_at: tomorrow, section: 'homework', kind: 'homework', overdue: false },
+      { key: 'task:71', title: 'Уточнить сегмент', description: 'Выберите один основной сегмент.', due_at: tomorrow, section: 'tracking', kind: 'task', overdue: false },
+    ],
+    upcoming: [{ key: 'event:61', kind: 'event', title: 'Встреча с трекером', starts_at: tomorrow, section: 'program' }],
+    unread_feedback: [{ id: 81, body: 'Фокус на одном сегменте сделает интервью точнее.', created_at: new Date().toISOString(), author: { name: 'Анна, трекер' } }],
+    progress: { percent: 50, completed_stages: 1, total_stages: 2, current_stage: { id: 31, title: 'Проверка проблемы' }, project_readiness: 45 },
+    support: { enabled: true, trackers: [{ id: 5, name: 'Анна, трекер', email: 'tracker@example.test' }], risk: { level: 'yellow', reasons: [] } },
+    recommendations: recommendationDismissed ? [
+      { key: 'manual:72', title: 'Посмотреть пример интервью', description: 'Необязательный совет от трекера.', source: 'От организатора или трекера', source_type: 'manual', section: 'tracking', priority: 100, reason_fingerprint: 'manual-72' },
+      { key: 'system:audit', title: 'Проверить проект аудитом', description: 'Проверьте риски.', source: 'По состоянию проекта', source_type: 'system', section: 'project_audit', priority: 70, reason_fingerprint: 'audit-v1' },
+      { key: 'system:expert', title: 'Найти подходящего эксперта', description: 'Подберите поддержку.', source: 'По состоянию этапа', source_type: 'system', section: 'matching', priority: 60, reason_fingerprint: 'expert-v1' },
+    ] : [
+      { key: 'manual:72', title: 'Посмотреть пример интервью', description: 'Необязательный совет от трекера.', source: 'От организатора или трекера', source_type: 'manual', section: 'tracking', priority: 100, reason_fingerprint: 'manual-72' },
+      { key: 'system:passport', title: 'Дополнить паспорт проекта', description: 'Заполните ключевые поля.', source: 'По состоянию проекта', source_type: 'system', href: '/passport/5', priority: 80, reason_fingerprint: 'passport-v1' },
+      { key: 'system:audit', title: 'Проверить проект аудитом', description: 'Проверьте риски.', source: 'По состоянию проекта', source_type: 'system', section: 'project_audit', priority: 70, reason_fingerprint: 'audit-v1' },
+    ],
+    dismissed_recommendations: [], unavailable_sections: [],
+  } }));
   await page.route('**/api/accelerators/notifications/unread-count', async (route) => route.fulfill({ json: { count: 0 } }));
 
   await page.goto('/accelerator');
   await expect(page.getByRole('heading', { name: 'Сегодня', exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Требует действия' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Нужно сделать' })).toBeVisible();
   await expect(page.getByText('Доработать: Сценарий интервью')).toBeVisible();
   await expect(page.getByText('Уточнить сегмент', { exact: true })).toBeVisible();
   await expect(page.getByText('Встреча с трекером')).toBeVisible();
@@ -249,6 +325,10 @@ test('participant workspace stays reachable when the same user has a staff role'
   await page.route('**/api/accelerators/7/cohorts', async (route) => route.fulfill({ json: [membership.cohort] }));
   await page.route('**/api/accelerators/cohorts/12/program-config', async (route) => route.fulfill({ json: { cohort_id: 12, version: 1, modules: { matchmaking: true }, locked_modules: {} } }));
   await page.route('**/api/accelerators/cohorts/12/matchmaking/me', async (route) => route.fulfill({ json: { access_role: 'expert', profiles: [], matches: [] } }));
+  await page.route('**/api/accelerators/memberships/101/today', async (route) => route.fulfill({ json: {
+    membership_id: 101, generated_at: new Date().toISOString(), timezone: 'Europe/Moscow', required_actions: [], upcoming: [], unread_feedback: [],
+    progress: { percent: 0, completed_stages: 0, total_stages: 0, project_readiness: 70 }, support: { enabled: false, trackers: [] }, recommendations: [], dismissed_recommendations: [], unavailable_sections: [],
+  } }));
   await page.route('**/api/accelerators/notifications/unread-count', async (route) => route.fulfill({ json: { count: 0 } }));
 
   await page.goto('/accelerator');
@@ -286,6 +366,7 @@ test('resident launches a Pitchy action and controls result visibility', async (
     artifact = { ...artifact, visibility: { organizer: true, tracker: false }, updated_at: new Date().toISOString() };
     await route.fulfill({ json: artifact });
   });
+  await page.route('**/dashboard?tab=chat&session=33', async (route) => route.fulfill({ contentType: 'text/html', body: '<title>Pitchy chat</title><main>Chat session 33</main>' }));
 
   await page.goto('/accelerator');
   await page.getByRole('button', { name: 'Мой путь', exact: true }).click();
@@ -304,7 +385,7 @@ test('resident launches a Pitchy action and controls result visibility', async (
   await expect.poll(() => updatePayload).toMatchObject({ share_with_organizer: true, share_with_tracker: false });
 });
 
-test('resident creates a team and invites only recommended residents', async ({ page }) => {
+test('captain manages a team, incoming applications and own membership', async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem('vi_auth_state', 'cookie-session');
     localStorage.setItem('pitchy_cookie_consent_v2', JSON.stringify({ choice: 'necessary', updatedAt: new Date().toISOString() }));
@@ -323,10 +404,10 @@ test('resident creates a team and invites only recommended residents', async ({ 
   let viewerLeft = false;
   let shareContact = false;
   let incomingInvitations: Array<Record<string, unknown>> = [{ id: 701, team_id: 880, status: 'pending', team: { id: 880, name: 'Команда Альфа', project: { id: 6, name: 'Проект Альфа' } }, invitee: { membership_id: 101, name: 'Резидент А' }, invited_by: { id: 10, name: 'Резидент Г' }, counterpart_profile_id: 41, can_respond: true, can_cancel: false, expires_at: new Date(Date.now() + 86_400_000).toISOString(), created_at: new Date().toISOString(), message: 'Присоединяйтесь к продуктовой команде' }];
-  let pendingInvitations: Array<Record<string, unknown>> = [];
+  const pendingInvitations: Array<Record<string, unknown>> = [];
   let createPayload: Record<string, unknown> | null = null;
   let answerPayload: Record<string, unknown> | null = null;
-  let invitePayload: Record<string, unknown> | null = null;
+  let applicationPayload: Record<string, unknown> | null = null;
   let contactPayload: Record<string, unknown> | null = null;
   let memberPayload: Record<string, unknown> | null = null;
   let archivePayload: Record<string, unknown> | null = null;
@@ -339,14 +420,12 @@ test('resident creates a team and invites only recommended residents', async ({ 
     answerPayload = route.request().postDataJSON(); incomingInvitations = [];
     await route.fulfill({ json: { id: 701, ...answerPayload } });
   });
-  await page.route('**/api/accelerators/memberships/101/matchmaking/recommendations?role=resident', async (route) => route.fulfill({ json: [
-    { profile: { id: 902, membership_id: 102, role: 'resident', name: 'Резидент Б', bio: 'Эксперт по продажам' }, score: 91, reasons: ['Закрывает запрос: продажи'] },
-    { profile: { id: 903, role: 'expert', name: 'Эксперт В' }, score: 99, reasons: ['Не является резидентом'] },
-  ] }));
-  await page.route('**/api/accelerators/teams/900/invitations', async (route) => {
-    invitePayload = route.request().postDataJSON();
-    pendingInvitations = [{ id: 702, team_id: 900, status: 'pending', message: 'Нужна помощь с первыми продажами', expires_at: new Date(Date.now() + 86_400_000).toISOString(), created_at: new Date().toISOString(), team: { id: 900, name: 'Команда Проект А', project: { id: 5, name: 'Проект А' } }, invitee: { membership_id: 102, name: 'Резидент Б' }, invited_by: { id: 8, name: 'Резидент А' }, counterpart_profile_id: 902, can_respond: false, can_cancel: true }];
-    await route.fulfill({ json: pendingInvitations[0] });
+  await page.route('**/api/accelerators/memberships/101/team-pool', async (route) => route.fulfill({ json: {
+    teams: [], candidates: [], applications: teamCreated ? [{ id: 750, team_id: 900, team_name: 'Команда Проект А', membership_id: 102, applicant: { name: 'Резидент Б', email: 'resident-b@example.test', telegram: '@resident_b', competencies: ['продажи'] }, message: 'Хочу отвечать за первые продажи', status: 'pending', can_respond: true, can_cancel: false }] : [],
+  } }));
+  await page.route('**/api/accelerators/team-applications/750', async (route) => {
+    applicationPayload = route.request().postDataJSON();
+    await route.fulfill({ json: { id: 750, ...applicationPayload } });
   });
   await page.route('**/api/accelerators/team-members/801/contact', async (route) => {
     contactPayload = route.request().postDataJSON(); shareContact = Boolean(contactPayload?.share_contact);
@@ -376,25 +455,22 @@ test('resident creates a team and invites only recommended residents', async ({ 
   await page.getByRole('button', { name: 'Создать', exact: true }).click();
   await expect.poll(() => createPayload).toMatchObject({ name: 'Команда Проект А', max_members: 5 });
   await expect(page.getByRole('heading', { name: 'Команда Проект А' })).toBeVisible();
-  await page.getByRole('button', { name: 'Подобрать резидентов' }).click();
   await expect(page.getByText('Резидент Б', { exact: true })).toBeVisible();
-  await expect(page.getByText('Эксперт В')).toHaveCount(0);
-  await page.getByLabel('Сообщение для Резидент Б').fill('Нужна помощь с первыми продажами');
-  await page.getByRole('button', { name: 'Пригласить в команду' }).click();
-  await expect.poll(() => invitePayload).toMatchObject({ counterpart_profile_id: 902, message: 'Нужна помощь с первыми продажами' });
-  await expect(page.getByText('Ожидают ответа')).toBeVisible();
+  await expect(page.getByText('продажи', { exact: true })).toBeVisible();
+  await expect(page.getByText('resident-b@example.test @resident_b')).toBeVisible();
+  await page.getByRole('button', { name: 'Отклонить' }).click();
+  await expect.poll(() => applicationPayload).toMatchObject({ status: 'declined' });
   await page.getByRole('button', { name: 'Открыть контакт Резидент А' }).click();
   await expect.poll(() => contactPayload).toMatchObject({ share_contact: true });
   await expect(page.getByText('resident@example.test')).toBeVisible();
   await page.getByLabel('Роль Резидент Д').selectOption('cofounder');
   await page.getByRole('button', { name: 'Сохранить роль' }).click();
   await expect.poll(() => memberPayload).toMatchObject({ role: 'cofounder', title: 'Технологии' });
-  await expect(page.getByLabel('Максимум участников команды')).toHaveAttribute('min', '3');
+  await expect(page.getByLabel('Максимум участников команды')).toHaveAttribute('min', '2');
   page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Архивировать команду' }).click();
   await expect.poll(() => archivePayload).toMatchObject({ status: 'archived' });
   await expect(page.getByText('В архиве', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Подобрать резидентов' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Скрыть контакт Резидент А' })).toHaveCount(0);
   teamStatus = 'active'; teamCanManage = false;
   await page.reload();
@@ -427,6 +503,17 @@ test('tracker sees reporting only for assigned residents', async ({ page }) => {
     { id: 1, from_status: null, to_status: 'accepted', reason: 'Заявка одобрена', created_at: '2026-08-01T10:00:00' },
     { id: 2, from_status: 'accepted', to_status: 'enrolled', reason: 'Зачислен в поток', created_at: '2026-08-02T10:00:00' },
   ] }));
+  await page.route('**/api/accelerators/memberships/101/organizer-card', async (route) => route.fulfill({ json: {
+    membership_id: 101, access_role: 'tracker', can_manage: false, available_statuses: [],
+    person: { name: 'Резидент А', email: 'resident@example.test' }, membership: { status: 'enrolled' },
+    application: { id: 44, type: 'project', status: 'approved', form_version: 1, answers: {}, submitted_at: new Date().toISOString() }, profile: {}, project: null, team: null,
+    trackers: [{ user_id: 5, name: 'Tracker', email: 'tracker@example.test' }], tracker_options: [],
+    homework: { published: 2, accepted: 1, pending: 0, overdue: 1, submissions: [] },
+    risk: { level: 'yellow', reasons: ['Просрочено домашнее задание'], overdue_tasks: 0, overdue_homework: 1 },
+    checkins: [], feedback: [], audit: null,
+    lifecycle: [{ id: 1, to_status: 'accepted', reason: 'Заявка одобрена', created_at: '2026-08-01T10:00:00' }, { id: 2, from_status: 'accepted', to_status: 'enrolled', reason: 'Зачислен в поток', created_at: '2026-08-02T10:00:00' }],
+    last_action: { title: 'Зачислен в поток', at: '2026-08-02T10:00:00' },
+  } }));
   await page.route('**/api/accelerators/cohorts/12/tracking-dashboard', async (route) => route.fulfill({ json: {
     summary: { residents: 1, green: 0, yellow: 1, red: 0, overdue_tasks: 0 },
     rows: [{ membership_id: 101, name: 'Резидент А', email: 'resident@example.test', status: 'enrolled', program: { percent: 50 }, homework: { overdue: 1 }, attendance: { present: 3, total: 5 }, open_tasks: 1, risk: { level: 'yellow', reasons: ['Нет чек-ина за текущую неделю'], overdue_homework: 1, overdue_tasks: 0, attendance_percent: 60 } }],
@@ -437,13 +524,15 @@ test('tracker sees reporting only for assigned residents', async ({ page }) => {
   await expect(page.getByText('Роль: трекер')).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Разделы акселератора' })).toHaveText(/Мои резиденты/);
   await expect(page.getByRole('navigation', { name: 'Разделы акселератора' })).not.toContainText('Заявки');
-  await expect(page.getByRole('heading', { name: 'Отчёт по резидентам' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Участники' })).toBeVisible();
   await expect(page.getByRole('cell', { name: /Резидент А/ })).toBeVisible();
-  await expect(page.getByText('Просрочено: 1')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Приостановить' })).toHaveCount(0);
-  await page.getByRole('button', { name: 'История', exact: true }).click();
+  await page.getByRole('button', { name: 'Карточка', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Карточка участника' })).toBeVisible();
   await expect(page.getByText('Заявка одобрена')).toBeVisible();
-  await expect(page.getByText('Зачислен в поток')).toBeVisible();
+  await expect(page.getByText('Зачислен в поток').first()).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Создать обязательную задачу' })).toBeVisible();
+  await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Трекинг', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Трекинг прогресса' })).toBeVisible();
   await expect(page.getByText('Нужна внимательность')).toBeVisible();
@@ -483,14 +572,22 @@ test('participant without a project does not see project questions', async ({ pa
   await page.addInitScript(() => localStorage.setItem('pitchy_cookie_consent_v2', JSON.stringify({ choice: 'necessary', updatedAt: new Date().toISOString() })));
   await page.route('**/api/accelerators/public/cohorts/12/application-form', async (route) => route.fulfill({ json: {
     accelerator: { id: 7, name: 'Тестовый акселератор' }, cohort: { id: 12, name: 'Поток 2026' },
+    published_version: 1,
     form_schema: { title: 'Заявка', required: ['motivation', 'project_name'], fields: [
       { key: 'motivation', label: 'Мотивация', type: 'textarea', required: true, application_types: ['project', 'participant'] },
       { key: 'project_name', label: 'Название проекта', required: true, application_types: ['project'] },
     ] },
   } }));
   await page.goto('/accelerators/apply/12');
+  await page.getByLabel('Имя и фамилия').fill('Тестовый участник');
+  await page.getByLabel('Email').fill('participant@example.test');
+  await page.getByLabel('Telegram').fill('@participant_test');
+  await page.getByLabel('Компетенции').fill('маркетинг');
+  await page.getByRole('button', { name: 'Продолжить' }).click();
   await expect(page.getByText('Название проекта')).toBeVisible();
+  await page.getByRole('button', { name: 'Назад', exact: true }).last().click();
   await page.getByLabel('Тип заявки').selectOption('participant');
+  await page.getByRole('button', { name: 'Продолжить' }).click();
   await expect(page.getByText('Название проекта')).toHaveCount(0);
   await expect(page.getByText('Мотивация')).toBeVisible();
 });

@@ -61,6 +61,7 @@ export default function AcceleratorWorkspacePage() {
   }, []);
   useEffect(() => {
     if (!urlReady) return;
+    if (window.location.pathname !== "/accelerator") return;
     const params = new URLSearchParams(window.location.search);
     params.set("section", tab);
     if (acceleratorId) params.set("accelerator", String(acceleratorId)); else params.delete("accelerator");

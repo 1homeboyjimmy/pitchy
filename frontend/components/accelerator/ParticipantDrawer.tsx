@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Activity, ClipboardCheck, Loader2, RefreshCw, UserRound, X } from "lucide-react";
 
 import { describeApiError, getAuthJson, patchAuthJson, postAuthJson, putAuthJson } from "@/lib/api";
@@ -35,6 +35,7 @@ export function ParticipantDrawer({ membershipId, token, onClose, onChanged }: {
   const [error, setError] = useState("");
   const [task, setTask] = useState({ title: "", description: "", dueAt: "" });
   const [recommendation, setRecommendation] = useState({ title: "", description: "" });
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
   const load = useCallback(async () => {
     setError("");
     try { setCard(await getAuthJson<Card>(`/api/accelerators/memberships/${membershipId}/organizer-card`, token)); }
@@ -42,8 +43,11 @@ export function ParticipantDrawer({ membershipId, token, onClose, onChanged }: {
   }, [membershipId, token]);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    closeButtonRef.current?.focus();
     const close = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
-    window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close);
+    window.addEventListener("keydown", close);
+    return () => { window.removeEventListener("keydown", close); previouslyFocused?.focus(); };
   }, [onClose]);
 
   const changeStatus = async (status: string) => {
@@ -81,7 +85,7 @@ export function ParticipantDrawer({ membershipId, token, onClose, onChanged }: {
 
   return <div className="fixed inset-0 z-50 bg-black/70" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <aside role="dialog" aria-modal="true" aria-label="Карточка участника" className="ml-auto h-full w-full max-w-2xl overflow-y-auto border-l border-white/10 bg-[#080808] p-5 text-white shadow-2xl sm:p-7">
-      <div className="flex items-start justify-between gap-4"><div><p className="text-xs uppercase tracking-[.18em] text-white/30">Единая карточка участника</p><h2 className="mt-2 text-2xl">{card?.person?.name || "Участник"}</h2><p className="mt-1 text-sm text-white/40">{card?.person?.email}</p></div><div className="flex gap-2"><button type="button" onClick={() => void load()} aria-label="Обновить карточку" className="rounded-full border border-white/10 p-3 text-white/50"><RefreshCw size={16} /></button><button type="button" onClick={onClose} aria-label="Закрыть карточку" className="rounded-full border border-white/10 p-3 text-white/50"><X size={16} /></button></div></div>
+      <div className="flex items-start justify-between gap-4"><div><p className="text-xs uppercase tracking-[.18em] text-white/30">Единая карточка участника</p><h2 className="mt-2 text-2xl">{card?.person?.name || "Участник"}</h2><p className="mt-1 text-sm text-white/40">{card?.person?.email}</p></div><div className="flex gap-2"><button type="button" onClick={() => void load()} aria-label="Обновить карточку" className="rounded-full border border-white/10 p-3 text-white/50"><RefreshCw size={16} /></button><button ref={closeButtonRef} type="button" onClick={onClose} aria-label="Закрыть карточку" className="rounded-full border border-white/10 p-3 text-white/50"><X size={16} /></button></div></div>
       {!card && !error && <div className="grid min-h-64 place-items-center"><Loader2 className="animate-spin text-white/35" /></div>}
       {error && <p role="alert" className="mt-5 rounded-2xl border border-red-400/20 bg-red-400/10 p-4 text-sm text-red-200">{error}</p>}
       {card && <div className="mt-6 space-y-4">
