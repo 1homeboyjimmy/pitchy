@@ -236,6 +236,10 @@ async function request<T>(
     }
     throw new ApiError(detail, res.status, res.headers.get("X-Request-ID") || undefined);
   }
+  // DELETE endpoints commonly return 204 No Content. Treat that as a
+  // successful empty response instead of trying to parse an empty body as
+  // JSON (which would turn a completed action into a client-side error).
+  if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
 

@@ -39,7 +39,7 @@ export type TeamInvitation = {
   team?: { id: number; name: string } | null;
   person?: { name: string; email?: string } | null;
   profile?: { id?: number; name: string } | null;
-  invitee?: { name: string } | null;
+  invitee?: { membership_id: number; name: string } | null;
   invited_by?: { name: string } | null;
   can_respond?: boolean;
   can_cancel?: boolean;
@@ -60,8 +60,8 @@ export type ResidentTeam = {
 };
 
 type TeamData = { team: ResidentTeam | null; invitations: TeamInvitation[] };
-type PoolContact = { name: string; email: string; telegram?: string | null; competencies: string[] };
-type PoolTeam = { id: number; name: string; max_members: number; member_count: number; recruiting_open: boolean; captain: PoolContact };
+type PoolContact = { name: string; email: string; telegram?: string | null; profile_id?: number | null; bio?: string | null; competencies: string[]; needs?: string[]; industries?: string[]; goals?: string[] };
+type PoolTeam = { id: number; name: string; max_members: number; member_count: number; recruiting_open: boolean; captain: PoolContact; summary: string; details: Array<{ label: string; value: string }> };
 type TeamApplication = { id: number; team_id: number; team_name: string; membership_id: number; applicant?: PoolContact | null; message?: string | null; desired_role?: string | null; status: string; can_respond: boolean; can_cancel: boolean };
 type TeamPool = { teams: PoolTeam[]; candidates: Array<PoolContact & { membership_id: number }>; applications: TeamApplication[] };
 
@@ -73,6 +73,7 @@ export function TeamWorkspace({ membershipId, project }: { membershipId: number;
   const [createForm, setCreateForm] = useState({ name: project ? `Команда ${project.name}` : "", maxMembers: 5 });
   const [settings, setSettings] = useState({ name: "", maxMembers: 5 });
   const [messages, setMessages] = useState<Record<number, string>>({});
+  const [invitationMessages, setInvitationMessages] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -144,6 +145,19 @@ export function TeamWorkspace({ membershipId, project }: { membershipId: number;
     finally { setBusy(""); }
   };
 
+  const inviteCandidate = async (candidate: PoolContact & { membership_id: number }) => {
+    if (!token || !team?.can_manage) return; setBusy(`invite-${candidate.membership_id}`); setError("");
+    try {
+      await postAuthJson(`/api/accelerators/teams/${team.id}/invitations`, {
+        counterpart_profile_id: candidate.profile_id || undefined,
+        membership_id: candidate.membership_id,
+        message: invitationMessages[candidate.membership_id] || null,
+      }, token);
+      await load();
+    } catch (reason) { setError(teamError(reason, "Не удалось отправить приглашение")); }
+    finally { setBusy(""); }
+  };
+
   const toggleRecruiting = async () => {
     if (!token || !team?.can_manage) return; setBusy("recruiting");
     try { await patchAuthJson(`/api/accelerators/teams/${team.id}`, { recruiting_open: !team.recruiting_open }, token); await load(); }
@@ -183,18 +197,9 @@ export function TeamWorkspace({ membershipId, project }: { membershipId: number;
     finally { setBusy(""); }
   };
 
-  const archiveTeam = async () => {
-    if (!token || !team?.can_manage || team.status !== "active" || !window.confirm(`Архивировать команду «${team.name}»? Вернуть её в работу через интерфейс нельзя.`)) return;
-    setBusy("archive"); setError("");
-    try { await patchAuthJson(`/api/accelerators/teams/${team.id}`, { status: "archived" }, token); await load(); }
-    catch (reason) { setError(teamError(reason, "Не удалось архивировать команду")); }
-    finally { setBusy(""); }
-  };
-
   const leaveTeam = async () => {
     const ownMember = team?.members.find((member) => member.membership_id === membershipId);
-    const activeMembers = team?.members.filter((member) => member.status === "active").length || 0;
-    if (!token || !team || team.status !== "active" || ownMember?.status !== "active" || (team.can_manage && activeMembers > 1) || !window.confirm(activeMembers === 1 ? `Покинуть и закрыть команду «${team.name}»?` : `Покинуть команду «${team.name}»?`)) return;
+    if (!token || !team || team.can_manage || team.status !== "active" || ownMember?.status !== "active" || !window.confirm(`Покинуть команду «${team.name}»?`)) return;
     setBusy("leave"); setError("");
     try { await deleteAuth(`/api/accelerators/team-members/${ownMember.id}`, token); await load(); }
     catch (reason) { setError(teamError(reason, "Не удалось покинуть команду")); }
@@ -203,6 +208,7 @@ export function TeamWorkspace({ membershipId, project }: { membershipId: number;
 
   const actionableInvitations = useMemo(() => invitations.filter((invitation) => (invitation.status || "pending") === "pending" && invitation.can_respond !== false), [invitations]);
   const pendingTeamInvitations = useMemo(() => (team?.pending_invitations || []).filter((invitation) => (invitation.status || "pending") === "pending"), [team]);
+  const invitedMembershipIds = useMemo(() => new Set(pendingTeamInvitations.map((row) => row.invitee?.membership_id).filter((id): id is number => Boolean(id))), [pendingTeamInvitations]);
   const pendingTeamIds = useMemo(() => new Set(pool.applications.filter((row) => row.can_cancel).map((row) => row.team_id)), [pool.applications]);
   const activeMemberCount = team?.members.filter((member) => member.status === "active").length || 0;
   const capacityUsed = activeMemberCount + pendingTeamInvitations.length;
@@ -220,16 +226,18 @@ export function TeamWorkspace({ membershipId, project }: { membershipId: number;
 
       {!team && project && <form onSubmit={createTeam} className="mt-6 grid gap-4 rounded-2xl border border-white/10 p-4 sm:grid-cols-[1fr_160px_auto]"><label className="text-sm text-white/55">Название<input value={createForm.name} onChange={(event) => setCreateForm({ ...createForm, name: event.target.value })} minLength={2} maxLength={200} required className="workspace-input mt-2" /></label><label className="text-sm text-white/55">Максимум участников<input type="number" min={2} max={20} value={createForm.maxMembers} onChange={(event) => setCreateForm({ ...createForm, maxMembers: Number(event.target.value) })} className="workspace-input mt-2" /></label><div className="flex items-end"><button disabled={busy === "create"} className="workspace-button"><Users size={15} /> Создать</button></div><p className="text-xs text-white/30 sm:col-span-3">Команда будет привязана к проекту «{project.name}».</p></form>}
       {!team && !project && <div className="mt-5 rounded-2xl border border-amber-300/15 bg-amber-300/[0.05] p-4 text-sm text-amber-100">Создать команду можно после зачисления проекта в поток.</div>}
-      {!team && <div className="mt-6 border-t border-white/8 pt-5"><h3 className="text-lg">Открытые команды</h3><p className="mt-1 text-sm text-white/40">Выберите команду по компетенциям капитана и отправьте заявку.</p><div className="mt-4 grid gap-3 lg:grid-cols-2">{pool.teams.filter((row) => row.recruiting_open && row.member_count < row.max_members).map((row) => <article key={row.id} className="rounded-2xl border border-white/9 p-4"><div className="flex items-start justify-between gap-3"><div><p>{row.name}</p><p className="mt-1 text-xs text-white/35">Капитан: {row.captain.name} · {row.member_count}/{row.max_members}</p></div></div><p className="mt-3 text-sm text-white/50">{row.captain.competencies.join(" · ") || "Компетенции не указаны"}</p><div className="mt-2 flex flex-wrap gap-3 text-xs"><a href={`mailto:${row.captain.email}`} className="text-blue-300">{row.captain.email}</a>{row.captain.telegram && <a href={`https://t.me/${row.captain.telegram.replace(/^@/, "")}`} target="_blank" className="text-blue-300">{row.captain.telegram}</a>}</div><textarea value={messages[row.id] || ""} onChange={(event) => setMessages((current) => ({ ...current, [row.id]: event.target.value }))} rows={2} maxLength={1000} placeholder="Почему хотите присоединиться" className="workspace-input mt-4 resize-y" /><button type="button" onClick={() => void applyToTeam(row.id)} disabled={Boolean(busy) || pendingTeamIds.has(row.id)} className="workspace-button mt-3"><Send size={14} />{pendingTeamIds.has(row.id) ? "Заявка отправлена" : "Подать заявку"}</button></article>)}{!pool.teams.some((row) => row.recruiting_open && row.member_count < row.max_members) && <p className="text-sm text-white/35">Открытых команд пока нет. Если у вас есть проект, создайте свою.</p>}</div></div>}
+      {!team && <div className="mt-6 border-t border-white/8 pt-5"><h3 className="text-lg">Открытые команды</h3><p className="mt-1 text-sm text-white/40">Выберите команду, раскройте описание проекта и отправьте заявку.</p><div className="mt-4 grid gap-3 lg:grid-cols-2">{pool.teams.filter((row) => row.recruiting_open && row.member_count < row.max_members).map((row) => <article key={row.id} className="rounded-2xl border border-white/9 p-4"><div className="flex items-start justify-between gap-3"><div><p>{row.name}</p><p className="mt-1 text-xs text-white/35">Капитан: {row.captain.name} · {row.member_count}/{row.max_members}</p></div></div><p className="mt-3 line-clamp-3 text-sm text-white/50">{row.summary}</p><details className="mt-3 rounded-xl border border-white/7 p-3"><summary className="cursor-pointer text-xs text-white/50">Подробнее о проекте</summary><div className="mt-3 space-y-3">{row.details.map((item) => <div key={item.label}><p className="text-xs text-white/30">{item.label}</p><p className="mt-1 whitespace-pre-wrap text-sm text-white/60">{item.value}</p></div>)}<p className="text-xs text-white/35">Компетенции капитана: {row.captain.competencies.join(" · ") || "не указаны"}</p><div className="flex flex-wrap gap-3 text-xs"><a href={`mailto:${row.captain.email}`} className="text-blue-300">{row.captain.email}</a>{row.captain.telegram && <a href={`https://t.me/${row.captain.telegram.replace(/^@/, "")}`} target="_blank" rel="noreferrer" className="text-blue-300">{row.captain.telegram}</a>}</div></div></details><textarea value={messages[row.id] || ""} onChange={(event) => setMessages((current) => ({ ...current, [row.id]: event.target.value }))} rows={2} maxLength={1000} placeholder="Почему хотите присоединиться" className="workspace-input mt-4 resize-y" /><button type="button" onClick={() => void applyToTeam(row.id)} disabled={Boolean(busy) || pendingTeamIds.has(row.id)} className="workspace-button mt-3"><Send size={14} />{pendingTeamIds.has(row.id) ? "Заявка отправлена" : "Подать заявку"}</button></article>)}{!pool.teams.some((row) => row.recruiting_open && row.member_count < row.max_members) && <p className="text-sm text-white/35">Открытых команд пока нет. Если у вас есть проект, создайте свою.</p>}</div></div>}
 
       {team && <div className="mt-6">
         <div className="grid gap-3 sm:grid-cols-4"><Info label="Проект" value={team.project?.name || "Не привязан"} /><Info label="Трекер" value={team.tracker?.name || "Не назначен"} /><Info label="Занято и приглашено" value={`${capacityUsed} / ${team.max_members}`} /><Info label="Статус" value={team.status === "active" ? "Активна" : "В архиве"} /></div>
-        {team.can_manage && team.status === "active" && <><form onSubmit={saveTeam} className="mt-5 grid gap-3 rounded-2xl border border-white/8 p-4 sm:grid-cols-[1fr_150px_auto]"><input value={settings.name} onChange={(event) => setSettings({ ...settings, name: event.target.value })} minLength={2} required aria-label="Название команды" className="workspace-input" /><input type="number" min={Math.max(2, capacityUsed)} max={20} value={settings.maxMembers} onChange={(event) => setSettings({ ...settings, maxMembers: Number(event.target.value) })} aria-label="Максимум участников команды" className="workspace-input" /><button disabled={busy === "settings"} className="workspace-button"><Save size={14} /> Сохранить</button></form><div className="mt-3 flex flex-wrap gap-2"><button type="button" onClick={() => void toggleRecruiting()} disabled={Boolean(busy)} className="inline-flex items-center gap-1 rounded-full border border-white/10 px-4 py-2 text-sm text-white/60">{team.recruiting_open ? "Закрыть набор" : "Открыть набор"}</button><button type="button" onClick={() => void archiveTeam()} disabled={Boolean(busy)} className="inline-flex items-center gap-1 rounded-full border border-red-300/15 px-4 py-2 text-sm text-red-200"><Trash2 size={14} /> Архивировать команду</button></div></>}
-        {team.status === "active" && viewerActive && (!team.can_manage || activeMemberCount === 1) && <button type="button" onClick={() => void leaveTeam()} disabled={Boolean(busy)} className="mt-4 inline-flex items-center gap-1 rounded-full border border-red-300/15 px-4 py-2 text-sm text-red-200"><X size={14} /> {activeMemberCount === 1 ? "Покинуть и закрыть команду" : "Покинуть команду"}</button>}
+        {team.can_manage && team.status === "active" && <><form onSubmit={saveTeam} className="mt-5 grid gap-3 rounded-2xl border border-white/8 p-4 sm:grid-cols-[1fr_150px_auto]"><input value={settings.name} onChange={(event) => setSettings({ ...settings, name: event.target.value })} minLength={2} required aria-label="Название команды" className="workspace-input" /><input type="number" min={Math.max(2, capacityUsed)} max={20} value={settings.maxMembers} onChange={(event) => setSettings({ ...settings, maxMembers: Number(event.target.value) })} aria-label="Максимум участников команды" className="workspace-input" /><button disabled={busy === "settings"} className="workspace-button"><Save size={14} /> Сохранить</button></form><div className="mt-3 flex flex-wrap gap-2"><button type="button" onClick={() => void toggleRecruiting()} disabled={Boolean(busy)} className="inline-flex items-center gap-1 rounded-full border border-white/10 px-4 py-2 text-sm text-white/60">{team.recruiting_open ? "Закрыть набор" : "Открыть набор"}</button></div><p className="mt-3 text-xs text-white/30">Создатель не может удалить команду или выйти из неё. При необходимости передайте капитанство другому участнику.</p></>}
+        {team.status === "active" && viewerActive && !team.can_manage && <button type="button" onClick={() => void leaveTeam()} disabled={Boolean(busy)} className="mt-4 inline-flex items-center gap-1 rounded-full border border-red-300/15 px-4 py-2 text-sm text-red-200"><X size={14} /> Покинуть команду</button>}
       </div>}
     </section>
 
     {team && <section className="workspace-card"><h2 className="flex items-center gap-2 text-xl"><ShieldCheck size={18} /> Участники</h2><div className="mt-5 grid gap-3 lg:grid-cols-2">{team.members.map((member) => <MemberCard key={`${member.id}-${member.role}-${member.title || ""}`} member={member} isSelf={member.membership_id === membershipId} isOwner={member.membership_id === team.owner_membership_id} canManage={team.can_manage} readOnly={teamReadOnly} busy={busy} onSave={updateMember} onToggleContact={toggleContact} onRemove={removeMember} onTransferCaptain={transferCaptain} />)}</div></section>}
+
+    {team?.can_manage && team.status === "active" && <section className="workspace-card"><h2 className="flex items-center gap-2 text-xl"><UserPlus size={18} /> Участники без команды</h2><p className="mt-1 text-sm text-white/40">Откройте карточку участника, посмотрите его опыт и запрос, затем пригласите в свой проект.</p><div className="mt-5 grid gap-3 lg:grid-cols-2">{pool.candidates.map((candidate) => <article key={candidate.membership_id} className="rounded-2xl border border-white/9 p-4"><p>{candidate.name}</p><p className="mt-2 text-sm text-white/50">{candidate.bio || candidate.competencies.join(" · ") || "Описание пока не заполнено"}</p><details className="mt-3 rounded-xl border border-white/7 p-3"><summary className="cursor-pointer text-xs text-white/50">Подробнее об участнике</summary><div className="mt-3 space-y-2 text-sm text-white/55">{candidate.competencies.length > 0 && <p><span className="text-white/30">Компетенции:</span> {candidate.competencies.join(", ")}</p>}{Boolean(candidate.needs?.length) && <p><span className="text-white/30">Ищет помощь:</span> {candidate.needs?.join(", ")}</p>}{Boolean(candidate.industries?.length) && <p><span className="text-white/30">Отрасли:</span> {candidate.industries?.join(", ")}</p>}{Boolean(candidate.goals?.length) && <p><span className="text-white/30">Цели:</span> {candidate.goals?.join(", ")}</p>}<div className="flex flex-wrap gap-3 text-xs"><a href={`mailto:${candidate.email}`} className="text-blue-300">{candidate.email}</a>{candidate.telegram && <a href={`https://t.me/${candidate.telegram.replace(/^@/, "")}`} target="_blank" rel="noreferrer" className="text-blue-300">{candidate.telegram}</a>}</div></div></details><textarea value={invitationMessages[candidate.membership_id] || ""} onChange={(event) => setInvitationMessages((current) => ({ ...current, [candidate.membership_id]: event.target.value }))} rows={2} maxLength={1000} placeholder="Сообщение участнику" className="workspace-input mt-4 resize-y" /><button type="button" onClick={() => void inviteCandidate(candidate)} disabled={Boolean(busy) || teamIsFull || invitedMembershipIds.has(candidate.membership_id)} className="workspace-button mt-3"><Send size={14} />{invitedMembershipIds.has(candidate.membership_id) ? "Приглашение отправлено" : "Пригласить в проект"}</button></article>)}{!pool.candidates.length && <p className="text-sm text-white/35">Свободных участников пока нет.</p>}</div></section>}
 
     {team?.can_manage && team.status === "active" && <section className="workspace-card"><h2 className="flex items-center gap-2 text-xl"><UserPlus size={18} /> Заявки в команду</h2><p className="mt-1 text-sm text-white/40">Вы видите компетенции и контакты кандидатов и сами принимаете решение.</p>{teamIsFull && <p className="mt-4 rounded-2xl bg-amber-300/[0.07] p-4 text-sm text-amber-100">В команде достигнут лимит участников.</p>}<div className="mt-5 space-y-3">{pool.applications.filter((row) => row.can_respond).map((row) => <article key={row.id} className="rounded-2xl border border-white/9 p-4"><div className="flex flex-wrap items-start justify-between gap-4"><div><p>{row.applicant?.name}</p><p className="mt-1 text-sm text-white/50">{row.applicant?.competencies.join(" · ")}</p><p className="mt-2 text-xs text-blue-300">{row.applicant?.email} {row.applicant?.telegram}</p>{row.message && <p className="mt-3 text-sm text-white/55">{row.message}</p>}</div><div className="flex gap-2"><button type="button" onClick={() => void respondApplication(row.id, "accepted")} disabled={Boolean(busy) || teamIsFull} className="workspace-button"><Check size={14} /> Принять</button><button type="button" onClick={() => void respondApplication(row.id, "declined")} disabled={Boolean(busy)} className="rounded-full border border-white/10 px-4 py-2 text-sm text-white/50">Отклонить</button></div></div></article>)}{!pool.applications.some((row) => row.can_respond) && <p className="text-sm text-white/35">Новых заявок пока нет.</p>}</div></section>}
 

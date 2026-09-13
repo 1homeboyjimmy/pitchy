@@ -29,6 +29,7 @@ const nextConfig: NextConfig = {
               "media-src 'self' blob: https://stream.mux.com data:",
               "worker-src 'self' blob:",
               "connect-src 'self' https://stream.mux.com https: wss:",
+              "frame-src 'self' https://mc.yandex.ru",
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "object-src 'none'",
@@ -59,12 +60,6 @@ const nextConfig: NextConfig = {
       // на бэкенд переписываем ТОЛЬКО запросы с заголовком x-pitchy-api —
       // это API-вызовы; обычная навигация рендерит страницу грантов.
       beforeFiles: [
-        // Same-origin URL keeps the browser on Pitchy while Next proxies the
-        // existing hero asset. The optimized poster remains the LCP element.
-        {
-          source: "/media/hero.mp4",
-          destination: "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260328_115001_bcdaa3b4-03de-47e7-ad63-ae3e392c32d4.mp4",
-        },
         { source: "/grants", has: hasAuth, destination: `${BACKEND_URL}/grants` },
         { source: "/grants/:path*", has: hasAuth, destination: `${BACKEND_URL}/grants/:path*` },
       ],

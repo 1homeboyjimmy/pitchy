@@ -1310,6 +1310,9 @@ class AcceleratorHomeworkAssignment(Base):
     quiz_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     passing_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     max_attempts: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    pitchy_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
     pitchy_tools: Mapped[list] = mapped_column(
         JSON, default=list, server_default=text("'[]'")
     )
@@ -1409,6 +1412,7 @@ class AcceleratorEvent(Base):
     )
     title: Mapped[str] = mapped_column(String(300))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    preview_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     event_type: Mapped[str] = mapped_column(
         String(30), default="webinar", server_default="webinar", index=True
     )

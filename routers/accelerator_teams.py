@@ -40,7 +40,9 @@ from accelerator_service import add_audit, require_cohort_manager
 from models import (
     AcceleratorApplication,
     AcceleratorAuditLog,
+    AcceleratorMatchProfile,
     AcceleratorMembership,
+    Project,
     AcceleratorStaff,
     AcceleratorTeam,
     AcceleratorTeamApplication,
@@ -460,7 +462,11 @@ async def delete_team_member(
     return await team_dict(db, team, viewer=user, access_role="resident")
 
 
-def _application_contact(application: AcceleratorApplication | None, person: User) -> dict:
+def _application_contact(
+    application: AcceleratorApplication | None,
+    person: User,
+    profile: AcceleratorMatchProfile | None = None,
+) -> dict:
     payload = application.form_payload if application else {}
     competencies = payload.get("competencies") or []
     if isinstance(competencies, str):
@@ -469,7 +475,29 @@ def _application_contact(application: AcceleratorApplication | None, person: Use
         "name": person.name,
         "email": person.email,
         "telegram": payload.get("telegram"),
-        "competencies": competencies,
+        "profile_id": profile.id if profile else None,
+        "bio": profile.bio if profile else None,
+        "competencies": profile.expertise if profile and profile.expertise else competencies,
+        "needs": profile.needs if profile else [],
+        "industries": profile.industries if profile else [],
+        "goals": profile.goals if profile else [],
+    }
+
+
+def _project_public_description(project: Project | None) -> dict:
+    core = (project.passport or {}).get("core", {}) if project else {}
+    summary = core.get("problem") or core.get("solution") or "Описание проекта пока не заполнено"
+    details = [
+        ("Проблема", core.get("problem")),
+        ("Решение", core.get("solution")),
+        ("Целевая аудитория", core.get("target_audience")),
+        ("Стадия", core.get("stage")),
+        ("Бизнес-модель", core.get("business_model")),
+        ("География", core.get("geo")),
+    ]
+    return {
+        "summary": str(summary)[:280],
+        "details": [{"label": label, "value": str(value)} for label, value in details if value],
     }
 
 
@@ -497,16 +525,24 @@ async def get_team_pool(
         owner = await owner_membership(db, team)
         owner_user = await db.get(User, owner.user_id)
         owner_application = await db.get(AcceleratorApplication, owner.application_id)
+        owner_profile = (await db.execute(select(AcceleratorMatchProfile).where(
+            AcceleratorMatchProfile.membership_id == owner.id
+        ))).scalar_one_or_none()
+        project = await db.get(Project, team.project_id)
         team_rows.append({
             "id": team.id,
             "name": team.name,
             "max_members": team.max_members,
             "member_count": await active_member_count(db, team.id),
             "recruiting_open": bool(team.recruiting_open),
-            "captain": _application_contact(owner_application, owner_user),
+            "captain": _application_contact(owner_application, owner_user, owner_profile),
+            **_project_public_description(project),
         })
     candidates = []
-    if own_team_member and own_team_member.membership_id == membership.id:
+    if own_team_member and any(
+        team.id == own_team_member.team_id and team.owner_membership_id == membership.id
+        for team in teams
+    ):
         candidate_rows = (await db.execute(
             select(AcceleratorMembership, User, AcceleratorApplication)
             .join(User, User.id == AcceleratorMembership.user_id)
@@ -515,11 +551,20 @@ async def get_team_pool(
                 AcceleratorMembership.cohort_id == cohort.id,
                 AcceleratorMembership.role == "resident",
                 AcceleratorMembership.status == "enrolled",
+                AcceleratorMembership.project_id.is_(None),
                 AcceleratorMembership.id.not_in(active_memberships),
             )
             .order_by(User.name)
         )).all()
-        candidates = [{"membership_id": row.id, **_application_contact(application, person)} for row, person, application in candidate_rows]
+        for row, person, application in candidate_rows:
+            profile = (await db.execute(select(AcceleratorMatchProfile).where(
+                AcceleratorMatchProfile.membership_id == row.id,
+                AcceleratorMatchProfile.active.is_(True),
+            ))).scalar_one_or_none()
+            candidates.append({
+                "membership_id": row.id,
+                **_application_contact(application, person, profile),
+            })
     applications = list((await db.execute(select(AcceleratorTeamApplication).where(
         (AcceleratorTeamApplication.membership_id == membership.id)
         | (AcceleratorTeamApplication.team_id.in_([team.id for team in teams if team.owner_membership_id == membership.id]))

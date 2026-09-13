@@ -609,19 +609,22 @@ async def create_team_invitation(
     await expire_pending_invitations(
         db, cohort=cohort, actor_user_id=user.id, team_id=team.id
     )
-    profile = (await db.execute(select(AcceleratorMatchProfile).where(
-        AcceleratorMatchProfile.id == payload.counterpart_profile_id
-    ).with_for_update())).scalar_one_or_none()
-    if (
-        not profile
-        or profile.cohort_id != cohort.id
-        or profile.role != "resident"
-        or not profile.active
-        or not profile.membership_id
-    ):
-        raise HTTPException(status_code=422, detail="Кандидат недоступен для этой команды")
+    profile = None
+    if payload.counterpart_profile_id is not None:
+        profile = (await db.execute(select(AcceleratorMatchProfile).where(
+            AcceleratorMatchProfile.id == payload.counterpart_profile_id
+        ).with_for_update())).scalar_one_or_none()
+        if (
+            not profile
+            or profile.cohort_id != cohort.id
+            or profile.role != "resident"
+            or not profile.active
+            or not profile.membership_id
+        ):
+            raise HTTPException(status_code=422, detail="Кандидат недоступен для этой команды")
+    candidate_membership_id = profile.membership_id if profile else payload.membership_id
     candidate = (await db.execute(select(AcceleratorMembership).where(
-        AcceleratorMembership.id == profile.membership_id
+        AcceleratorMembership.id == candidate_membership_id
     ).with_for_update())).scalar_one_or_none()
     if (
         not candidate
@@ -655,7 +658,7 @@ async def create_team_invitation(
     invitation = AcceleratorTeamInvitation(
         team_id=team.id,
         invitee_membership_id=candidate.id,
-        source_match_profile_id=profile.id,
+        source_match_profile_id=profile.id if profile else None,
         invited_by_user_id=user.id,
         message=(payload.message.strip() or None) if payload.message else None,
         status="pending",
@@ -691,7 +694,7 @@ async def create_team_invitation(
         details={
             "team_id": team.id,
             "invitee_membership_id": candidate.id,
-            "source_match_profile_id": profile.id,
+            "source_match_profile_id": profile.id if profile else None,
         },
     )
     return invitation, [notification_id]
@@ -1033,6 +1036,11 @@ async def update_team(
             status_code=403,
             detail="Менеджер может только принудительно архивировать команду",
         )
+    if payload.status == "archived" and owner_actor and not manager:
+        raise HTTPException(
+            status_code=403,
+            detail="Создатель не может удалить или архивировать команду",
+        )
     notification_ids: list[int] = []
     if "name" in fields and payload.name is not None:
         team.name = clean_name(payload.name)
@@ -1190,21 +1198,13 @@ async def remove_team_member(
     if member.status != "active":
         raise HTTPException(status_code=409, detail="Участник уже покинул команду")
     if member.membership_id == team.owner_membership_id or member.role == "owner":
-        if await active_member_count(db, team.id) > 1:
-            raise HTTPException(
-                status_code=409,
-                detail="Сначала передайте капитанство другому участнику команды",
-            )
-        notification_ids = await archive_team_rows(
-            db,
-            team=team,
-            cohort=cohort,
-            actor_user_id=user.id,
-            reason="Единственный участник покинул команду",
-            audit_action="team.closed_by_last_member",
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Создатель не может покинуть команду. "
+                "Чтобы выйти после смены роли, сначала передайте капитанство."
+            ),
         )
-        await db.flush()
-        return team, notification_ids
     member.status = "left"
     member.left_at = datetime.utcnow()
     notification_ids: list[int] = []

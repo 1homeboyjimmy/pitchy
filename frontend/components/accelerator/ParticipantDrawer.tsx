@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Activity, ClipboardCheck, Loader2, RefreshCw, UserRound, X } from "lucide-react";
 
 import { describeApiError, getAuthJson, patchAuthJson, postAuthJson, putAuthJson } from "@/lib/api";
+import { notifySuccess } from "@/lib/ui";
 
 type Card = {
   membership_id: number;
@@ -24,6 +25,7 @@ type Card = {
   feedback: Array<{ id: number; body: string; read_at?: string | null; created_at: string }>;
   audit?: { id: number; type: string; status: string; score?: number | null; created_at: string } | null;
   lifecycle: Array<{ id: number; from_status?: string | null; to_status: string; reason?: string | null; created_at: string }>;
+  activity: Array<{ key: string; kind: string; title: string; detail?: string | null; at: string }>;
   last_action: { title: string; at: string };
 };
 
@@ -66,13 +68,13 @@ export function ParticipantDrawer({ membershipId, token, onClose, onChanged }: {
   };
   const addTask = async (event: FormEvent) => {
     event.preventDefault(); setBusy("task"); setError("");
-    try { await postAuthJson(`/api/accelerators/memberships/${membershipId}/tracking-tasks`, { title: task.title.trim(), description: task.description.trim() || null, due_at: task.dueAt ? new Date(task.dueAt).toISOString() : null }, token); setTask({ title: "", description: "", dueAt: "" }); await load(); }
+    try { await postAuthJson(`/api/accelerators/memberships/${membershipId}/tracking-tasks`, { title: task.title.trim(), description: task.description.trim() || null, due_at: task.dueAt ? new Date(task.dueAt).toISOString() : null }, token); setTask({ title: "", description: "", dueAt: "" }); await load(); notifySuccess("Обязательная задача назначена участнику"); }
     catch (reason) { setError(describeApiError(reason, "Не удалось создать задачу")); }
     finally { setBusy(""); }
   };
   const addRecommendation = async (event: FormEvent) => {
     event.preventDefault(); setBusy("recommendation"); setError("");
-    try { await postAuthJson(`/api/accelerators/memberships/${membershipId}/recommendations`, { title: recommendation.title.trim(), description: recommendation.description.trim(), section: "tracking", href: `/accelerator/my/${membershipId}?section=today` }, token); setRecommendation({ title: "", description: "" }); }
+    try { await postAuthJson(`/api/accelerators/memberships/${membershipId}/recommendations`, { title: recommendation.title.trim(), description: recommendation.description.trim(), section: "tracking", href: `/accelerator/my/${membershipId}?section=today` }, token); setRecommendation({ title: "", description: "" }); notifySuccess("Добровольная рекомендация добавлена участнику"); }
     catch (reason) { setError(describeApiError(reason, "Не удалось добавить рекомендацию")); }
     finally { setBusy(""); }
   };
@@ -94,12 +96,12 @@ export function ParticipantDrawer({ membershipId, token, onClose, onChanged }: {
         <section className="rounded-2xl border border-white/10 p-4"><p className="text-xs uppercase tracking-wide text-white/35">Трекер</p><p className="mt-2 text-sm">{card.trackers.map((row) => row.name).join(", ") || "Не назначен"}</p>{card.can_manage && !card.team && <select value={card.trackers[0]?.user_id || ""} onChange={(event) => void changeTracker(event.target.value)} disabled={busy === "tracker"} className="workspace-input mt-3"><option value="">Без трекера</option>{card.tracker_options.map((row) => <option key={row.user_id} value={row.user_id}>{row.name}</option>)}</select>}{card.team && <p className="mt-2 text-xs text-white/35">Назначение меняется один раз для всей команды в разделе «Матчмейкинг».</p>}</section>
         <div className="grid gap-4 sm:grid-cols-3"><Metric label="ДЗ принято" value={`${card.homework.accepted}/${card.homework.published}`} /><Metric label="На проверке" value={String(card.homework.pending)} /><Metric label="Просрочено" value={String(card.homework.overdue + card.risk.overdue_tasks)} warning={card.homework.overdue + card.risk.overdue_tasks > 0} /></div>
         <Info title="Риск"><p className={card.risk.level === "red" ? "text-red-200" : card.risk.level === "yellow" ? "text-amber-200" : "text-emerald-200"}>{card.risk.level === "red" ? "Высокий" : card.risk.level === "yellow" ? "Требует внимания" : "Стабильно"}</p>{card.risk.reasons.map((reason) => <p key={reason} className="mt-1 text-sm text-white/45">• {reason}</p>)}</Info>
-        <Info title="Заявка и профиль"><p className="text-sm text-white/55">Анкета: {card.application ? `версия ${card.application.form_version}, ${card.application.type}` : "нет данных"}</p><KeyValues values={card.application?.answers || {}} /><KeyValues values={card.profile} /></Info>
+        <Info title="Заявка и профиль"><p className="text-sm text-white/55">Анкета: {card.application ? `версия ${card.application.form_version}, ${card.application.type}` : "нет данных"}</p><KeyValues values={card.application?.answers || {}} /><KeyValues values={card.profile} excludedKeys={["application_data"]} /></Info>
         <Info title="Чек-ины и обратная связь"><div className="space-y-3">{card.checkins.map((row) => <div key={`c-${row.id}`}><p className="text-sm">{row.period_start} · {row.health}</p><p className="text-sm text-white/45">{row.summary}</p></div>)}{card.feedback.map((row) => <div key={`f-${row.id}`}><p className="text-sm text-white/35">Обратная связь · {formatDate(row.created_at)}</p><p className="text-sm text-white/60">{row.body}</p></div>)}{!card.checkins.length && !card.feedback.length && <p className="text-sm text-white/35">Записей пока нет.</p>}</div></Info>
         <Info title="Аудит проекта"><p className="text-sm text-white/50">{card.audit ? `${card.audit.type} · ${card.audit.status}${card.audit.score != null ? ` · ${card.audit.score}/100` : ""}` : "Аудит ещё не запускался"}</p>{card.project && <button type="button" onClick={() => void launchAudit()} disabled={Boolean(busy)} className="workspace-button mt-3"><Activity size={15} /> Запустить аудит</button>}</Info>
         <form onSubmit={addTask} className="rounded-2xl border border-white/10 p-4"><h3>Создать обязательную задачу</h3><div className="mt-3 grid gap-3"><input required minLength={2} value={task.title} onChange={(event) => setTask({ ...task, title: event.target.value })} placeholder="Название" className="workspace-input" /><textarea value={task.description} onChange={(event) => setTask({ ...task, description: event.target.value })} placeholder="Описание" className="workspace-input resize-y" /><input type="datetime-local" value={task.dueAt} onChange={(event) => setTask({ ...task, dueAt: event.target.value })} className="workspace-input" /><button disabled={Boolean(busy)} className="workspace-button"><ClipboardCheck size={15} /> Назначить</button></div></form>
         <form onSubmit={addRecommendation} className="rounded-2xl border border-white/10 p-4"><h3>Добавить добровольную рекомендацию</h3><div className="mt-3 grid gap-3"><input required minLength={2} value={recommendation.title} onChange={(event) => setRecommendation({ ...recommendation, title: event.target.value })} placeholder="Заголовок" className="workspace-input" /><textarea required minLength={2} value={recommendation.description} onChange={(event) => setRecommendation({ ...recommendation, description: event.target.value })} placeholder="Почему это полезно" className="workspace-input resize-y" /><button disabled={Boolean(busy)} className="workspace-button"><UserRound size={15} /> Добавить рекомендацию</button></div></form>
-        <Info title="История статусов">{card.lifecycle.map((row) => <p key={row.id} className="mb-2 text-sm text-white/50">{formatDate(row.created_at)} · {STATUS[row.to_status] || row.to_status}{row.reason ? ` — ${row.reason}` : ""}</p>)}</Info>
+        <Info title="История активности">{card.activity.map((row) => <div key={row.key} className="mb-3 border-l border-white/10 pl-3"><p className="text-sm text-white/65">{row.kind === "status" ? row.title.replace(/: (accepted|enrolled|suspended|completed|withdrawn)$/, (_, status: string) => `: ${STATUS[status] || status}`) : row.title}</p><p className="mt-1 text-xs text-white/30">{formatDate(row.at)}{row.detail ? ` · ${row.detail}` : ""}</p></div>)}{!card.activity.length && <p className="text-sm text-white/35">Событий пока нет.</p>}</Info>
       </div>}
     </aside>
   </div>;
@@ -107,5 +109,5 @@ export function ParticipantDrawer({ membershipId, token, onClose, onChanged }: {
 
 function Info({ title, children }: { title: string; children: React.ReactNode }) { return <section className="rounded-2xl border border-white/10 p-4"><h3 className="mb-3 text-xs uppercase tracking-wide text-white/35">{title}</h3>{children}</section>; }
 function Metric({ label, value, warning = false }: { label: string; value: string; warning?: boolean }) { return <div className={`rounded-2xl border p-4 ${warning ? "border-amber-400/20 bg-amber-400/[.05]" : "border-white/10"}`}><p className="text-2xl">{value}</p><p className="mt-1 text-xs text-white/35">{label}</p></div>; }
-function KeyValues({ values }: { values: Record<string, unknown> }) { const rows = Object.entries(values).filter(([, value]) => value !== null && value !== "" && !Array.isArray(value)); return rows.length ? <dl className="mt-3 space-y-2">{rows.slice(0, 12).map(([key, value]) => <div key={key}><dt className="text-xs text-white/30">{key}</dt><dd className="break-words text-sm text-white/60">{typeof value === "object" ? JSON.stringify(value) : String(value)}</dd></div>)}</dl> : null; }
+function KeyValues({ values, excludedKeys = [] }: { values: Record<string, unknown>; excludedKeys?: string[] }) { const excluded = new Set(excludedKeys); const rows = Object.entries(values).filter(([key, value]) => !excluded.has(key) && value !== null && value !== "" && !Array.isArray(value)); return rows.length ? <dl className="mt-3 space-y-2">{rows.slice(0, 12).map(([key, value]) => <div key={key}><dt className="text-xs text-white/30">{key}</dt><dd className="break-words text-sm text-white/60">{typeof value === "object" ? JSON.stringify(value) : String(value)}</dd></div>)}</dl> : null; }
 function formatDate(value?: string | null) { return value ? new Date(value).toLocaleString("ru-RU") : "—"; }

@@ -223,7 +223,7 @@ async def test_team_invitation_contact_privacy_tracker_scope_and_withdrawal_clea
         invitation = await invite_team_member(
             team["id"],
             AcceleratorTeamInvitationCreate(
-                counterpart_profile_id=candidate.profile_id,
+                membership_id=candidate.membership_id,
                 message="Join us",
             ),
             BackgroundTasks(),
@@ -609,7 +609,7 @@ async def test_team_tracker_replaces_legacy_personal_assignments_and_grants_scop
 
 
 @pytest.mark.asyncio
-async def test_captain_must_transfer_and_last_member_closes_team_applications():
+async def test_captain_must_transfer_and_owner_cannot_leave_team():
     suffix = uuid.uuid4().hex[:10]
     async with AsyncSessionLocal() as db:
         _, organizer, _, cohort = await _create_cohort_context(db, suffix)
@@ -683,15 +683,10 @@ async def test_captain_must_transfer_and_last_member_closes_team_applications():
             row for row in member_view["team"]["members"]
             if row["membership_id"] == member.membership_id
         )
-        closed = await delete_team_member(
-            sole_captain["id"], BackgroundTasks(), member_user, db
-        )
-        assert closed["status"] == "archived"
+        with pytest.raises(HTTPException) as owner_cannot_leave:
+            await delete_team_member(
+                sole_captain["id"], BackgroundTasks(), member_user, db
+            )
+        assert _status(owner_cannot_leave) == 409
         stored_application = await db.get(AcceleratorTeamApplication, application["id"])
-        assert stored_application.status == "cancelled"
-        audit = (await db.execute(select(AcceleratorAuditLog).where(
-            AcceleratorAuditLog.cohort_id == cohort["id"],
-            AcceleratorAuditLog.action == "team.closed_by_last_member",
-        ).order_by(AcceleratorAuditLog.id.desc()))).scalars().first()
-        assert audit is not None
-        assert application["id"] in audit.details["cancelled_application_ids"]
+        assert stored_application.status == "pending"

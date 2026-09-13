@@ -8,24 +8,8 @@ import { useAuth } from "@/lib/hooks/useAuth";
 
 export function HeroSection() {
     const { isAuthenticated } = useAuth();
-    const [videoReady, setVideoReady] = useState(false);
-    const [canLoadVideo, setCanLoadVideo] = useState(false);
     const [heroPhraseIndex, setHeroPhraseIndex] = useState(0);
     const [heroPhraseVisible, setHeroPhraseVisible] = useState(true);
-
-    useEffect(() => {
-        // The hero video is ~20 MB. Do not spend a mobile/data-saver user's
-        // bandwidth on it; the responsive poster is the intended fallback.
-        const connection = (navigator as Navigator & {
-            connection?: { saveData?: boolean; effectiveType?: string };
-        }).connection;
-        const isMobile = window.matchMedia?.("(max-width: 768px)").matches;
-        const isSlowConnection = connection?.saveData || ["slow-2g", "2g"].includes(connection?.effectiveType || "");
-        const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-        const enableVideo = !isMobile && !isSlowConnection && !prefersReducedMotion;
-        const timer = window.setTimeout(() => setCanLoadVideo(enableVideo), 0);
-        return () => window.clearTimeout(timer);
-    }, []);
 
     useEffect(() => {
         const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -48,8 +32,9 @@ export function HeroSection() {
 
     return (
         <section className="relative min-h-[calc(100svh-64px)] bg-black overflow-hidden flex flex-col selection:bg-white/20">
-            {/* The optimized poster paints the first viewport immediately and
-                remains visible until the same-origin video proxy can play. */}
+            {/* Keep the hero self-contained. The former external video URL can
+                expire or reject proxy requests, leaving a noisy 403 in every
+                authenticated navigation even though the local poster works. */}
             <div className="absolute inset-0 pointer-events-none">
                 <Image
                     src="/hero-poster.jpg"
@@ -62,20 +47,6 @@ export function HeroSection() {
                     sizes="100vw"
                     className="object-cover"
                 />
-                {canLoadVideo && <video
-                    autoPlay
-                    muted
-                    loop
-                    playsInline
-                    preload="metadata"
-                    poster="/hero-poster.jpg"
-                    aria-hidden="true"
-                    onCanPlay={() => setVideoReady(true)}
-                    // Keep the poster visible underneath. A failed or delayed
-                    // video load must never turn the hero into a black screen.
-                    className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-500 motion-reduce:hidden ${videoReady ? "opacity-70" : "opacity-0"}`}
-                    src="/media/hero.mp4"
-                />}
                 <div className="absolute inset-0 bg-gradient-to-b from-black/35 via-transparent to-transparent" />
                 <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_42%,transparent_0%,rgba(0,0,0,0.02)_48%,rgba(0,0,0,0.18)_100%)]" />
                 <div className="absolute inset-0 bg-black/10" />
