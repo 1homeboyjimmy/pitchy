@@ -790,15 +790,21 @@ async def respond_team_invitation(
                 status_code=409,
                 detail="Участник уже связан с собственным проектом",
             )
-        profile = await db.get(AcceleratorMatchProfile, invitation.source_match_profile_id)
-        if (
-            not profile
-            or not profile.active
-            or profile.role != "resident"
-            or profile.cohort_id != cohort.id
-            or profile.membership_id != candidate.id
-        ):
-            raise HTTPException(status_code=409, detail="Профиль кандидата больше не активен")
+        if invitation.source_match_profile_id is not None:
+            profile = await db.get(
+                AcceleratorMatchProfile, invitation.source_match_profile_id
+            )
+            if (
+                not profile
+                or not profile.active
+                or profile.role != "resident"
+                or profile.cohort_id != cohort.id
+                or profile.membership_id != candidate.id
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Профиль кандидата больше не активен",
+                )
         if await active_team_member(db, candidate.id, lock=True):
             raise HTTPException(status_code=409, detail="Участник уже состоит в другой команде")
         await expire_pending_invitations(
