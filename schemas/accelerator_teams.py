@@ -26,8 +26,15 @@ class AcceleratorTeamUpdate(BaseModel):
 
 
 class AcceleratorTeamInvitationCreate(BaseModel):
-    counterpart_profile_id: int = Field(gt=0)
+    counterpart_profile_id: int | None = Field(default=None, gt=0)
+    membership_id: int | None = Field(default=None, gt=0)
     message: str | None = Field(default=None, max_length=1000)
+
+    @model_validator(mode="after")
+    def require_candidate(self):
+        if self.counterpart_profile_id is None and self.membership_id is None:
+            raise ValueError("Укажите участника для приглашения")
+        return self
 
 
 class AcceleratorTeamInvitationUpdate(BaseModel):

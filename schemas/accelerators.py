@@ -634,6 +634,7 @@ class HomeworkAssignmentCreate(BaseModel):
     quiz_questions: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
     passing_score: int | None = Field(default=None, ge=0, le=100)
     max_attempts: int = Field(default=1, ge=1, le=20)
+    pitchy_enabled: bool | None = None
 
     @field_validator("due_at")
     @classmethod
@@ -802,6 +803,7 @@ class ProgramStageReorder(BaseModel):
 class EventCreate(BaseModel):
     title: str = Field(min_length=2, max_length=300)
     description: str | None = Field(default=None, max_length=30000)
+    preview_url: str | None = Field(default=None, max_length=2000)
     event_type: Literal["webinar", "workshop", "tracker_session", "expert_session", "networking", "other"] = "webinar"
     host_name: str | None = Field(default=None, max_length=300)
     starts_at: datetime
@@ -842,12 +844,14 @@ class EventCreate(BaseModel):
             raise ValueError("Ссылка на запись должна начинаться с http:// или https://")
         if self.map_url and not self.map_url.strip().lower().startswith(("https://", "http://")):
             raise ValueError("Ссылка на карту должна начинаться с http:// или https://")
+        if self.preview_url and not self.preview_url.strip().lower().startswith(("https://", "http://", "/api/accelerators/files/")):
+            raise ValueError("Превью должно быть загруженным изображением или http(s)-ссылкой")
         material_urls: set[str] = set()
         for material in self.post_materials:
             title = str(material.get("title") or "").strip() if isinstance(material, dict) else ""
             url = str(material.get("url") or "").strip() if isinstance(material, dict) else ""
-            if not title or len(title) > 300 or not url.lower().startswith(("https://", "http://")):
-                raise ValueError("У каждого итогового материала должны быть название и http(s)-ссылка")
+            if not title or len(title) > 300 or not url.lower().startswith(("https://", "http://", "/api/accelerators/files/")):
+                raise ValueError("У каждого материала должны быть название, ссылка или загруженный файл")
             if url in material_urls:
                 raise ValueError("Ссылки на итоговые материалы не должны повторяться")
             material_urls.add(url)
@@ -900,8 +904,8 @@ class EventFollowupUpdate(BaseModel):
         for material in self.post_materials:
             title = str(material.get("title") or "").strip() if isinstance(material, dict) else ""
             url = str(material.get("url") or "").strip() if isinstance(material, dict) else ""
-            if not title or len(title) > 300 or not url.lower().startswith(("https://", "http://")):
-                raise ValueError("У каждого итогового материала должны быть название и http(s)-ссылка")
+            if not title or len(title) > 300 or not url.lower().startswith(("https://", "http://", "/api/accelerators/files/")):
+                raise ValueError("У каждого материала должны быть название, ссылка или загруженный файл")
             if url in seen:
                 raise ValueError("Ссылки на итоговые материалы не должны повторяться")
             seen.add(url)

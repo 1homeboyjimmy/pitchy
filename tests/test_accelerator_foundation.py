@@ -2513,6 +2513,7 @@ async def test_homework_quiz_history_review_queue_and_admin_pitchy_controls():
                 assignment_type="quiz",
                 passing_score=100,
                 max_attempts=2,
+                pitchy_enabled=True,
                 quiz_questions=[{
                     "id": "q1",
                     "prompt": "What comes first?",
@@ -2788,6 +2789,7 @@ async def test_resident_today_aggregate_feedback_and_persistent_recommendations(
         assert card["trackers"][0]["user_id"] == tracker.id
         assert card["feedback"][0]["id"] == feedback["id"]
         assert card["last_action"]["at"] is not None
+        assert "application_data" not in card["profile"]
 
         await set_membership_tracker(
             membership_id, MembershipTrackerUpdate(tracker_user_id=None), organizer, db

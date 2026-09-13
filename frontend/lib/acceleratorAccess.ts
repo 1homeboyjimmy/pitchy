@@ -30,8 +30,9 @@ export function acceleratorEntryHref(
   accelerators: AcceleratorAccess[],
   isGlobalAdmin = false,
 ): string | null {
-  const membership = preferredParticipantMembership(memberships);
-  if (membership) return `/accelerator/my/${membership.membership_id}`;
+  const participantRows = participantMemberships(memberships);
+  if (participantRows.length > 1) return "/accelerator";
+  if (participantRows.length === 1) return `/accelerator/my/${participantRows[0].membership_id}`;
   if (isGlobalAdmin || staffAccelerators(accelerators).length > 0) return "/accelerator?context=staff";
   return null;
 }

@@ -3,7 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, LayoutDashboard, Loader2, LogIn, Menu, X, RefreshCw, Rocket, Settings2 } from "lucide-react";
+import { ArrowRight, Check, LayoutDashboard, Loader2, LogIn, Menu, X, RefreshCw, Rocket, Settings2 } from "lucide-react";
 
 import { describeApiError, getAuthJson, getMe, patchAuthJson, postAuthJson, type UserResponse } from "@/lib/api";
 import { useAuth } from "@/lib/hooks/useAuth";
@@ -20,7 +20,6 @@ import { QuotaManager, type Limits } from "@/components/accelerator/QuotaManager
 import { ResidentWorkspace, type ResidentWorkspaceData } from "@/components/accelerator/ResidentWorkspace";
 import { ResidentReport } from "@/components/accelerator/ResidentReport";
 import { TrackerManager } from "@/components/accelerator/TrackerManager";
-import { TrackingDashboard } from "@/components/accelerator/TrackingDashboard";
 import { TrackerAttendance } from "@/components/accelerator/TrackerAttendance";
 import { MatchmakingManager } from "@/components/accelerator/MatchmakingManager";
 import { MatchmakingWorkspace } from "@/components/accelerator/MatchmakingWorkspace";
@@ -31,7 +30,7 @@ import { NotificationCenter } from "@/components/accelerator/NotificationCenter"
 import { CohortClosure } from "@/components/accelerator/CohortClosure";
 import { AcceleratorOperations } from "@/components/accelerator/AcceleratorOperations";
 import { ParticipantDrawer } from "@/components/accelerator/ParticipantDrawer";
-import { preferredParticipantMembership, staffAccelerators } from "@/lib/acceleratorAccess";
+import { participantMemberships, preferredParticipantMembership, staffAccelerators } from "@/lib/acceleratorAccess";
 
 import { OrganizerOverview } from "@/components/accelerator/OrganizerOverview";
 import { OrganizerNavigation } from "@/components/accelerator/OrganizerNavigation";
@@ -53,8 +52,8 @@ export default function AcceleratorWorkspacePage() {
   const [accelerators, setAccelerators] = useState<Accelerator[]>([]); const [profile, setProfile] = useState<UserResponse | null>(null); const [acceleratorId, setAcceleratorId] = useState<number | null>(null);
   const [cohorts, setCohorts] = useState<Cohort[]>([]); const [cohortId, setCohortId] = useState<number | null>(null); const [config, setConfig] = useState<ProgramConfig | null>(null);
   const [applications, setApplications] = useState<AcceleratorApplication[]>([]); const [residents, setResidents] = useState<Resident[]>([]); const [residentWorkspace, setResidentWorkspace] = useState<ResidentWorkspaceData | null>(null);
-  const [tab, setTab] = useState<TabKey>("overview"); const [showSetup, setShowSetup] = useState(false); const [loading, setLoading] = useState(true); const [error, setError] = useState(""); const [copied, setCopied] = useState(false);
-  const [selectedMembershipId, setSelectedMembershipId] = useState<number | null>(null); const [reportQuery, setReportQuery] = useState(""); const [reportStatus, setReportStatus] = useState("all"); const [urlReady, setUrlReady] = useState(false);
+  const [tab, setTab] = useState<TabKey>("overview"); const [showSetup, setShowSetup] = useState(false); const [loading, setLoading] = useState(true); const [loadingCohorts, setLoadingCohorts] = useState(false); const [error, setError] = useState(""); const [copied, setCopied] = useState(false);
+  const [selectedMembershipId, setSelectedMembershipId] = useState<number | null>(null); const [reportQuery, setReportQuery] = useState(""); const [reportStatus, setReportStatus] = useState("all"); const [urlReady, setUrlReady] = useState(false); const [staffContext, setStaffContext] = useState(false);
 
   const [refreshKey, setRefreshKey] = useState(0);
   const [mobileMenu, setMobileMenu] = useState(false);
@@ -66,10 +65,11 @@ export default function AcceleratorWorkspacePage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const savedTab = params.get("section") as TabKey | null;
-    if (savedTab) setTab(savedTab);
+    if (savedTab) setTab(savedTab === "tracking" ? "reports" : savedTab);
     const savedAccelerator = Number(params.get("accelerator")); if (savedAccelerator > 0) setAcceleratorId(savedAccelerator);
     const savedCohort = Number(params.get("cohort")); if (savedCohort > 0) setCohortId(savedCohort);
     const savedResident = Number(params.get("resident")); if (savedResident > 0) setSelectedMembershipId(savedResident);
+    setStaffContext(params.get("context") === "staff");
     setReportQuery(params.get("q") || ""); setReportStatus(params.get("status") || "all"); setUrlReady(true);
   }, []);
   useEffect(() => {
@@ -92,31 +92,41 @@ export default function AcceleratorWorkspacePage() {
   const isAdmin = Boolean(profile?.is_admin); const isTracker = !isResident && selectedAccelerator?.access_role === "tracker"; const isExpert = !isResident && selectedAccelerator?.access_role === "expert"; const canManage = !isResident && (selectedAccelerator?.access_role === "global_admin" || selectedAccelerator?.access_role === "organizer"); const canReadCohort = canManage || isTracker || isExpert;
 
   const loadAccelerators = useCallback(async () => {
-    if (!token) { setLoading(false); return; }
+    if (!token) return;
+    setLoading(true);
     let redirecting = false;
     try {
       const [rows, user, workspace] = await Promise.all([getAuthJson<Accelerator[]>("/api/accelerators", token), getMe(token), getAuthJson<ResidentWorkspaceData>("/api/accelerators/me/memberships", token)]);
       const participantMembership = preferredParticipantMembership(workspace.memberships);
+      const participantRows = participantMemberships(workspace.memberships);
       const requestedStaffContext = new URLSearchParams(window.location.search).get("context") === "staff";
       const serviceRows = staffAccelerators(rows);
       const canOpenStaffContext = Boolean(user.is_admin || serviceRows.length);
-      if (participantMembership && (!requestedStaffContext || !canOpenStaffContext)) {
+      if (participantMembership && participantRows.length === 1 && (!requestedStaffContext || !canOpenStaffContext)) {
         redirecting = true;
         router.replace(`/accelerator/my/${participantMembership.membership_id}`);
         return;
       }
       const visibleRows = requestedStaffContext ? serviceRows : rows;
       setAccelerators(visibleRows); setProfile(user); setResidentWorkspace(workspace); setShowSetup(Boolean(user.is_admin && !visibleRows.length));
-      setAcceleratorId((current) => current && visibleRows.some((row) => row.id === current) ? current : visibleRows[0]?.id || null);
+      setAcceleratorId((current) => {
+        if (current && visibleRows.some((row) => row.id === current)) return current;
+        const needsChoice = requestedStaffContext ? visibleRows.length > 1 : participantRows.length > 1 || visibleRows.length > 1;
+        return needsChoice ? null : visibleRows[0]?.id || null;
+      });
     } catch (reason) { setError(describeApiError(reason, "Не удалось загрузить акселераторы")); }
     finally { if (!redirecting) setLoading(false); }
   }, [router, token]);
   useEffect(() => { void loadAccelerators(); }, [loadAccelerators]);
 
   useEffect(() => {
-    if (!token || !acceleratorId || isResident) { setCohorts([]); setCohortId(null); return; }
     let active = true;
-    getAuthJson<Cohort[]>(`/api/accelerators/${acceleratorId}/cohorts`, token).then((rows) => { if (!active) return; setCohorts(rows); setCohortId((current) => current && rows.some((row) => row.id === current) ? current : rows[0]?.id || null); }).catch((reason) => { if (active) setError(describeApiError(reason, "Не удалось загрузить потоки")); });
+    if (!token || !acceleratorId || isResident) { setCohorts([]); setCohortId(null); setLoadingCohorts(false); return () => { active = false; }; }
+    setCohorts([]); setLoadingCohorts(true);
+    getAuthJson<Cohort[]>(`/api/accelerators/${acceleratorId}/cohorts`, token).then((rows) => {
+      if (!active) return;
+      setCohorts(rows); setCohortId((current) => current && rows.some((row) => row.id === current) ? current : rows[0]?.id || null);
+    }).catch((reason) => { if (active) setError(describeApiError(reason, "Не удалось загрузить потоки")); }).finally(() => { if (active) setLoadingCohorts(false); });
     return () => { active = false; };
   }, [acceleratorId, isResident, token]);
 
@@ -137,8 +147,7 @@ export default function AcceleratorWorkspacePage() {
 
   const tabs = useMemo(() => {
     if (isTracker) {
-      const rows: Array<{ key: TabKey; label: string }> = [{ key: "reports", label: "Мои резиденты" }];
-      if (config?.modules.progress_tracking) rows.push({ key: "tracking", label: "Трекинг" });
+      const rows: Array<{ key: TabKey; label: string }> = [{ key: "reports", label: config?.modules.progress_tracking ? "Мои резиденты и трекинг" : "Мои резиденты" }];
       if (config?.modules.homework) rows.push({ key: "homework", label: "Домашние задания" });
       if (config?.modules.attendance) rows.push({ key: "attendance", label: "Посещаемость" });
       if (config?.modules.matchmaking) rows.push({ key: "matching", label: "Матчмейкинг" });
@@ -164,7 +173,7 @@ export default function AcceleratorWorkspacePage() {
 
   const copyApplicationLink = async () => { if (!cohortId) return; try { await navigator.clipboard.writeText(`${window.location.origin}/accelerators/apply/${cohortId}`); setCopied(true); window.setTimeout(() => setCopied(false), 1600); } catch { setError("Не удалось скопировать ссылку. Откройте её в разделе «Анкета»."); } };
 
-  if (!isLoaded || loading) return <main className="min-h-[100dvh] grid place-items-center bg-black text-white"><Loader2 className="animate-spin text-white/40" /></main>;
+  if (!isLoaded || (token && loading)) return <main className="min-h-[100dvh] grid place-items-center bg-black text-white"><Loader2 className="animate-spin text-white/40" /></main>;
   if (!token) return <Empty icon={LogIn} title="Нужно войти" text="Пространство акселератора доступно после авторизации."><Link href="/login?next=/accelerator" className="workspace-button">Войти</Link></Empty>;
 
   return <main className={`min-h-[100dvh] text-white ${canManage ? "organizer-shell" : "bg-black px-4 py-7 sm:px-8 sm:py-10"}`}><div className={canManage ? "" : "mx-auto max-w-7xl"}>
@@ -251,6 +260,12 @@ function SettingsPanel({ token, isAdmin, accelerator, cohort, config, onConfig, 
 function defaultApplicationSchema(name: string): ApplicationFormSchema { return { title: `Заявка в поток «${name}»`, required: ["motivation", "project_name", "problem"], fields: [{ key: "motivation", label: "Мотивация и опыт", type: "textarea", required: true, application_types: ["project", "participant"] }, { key: "project_name", label: "Название проекта", required: true, application_types: ["project"] }, { key: "problem", label: "Какую проблему решает проект?", type: "textarea", required: true, application_types: ["project"] }] }; }
 function toLocal(value?: string | null) { if (!value) return ""; const date = new Date(value); const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000); return local.toISOString().slice(0, 16); }
 function SelectCard({ label, children }: { label: string; children: React.ReactNode }) { return <section className="workspace-card"><p className="mb-2 text-xs uppercase tracking-[.18em] text-white/35">{label}</p>{children}</section>; }
+function AcceleratorPortfolio({ accelerators, memberships, staffContext, onOpenStaff }: { accelerators: Accelerator[]; memberships: ResidentWorkspaceData["memberships"]; staffContext: boolean; onOpenStaff: (id: number) => void }) {
+  return <section className="workspace-card"><div><p className="text-xs uppercase tracking-[.18em] text-white/30">Доступные пространства</p><h2 className="mt-2 text-3xl">Все акселераторы</h2><p className="mt-2 text-sm text-white/40">Выберите акселератор или поток, с которым хотите работать.</p></div>
+    {!!memberships.length && <div className="mt-6 grid gap-3 md:grid-cols-2">{memberships.map((membership) => <Link key={membership.membership_id} href={`/accelerator/my/${membership.membership_id}`} className="group rounded-2xl border border-white/10 p-5 hover:border-white/25"><div className="flex items-start justify-between gap-4"><div><p className="text-xs uppercase tracking-wide text-white/35">{membership.accelerator.name}</p><h3 className="mt-2 text-xl">{membership.cohort.name}</h3><p className="mt-2 text-sm text-white/40">{STATUS_LABELS[membership.status] || membership.status}</p></div><ArrowRight size={18} className="mt-1 text-white/30 transition group-hover:translate-x-1 group-hover:text-white" /></div></Link>)}</div>}
+    {(staffContext || !memberships.length) && <div className="mt-6 grid gap-3 md:grid-cols-2">{accelerators.map((accelerator) => <button type="button" key={accelerator.id} onClick={() => onOpenStaff(accelerator.id)} className="group rounded-2xl border border-white/10 p-5 text-left hover:border-white/25"><div className="flex items-start justify-between gap-4"><div><p className="text-xs uppercase tracking-wide text-white/35">{accelerator.access_role === "global_admin" ? "Главный администратор" : accelerator.access_role === "organizer" ? "Организатор" : accelerator.access_role === "tracker" ? "Трекер" : accelerator.access_role === "expert" ? "Эксперт" : "Участник"}</p><h3 className="mt-2 text-xl">{accelerator.name}</h3><p className="mt-2 text-sm text-white/40">{accelerator.description || "Открыть доступные потоки"}</p></div><ArrowRight size={18} className="mt-1 text-white/30 transition group-hover:translate-x-1 group-hover:text-white" /></div></button>)}</div>}
+  </section>;
+}
 function Label({ text, children }: { text: string; children: React.ReactNode }) { return <label className="text-sm text-white/60">{text}{children}</label>; }
 function EmptyState({ isAdmin, onCreate }: { isAdmin: boolean; onCreate: () => void }) { return <section className="workspace-card py-12 text-center"><LayoutDashboard className="mx-auto mb-4 text-white/25" size={38} /><h2 className="text-2xl">Нет доступных акселераторов</h2><p className="mx-auto mt-3 max-w-lg text-white/40">{isAdmin ? "Создайте первый акселератор — мастер сразу подготовит организацию, поток, анкету, функции и лимиты." : "Главный администратор должен назначить вас организатором или зачислить резидентом."}</p>{isAdmin && <button type="button" onClick={onCreate} className="workspace-button mt-6">Начать настройку</button>}</section>; }
 function Empty({ icon: Icon, title, text, children }: { icon: typeof Rocket; title: string; text: string; children?: React.ReactNode }) { return <main className="min-h-[100dvh] grid place-items-center bg-black px-5 text-white"><section className="max-w-lg text-center"><Icon className="mx-auto mb-5 text-white/35" size={42} /><h1 className="mb-4 text-3xl">{title}</h1><p className="mb-8 text-white/45">{text}</p>{children}</section></main>; }

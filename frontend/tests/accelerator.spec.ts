@@ -157,7 +157,7 @@ test('participant card opens and closes from the keyboard with restored focus', 
     person: { name: 'Резидент А', email: 'resident@example.test' },
     membership: { status: 'enrolled', enrolled_at: new Date().toISOString() },
     application: { id: 44, type: 'project', status: 'approved', form_version: 1, answers: { project_name: 'Проект А' }, submitted_at: new Date().toISOString() },
-    profile: { telegram: '@resident', competencies: ['продукт'] }, project: { id: 5, name: 'Проект А', readiness: 72, status: 'active' }, team: null,
+    profile: { telegram: '@resident', competencies: ['продукт'], application_data: { duplicate: 'не показывать' } }, project: { id: 5, name: 'Проект А', readiness: 72, status: 'active' }, team: null,
     trackers: [], tracker_options: [],
     homework: { published: 2, accepted: 1, pending: 0, overdue: 0, submissions: [] },
     risk: { level: 'yellow', reasons: ['Просрочено обязательное действие'], overdue_tasks: 1, overdue_homework: 0, last_activity_at: new Date().toISOString() },
@@ -172,6 +172,8 @@ test('participant card opens and closes from the keyboard with restored focus', 
   const dialog = page.getByRole('dialog', { name: 'Карточка участника' });
   await expect(dialog).toBeVisible();
   await expect(page.getByRole('button', { name: 'Закрыть карточку' })).toBeFocused();
+  await expect(dialog.getByText('application_data', { exact: true })).toHaveCount(0);
+  await expect(dialog.getByText('не показывать', { exact: true })).toHaveCount(0);
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
   await expect(trigger).toBeFocused();
@@ -401,6 +403,43 @@ test('combined role starts as participant and opens staff context explicitly', a
   await expect(page).toHaveURL(/\/accelerator\?.*context=staff/);
   await expect(page.getByText('Роль: эксперт')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Сегодня', exact: true })).toHaveCount(0);
+});
+
+test('participant can choose and switch between several accelerator streams', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('vi_auth_state', 'cookie-session');
+    localStorage.setItem('pitchy_cookie_consent_v2', JSON.stringify({ choice: 'necessary', updatedAt: new Date().toISOString() }));
+  });
+  const membership = (membershipId: number, acceleratorId: number, acceleratorName: string, cohortId: number, cohortName: string) => ({
+    membership_id: membershipId, application_id: membershipId + 100, status: 'enrolled', accepted_at: new Date().toISOString(), enrolled_at: new Date().toISOString(),
+    accelerator: { id: acceleratorId, name: acceleratorName, status: 'active' },
+    cohort: { id: cohortId, name: cohortName, status: 'active', timezone: 'Europe/Moscow' },
+    project: null, modules: {},
+  });
+  const memberships = [
+    membership(101, 7, 'Акселератор А', 12, 'Весенний поток'),
+    membership(102, 8, 'Акселератор Б', 13, 'Осенний поток'),
+  ];
+  await page.route('**/me', async (route) => route.fulfill({ json: { id: 8, email: 'resident@example.test', name: 'Резидент', is_admin: false, is_active: true, email_verified: true, created_at: new Date().toISOString() } }));
+  await page.route('**/api/accelerators', async (route) => route.fulfill({ json: memberships.map((row) => ({ ...row.accelerator, access_role: 'resident' })) }));
+  await page.route('**/api/accelerators/me/memberships', async (route) => route.fulfill({ json: { memberships, effective_quotas: {} } }));
+  await page.route('**/api/accelerators/notifications/unread-count', async (route) => route.fulfill({ json: { count: 0 } }));
+  await page.route('**/api/accelerators/memberships/*/today', async (route) => route.fulfill({ json: {
+    membership_id: Number(route.request().url().match(/memberships\/(\d+)/)?.[1]), generated_at: new Date().toISOString(), timezone: 'Europe/Moscow', required_actions: [], upcoming: [], unread_feedback: [],
+    progress: { percent: 0, completed_stages: 0, total_stages: 0, project_readiness: 0 }, support: { enabled: false, trackers: [] }, recommendations: [], dismissed_recommendations: [], unavailable_sections: [],
+  } }));
+
+  await page.goto('/accelerator');
+  await expect(page.getByRole('heading', { name: 'Все акселераторы' })).toBeVisible();
+  await expect(page.getByRole('link', { name: /Акселератор А.*Весенний поток/ })).toBeVisible();
+  await expect(page.getByRole('link', { name: /Акселератор Б.*Осенний поток/ })).toBeVisible();
+
+  await page.getByRole('link', { name: /Акселератор Б.*Осенний поток/ }).click();
+  await expect(page).toHaveURL(/\/accelerator\/my\/102$/);
+  await expect(page.getByLabel('Поток')).toHaveValue('102');
+  await page.getByLabel('Поток').selectOption('101');
+  await expect(page).toHaveURL(/\/accelerator\/my\/101$/);
+  await expect(page.getByRole('link', { name: 'Все акселераторы' })).toBeVisible();
 });
 
 test('participant query parameters cannot open staff context', async ({ page }) => {

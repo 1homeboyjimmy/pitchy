@@ -73,6 +73,7 @@ from models import (
     AcceleratorMembershipEvent,
     AcceleratorMatch,
     AcceleratorMatchProfile,
+    AcceleratorNotification,
     AcceleratorNotificationOutbox,
     AcceleratorOrganization,
     AcceleratorProgramConfig,
@@ -711,6 +712,7 @@ async def save_accelerator_file(
     stale_rows = list((await db.execute(select(AcceleratorFile).where(
         AcceleratorFile.application_id.is_(None),
         AcceleratorFile.submission_id.is_(None),
+        AcceleratorFile.purpose != "event",
         AcceleratorFile.created_at < datetime.utcnow() - timedelta(hours=24),
     ).limit(200))).scalars().all())
     for stale in stale_rows:
@@ -2598,7 +2600,7 @@ async def list_homework_assignments(
             "quiz_questions": assignment.quiz_config or [],
             "passing_score": assignment.passing_score,
             "max_attempts": assignment.max_attempts,
-            "pitchy_enabled": bool(cohort.homework_pitchy_enabled),
+            "pitchy_enabled": bool(assignment.pitchy_enabled),
             "pitchy_tools": assignment.pitchy_tools or [],
             "due_at": assignment.due_at,
             "status": assignment.status,
@@ -2788,10 +2790,10 @@ async def update_homework_pitchy_tools(
     cohort = await get_cohort_or_404(db, assignment.cohort_id)
     require_mutable_cohort(cohort)
     await require_homework_module(db, cohort)
-    if payload.tools and not cohort.homework_pitchy_enabled:
+    if payload.tools and not assignment.pitchy_enabled:
         raise HTTPException(
             status_code=409,
-            detail="Сначала включите инструменты Pitchy для потока",
+            detail="Сначала разрешите Pitchy в этом домашнем задании",
         )
     previous = assignment.pitchy_tools or []
     assignment.pitchy_tools = list(payload.tools)
@@ -2809,7 +2811,7 @@ async def update_homework_pitchy_tools(
     await db.commit()
     return {
         "assignment_id": assignment.id,
-        "pitchy_enabled": bool(cohort.homework_pitchy_enabled),
+        "pitchy_enabled": bool(assignment.pitchy_enabled),
         "pitchy_tools": assignment.pitchy_tools,
     }
 
@@ -2842,6 +2844,11 @@ async def create_homework_assignment(
         quiz_config=payload.quiz_questions or None,
         passing_score=payload.passing_score,
         max_attempts=payload.max_attempts,
+        pitchy_enabled=(
+            payload.pitchy_enabled
+            if payload.pitchy_enabled is not None
+            else bool(cohort.homework_pitchy_enabled)
+        ),
         created_by_user_id=user.id,
         updated_by_user_id=user.id,
     )
@@ -2899,6 +2906,10 @@ async def update_homework_assignment(
     assignment.quiz_config = payload.quiz_questions or None
     assignment.passing_score = payload.passing_score
     assignment.max_attempts = payload.max_attempts
+    if payload.pitchy_enabled is not None:
+        assignment.pitchy_enabled = payload.pitchy_enabled
+        if not payload.pitchy_enabled:
+            assignment.pitchy_tools = []
     assignment.updated_by_user_id = user.id
     await db.execute(delete(AcceleratorHomeworkTarget).where(
         AcceleratorHomeworkTarget.assignment_id == assignment.id
@@ -3073,7 +3084,8 @@ async def duplicate_homework_assignment(
         audience=source.audience, allow_resubmit=source.allow_resubmit,
         assignment_type=source.assignment_type, submission_mode=source.submission_mode,
         quiz_config=source.quiz_config, passing_score=source.passing_score,
-        max_attempts=source.max_attempts, pitchy_tools=source.pitchy_tools or [],
+        max_attempts=source.max_attempts, pitchy_enabled=source.pitchy_enabled,
+        pitchy_tools=source.pitchy_tools or [],
         created_by_user_id=user.id, updated_by_user_id=user.id,
     )
     db.add(duplicate)
@@ -3181,10 +3193,10 @@ async def list_resident_homework(
             ],
             "passing_score": assignment.passing_score,
             "max_attempts": assignment.max_attempts,
-            "pitchy_enabled": bool(cohort.homework_pitchy_enabled),
+            "pitchy_enabled": bool(assignment.pitchy_enabled),
             "pitchy_tools": (
                 assignment.pitchy_tools or []
-                if cohort.homework_pitchy_enabled
+                if assignment.pitchy_enabled
                 else []
             ),
             "due_at": assignment.due_at,
@@ -3688,6 +3700,7 @@ def event_dict(row: AcceleratorEvent, *, attendance_count: int = 0, attendance: 
         "stage_id": row.stage_id,
         "title": row.title,
         "description": row.description,
+        "preview_url": row.preview_url,
         "event_type": row.event_type,
         "host_name": row.host_name,
         "starts_at": row.starts_at,
@@ -3774,6 +3787,7 @@ async def create_event(
     event = AcceleratorEvent(
         cohort_id=cohort.id, stage_id=payload.stage_id, title=payload.title.strip(),
         description=(payload.description or "").strip() or None,
+        preview_url=(payload.preview_url or "").strip() or None,
         event_type=payload.event_type, host_name=(payload.host_name or "").strip() or None,
         starts_at=payload.starts_at, ends_at=payload.ends_at,
         event_format=payload.event_format, location=(payload.location or "").strip() or None,
@@ -3821,6 +3835,7 @@ async def update_event(
     event.stage_id = payload.stage_id
     event.title = payload.title.strip()
     event.description = (payload.description or "").strip() or None
+    event.preview_url = (payload.preview_url or "").strip() or None
     event.event_type = payload.event_type
     event.host_name = (payload.host_name or "").strip() or None
     event.starts_at = payload.starts_at
@@ -4114,6 +4129,7 @@ async def duplicate_event(
     duplicate = AcceleratorEvent(
         cohort_id=source.cohort_id, stage_id=source.stage_id,
         title=f"{source.title} — копия", description=source.description,
+        preview_url=source.preview_url,
         event_type=source.event_type, host_name=source.host_name,
         starts_at=source.starts_at, ends_at=source.ends_at,
         event_format=source.event_format, location=source.location, meeting_url=source.meeting_url,
@@ -4195,6 +4211,40 @@ async def list_event_attendance(
         "checked_in_at": attendance.checked_in_at if attendance else None,
         "comment": attendance.comment if attendance else None,
     } for membership, resident, attendance in rows]
+
+
+@router.get("/events/{event_id}/attendance/export.csv")
+async def export_event_attendance(
+    event_id: int,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    event = await db.get(AcceleratorEvent, event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Мероприятие не найдено")
+    rows = await list_event_attendance(event_id, user, db)
+    output = io.StringIO(newline="")
+    writer = csv.writer(output)
+    writer.writerow(["Участник", "Email", "Статус", "Время отметки", "Комментарий"])
+    status_labels = {
+        "not_marked": "Не отмечен",
+        "present": "Присутствовал",
+        "absent": "Отсутствовал",
+        "excused": "Уважительная причина",
+    }
+    for row in rows:
+        writer.writerow([
+            row["name"],
+            row["email"],
+            status_labels.get(row["status"], row["status"]),
+            row["checked_in_at"].isoformat() if row["checked_in_at"] else "",
+            row["comment"] or "",
+        ])
+    return Response(
+        content=("\ufeff" + output.getvalue()).encode("utf-8"),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="event-{event.id}-attendance.csv"'},
+    )
 
 
 @router.patch("/events/{event_id}/attendance")
@@ -4443,9 +4493,26 @@ async def upload_homework_file(
     return accelerator_file_dict(row)
 
 
+@router.post("/cohorts/{cohort_id}/event-files")
+async def upload_event_file(
+    cohort_id: int,
+    file: UploadFile = File(...),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    cohort = await get_cohort_or_404(db, cohort_id)
+    await require_cohort_manager(db, user, cohort)
+    await require_attendance_module(db, cohort)
+    row = await save_accelerator_file(
+        db, cohort=cohort, upload=file, purpose="event", uploader_user_id=user.id
+    )
+    return accelerator_file_dict(row)
+
+
 @router.get("/files/{token}")
 async def download_accelerator_file(
     token: str,
+    inline: bool = Query(default=False),
     user: User = Depends(get_async_current_user),
     db: AsyncSession = Depends(get_async_db),
 ):
@@ -4500,12 +4567,24 @@ async def download_accelerator_file(
                         allowed = False
         else:
             allowed = row.uploader_user_id == user.id
+    if not allowed and row.purpose == "event":
+        allowed = (await db.execute(select(AcceleratorMembership.id).where(
+            AcceleratorMembership.cohort_id == cohort.id,
+            AcceleratorMembership.user_id == user.id,
+            AcceleratorMembership.status.in_(("enrolled", "completed")),
+        ).limit(1))).scalar_one_or_none() is not None
     if not allowed:
         raise HTTPException(status_code=404, detail="Файл не найден")
     path = ACCELERATOR_UPLOAD_DIR / row.stored_name
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Файл не найден в хранилище")
-    return FileResponse(path, media_type=row.mime_type, filename=row.original_name)
+    response_headers = {"Content-Disposition": "inline"} if inline and row.mime_type.startswith("image/") else None
+    return FileResponse(
+        path,
+        media_type=row.mime_type,
+        filename=row.original_name,
+        headers=response_headers,
+    )
 
 
 @router.post("/public/cohorts/{cohort_id}/applications")
@@ -8075,6 +8154,72 @@ async def membership_organizer_card(
     lifecycle = list((await db.execute(select(AcceleratorMembershipEvent).where(
         AcceleratorMembershipEvent.membership_id == membership.id
     ).order_by(AcceleratorMembershipEvent.created_at.desc()).limit(10))).scalars().all())
+    stage_progress = (await db.execute(
+        select(AcceleratorProgramStageProgress, AcceleratorProgramStage)
+        .join(AcceleratorProgramStage, AcceleratorProgramStage.id == AcceleratorProgramStageProgress.stage_id)
+        .where(AcceleratorProgramStageProgress.membership_id == membership.id)
+        .order_by(AcceleratorProgramStageProgress.completed_at.desc())
+        .limit(20)
+    )).all()
+    material_progress = (await db.execute(
+        select(AcceleratorProgramMaterialProgress, AcceleratorProgramMaterial)
+        .join(AcceleratorProgramMaterial, AcceleratorProgramMaterial.id == AcceleratorProgramMaterialProgress.material_id)
+        .where(AcceleratorProgramMaterialProgress.membership_id == membership.id)
+        .order_by(AcceleratorProgramMaterialProgress.completed_at.desc())
+        .limit(20)
+    )).all()
+    attended_events = (await db.execute(
+        select(AcceleratorAttendanceRecord, AcceleratorEvent)
+        .join(AcceleratorEvent, AcceleratorEvent.id == AcceleratorAttendanceRecord.event_id)
+        .where(
+            AcceleratorAttendanceRecord.membership_id == membership.id,
+            AcceleratorAttendanceRecord.status == "present",
+        )
+        .order_by(AcceleratorAttendanceRecord.checked_in_at.desc())
+        .limit(20)
+    )).all()
+    read_notifications = list((await db.execute(
+        select(AcceleratorNotification).where(
+            AcceleratorNotification.membership_id == membership.id,
+            AcceleratorNotification.read_at.is_not(None),
+        ).order_by(AcceleratorNotification.read_at.desc()).limit(20)
+    )).scalars().all())
+    completed_tasks = list((await db.execute(
+        select(AcceleratorTrackingTask).where(
+            AcceleratorTrackingTask.membership_id == membership.id,
+            AcceleratorTrackingTask.status == "done",
+            AcceleratorTrackingTask.completed_at.is_not(None),
+        ).order_by(AcceleratorTrackingTask.completed_at.desc()).limit(20)
+    )).scalars().all())
+    activity = [
+        {"key": f"status:{row.id}", "kind": "status", "title": f"Статус: {row.to_status}", "detail": row.reason, "at": row.created_at}
+        for row in lifecycle
+    ]
+    activity += [
+        {"key": f"homework:{row.id}", "kind": "homework", "title": f"Отправлено ДЗ «{assignment_titles.get(row.assignment_id, 'Задание')}»", "detail": row.status, "at": row.submitted_at}
+        for row in submissions
+    ]
+    activity += [
+        {"key": f"stage:{progress.id}", "kind": "program", "title": f"Завершён этап «{stage.title}»", "detail": None, "at": progress.completed_at}
+        for progress, stage in stage_progress
+    ]
+    activity += [
+        {"key": f"material:{progress.id}", "kind": "program", "title": f"Изучен материал «{material.title}»", "detail": None, "at": progress.completed_at}
+        for progress, material in material_progress
+    ]
+    activity += [
+        {"key": f"attendance:{record.id}", "kind": "event", "title": f"Посещено мероприятие «{event.title}»", "detail": record.checkin_method, "at": record.checked_in_at or record.updated_at}
+        for record, event in attended_events
+    ]
+    activity += [
+        {"key": f"notification:{row.id}", "kind": "notification", "title": f"Прочитано уведомление «{row.title}»", "detail": None, "at": row.read_at}
+        for row in read_notifications
+    ]
+    activity += [
+        {"key": f"task:{row.id}", "kind": "task", "title": f"Выполнена задача «{row.title}»", "detail": None, "at": row.completed_at}
+        for row in completed_tasks
+    ]
+    activity = sorted((row for row in activity if row["at"]), key=lambda row: row["at"], reverse=True)[:50]
     risk = await membership_tracking_risk(db, membership)
     last_candidates = [(membership.updated_at, "Профиль участия обновлён")]
     last_candidates += [(row.submitted_at, f"Отправлено ДЗ «{assignment_titles.get(row.assignment_id, 'Задание')}»") for row in submissions[:1]]
@@ -8082,6 +8227,8 @@ async def membership_organizer_card(
     last_candidates += [(row.created_at, "Получена обратная связь") for row in feedback[:1]]
     last_candidates += [(row.created_at, "Запущен аудит проекта") for row in ([audit] if audit else [])]
     last_at, last_title = max((row for row in last_candidates if row[0]), key=lambda row: row[0])
+    participant_profile = dict(profile.profile or {}) if profile else {}
+    participant_profile.pop("application_data", None)
     return {
         "membership_id": membership.id,
         "access_role": access_role,
@@ -8090,7 +8237,7 @@ async def membership_organizer_card(
         "person": {"id": person.id, "name": person.name, "email": person.email} if person else None,
         "membership": {"status": membership.status, "status_reason": membership.status_reason, "accepted_at": membership.accepted_at, "enrolled_at": membership.enrolled_at},
         "application": ({"id": application.id, "type": application.application_type, "status": application.status, "form_version": application.form_version, "answers": application.form_payload, "submitted_at": application.submitted_at} if application else None),
-        "profile": profile.profile if profile else {},
+        "profile": participant_profile,
         "project": ({"id": project.id, "name": project.name, "readiness": project.readiness_index, "status": project.status} if project else None),
         "team": ({"id": team_row[1].id, "name": team_row[1].name, "role": team_row[0].role} if team_row else None),
         "trackers": [{"user_id": row.id, "name": row.name, "email": row.email} for row in trackers],
@@ -8101,6 +8248,7 @@ async def membership_organizer_card(
         "feedback": [{"id": row.id, "body": row.body, "read_at": row.read_at, "created_at": row.created_at} for row in feedback],
         "audit": ({"id": audit.id, "type": audit.audit_type, "status": audit.status, "score": audit.overall_score, "created_at": audit.created_at} if audit else None),
         "lifecycle": [{"id": row.id, "from_status": row.from_status, "to_status": row.to_status, "reason": row.reason, "created_at": row.created_at} for row in lifecycle],
+        "activity": activity,
         "last_action": {"title": last_title, "at": last_at},
     }
 

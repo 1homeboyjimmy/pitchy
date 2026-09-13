@@ -2,15 +2,17 @@
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import Image from "next/image";
-import { Archive, CalendarDays, Check, Clipboard, Copy, ExternalLink, History, Loader2, MapPin, Pencil, Plus, QrCode, Send, Users, X } from "lucide-react";
+import { Archive, CalendarDays, Check, Clipboard, Copy, Download, ExternalLink, History, Loader2, MapPin, Paperclip, Pencil, Plus, QrCode, Send, Users, X } from "lucide-react";
 
 import { describeApiError, getAuthJson, patchAuthJson, postAuthJson, putAuthJson } from "@/lib/api";
+import { notifySuccess } from "@/lib/ui";
 
 type HomeworkLink = { assignment_id: number; relation: "before" | "during" | "after"; title?: string };
 type MaterialLink = { title: string; url: string };
 type EventStatus = "draft" | "published" | "completed" | "cancelled";
 type EventRow = {
   id: number; stage_id?: number | null; title: string; description?: string | null;
+  preview_url?: string | null;
   event_type: "webinar" | "workshop" | "tracker_session" | "expert_session" | "networking" | "other";
   host_name?: string | null; starts_at: string; ends_at: string; event_format: "online" | "offline" | "hybrid";
   location?: string | null; meeting_url?: string | null; online_platform?: string | null; venue_details?: string | null;
@@ -25,7 +27,7 @@ type RescheduleForm = { id: number; startsAt: string; endsAt: string; reason: st
 type FollowupForm = { id: number; recordingUrl: string; outcome: string; nextStep: string; materials: MaterialLink[] };
 
 const localDate = (value: string) => { const date = new Date(value); return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16); };
-const empty = { title: "", description: "", stageId: "", eventType: "webinar" as EventRow["event_type"], hostName: "", startsAt: "", endsAt: "", format: "online" as EventRow["event_format"], location: "", meetingUrl: "", onlinePlatform: "", venueDetails: "", mapUrl: "", homeworkLinks: [] as HomeworkLink[] };
+const empty = { title: "", description: "", previewUrl: "", stageId: "", eventType: "webinar" as EventRow["event_type"], hostName: "", startsAt: "", endsAt: "", format: "online" as EventRow["event_format"], location: "", meetingUrl: "", onlinePlatform: "", venueDetails: "", mapUrl: "", materials: [] as MaterialLink[], homeworkLinks: [] as HomeworkLink[] };
 const statusLabel: Record<EventStatus, string> = { draft: "Черновик", published: "Опубликовано", completed: "Завершено", cancelled: "Отменено" };
 const actionLabel: Record<string, string> = { created: "Создано", updated: "Изменено", published: "Опубликовано", rescheduled: "Перенесено", cancelled: "Отменено", completed: "Завершено автоматически", followup_updated: "Добавлены итоги" };
 const relationLabel = { before: "до", during: "во время", after: "после" } as const;
@@ -63,21 +65,113 @@ export function AttendanceManager({ cohortId, token, focusId }: { cohortId: numb
   }, [cohortId, token]);
   useEffect(() => { void load(); }, [load]);
 
+  const loadAttendance = useCallback(async (id: number) => {
+    const rows = await getAuthJson<Attendee[]>(`/api/accelerators/events/${id}/attendance`, token);
+    setAttendees((current) => ({ ...current, [id]: rows }));
+  }, [token]);
+  useEffect(() => {
+    if (!openId) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void Promise.all([loadAttendance(openId), load()]).catch(() => undefined);
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [load, loadAttendance, openId]);
+
   const save = async (event: FormEvent) => {
     event.preventDefault(); setBusy("save"); setError("");
-    const payload = { title: form.title, description: form.description || null, stage_id: form.stageId ? Number(form.stageId) : null, event_type: form.eventType, host_name: form.hostName || null, starts_at: new Date(form.startsAt).toISOString(), ends_at: new Date(form.endsAt).toISOString(), event_format: form.format, location: form.location || null, meeting_url: form.meetingUrl || null, online_platform: form.onlinePlatform || null, venue_details: form.venueDetails || null, map_url: form.mapUrl || null, homework_links: form.homeworkLinks };
+    const payload = { title: form.title, description: form.description || null, preview_url: form.previewUrl || null, stage_id: form.stageId ? Number(form.stageId) : null, event_type: form.eventType, host_name: form.hostName || null, starts_at: new Date(form.startsAt).toISOString(), ends_at: new Date(form.endsAt).toISOString(), event_format: form.format, location: form.location || null, meeting_url: form.meetingUrl || null, online_platform: form.onlinePlatform || null, venue_details: form.venueDetails || null, map_url: form.mapUrl || null, post_materials: form.materials, homework_links: form.homeworkLinks };
     try { if (editingId) await putAuthJson(`/api/accelerators/events/${editingId}`, payload, token); else await postAuthJson(`/api/accelerators/cohorts/${cohortId}/events`, payload, token); setForm(empty); setEditingId(null); setShowForm(false); await load(); }
     catch (reason) { setError(describeApiError(reason, "Не удалось сохранить мероприятие")); } finally { setBusy(""); }
   };
   const publish = async (id: number) => { setBusy(`publish-${id}`); try { await postAuthJson(`/api/accelerators/events/${id}/publish`, {}, token); await load(); } catch (reason) { setError(describeApiError(reason, "Не удалось опубликовать мероприятие")); } finally { setBusy(""); } };
-  const edit = (row: EventRow) => { setForm({ title: row.title, description: row.description || "", stageId: row.stage_id ? String(row.stage_id) : "", eventType: row.event_type, hostName: row.host_name || "", startsAt: localDate(row.starts_at), endsAt: localDate(row.ends_at), format: row.event_format, location: row.location || "", meetingUrl: row.meeting_url || "", onlinePlatform: row.online_platform || "", venueDetails: row.venue_details || "", mapUrl: row.map_url || "", homeworkLinks: row.homework_links || [] }); setEditingId(row.id); setShowForm(true); };
+  const edit = (row: EventRow) => { setForm({ title: row.title, description: row.description || "", previewUrl: row.preview_url || "", stageId: row.stage_id ? String(row.stage_id) : "", eventType: row.event_type, hostName: row.host_name || "", startsAt: localDate(row.starts_at), endsAt: localDate(row.ends_at), format: row.event_format, location: row.location || "", meetingUrl: row.meeting_url || "", onlinePlatform: row.online_platform || "", venueDetails: row.venue_details || "", mapUrl: row.map_url || "", materials: row.post_materials || [], homeworkLinks: row.homework_links || [] }); setEditingId(row.id); setShowForm(true); };
+  const uploadEventFiles = async (files: FileList | null) => {
+    if (!files?.length) return;
+    setBusy("upload"); setError("");
+    try {
+      const uploaded: MaterialLink[] = [];
+      for (const file of Array.from(files)) {
+        const body = new FormData(); body.append("file", file);
+        const headers: Record<string, string> = { "x-pitchy-api": "1" };
+        if (token !== "cookie-session") headers.Authorization = `Bearer ${token}`;
+        const response = await fetch(`/api/accelerators/cohorts/${cohortId}/event-files`, { method: "POST", headers, body, credentials: "include" });
+        if (!response.ok) { const payload = await response.json().catch(() => ({})); throw new Error(payload.detail || `Не удалось загрузить ${file.name}`); }
+        const result = await response.json() as { name: string; url: string };
+        uploaded.push({ title: result.name, url: result.url });
+      }
+      setForm((current) => ({ ...current, materials: [...current.materials, ...uploaded] }));
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Не удалось загрузить файл мероприятия"); }
+    finally { setBusy(""); }
+  };
+  const uploadPreview = async (file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { setError("Для превью выберите изображение"); return; }
+    setBusy("preview"); setError("");
+    try {
+      const body = new FormData(); body.append("file", file);
+      const headers: Record<string, string> = { "x-pitchy-api": "1" };
+      if (token !== "cookie-session") headers.Authorization = `Bearer ${token}`;
+      const response = await fetch(`/api/accelerators/cohorts/${cohortId}/event-files`, { method: "POST", headers, body, credentials: "include" });
+      if (!response.ok) { const payload = await response.json().catch(() => ({})); throw new Error(payload.detail || "Не удалось загрузить превью"); }
+      const result = await response.json() as { url: string };
+      setForm((current) => ({ ...current, previewUrl: `${result.url}?inline=1` }));
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Не удалось загрузить превью"); }
+    finally { setBusy(""); }
+  };
+  const uploadFollowupFiles = async (files: FileList | null) => {
+    if (!files?.length || !followup) return;
+    setBusy("followup-upload"); setError("");
+    try {
+      const uploaded: MaterialLink[] = [];
+      for (const file of Array.from(files)) {
+        const body = new FormData(); body.append("file", file);
+        const headers: Record<string, string> = { "x-pitchy-api": "1" };
+        if (token !== "cookie-session") headers.Authorization = `Bearer ${token}`;
+        const response = await fetch(`/api/accelerators/cohorts/${cohortId}/event-files`, { method: "POST", headers, body, credentials: "include" });
+        if (!response.ok) { const payload = await response.json().catch(() => ({})); throw new Error(payload.detail || `Не удалось загрузить ${file.name}`); }
+        const result = await response.json() as { name: string; url: string };
+        uploaded.push({ title: result.name, url: result.url });
+      }
+      setFollowup((current) => current ? { ...current, materials: [...current.materials, ...uploaded] } : current);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Не удалось загрузить материал"); }
+    finally { setBusy(""); }
+  };
   const lifecycle = async (row: EventRow, action: "duplicate" | "archive") => { if (action === "archive" && !window.confirm(`Архивировать мероприятие «${row.title}»?`)) return; setBusy(`${action}-${row.id}`); try { await postAuthJson(`/api/accelerators/events/${row.id}/${action}`, {}, token); await load(); } catch (reason) { setError(describeApiError(reason, "Не удалось выполнить действие")); } finally { setBusy(""); } };
   const submitReschedule = async (event: FormEvent) => { event.preventDefault(); if (!reschedule) return; setBusy(`reschedule-${reschedule.id}`); try { await postAuthJson(`/api/accelerators/events/${reschedule.id}/reschedule`, { starts_at: new Date(reschedule.startsAt).toISOString(), ends_at: new Date(reschedule.endsAt).toISOString(), reason: reschedule.reason }, token); setReschedule(null); await load(); } catch (reason) { setError(describeApiError(reason, "Не удалось перенести мероприятие")); } finally { setBusy(""); } };
   const submitCancellation = async (event: FormEvent) => { event.preventDefault(); if (!cancellation) return; setBusy(`cancel-${cancellation.id}`); try { await postAuthJson(`/api/accelerators/events/${cancellation.id}/cancel`, { reason: cancellation.reason }, token); setCancellation(null); await load(); } catch (reason) { setError(describeApiError(reason, "Не удалось отменить мероприятие")); } finally { setBusy(""); } };
   const submitFollowup = async (event: FormEvent) => { event.preventDefault(); if (!followup) return; setBusy(`followup-${followup.id}`); try { await putAuthJson(`/api/accelerators/events/${followup.id}/followup`, { recording_url: followup.recordingUrl || null, outcome: followup.outcome || null, next_step: followup.nextStep || null, post_materials: followup.materials.filter((item) => item.title.trim() && item.url.trim()) }, token); setFollowup(null); await load(); } catch (reason) { setError(describeApiError(reason, "Не удалось сохранить итоги")); } finally { setBusy(""); } };
   const toggleHistory = async (id: number) => { if (historyId === id) { setHistoryId(null); return; } setHistoryId(id); if (!history[id]) try { const rows = await getAuthJson<EventHistory[]>(`/api/accelerators/events/${id}/history`, token); setHistory((current) => ({ ...current, [id]: rows })); } catch (reason) { setError(describeApiError(reason, "Не удалось загрузить историю")); } };
-  const openAttendance = async (id: number) => { if (openId === id) { setOpenId(null); return; } setOpenId(id); try { const rows = await getAuthJson<Attendee[]>(`/api/accelerators/events/${id}/attendance`, token); setAttendees((current) => ({ ...current, [id]: rows })); } catch (reason) { setError(describeApiError(reason, "Не удалось загрузить посещаемость")); } };
-  const mark = async (eventId: number, membershipId: number, status: "present" | "absent" | "excused") => { try { await patchAuthJson(`/api/accelerators/events/${eventId}/attendance`, { membership_id: membershipId, status }, token); const rows = await getAuthJson<Attendee[]>(`/api/accelerators/events/${eventId}/attendance`, token); setAttendees((current) => ({ ...current, [eventId]: rows })); await load(); } catch (reason) { setError(describeApiError(reason, "Не удалось сохранить посещаемость")); } };
+  const openAttendance = async (id: number) => { if (openId === id) { setOpenId(null); return; } setOpenId(id); try { await loadAttendance(id); } catch (reason) { setError(describeApiError(reason, "Не удалось загрузить посещаемость")); } };
+  const mark = async (eventId: number, membershipId: number, status: "present" | "absent" | "excused") => { try { await patchAuthJson(`/api/accelerators/events/${eventId}/attendance`, { membership_id: membershipId, status }, token); await loadAttendance(eventId); await load(); } catch (reason) { setError(describeApiError(reason, "Не удалось сохранить посещаемость")); } };
+  const copyAttendanceLink = async (url: string) => {
+    try {
+      let copied = false;
+      if (navigator.clipboard?.writeText) {
+        try { await navigator.clipboard.writeText(url); copied = true; }
+        catch { copied = false; }
+      }
+      if (!copied) {
+        const input = document.createElement("textarea"); input.value = url; input.style.position = "fixed"; input.style.opacity = "0";
+        document.body.appendChild(input); input.select();
+        copied = document.execCommand("copy");
+        input.remove();
+        if (!copied) throw new Error("copy_failed");
+      }
+      notifySuccess("Ссылка для отметки скопирована");
+    } catch { setError("Не удалось скопировать ссылку. Откройте её и скопируйте адрес вручную."); }
+  };
+  const exportAttendance = async (eventId: number) => {
+    setBusy(`export-${eventId}`); setError("");
+    try {
+      const headers: Record<string, string> = { "x-pitchy-api": "1" };
+      if (token !== "cookie-session") headers.Authorization = `Bearer ${token}`;
+      const response = await fetch(`/api/accelerators/events/${eventId}/attendance/export.csv`, { headers, credentials: "include" });
+      if (!response.ok) throw new Error("export_failed");
+      const blob = await response.blob(); const url = URL.createObjectURL(blob); const anchor = document.createElement("a");
+      anchor.href = url; anchor.download = `event-${eventId}-attendance.csv`; anchor.click(); URL.revokeObjectURL(url);
+    } catch { setError("Не удалось скачать посещаемость"); }
+    finally { setBusy(""); }
+  };
 
   return <section className="workspace-card">
     <div className="flex flex-wrap items-start justify-between gap-4"><div><h2 className="text-xl">Мероприятия</h2><p className="mt-1 text-sm text-white/40">События входят в этапы программы. Перенос и отмена сохраняются в истории.</p></div><button type="button" onClick={() => { if (showForm) { setShowForm(false); setEditingId(null); setForm(empty); } else setShowForm(true); }} className="workspace-button"><Plus size={15} />{showForm ? "Закрыть" : "Новое мероприятие"}</button></div>
@@ -93,15 +187,17 @@ export function AttendanceManager({ cohortId, token, focusId }: { cohortId: numb
       {form.format !== "offline" && <><label className="text-sm text-white/60">Ссылка на подключение<input type="url" value={form.meetingUrl} onChange={(e) => setForm({ ...form, meetingUrl: e.target.value })} required className="workspace-input mt-2" /></label><label className="text-sm text-white/60">Платформа<input value={form.onlinePlatform} onChange={(e) => setForm({ ...form, onlinePlatform: e.target.value })} className="workspace-input mt-2" /></label></>}
       {form.format !== "online" && <><label className="text-sm text-white/60">Карта<input type="url" value={form.mapUrl} onChange={(e) => setForm({ ...form, mapUrl: e.target.value })} className="workspace-input mt-2" /></label><label className="text-sm text-white/60 sm:col-span-2">Как пройти<textarea value={form.venueDetails} onChange={(e) => setForm({ ...form, venueDetails: e.target.value })} rows={2} className="workspace-input mt-2 resize-y" /></label></>}
       <label className="text-sm text-white/60 sm:col-span-2">Описание<textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={3} className="workspace-input mt-2 resize-y" /></label>
-    </div><HomeworkLinks homework={homework} links={form.homeworkLinks} onChange={(homeworkLinks) => setForm({ ...form, homeworkLinks })} /><div className="mt-5 flex justify-end"><button disabled={busy === "save"} className="workspace-button">{busy === "save" && <Loader2 size={15} className="animate-spin" />} Сохранить черновик</button></div></form>}
+      <div className="rounded-2xl border border-dashed border-white/15 p-4 sm:col-span-2"><label className="inline-flex cursor-pointer items-center gap-2 text-sm text-white/65"><CalendarDays size={15} />Загрузить обложку события<input type="file" accept="image/*" className="sr-only" onChange={(event) => void uploadPreview(event.target.files?.[0])} /></label>{form.previewUrl && <div className="relative mt-3 overflow-hidden rounded-xl"><Image unoptimized src={form.previewUrl} alt="Предпросмотр обложки" width={960} height={360} className="h-40 w-full object-cover" /><button type="button" onClick={() => setForm((current) => ({ ...current, previewUrl: "" }))} className="absolute right-2 top-2 rounded-full bg-black/70 p-2" aria-label="Убрать обложку"><X size={14} /></button></div>}</div>
+      <div className="rounded-2xl border border-dashed border-white/15 p-4 sm:col-span-2"><label className="inline-flex cursor-pointer items-center gap-2 text-sm text-white/65"><Paperclip size={15} />Прикрепить файлы<input type="file" multiple className="sr-only" onChange={(event) => void uploadEventFiles(event.target.files)} /></label>{form.materials.map((item) => <div key={item.url} className="mt-2 flex items-center justify-between rounded-xl bg-white/[0.04] px-3 py-2 text-xs text-white/55"><a href={item.url} target="_blank" rel="noreferrer">{item.title}</a><button type="button" onClick={() => setForm((current) => ({ ...current, materials: current.materials.filter((row) => row.url !== item.url) }))} aria-label={`Убрать ${item.title}`}><X size={13} /></button></div>)}</div>
+    </div><HomeworkLinks homework={homework} links={form.homeworkLinks} onChange={(homeworkLinks) => setForm({ ...form, homeworkLinks })} /><div className="mt-5 flex justify-end"><button disabled={busy === "save" || busy === "upload" || busy === "preview"} className="workspace-button">{Boolean(busy) && <Loader2 size={15} className="animate-spin" />} Сохранить черновик</button></div></form>}
     <div className="mt-6 space-y-3">{!events.length ? <p className="py-6 text-center text-sm text-white/35">Мероприятий пока нет.</p> : events.map((row) => <article id={`dashboard-event-${row.id}`} key={row.id} className="rounded-2xl border border-white/9 bg-white/[0.02] p-4 sm:p-5"><EventHeader row={row} onEdit={edit} onPublish={publish} onAttendance={openAttendance} onReschedule={() => setReschedule({ id: row.id, startsAt: localDate(row.starts_at), endsAt: localDate(row.ends_at), reason: "" })} onCancel={() => setCancellation({ id: row.id, reason: "" })} onFollowup={() => setFollowup({ id: row.id, recordingUrl: row.recording_url || "", outcome: row.outcome || "", nextStep: row.next_step || "", materials: row.post_materials || [] })} onHistory={toggleHistory} onLifecycle={lifecycle} />
       <EventDetails row={row} />
-      {row.status === "published" && <details className="mt-4 rounded-2xl border border-white/8 p-4"><summary className="cursor-pointer text-sm text-white/55"><QrCode size={15} className="mr-2 inline" />QR-код для отметки</summary><div className="mt-4 flex flex-wrap items-center gap-5"><div className="rounded-2xl bg-white p-3"><Image unoptimized src={`/api/accelerators/events/${row.id}/qr`} alt={`QR-код для ${row.title}`} width={160} height={160} /></div><button type="button" onClick={() => void navigator.clipboard.writeText(row.checkin_url)} className="workspace-button !bg-transparent !text-white"><Clipboard size={14} /> Копировать ссылку</button></div></details>}
+      {row.status === "published" && <details className="mt-4 rounded-2xl border border-white/8 p-4"><summary className="cursor-pointer text-sm text-white/55"><QrCode size={15} className="mr-2 inline" />QR-код для отметки</summary><div className="mt-4 flex flex-wrap items-center gap-5"><div className="rounded-2xl bg-white p-3"><Image unoptimized src={`/api/accelerators/events/${row.id}/qr`} alt={`QR-код для ${row.title}`} width={160} height={160} /></div><button type="button" onClick={() => void copyAttendanceLink(row.checkin_url)} className="workspace-button !bg-transparent !text-white"><Clipboard size={14} /> Копировать ссылку</button></div></details>}
       {reschedule?.id === row.id && <ReschedulePanel value={reschedule} onChange={setReschedule} onSubmit={submitReschedule} onClose={() => setReschedule(null)} />}
       {cancellation?.id === row.id && <form onSubmit={submitCancellation} className="mt-4 rounded-2xl border border-red-300/15 bg-red-300/[0.03] p-4"><label className="text-xs text-white/50">Причина отмены<textarea required minLength={2} value={cancellation.reason} onChange={(e) => setCancellation({ ...cancellation, reason: e.target.value })} className="workspace-input mt-2" /></label><div className="mt-3 flex gap-2"><button className="workspace-button !bg-red-100">Отменить мероприятие</button><button type="button" onClick={() => setCancellation(null)} className="workspace-button !bg-transparent !text-white">Закрыть</button></div></form>}
-      {followup?.id === row.id && <FollowupPanel value={followup} onChange={setFollowup} onSubmit={submitFollowup} onClose={() => setFollowup(null)} />}
+      {followup?.id === row.id && <FollowupPanel value={followup} onChange={setFollowup} onSubmit={submitFollowup} onUpload={uploadFollowupFiles} uploading={busy === "followup-upload"} onClose={() => setFollowup(null)} />}
       {historyId === row.id && <div className="mt-4 rounded-2xl border border-white/8 p-4"><h4 className="text-sm">История изменений</h4><div className="mt-3 space-y-2">{(history[row.id] || []).map((item) => <div key={item.id} className="rounded-xl bg-black/25 p-3 text-sm"><div className="flex flex-wrap justify-between gap-2"><span>{actionLabel[item.action] || item.action}</span><span className="text-xs text-white/30">{new Date(item.created_at).toLocaleString("ru-RU")}</span></div>{item.reason && <p className="mt-1 text-xs text-white/45">Причина: {item.reason}</p>}<p className="mt-1 text-xs text-white/30">{item.actor?.name || "Система"}</p></div>)}</div></div>}
-      {openId === row.id && <AttendancePanel attendees={attendees[row.id] || []} eventId={row.id} onMark={mark} />}
+      {openId === row.id && <AttendancePanel attendees={attendees[row.id] || []} eventId={row.id} onMark={mark} onExport={exportAttendance} exporting={busy === `export-${row.id}`} />}
     </article>)}</div>
   </section>;
 }
@@ -116,17 +212,17 @@ function EventHeader({ row, onEdit, onPublish, onAttendance, onReschedule, onCan
 }
 
 function EventDetails({ row }: { row: EventRow }) {
-  return <>{!!row.homework_links.length && <div className="mt-4 flex flex-wrap gap-2">{row.homework_links.map((link) => <span key={link.assignment_id} className="rounded-full border border-white/8 px-3 py-1.5 text-xs text-white/45">ДЗ {relationLabel[link.relation]}: {link.title || `#${link.assignment_id}`}</span>)}</div>}{row.recording_url && <a href={row.recording_url} target="_blank" rel="noreferrer" className="mt-4 inline-flex items-center gap-1 text-sm text-blue-300 underline">Запись <ExternalLink size={13} /></a>}{row.outcome && <p className="mt-3 whitespace-pre-wrap text-sm text-white/55"><span className="text-white/35">Итог:</span> {row.outcome}</p>}{row.next_step && <p className="mt-2 text-sm text-white/55"><span className="text-white/35">Следующий шаг:</span> {row.next_step}</p>}{!!row.post_materials.length && <div className="mt-3 flex flex-wrap gap-2">{row.post_materials.map((item) => <a key={item.url} href={item.url} target="_blank" rel="noreferrer" className="rounded-full border border-white/10 px-3 py-1.5 text-xs text-blue-200">{item.title}</a>)}</div>}</>;
+  return <>{row.preview_url && <Image unoptimized src={row.preview_url} alt={`Обложка события ${row.title}`} width={960} height={360} className="mt-4 h-48 w-full rounded-2xl object-cover" />}{!!row.homework_links.length && <div className="mt-4 flex flex-wrap gap-2">{row.homework_links.map((link) => <span key={link.assignment_id} className="rounded-full border border-white/8 px-3 py-1.5 text-xs text-white/45">ДЗ {relationLabel[link.relation]}: {link.title || `#${link.assignment_id}`}</span>)}</div>}{row.recording_url && <a href={row.recording_url} target="_blank" rel="noreferrer" className="mt-4 inline-flex items-center gap-1 text-sm text-blue-300 underline">Запись <ExternalLink size={13} /></a>}{row.outcome && <p className="mt-3 whitespace-pre-wrap text-sm text-white/55"><span className="text-white/35">Итог:</span> {row.outcome}</p>}{row.next_step && <p className="mt-2 text-sm text-white/55"><span className="text-white/35">Следующий шаг:</span> {row.next_step}</p>}{!!row.post_materials.length && <div className="mt-3 flex flex-wrap gap-2">{row.post_materials.map((item) => <a key={item.url} href={item.url} target="_blank" rel="noreferrer" className="rounded-full border border-white/10 px-3 py-1.5 text-xs text-blue-200">{item.title}</a>)}</div>}</>;
 }
 
 function ReschedulePanel({ value, onChange, onSubmit, onClose }: { value: RescheduleForm; onChange: (value: RescheduleForm) => void; onSubmit: (event: FormEvent) => void; onClose: () => void }) {
   return <form onSubmit={onSubmit} className="mt-4 grid gap-3 rounded-2xl border border-blue-300/15 bg-blue-300/[0.03] p-4 sm:grid-cols-2"><label className="text-xs text-white/50">Новое начало<input type="datetime-local" required value={value.startsAt} onChange={(e) => onChange({ ...value, startsAt: e.target.value })} className="workspace-input mt-2" /></label><label className="text-xs text-white/50">Новое окончание<input type="datetime-local" required value={value.endsAt} onChange={(e) => onChange({ ...value, endsAt: e.target.value })} className="workspace-input mt-2" /></label><label className="text-xs text-white/50 sm:col-span-2">Причина<textarea required minLength={2} value={value.reason} onChange={(e) => onChange({ ...value, reason: e.target.value })} className="workspace-input mt-2" /></label><div className="flex gap-2 sm:col-span-2"><button className="workspace-button">Сохранить перенос</button><button type="button" onClick={onClose} className="workspace-button !bg-transparent !text-white">Закрыть</button></div></form>;
 }
 
-function FollowupPanel({ value, onChange, onSubmit, onClose }: { value: FollowupForm; onChange: (value: FollowupForm) => void; onSubmit: (event: FormEvent) => void; onClose: () => void }) {
-  return <form onSubmit={onSubmit} className="mt-4 grid gap-3 rounded-2xl border border-white/8 p-4 sm:grid-cols-2"><label className="text-xs text-white/50 sm:col-span-2">Ссылка на запись<input type="url" value={value.recordingUrl} onChange={(e) => onChange({ ...value, recordingUrl: e.target.value })} className="workspace-input mt-2" /></label><label className="text-xs text-white/50">Итог<textarea rows={3} value={value.outcome} onChange={(e) => onChange({ ...value, outcome: e.target.value })} className="workspace-input mt-2" /></label><label className="text-xs text-white/50">Следующий шаг<textarea rows={3} value={value.nextStep} onChange={(e) => onChange({ ...value, nextStep: e.target.value })} className="workspace-input mt-2" /></label><div className="sm:col-span-2"><div className="mb-2 flex items-center justify-between"><p className="text-xs text-white/50">Материалы после встречи</p><button type="button" onClick={() => onChange({ ...value, materials: [...value.materials, { title: "", url: "" }] })} className="text-xs text-white/50">+ Добавить</button></div>{value.materials.map((item, index) => <div key={index} className="mb-2 grid gap-2 sm:grid-cols-2"><input value={item.title} onChange={(e) => onChange({ ...value, materials: value.materials.map((current, itemIndex) => itemIndex === index ? { ...current, title: e.target.value } : current) })} placeholder="Название" className="workspace-input" /><input type="url" value={item.url} onChange={(e) => onChange({ ...value, materials: value.materials.map((current, itemIndex) => itemIndex === index ? { ...current, url: e.target.value } : current) })} placeholder="https://…" className="workspace-input" /></div>)}</div><div className="flex gap-2 sm:col-span-2"><button className="workspace-button">Сохранить итоги</button><button type="button" onClick={onClose} className="workspace-button !bg-transparent !text-white">Закрыть</button></div></form>;
+function FollowupPanel({ value, onChange, onSubmit, onUpload, uploading, onClose }: { value: FollowupForm; onChange: (value: FollowupForm) => void; onSubmit: (event: FormEvent) => void; onUpload: (files: FileList | null) => void; uploading: boolean; onClose: () => void }) {
+  return <form onSubmit={onSubmit} className="mt-4 grid gap-3 rounded-2xl border border-white/8 p-4 sm:grid-cols-2"><label className="text-xs text-white/50 sm:col-span-2">Ссылка на запись<input type="url" value={value.recordingUrl} onChange={(e) => onChange({ ...value, recordingUrl: e.target.value })} className="workspace-input mt-2" /></label><label className="text-xs text-white/50">Итог<textarea rows={3} value={value.outcome} onChange={(e) => onChange({ ...value, outcome: e.target.value })} className="workspace-input mt-2" /></label><label className="text-xs text-white/50">Следующий шаг<textarea rows={3} value={value.nextStep} onChange={(e) => onChange({ ...value, nextStep: e.target.value })} className="workspace-input mt-2" /></label><div className="sm:col-span-2"><div className="mb-2 flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-white/50">Материалы после встречи</p><div className="flex items-center gap-3"><label className="cursor-pointer text-xs text-blue-200"><Paperclip size={12} className="mr-1 inline" />{uploading ? "Загрузка…" : "Загрузить файлы"}<input type="file" multiple disabled={uploading} className="sr-only" onChange={(event) => void onUpload(event.target.files)} /></label><button type="button" onClick={() => onChange({ ...value, materials: [...value.materials, { title: "", url: "" }] })} className="text-xs text-white/50">+ Добавить ссылку</button></div></div>{value.materials.map((item, index) => <div key={index} className="mb-2 grid gap-2 sm:grid-cols-2"><input value={item.title} onChange={(e) => onChange({ ...value, materials: value.materials.map((current, itemIndex) => itemIndex === index ? { ...current, title: e.target.value } : current) })} placeholder="Название" className="workspace-input" /><input value={item.url} onChange={(e) => onChange({ ...value, materials: value.materials.map((current, itemIndex) => itemIndex === index ? { ...current, url: e.target.value } : current) })} placeholder="https://… или загруженный файл" className="workspace-input" /></div>)}</div><div className="flex gap-2 sm:col-span-2"><button disabled={uploading} className="workspace-button">Сохранить итоги</button><button type="button" onClick={onClose} className="workspace-button !bg-transparent !text-white">Закрыть</button></div></form>;
 }
 
-function AttendancePanel({ attendees, eventId, onMark }: { attendees: Attendee[]; eventId: number; onMark: (eventId: number, membershipId: number, status: "present" | "absent" | "excused") => void }) {
-  return <div className="mt-5 border-t border-white/8 pt-5">{!attendees.length ? <p className="text-sm text-white/35">Зачисленных резидентов пока нет.</p> : <div className="space-y-2">{attendees.map((resident) => <div key={resident.membership_id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-black/25 p-3"><div><p className="text-sm">{resident.name}</p><p className="text-xs text-white/35">{resident.email} · {resident.status === "present" ? "присутствовал" : resident.status === "absent" ? "отсутствовал" : resident.status === "excused" ? "уважительная причина" : "не отмечен"}</p></div><div className="flex gap-2"><button type="button" onClick={() => void onMark(eventId, resident.membership_id, "present")} className="rounded-full border border-white/10 p-2 text-emerald-300" aria-label="Присутствовал"><Check size={15} /></button><button type="button" onClick={() => void onMark(eventId, resident.membership_id, "absent")} className="rounded-full border border-white/10 px-3 py-2 text-xs text-white/50">Нет</button><button type="button" onClick={() => void onMark(eventId, resident.membership_id, "excused")} className="rounded-full border border-white/10 px-3 py-2 text-xs text-white/50">Уваж.</button></div></div>)}</div>}</div>;
+function AttendancePanel({ attendees, eventId, onMark, onExport, exporting }: { attendees: Attendee[]; eventId: number; onMark: (eventId: number, membershipId: number, status: "present" | "absent" | "excused") => void; onExport: (eventId: number) => void; exporting: boolean }) {
+  return <div className="mt-5 border-t border-white/8 pt-5"><div className="mb-3 flex justify-end"><button type="button" onClick={() => void onExport(eventId)} disabled={exporting} className="workspace-button !bg-transparent !text-white">{exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} Скачать таблицу</button></div>{!attendees.length ? <p className="text-sm text-white/35">Зачисленных резидентов пока нет.</p> : <div className="space-y-2">{attendees.map((resident) => <div key={resident.membership_id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-black/25 p-3"><div><p className="text-sm">{resident.name}</p><p className="text-xs text-white/35">{resident.email} · {resident.status === "present" ? "присутствовал" : resident.status === "absent" ? "отсутствовал" : resident.status === "excused" ? "уважительная причина" : "не отмечен"}</p></div><div className="flex gap-2"><button type="button" onClick={() => void onMark(eventId, resident.membership_id, "present")} className="rounded-full border border-white/10 p-2 text-emerald-300" aria-label="Присутствовал"><Check size={15} /></button><button type="button" onClick={() => void onMark(eventId, resident.membership_id, "absent")} className="rounded-full border border-white/10 px-3 py-2 text-xs text-white/50">Нет</button><button type="button" onClick={() => void onMark(eventId, resident.membership_id, "excused")} className="rounded-full border border-white/10 px-3 py-2 text-xs text-white/50">Уваж.</button></div></div>)}</div>}</div>;
 }
