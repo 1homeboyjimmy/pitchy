@@ -52,7 +52,16 @@ export type ProgramStage = {
   description?: string | null;
   position: number;
   unlock_at?: string | null;
+  due_at?: string | null;
   required: boolean;
+  completion_policy: {
+    mode: "auto" | "manual" | "none";
+    materials: "all_required" | "none";
+    homework: "all_required" | "none";
+    pitchy_actions: "all_required" | "none";
+    attendance: "all_required" | "none";
+    manual_confirmation: boolean;
+  };
   status: "draft" | "published";
   materials: Material[];
   actions: ProgramAction[];
@@ -82,7 +91,10 @@ const makeEmptyForm = () => ({
   title: "",
   description: "",
   unlockAt: "",
+  dueAt: "",
   required: true,
+  completionMode: "auto" as "auto" | "manual" | "none",
+  attendanceRequired: false,
   materials: [] as Material[],
   actions: [] as ProgramAction[],
 });
@@ -119,7 +131,10 @@ export function ProgramBuilder({ cohortId, token }: { cohortId: number; token: s
       title: stage.title,
       description: stage.description || "",
       unlockAt: stage.unlock_at ? localDate(stage.unlock_at) : "",
+      dueAt: stage.due_at ? localDate(stage.due_at) : "",
       required: stage.required,
+      completionMode: stage.completion_policy?.mode || "auto",
+      attendanceRequired: stage.completion_policy?.attendance === "all_required",
       materials: stage.materials.map(({ title, kind, url, content, required }) => ({ title, kind, url, content, required })),
       actions: (stage.actions || []).map(({ action_type, title, description, required, config }) => ({
         action_type,
@@ -141,7 +156,16 @@ export function ProgramBuilder({ cohortId, token }: { cohortId: number; token: s
       title: form.title,
       description: form.description || null,
       unlock_at: form.unlockAt ? new Date(form.unlockAt).toISOString() : null,
+      due_at: form.dueAt ? new Date(form.dueAt).toISOString() : null,
       required: form.required,
+      completion_policy: {
+        mode: form.completionMode,
+        materials: "all_required",
+        homework: "all_required",
+        pitchy_actions: "all_required",
+        attendance: form.attendanceRequired ? "all_required" : "none",
+        manual_confirmation: form.completionMode === "manual",
+      },
       materials: form.materials,
       actions: form.actions.map((action) => ({ ...action, description: action.description || null })),
     };
@@ -245,8 +269,11 @@ export function ProgramBuilder({ cohortId, token }: { cohortId: number; token: s
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <label className="text-sm text-white/60">Название<input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} minLength={2} required className="workspace-input mt-2" /></label>
         <label className="text-sm text-white/60">Открыть не раньше<input type="datetime-local" value={form.unlockAt} onChange={(event) => setForm({ ...form, unlockAt: event.target.value })} className="workspace-input mt-2" /></label>
+        <label className="text-sm text-white/60">Срок этапа<input type="datetime-local" value={form.dueAt} onChange={(event) => setForm({ ...form, dueAt: event.target.value })} className="workspace-input mt-2" /></label>
+        <label className="text-sm text-white/60">Как завершается этап<select value={form.completionMode} onChange={(event) => setForm({ ...form, completionMode: event.target.value as "auto" | "manual" | "none" })} className="workspace-input mt-2"><option value="auto">Автоматически по требованиям</option><option value="manual">После подтверждения трекера</option><option value="none">Информационный, не влияет на процент</option></select></label>
         <label className="text-sm text-white/60 sm:col-span-2">Описание<textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={4} className="workspace-input mt-2 resize-y" /></label>
         <label className="flex items-center gap-3 text-sm text-white/60"><input type="checkbox" checked={form.required} onChange={(event) => setForm({ ...form, required: event.target.checked })} /> Обязательный этап</label>
+        <label className="flex items-center gap-3 text-sm text-white/60"><input type="checkbox" checked={form.attendanceRequired} onChange={(event) => setForm({ ...form, attendanceRequired: event.target.checked })} /> Требовать посещение всех мероприятий этапа</label>
       </div>
 
       <div className="mt-7 flex flex-wrap items-center justify-between gap-3">
@@ -296,7 +323,7 @@ export function ProgramBuilder({ cohortId, token }: { cohortId: number; token: s
             <div>
               <div className="flex flex-wrap items-center gap-2"><h3 className="text-lg">{stage.title}</h3><span className={`rounded-full px-2 py-1 text-xs ${stage.status === "published" ? "bg-emerald-400/10 text-emerald-300" : "bg-white/7 text-white/40"}`}>{stage.status === "published" ? "Опубликован" : "Черновик"}</span>{!stage.required && <span className="text-xs text-white/30">необязательный</span>}</div>
               {stage.description && <p className="mt-2 text-sm text-white/45">{stage.description}</p>}
-              <p className="mt-3 text-xs text-white/30">Действий: {(stage.actions || []).length} · материалов: {stage.materials.length} · домашних заданий: {stage.homework_assignment_ids.length}{stage.unlock_at ? ` · откроется ${new Date(stage.unlock_at).toLocaleString("ru-RU")}` : ""}</p>
+              <p className="mt-3 text-xs text-white/30">Действий: {(stage.actions || []).length} · материалов: {stage.materials.length} · домашних заданий: {stage.homework_assignment_ids.length} · {stage.completion_policy?.mode === "manual" ? "подтверждает трекер" : stage.completion_policy?.mode === "none" ? "информационный" : "автозавершение"}{stage.unlock_at ? ` · откроется ${new Date(stage.unlock_at).toLocaleString("ru-RU")}` : ""}{stage.due_at ? ` · срок ${new Date(stage.due_at).toLocaleString("ru-RU")}` : ""}</p>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">

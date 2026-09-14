@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from accelerator_notification_service import process_notification_event
 from accelerator_team_service import (
     cancel_team_invitation,
+    attach_team_project,
     cohort_teams_payload,
     create_team,
     create_team_invitation,
@@ -55,6 +56,7 @@ from schemas.accelerator_teams import (
     AcceleratorMembershipTeamResponse,
     AcceleratorTeamContactUpdate,
     AcceleratorTeamCreate,
+    AcceleratorTeamProjectAttach,
     AcceleratorTeamInvitationCreate,
     AcceleratorTeamInvitationListResponse,
     AcceleratorTeamInvitationResponse,
@@ -124,6 +126,27 @@ async def get_membership_team(
     db: AsyncSession = Depends(get_async_db),
 ):
     return await membership_team_payload(db, membership_id=membership_id, user=user)
+
+
+@router.put(
+    "/teams/{team_id}/project",
+    response_model=AcceleratorTeamResponse,
+    response_model_exclude_none=True,
+)
+async def put_team_project(
+    team_id: int,
+    payload: AcceleratorTeamProjectAttach,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    team = await _commit_or_conflict(
+        db,
+        attach_team_project(
+            db, team_id=team_id, project_id=payload.project_id, user=user
+        ),
+    )
+    access_role = await team_view_access(db, team=team, user=user)
+    return await team_dict(db, team, viewer=user, access_role=access_role)
 
 
 @router.get(

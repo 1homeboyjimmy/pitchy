@@ -5,15 +5,16 @@ import { Download, Loader2, Search } from "lucide-react";
 
 import { type ApplicationFormSchema } from "./ApplicationFormEditor";
 import { describeApiError, getAuthJson, patchAuthJson, postAuthJson } from "@/lib/api";
+import { csvDate, datedCsvFilename, downloadCsv } from "@/lib/csv";
 
-export type AcceleratorApplication = { id: number; applicant_name?: string | null; applicant_email?: string | null; application_type: string; status: string; membership_status?: string | null; form_payload: Record<string, unknown>; submitted_at: string; review_comment?: string | null };
+export type AcceleratorApplication = { id: number; applicant_name?: string | null; applicant_email?: string | null; application_type: string; status: string; membership_status?: string | null; membership_id?: number | null; project_name?: string | null; tracker_names?: string[]; form_payload: Record<string, unknown>; submitted_at: string; reviewed_at?: string | null; review_comment?: string | null };
 type EventRow = { id: number; from_status?: string | null; to_status: string; comment?: string | null; created_at: string };
 
 const STATUS_LABELS: Record<string, string> = { submitted: "Новая", under_review: "На рассмотрении", needs_info: "Нужны данные", waitlisted: "Лист ожидания", approved: "Принят", rejected: "Отклонена", archived: "Архив" };
 const MEMBERSHIP_LABELS: Record<string, string> = { accepted: "ждёт подтверждения", enrolled: "участвует", suspended: "участие приостановлено", completed: "выпускник", withdrawn: "выбыл" };
 
 function readableValue(value: unknown) {
-  if (Array.isArray(value)) return value.map(String).join(", ");
+  if (Array.isArray(value)) return value.map(String).join(" | ");
   if (typeof value === "boolean") return value ? "Да" : "Нет";
   return String(value ?? "").trim();
 }
@@ -25,6 +26,10 @@ export function ApplicationManager({ token, applications, schema, onChanged }: {
   const filtered = useMemo(() => applications.filter((row) => {
     const haystack = `${row.applicant_name || ""} ${row.applicant_email || ""} ${Object.values(row.form_payload).map(readableValue).join(" ")}`.toLowerCase();
     return (!query || haystack.includes(query.toLowerCase())) && (status === "all" || row.status === status) && (applicationType === "all" || row.application_type === applicationType);
+  }).sort((left, right) => {
+    const priority: Record<string, number> = { submitted: 0, under_review: 1, needs_info: 2, waitlisted: 3, approved: 4, rejected: 5, archived: 6 };
+    return (priority[left.status] ?? 99) - (priority[right.status] ?? 99)
+      || new Date(right.submitted_at).getTime() - new Date(left.submitted_at).getTime();
   }), [applicationType, applications, query, status]);
   const summaryFor = (row: AcceleratorApplication) => {
     const configured = schema.fields || [];
@@ -60,11 +65,39 @@ export function ApplicationManager({ token, applications, schema, onChanged }: {
     catch (reason) { setError(describeApiError(reason, "Не удалось отправить приглашение повторно")); }
     finally { setBusy(""); }
   };
-  const exportCsv = () => {
-    const escape = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
-    const rows = [["ID", "Имя", "Email", "Тип", "Статус", "Дата"], ...filtered.map((row) => [row.id, row.applicant_name, row.applicant_email, row.application_type, row.status, row.submitted_at])];
-    const blob = new Blob(["\ufeff" + rows.map((row) => row.map(escape).join(",")).join("\n")], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = "accelerator-applications.csv"; anchor.click(); URL.revokeObjectURL(url);
+  const nextAction = (row: AcceleratorApplication) => {
+    if (["submitted", "under_review"].includes(row.status)) return "Принять решение";
+    if (row.status === "needs_info") return "Дождаться уточнений";
+    if (row.status === "waitlisted") return "Вернуться к заявке";
+    if (row.status === "approved" && row.membership_status === "accepted") return "Участник подтверждает участие";
+    if (row.status === "approved" && row.membership_status === "enrolled") return "Участие начато";
+    return "—";
+  };
+  const exportCsv = () => downloadCsv(datedCsvFilename("accelerator-applications"), [
+    ["ID заявки", "Имя участника", "Email", "Тип заявки", "Название проекта", "Статус заявки", "Статус участия", "Дата подачи", "Дата решения", "Трекер", "Следующее действие"],
+    ...filtered.map((row) => [
+      row.id,
+      row.applicant_name,
+      row.applicant_email,
+      row.application_type === "project" ? "Проект" : "Участник без проекта",
+      row.project_name || readableValue(row.form_payload.project_name),
+      STATUS_LABELS[row.status] || row.status,
+      row.membership_status ? MEMBERSHIP_LABELS[row.membership_status] || row.membership_status : "Не зачислен",
+      csvDate(row.submitted_at),
+      csvDate(row.reviewed_at),
+      (row.tracker_names || []).join(" | "),
+      nextAction(row),
+    ]),
+  ]);
+  const exportFullCsv = () => {
+    const configured = schema.fields || [];
+    const configuredKeys = new Set(configured.map((field) => field.key));
+    const extraKeys = Array.from(new Set(filtered.flatMap((row) => Object.keys(row.form_payload)))).filter((key) => !configuredKeys.has(key));
+    const fields = [...configured.map(({ key, label }) => ({ key, label })), ...extraKeys.map((key) => ({ key, label: key.replaceAll("_", " ") }))];
+    downloadCsv(datedCsvFilename("accelerator-full-applications"), [
+      ["ID заявки", "Имя участника", "Email", "Тип заявки", "Статус заявки", ...fields.map((field) => field.label)],
+      ...filtered.map((row) => [row.id, row.applicant_name, row.applicant_email, row.application_type === "project" ? "Проект" : "Участник без проекта", STATUS_LABELS[row.status] || row.status, ...fields.map((field) => readableValue(row.form_payload[field.key]))]),
+    ]);
   };
   const bulkAction = async (target: "waitlisted" | "rejected") => {
     const ids = selectedIds.filter((id) => { const row = applications.find((item) => item.id === id); return Boolean(row && canBulk(row, target)); });
@@ -82,7 +115,7 @@ export function ApplicationManager({ token, applications, schema, onChanged }: {
   };
 
   return <div className="space-y-5">
-    <section className="workspace-card"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-xl">Заявки <span className="text-white/30">{applications.length}</span></h2><p className="mt-1 text-sm text-white/40">Краткая выжимка, поиск по ответам и полная анкета без потери фильтров.</p></div><button type="button" onClick={exportCsv} disabled={!filtered.length} className="workspace-button !bg-transparent !text-white"><Download size={15} /> CSV</button></div>
+    <section className="workspace-card"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-xl">Заявки <span className="text-white/30">{applications.length}</span></h2><p className="mt-1 text-sm text-white/40">Краткая выжимка, поиск по ответам и полная анкета без потери фильтров.</p></div><div className="flex flex-wrap gap-2"><button type="button" onClick={exportCsv} disabled={!filtered.length} className="workspace-button !bg-transparent !text-white"><Download size={15} /> Рабочий CSV</button><button type="button" onClick={exportFullCsv} disabled={!filtered.length} className="workspace-button !bg-transparent !text-white"><Download size={15} /> Полные анкеты</button></div></div>
       <div className="mt-5 grid gap-3 md:grid-cols-[1fr_auto_auto]"><label className="relative"><Search size={15} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Имя, email, проект или ответ" className="workspace-input !pl-10" /></label><select value={status} onChange={(event) => setStatus(event.target.value)} className="workspace-input"><option value="all">Все статусы</option>{Object.entries(STATUS_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select><select value={applicationType} onChange={(event) => setApplicationType(event.target.value)} className="workspace-input"><option value="all">Все типы</option><option value="project">Проекты</option><option value="participant">Без проекта</option></select></div>
       {error && <p role="alert" className="mt-4 rounded-2xl border border-red-400/20 bg-red-400/10 p-4 text-sm text-red-200">{error}</p>}
       {filtered.length > 0 && <div className="mt-4 flex flex-wrap items-center gap-3 text-sm"><label className="flex items-center gap-2 text-white/50"><input type="checkbox" checked={filtered.every((row) => selectedIds.includes(row.id))} onChange={(event) => setSelectedIds(event.target.checked ? Array.from(new Set([...selectedIds, ...filtered.map((row) => row.id)])) : selectedIds.filter((id) => !filtered.some((row) => row.id === id)))} /> Выбрать всё</label>{selectedIds.length > 0 && <><span className="text-white/35">Выбрано: {selectedIds.length}</span>{selectedIds.some((id) => { const row = applications.find((item) => item.id === id); return Boolean(row && canBulk(row, "waitlisted")); }) && <button type="button" onClick={() => void bulkAction("waitlisted")} disabled={Boolean(busy)} className="rounded-full border border-white/10 px-3 py-2 text-white/55">В лист ожидания</button>}{selectedIds.some((id) => { const row = applications.find((item) => item.id === id); return Boolean(row && canBulk(row, "rejected")); }) && <button type="button" onClick={() => void bulkAction("rejected")} disabled={Boolean(busy)} className="rounded-full border border-white/10 px-3 py-2 text-white/55">Отклонить</button>}</>}</div>}

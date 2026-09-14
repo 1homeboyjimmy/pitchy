@@ -430,6 +430,29 @@ class TrackingTaskUpdate(BaseModel):
     status: Literal["open", "done", "cancelled"]
 
 
+class TrackingSignalStateUpdate(BaseModel):
+    state: Literal["open", "acknowledged", "snoozed", "resolved"]
+    snoozed_until: datetime | None = None
+    note: str | None = Field(default=None, max_length=2000)
+
+    @field_validator("snoozed_until")
+    @classmethod
+    def normalize_snoozed_until(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value.tzinfo is not None:
+            return value.astimezone(timezone.utc).replace(tzinfo=None)
+        return value
+
+    @model_validator(mode="after")
+    def validate_snooze(self):
+        if self.state == "snoozed" and not self.snoozed_until:
+            raise ValueError("Для отложенного сигнала укажите дату")
+        return self
+
+
+class TrackingTaskBulkCreate(TrackingTaskCreate):
+    membership_ids: list[int] = Field(min_length=1, max_length=200)
+
+
 class ProjectAuditFinding(BaseModel):
     title: str = Field(min_length=2, max_length=300)
     description: str = Field(min_length=2, max_length=5000)
@@ -757,16 +780,47 @@ class ProgramStageCreate(BaseModel):
     title: str = Field(min_length=2, max_length=300)
     description: str | None = Field(default=None, max_length=30000)
     unlock_at: datetime | None = None
+    due_at: datetime | None = None
     required: bool = True
+    completion_policy: dict[str, Any] = Field(default_factory=lambda: {
+        "mode": "auto",
+        "materials": "all_required",
+        "homework": "all_required",
+        "pitchy_actions": "all_required",
+        "attendance": "none",
+        "manual_confirmation": False,
+    })
     materials: list[ProgramMaterialCreate] = Field(default_factory=list, max_length=100)
     actions: list[ProgramActionCreate] = Field(default_factory=list, max_length=20)
 
-    @field_validator("unlock_at")
+    @field_validator("unlock_at", "due_at")
     @classmethod
     def normalize_unlock_at(cls, value: datetime | None) -> datetime | None:
         if value is not None and value.tzinfo is not None:
             return value.astimezone(timezone.utc).replace(tzinfo=None)
         return value
+
+    @field_validator("completion_policy")
+    @classmethod
+    def validate_completion_policy(cls, value: dict[str, Any]) -> dict[str, Any]:
+        defaults = {
+            "mode": "auto",
+            "materials": "all_required",
+            "homework": "all_required",
+            "pitchy_actions": "all_required",
+            "attendance": "none",
+            "manual_confirmation": False,
+        }
+        policy = {**defaults, **(value or {})}
+        if policy["mode"] not in {"auto", "manual", "none"}:
+            raise ValueError("Режим завершения должен быть auto, manual или none")
+        for key in ("materials", "homework", "pitchy_actions"):
+            if policy[key] not in {"all_required", "none"}:
+                raise ValueError(f"Недопустимое правило {key}")
+        if policy["attendance"] not in {"all_required", "none"}:
+            raise ValueError("Недопустимое правило attendance")
+        policy["manual_confirmation"] = policy["mode"] == "manual"
+        return policy
 
 
 class AcceleratorArtifactUpdate(BaseModel):
@@ -884,6 +938,16 @@ class EventReschedule(BaseModel):
         if self.ends_at <= self.starts_at:
             raise ValueError("Окончание мероприятия должно быть позже начала")
         return self
+
+
+class ProgramStageWaive(BaseModel):
+    membership_id: int = Field(gt=0)
+    reason: str = Field(min_length=3, max_length=2000)
+
+
+class ProgramStageManualComplete(BaseModel):
+    membership_id: int = Field(gt=0)
+    reason: str | None = Field(default=None, max_length=2000)
 
 
 class EventCancel(BaseModel):

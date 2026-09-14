@@ -48,4 +48,10 @@ def test_accelerator_routes_are_unique_and_modular_routers_are_mounted():
         ("GET", "/api/accelerators/cohorts/{cohort_id}/analytics"),
         ("PUT", "/api/accelerators/memberships/{membership_id}/quota"),
         ("GET", "/api/accelerators/{accelerator_id}/audit"),
+        ("PUT", "/api/accelerators/teams/{team_id}/project"),
+        ("GET", "/api/accelerators/cohorts/{cohort_id}/tracking-signals"),
+        ("PATCH", "/api/accelerators/memberships/{membership_id}/tracking-signals/{fingerprint}"),
+        ("POST", "/api/accelerators/cohorts/{cohort_id}/tracking-tasks/bulk"),
+        ("POST", "/api/accelerators/program/stages/{stage_id}/complete-manually"),
+        ("POST", "/api/accelerators/program/stages/{stage_id}/waive"),
     }.issubset(accelerator_routes)

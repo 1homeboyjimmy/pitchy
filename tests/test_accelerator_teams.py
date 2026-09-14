@@ -34,6 +34,7 @@ from routers.accelerator_teams import (
     get_membership_team,
     invite_team_member,
     list_cohort_teams,
+    put_team_project,
     patch_team_member,
     patch_team_member_contact,
     delete_team_member,
@@ -61,6 +62,7 @@ from routers.accelerators import (
 from schemas.accelerator_teams import (
     AcceleratorTeamContactUpdate,
     AcceleratorTeamCreate,
+    AcceleratorTeamProjectAttach,
     AcceleratorTeamApplicationCreate,
     AcceleratorTeamCaptainTransfer,
     AcceleratorTeamInvitationCreate,
@@ -190,6 +192,62 @@ async def _create_cohort_context(db, suffix: str):
 
 def _status(error: pytest.ExceptionInfo[HTTPException]) -> int:
     return error.value.status_code
+
+
+@pytest.mark.asyncio
+async def test_resident_without_project_creates_team_and_attaches_project_later():
+    suffix = uuid.uuid4().hex[:10]
+    async with AsyncSessionLocal() as db:
+        _, organizer, _, cohort = await _create_cohort_context(db, suffix)
+        owner_user = User(email=f"forming-owner-{suffix}@example.test", name="Forming owner")
+        member_user = User(email=f"forming-member-{suffix}@example.test", name="Forming member")
+        db.add_all([owner_user, member_user])
+        await db.commit()
+        owner = await _enroll_resident(
+            db, cohort_id=cohort["id"], manager=organizer,
+            resident=owner_user, with_project=False,
+        )
+        member = await _enroll_resident(
+            db, cohort_id=cohort["id"], manager=organizer,
+            resident=member_user, with_project=False,
+        )
+        team = await create_membership_team(
+            owner.membership_id,
+            AcceleratorTeamCreate(name="Idea team", max_members=4),
+            owner_user,
+            db,
+        )
+        assert team["project"] is None
+        assert team["project_state"] == "project_pending"
+        assert team["can_attach_project"] is True
+
+        invitation = await invite_team_member(
+            team["id"],
+            AcceleratorTeamInvitationCreate(membership_id=member.membership_id),
+            BackgroundTasks(), owner_user, db,
+        )
+        await answer_team_invitation(
+            invitation["id"],
+            AcceleratorTeamInvitationUpdate(status="accepted"),
+            BackgroundTasks(), member_user, db,
+        )
+
+        project = Project(user_id=owner_user.id, name="Project after lessons", passport={})
+        db.add(project)
+        await db.commit()
+        attached = await put_team_project(
+            team["id"],
+            AcceleratorTeamProjectAttach(project_id=project.id),
+            owner_user,
+            db,
+        )
+        assert attached["project"] == {"id": project.id, "name": project.name}
+        assert attached["project_state"] == "active"
+        assert attached["can_attach_project"] is False
+        membership = await db.get(AcceleratorMembership, owner.membership_id)
+        assert membership.project_id == project.id
+        member_membership = await db.get(AcceleratorMembership, member.membership_id)
+        assert member_membership.project_id == project.id
 
 
 @pytest.mark.asyncio

@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, ClipboardPlus, Loader2, RefreshCw, Sparkles } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, ClipboardPlus, Loader2, RefreshCw, Sparkles } from "lucide-react";
 
 import { ApiError, describeApiError, getAuthJson, postAuthJson } from "@/lib/api";
 import { useAuth } from "@/lib/hooks/useAuth";
@@ -76,7 +76,7 @@ export function ProjectAuditWorkspace({
         client_request_id: globalThis.crypto?.randomUUID?.() || `${Date.now()}-project-audit`,
       }, token);
       setFocus(""); await load();
-    } catch (reason) { setError(reason instanceof ApiError && reason.status === 402 ? "Лимит генераций CustDev для этого резидента исчерпан." : describeApiError(reason, "Не удалось выполнить аудит проекта")); }
+    } catch (reason) { setError(reason instanceof ApiError && reason.status === 402 ? "Лимит сообщений для этого резидента исчерпан." : describeApiError(reason, "Не удалось выполнить аудит проекта")); }
     finally { setBusy(""); }
   };
 
@@ -91,7 +91,7 @@ export function ProjectAuditWorkspace({
 
   return <div className="space-y-5">
     <form onSubmit={createAudit} className="workspace-card">
-      <div className="flex flex-wrap items-start justify-between gap-4"><div><h2 className="text-xl">Аудит проекта</h2><p className="mt-1 max-w-2xl text-sm text-white/40">ИИ анализирует паспорт и недавние чек-ины, отмечает пробелы и предлагает проверяемые действия. При назначенной квоте расходуется одна генерация CustDev.</p></div><button type="button" onClick={() => void load()} className="rounded-full border border-white/10 p-3 text-white/40" aria-label="Обновить"><RefreshCw size={16} /></button></div>
+      <div className="flex flex-wrap items-start justify-between gap-4"><div><h2 className="text-xl">Аудит проекта</h2><p className="mt-1 max-w-2xl text-sm text-white/40">ИИ анализирует паспорт и недавние чек-ины, отмечает пробелы и предлагает проверяемые действия. При назначенной квоте расходуется одно сообщение.</p></div><button type="button" onClick={() => void load()} className="rounded-full border border-white/10 p-3 text-white/40" aria-label="Обновить"><RefreshCw size={16} /></button></div>
       <div className="mt-5 grid gap-3 lg:grid-cols-[1fr_240px]">
         {!membershipId && <label className="text-sm text-white/55">Резидент<select value={selectedMembershipId} onChange={(event) => setSelectedMembershipId(event.target.value)} required className="workspace-input mt-2"><option value="">Выберите резидента</option>{residents.filter((row) => row.status === "enrolled").map((row) => <option key={row.membership_id} value={row.membership_id}>{row.name}{row.email ? ` · ${row.email}` : ""}</option>)}</select></label>}
         <label className={`text-sm text-white/55 ${membershipId ? "lg:col-span-2" : ""}`}>Тип анализа<select value={auditType} onChange={(event) => setAuditType(event.target.value as typeof auditType)} className="workspace-input mt-2">{auditTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
@@ -109,8 +109,11 @@ export function ProjectAuditWorkspace({
 }
 
 function AuditCard({ audit, canCreateTasks, taskIntegrationEnabled, busy, onCreateTask }: { audit: AuditRow; canCreateTasks: boolean; taskIntegrationEnabled: boolean; busy: string; onCreateTask: (audit: AuditRow, index: number) => Promise<void> }) {
+  const [collapsed, setCollapsed] = useState(false);
   const linked = new Map(audit.linked_tasks.map((row) => [row.recommendation_index, row.task]));
-  return <article className="rounded-2xl border border-white/9 p-4 sm:p-5"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs uppercase tracking-wide text-white/30">{audit.resident?.name ? `${audit.resident.name} · ` : ""}{audit.audit_type_label}</p><h3 className="mt-1 text-lg">{audit.project?.name || "Проект"}</h3><p className="mt-1 text-xs text-white/30">Запросил: {audit.requested_by?.name || "—"} · {new Date(audit.created_at).toLocaleString("ru-RU")}</p></div>{audit.status === "completed" ? <span className="rounded-full bg-emerald-400/10 px-3 py-1 text-sm text-emerald-300">{audit.overall_score}/100</span> : <span className={`rounded-full px-3 py-1 text-sm ${audit.status === "failed" ? "bg-red-400/10 text-red-200" : "bg-white/5 text-white/45"}`}>{audit.status === "failed" ? "Ошибка" : "Выполняется"}</span>}</div>
+  const quotaLabel = audit.quota.resource === "messages" ? "Сообщения" : audit.quota.resource === "custdev" ? "CustDev" : audit.quota.resource;
+  return <article className="rounded-2xl border border-white/9 p-4 sm:p-5"><button type="button" onClick={() => setCollapsed((value) => !value)} aria-expanded={!collapsed} aria-label={`${collapsed ? "Развернуть" : "Свернуть"} аудит ${audit.project?.name || "проекта"}`} className="flex w-full items-center justify-between gap-4 text-left"><div className="min-w-0 sm:flex sm:flex-1 sm:items-center sm:gap-4"><p className="truncate text-xs uppercase tracking-wide text-white/30">{audit.resident?.name ? `${audit.resident.name} · ` : ""}{audit.audit_type_label}</p><h3 className="truncate text-lg sm:text-base">{audit.project?.name || "Проект"}</h3><p className="truncate text-xs text-white/30">{new Date(audit.created_at).toLocaleString("ru-RU")}</p></div><div className="flex shrink-0 items-center gap-3">{audit.status === "completed" ? <span className="rounded-full bg-emerald-400/10 px-3 py-1 text-sm text-emerald-300">{audit.overall_score}/100</span> : <span className={`rounded-full px-3 py-1 text-sm ${audit.status === "failed" ? "bg-red-400/10 text-red-200" : "bg-white/5 text-white/45"}`}>{audit.status === "failed" ? "Ошибка" : "Выполняется"}</span>}{collapsed ? <ChevronDown size={17} className="text-white/35" /> : <ChevronUp size={17} className="text-white/35" />}</div></button>
+    {!collapsed && <div><p className="mt-2 text-xs text-white/30">Запросил: {audit.requested_by?.name || "—"}</p>
     {audit.focus && <p className="mt-4 rounded-xl bg-white/[.03] p-3 text-sm text-white/45">Фокус: {audit.focus}</p>}
     {audit.error_message && <p className="mt-4 text-sm text-red-200">{audit.error_message}</p>}
     {audit.result && <div className="mt-5 space-y-5"><p className="text-sm leading-6 text-white/65">{audit.result.summary}</p>
@@ -118,7 +121,8 @@ function AuditCard({ audit, canCreateTasks, taskIntegrationEnabled, busy, onCrea
       <div className="grid gap-4 lg:grid-cols-2"><ResultPanel title="Сильные стороны">{audit.result.strengths.length ? audit.result.strengths.map((row) => <p key={row} className="text-sm text-white/60">✓ {row}</p>) : <EmptyText />}</ResultPanel><ResultPanel title="Пробелы в данных">{audit.result.data_gaps.length ? audit.result.data_gaps.map((row) => <p key={row} className="text-sm text-white/50">• {row}</p>) : <EmptyText />}</ResultPanel></div>
       <ResultPanel title="Риски и проблемы">{audit.result.findings.map((row) => <div key={`${row.title}-${row.severity}`} className="rounded-xl bg-black/20 p-3"><div className="flex justify-between gap-3"><p>{row.title}</p><span className={`text-xs ${priorityClass[row.severity]}`}>{severityLabel[row.severity]} риск</span></div><p className="mt-2 text-sm text-white/50">{row.description}</p>{row.evidence && <p className="mt-2 text-xs text-white/30">Основание: {row.evidence}</p>}</div>)}</ResultPanel>
       <ResultPanel title="Рекомендации">{audit.result.recommendations.map((row, index) => { const task = linked.get(index); return <div key={`${row.title}-${index}`} className="rounded-xl border border-white/8 p-3"><div className="flex flex-wrap items-start justify-between gap-3"><div><p>{row.title}</p><p className={`mt-1 text-xs ${priorityClass[row.priority]}`}>Приоритет: {severityLabel[row.priority].toLowerCase()}</p></div>{task ? <span className="flex items-center gap-1 text-xs text-emerald-300"><CheckCircle2 size={14} /> Задача создана</span> : canCreateTasks && taskIntegrationEnabled && <button type="button" onClick={() => void onCreateTask(audit, index)} disabled={Boolean(busy)} className="flex items-center gap-1 rounded-full border border-white/10 px-3 py-1.5 text-xs text-white/55"><ClipboardPlus size={13} /> В задачи</button>}</div><p className="mt-2 text-sm text-white/50">{row.description}</p><p className="mt-2 text-xs text-white/30">Результат: {row.expected_result}</p></div>; })}</ResultPanel>
-      <p className="text-xs text-white/30">Квота CustDev: {audit.quota.consumed ? "списана 1 генерация" : "персональная квота потока не назначена"}</p>
+      <p className="text-xs text-white/30">Квота «{quotaLabel}»: {audit.quota.consumed ? audit.quota.resource === "messages" ? "списано 1 сообщение" : "списана 1 генерация" : "персональная квота потока не назначена"}</p>
+    </div>}
     </div>}
   </article>;
 }

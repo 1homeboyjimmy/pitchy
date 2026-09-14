@@ -39,7 +39,7 @@ async function mockManagerWorkspace(page: Page) {
   await page.route('**/api/accelerators/cohorts/12/program-stages', async (route) => route.fulfill({ json: [] }));
   await page.route('**/api/accelerators/cohorts/12/matchmaking/profiles', async (route) => route.fulfill({ json: [{ id: 41, user_id: 8, membership_id: 101, role: 'resident', name: 'Резидент А', email: 'resident@example.test', expertise: ['продукт'], needs: ['продажи'], industries: ['SaaS'], goals: [], preferred_formats: ['онлайн'], max_matches: 3, active_matches: 0, active: true }] }));
   await page.route('**/api/accelerators/cohorts/12/matches', async (route) => route.fulfill({ json: [] }));
-  await page.route('**/api/accelerators/cohorts/12/project-audits', async (route) => route.fulfill({ json: { access_role: 'global_admin', audits: [{ id: 81, membership_id: 101, audit_type: 'product', audit_type_label: 'Продукт', status: 'completed', overall_score: 72, project: { id: 5, name: 'Проект А' }, resident: { id: 8, name: 'Резидент А' }, requested_by: { id: 1, name: 'Admin' }, quota: { resource: 'custdev', consumed: true }, linked_tasks: [], result: { summary: 'Проблема подтверждена, требуется проверить цену.', overall_score: 72, strengths: ['Есть интервью'], findings: [{ title: 'Не проверена цена', description: 'Нет оплаченных пилотов', severity: 'medium' }], recommendations: [{ title: 'Проверить цену', description: 'Предложить три пилота', priority: 'high', expected_result: 'Один оплаченный пилот' }], data_gaps: [] }, created_at: new Date().toISOString() }] } }));
+  await page.route('**/api/accelerators/cohorts/12/project-audits', async (route) => route.fulfill({ json: { access_role: 'global_admin', audits: [{ id: 81, membership_id: 101, audit_type: 'product', audit_type_label: 'Продукт', status: 'completed', overall_score: 72, project: { id: 5, name: 'Проект А' }, resident: { id: 8, name: 'Резидент А' }, requested_by: { id: 1, name: 'Admin' }, quota: { resource: 'messages', consumed: true }, linked_tasks: [], result: { summary: 'Проблема подтверждена, требуется проверить цену.', overall_score: 72, strengths: ['Есть интервью'], findings: [{ title: 'Не проверена цена', description: 'Нет оплаченных пилотов', severity: 'medium' }], recommendations: [{ title: 'Проверить цену', description: 'Предложить три пилота', priority: 'high', expected_result: 'Один оплаченный пилот' }], data_gaps: [] }, created_at: new Date().toISOString() }] } }));
   await page.route('**/api/accelerators/cohorts/12/demo-days', async (route) => route.fulfill({ json: { access_role: 'global_admin', demo_days: [{ id: 91, title: 'Demo Day 2026', status: 'finalized', access_role: 'global_admin', criteria: [{ key: 'problem', label: 'Проблема', weight: 100, max_score: 10 }], experts: [{ id: 1, user_id: 9, name: 'Expert', email: 'expert@example.test' }], projects: [{ id: 92, membership_id: 101, resident: { id: 8, name: 'Резидент А', email: 'resident@example.test' }, project: { id: 5, name: 'Проект А', readiness_index: 80 }, pitch_title: 'Проект А', summary: 'Автоматизация процесса', presentation_url: 'https://example.test/pitch', attachments: [], submitted_at: new Date().toISOString(), evaluation_count: 1, average_score: 90, score_adjustment: 2, outcome: 'winner', final_score: 92, rank: 1, evaluations: [] }] }] } }));
   await page.route('**/api/accelerators/cohorts/12/artifacts', async (route) => route.fulfill({ json: { access_role: 'global_admin', artifacts: [{ id: 111, artifact_type: 'chat', status: 'ready', title: 'Разбор гипотезы', summary: 'Гипотеза уточнена и готова к проверке.', visibility: { organizer: true, tracker: false }, updated_at: new Date().toISOString(), details_visible: true, resident: { id: 8, name: 'Резидент А' }, project: { id: 5, name: 'Проект А' }, action: { id: 21, title: 'Разобрать гипотезу', action_type: 'chat' }, stage: { id: 31, title: 'Проверка проблемы' } }] } }));
   await page.route('**/api/accelerators/cohorts/12/teams', async (route) => route.fulfill({ json: { teams: [{ id: 601, name: 'Команда Проекта А', status: 'active', max_members: 5, project: { id: 5, name: 'Проект А' }, owner_membership_id: 101, can_manage: false, members: [{ id: 611, membership_id: 101, role: 'owner', title: 'Основатель', status: 'active', share_contact: true, person: { id: 8, name: 'Резидент А', email: 'resident@example.test' } }, { id: 612, membership_id: 102, role: 'member', title: 'Продажи', status: 'active', share_contact: false, person: { id: 9, name: 'Резидент Б' } }], pending_invitations: [{ id: 621, team_id: 601, status: 'pending', message: null, expires_at: new Date(Date.now() + 86_400_000).toISOString(), created_at: new Date().toISOString(), team: { id: 601, name: 'Команда Проекта А', project: { id: 5, name: 'Проект А' } }, invitee: { membership_id: 103, name: 'Резидент В' }, invited_by: { id: 8, name: 'Резидент А' }, counterpart_profile_id: 43, can_respond: false, can_cancel: false }] }] } }));
@@ -87,7 +87,7 @@ test('manager workspace is split into focused sections', async ({ page }) => {
   await expect(mainNavigation).toContainText('Программа');
   await expect(mainNavigation).toContainText('Результаты');
   await expect(mainNavigation).toContainText('Настройки');
-  await expect(mainNavigation.getByRole('button')).toHaveCount(6);
+  await expect(mainNavigation.getByRole('button')).toHaveCount(7);
   await page.getByRole('button', { name: 'Программа', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Этапы программы' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Единая очередь проверки' })).toBeVisible();
@@ -114,8 +114,13 @@ test('manager workspace is split into focused sections', async ({ page }) => {
   await page.getByRole('button', { name: 'Аудит проектов', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Аудит проекта' })).toBeVisible();
   await expect(page.getByText('Проблема подтверждена, требуется проверить цену.')).toBeVisible();
+  await expect(page.getByText('Квота «Сообщения»: списано 1 сообщение')).toBeVisible();
   await expect(page.getByRole('button', { name: 'В задачи' })).toBeVisible();
-  await page.getByRole('button', { name: 'Подбор и команды', exact: true }).click();
+  await page.getByRole('button', { name: 'Свернуть аудит Проект А' }).click();
+  await expect(page.getByText('Проблема подтверждена, требуется проверить цену.')).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Развернуть аудит Проект А' })).toBeVisible();
+  await page.getByRole('button', { name: 'Команды и трекеры', exact: true }).click();
+  await page.getByRole('button', { name: 'Команды', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Команды потока' })).toBeVisible();
   await expect(page.getByText('Команда Проекта А')).toBeVisible();
   await expect(page.getByText('resident@example.test')).toBeVisible();
@@ -150,6 +155,7 @@ test('participant card opens and closes from the keyboard with restored focus', 
     profile: { telegram: '@resident', competencies: ['продукт'], application_data: { duplicate: 'не показывать' } }, project: { id: 5, name: 'Проект А', readiness: 72, status: 'active' }, team: null,
     trackers: [], tracker_options: [],
     homework: { published: 2, accepted: 1, pending: 0, overdue: 0, submissions: [] },
+    program: { completed: 1, total: 2, percent: 50, stages: [] },
     risk: { level: 'yellow', reasons: ['Просрочено обязательное действие'], overdue_tasks: 1, overdue_homework: 0, last_activity_at: new Date().toISOString() },
     checkins: [], feedback: [], audit: null, lifecycle: [], last_action: { title: 'Подтвердил участие', at: new Date().toISOString() },
   } }));
@@ -181,6 +187,16 @@ test('manager sees an application summary and accepted participation state', asy
 
   await page.goto('/accelerator');
   await page.getByRole('button', { name: 'Заявки', exact: true }).click();
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Рабочий CSV' }).click();
+  const download = await downloadPromise;
+  const stream = await download.createReadStream();
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+  const csv = Buffer.concat(chunks).toString('utf8');
+  expect(csv.charCodeAt(0)).toBe(0xfeff);
+  expect(csv.split('\r\n')[0].split(';')).toHaveLength(11);
+  expect(csv).toContain('Резидент А;resident@example.test;Проект;Проект А;Принят');
   const acceptedApplication = page.getByRole('button', { name: /Резидент А/ });
   await expect(acceptedApplication).toContainText('Название проекта: Проект А');
   await expect(acceptedApplication).toContainText('Проблема: Команды долго собирают данные вручную');
@@ -633,7 +649,7 @@ test('captain manages a team, incoming applications and own membership', async (
   });
 
   await page.goto('/accelerator');
-  await page.getByRole('button', { name: 'Поддержка', exact: true }).click();
+  await page.getByRole('button', { name: 'Команда', exact: true }).click();
   await expect(page.getByText('Команда Альфа')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Принять' })).toBeVisible();
   await page.getByRole('button', { name: 'Отклонить' }).click();
@@ -661,7 +677,7 @@ test('captain manages a team, incoming applications and own membership', async (
   await expect(page.getByRole('button', { name: 'Скрыть контакт Резидент А' })).toHaveCount(0);
   teamStatus = 'active'; teamCanManage = false;
   await page.reload();
-  await page.getByRole('button', { name: 'Поддержка', exact: true }).click();
+  await page.getByRole('button', { name: 'Команда', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Покинуть команду' })).toBeVisible();
   page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Покинуть команду' }).click();
@@ -696,15 +712,18 @@ test('tracker sees reporting only for assigned residents', async ({ page }) => {
     application: { id: 44, type: 'project', status: 'approved', form_version: 1, answers: {}, submitted_at: new Date().toISOString() }, profile: {}, project: null, team: null,
     trackers: [{ user_id: 5, name: 'Tracker', email: 'tracker@example.test' }], tracker_options: [],
     homework: { published: 2, accepted: 1, pending: 0, overdue: 1, submissions: [] },
+    program: { completed: 1, total: 2, percent: 50, stages: [] },
     risk: { level: 'yellow', reasons: ['Просрочено домашнее задание'], overdue_tasks: 0, overdue_homework: 1 },
     checkins: [], feedback: [], audit: null,
     lifecycle: [{ id: 1, to_status: 'accepted', reason: 'Заявка одобрена', created_at: '2026-08-01T10:00:00' }, { id: 2, from_status: 'accepted', to_status: 'enrolled', reason: 'Зачислен в поток', created_at: '2026-08-02T10:00:00' }],
     last_action: { title: 'Зачислен в поток', at: '2026-08-02T10:00:00' },
   } }));
   await page.route('**/api/accelerators/cohorts/12/tracking-dashboard', async (route) => route.fulfill({ json: {
-    summary: { residents: 1, green: 0, yellow: 1, red: 0, overdue_tasks: 0 },
-    rows: [{ membership_id: 101, name: 'Резидент А', email: 'resident@example.test', status: 'enrolled', program: { percent: 50 }, homework: { overdue: 1 }, attendance: { present: 3, total: 5 }, open_tasks: 1, risk: { level: 'yellow', reasons: ['Нет чек-ина за текущую неделю'], overdue_homework: 1, overdue_tasks: 0, attendance_percent: 60 } }],
+    summary: { residents: 1, green: 0, yellow: 1, red: 0, overdue_tasks: 0, open_signals: 1, high_signals: 0, overdue_signals: 0, no_checkin: 1 },
+    signals: [{ membership_id: 101, kind: 'no_checkin', fingerprint: 'a'.repeat(64), severity: 'medium', title: 'Резидент ещё не заполнил чек-ин', reason: 'Резидент ещё не заполнил чек-ин', state: 'open' }],
+    rows: [{ membership_id: 101, name: 'Резидент А', email: 'resident@example.test', status: 'enrolled', program: { completed: 2, total: 4, percent: 50 }, homework: { overdue: 1 }, attendance: { present: 3, total: 5 }, open_tasks: 1, signals: [], risk: { level: 'yellow', reasons: ['Нет чек-ина за текущую неделю'], overdue_homework: 1, overdue_tasks: 0, attendance_percent: 60 } }],
   } }));
+  await page.route('**/api/accelerators/cohorts/12/tracking-tasks/bulk', async (route) => route.fulfill({ json: { created: 1, tasks: [] } }));
   await page.route('**/api/accelerators/cohorts/12/project-audits', async (route) => route.fulfill({ json: { access_role: 'tracker', audits: [] } }));
 
   await page.goto('/accelerator');
@@ -721,6 +740,13 @@ test('tracker sees reporting only for assigned residents', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Создать обязательную задачу' })).toBeVisible();
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Трекинг', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Массовая задача' })).toBeVisible();
+  await page.getByRole('button', { name: 'Назначить', exact: true }).click();
+  await page.getByRole('checkbox').check();
+  await page.getByPlaceholder('Что нужно сделать').fill('Связаться с клиентами');
+  const bulkRequest = page.waitForRequest((request) => request.url().includes('/tracking-tasks/bulk'));
+  await page.getByRole('button', { name: 'Назначить (1)' }).click();
+  expect((await bulkRequest).postDataJSON()).toMatchObject({ membership_ids: [101], title: 'Связаться с клиентами' });
   await expect(page.getByRole('heading', { name: 'Трекинг прогресса' })).toBeVisible();
   await expect(page.getByText('Нужна внимательность')).toBeVisible();
   await page.getByRole('button', { name: 'Аудит проекта', exact: true }).click();

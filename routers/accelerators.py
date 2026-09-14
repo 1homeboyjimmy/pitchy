@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta, timezone
-import csv
 import hashlib
-import io
 import json
 import logging
 import os
@@ -34,6 +32,12 @@ from accelerator_service import (
     tracker_membership_ids,
 )
 from accelerator_project_audit_service import generate_project_audit
+from accelerator_csv import csv_content, csv_datetime, csv_filename
+from accelerator_program_progress_service import (
+    ProgramProgressService,
+    stage_completion_policy,
+)
+from accelerator_tracking_signals_service import TrackingSignalsService
 from accelerator_application_service import (
     MANAGER_TRANSITIONS,
     accept_invitation,
@@ -92,6 +96,7 @@ from models import (
     AcceleratorResidentQuotaOverride,
     AcceleratorStaff,
     AcceleratorTrackingFeedback,
+    AcceleratorTrackingSignalState,
     AcceleratorTrackingTask,
     AcceleratorTodayRecommendationCache,
     AcceleratorTrackerAssignment,
@@ -133,7 +138,9 @@ from schemas.accelerators import (
     MembershipTrackerUpdate,
     ProgramConfigUpdate,
     ProgramStageCreate,
+    ProgramStageManualComplete,
     ProgramStageReorder,
+    ProgramStageWaive,
     RecommendationCreate,
     TodayAIRecommendationSelection,
     PublicApplicationCreate,
@@ -142,6 +149,8 @@ from schemas.accelerators import (
     MembershipStatusUpdate,
     ProgressCheckinUpsert,
     TrackingFeedbackCreate,
+    TrackingSignalStateUpdate,
+    TrackingTaskBulkCreate,
     TrackingTaskCreate,
     TrackingTaskUpdate,
     ProjectAuditCreate,
@@ -2084,7 +2093,9 @@ async def manager_stage_dict(db: AsyncSession, stage: AcceleratorProgramStage) -
         "description": stage.description,
         "position": stage.position,
         "unlock_at": stage.unlock_at,
+        "due_at": stage.due_at,
         "required": stage.required,
+        "completion_policy": stage_completion_policy(stage),
         "status": stage.status,
         "published_at": stage.published_at,
         "materials": [program_material_dict(row) for row in materials],
@@ -2102,9 +2113,8 @@ async def resident_program_rows(
         AcceleratorProgramStage.cohort_id == membership.cohort_id,
         AcceleratorProgramStage.status == "published",
     ).order_by(AcceleratorProgramStage.position))).scalars().all())
-    completed_stage_ids = set((await db.execute(select(AcceleratorProgramStageProgress.stage_id).where(
-        AcceleratorProgramStageProgress.membership_id == membership.id
-    ))).scalars().all())
+    progress = await ProgramProgressService(db).get_membership_progress(membership.id)
+    progress_by_stage = {row["stage_id"]: row for row in progress["stages"]}
     completed_material_ids = set((await db.execute(select(AcceleratorProgramMaterialProgress.material_id).where(
         AcceleratorProgramMaterialProgress.membership_id == membership.id
     ))).scalars().all())
@@ -2116,12 +2126,10 @@ async def resident_program_rows(
         AcceleratorProgramConfig.cohort_id == membership.cohort_id
     ))).scalar_one_or_none()
     artifacts_enabled = bool(config and (config.modules or {}).get("pitchy_artifacts"))
-    now = datetime.utcnow()
-    blocked_by_previous = False
     result = []
     for stage in stages:
-        locked = blocked_by_previous or bool(stage.unlock_at and stage.unlock_at > now)
-        completed = stage.id in completed_stage_ids
+        stage_progress = progress_by_stage[stage.id]
+        locked = stage_progress["state"] == "locked"
         materials = await stage_materials(db, stage.id)
         actions = await stage_actions(db, stage.id) if artifacts_enabled else []
         result.append({
@@ -2130,8 +2138,15 @@ async def resident_program_rows(
             "description": stage.description,
             "position": stage.position,
             "unlock_at": stage.unlock_at,
+            "due_at": stage.due_at,
             "required": stage.required,
-            "state": "completed" if completed else "locked" if locked else "available",
+            "state": stage_progress["state"],
+            "completion_source": stage_progress["completion_source"],
+            "waiver_reason": stage_progress["waiver_reason"],
+            "completed_required": stage_progress["completed_required"],
+            "required_total": stage_progress["required_total"],
+            "blockers": stage_progress["blockers"],
+            "requirements": stage_progress["requirements"],
             "materials": [] if locked else [
                 program_material_dict(row, completed_material_ids) for row in materials
             ],
@@ -2142,8 +2157,6 @@ async def resident_program_rows(
                 db, stage, published_only=True
             ),
         })
-        if stage.required and not completed:
-            blocked_by_previous = True
     return result
 
 
@@ -2182,7 +2195,9 @@ async def create_program_stage(
         description=(payload.description or "").strip() or None,
         position=(max_position or 0) + 1,
         unlock_at=payload.unlock_at,
+        due_at=payload.due_at,
         required=payload.required,
+        completion_policy=payload.completion_policy,
         created_by_user_id=user.id,
         updated_by_user_id=user.id,
     )
@@ -2235,7 +2250,9 @@ async def update_program_stage(
     stage.title = payload.title.strip()
     stage.description = (payload.description or "").strip() or None
     stage.unlock_at = payload.unlock_at
+    stage.due_at = payload.due_at
     stage.required = payload.required
+    stage.completion_policy = payload.completion_policy
     stage.updated_by_user_id = user.id
     await db.execute(delete(AcceleratorProgramMaterial).where(
         AcceleratorProgramMaterial.stage_id == stage.id
@@ -2305,7 +2322,8 @@ async def duplicate_program_stage(
     ))).scalar_one() or 0
     duplicate = AcceleratorProgramStage(
         cohort_id=cohort.id, title=f"{source.title} — копия", description=source.description,
-        position=max_position + 1, unlock_at=source.unlock_at, required=source.required,
+        position=max_position + 1, unlock_at=source.unlock_at, due_at=source.due_at,
+        required=source.required, completion_policy=source.completion_policy or {},
         created_by_user_id=user.id, updated_by_user_id=user.id,
     )
     db.add(duplicate)
@@ -2413,7 +2431,7 @@ async def complete_program_material(
         raise HTTPException(status_code=404, detail="Материал не найден")
     rows = await resident_program_rows(db, membership)
     state = next((row["state"] for row in rows if row["id"] == stage.id), None)
-    if state not in ("available", "completed"):
+    if state not in ("available", "in_progress", "overdue", "completed"):
         raise HTTPException(status_code=409, detail="Этап программы пока закрыт")
     existing = (await db.execute(select(AcceleratorProgramMaterialProgress).where(
         AcceleratorProgramMaterialProgress.material_id == material.id,
@@ -2421,6 +2439,10 @@ async def complete_program_material(
     ))).scalar_one_or_none()
     if not existing:
         db.add(AcceleratorProgramMaterialProgress(material_id=material.id, membership_id=membership.id))
+        await db.flush()
+        stage_state = await ProgramProgressService(db).complete_or_reconcile_stage(
+            membership.id, stage.id
+        )
         cohort = await get_cohort_or_404(db, membership.cohort_id)
         add_audit(
             db,
@@ -2432,6 +2454,17 @@ async def complete_program_material(
             target_id=material.id,
             details={"membership_id": membership.id, "stage_id": stage.id},
         )
+        if stage_state["became_completed"]:
+            add_audit(
+                db,
+                accelerator_id=cohort.accelerator_id,
+                cohort_id=cohort.id,
+                actor_user_id=user.id,
+                action="program_stage.completed",
+                target_type="program_stage",
+                target_id=stage.id,
+                details={"membership_id": membership.id, "source": "auto"},
+            )
         await db.commit()
     return {"material_id": material.id, "completed": True}
 
@@ -2454,76 +2487,44 @@ async def complete_program_stage(
     if not membership:
         raise HTTPException(status_code=404, detail="Этап программы не найден")
     rows = await resident_program_rows(db, membership)
-    state = next((row["state"] for row in rows if row["id"] == stage.id), None)
-    if state == "completed":
+    stage_row = next((row for row in rows if row["id"] == stage.id), None)
+    if not stage_row:
+        raise HTTPException(status_code=404, detail="Этап программы не найден")
+    if stage_row["state"] in ("completed", "waived"):
+        stage_state = await ProgramProgressService(db).complete_or_reconcile_stage(
+            membership.id, stage.id
+        )
+        cohort = await get_cohort_or_404(db, membership.cohort_id)
+        completion_logs = list((await db.execute(select(AcceleratorAuditLog).where(
+            AcceleratorAuditLog.accelerator_id == cohort.accelerator_id,
+            AcceleratorAuditLog.action == "program_stage.completed",
+            AcceleratorAuditLog.target_type == "program_stage",
+            AcceleratorAuditLog.target_id == stage.id,
+        ))).scalars().all())
+        if not any(
+            (row.details or {}).get("membership_id") == membership.id
+            for row in completion_logs
+        ):
+            add_audit(
+                db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+                actor_user_id=user.id, action="program_stage.completed",
+                target_type="program_stage", target_id=stage.id,
+                details={
+                    "membership_id": membership.id,
+                    "source": stage_state["completion_source"] or "auto",
+                },
+            )
+        await db.commit()
         return {"stage_id": stage.id, "completed": True}
-    if state != "available":
+    if stage_row["state"] == "locked":
         raise HTTPException(status_code=409, detail="Этап программы пока закрыт")
-    required_material_ids = set((await db.execute(select(AcceleratorProgramMaterial.id).where(
-        AcceleratorProgramMaterial.stage_id == stage.id,
-        AcceleratorProgramMaterial.required.is_(True),
-    ))).scalars().all())
-    completed_material_ids = set((await db.execute(select(AcceleratorProgramMaterialProgress.material_id).where(
-        AcceleratorProgramMaterialProgress.membership_id == membership.id,
-        AcceleratorProgramMaterialProgress.material_id.in_(required_material_ids),
-    ))).scalars().all()) if required_material_ids else set()
-    if required_material_ids - completed_material_ids:
-        raise HTTPException(status_code=409, detail="Сначала отметьте все обязательные материалы")
-    assignments = list((await db.execute(select(AcceleratorHomeworkAssignment).where(
-        AcceleratorHomeworkAssignment.stage_id == stage.id,
-        AcceleratorHomeworkAssignment.status == "published",
-    ))).scalars().all())
-    for assignment in assignments:
-        if assignment.audience == "selected":
-            targeted = (await db.execute(select(AcceleratorHomeworkTarget.id).where(
-                AcceleratorHomeworkTarget.assignment_id == assignment.id,
-                AcceleratorHomeworkTarget.membership_id == membership.id,
-            ))).scalar_one_or_none()
-            if targeted is None:
-                continue
-        accepted = (await db.execute(select(AcceleratorHomeworkSubmission.id).where(
-            AcceleratorHomeworkSubmission.assignment_id == assignment.id,
-            AcceleratorHomeworkSubmission.membership_id == membership.id,
-            AcceleratorHomeworkSubmission.status == "accepted",
-        ))).scalar_one_or_none()
-        if accepted is None:
-            raise HTTPException(status_code=409, detail="Сначала получите зачёт по домашнему заданию этапа")
-    config = (await db.execute(select(AcceleratorProgramConfig).where(
-        AcceleratorProgramConfig.cohort_id == membership.cohort_id
-    ))).scalar_one_or_none()
-    if config and (config.modules or {}).get("pitchy_artifacts"):
-        required_action_ids = set((await db.execute(
-            select(AcceleratorProgramAction.id).where(
-                AcceleratorProgramAction.stage_id == stage.id,
-                AcceleratorProgramAction.required.is_(True),
-            )
-        )).scalars().all())
-        ready_action_ids = set((await db.execute(
-            select(AcceleratorArtifact.action_id).where(
-                AcceleratorArtifact.membership_id == membership.id,
-                AcceleratorArtifact.action_id.in_(required_action_ids),
-                AcceleratorArtifact.status == "ready",
-            )
-        )).scalars().all()) if required_action_ids else set()
-        if required_action_ids - ready_action_ids:
-            raise HTTPException(
-                status_code=409,
-                detail="Сначала завершите обязательные действия в инструментах Pitchy",
-            )
-        unfinished_artifact = (await db.execute(select(AcceleratorArtifact.id).join(
-            AcceleratorProgramAction,
-            AcceleratorProgramAction.id == AcceleratorArtifact.action_id,
-        ).where(
-            AcceleratorArtifact.membership_id == membership.id,
-            AcceleratorProgramAction.stage_id == stage.id,
-            AcceleratorArtifact.status != "ready",
-        ).limit(1))).scalar_one_or_none()
-        if unfinished_artifact is not None:
-            raise HTTPException(
-                status_code=409,
-                detail="Завершите или уберите начатые действия Pitchy",
-            )
-    db.add(AcceleratorProgramStageProgress(stage_id=stage.id, membership_id=membership.id))
+    if stage_row["completion_source"] != "auto":
+        blocker = (stage_row["blockers"] or [{}])[0]
+        raise HTTPException(
+            status_code=409,
+            detail=blocker.get("reason") or "Этап пока нельзя завершить",
+        )
+    await ProgramProgressService(db).complete_or_reconcile_stage(membership.id, stage.id)
     cohort = await get_cohort_or_404(db, membership.cohort_id)
     add_audit(
         db,
@@ -2533,10 +2534,91 @@ async def complete_program_stage(
         action="program_stage.completed",
         target_type="program_stage",
         target_id=stage.id,
-        details={"membership_id": membership.id},
+        details={"membership_id": membership.id, "source": "auto"},
     )
     await db.commit()
     return {"stage_id": stage.id, "completed": True}
+
+
+@router.post("/program/stages/{stage_id}/complete-manually")
+async def complete_program_stage_manually(
+    stage_id: int,
+    payload: ProgramStageManualComplete,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    stage = await db.get(AcceleratorProgramStage, stage_id)
+    membership = await db.get(AcceleratorMembership, payload.membership_id)
+    if not stage or not membership or membership.cohort_id != stage.cohort_id:
+        raise HTTPException(status_code=404, detail="Этап или резидент не найден")
+    cohort = await get_cohort_or_404(db, stage.cohort_id)
+    await require_tracker_membership_access(db, user, membership)
+    explanation = await ProgramProgressService(db).explain_stage_state(
+        membership.id, stage.id
+    )
+    if explanation["blockers"] and not all(
+        row["kind"] == "manual_confirmation" for row in explanation["blockers"]
+    ):
+        raise HTTPException(status_code=409, detail=explanation["blockers"][0]["reason"])
+    progress = (await db.execute(select(AcceleratorProgramStageProgress).where(
+        AcceleratorProgramStageProgress.stage_id == stage.id,
+        AcceleratorProgramStageProgress.membership_id == membership.id,
+    ))).scalar_one_or_none()
+    if not progress:
+        progress = AcceleratorProgramStageProgress(
+            stage_id=stage.id, membership_id=membership.id
+        )
+        db.add(progress)
+    progress.completed_at = datetime.utcnow()
+    progress.completion_source = "manual"
+    progress.waiver_reason = None
+    progress.completed_by_user_id = user.id
+    progress.last_evaluated_at = datetime.utcnow()
+    add_audit(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        actor_user_id=user.id, action="program_stage.completed_manually",
+        target_type="program_stage", target_id=stage.id,
+        details={"membership_id": membership.id, "reason": payload.reason},
+    )
+    await db.commit()
+    return await ProgramProgressService(db).explain_stage_state(membership.id, stage.id)
+
+
+@router.post("/program/stages/{stage_id}/waive")
+async def waive_program_stage(
+    stage_id: int,
+    payload: ProgramStageWaive,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    stage = await db.get(AcceleratorProgramStage, stage_id)
+    membership = await db.get(AcceleratorMembership, payload.membership_id)
+    if not stage or not membership or membership.cohort_id != stage.cohort_id:
+        raise HTTPException(status_code=404, detail="Этап или резидент не найден")
+    cohort = await get_cohort_or_404(db, stage.cohort_id)
+    await require_cohort_manager(db, user, cohort)
+    progress = (await db.execute(select(AcceleratorProgramStageProgress).where(
+        AcceleratorProgramStageProgress.stage_id == stage.id,
+        AcceleratorProgramStageProgress.membership_id == membership.id,
+    ))).scalar_one_or_none()
+    if not progress:
+        progress = AcceleratorProgramStageProgress(
+            stage_id=stage.id, membership_id=membership.id
+        )
+        db.add(progress)
+    progress.completed_at = datetime.utcnow()
+    progress.completion_source = "waived"
+    progress.waiver_reason = payload.reason.strip()
+    progress.completed_by_user_id = user.id
+    progress.last_evaluated_at = datetime.utcnow()
+    add_audit(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        actor_user_id=user.id, action="program_stage.waived",
+        target_type="program_stage", target_id=stage.id,
+        details={"membership_id": membership.id, "reason": payload.reason.strip()},
+    )
+    await db.commit()
+    return await ProgramProgressService(db).explain_stage_state(membership.id, stage.id)
 
 
 @router.get("/cohorts/{cohort_id}/homework")
@@ -3498,6 +3580,28 @@ async def review_homework_submission(
             and previous_status in {"accepted", "needs_revision"},
         },
     )
+    if assignment.stage_id:
+        await db.flush()
+        affected_membership_ids = {submission.membership_id}
+        if submission.team_id is not None:
+            affected_membership_ids.update((await db.execute(
+                select(AcceleratorTeamMember.membership_id).where(
+                    AcceleratorTeamMember.team_id == submission.team_id,
+                    AcceleratorTeamMember.status == "active",
+                )
+            )).scalars().all())
+        progress_service = ProgramProgressService(db)
+        for affected_membership_id in affected_membership_ids:
+            stage_state = await progress_service.complete_or_reconcile_stage(
+                affected_membership_id, assignment.stage_id
+            )
+            if stage_state["became_completed"]:
+                add_audit(
+                    db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+                    actor_user_id=user.id, action="program_stage.completed",
+                    target_type="program_stage", target_id=assignment.stage_id,
+                    details={"membership_id": affected_membership_id, "source": "auto"},
+                )
     await db.commit()
     if notification:
         background_tasks.add_task(process_notification_event, notification.id)
@@ -4222,28 +4326,27 @@ async def export_event_attendance(
     event = await db.get(AcceleratorEvent, event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Мероприятие не найдено")
+    cohort = await get_cohort_or_404(db, event.cohort_id)
     rows = await list_event_attendance(event_id, user, db)
-    output = io.StringIO(newline="")
-    writer = csv.writer(output)
-    writer.writerow(["Участник", "Email", "Статус", "Время отметки", "Комментарий"])
     status_labels = {
         "not_marked": "Не отмечен",
         "present": "Присутствовал",
         "absent": "Отсутствовал",
         "excused": "Уважительная причина",
     }
+    csv_rows = [["Участник", "Email", "Статус", "Время отметки", "Комментарий"]]
     for row in rows:
-        writer.writerow([
+        csv_rows.append([
             row["name"],
             row["email"],
             status_labels.get(row["status"], row["status"]),
-            row["checked_in_at"].isoformat() if row["checked_in_at"] else "",
+            csv_datetime(row["checked_in_at"], cohort.timezone),
             row["comment"] or "",
         ])
     return Response(
-        content=("\ufeff" + output.getvalue()).encode("utf-8"),
+        content=csv_content(csv_rows),
         media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="event-{event.id}-attendance.csv"'},
+        headers={"Content-Disposition": f'attachment; filename="{csv_filename(f"event-{event.id}-attendance")}"'},
     )
 
 
@@ -4280,6 +4383,18 @@ async def mark_event_attendance(
     add_audit(db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
               actor_user_id=user.id, action="attendance.marked", target_type="event", target_id=event.id,
               details={"membership_id": membership.id, "status": payload.status})
+    if event.stage_id:
+        await db.flush()
+        stage_state = await ProgramProgressService(db).complete_or_reconcile_stage(
+            membership.id, event.stage_id
+        )
+        if stage_state["became_completed"]:
+            add_audit(
+                db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+                actor_user_id=user.id, action="program_stage.completed",
+                target_type="program_stage", target_id=event.stage_id,
+                details={"membership_id": membership.id, "source": "auto"},
+            )
     await db.commit()
     return {"event_id": event.id, "membership_id": membership.id, "status": record.status}
 
@@ -4368,6 +4483,18 @@ async def check_in_to_event(
             target_id=event.id,
             details={"membership_id": membership.id, "method": "qr"},
         )
+        if event.stage_id:
+            await db.flush()
+            stage_state = await ProgramProgressService(db).complete_or_reconcile_stage(
+                membership.id, event.stage_id
+            )
+            if stage_state["became_completed"]:
+                add_audit(
+                    db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+                    actor_user_id=user.id, action="program_stage.completed",
+                    target_type="program_stage", target_id=event.stage_id,
+                    details={"membership_id": membership.id, "source": "auto"},
+                )
         await db.commit()
     return {"event": event_dict(event, attendance=record), "checked_in": True}
 
@@ -4668,20 +4795,55 @@ async def list_applications(
     cohort = await get_cohort_or_404(db, cohort_id)
     await require_cohort_manager(db, user, cohort)
     query = (
-        select(AcceleratorApplication, AcceleratorMembership.status)
+        select(
+            AcceleratorApplication,
+            AcceleratorMembership.id,
+            AcceleratorMembership.status,
+            Project.name,
+        )
         .outerjoin(
             AcceleratorMembership,
             AcceleratorMembership.application_id == AcceleratorApplication.id,
         )
+        .outerjoin(Project, Project.id == AcceleratorApplication.project_id)
         .where(AcceleratorApplication.cohort_id == cohort.id)
     )
     if status:
         query = query.where(AcceleratorApplication.status == status)
     rows = (await db.execute(query.order_by(AcceleratorApplication.submitted_at.desc()))).all()
-    return [
-        {**application_dict(application), "membership_status": membership_status}
-        for application, membership_status in rows
-    ]
+    membership_ids = [membership_id for _, membership_id, _, _ in rows if membership_id]
+    tracker_rows = (await db.execute(
+        select(AcceleratorTrackerAssignment.membership_id, User.name)
+        .join(User, User.id == AcceleratorTrackerAssignment.tracker_user_id)
+        .where(AcceleratorTrackerAssignment.membership_id.in_(membership_ids))
+        .order_by(User.name)
+    )).all() if membership_ids else []
+    team_tracker_rows = (await db.execute(
+        select(AcceleratorTeamMember.membership_id, User.name)
+        .join(AcceleratorTeam, AcceleratorTeam.id == AcceleratorTeamMember.team_id)
+        .join(
+            AcceleratorTeamTrackerAssignment,
+            AcceleratorTeamTrackerAssignment.team_id == AcceleratorTeam.id,
+        )
+        .join(User, User.id == AcceleratorTeamTrackerAssignment.tracker_user_id)
+        .where(
+            AcceleratorTeamMember.membership_id.in_(membership_ids),
+            AcceleratorTeamMember.status == "active",
+            AcceleratorTeam.status == "active",
+        )
+        .order_by(User.name)
+    )).all() if membership_ids else []
+    tracker_rows = list(tracker_rows) + list(team_tracker_rows)
+    tracker_names: dict[int, list[str]] = {}
+    for membership_id, tracker_name in tracker_rows:
+        tracker_names.setdefault(membership_id, []).append(tracker_name)
+    return [{
+        **application_dict(application),
+        "membership_id": membership_id,
+        "membership_status": membership_status,
+        "project_name": project_name,
+        "tracker_names": tracker_names.get(membership_id, []),
+    } for application, membership_id, membership_status, project_name in rows]
 
 
 @router.post("/applications/{application_id}/accept")
@@ -5249,10 +5411,11 @@ async def cohort_resident_report(
     membership_rows = (await db.execute(membership_query)).all()
     membership_ids = [membership.id for membership, _ in membership_rows]
 
-    stage_ids = list((await db.execute(select(AcceleratorProgramStage.id).where(
+    stages = list((await db.execute(select(AcceleratorProgramStage).where(
         AcceleratorProgramStage.cohort_id == cohort.id,
         AcceleratorProgramStage.status == "published",
     ))).scalars().all())
+    stage_ids = [stage.id for stage in stages]
     stage_progress = set((await db.execute(select(
         AcceleratorProgramStageProgress.membership_id,
         AcceleratorProgramStageProgress.stage_id,
@@ -5260,6 +5423,53 @@ async def cohort_resident_report(
         AcceleratorProgramStageProgress.membership_id.in_(membership_ids),
         AcceleratorProgramStageProgress.stage_id.in_(stage_ids),
     ))).all()) if membership_ids and stage_ids else set()
+
+    required_material_rows = (await db.execute(select(
+        AcceleratorProgramMaterial.id,
+        AcceleratorProgramMaterial.stage_id,
+    ).where(
+        AcceleratorProgramMaterial.stage_id.in_(stage_ids),
+        AcceleratorProgramMaterial.required.is_(True),
+    ))).all() if stage_ids else []
+    required_materials_by_stage: dict[int, set[int]] = {}
+    for material_id, stage_id in required_material_rows:
+        required_materials_by_stage.setdefault(stage_id, set()).add(material_id)
+    required_material_ids = [material_id for material_id, _ in required_material_rows]
+    completed_materials = set((await db.execute(select(
+        AcceleratorProgramMaterialProgress.membership_id,
+        AcceleratorProgramMaterialProgress.material_id,
+    ).where(
+        AcceleratorProgramMaterialProgress.membership_id.in_(membership_ids),
+        AcceleratorProgramMaterialProgress.material_id.in_(required_material_ids),
+    ))).all()) if membership_ids and required_material_ids else set()
+
+    program_config = (await db.execute(select(AcceleratorProgramConfig).where(
+        AcceleratorProgramConfig.cohort_id == cohort.id
+    ))).scalar_one_or_none()
+    artifacts_enabled = bool(
+        program_config and (program_config.modules or {}).get("pitchy_artifacts")
+    )
+    required_actions_by_stage: dict[int, set[int]] = {}
+    completed_actions: set[tuple[int, int]] = set()
+    if artifacts_enabled and stage_ids:
+        required_action_rows = (await db.execute(select(
+            AcceleratorProgramAction.id,
+            AcceleratorProgramAction.stage_id,
+        ).where(
+            AcceleratorProgramAction.stage_id.in_(stage_ids),
+            AcceleratorProgramAction.required.is_(True),
+        ))).all()
+        for action_id, stage_id in required_action_rows:
+            required_actions_by_stage.setdefault(stage_id, set()).add(action_id)
+        required_action_ids = [action_id for action_id, _ in required_action_rows]
+        completed_actions = set((await db.execute(select(
+            AcceleratorArtifact.membership_id,
+            AcceleratorArtifact.action_id,
+        ).where(
+            AcceleratorArtifact.membership_id.in_(membership_ids),
+            AcceleratorArtifact.action_id.in_(required_action_ids),
+            AcceleratorArtifact.status == "ready",
+        ))).all()) if membership_ids and required_action_ids else set()
 
     assignments = list((await db.execute(select(AcceleratorHomeworkAssignment).where(
         AcceleratorHomeworkAssignment.cohort_id == cohort.id,
@@ -5347,7 +5557,9 @@ async def cohort_resident_report(
                 marked += 1
                 activity_dates.append(record.checked_in_at or record.updated_at)
                 present += int(record.status == "present")
-        completed_stages = sum((membership.id, stage_id) in stage_progress for stage_id in stage_ids)
+        program_progress = await ProgramProgressService(db).get_membership_progress(
+            membership.id
+        )
         quota = {}
         for resource in ("messages", "roadmaps", "custdev", "grants"):
             snapshot = await accelerator_membership_quota_snapshot(db, membership.id, resource)
@@ -5357,6 +5569,11 @@ async def cohort_resident_report(
                     "remaining": snapshot["remaining"], "source": snapshot["override"].source,
                 }
         activity_dates = [value for value in activity_dates if value is not None]
+        risk = await membership_tracking_risk(db, membership)
+        open_tasks = (await db.execute(select(func.count(AcceleratorTrackingTask.id)).where(
+            AcceleratorTrackingTask.membership_id == membership.id,
+            AcceleratorTrackingTask.status == "open",
+        ))).scalar_one()
         rows.append({
             "membership_id": membership.id,
             "user_id": resident.id,
@@ -5366,9 +5583,9 @@ async def cohort_resident_report(
             "status_reason": membership.status_reason,
             "trackers": trackers_by_membership.get(membership.id, []),
             "program": {
-                "completed": completed_stages,
-                "total": len(stage_ids),
-                "percent": round(completed_stages * 100 / len(stage_ids)) if stage_ids else 0,
+                "completed": program_progress["completed"],
+                "total": program_progress["total"],
+                "percent": program_progress["percent"],
             },
             "homework": {
                 "accepted": accepted_homework,
@@ -5379,39 +5596,47 @@ async def cohort_resident_report(
             "attendance": {"present": present, "marked": marked, "total": len(event_ids)},
             "quota": quota,
             "last_activity_at": max(activity_dates) if activity_dates else None,
+            "last_checkin_at": risk["last_checkin_at"],
+            "risk": risk,
+            "open_tasks": int(open_tasks or 0),
         })
 
     if format == "csv":
-        output = io.StringIO()
-        writer = csv.writer(output, delimiter=";")
-        writer.writerow([
-            "Резидент", "Email", "Статус", "Трекеры", "Программа, %",
-            "Домашние задания зачтено", "Просрочено", "Посещено", "Всего событий",
-            "Сообщения лимит", "Сообщения использовано", "Дорожные карты лимит",
-            "Дорожные карты использовано", "Кастдевы лимит", "Кастдевы использовано",
-            "Гранты лимит", "Гранты использовано",
-            "Последняя активность",
-        ])
+        status_labels = {
+            "accepted": "Ждёт подтверждения",
+            "enrolled": "Зачислен",
+            "suspended": "Приостановлен",
+            "completed": "Завершил программу",
+            "withdrawn": "Выбыл",
+        }
+        csv_rows = [[
+            "Резидент", "Email", "Статус", "Трекеры", "Программа выполнено",
+            "Программа всего", "Программа, %", "Домашние задания зачтено",
+            "На проверке", "Просрочено", "Посещено", "Всего событий",
+            "Уровень риска", "Причины внимания", "Открытые задачи",
+            "Последний чек-ин", "Последняя активность",
+        ]]
         for row in rows:
-            def quota_value(resource: str, key: str):
-                return row["quota"].get(resource, {}).get(key, "")
-
-            writer.writerow([
-                row["name"], row["email"], row["status"],
+            csv_rows.append([
+                row["name"], row["email"], status_labels.get(row["status"], row["status"]),
                 ", ".join(tracker["name"] for tracker in row["trackers"]),
+                row["program"]["completed"], row["program"]["total"],
                 row["program"]["percent"], row["homework"]["accepted"],
+                row["homework"]["waiting_review"],
                 row["homework"]["overdue"], row["attendance"]["present"],
                 row["attendance"]["total"],
-                quota_value("messages", "limit"), quota_value("messages", "used"),
-                quota_value("roadmaps", "limit"), quota_value("roadmaps", "used"),
-                quota_value("custdev", "limit"), quota_value("custdev", "used"),
-                quota_value("grants", "limit"), quota_value("grants", "used"),
-                row["last_activity_at"].isoformat() if row["last_activity_at"] else "",
+                {"green": "В норме", "yellow": "Нужно внимание", "red": "Высокий риск"}.get(
+                    row["risk"]["level"], row["risk"]["level"]
+                ),
+                "; ".join(row["risk"]["reasons"]),
+                row["open_tasks"],
+                csv_datetime(row["last_checkin_at"], cohort.timezone),
+                csv_datetime(row["last_activity_at"], cohort.timezone),
             ])
         return Response(
-            content="\ufeff" + output.getvalue(),
+            content=csv_content(csv_rows),
             media_type="text/csv; charset=utf-8",
-            headers={"Content-Disposition": f'attachment; filename="cohort-{cohort.id}-report.csv"'},
+            headers={"Content-Disposition": f'attachment; filename="{csv_filename(f"cohort-{cohort.id}-report")}"'},
         )
     return {
         "cohort_id": cohort.id,
@@ -5456,8 +5681,58 @@ def tracking_task_dict(task: AcceleratorTrackingTask) -> dict:
     }
 
 
+def tracking_risk_reason(
+    code: str,
+    severity: str,
+    audience: str,
+    *,
+    actor: str = "system",
+    value: int | None = None,
+) -> dict:
+    resident_texts = {
+        "no_activity": f"У вас нет активности {value} дней",
+        "tasks_overdue": f"У вас просрочено задач: {value}",
+        "homework_overdue_many": f"У вас просрочено домашних заданий: {value}",
+        "homework_overdue": "У вас просрочено домашнее задание",
+        "low_attendance": f"Ваша посещаемость {value}%",
+        "checkin_health_red": "Вы отметили критические сложности",
+        "checkin_health_yellow": "Вы отметили сложности",
+        "checkin_missing": "Вы ещё не заполнили чек-ин за текущую неделю",
+        "first_checkin_missing": "Вы ещё не заполнили первый чек-ин",
+        "tracker_not_assigned": "Трекер ещё не назначен; организатор уже видит это",
+    }
+    staff_texts = {
+        "no_activity": f"Нет активности {value} дней",
+        "tasks_overdue": f"Просрочено задач: {value}",
+        "homework_overdue_many": f"Просрочено домашних заданий: {value}",
+        "homework_overdue": "Просрочено домашнее задание",
+        "low_attendance": f"Посещаемость {value}%",
+        "checkin_health_red": "Резидент отметил критические сложности",
+        "checkin_health_yellow": "Резидент отметил сложности",
+        "checkin_missing": "Резидент ещё не заполнил чек-ин за текущую неделю",
+        "first_checkin_missing": "Резидент ещё не заполнил первый чек-ин",
+        "tracker_not_assigned": "Трекер ещё не назначен",
+    }
+    if code not in resident_texts:
+        logger.warning("Missing accelerator risk translation for code=%s", code)
+    available_texts = {
+        "resident": resident_texts.get(code, "Требуется внимание"),
+        "staff": staff_texts.get(code, "Требуется внимание"),
+    }
+    return {
+        "code": code,
+        "severity": severity,
+        "actor": actor,
+        "text": available_texts["resident" if audience == "resident" else "staff"],
+        "available_texts": available_texts,
+    }
+
+
 async def membership_tracking_risk(
-    db: AsyncSession, membership: AcceleratorMembership
+    db: AsyncSession,
+    membership: AcceleratorMembership,
+    *,
+    audience: str = "staff",
 ) -> dict:
     now = datetime.utcnow()
     current_week = date.today() - timedelta(days=date.today().weekday())
@@ -5528,34 +5803,48 @@ async def membership_tracking_risk(
     attendance_total = len(past_event_ids)
     attendance_percent = round(present_count * 100 / attendance_total) if attendance_total else 100
 
-    red_reasons: list[str] = []
-    yellow_reasons: list[str] = []
+    red_reasons: list[dict] = []
+    yellow_reasons: list[dict] = []
     if inactive_days >= 14:
-        red_reasons.append(f"Нет активности {inactive_days} дней")
+        red_reasons.append(tracking_risk_reason("no_activity", "high", audience, value=inactive_days))
     elif inactive_days >= 7:
-        yellow_reasons.append(f"Нет активности {inactive_days} дней")
+        yellow_reasons.append(tracking_risk_reason("no_activity", "medium", audience, value=inactive_days))
     if overdue_tasks:
-        red_reasons.append(f"Просрочено задач: {overdue_tasks}")
+        red_reasons.append(tracking_risk_reason("tasks_overdue", "high", audience, value=int(overdue_tasks)))
     if overdue_homework >= 2:
-        red_reasons.append(f"Просрочено домашних заданий: {overdue_homework}")
+        red_reasons.append(tracking_risk_reason("homework_overdue_many", "high", audience, value=overdue_homework))
     elif overdue_homework == 1:
-        yellow_reasons.append("Просрочено домашнее задание")
+        yellow_reasons.append(tracking_risk_reason("homework_overdue", "medium", audience))
     if attendance_total >= 2 and attendance_percent < 50:
-        red_reasons.append(f"Посещаемость {attendance_percent}%")
+        red_reasons.append(tracking_risk_reason("low_attendance", "high", audience, value=attendance_percent))
     elif attendance_total and present_count < attendance_total:
-        yellow_reasons.append(f"Посещаемость {attendance_percent}%")
+        yellow_reasons.append(tracking_risk_reason("low_attendance", "medium", audience, value=attendance_percent))
     if latest_checkin and latest_checkin.health == "red":
-        red_reasons.append("Резидент отметил критическое состояние")
+        red_reasons.append(tracking_risk_reason(
+            "checkin_health_red", "high", audience, actor="resident"
+        ))
     elif latest_checkin and latest_checkin.health == "yellow":
-        yellow_reasons.append("Резидент отметил сложности")
+        yellow_reasons.append(tracking_risk_reason(
+            "checkin_health_yellow", "medium", audience, actor="resident"
+        ))
     if latest_checkin and latest_checkin.period_start < current_week:
-        yellow_reasons.append("Нет чек-ина за текущую неделю")
+        yellow_reasons.append(tracking_risk_reason(
+            "checkin_missing", "medium", audience, actor="resident"
+        ))
     elif not latest_checkin and membership.enrolled_at and (now - membership.enrolled_at).days >= 7:
-        yellow_reasons.append("Первый чек-ин ещё не заполнен")
+        yellow_reasons.append(tracking_risk_reason(
+            "first_checkin_missing", "medium", audience, actor="resident"
+        ))
+    if not await membership_tracker_user_ids(db, membership.id):
+        yellow_reasons.append(tracking_risk_reason(
+            "tracker_not_assigned", "medium", audience
+        ))
     level = "red" if red_reasons else "yellow" if yellow_reasons else "green"
+    reason_items = red_reasons + yellow_reasons
     return {
         "level": level,
-        "reasons": red_reasons + yellow_reasons,
+        "reasons": [row["text"] for row in reason_items],
+        "reason_items": reason_items,
         "last_activity_at": last_activity_at,
         "inactive_days": inactive_days,
         "overdue_homework": overdue_homework,
@@ -5576,14 +5865,21 @@ async def tracking_dashboard(
     await require_progress_tracking_module(db, cohort)
     report = await cohort_resident_report(cohort_id, "json", user, db)
     rows = []
+    all_signals = []
     for report_row in report["rows"]:
         membership = await db.get(AcceleratorMembership, report_row["membership_id"])
-        risk = await membership_tracking_risk(db, membership)
-        open_tasks = (await db.execute(select(func.count(AcceleratorTrackingTask.id)).where(
-            AcceleratorTrackingTask.membership_id == membership.id,
-            AcceleratorTrackingTask.status == "open",
-        ))).scalar_one()
-        rows.append({**report_row, "risk": risk, "open_tasks": int(open_tasks or 0)})
+        risk = report_row["risk"]
+        signals = await TrackingSignalsService(db).get_membership_signals(
+            membership, risk
+        )
+        all_signals.extend(signals)
+        rows.append({
+            **report_row,
+            "signals": signals,
+        })
+    actionable_signals = [
+        row for row in all_signals if row["state"] in ("open", "acknowledged")
+    ]
     return {
         "cohort_id": cohort.id,
         "access_role": report["access_role"],
@@ -5593,9 +5889,109 @@ async def tracking_dashboard(
             "yellow": sum(row["risk"]["level"] == "yellow" for row in rows),
             "red": sum(row["risk"]["level"] == "red" for row in rows),
             "overdue_tasks": sum(row["risk"]["overdue_tasks"] for row in rows),
+            "open_signals": len(actionable_signals),
+            "high_signals": sum(row["severity"] == "high" for row in actionable_signals),
+            "overdue_signals": sum(
+                bool(row["due_at"] and row["due_at"] < datetime.utcnow())
+                for row in actionable_signals
+            ),
+            "no_checkin": sum(row["kind"] == "no_checkin" for row in actionable_signals),
         },
         "rows": rows,
+        "signals": all_signals,
     }
+
+
+@router.get("/cohorts/{cohort_id}/tracking-signals")
+async def list_tracking_signals(
+    cohort_id: int,
+    state: str | None = Query(default=None, pattern="^(open|acknowledged|snoozed|resolved)$"),
+    kind: str | None = None,
+    severity: str | None = Query(default=None, pattern="^(low|medium|high)$"),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    cohort = await get_cohort_or_404(db, cohort_id)
+    access_role = await require_cohort_reader(db, user, cohort)
+    await require_progress_tracking_module(db, cohort)
+    membership_query = select(AcceleratorMembership).where(
+        AcceleratorMembership.cohort_id == cohort.id,
+        AcceleratorMembership.role == "resident",
+        AcceleratorMembership.status.in_(("enrolled", "suspended")),
+    )
+    if access_role == "tracker":
+        membership_query = membership_query.where(
+            AcceleratorMembership.id.in_(await tracker_membership_ids(db, user.id, cohort.id))
+        )
+    memberships = list((await db.execute(membership_query)).scalars().all())
+    people = {row.id: row for row in (await db.execute(select(User).where(
+        User.id.in_([membership.user_id for membership in memberships])
+    ))).scalars().all()} if memberships else {}
+    risks = {
+        membership.id: await membership_tracking_risk(db, membership)
+        for membership in memberships
+    }
+    rows = await TrackingSignalsService(db).get_cohort_signals(memberships, risks)
+    if state:
+        rows = [row for row in rows if row["state"] == state]
+    if kind:
+        rows = [row for row in rows if row["kind"] == kind]
+    if severity:
+        rows = [row for row in rows if row["severity"] == severity]
+    for row in rows:
+        membership = next(item for item in memberships if item.id == row["membership_id"])
+        person = people.get(membership.user_id)
+        row["resident"] = {
+            "name": person.name if person else "Резидент",
+            "email": person.email if person else "",
+        }
+    return {"cohort_id": cohort.id, "access_role": access_role, "signals": rows}
+
+
+@router.patch("/memberships/{membership_id}/tracking-signals/{fingerprint}")
+async def update_tracking_signal_state(
+    membership_id: int,
+    fingerprint: str,
+    payload: TrackingSignalStateUpdate,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    membership, cohort, access_role = await tracking_membership_context(
+        db, membership_id, user
+    )
+    if access_role == "resident":
+        raise HTTPException(status_code=403, detail="Состояние сигнала меняет трекер или организатор")
+    if len(fingerprint) != 64:
+        raise HTTPException(status_code=404, detail="Сигнал не найден")
+    if payload.state == "snoozed" and payload.snoozed_until <= datetime.utcnow():
+        raise HTTPException(status_code=422, detail="Отложить сигнал можно только на будущее")
+    current = await TrackingSignalsService(db).get_membership_signals(
+        membership, await membership_tracking_risk(db, membership)
+    )
+    if not any(row["fingerprint"] == fingerprint for row in current):
+        raise HTTPException(status_code=404, detail="Сигнал больше не актуален")
+    row = (await db.execute(select(AcceleratorTrackingSignalState).where(
+        AcceleratorTrackingSignalState.membership_id == membership.id,
+        AcceleratorTrackingSignalState.fingerprint == fingerprint,
+    ).with_for_update())).scalar_one_or_none()
+    if not row:
+        row = AcceleratorTrackingSignalState(
+            membership_id=membership.id, fingerprint=fingerprint
+        )
+        db.add(row)
+    row.state = payload.state
+    row.snoozed_until = payload.snoozed_until if payload.state == "snoozed" else None
+    row.note = (payload.note or "").strip() or None
+    row.changed_by_user_id = user.id
+    row.resolved_at = datetime.utcnow() if payload.state == "resolved" else None
+    add_audit(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        actor_user_id=user.id, action="tracking.signal_state_changed",
+        target_type="membership", target_id=membership.id,
+        details={"fingerprint": fingerprint, "state": payload.state, "note": row.note},
+    )
+    await db.commit()
+    return {"membership_id": membership.id, "fingerprint": fingerprint, "state": row.state, "snoozed_until": row.snoozed_until}
 
 
 @router.get("/memberships/{membership_id}/tracking")
@@ -5628,7 +6024,9 @@ async def membership_tracking(
     return {
         "membership_id": membership.id,
         "access_role": access_role,
-        "risk": await membership_tracking_risk(db, membership),
+        "risk": await membership_tracking_risk(
+            db, membership, audience="resident" if access_role == "resident" else "staff"
+        ),
         "checkins": [{
             "id": row.id, "period_start": row.period_start, "health": row.health,
             "summary": row.summary, "blockers": row.blockers, "next_steps": row.next_steps,
@@ -5782,6 +6180,69 @@ async def create_tracking_task(
     return tracking_task_dict(task)
 
 
+@router.post("/cohorts/{cohort_id}/tracking-tasks/bulk")
+async def create_tracking_tasks_bulk(
+    cohort_id: int,
+    payload: TrackingTaskBulkCreate,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    cohort = await get_cohort_or_404(db, cohort_id)
+    await require_progress_tracking_module(db, cohort)
+    require_mutable_cohort(cohort)
+    if payload.due_at and payload.due_at <= datetime.utcnow():
+        raise HTTPException(status_code=422, detail="Срок задачи должен быть в будущем")
+    membership_ids = set(payload.membership_ids)
+    memberships = list((await db.execute(select(AcceleratorMembership).where(
+        AcceleratorMembership.id.in_(membership_ids),
+        AcceleratorMembership.cohort_id == cohort.id,
+        AcceleratorMembership.role == "resident",
+        AcceleratorMembership.status == "enrolled",
+    ))).scalars().all())
+    if {row.id for row in memberships} != membership_ids:
+        raise HTTPException(status_code=422, detail="Часть участников недоступна или не зачислена")
+    for membership in memberships:
+        access_role = await require_tracker_membership_access(db, user, membership)
+        if access_role == "resident":
+            raise HTTPException(status_code=403, detail="Задачу создаёт трекер или организатор")
+    residents = {row.id: row for row in (await db.execute(select(User).where(
+        User.id.in_([membership.user_id for membership in memberships])
+    ))).scalars().all()}
+    tasks = []
+    notification_ids = []
+    for membership in memberships:
+        task = AcceleratorTrackingTask(
+            membership_id=membership.id, created_by_user_id=user.id,
+            title=payload.title.strip(),
+            description=(payload.description or "").strip() or None,
+            due_at=payload.due_at,
+        )
+        db.add(task)
+        await db.flush()
+        resident = residents.get(membership.user_id)
+        if resident:
+            notification = await enqueue_notification(
+                db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+                recipient_email=resident.email, event_type="tracking_task_created",
+                subject=f"Новая задача: {task.title}",
+                body=f"Здравствуйте, {resident.name}!\n\nВам назначена задача «{task.title}».\n\nОткрыть: {os.getenv('FRONTEND_URL', 'https://pitchy.pro').rstrip('/')}/accelerator",
+                idempotency_key=f"tracking-task-created:{task.id}",
+            )
+            notification_ids.append(notification.id)
+        tasks.append(task)
+    add_audit(
+        db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+        actor_user_id=user.id, action="tracking.tasks_created_bulk",
+        target_type="cohort", target_id=cohort.id,
+        details={"membership_ids": sorted(membership_ids), "count": len(tasks)},
+    )
+    await db.commit()
+    for notification_id in notification_ids:
+        background_tasks.add_task(process_notification_event, notification_id)
+    return {"created": len(tasks), "tasks": [tracking_task_dict(row) for row in tasks]}
+
+
 @router.patch("/tracking-tasks/{task_id}")
 async def update_tracking_task(
     task_id: int,
@@ -5890,7 +6351,20 @@ async def project_audit_input_snapshot(
             detail="Для аудита резиденту необходимо привязать паспорт проекта",
         )
     project = await db.get(Project, membership.project_id)
-    if not project or project.user_id != membership.user_id:
+    team_project_access = (await db.execute(
+        select(AcceleratorTeamMember.id)
+        .join(AcceleratorTeam, AcceleratorTeam.id == AcceleratorTeamMember.team_id)
+        .where(
+            AcceleratorTeamMember.membership_id == membership.id,
+            AcceleratorTeamMember.status == "active",
+            AcceleratorTeam.status == "active",
+            AcceleratorTeam.project_id == membership.project_id,
+        )
+        .limit(1)
+    )).scalar_one_or_none()
+    if not project or (
+        project.user_id != membership.user_id and team_project_access is None
+    ):
         raise HTTPException(status_code=409, detail="Паспорт проекта резидента недоступен")
     application = await db.get(AcceleratorApplication, membership.application_id)
     checkins = (await db.execute(
@@ -6094,11 +6568,11 @@ async def create_project_audit(
         return await project_audit_dict(db, existing)
 
     project, input_snapshot = await project_audit_input_snapshot(db, membership)
-    quota = await accelerator_membership_quota_snapshot(db, membership.id, "custdev")
+    quota = await accelerator_membership_quota_snapshot(db, membership.id, "messages")
     if quota and quota["limit"] != -1 and quota["remaining"] == 0:
         raise HTTPException(
             status_code=402,
-            detail=f"quota_exceeded: лимит резидента custdev исчерпан ({quota['limit']})",
+            detail=f"quota_exceeded: лимит сообщений резидента исчерпан ({quota['limit']})",
         )
     row = AcceleratorProjectAudit(
         cohort_id=cohort.id,
@@ -6109,6 +6583,7 @@ async def create_project_audit(
         audit_type=payload.audit_type,
         focus=payload.focus,
         input_snapshot=input_snapshot,
+        quota_resource="messages",
     )
     db.add(row)
     try:
@@ -6159,7 +6634,7 @@ async def create_project_audit(
             db,
             membership_id=membership.id,
             user_id=membership.user_id,
-            resource="custdev",
+            resource="messages",
             idempotency_key=quota_key,
             reference_type="accelerator_project_audit",
             reference_id=str(row.id),
@@ -7056,22 +7531,26 @@ async def export_demo_day(
         raise HTTPException(status_code=409, detail="Экспорт доступен после финализации результатов")
     data = await demo_day_dict(db, demo_day, "global_admin" if user.is_admin else "organizer", user.id)
     if format == "csv":
-        output = io.StringIO()
-        writer = csv.writer(output)
-        writer.writerow([
+        outcome_labels = {
+            "winner": "Победитель",
+            "finalist": "Финалист",
+            "participant": "Участник",
+        }
+        csv_rows = [[
             "Место", "Проект", "Резидент", "Итоговая оценка", "Средняя оценка экспертов",
             "Корректировка организатора", "Результат", "Презентация", "Видео",
-        ])
+        ]]
         for project in data["projects"]:
-            writer.writerow([
+            csv_rows.append([
                 project["rank"], project["project"]["name"], project["resident"]["name"],
                 project["final_score"], project["average_score"], project["score_adjustment"],
-                project["outcome"], project["presentation_url"], project["video_url"],
+                outcome_labels.get(project["outcome"], project["outcome"]),
+                project["presentation_url"], project["video_url"],
             ])
         return Response(
-            content="\ufeff" + output.getvalue(),
+            content=csv_content(csv_rows),
             media_type="text/csv; charset=utf-8",
-            headers={"Content-Disposition": f'attachment; filename="demo-day-{demo_day.id}-results.csv"'},
+            headers={"Content-Disposition": f'attachment; filename="{csv_filename(f"demo-day-{demo_day.id}-results")}"'},
         )
     cards = []
     for project_data in data["projects"]:
@@ -8221,6 +8700,12 @@ async def membership_organizer_card(
     ]
     activity = sorted((row for row in activity if row["at"]), key=lambda row: row["at"], reverse=True)[:50]
     risk = await membership_tracking_risk(db, membership)
+    program = await ProgramProgressService(db).get_membership_progress(membership.id)
+    program_stages = list((await db.execute(select(AcceleratorProgramStage).where(
+        AcceleratorProgramStage.cohort_id == cohort.id,
+        AcceleratorProgramStage.status == "published",
+    ).order_by(AcceleratorProgramStage.position))).scalars().all())
+    program_by_id = {row.id: row for row in program_stages}
     last_candidates = [(membership.updated_at, "Профиль участия обновлён")]
     last_candidates += [(row.submitted_at, f"Отправлено ДЗ «{assignment_titles.get(row.assignment_id, 'Задание')}»") for row in submissions[:1]]
     last_candidates += [(row.created_at, "Заполнен чек-ин") for row in checkins[:1]]
@@ -8243,6 +8728,16 @@ async def membership_organizer_card(
         "trackers": [{"user_id": row.id, "name": row.name, "email": row.email} for row in trackers],
         "tracker_options": [{"user_id": row.id, "name": row.name, "email": row.email} for row in tracker_options],
         "homework": {"published": len(assignments), "accepted": sum(row.status == "accepted" for row in submissions), "pending": sum(row.status == "submitted" for row in submissions), "overdue": risk["overdue_homework"], "submissions": [{"id": row.id, "title": assignment_titles.get(row.assignment_id, "Задание"), "status": row.status, "submitted_at": row.submitted_at} for row in submissions[:8]]},
+        "program": {
+            "completed": program["completed"],
+            "total": program["total"],
+            "percent": program["percent"],
+            "stages": [{
+                **row,
+                "id": row["stage_id"],
+                "title": program_by_id[row["stage_id"]].title,
+            } for row in program["stages"]],
+        },
         "risk": risk,
         "checkins": [{"id": row.id, "period_start": row.period_start, "health": row.health, "summary": row.summary, "blockers": row.blockers} for row in checkins],
         "feedback": [{"id": row.id, "body": row.body, "read_at": row.read_at, "created_at": row.created_at} for row in feedback],
@@ -8291,7 +8786,10 @@ async def today_recommendation_candidates(
             "reason": {"recommendation_id": recommendation.id, "updated_at": recommendation.updated_at},
         })
 
-    current_stage = next((stage for stage in stages if stage.get("state") == "available"), None)
+    current_stage = next(
+        (stage for stage in stages if stage.get("state") in ("available", "in_progress", "overdue")),
+        next((stage for stage in reversed(stages) if stage.get("state") == "completed"), None),
+    )
     if current_stage:
         incomplete = [
             material for material in current_stage.get("materials", [])
@@ -8299,7 +8797,11 @@ async def today_recommendation_candidates(
         ]
         rows.append({
             "key": f"stage:{current_stage['id']}",
-            "title": f"Продолжить этап «{current_stage['title']}»",
+            "title": (
+                f"Закрепить результат этапа «{current_stage['title']}»"
+                if current_stage.get("state") == "completed"
+                else f"Продолжить этап «{current_stage['title']}»"
+            ),
             "description": (
                 f"Осталось обязательных материалов: {len(incomplete)}."
                 if incomplete else "Закрепите результат этапа и переходите к следующему шагу."

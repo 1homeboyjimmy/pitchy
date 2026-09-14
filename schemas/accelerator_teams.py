@@ -11,6 +11,10 @@ class AcceleratorTeamCreate(BaseModel):
     max_members: int = Field(default=5, ge=2, le=20)
 
 
+class AcceleratorTeamProjectAttach(BaseModel):
+    project_id: int = Field(gt=0)
+
+
 class AcceleratorTeamUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=200)
     max_members: int | None = Field(default=None, ge=2, le=20)
@@ -129,8 +133,11 @@ class AcceleratorTeamResponse(BaseModel):
     recruiting_open: bool = True
     owner_membership_id: int
     project: AcceleratorTeamProject | None = None
+    project_attached: bool = False
+    project_state: Literal["project_pending", "active"] = "project_pending"
     tracker: AcceleratorTeamPerson | None = None
     can_manage: bool
+    can_attach_project: bool = False
     members: list[AcceleratorTeamMemberResponse]
     pending_invitations: list[AcceleratorTeamInvitationResponse]
 
@@ -138,6 +145,7 @@ class AcceleratorTeamResponse(BaseModel):
 class AcceleratorMembershipTeamResponse(BaseModel):
     team: AcceleratorTeamResponse | None = None
     invitations: list[AcceleratorTeamInvitationResponse]
+    can_create: bool = False
 
 
 class AcceleratorTeamListResponse(BaseModel):

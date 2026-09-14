@@ -20,12 +20,13 @@ type Card = {
   trackers: Array<{ user_id: number; name: string; email: string }>;
   tracker_options: Array<{ user_id: number; name: string; email: string }>;
   homework: { published: number; accepted: number; pending: number; overdue: number; submissions: Array<{ id: number; title: string; status: string; submitted_at: string }> };
+  program: { completed: number; total: number; percent: number; stages: Array<{ id: number; title: string; state: "locked" | "available" | "in_progress" | "completed" | "overdue" | "waived"; completed_required: number; required_total: number; completion_source?: string | null; waiver_reason?: string | null; blockers: Array<{ kind: string; title: string; reason: string }>; policy: { mode: "auto" | "manual" | "none" } }> };
   risk: { level: string; reasons: string[]; overdue_tasks: number; overdue_homework: number; last_activity_at?: string | null };
   checkins: Array<{ id: number; period_start: string; health: string; summary: string; blockers?: string | null }>;
   feedback: Array<{ id: number; body: string; read_at?: string | null; created_at: string }>;
   audit?: { id: number; type: string; status: string; score?: number | null; created_at: string } | null;
   lifecycle: Array<{ id: number; from_status?: string | null; to_status: string; reason?: string | null; created_at: string }>;
-  activity: Array<{ key: string; kind: string; title: string; detail?: string | null; at: string }>;
+  activity?: Array<{ key: string; kind: string; title: string; detail?: string | null; at: string }>;
   last_action: { title: string; at: string };
 };
 
@@ -84,6 +85,25 @@ export function ParticipantDrawer({ membershipId, token, onClose, onChanged }: {
     catch (reason) { setError(describeApiError(reason, "Не удалось запустить аудит")); }
     finally { setBusy(""); }
   };
+  const changeProgramStage = async (stageId: number, action: "complete-manually" | "waive") => {
+    const reason = window.prompt(action === "waive" ? "Почему требование снимается?" : "Комментарий к ручному подтверждению:");
+    if (!reason?.trim()) return;
+    setBusy(`stage-${stageId}`); setError("");
+    try {
+      await postAuthJson(`/api/accelerators/program/stages/${stageId}/${action}`, { membership_id: membershipId, reason: reason.trim() }, token);
+      await load();
+      notifySuccess(action === "waive" ? "Требование снято" : "Этап подтверждён");
+    } catch (reasonValue) { setError(describeApiError(reasonValue, "Не удалось изменить этап")); }
+    finally { setBusy(""); }
+  };
+
+  const activityRows = card?.activity || card?.lifecycle.map((row) => ({
+    key: `lifecycle-${row.id}`,
+    kind: "lifecycle",
+    title: row.reason || `Статус: ${STATUS[row.to_status] || row.to_status}`,
+    detail: null,
+    at: row.created_at,
+  })) || [];
 
   return <div className="fixed inset-0 z-50 bg-black/70" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <aside role="dialog" aria-modal="true" aria-label="Карточка участника" className="ml-auto h-full w-full max-w-2xl overflow-y-auto border-l border-white/10 bg-[#080808] p-5 text-white shadow-2xl sm:p-7">
@@ -95,13 +115,14 @@ export function ParticipantDrawer({ membershipId, token, onClose, onChanged }: {
         <div className="grid gap-4 sm:grid-cols-2"><Info title="Проект">{card.project ? <><p>{card.project.name}</p><p className="text-sm text-white/40">Паспорт заполнен на {card.project.readiness}%</p></> : <p className="text-sm text-white/35">Проект не привязан</p>}</Info><Info title="Команда">{card.team ? <><p>{card.team.name}</p><p className="text-sm text-white/40">Роль: {card.team.role}</p></> : <p className="text-sm text-white/35">Без команды</p>}</Info></div>
         <section className="rounded-2xl border border-white/10 p-4"><p className="text-xs uppercase tracking-wide text-white/35">Трекер</p><p className="mt-2 text-sm">{card.trackers.map((row) => row.name).join(", ") || "Не назначен"}</p>{card.can_manage && !card.team && <select value={card.trackers[0]?.user_id || ""} onChange={(event) => void changeTracker(event.target.value)} disabled={busy === "tracker"} className="workspace-input mt-3"><option value="">Без трекера</option>{card.tracker_options.map((row) => <option key={row.user_id} value={row.user_id}>{row.name}</option>)}</select>}{card.team && <p className="mt-2 text-xs text-white/35">Назначение меняется один раз для всей команды в разделе «Матчмейкинг».</p>}</section>
         <div className="grid gap-4 sm:grid-cols-3"><Metric label="ДЗ принято" value={`${card.homework.accepted}/${card.homework.published}`} /><Metric label="На проверке" value={String(card.homework.pending)} /><Metric label="Просрочено" value={String(card.homework.overdue + card.risk.overdue_tasks)} warning={card.homework.overdue + card.risk.overdue_tasks > 0} /></div>
+        <Info title={`Программа · ${card.program.completed}/${card.program.total} · ${card.program.percent}%`}><div className="space-y-2">{card.program.stages.map((stage) => <div key={stage.id} className="rounded-xl border border-white/8 p-3"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-sm">{stage.title}</p><p className="mt-1 text-xs text-white/35">{stage.state === "completed" ? "Завершён" : stage.state === "waived" ? "Требование снято" : stage.state === "overdue" ? "Просрочен" : stage.state === "locked" ? "Закрыт" : "В работе"}{stage.required_total ? ` · ${stage.completed_required}/${stage.required_total}` : ""}</p></div><div className="flex flex-wrap gap-2">{stage.policy.mode === "manual" && stage.state === "in_progress" && <button type="button" disabled={Boolean(busy)} onClick={() => void changeProgramStage(stage.id, "complete-manually")} className="rounded-full border border-emerald-300/20 px-3 py-1.5 text-xs text-emerald-200">Подтвердить</button>}{card.can_manage && !["completed", "waived"].includes(stage.state) && <button type="button" disabled={Boolean(busy)} onClick={() => void changeProgramStage(stage.id, "waive")} className="rounded-full border border-amber-300/20 px-3 py-1.5 text-xs text-amber-200">Снять требование</button>}</div></div>{stage.blockers.slice(0, 3).map((blocker) => <p key={`${blocker.kind}:${blocker.title}`} className="mt-2 text-xs text-white/40">• {blocker.reason}</p>)}{stage.waiver_reason && <p className="mt-2 text-xs text-emerald-200/70">Причина: {stage.waiver_reason}</p>}</div>)}</div></Info>
         <Info title="Риск"><p className={card.risk.level === "red" ? "text-red-200" : card.risk.level === "yellow" ? "text-amber-200" : "text-emerald-200"}>{card.risk.level === "red" ? "Высокий" : card.risk.level === "yellow" ? "Требует внимания" : "Стабильно"}</p>{card.risk.reasons.map((reason) => <p key={reason} className="mt-1 text-sm text-white/45">• {reason}</p>)}</Info>
         <Info title="Заявка и профиль"><p className="text-sm text-white/55">Анкета: {card.application ? `версия ${card.application.form_version}, ${card.application.type}` : "нет данных"}</p><KeyValues values={card.application?.answers || {}} /><KeyValues values={card.profile} excludedKeys={["application_data"]} /></Info>
         <Info title="Чек-ины и обратная связь"><div className="space-y-3">{card.checkins.map((row) => <div key={`c-${row.id}`}><p className="text-sm">{row.period_start} · {row.health}</p><p className="text-sm text-white/45">{row.summary}</p></div>)}{card.feedback.map((row) => <div key={`f-${row.id}`}><p className="text-sm text-white/35">Обратная связь · {formatDate(row.created_at)}</p><p className="text-sm text-white/60">{row.body}</p></div>)}{!card.checkins.length && !card.feedback.length && <p className="text-sm text-white/35">Записей пока нет.</p>}</div></Info>
         <Info title="Аудит проекта"><p className="text-sm text-white/50">{card.audit ? `${card.audit.type} · ${card.audit.status}${card.audit.score != null ? ` · ${card.audit.score}/100` : ""}` : "Аудит ещё не запускался"}</p>{card.project && <button type="button" onClick={() => void launchAudit()} disabled={Boolean(busy)} className="workspace-button mt-3"><Activity size={15} /> Запустить аудит</button>}</Info>
         <form onSubmit={addTask} className="rounded-2xl border border-white/10 p-4"><h3>Создать обязательную задачу</h3><div className="mt-3 grid gap-3"><input required minLength={2} value={task.title} onChange={(event) => setTask({ ...task, title: event.target.value })} placeholder="Название" className="workspace-input" /><textarea value={task.description} onChange={(event) => setTask({ ...task, description: event.target.value })} placeholder="Описание" className="workspace-input resize-y" /><input type="datetime-local" value={task.dueAt} onChange={(event) => setTask({ ...task, dueAt: event.target.value })} className="workspace-input" /><button disabled={Boolean(busy)} className="workspace-button"><ClipboardCheck size={15} /> Назначить</button></div></form>
         <form onSubmit={addRecommendation} className="rounded-2xl border border-white/10 p-4"><h3>Добавить добровольную рекомендацию</h3><div className="mt-3 grid gap-3"><input required minLength={2} value={recommendation.title} onChange={(event) => setRecommendation({ ...recommendation, title: event.target.value })} placeholder="Заголовок" className="workspace-input" /><textarea required minLength={2} value={recommendation.description} onChange={(event) => setRecommendation({ ...recommendation, description: event.target.value })} placeholder="Почему это полезно" className="workspace-input resize-y" /><button disabled={Boolean(busy)} className="workspace-button"><UserRound size={15} /> Добавить рекомендацию</button></div></form>
-        <Info title="История активности">{card.activity.map((row) => <div key={row.key} className="mb-3 border-l border-white/10 pl-3"><p className="text-sm text-white/65">{row.kind === "status" ? row.title.replace(/: (accepted|enrolled|suspended|completed|withdrawn)$/, (_, status: string) => `: ${STATUS[status] || status}`) : row.title}</p><p className="mt-1 text-xs text-white/30">{formatDate(row.at)}{row.detail ? ` · ${row.detail}` : ""}</p></div>)}{!card.activity.length && <p className="text-sm text-white/35">Событий пока нет.</p>}</Info>
+        <Info title="История активности">{activityRows.map((row) => <div key={row.key} className="mb-3 border-l border-white/10 pl-3"><p className="text-sm text-white/65">{row.kind === "status" ? row.title.replace(/: (accepted|enrolled|suspended|completed|withdrawn)$/, (_, status: string) => `: ${STATUS[status] || status}`) : row.title}</p><p className="mt-1 text-xs text-white/30">{formatDate(row.at)}{row.detail ? ` · ${row.detail}` : ""}</p></div>)}{!activityRows.length && <p className="text-sm text-white/35">Событий пока нет.</p>}</Info>
       </div>}
     </aside>
   </div>;

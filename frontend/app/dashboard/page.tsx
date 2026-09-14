@@ -303,6 +303,7 @@ function DashboardContent() {
 
   const mainPadTop = isSidebarCollapsed ? "pt-10 sm:pt-14" : "pt-24 sm:pt-32";
   const overviewMaxW = isSidebarCollapsed ? "" : "max-w-6xl";
+  const contentMaxW = activeTab === "admin" ? "max-w-[1600px]" : overviewMaxW;
   const handleOnboardingComplete = () => {
     setShowOnboarding(false);
     setUserProfile((prev) =>
@@ -362,7 +363,7 @@ function DashboardContent() {
         </AnimatePresence>
 
         <main className={`min-h-0 flex-1 overflow-x-hidden transition-[padding] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${activeTab === 'chat' || activeTab === 'tree' ? 'overflow-y-hidden' : 'overflow-y-auto overscroll-contain'}`}>
-          <div className={`w-full mx-auto transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${activeTab === 'chat' || activeTab === 'tree' ? `px-3 sm:px-8 ${mainPadTop} h-full` : `px-4 sm:px-8 lg:px-12 ${mainPadTop} ${overviewMaxW} min-h-full`}`}>
+          <div className={`w-full mx-auto transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${activeTab === 'chat' || activeTab === 'tree' ? `px-3 sm:px-8 ${mainPadTop} h-full` : `px-4 sm:px-8 ${activeTab === "admin" ? "lg:px-6" : "lg:px-12"} ${mainPadTop} ${contentMaxW} min-h-full`}`}>
 
           {activeTab === "overview" && (
             <motion.div
