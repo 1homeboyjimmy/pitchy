@@ -560,7 +560,7 @@ class AcceleratorProjectAudit(Base):
     overall_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     quota_resource: Mapped[str] = mapped_column(
-        String(30), default="custdev", server_default="custdev"
+        String(30), default="messages", server_default="messages"
     )
     quota_usage_event_id: Mapped[int | None] = mapped_column(
         ForeignKey("accelerator_quota_usage_events.id", ondelete="SET NULL"),
@@ -1178,7 +1178,11 @@ class AcceleratorProgramStage(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     position: Mapped[int] = mapped_column(Integer)
     unlock_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    due_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
     required: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    completion_policy: Mapped[dict] = mapped_column(
+        JSON, default=dict, server_default=text("'{}'")
+    )
     status: Mapped[str] = mapped_column(String(30), default="draft", server_default="draft", index=True)
     created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     updated_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
@@ -1227,6 +1231,14 @@ class AcceleratorProgramStageProgress(Base):
     stage_id: Mapped[int] = mapped_column(ForeignKey("accelerator_program_stages.id", ondelete="CASCADE"), index=True)
     membership_id: Mapped[int] = mapped_column(ForeignKey("accelerator_memberships.id", ondelete="CASCADE"), index=True)
     completed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    completion_source: Mapped[str] = mapped_column(
+        String(20), default="manual", server_default="manual", index=True
+    )
+    waiver_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    completed_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    last_evaluated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class AcceleratorProgramAction(Base):
@@ -1373,6 +1385,35 @@ class AcceleratorHomeworkSubmission(Base):
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AcceleratorTrackingSignalState(Base):
+    __tablename__ = "accelerator_tracking_signal_states"
+    __table_args__ = (
+        UniqueConstraint(
+            "membership_id", "fingerprint",
+            name="uq_accelerator_tracking_signal_membership_fingerprint",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    membership_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerator_memberships.id", ondelete="CASCADE"), index=True
+    )
+    fingerprint: Mapped[str] = mapped_column(String(64), index=True)
+    state: Mapped[str] = mapped_column(
+        String(20), default="open", server_default="open", index=True
+    )
+    snoozed_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    changed_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
 
 
 class AcceleratorHomeworkAttempt(Base):

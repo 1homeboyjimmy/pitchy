@@ -2,7 +2,7 @@
 import { motion } from "framer-motion";
 import dayjs from "dayjs";
 import { Users, Tag, BarChart2, Plus, Trash2, Shield, Loader, CreditCard, Award, Link as LinkIcon, RefreshCw, Power, Clock, Check, X } from "react-feather";
-import { Button, GlassCard } from "@/components/shared";
+import { Button } from "@/components/shared";
 import { getToken } from "@/lib/auth";
 import {
     CartesianGrid,
@@ -779,27 +779,36 @@ export function AdminView() {
 
                     {activeTab === "users" && (
                         <div className="space-y-6">
-                            <div className="bg-[#111111] border border-white/10 pitchy-table-scroll [--table-scroll-bg:#111111]">
-                                <table className="w-full text-left text-sm text-white min-w-[800px] font-code">
+                            <div className="bg-[#111111] border border-white/10 overflow-x-auto lg:overflow-x-visible pitchy-table-scroll [--table-scroll-bg:#111111]" data-testid="admin-users-table-container">
+                                <table className="w-full table-fixed text-left text-sm text-white min-w-[820px] lg:min-w-0 font-code" data-testid="admin-users-table">
+                                    <colgroup>
+                                        <col className="w-[28%]" />
+                                        <col className="w-[13%]" />
+                                        <col className="w-[12%]" />
+                                        <col className="w-[15%]" />
+                                        <col className="w-[8%]" />
+                                        <col className="w-[8%]" />
+                                        <col className="w-[16%]" />
+                                    </colgroup>
                                     <thead className="bg-[#0A0A0A] text-white/50 border-b border-white/10 font-mono-label uppercase text-[10px] tracking-widest">
                                         <tr>
-                                            <th className="px-6 py-4 font-bold">ПОЛЬЗОВАТЕЛЬ</th>
-                                            <th className="px-6 py-4 font-bold">СТАТУС & РОЛЬ</th>
-                                            <th className="px-6 py-4 font-bold text-center">ПОЧТА</th>
-                                            <th className="px-6 py-4 font-bold">ДАТА РЕГИСТРАЦИИ</th>
-                                            <th className="px-6 py-4 font-bold text-center">ТАРИФ</th>
-                                            <th className="px-6 py-4 font-bold text-center">СОГЛАСИЯ</th>
-                                            <th className="px-6 py-4 font-bold text-right">ДЕЙСТВИЕ</th>
+                                            <th className="px-3 py-4 font-bold xl:px-4">ПОЛЬЗОВАТЕЛЬ</th>
+                                            <th className="px-3 py-4 font-bold xl:px-4">СТАТУС & РОЛЬ</th>
+                                            <th className="px-3 py-4 font-bold text-center xl:px-4">ПОЧТА</th>
+                                            <th className="px-3 py-4 font-bold xl:px-4">ДАТА РЕГИСТРАЦИИ</th>
+                                            <th className="px-3 py-4 font-bold text-center xl:px-4">ТАРИФ</th>
+                                            <th className="px-3 py-4 font-bold text-center xl:px-4">СОГЛАСИЯ</th>
+                                            <th className="px-3 py-4 font-bold text-right xl:px-4">ДЕЙСТВИЯ</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {users.map(u => (
                                             <tr key={u.id} className={`border-b border-white/5 hover:bg-white/5 transition-colors ${!u.is_active ? 'opacity-50' : ''} ${u.deleted_at ? 'opacity-40' : ''}`}>
-                                                <td className="px-6 py-4">
-                                                    <div className="font-bold tracking-tight">{u.name || "Без имени"}</div>
-                                                    <div className="text-white/50 text-[11px] font-mono mt-1">{u.email}</div>
+                                                <td className="min-w-0 px-3 py-4 xl:px-4">
+                                                    <div className="truncate font-bold tracking-tight" title={u.name || "Без имени"}>{u.name || "Без имени"}</div>
+                                                    <div className="mt-1 truncate text-[11px] font-mono text-white/50" title={u.email}>{u.email}</div>
                                                 </td>
-                                                <td className="px-6 py-4">
+                                                <td className="px-3 py-4 xl:px-4">
                                                     <div className="flex flex-col items-start gap-1">
                                                         {u.is_admin ? (
                                                             <span className="text-[10px] font-mono-label uppercase tracking-widest bg-white/10 text-white px-2 py-0.5 border border-white/20">Админ</span>
@@ -813,7 +822,7 @@ export function AdminView() {
                                                         )}
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-4 text-center">
+                                                <td className="px-3 py-4 text-center xl:px-4">
                                                     <span className={`inline-flex items-center px-2 py-0.5 border text-[10px] font-mono-label uppercase tracking-widest ${u.email_verified
                                                         ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
                                                         : 'bg-amber-500/10 text-amber-300 border-amber-500/20'
@@ -821,23 +830,23 @@ export function AdminView() {
                                                         {u.email_verified ? 'Подтверждена' : 'Не подтверждена'}
                                                     </span>
                                                 </td>
-                                                <td className="px-6 py-4 text-white/70 text-[13px]">
+                                                <td className="px-3 py-4 text-[12px] text-white/70 xl:px-4 xl:text-[13px]">
                                                     {u.created_at ? adminDate(u.created_at)!.toLocaleDateString("ru-RU", { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : "—"}
                                                 </td>
-                                                <td className="px-6 py-4 text-center text-white/70 font-mono-label uppercase text-[11px]">
+                                                <td className="px-3 py-4 text-center text-[10px] uppercase text-white/70 font-mono-label xl:px-4 xl:text-[11px]">
                                                     {u.subscription_tier}
                                                 </td>
-                                                <td className="px-6 py-4 text-center">
+                                                <td className="px-3 py-4 text-center xl:px-4">
                                                     <div className="flex justify-center gap-1.5" title={`Политика: ${adminDate(u.privacy_consent_at)?.toLocaleString('ru-RU') ?? '—'}\nCookies: ${adminDate(u.cookies_consent_at)?.toLocaleString('ru-RU') ?? '—'}`}>
                                                         <span className={`text-[10px] font-mono-label uppercase tracking-widest px-1.5 py-0.5 border ${u.privacy_consent_at ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-white/5 text-white/30 border-white/10'}`}>П</span>
                                                         <span className={`text-[10px] font-mono-label uppercase tracking-widest px-1.5 py-0.5 border ${u.cookies_consent_at ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-white/5 text-white/30 border-white/10'}`}>C</span>
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-4 text-right">
+                                                <td className="px-3 py-4 text-right xl:px-4">
                                                     {u.deleted_at ? (
                                                         <span className="font-mono-label uppercase text-[10px] text-white/30 tracking-widest">—</span>
                                                     ) : (
-                                                    <div className="flex justify-end gap-2">
+                                                    <div className="flex flex-wrap justify-end gap-1.5">
                                                         {u.is_active ? (
                                                             <button onClick={() => handleUserAction(u.id, "block")} className="text-amber-400 hover:text-amber-300 font-mono-label uppercase text-[10px] tracking-widest px-2 py-1 border border-amber-500/20 bg-amber-500/10 transition-colors">Блок</button>
                                                         ) : (

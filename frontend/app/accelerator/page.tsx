@@ -30,6 +30,8 @@ import { NotificationCenter } from "@/components/accelerator/NotificationCenter"
 import { CohortClosure } from "@/components/accelerator/CohortClosure";
 import { AcceleratorOperations } from "@/components/accelerator/AcceleratorOperations";
 import { ParticipantDrawer } from "@/components/accelerator/ParticipantDrawer";
+import { TrackingDashboard } from "@/components/accelerator/TrackingDashboard";
+import { BulkTrackingTaskForm } from "@/components/accelerator/BulkTrackingTaskForm";
 import { participantMemberships, preferredParticipantMembership, staffAccelerators } from "@/lib/acceleratorAccess";
 
 import { OrganizerOverview } from "@/components/accelerator/OrganizerOverview";
@@ -54,6 +56,7 @@ export default function AcceleratorWorkspacePage() {
   const [applications, setApplications] = useState<AcceleratorApplication[]>([]); const [residents, setResidents] = useState<Resident[]>([]); const [residentWorkspace, setResidentWorkspace] = useState<ResidentWorkspaceData | null>(null);
   const [tab, setTab] = useState<TabKey>("overview"); const [showSetup, setShowSetup] = useState(false); const [loading, setLoading] = useState(true); const [loadingCohorts, setLoadingCohorts] = useState(false); const [error, setError] = useState(""); const [copied, setCopied] = useState(false);
   const [selectedMembershipId, setSelectedMembershipId] = useState<number | null>(null); const [reportQuery, setReportQuery] = useState(""); const [reportStatus, setReportStatus] = useState("all"); const [urlReady, setUrlReady] = useState(false); const [staffContext, setStaffContext] = useState(false);
+  const [trackingVersion, setTrackingVersion] = useState(0);
 
   const [refreshKey, setRefreshKey] = useState(0);
   const [mobileMenu, setMobileMenu] = useState(false);
@@ -65,7 +68,7 @@ export default function AcceleratorWorkspacePage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const savedTab = params.get("section") as TabKey | null;
-    if (savedTab) setTab(savedTab === "tracking" ? "reports" : savedTab);
+    if (savedTab) setTab(savedTab);
     const savedAccelerator = Number(params.get("accelerator")); if (savedAccelerator > 0) setAcceleratorId(savedAccelerator);
     const savedCohort = Number(params.get("cohort")); if (savedCohort > 0) setCohortId(savedCohort);
     const savedResident = Number(params.get("resident")); if (savedResident > 0) setSelectedMembershipId(savedResident);
@@ -147,7 +150,8 @@ export default function AcceleratorWorkspacePage() {
 
   const tabs = useMemo(() => {
     if (isTracker) {
-      const rows: Array<{ key: TabKey; label: string }> = [{ key: "reports", label: config?.modules.progress_tracking ? "Мои резиденты и трекинг" : "Мои резиденты" }];
+      const rows: Array<{ key: TabKey; label: string }> = [{ key: "reports", label: "Мои резиденты" }];
+      if (config?.modules.progress_tracking) rows.push({ key: "tracking", label: "Трекинг" });
       if (config?.modules.homework) rows.push({ key: "homework", label: "Домашние задания" });
       if (config?.modules.attendance) rows.push({ key: "attendance", label: "Посещаемость" });
       if (config?.modules.matchmaking) rows.push({ key: "matching", label: "Матчмейкинг" });
@@ -210,6 +214,7 @@ export default function AcceleratorWorkspacePage() {
         {tab === "artifacts" && config?.modules.pitchy_artifacts && <ArtifactWorkspace cohortId={selectedCohort.id} token={token} />}
         {tab === "trackers" && canManage && <TrackerManager token={token} cohortId={selectedCohort.id} residents={residents} />}
         {tab === "reports" && <ResidentReport token={token} cohortId={selectedCohort.id} canManage={canManage} onChanged={loadCohortDetails} onOpenParticipant={setSelectedMembershipId} initialQuery={reportQuery} initialStatus={reportStatus} onFiltersChange={(query, status) => { setReportQuery(query); setReportStatus(status); }} />}
+        {tab === "tracking" && config?.modules.progress_tracking && <div className="space-y-5"><BulkTrackingTaskForm cohortId={selectedCohort.id} token={token} onCreated={() => setTrackingVersion((value) => value + 1)} /><TrackingDashboard key={trackingVersion} cohortId={selectedCohort.id} token={token} onOpenParticipant={setSelectedMembershipId} /></div>}
         {tab === "closure" && canManage && <CohortClosure cohortId={selectedCohort.id} token={token} onCompleted={async () => { await loadAccelerators(); await loadCohortDetails(); }} />}
         {tab === "quotas" && isAdmin && <QuotaManager token={token} cohortId={selectedCohort.id} initialTemplate={selectedCohort.default_quota_config} residents={residents} />}
         {tab === "settings" && <SettingsPanel token={token} isAdmin={isAdmin} accelerator={selectedAccelerator} cohort={selectedCohort} config={config} onConfig={setConfig} onCohort={(updated) => setCohorts((rows) => rows.map((row) => row.id === updated.id ? updated : row))} onAccelerator={(updated) => setAccelerators((rows) => rows.map((row) => row.id === updated.id ? { ...row, ...updated } : row))} onCohortCreated={async (created) => { const rows = await getAuthJson<Cohort[]>(`/api/accelerators/${selectedAccelerator.id}/cohorts`, token); setCohorts(rows); setCohortId(created.id); }} />}

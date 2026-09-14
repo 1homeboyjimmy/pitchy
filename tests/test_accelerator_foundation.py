@@ -10,6 +10,7 @@ from pydantic import ValidationError
 
 from accelerator_service import accelerator_quota_snapshot
 from accelerator_notification_service import enqueue_due_homework_reminders
+from accelerator_program_progress_service import ProgramProgressService
 from db_async import AsyncSessionLocal
 from models import (
     AcceleratorApplication,
@@ -774,7 +775,8 @@ async def test_tracker_report_scope_and_resident_lifecycle():
         csv_report = await cohort_resident_report(cohort["id"], "csv", organizer, db)
         assert csv_report.body.startswith("\ufeff".encode("utf-8"))
         assert "Resident A".encode("utf-8") in csv_report.body
-        assert "Сообщения лимит".encode("utf-8") in csv_report.body
+        assert "Программа выполнено".encode("utf-8") in csv_report.body
+        assert b"\r\n" in csv_report.body
         with pytest.raises(HTTPException) as no_report_access:
             await cohort_resident_report(cohort["id"], "json", outsider, db)
         assert no_report_access.value.status_code == 403
@@ -817,12 +819,29 @@ async def test_tracker_report_scope_and_resident_lifecycle():
         assert completed_task["status"] == "done"
         tracking = await membership_tracking(membership_ids[0], tracker, db)
         assert tracking["access_role"] == "tracker"
+        assert "Резидент отметил сложности" in tracking["risk"]["reasons"]
+        staff_reason = next(
+            row for row in tracking["risk"]["reason_items"]
+            if row["code"] == "checkin_health_yellow"
+        )
         assert len(tracking["checkins"]) == 1
         assert len(tracking["feedback"]) == 1
         assert tracking["tasks"][0]["status"] == "done"
         dashboard = await tracking_dashboard(cohort["id"], tracker, db)
         assert [row["membership_id"] for row in dashboard["rows"]] == [membership_ids[0]]
         assert dashboard["rows"][0]["risk"]["last_checkin_health"] == "yellow"
+        resident_tracking = await membership_tracking(
+            membership_ids[0], first_resident, db
+        )
+        assert "Вы отметили сложности" in resident_tracking["risk"]["reasons"]
+        resident_reason = next(
+            row for row in resident_tracking["risk"]["reason_items"]
+            if row["code"] == "checkin_health_yellow"
+        )
+        assert resident_reason["actor"] == "resident"
+        assert (resident_reason["code"], resident_reason["severity"]) == (
+            staff_reason["code"], staff_reason["severity"]
+        )
         with pytest.raises(HTTPException) as tracker_cannot_task_other:
             await create_tracking_task(
                 membership_ids[1],
@@ -1136,7 +1155,7 @@ async def test_matchmaking_profiles_recommendations_matches_and_role_boundaries(
 
 
 @pytest.mark.asyncio
-async def test_project_audit_uses_membership_quota_scopes_tracker_and_creates_task(monkeypatch):
+async def test_project_audit_uses_message_quota_scopes_tracker_and_creates_task(monkeypatch):
     suffix = uuid.uuid4().hex
     async with AsyncSessionLocal() as db:
         admin = User(email=f"admin-audit-{suffix}@example.test", name="Admin", is_admin=True)
@@ -1207,7 +1226,7 @@ async def test_project_audit_uses_membership_quota_scopes_tracker_and_creates_ta
         await assign_resident_quota(
             membership_id,
             ResidentQuotaAssign(
-                limits=ResidentQuotaLimits(messages=10, roadmaps=1, custdev=2, grants=0)
+                limits=ResidentQuotaLimits(messages=2, roadmaps=1, custdev=10, grants=0)
             ),
             admin,
             db,
@@ -1272,6 +1291,7 @@ async def test_project_audit_uses_membership_quota_scopes_tracker_and_creates_ta
         )
         assert first["status"] == "completed"
         assert first["overall_score"] == 60
+        assert first["quota"]["resource"] == "messages"
         assert first["quota"]["consumed"] is True
         assert calls[0]["project_snapshot"]["project"]["passport"]["core"]["solution"] == "B2B SaaS"
 
@@ -1350,9 +1370,14 @@ async def test_project_audit_uses_membership_quota_scopes_tracker_and_creates_ta
         assert len(calls) == 2
         assert (await db.execute(select(func.count(AcceleratorQuotaUsageEvent.id)).where(
             AcceleratorQuotaUsageEvent.membership_id == membership_id,
-            AcceleratorQuotaUsageEvent.resource == "custdev",
+            AcceleratorQuotaUsageEvent.resource == "messages",
             AcceleratorQuotaUsageEvent.reference_type == "accelerator_project_audit",
         ))).scalar_one() == 2
+        assert (await db.execute(select(func.count(AcceleratorQuotaUsageEvent.id)).where(
+            AcceleratorQuotaUsageEvent.membership_id == membership_id,
+            AcceleratorQuotaUsageEvent.resource == "custdev",
+            AcceleratorQuotaUsageEvent.reference_type == "accelerator_project_audit",
+        ))).scalar_one() == 0
         assert (await db.execute(select(func.count(AcceleratorProjectAudit.id)).where(
             AcceleratorProjectAudit.membership_id == membership_id
         ))).scalar_one() == 2
@@ -1581,10 +1606,13 @@ async def test_program_attendance_and_candidate_revision_flow(monkeypatch):
         await publish_program_stage(second["id"], admin, db)
         resident_stages = await list_resident_program_stages(membership_id, resident, db)
         assert [row["state"] for row in resident_stages] == ["available", "locked"]
+        assert resident_stages[0]["completed_required"] == 0
+        assert resident_stages[0]["required_total"] == 1
+        assert resident_stages[0]["blockers"][0]["kind"] == "material"
         await complete_program_material(first["materials"][0]["id"], resident, db)
         await complete_program_stage(first["id"], resident, db)
         resident_stages = await list_resident_program_stages(membership_id, resident, db)
-        assert [row["state"] for row in resident_stages] == ["completed", "available"]
+        assert [row["state"] for row in resident_stages] == ["completed", "completed"]
 
         event = await create_event(
             cohort["id"], EventCreate(
@@ -2119,7 +2147,7 @@ async def test_demo_day_selection_scoring_ranking_and_exports():
         csv_export = await export_demo_day(demo_day["id"], "csv", organizer, db)
         csv_text = csv_export.body.decode("utf-8")
         assert "Demo project" in csv_text
-        assert "winner" in csv_text
+        assert "Победитель" in csv_text
         json_export = await export_demo_day(demo_day["id"], "json", organizer, db)
         cards = json.loads(json_export.body)
         assert cards["project_cards"][0]["passport"]["core"]["solution"] == "Автоматизация"
@@ -2453,7 +2481,7 @@ async def test_stage_actions_artifacts_access_completion_and_visibility():
         )
         assert [row["state"] for row in available_program] == [
             "completed",
-            "available",
+            "completed",
         ]
 
         audit_actions = set((await db.execute(select(AcceleratorAuditLog.action).where(
@@ -2687,6 +2715,12 @@ async def test_resident_today_aggregate_feedback_and_persistent_recommendations(
             db,
         )
         await publish_program_stage(stage["id"], organizer, db)
+        progress_before_material = await ProgramProgressService(db).get_membership_progress(
+            membership_id
+        )
+        assert progress_before_material["completed"] == 0
+        assert progress_before_material["total"] == 1
+        assert progress_before_material["percent"] == 0
         event = await create_event(
             cohort["id"],
             EventCreate(
@@ -2754,6 +2788,12 @@ async def test_resident_today_aggregate_feedback_and_persistent_recommendations(
         }
 
         await complete_program_material(stage["materials"][0]["id"], resident, db)
+        report = await cohort_resident_report(cohort["id"], "json", organizer, db)
+        assert report["rows"][0]["program"] == {
+            "completed": 1,
+            "total": 1,
+            "percent": 100,
+        }
         changed_reason = await membership_today(membership_id, resident, db)
         assert f"stage:{stage['id']}" in {
             row["key"] for row in changed_reason["recommendations"]

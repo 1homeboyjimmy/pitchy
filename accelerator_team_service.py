@@ -413,8 +413,11 @@ async def team_dict(
         "recruiting_open": bool(team.recruiting_open),
         "owner_membership_id": team.owner_membership_id,
         "project": ({"id": project.id, "name": project.name} if project else None),
+        "project_attached": project is not None,
+        "project_state": "active" if project else "project_pending",
         "tracker": ({"id": tracker.id, "name": tracker.name} if tracker else None),
         "can_manage": can_manage,
+        "can_attach_project": bool(can_manage and project is None),
         "members": members,
         "pending_invitations": invitations,
     }
@@ -456,6 +459,12 @@ async def membership_team_payload(
             if team else None
         ),
         "invitations": invitations,
+        "can_create": bool(
+            access_role == "resident"
+            and membership.status == "enrolled"
+            and team is None
+            and cohort.status not in FROZEN_COHORT_STATUSES
+        ),
     }
 
 
@@ -534,29 +543,26 @@ async def create_team(
     await require_teams_module(db, cohort)
     if cohort.status in FROZEN_COHORT_STATUSES:
         raise HTTPException(status_code=409, detail="Состав завершённого потока заморожен")
-    if not membership.project_id:
-        raise HTTPException(
-            status_code=409,
-            detail="Создать команду может только резидент с проектом",
-        )
-    project = await db.get(Project, membership.project_id)
-    if not project or project.user_id != membership.user_id:
+    project = await db.get(Project, membership.project_id) if membership.project_id else None
+    if membership.project_id and (not project or project.user_id != membership.user_id):
         raise HTTPException(status_code=409, detail="Канонический проект резидента недоступен")
     if await active_team_member(db, membership.id, lock=True):
         raise HTTPException(status_code=409, detail="Резидент уже состоит в активной команде")
-    existing = (await db.execute(select(AcceleratorTeam.id).where(or_(
-        AcceleratorTeam.owner_membership_id == membership.id,
-        (
+    duplicate_conditions = [AcceleratorTeam.owner_membership_id == membership.id]
+    if project:
+        duplicate_conditions.append(
             (AcceleratorTeam.cohort_id == cohort.id)
             & (AcceleratorTeam.project_id == project.id)
-        ),
-    )).limit(1))).scalar_one_or_none()
+        )
+    existing = (await db.execute(select(AcceleratorTeam.id).where(
+        or_(*duplicate_conditions)
+    ).limit(1))).scalar_one_or_none()
     if existing is not None:
         raise HTTPException(status_code=409, detail="Команда этого проекта уже существует")
     now = datetime.utcnow()
     team = AcceleratorTeam(
         cohort_id=cohort.id,
-        project_id=project.id,
+        project_id=project.id if project else None,
         owner_membership_id=membership.id,
         name=clean_name(payload.name),
         max_members=payload.max_members,
@@ -586,8 +592,74 @@ async def create_team(
         action="team.created",
         target_type="team",
         target_id=team.id,
-        details={"project_id": project.id, "max_members": team.max_members},
+        details={"project_id": project.id if project else None, "max_members": team.max_members},
     )
+    return team
+
+
+async def attach_team_project(
+    db: AsyncSession,
+    *,
+    team_id: int,
+    project_id: int,
+    user: User,
+) -> AcceleratorTeam:
+    team = (await db.execute(select(AcceleratorTeam).where(
+        AcceleratorTeam.id == team_id
+    ).with_for_update())).scalar_one_or_none()
+    if not team:
+        raise HTTPException(status_code=404, detail="Команда не найдена")
+    cohort = await get_cohort(db, team.cohort_id)
+    await require_teams_module(db, cohort)
+    ensure_team_mutable(team, cohort)
+    owner = await owner_membership(db, team, lock=True)
+    manager = await is_manager(db, user, cohort)
+    if owner.user_id != user.id and not manager:
+        raise HTTPException(status_code=403, detail="Привязать проект может капитан или организатор")
+    if owner.status != "enrolled":
+        raise HTTPException(status_code=409, detail="Участие капитана команды не активно")
+    project = await db.get(Project, project_id)
+    if not project or project.user_id != owner.user_id or project.status != "active":
+        raise HTTPException(status_code=422, detail="Выберите активный проект капитана команды")
+    if team.project_id == project.id:
+        return team
+    if team.project_id is not None:
+        raise HTTPException(status_code=409, detail="К команде уже привязан другой проект")
+    duplicate = (await db.execute(select(AcceleratorTeam.id).where(
+        AcceleratorTeam.cohort_id == cohort.id,
+        AcceleratorTeam.project_id == project.id,
+        AcceleratorTeam.status == "active",
+        AcceleratorTeam.id != team.id,
+    ).limit(1))).scalar_one_or_none()
+    if duplicate is not None:
+        raise HTTPException(status_code=409, detail="Проект уже привязан к другой команде потока")
+    team.project_id = project.id
+    team.updated_at = datetime.utcnow()
+    active_memberships = list((await db.execute(
+        select(AcceleratorMembership)
+        .join(
+            AcceleratorTeamMember,
+            AcceleratorTeamMember.membership_id == AcceleratorMembership.id,
+        )
+        .where(
+            AcceleratorTeamMember.team_id == team.id,
+            AcceleratorTeamMember.status == "active",
+        )
+        .with_for_update()
+    )).scalars().all())
+    for active_membership in active_memberships:
+        active_membership.project_id = project.id
+    add_audit(
+        db,
+        accelerator_id=cohort.accelerator_id,
+        cohort_id=cohort.id,
+        actor_user_id=user.id,
+        action="team.project_attached",
+        target_type="team",
+        target_id=team.id,
+        details={"project_id": project.id, "owner_membership_id": owner.id},
+    )
+    await db.flush()
     return team
 
 
@@ -826,6 +898,8 @@ async def respond_team_invitation(
             created_at=now,
             updated_at=now,
         ))
+        if team.project_id is not None:
+            candidate.project_id = team.project_id
         team_tracker = (await db.execute(select(AcceleratorTeamTrackerAssignment.id).where(
             AcceleratorTeamTrackerAssignment.team_id == team.id
         ))).scalar_one_or_none()
@@ -958,6 +1032,12 @@ async def archive_team_rows(
     notification_ids: list[int] = []
     for member in members:
         membership = await db.get(AcceleratorMembership, member.membership_id)
+        if (
+            membership
+            and member.membership_id != team.owner_membership_id
+            and membership.project_id == team.project_id
+        ):
+            membership.project_id = None
         person = await db.get(User, membership.user_id) if membership else None
         if not membership or not person or person.id == actor_user_id:
             continue
@@ -1213,6 +1293,8 @@ async def remove_team_member(
         )
     member.status = "left"
     member.left_at = datetime.utcnow()
+    if target_membership and target_membership.project_id == team.project_id:
+        target_membership.project_id = None
     notification_ids: list[int] = []
     action = "team.member_removed" if owner_actor else "team.member_left"
     if owner_actor and target_membership:
@@ -1298,6 +1380,8 @@ async def handle_membership_lifecycle_transition(
             row.left_at = now
             team = await db.get(AcceleratorTeam, row.team_id)
             if team:
+                if membership.project_id == team.project_id:
+                    membership.project_id = None
                 owner = await owner_membership(db, team)
                 owner_user = await db.get(User, owner.user_id)
                 if owner_user and withdrawn_user and owner_user.id != withdrawn_user.id:

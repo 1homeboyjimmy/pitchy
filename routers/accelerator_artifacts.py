@@ -14,6 +14,7 @@ from accelerator_artifact_service import (
     can_view_artifact_details,
     validate_artifact_source,
 )
+from accelerator_program_progress_service import ProgramProgressService
 from auth import get_async_current_user
 from db_async import get_async_db
 from models import (
@@ -22,6 +23,8 @@ from models import (
     AcceleratorProgramAction,
     AcceleratorProgramStage,
     AcceleratorProgramStageProgress,
+    AcceleratorTeam,
+    AcceleratorTeamMember,
     ChatMessage,
     ChatSession,
     GrantApplication,
@@ -66,10 +69,21 @@ async def get_action_context(
         (row["state"] for row in await resident_program_rows(db, membership) if row["id"] == stage.id),
         None,
     )
-    if state not in ("available", "completed"):
+    if state not in ("available", "in_progress", "overdue", "completed"):
         raise HTTPException(status_code=409, detail="Этап программы пока закрыт")
     project = await db.get(Project, membership.project_id)
-    if not project or project.user_id != user.id:
+    team_project_access = (await db.execute(
+        select(AcceleratorTeamMember.id)
+        .join(AcceleratorTeam, AcceleratorTeam.id == AcceleratorTeamMember.team_id)
+        .where(
+            AcceleratorTeamMember.membership_id == membership.id,
+            AcceleratorTeamMember.status == "active",
+            AcceleratorTeam.status == "active",
+            AcceleratorTeam.project_id == membership.project_id,
+        )
+        .limit(1)
+    )).scalar_one_or_none()
+    if not project or (project.user_id != user.id and team_project_access is None):
         raise HTTPException(status_code=409, detail="Проект резидента недоступен")
     return action, stage, membership, project
 
@@ -297,6 +311,18 @@ async def update_program_artifact(
         target_id=row.id,
         details={"status": row.status, "visibility": row.visibility, "stage_id": stage.id},
     )
+    await db.flush()
+    stage_state = await ProgramProgressService(db).complete_or_reconcile_stage(
+        membership.id, stage.id
+    )
+    if stage_state["became_completed"]:
+        cohort = await get_cohort_or_404(db, membership.cohort_id)
+        add_audit(
+            db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+            actor_user_id=user.id, action="program_stage.completed",
+            target_type="program_stage", target_id=stage.id,
+            details={"membership_id": membership.id, "source": "auto"},
+        )
     await db.commit()
     return artifact_dict(row)
 
@@ -419,6 +445,18 @@ async def sync_program_artifact(
         target_id=row.id,
         details={"status": row.status, "source_type": row.source_type},
     )
+    await db.flush()
+    stage_state = await ProgramProgressService(db).complete_or_reconcile_stage(
+        membership.id, action.stage_id
+    )
+    if stage_state["became_completed"]:
+        cohort = await get_cohort_or_404(db, membership.cohort_id)
+        add_audit(
+            db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+            actor_user_id=user.id, action="program_stage.completed",
+            target_type="program_stage", target_id=action.stage_id,
+            details={"membership_id": membership.id, "source": "auto"},
+        )
     await db.commit()
     return artifact_dict(row)
 
