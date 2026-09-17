@@ -27,9 +27,9 @@ type Filters = { stage: string; assignment: string; participant: string; team: s
 
 const STATUS_LABELS: Record<string, string> = { review_pending: "На проверке", needs_revision: "На доработке", accepted: "Принято" };
 
-export function HomeworkReviewQueue({ cohortId, token }: { cohortId: number; token: string }) {
+export function HomeworkReviewQueue({ cohortId, token, initialAssignmentId }: { cohortId: number; token: string; initialAssignmentId?: number }) {
   const [items, setItems] = useState<QueueItem[]>([]);
-  const [filters, setFilters] = useState<Filters>({ stage: "", assignment: "", participant: "", team: "", tracker: "", status: "review_pending" });
+  const [filters, setFilters] = useState<Filters>({ stage: "", assignment: initialAssignmentId ? String(initialAssignmentId) : "", participant: "", team: "", tracker: "", status: "review_pending" });
   const [comments, setComments] = useState<Record<number, string>>({});
   const [attempts, setAttempts] = useState<Record<number, Attempt[]>>({});
   const [openHistory, setOpenHistory] = useState<number | null>(null);

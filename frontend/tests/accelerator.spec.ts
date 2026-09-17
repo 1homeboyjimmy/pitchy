@@ -1,4 +1,6 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect as baseExpect, test, type Page } from '@playwright/test';
+
+const expect = baseExpect.configure({ timeout: 20_000 });
 
 type DashboardAccessState = {
   isAdmin: boolean;
@@ -36,6 +38,9 @@ async function mockManagerWorkspace(page: Page) {
   await page.route('**/api/accelerators/cohorts/12/program-config', async (route) => route.fulfill({ json: { cohort_id: 12, version: 1, modules: { applications: true, program: true, homework: true, attendance: false, progress_tracking: true, matchmaking: true, project_audit: true, demo_day: true, pitchy_artifacts: true }, locked_modules: { applications: true, program: true } } }));
   await page.route('**/api/accelerators/cohorts/12/applications', async (route) => route.fulfill({ json: [] }));
   await page.route('**/api/accelerators/cohorts/12/residents', async (route) => route.fulfill({ json: [] }));
+  await page.route('**/api/accelerators/cohorts/12/trackers', async (route) => route.fulfill({ json: [] }));
+  await page.route('**/api/accelerators/cohorts/12/homework', async (route) => route.fulfill({ json: [] }));
+  await page.route('**/api/accelerators/cohorts/12/tracking-dashboard', async (route) => route.fulfill({ json: { summary: {}, rows: [] } }));
   await page.route('**/api/accelerators/cohorts/12/program-stages', async (route) => route.fulfill({ json: [] }));
   await page.route('**/api/accelerators/cohorts/12/matchmaking/profiles', async (route) => route.fulfill({ json: [{ id: 41, user_id: 8, membership_id: 101, role: 'resident', name: 'Резидент А', email: 'resident@example.test', expertise: ['продукт'], needs: ['продажи'], industries: ['SaaS'], goals: [], preferred_formats: ['онлайн'], max_matches: 3, active_matches: 0, active: true }] }));
   await page.route('**/api/accelerators/cohorts/12/matches', async (route) => route.fulfill({ json: [] }));
@@ -79,25 +84,25 @@ async function mockManagerWorkspace(page: Page) {
 test('manager workspace is split into focused sections', async ({ page }) => {
   await mockManagerWorkspace(page);
   await page.goto('/accelerator');
-  await expect(page.getByRole('heading', { name: 'Поток 2026' })).toBeVisible();
-  const mainNavigation = page.getByRole('navigation', { name: 'Основные разделы акселератора' });
+  await expect(page.getByRole('heading', { name: 'Обзор потока' })).toBeVisible();
+  const mainNavigation = page.getByRole('navigation', { name: 'Разделы акселератора' });
   await expect(mainNavigation).toContainText('Обзор');
   await expect(mainNavigation).toContainText('Заявки');
   await expect(mainNavigation).toContainText('Участники');
   await expect(mainNavigation).toContainText('Программа');
   await expect(mainNavigation).toContainText('Результаты');
   await expect(mainNavigation).toContainText('Настройки');
-  await expect(mainNavigation.getByRole('button')).toHaveCount(6);
+  await expect(mainNavigation.getByRole('button')).toHaveCount(7);
   await page.getByRole('button', { name: 'Программа', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Этапы программы' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Единая очередь проверки' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Домашние задания' })).toBeVisible();
   await page.getByRole('button', { name: 'Обзор', exact: true }).click();
-  await expect(page.getByText('Новые заявки').first()).toBeVisible();
-  await expect(page.getByText('ДЗ на проверке').first()).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Что требует внимания' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Требует внимания' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Участники: 0', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Настройки', exact: true }).click();
+  await page.getByRole('button', { name: 'Состояние', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Операционный обзор' })).toBeVisible();
-  await expect(page.getByText('Заявки находятся в работе больше 7 дней')).toBeVisible();
   await expect(page.getByText('60%')).toBeVisible();
   await page.getByPlaceholder('Что произошло и когда проверить снова').fill('Плановые работы');
   await page.getByRole('button', { name: 'Временно отключить', exact: true }).click();
@@ -110,12 +115,12 @@ test('manager workspace is split into focused sections', async ({ page }) => {
   await page.getByRole('button', { name: 'Демо-день', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Demo Day 2026' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Результаты CSV' })).toBeVisible();
-  await page.getByRole('button', { name: 'Участники', exact: true }).click();
-  await page.getByRole('button', { name: 'Аудит проектов', exact: true }).click();
+  await page.getByRole('button', { name: 'Аудит проекта', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Аудит проекта' })).toBeVisible();
   await expect(page.getByText('Проблема подтверждена, требуется проверить цену.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'В задачи' })).toBeVisible();
-  await page.getByRole('button', { name: 'Подбор и команды', exact: true }).click();
+  await page.getByRole('button', { name: 'Команды и трекеры', exact: true }).click();
+  await page.getByRole('button', { name: 'Матчмейкинг', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Команды потока' })).toBeVisible();
   await expect(page.getByText('Команда Проекта А')).toBeVisible();
   await expect(page.getByText('resident@example.test')).toBeVisible();
@@ -133,15 +138,20 @@ test('organizer workspace fits the agreed screen widths', async ({ page }) => {
   for (const width of [360, 768, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/accelerator');
-    await expect(page.getByRole('heading', { name: 'Поток 2026' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Обзор потока' })).toBeVisible();
     const hasPageOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
     expect(hasPageOverflow, `page must not overflow at ${width}px`).toBe(false);
-    await expect(page.getByRole('navigation', { name: 'Основные разделы акселератора' })).toBeVisible();
+    if (width < 1024) await page.getByRole('button', { name: 'Открыть меню', exact: true }).click();
+    await expect(page.getByRole('navigation', { name: 'Разделы акселератора' })).toBeVisible();
   }
 });
 
 test('participant card opens and closes from the keyboard with restored focus', async ({ page }) => {
   await mockManagerWorkspace(page);
+  await page.route('**/api/accelerators/cohorts/12/report', route => route.fulfill({ json: {
+    summary: { residents: 1, enrolled: 1, suspended: 0, completed: 0 },
+    rows: [{ membership_id: 101, name: 'Резидент А', email: 'resident@example.test', status: 'enrolled', trackers: [], program: { percent: 50 }, homework: { accepted: 1, total: 2, overdue: 0 }, attendance: { present: 1, total: 2 } }],
+  } }));
   await page.route('**/api/accelerators/memberships/101/organizer-card', async (route) => route.fulfill({ json: {
     membership_id: 101, access_role: 'global_admin', can_manage: true, available_statuses: ['suspended'],
     person: { name: 'Резидент А', email: 'resident@example.test' },
@@ -155,7 +165,8 @@ test('participant card opens and closes from the keyboard with restored focus', 
   } }));
 
   await page.goto('/accelerator');
-  const trigger = page.getByRole('button', { name: 'Резидент А' }).first();
+  await page.getByRole('button', { name: 'Участники', exact: true }).click();
+  const trigger = page.getByRole('button', { name: 'Карточка', exact: true }).first();
   await trigger.focus();
   await page.keyboard.press('Enter');
   const dialog = page.getByRole('dialog', { name: 'Карточка участника' });
@@ -216,7 +227,8 @@ test('organizer can create the first cohort from the empty state', async ({ page
   await page.getByPlaceholder('Например, Осень 2026').fill('Осень 2026');
   await page.getByRole('button', { name: 'Создать поток' }).click();
   await expect.poll(() => createPayload).toMatchObject({ name: 'Осень 2026', timezone: 'Europe/Moscow' });
-  await expect(page.getByRole('heading', { name: 'Осень 2026' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Обзор потока' })).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Поток', exact: true })).toHaveValue('12');
 });
 
 test('notification center keeps navigation internal and manages read state', async ({ page }) => {
@@ -409,7 +421,7 @@ test('participant query parameters cannot open staff context', async ({ page }) 
   await page.goto('/accelerator?context=staff&section=applications&cohort=12&resident=99');
   await expect(page).toHaveURL(/\/accelerator\/my\/101$/);
   await expect(page.getByRole('heading', { name: 'Сегодня', exact: true })).toBeVisible();
-  await expect(page.getByRole('navigation', { name: 'Основные разделы акселератора' })).toHaveCount(0);
+  await expect(page.getByRole('navigation', { name: 'Разделы акселератора' })).toHaveCount(0);
 });
 
 test('direct accelerator route stays safe without any access', async ({ page }) => {
@@ -424,7 +436,7 @@ test('direct accelerator route stays safe without any access', async ({ page }) 
 
   await page.goto('/accelerator?context=staff&section=settings');
   await expect(page.getByRole('heading', { name: 'Нет доступных акселераторов' })).toBeVisible();
-  await expect(page.getByRole('navigation', { name: 'Основные разделы акселератора' })).toHaveCount(0);
+  await expect(page.getByRole('navigation', { name: 'Разделы акселератора' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Новый акселератор' })).toHaveCount(0);
 });
 

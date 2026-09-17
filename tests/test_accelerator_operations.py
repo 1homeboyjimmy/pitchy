@@ -12,7 +12,13 @@ from accelerator_operations_service import active_runtime_override
 from db_async import AsyncSessionLocal
 from models import (
     AcceleratorAuditLog,
+    AcceleratorApplication,
+    AcceleratorAttendanceRecord,
     AcceleratorCohort,
+    AcceleratorEvent,
+    AcceleratorMembership,
+    AcceleratorProgramStage,
+    AcceleratorProgramStageProgress,
     AcceleratorModuleRuntimeOverride,
     User,
 )
@@ -38,6 +44,73 @@ from schemas.accelerators import (
     OrganizerAssign,
     ProgramConfigUpdate,
 )
+
+
+@pytest.mark.asyncio
+async def test_overview_counts_published_progress_and_past_attendance_only():
+    suffix = uuid.uuid4().hex[:10]
+    async with AsyncSessionLocal() as db:
+        admin, organizer, _, _, cohort, _ = await _context(db, suffix)
+        members = []
+        for index, status in enumerate(("enrolled", "completed", "withdrawn")):
+            person = User(email=f"overview-{suffix}-{index}@example.test", name=f"Resident {index}")
+            db.add(person)
+            await db.flush()
+            application = AcceleratorApplication(cohort_id=cohort["id"], user_id=person.id, status="enrolled")
+            db.add(application)
+            await db.flush()
+            member = AcceleratorMembership(cohort_id=cohort["id"], user_id=person.id,
+                                           application_id=application.id, accepted_by_user_id=admin.id,
+                                           role="resident", status=status)
+            db.add(member)
+            await db.flush()
+            members.append(member)
+        now = datetime.utcnow()
+        stages = []
+        for position, status in enumerate(("published", "published", "draft", "published")):
+            row = AcceleratorProgramStage(cohort_id=cohort["id"], title=f"Stage {position}", position=position,
+                                          status=status, created_by_user_id=organizer.id,
+                                          updated_by_user_id=organizer.id,
+                                          unlock_at=now + timedelta(days=2) if position == 3 else None)
+            db.add(row)
+            await db.flush()
+            stages.append(row)
+        db.add_all([
+            AcceleratorProgramStageProgress(stage_id=stages[0].id, membership_id=members[0].id),
+            AcceleratorProgramStageProgress(stage_id=stages[0].id, membership_id=members[2].id),
+            AcceleratorProgramStageProgress(stage_id=stages[2].id, membership_id=members[0].id),
+        ])
+        events = []
+        for index, (status, future) in enumerate((("published", False), ("published", True), ("draft", False))):
+            starts = now + timedelta(days=1) if future else now - timedelta(days=1)
+            row = AcceleratorEvent(cohort_id=cohort["id"], title=f"Event {index}", status=status,
+                                   starts_at=starts, ends_at=starts + timedelta(hours=1),
+                                   checkin_code=f"overview-{suffix}-{index}",
+                                   created_by_user_id=organizer.id, updated_by_user_id=organizer.id)
+            db.add(row)
+            await db.flush()
+            events.append(row)
+        db.add_all([
+            AcceleratorAttendanceRecord(event_id=events[0].id, membership_id=members[0].id, status="present"),
+            AcceleratorAttendanceRecord(event_id=events[0].id, membership_id=members[2].id, status="present"),
+            AcceleratorAttendanceRecord(event_id=events[1].id, membership_id=members[0].id, status="present"),
+            AcceleratorAttendanceRecord(event_id=events[2].id, membership_id=members[0].id, status="present"),
+        ])
+        await db.commit()
+        analytics = await get_cohort_analytics(cohort["id"], organizer, db)
+        assert analytics["program"]["completed_stage_records"] == 1
+        assert analytics["program"]["completion_percent"] == 16.7
+        assert analytics["program"]["current_stage"] == {
+            "id": stages[0].id, "title": "Stage 0", "completed": 1, "total": 2,
+        }
+        assert analytics["attendance"]["published_events"] == 2
+        assert analytics["attendance"]["past_events"] == 1
+        assert analytics["attendance"]["present_records"] == 1
+        assert analytics["attendance"]["attendance_percent"] == 50
+        db.add(AcceleratorProgramStageProgress(stage_id=stages[0].id, membership_id=members[1].id))
+        await db.commit()
+        analytics = await get_cohort_analytics(cohort["id"], organizer, db)
+        assert analytics["program"]["current_stage"]["id"] == stages[1].id
 
 
 async def _context(db, suffix: str):
