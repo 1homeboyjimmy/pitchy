@@ -44,6 +44,7 @@ plotly
 asyncpg
 # Async sqlite driver: db_async.py на тестовой sqlite-БД (conftest.py)
 aiosqlite
+openpyxl
 cachetools
 bcrypt
 sse-starlette>=2.0.0

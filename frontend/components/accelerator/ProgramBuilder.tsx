@@ -1,5 +1,7 @@
 "use client";
 
+import { useDashboardFocus } from "./useDashboardFocus";
+
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import {
   Archive,
@@ -101,8 +103,9 @@ const makeEmptyForm = () => ({
 
 const localDate = (value: string) => new Date(new Date(value).getTime() - new Date(value).getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 
-export function ProgramBuilder({ cohortId, token }: { cohortId: number; token: string }) {
+export function ProgramBuilder({ cohortId, token, focusId }: { cohortId: number; token: string; focusId?: number }) {
   const [stages, setStages] = useState<ProgramStage[]>([]);
+  useDashboardFocus("stage", focusId, stages.length);
   const [form, setForm] = useState(makeEmptyForm);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -316,7 +319,7 @@ export function ProgramBuilder({ cohortId, token }: { cohortId: number; token: s
     </form>}
 
     <div className="mt-6 space-y-3">
-      {!stages.length ? <p className="py-6 text-center text-sm text-white/35">Этапов пока нет.</p> : stages.map((stage, index) => <article key={stage.id} className="rounded-2xl border border-white/9 bg-white/[0.02] p-4 sm:p-5">
+      {!stages.length ? <p className="py-6 text-center text-sm text-white/35">Этапов пока нет.</p> : stages.map((stage, index) => <article id={`dashboard-stage-${stage.id}`} key={stage.id} className="rounded-2xl border border-white/9 bg-white/[0.02] p-4 sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex min-w-0 gap-3">
             <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white/8 text-sm">{index + 1}</span>

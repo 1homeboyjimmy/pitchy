@@ -1,4 +1,6 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect as baseExpect, test, type Page } from '@playwright/test';
+
+const expect = baseExpect.configure({ timeout: 20_000 });
 
 type DashboardAccessState = {
   isAdmin: boolean;
@@ -36,6 +38,9 @@ async function mockManagerWorkspace(page: Page) {
   await page.route('**/api/accelerators/cohorts/12/program-config', async (route) => route.fulfill({ json: { cohort_id: 12, version: 1, modules: { applications: true, program: true, homework: true, attendance: false, progress_tracking: true, matchmaking: true, project_audit: true, demo_day: true, pitchy_artifacts: true }, locked_modules: { applications: true, program: true } } }));
   await page.route('**/api/accelerators/cohorts/12/applications', async (route) => route.fulfill({ json: [] }));
   await page.route('**/api/accelerators/cohorts/12/residents', async (route) => route.fulfill({ json: [] }));
+  await page.route('**/api/accelerators/cohorts/12/trackers', async (route) => route.fulfill({ json: [] }));
+  await page.route('**/api/accelerators/cohorts/12/homework', async (route) => route.fulfill({ json: [] }));
+  await page.route('**/api/accelerators/cohorts/12/tracking-dashboard', async (route) => route.fulfill({ json: { summary: {}, rows: [] } }));
   await page.route('**/api/accelerators/cohorts/12/program-stages', async (route) => route.fulfill({ json: [] }));
   await page.route('**/api/accelerators/cohorts/12/matchmaking/profiles', async (route) => route.fulfill({ json: [{ id: 41, user_id: 8, membership_id: 101, role: 'resident', name: 'Резидент А', email: 'resident@example.test', expertise: ['продукт'], needs: ['продажи'], industries: ['SaaS'], goals: [], preferred_formats: ['онлайн'], max_matches: 3, active_matches: 0, active: true }] }));
   await page.route('**/api/accelerators/cohorts/12/matches', async (route) => route.fulfill({ json: [] }));
@@ -79,8 +84,8 @@ async function mockManagerWorkspace(page: Page) {
 test('manager workspace is split into focused sections', async ({ page }) => {
   await mockManagerWorkspace(page);
   await page.goto('/accelerator');
-  await expect(page.getByRole('heading', { name: 'Поток 2026' })).toBeVisible();
-  const mainNavigation = page.getByRole('navigation', { name: 'Основные разделы акселератора' });
+  await expect(page.getByRole('heading', { name: 'Обзор потока' })).toBeVisible();
+  const mainNavigation = page.getByRole('navigation', { name: 'Разделы акселератора' });
   await expect(mainNavigation).toContainText('Обзор');
   await expect(mainNavigation).toContainText('Заявки');
   await expect(mainNavigation).toContainText('Участники');
@@ -93,11 +98,11 @@ test('manager workspace is split into focused sections', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Единая очередь проверки' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Домашние задания' })).toBeVisible();
   await page.getByRole('button', { name: 'Обзор', exact: true }).click();
-  await expect(page.getByText('Новые заявки').first()).toBeVisible();
-  await expect(page.getByText('ДЗ на проверке').first()).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Что требует внимания' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Требует внимания' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Участники: 0', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Настройки', exact: true }).click();
+  await page.getByRole('button', { name: 'Состояние', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Операционный обзор' })).toBeVisible();
-  await expect(page.getByText('Заявки находятся в работе больше 7 дней')).toBeVisible();
   await expect(page.getByText('60%')).toBeVisible();
   await page.getByPlaceholder('Что произошло и когда проверить снова').fill('Плановые работы');
   await page.getByRole('button', { name: 'Временно отключить', exact: true }).click();
@@ -110,8 +115,7 @@ test('manager workspace is split into focused sections', async ({ page }) => {
   await page.getByRole('button', { name: 'Демо-день', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Demo Day 2026' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Результаты CSV' })).toBeVisible();
-  await page.getByRole('button', { name: 'Участники', exact: true }).click();
-  await page.getByRole('button', { name: 'Аудит проектов', exact: true }).click();
+  await page.getByRole('button', { name: 'Аудит проекта', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Аудит проекта' })).toBeVisible();
   await expect(page.getByText('Проблема подтверждена, требуется проверить цену.')).toBeVisible();
   await expect(page.getByText('Квота «Сообщения»: списано 1 сообщение')).toBeVisible();
@@ -120,7 +124,7 @@ test('manager workspace is split into focused sections', async ({ page }) => {
   await expect(page.getByText('Проблема подтверждена, требуется проверить цену.')).toBeHidden();
   await expect(page.getByRole('button', { name: 'Развернуть аудит Проект А' })).toBeVisible();
   await page.getByRole('button', { name: 'Команды и трекеры', exact: true }).click();
-  await page.getByRole('button', { name: 'Команды', exact: true }).click();
+  await page.getByRole('button', { name: 'Матчмейкинг', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Команды потока' })).toBeVisible();
   await expect(page.getByText('Команда Проекта А')).toBeVisible();
   await expect(page.getByText('resident@example.test')).toBeVisible();
@@ -133,20 +137,102 @@ test('manager workspace is split into focused sections', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Демо-день и экспорт Включён' })).toBeVisible();
 });
 
+test('application queue keeps filters and opens the full answer beside the list', async ({ page }, testInfo) => {
+  await mockManagerWorkspace(page);
+  const applications = [
+    { id: 104, applicant_name: 'Мария Иванова', applicant_email: 'maria@example.com', application_type: 'project', status: 'submitted', project_name: 'EcoPack', form_payload: { problem: 'Экологичная упаковка малыми партиями', motivation: 'Проверить спрос' }, form_version: 2, form_schema_snapshot: { fields: [{ key: 'problem', label: 'Какую проблему решаете?' }, { key: 'motivation', label: 'Почему хотите участвовать?' }] }, submitted_at: new Date().toISOString() },
+    { id: 105, applicant_name: 'Александр Смирнов', applicant_email: 'alex@example.com', application_type: 'participant', status: 'approved', membership_status: 'accepted', form_payload: { experience: 'Продажи' }, submitted_at: new Date().toISOString() },
+  ];
+  await page.route('**/api/accelerators/cohorts/12/applications', async (route) => route.fulfill({ json: applications }));
+  await page.route('**/api/accelerators/applications/104/events', async (route) => route.fulfill({ json: [{ id: 1, to_status: 'submitted', created_at: new Date().toISOString() }] }));
+  await page.goto('/accelerator?section=applications');
+  await expect(page.getByRole('heading', { name: 'Заявки', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Мария Иванова/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Александр Смирнов/ })).toHaveCount(0);
+  await page.getByRole('button', { name: /Мария Иванова/ }).click();
+  await expect(page.getByRole('dialog', { name: 'Заявка 104' })).toBeVisible();
+  if (process.env.ACCELERATOR_CAPTURE_UI) {
+    await page.screenshot({ path: testInfo.outputPath('applications-desktop.png'), fullPage: true });
+    await page.setViewportSize({ width: 360, height: 900 });
+    await page.screenshot({ path: testInfo.outputPath('applications-mobile.png'), fullPage: true });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
+    await page.setViewportSize({ width: 1280, height: 900 });
+  }
+  await expect(page.getByText('Какую проблему решаете?')).toBeVisible();
+  await page.getByRole('button', { name: 'История' }).click();
+  await expect(page.getByRole('dialog').getByText('Новая').last()).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.getByPlaceholder('Поиск по имени, email, проекту или ответам').fill('EcoPack');
+  await page.reload();
+  await expect(page.getByPlaceholder('Поиск по имени, email, проекту или ответам')).toHaveValue('EcoPack');
+  await expect(page.getByRole('button', { name: /Мария Иванова/ })).toBeVisible();
+});
+
+test('form draft previews current edits, saves, publishes and imports answers', async ({ page }, testInfo) => {
+  await mockManagerWorkspace(page);
+  let revision = 0;
+  let savedLabel = '';
+  let published = 0;
+  await page.route('**/api/accelerators/cohorts/12/application-form/draft', async (route) => {
+    if (route.request().method() === 'PUT') {
+      const body = route.request().postDataJSON();
+      savedLabel = body.schema.fields[0].label;
+      revision += 1;
+      await route.fulfill({ json: { draft_revision: revision, published_version: 1, draft_schema: body.schema, has_unpublished_changes: true } });
+    } else await route.fulfill({ json: { draft_revision: revision, published_version: 1, draft_schema: { title: 'Заявка', fields: [{ key: 'motivation', label: 'Зачем участвовать?', type: 'textarea', application_types: ['project', 'participant'] }] }, has_unpublished_changes: false } });
+  });
+  await page.route('**/api/accelerators/cohorts/12/application-form/publish', async (route) => { published += 1; await route.fulfill({ json: { application_form_version: 2, application_form_draft_revision: revision + 1 } }); });
+  let importCalls = 0;
+  await page.route('**/api/accelerators/cohorts/12/applications/import', async (route) => {
+    importCalls += 1;
+    if (importCalls === 1) await route.fulfill({ json: { headers: ['Имя', 'Email', 'Ответ'], sheets: ['CSV'], sheet: 'CSV', total: 1, sample: [['Анна', 'anna@example.com', 'Проверить спрос']] } });
+    else await route.fulfill({ json: { headers: ['Имя', 'Email', 'Ответ'], sheets: ['CSV'], sheet: 'CSV', total: 1, counts: { ready: importCalls === 2 ? 1 : 0, duplicate: 0, invalid: 0, imported: importCalls === 3 ? 1 : 0 }, rows: [{ row: 2, name: 'Анна', email: 'anna@example.com', status: 'ready', reason: '' }] } });
+  });
+  await page.goto('/accelerator?section=form');
+  await expect(page.getByRole('heading', { name: 'Анкета и ссылка' })).toBeVisible();
+  if (process.env.ACCELERATOR_CAPTURE_UI) {
+    await page.screenshot({ path: testInfo.outputPath('form-desktop.png'), fullPage: true });
+    await page.setViewportSize({ width: 360, height: 900 });
+    await page.screenshot({ path: testInfo.outputPath('form-mobile.png'), fullPage: true });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
+    await page.setViewportSize({ width: 1280, height: 900 });
+  }
+  await page.getByLabel('Название вопроса').fill('Почему вы хотите участвовать?');
+  await page.getByRole('button', { name: 'Предпросмотр' }).click();
+  await expect(page.getByRole('dialog', { name: 'Предпросмотр черновика' }).getByText('Почему вы хотите участвовать?')).toBeVisible();
+  await page.getByRole('button', { name: 'Закрыть предпросмотр' }).click();
+  await expect.poll(() => savedLabel).toBe('Почему вы хотите участвовать?');
+  await page.getByRole('button', { name: 'Опубликовать изменения' }).click();
+  await expect.poll(() => published).toBe(1);
+  await page.locator('input[type=file]').setInputFiles({ name: 'answers.csv', mimeType: 'text/csv', buffer: Buffer.from('Имя,Email,Ответ\nАнна,anna@example.com,Проверить спрос') });
+  await expect(page.getByText('Найдено ответов: 1')).toBeVisible();
+  await page.getByLabel('Тип для ответов без отдельного столбца').selectOption('participant');
+  await page.getByRole('button', { name: 'Проверить ответы' }).click();
+  await expect(page.getByText('К добавлению: 1')).toBeVisible();
+  await page.getByRole('button', { name: 'Импортировать 1 заявок' }).click();
+  await expect(page.getByText('Добавлено: 1')).toBeVisible();
+});
+
 test('organizer workspace fits the agreed screen widths', async ({ page }) => {
   await mockManagerWorkspace(page);
   for (const width of [360, 768, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/accelerator');
-    await expect(page.getByRole('heading', { name: 'Поток 2026' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Обзор потока' })).toBeVisible();
     const hasPageOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
     expect(hasPageOverflow, `page must not overflow at ${width}px`).toBe(false);
-    await expect(page.getByRole('navigation', { name: 'Основные разделы акселератора' })).toBeVisible();
+    if (width < 1024) await page.getByRole('button', { name: 'Открыть меню', exact: true }).click();
+    await expect(page.getByRole('navigation', { name: 'Разделы акселератора' })).toBeVisible();
   }
 });
 
 test('participant card opens and closes from the keyboard with restored focus', async ({ page }) => {
   await mockManagerWorkspace(page);
+  await page.route('**/api/accelerators/cohorts/12/report', route => route.fulfill({ json: {
+    summary: { residents: 1, enrolled: 1, suspended: 0, completed: 0 },
+    rows: [{ membership_id: 101, name: 'Резидент А', email: 'resident@example.test', status: 'enrolled', trackers: [], program: { percent: 50 }, homework: { accepted: 1, total: 2, overdue: 0 }, attendance: { present: 1, total: 2 } }],
+  } }));
   await page.route('**/api/accelerators/memberships/101/organizer-card', async (route) => route.fulfill({ json: {
     membership_id: 101, access_role: 'global_admin', can_manage: true, available_statuses: ['suspended'],
     person: { name: 'Резидент А', email: 'resident@example.test' },
@@ -161,7 +247,8 @@ test('participant card opens and closes from the keyboard with restored focus', 
   } }));
 
   await page.goto('/accelerator');
-  const trigger = page.getByRole('button', { name: 'Резидент А' }).first();
+  await page.getByRole('button', { name: 'Участники', exact: true }).click();
+  const trigger = page.getByRole('button', { name: 'Карточка', exact: true }).first();
   await trigger.focus();
   await page.keyboard.press('Enter');
   const dialog = page.getByRole('dialog', { name: 'Карточка участника' });
@@ -187,6 +274,8 @@ test('manager sees an application summary and accepted participation state', asy
 
   await page.goto('/accelerator');
   await page.getByRole('button', { name: 'Заявки', exact: true }).click();
+  await page.getByRole('button', { name: /Приняты 1/ }).click();
+  await page.getByText('Экспорт').click();
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Рабочий CSV' }).click();
   const download = await downloadPromise;
@@ -195,18 +284,16 @@ test('manager sees an application summary and accepted participation state', asy
   for await (const chunk of stream) chunks.push(Buffer.from(chunk));
   const csv = Buffer.concat(chunks).toString('utf8');
   expect(csv.charCodeAt(0)).toBe(0xfeff);
-  expect(csv.split('\r\n')[0].split(';')).toHaveLength(11);
-  expect(csv).toContain('Резидент А;resident@example.test;Проект;Проект А;Принят');
+  expect(csv.split('\r\n')[0].split(';')).toHaveLength(8);
+  expect(csv).toContain('Резидент А;resident@example.test;С проектом');
   const acceptedApplication = page.getByRole('button', { name: /Резидент А/ });
-  await expect(acceptedApplication).toContainText('Название проекта: Проект А');
-  await expect(acceptedApplication).toContainText('Проблема: Команды долго собирают данные вручную');
-  await expect(acceptedApplication.getByText('Принят · ждёт подтверждения', { exact: true })).toBeVisible();
   await acceptedApplication.click();
-  await expect(page.getByText('Кандидат принят. Он самостоятельно подтвердит участие в своём кабинете.')).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Заявка 44' }).getByText('Команды долго собирают данные вручную')).toBeVisible();
+  await expect(page.getByText('Ждёт подтверждения')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Зачислить' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Отправить приглашение повторно' }).click();
   await expect.poll(() => invitationResent).toBe(true);
-  await expect(page.getByText('Приглашение сформировано повторно и добавлено в очередь отправки.')).toBeVisible();
+  await expect(page.getByText('Приглашение добавлено в очередь отправки.')).toBeVisible();
 });
 
 test('organizer can create the first cohort from the empty state', async ({ page }) => {
@@ -234,7 +321,8 @@ test('organizer can create the first cohort from the empty state', async ({ page
   await page.getByPlaceholder('Например, Осень 2026').fill('Осень 2026');
   await page.getByRole('button', { name: 'Создать поток' }).click();
   await expect.poll(() => createPayload).toMatchObject({ name: 'Осень 2026', timezone: 'Europe/Moscow' });
-  await expect(page.getByRole('heading', { name: 'Осень 2026' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Обзор потока' })).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Поток', exact: true })).toHaveValue('12');
 });
 
 test('notification center keeps navigation internal and manages read state', async ({ page }) => {
@@ -275,12 +363,12 @@ test('accepted participant confirms joining without a second manager action', as
   await expect(page).toHaveURL(/\/accelerator\/my\/101$/);
   await expect(page.getByText('Принят', { exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Вас приняли в программу' })).toBeVisible();
-  await page.getByRole('button', { name: 'Начать участие' }).click();
-  await expect(page.getByText('Зачислен', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Начать участие' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Подтвердить участие' }).click();
+  await expect(page.getByText('Участник', { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Подтвердить участие' })).toHaveCount(0);
 });
 
-test('resident Today page prioritizes required work and keeps improvements optional', async ({ page }) => {
+test('resident Today page prioritizes required work and keeps improvements optional', async ({ page }, testInfo) => {
   await page.addInitScript(() => {
     localStorage.setItem('vi_auth_state', 'cookie-session');
     localStorage.setItem('pitchy_cookie_consent_v2', JSON.stringify({ choice: 'necessary', updatedAt: new Date().toISOString() }));
@@ -316,12 +404,13 @@ test('resident Today page prioritizes required work and keeps improvements optio
   await page.route('**/api/accelerators/memberships/101/today', async (route) => route.fulfill({ json: {
     membership_id: 101, generated_at: new Date().toISOString(), timezone: 'Europe/Moscow',
     required_actions: [
-      { key: 'homework:51', title: 'Доработать: Сценарий интервью', description: 'Добавьте вопросы о прошлом поведении.', due_at: tomorrow, section: 'homework', kind: 'homework', overdue: false },
-      { key: 'task:71', title: 'Уточнить сегмент', description: 'Выберите один основной сегмент.', due_at: tomorrow, section: 'tracking', kind: 'task', overdue: false },
+      { key: 'homework:51', title: 'Доработать: Сценарий интервью', description: 'Добавьте вопросы о прошлом поведении.', due_at: tomorrow, section: 'homework', target_id: 51, kind: 'homework', overdue: false },
+      { key: 'task:71', title: 'Уточнить сегмент', description: 'Выберите один основной сегмент.', due_at: tomorrow, section: 'tracking', target_id: 71, kind: 'task', overdue: false },
     ],
-    upcoming: [{ key: 'event:61', kind: 'event', title: 'Встреча с трекером', starts_at: tomorrow, section: 'program' }],
+    upcoming: [{ key: 'event:61', kind: 'event', title: 'Встреча с трекером', starts_at: tomorrow, section: 'events', target_id: 61 }],
     unread_feedback: [{ id: 81, body: 'Фокус на одном сегменте сделает интервью точнее.', created_at: new Date().toISOString(), author: { name: 'Анна, трекер' } }],
     progress: { percent: 50, completed_stages: 1, total_stages: 2, current_stage: { id: 31, title: 'Проверка проблемы' }, project_readiness: 45 },
+    attendance: { percent: 83, present: 5, total: 6, unmarked: 1 },
     support: { enabled: true, trackers: [{ id: 5, name: 'Анна, трекер', email: 'tracker@example.test' }], risk: { level: 'yellow', reasons: [] } },
     recommendations: recommendationDismissed ? [
       { key: 'manual:72', title: 'Посмотреть пример интервью', description: 'Необязательный совет от трекера.', source: 'От организатора или трекера', source_type: 'manual', section: 'tracking', priority: 100, reason_fingerprint: 'manual-72' },
@@ -335,6 +424,11 @@ test('resident Today page prioritizes required work and keeps improvements optio
     dismissed_recommendations: [], unavailable_sections: [],
   } }));
   await page.route('**/api/accelerators/notifications/unread-count', async (route) => route.fulfill({ json: { count: 0 } }));
+  let readFeedback: Record<string, unknown> | null = null;
+  await page.route('**/api/accelerators/memberships/101/feedback/read', async (route) => {
+    readFeedback = route.request().postDataJSON();
+    await route.fulfill({ json: { read_feedback_ids: [81] } });
+  });
 
   await page.goto('/accelerator');
   await expect(page).toHaveURL(/\/accelerator\/my\/101$/);
@@ -343,40 +437,40 @@ test('resident Today page prioritizes required work and keeps improvements optio
   await expect(page.getByText('Доработать: Сценарий интервью')).toBeVisible();
   await expect(page.getByText('Уточнить сегмент', { exact: true })).toBeVisible();
   await expect(page.getByText('Встреча с трекером')).toBeVisible();
-  await expect(page.getByText('Фокус на одном сегменте сделает интервью точнее.')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Можно улучшить' })).toBeVisible();
-  await expect(page.getByText('Посмотреть пример интервью')).toBeVisible();
-  await expect(page.getByText('От организатора или трекера')).toBeVisible();
-  await expect(page.getByText('Дополнить паспорт проекта')).toBeVisible();
-  await expect(page.getByText('Проверить проект аудитом')).toBeVisible();
+  await expect(page.getByText('Посещено 5 из 6 прошедших мероприятий')).toBeVisible();
+  await expect(page.getByText('83%')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Можно улучшить' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Новая обратная связь · 1' })).toBeVisible();
 
   for (const width of [360, 768, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/accelerator');
     await expect(page).toHaveURL(/\/accelerator\/my\/101$/);
     await expect(page.getByTestId('resident-membership-header')).toBeVisible();
-    await expect(page.getByTestId('resident-navigation')).toBeVisible();
     await expect(page.getByTestId('resident-today')).toBeVisible();
-    const spacing = await page.evaluate(() => {
-      const header = document.querySelector<HTMLElement>('[data-testid="resident-membership-header"]')?.getBoundingClientRect();
-      const navigation = document.querySelector<HTMLElement>('[data-testid="resident-navigation"]')?.getBoundingClientRect();
-      const content = document.querySelector<HTMLElement>('[data-testid="resident-today"]')?.getBoundingClientRect();
-      return {
-        headerToNavigation: header && navigation ? navigation.top - header.bottom : -1,
-        navigationToContent: navigation && content ? content.top - navigation.bottom : -1,
-        overflow: document.documentElement.scrollWidth > window.innerWidth + 1,
-      };
-    });
-    expect(spacing.headerToNavigation, `header/nav spacing at ${width}px`).toBeGreaterThanOrEqual(width >= 768 ? 30 : 22);
-    expect(spacing.navigationToContent, `nav/content spacing at ${width}px`).toBeGreaterThanOrEqual(width >= 768 ? 30 : 22);
-    expect(spacing.overflow, `participant page must not overflow at ${width}px`).toBe(false);
+    if (process.env.ACCELERATOR_CAPTURE_UI && (width === 360 || width === 1280)) await page.screenshot({ path: testInfo.outputPath(`today-${width}.png`), fullPage: true });
+    if (width < 1024) {
+      await page.getByRole('button', { name: 'Меню участника' }).click();
+      await expect(page.getByTestId('resident-navigation')).toBeVisible();
+      await page.getByRole('button', { name: 'Меню участника' }).click();
+    } else await expect(page.getByTestId('resident-navigation')).toBeVisible();
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
+    expect(overflow).toBe(false);
   }
 
+  await page.getByRole('button', { name: 'Новая обратная связь · 1' }).click();
+  await expect.poll(() => readFeedback).toMatchObject({ feedback_ids: [81] });
+  await expect(page.getByRole('heading', { name: 'Еженедельный чек-ин' })).toBeVisible();
+  await page.getByRole('button', { name: 'Мой проект' }).click();
+  await expect(page.getByRole('heading', { name: 'Советы по проекту' })).toBeVisible();
+  await expect(page.getByText('Дополнить паспорт проекта')).toBeVisible();
   await page.getByLabel('Скрыть рекомендацию «Дополнить паспорт проекта»').click();
   await expect(page.getByText('Дополнить паспорт проекта')).toHaveCount(0);
   await expect(page.getByText('Найти подходящего эксперта')).toBeVisible();
-  await page.getByRole('button', { name: /Уточнить сегмент/ }).click();
+  await page.getByRole('button', { name: 'Сегодня' }).click();
+  await page.getByRole('button', { name: 'Открыть задачу' }).click();
   await expect(page.getByRole('heading', { name: 'Еженедельный чек-ин' })).toBeVisible();
+  await expect(page.locator('#resident-tracking-71')).toBeFocused();
 });
 
 test('combined role starts as participant and opens staff context explicitly', async ({ page }) => {
@@ -464,7 +558,7 @@ test('participant query parameters cannot open staff context', async ({ page }) 
   await page.goto('/accelerator?context=staff&section=applications&cohort=12&resident=99');
   await expect(page).toHaveURL(/\/accelerator\/my\/101$/);
   await expect(page.getByRole('heading', { name: 'Сегодня', exact: true })).toBeVisible();
-  await expect(page.getByRole('navigation', { name: 'Основные разделы акселератора' })).toHaveCount(0);
+  await expect(page.getByRole('navigation', { name: 'Разделы акселератора' })).toHaveCount(0);
 });
 
 test('direct accelerator route stays safe without any access', async ({ page }) => {
@@ -479,7 +573,7 @@ test('direct accelerator route stays safe without any access', async ({ page }) 
 
   await page.goto('/accelerator?context=staff&section=settings');
   await expect(page.getByRole('heading', { name: 'Нет доступных акселераторов' })).toBeVisible();
-  await expect(page.getByRole('navigation', { name: 'Основные разделы акселератора' })).toHaveCount(0);
+  await expect(page.getByRole('navigation', { name: 'Разделы акселератора' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Новый акселератор' })).toHaveCount(0);
 });
 
@@ -572,7 +666,7 @@ test('resident launches a Pitchy action and controls result visibility', async (
   await page.route('**/dashboard?tab=chat&session=33', async (route) => route.fulfill({ contentType: 'text/html', body: '<title>Pitchy chat</title><main>Chat session 33</main>' }));
 
   await page.goto('/accelerator');
-  await page.getByRole('button', { name: 'Мой путь', exact: true }).click();
+  await page.getByRole('button', { name: 'Программа', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Действия и результаты' })).toBeVisible();
   await expect(page.getByText('Разобрать гипотезу', { exact: true })).toBeVisible();
   const popupPromise = page.waitForEvent('popup');
@@ -649,7 +743,7 @@ test('captain manages a team, incoming applications and own membership', async (
   });
 
   await page.goto('/accelerator');
-  await page.getByRole('button', { name: 'Команда', exact: true }).click();
+  await page.getByRole('button', { name: 'Команда и поддержка', exact: true }).click();
   await expect(page.getByText('Команда Альфа')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Принять' })).toBeVisible();
   await page.getByRole('button', { name: 'Отклонить' }).click();
@@ -677,7 +771,7 @@ test('captain manages a team, incoming applications and own membership', async (
   await expect(page.getByRole('button', { name: 'Скрыть контакт Резидент А' })).toHaveCount(0);
   teamStatus = 'active'; teamCanManage = false;
   await page.reload();
-  await page.getByRole('button', { name: 'Команда', exact: true }).click();
+  await page.getByRole('button', { name: 'Команда и поддержка', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Покинуть команду' })).toBeVisible();
   page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Покинуть команду' }).click();

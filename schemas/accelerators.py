@@ -120,6 +120,7 @@ def validate_application_form_schema(value: dict[str, Any] | None) -> dict[str, 
 
 class ApplicationFormDraftUpdate(BaseModel):
     form_schema: dict[str, Any] = Field(alias="schema")
+    expected_revision: int | None = Field(default=None, ge=0)
 
     @field_validator("form_schema")
     @classmethod

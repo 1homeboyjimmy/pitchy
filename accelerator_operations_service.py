@@ -122,6 +122,7 @@ async def cohort_analytics(
     db: AsyncSession, *, cohort: AcceleratorCohort, user: User
 ) -> dict:
     await require_cohort_manager(db, user, cohort)
+    now = datetime.utcnow()
     applications = await _group_counts(
         db, AcceleratorApplication, AcceleratorApplication.status,
         AcceleratorApplication.cohort_id == cohort.id,
@@ -136,14 +137,29 @@ async def cohort_analytics(
         AcceleratorProgramStage.cohort_id == cohort.id,
         AcceleratorProgramStage.status == "published",
     )
-    program_completions = int((await db.execute(
-        select(func.count())
-        .select_from(AcceleratorProgramStageProgress)
-        .join(AcceleratorProgramStage, AcceleratorProgramStage.id == AcceleratorProgramStageProgress.stage_id)
-        .where(AcceleratorProgramStage.cohort_id == cohort.id)
-    )).scalar_one() or 0)
+    participating_ids = select(AcceleratorMembership.id).where(
+        AcceleratorMembership.cohort_id == cohort.id,
+        AcceleratorMembership.role == "resident",
+        AcceleratorMembership.status.in_(("enrolled", "completed")),
+    )
+    stage_rows = (await db.execute(
+        select(AcceleratorProgramStage).where(
+            AcceleratorProgramStage.cohort_id == cohort.id,
+            AcceleratorProgramStage.status == "published",
+        ).order_by(AcceleratorProgramStage.position, AcceleratorProgramStage.id)
+    )).scalars().all()
+    stage_counts = dict((await db.execute(
+        select(AcceleratorProgramStageProgress.stage_id, func.count())
+        .where(AcceleratorProgramStageProgress.membership_id.in_(participating_ids))
+        .group_by(AcceleratorProgramStageProgress.stage_id)
+    )).all())
+    program_completions = sum(int(stage_counts.get(stage.id, 0)) for stage in stage_rows)
     participating = sum(residents.get(status, 0) for status in ("enrolled", "completed"))
     program_denominator = published_stages * participating
+    available_stages = [stage for stage in stage_rows if not stage.unlock_at or stage.unlock_at <= now]
+    current_stage = next((stage for stage in available_stages
+                          if stage_counts.get(stage.id, 0) < participating),
+                         available_stages[-1] if available_stages else None)
     homework = await _group_counts(
         db, AcceleratorHomeworkSubmission, AcceleratorHomeworkSubmission.status,
         AcceleratorHomeworkSubmission.membership_id.in_(
@@ -160,12 +176,21 @@ async def cohort_analytics(
         AcceleratorEvent.cohort_id == cohort.id,
         AcceleratorEvent.status == "published",
     )
+    past_events = await _count(
+        db, AcceleratorEvent,
+        AcceleratorEvent.cohort_id == cohort.id,
+        AcceleratorEvent.status == "published",
+        AcceleratorEvent.ends_at <= now,
+    )
     present = int((await db.execute(
         select(func.count())
         .select_from(AcceleratorAttendanceRecord)
         .join(AcceleratorEvent, AcceleratorEvent.id == AcceleratorAttendanceRecord.event_id)
         .where(
             AcceleratorEvent.cohort_id == cohort.id,
+            AcceleratorEvent.status == "published",
+            AcceleratorEvent.ends_at <= now,
+            AcceleratorAttendanceRecord.membership_id.in_(participating_ids),
             AcceleratorAttendanceRecord.status == "present",
         )
     )).scalar_one() or 0)
@@ -228,12 +253,20 @@ async def cohort_analytics(
             "published_stages": published_stages,
             "completed_stage_records": program_completions,
             "completion_percent": round(program_completions * 100 / program_denominator, 1) if program_denominator else 0,
+            "participating_residents": participating,
+            "current_stage": {
+                "id": current_stage.id,
+                "title": current_stage.title,
+                "completed": int(stage_counts.get(current_stage.id, 0)),
+                "total": participating,
+            } if current_stage else None,
         },
         "homework": {"published": homework_published, "submissions": homework},
         "attendance": {
             "published_events": event_count,
+            "past_events": past_events,
             "present_records": present,
-            "attendance_percent": round(present * 100 / (event_count * participating), 1) if event_count and participating else 0,
+            "attendance_percent": round(present * 100 / (past_events * participating), 1) if past_events and participating else 0,
         },
         "quota_usage": {str(resource): int(quantity) for resource, quantity in quota_rows},
         "artifacts": artifacts,

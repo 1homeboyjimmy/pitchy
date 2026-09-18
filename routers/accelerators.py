@@ -10,7 +10,9 @@ import secrets
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
+from email_validator import EmailNotValidError, validate_email
+from dateutil.parser import parse as parse_date
 from fastapi.responses import FileResponse, Response
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
@@ -33,6 +35,7 @@ from accelerator_service import (
 )
 from accelerator_project_audit_service import generate_project_audit
 from accelerator_csv import csv_content, csv_datetime, csv_filename
+from accelerator_form_import import parse_form_export
 from accelerator_program_progress_service import (
     ProgramProgressService,
     stage_completion_policy,
@@ -233,6 +236,7 @@ def cohort_dict(row: AcceleratorCohort) -> dict:
         "ends_at": row.ends_at,
         "application_form_schema": row.application_form_schema or {},
         "application_form_version": row.application_form_version,
+        "application_form_draft_revision": row.application_form_draft_revision,
         "application_form_has_draft": row.application_form_draft is not None,
         "homework_pitchy_enabled": bool(row.homework_pitchy_enabled),
         "default_quota_config": row.default_quota_config,
@@ -254,12 +258,134 @@ def application_dict(row: AcceleratorApplication) -> dict:
         "form_payload": row.form_payload or {},
         "form_version": row.form_version,
         "form_schema_snapshot": row.form_schema_snapshot or {},
+        "source_type": row.source_type,
+        "source_batch_id": row.source_batch_id,
+        "source_row": row.source_row,
         "reviewed_by_user_id": row.reviewed_by_user_id,
         "review_comment": row.review_comment,
         "submitted_at": row.submitted_at,
         "reviewed_at": row.reviewed_at,
         "privacy_consent_at": row.privacy_consent_at,
         "program_rules_consent_at": row.program_rules_consent_at,
+    }
+
+
+@router.post("/cohorts/{cohort_id}/applications/import")
+async def import_application_answers(
+    cohort_id: int,
+    file: UploadFile = File(...),
+    mapping_json: str = Form("{}"),
+    sheet: str = Form(""),
+    source: str = Form("other"),
+    default_type: str = Form(""),
+    commit: bool = Form(False),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    cohort = await get_cohort_or_404(db, cohort_id)
+    await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
+    if source not in {"google_forms", "yandex_forms", "other"}:
+        raise HTTPException(422, "Неизвестный источник ответов")
+    content = await file.read(5_000_001)
+    parsed = parse_form_export(content, file.filename or "", sheet)
+    try:
+        mapping = json.loads(mapping_json)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(422, "Некорректное сопоставление столбцов") from exc
+    if not isinstance(mapping, dict):
+        raise HTTPException(422, "Некорректное сопоставление столбцов")
+    headers = parsed["headers"]
+    if not mapping:
+        if commit:
+            raise HTTPException(422, "Сначала сопоставьте столбцы")
+        return {
+            "headers": headers, "sheets": parsed["sheets"], "sheet": parsed["sheet"],
+            "sample": parsed["rows"][:5], "total": len(parsed["rows"]),
+        }
+    for field_name, column in mapping.items():
+        if field_name not in {"name", "email", "type", "project_name", "submitted_at"} or not isinstance(column, int) or isinstance(column, bool) or column < 0 or column >= len(headers):
+            raise HTTPException(422, "Некорректное сопоставление столбцов")
+    if "name" not in mapping or "email" not in mapping or len(set(mapping.values())) != len(mapping):
+        raise HTTPException(422, "Укажите отдельные столбцы имени и email")
+    if "type" not in mapping and default_type not in {"project", "participant"}:
+        raise HTTPException(422, "Выберите тип заявок без отдельного столбца")
+    batch_id = hashlib.sha256(content + parsed["sheet"].encode()).hexdigest()
+    previous = (await db.execute(select(AcceleratorApplication.applicant_email, AcceleratorApplication.source_batch_id, AcceleratorApplication.source_row).where(
+        AcceleratorApplication.cohort_id == cohort.id
+    ))).all()
+    known_emails = {email.casefold() for email, _, _ in previous if email}
+    known_rows = {(batch, row) for _, batch, row in previous if batch and row}
+    columns = [
+        (index, "project_name" if index == mapping.get("project_name") else "external_" + str(index), label)
+        for index, label in enumerate(headers) if index not in {mapping.get("name"), mapping.get("email"), mapping.get("type"), mapping.get("submitted_at")}
+    ]
+    schema_snapshot = {
+        "title": "Импортированные ответы",
+        "source": source,
+        "fields": [{"key": key, "label": label, "type": "textarea"} for _, key, label in columns],
+    }
+    report = []
+    counts = {"ready": 0, "duplicate": 0, "invalid": 0, "imported": 0}
+    pending = []
+    for offset, values in zip(parsed["row_numbers"], parsed["rows"]):
+        name = values[mapping["name"]].strip()
+        raw_email = values[mapping["email"]].strip()
+        reason = ""
+        try:
+            email = validate_email(raw_email, check_deliverability=False).normalized.casefold()
+        except EmailNotValidError:
+            email = ""
+            reason = "Некорректный email"
+        if not name:
+            reason = "Не указано имя"
+        row_type = values[mapping["type"]].strip().casefold() if "type" in mapping else default_type
+        if row_type in {"с проектом", "проект", "project"}:
+            row_type = "project"
+        elif row_type in {"без проекта", "участник", "participant"}:
+            row_type = "participant"
+        else:
+            reason = "Не указан тип заявки"
+        submitted_at = datetime.utcnow()
+        if "submitted_at" in mapping and values[mapping["submitted_at"]].strip():
+            try:
+                parsed_date = parse_date(values[mapping["submitted_at"]])
+                submitted_at = parsed_date.astimezone(timezone.utc).replace(tzinfo=None) if parsed_date.tzinfo else parsed_date
+            except (ValueError, OverflowError):
+                reason = "Некорректная дата подачи"
+        duplicate = email in known_emails or (batch_id, offset) in known_rows
+        state = "invalid" if reason else "duplicate" if duplicate else "ready"
+        counts[state] += 1
+        report.append({"row": offset, "name": name, "email": raw_email, "status": state, "reason": reason or ("Ответ уже есть в потоке" if duplicate else "")})
+        if state == "ready":
+            known_emails.add(email)
+            pending.append(AcceleratorApplication(
+                cohort_id=cohort.id, applicant_name=name, applicant_email=email,
+                application_type=row_type, status="submitted",
+                form_payload={key: values[index] for index, key, _ in columns},
+                form_version=0, form_schema_snapshot=schema_snapshot,
+                source_type=source, source_batch_id=batch_id, source_row=offset,
+                submitted_at=submitted_at,
+            ))
+    if commit and pending:
+        db.add_all(pending)
+        try:
+            await db.flush()
+            add_audit(
+                db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+                actor_user_id=user.id, action="application.imported",
+                target_type="cohort", target_id=cohort.id,
+                details={"batch_id": batch_id, "source": source, "count": len(pending)},
+            )
+            await db.commit()
+        except IntegrityError as exc:
+            await db.rollback()
+            raise HTTPException(409, "Данные изменились во время импорта. Проверьте файл повторно.") from exc
+        counts["imported"] = len(pending)
+    return {
+        "headers": headers, "sheets": parsed["sheets"], "sheet": parsed["sheet"],
+        "batch_id": batch_id, "total": len(parsed["rows"]),
+        "counts": counts, "rows": report[:200], "truncated": len(report) > 200,
     }
 
 
@@ -1850,6 +1976,7 @@ async def get_application_form_draft(
         "published_version": cohort.application_form_version,
         "published_schema": cohort.application_form_schema or {},
         "draft_schema": cohort.application_form_draft or cohort.application_form_schema or {},
+        "draft_revision": cohort.application_form_draft_revision,
         "has_unpublished_changes": cohort.application_form_draft is not None,
     }
 
@@ -1861,10 +1988,17 @@ async def save_application_form_draft(
     user: User = Depends(get_async_current_user),
     db: AsyncSession = Depends(get_async_db),
 ):
-    cohort = await get_cohort_or_404(db, cohort_id)
+    cohort = (await db.execute(
+        select(AcceleratorCohort).where(AcceleratorCohort.id == cohort_id).with_for_update()
+    )).scalar_one_or_none()
+    if not cohort:
+        raise HTTPException(status_code=404, detail="Поток не найден")
     await require_cohort_manager(db, user, cohort)
     require_mutable_cohort(cohort)
+    if payload.expected_revision is not None and payload.expected_revision != cohort.application_form_draft_revision:
+        raise HTTPException(status_code=409, detail="Черновик был изменён другим пользователем. Обновите страницу перед сохранением.")
     cohort.application_form_draft = payload.form_schema
+    cohort.application_form_draft_revision += 1
     add_audit(
         db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
         actor_user_id=user.id, action="application_form.draft_saved",
@@ -1876,6 +2010,7 @@ async def save_application_form_draft(
         "cohort_id": cohort.id,
         "published_version": cohort.application_form_version,
         "draft_schema": cohort.application_form_draft,
+        "draft_revision": cohort.application_form_draft_revision,
         "has_unpublished_changes": True,
     }
 
@@ -1900,6 +2035,7 @@ async def publish_application_form(
     next_version = (cohort.application_form_version or 1) + 1
     cohort.application_form_schema = cohort.application_form_draft
     cohort.application_form_draft = None
+    cohort.application_form_draft_revision += 1
     cohort.application_form_version = next_version
     db.add(AcceleratorApplicationFormVersion(
         cohort_id=cohort.id,
@@ -4841,7 +4977,7 @@ async def list_applications(
         **application_dict(application),
         "membership_id": membership_id,
         "membership_status": membership_status,
-        "project_name": project_name,
+        "project_name": project_name or (application.form_payload or {}).get("project_name"),
         "tracker_names": tracker_names.get(membership_id, []),
     } for application, membership_id, membership_status, project_name in rows]
 
@@ -9004,7 +9140,7 @@ async def membership_today(
                 "key": f"task:{task['id']}", "title": task["title"],
                 "description": task.get("description") or "Задача от организатора или трекера.",
                 "due_at": due_at, "section": "tracking",
-                "kind": "task", "overdue": due_at < now,
+                "target_id": task["id"], "kind": "task", "overdue": due_at < now,
             })
     for assignment in homework:
         status = assignment.get("display_status")
@@ -9015,7 +9151,7 @@ async def membership_today(
                 "title": f"Доработать: {assignment['title']}" if status == "needs_revision" else assignment["title"],
                 "description": submission.get("review_comment") or ("Срок задания прошёл." if status == "overdue" else "Нужно повторно отправить ответ."),
                 "due_at": assignment.get("due_at"), "section": "homework",
-                "kind": "homework", "overdue": status == "overdue",
+                "target_id": assignment["id"], "kind": "homework", "overdue": status == "overdue",
             })
     current_stage = next((row for row in stages if row.get("state") == "available"), None)
     if current_stage:
@@ -9024,23 +9160,36 @@ async def membership_today(
             required_actions.append({
                 "key": f"material:{required_material['id']}", "title": required_material["title"],
                 "description": f"Обязательный материал этапа «{current_stage['title']}».",
-                "due_at": None, "section": "program", "kind": "material", "overdue": False,
+                "due_at": None, "section": "program", "target_id": required_material["id"],
+                "stage_id": current_stage["id"], "kind": "material", "overdue": False,
             })
     required_actions.sort(key=lambda row: (not row["overdue"], row["due_at"] is None, row["due_at"] or datetime.max))
 
     upcoming = [{
         "key": f"event:{row['id']}", "kind": "event", "title": row["title"],
         "starts_at": row["starts_at"], "description": row.get("location") or ("Онлайн-встреча" if row.get("meeting_url") else None),
-        "section": "program",
+        "section": "events", "target_id": row["id"],
+        "meeting_url": row.get("meeting_url"), "location": row.get("location"),
+        "event_format": row.get("event_format"),
     } for row in events if row.get("status") == "published" and row["starts_at"] >= now]
     upcoming.extend({
         "key": f"deadline:{row['id']}", "kind": "deadline", "title": row["title"],
-        "starts_at": row["due_at"], "description": "Срок домашнего задания", "section": "homework",
-    } for row in homework if row.get("due_at") and row.get("display_status") not in {"accepted", "overdue"})
-    upcoming = sorted(upcoming, key=lambda row: row["starts_at"])[:3]
+        "starts_at": row["due_at"], "description": "Срок домашнего задания",
+        "section": "homework", "target_id": row["id"],
+    } for row in homework if row.get("due_at") and row["due_at"] >= now
+    and row.get("display_status") == "not_started"
+    and not any(action["key"] == f"homework:{row['id']}" for action in required_actions))
+    upcoming = sorted(upcoming, key=lambda row: row["starts_at"])[:2]
 
     feedback = [row for row in tracking.get("feedback", []) if not row.get("read_at")]
     completed_stages = sum(row.get("state") == "completed" for row in stages)
+    past_events = [
+        row for row in events
+        if row.get("status") in {"published", "completed"}
+        and row.get("ends_at") and row["ends_at"] <= now
+    ]
+    present_events = sum((row.get("attendance") or {}).get("status") == "present" for row in past_events)
+    unmarked_events = sum((row.get("attendance") or {}).get("status", "not_marked") == "not_marked" for row in past_events)
     project = await db.get(Project, membership.project_id) if membership.project_id else None
     project_readiness = max(0, min(100, project.readiness_index or 0)) if project else None
     tracker_ids = await membership_tracker_user_ids(db, membership.id)
@@ -9078,6 +9227,12 @@ async def membership_today(
             "current_stage": {"id": current_stage["id"], "title": current_stage["title"]} if current_stage else None,
             "project_readiness": project_readiness,
         },
+        "attendance": ({
+            "present": present_events,
+            "total": len(past_events),
+            "unmarked": unmarked_events,
+            "percent": round(present_events * 100 / len(past_events)) if past_events else None,
+        } if modules.get("attendance") and "events" not in unavailable else None),
         "support": {
             "enabled": bool(modules.get("progress_tracking")),
             "trackers": [{"id": row.id, "name": row.name, "email": row.email} for row in trackers],

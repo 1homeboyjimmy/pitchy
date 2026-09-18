@@ -246,6 +246,7 @@ class AcceleratorCohort(Base):
     )
     application_form_schema: Mapped[dict] = mapped_column(JSON, default=dict)
     application_form_draft: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    application_form_draft_revision: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     application_form_version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     homework_pitchy_enabled: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false")
@@ -300,6 +301,7 @@ class AcceleratorApplication(Base):
     __table_args__ = (
         UniqueConstraint("cohort_id", "user_id", name="uq_accelerator_application_user"),
         UniqueConstraint("cohort_id", "applicant_email", name="uq_accelerator_application_email"),
+        UniqueConstraint("cohort_id", "source_batch_id", "source_row", name="uq_accelerator_import_row"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -313,6 +315,9 @@ class AcceleratorApplication(Base):
     form_payload: Mapped[dict] = mapped_column(JSON, default=dict)
     form_version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     form_schema_snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+    source_type: Mapped[str] = mapped_column(String(30), default="pitchy", server_default="pitchy")
+    source_batch_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    source_row: Mapped[int | None] = mapped_column(Integer, nullable=True)
     privacy_consent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     program_rules_consent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     reviewed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
