@@ -133,6 +133,19 @@ export class ApiError extends Error {
   }
 }
 
+export async function postAuthForm<T>(path: string, form: FormData, token: string): Promise<T> {
+  const headers: Record<string, string> = { "x-pitchy-api": "1", "X-Idempotency-Key": globalThis.crypto?.randomUUID?.() || String(Date.now()) };
+  if (token && token !== COOKIE_SESSION_MARKER) headers.Authorization = "Bearer " + token;
+  let response: Response;
+  try { response = await fetch(API_BASE + path, { method: "POST", headers, body: form, credentials: "include" }); }
+  catch { throw new ApiError("network_error", 0); }
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new ApiError(typeof body?.detail === "string" ? body.detail : "Не удалось загрузить файл", response.status, response.headers.get("X-Request-ID") || undefined);
+  }
+  return response.json() as Promise<T>;
+}
+
 export function describeApiError(error: unknown, fallback: string): string {
   if (!(error instanceof ApiError)) return fallback;
   if (error.status === 0) return "Не удалось связаться с сервером. Проверьте соединение и повторите попытку.";

@@ -54,8 +54,8 @@ export default function AcceleratorWorkspacePage() {
   const [accelerators, setAccelerators] = useState<Accelerator[]>([]); const [profile, setProfile] = useState<UserResponse | null>(null); const [acceleratorId, setAcceleratorId] = useState<number | null>(null);
   const [cohorts, setCohorts] = useState<Cohort[]>([]); const [cohortId, setCohortId] = useState<number | null>(null); const [config, setConfig] = useState<ProgramConfig | null>(null);
   const [applications, setApplications] = useState<AcceleratorApplication[]>([]); const [residents, setResidents] = useState<Resident[]>([]); const [residentWorkspace, setResidentWorkspace] = useState<ResidentWorkspaceData | null>(null);
-  const [tab, setTab] = useState<TabKey>("overview"); const [showSetup, setShowSetup] = useState(false); const [loading, setLoading] = useState(true); const [loadingCohorts, setLoadingCohorts] = useState(false); const [error, setError] = useState(""); const [copied, setCopied] = useState(false);
-  const [selectedMembershipId, setSelectedMembershipId] = useState<number | null>(null); const [reportQuery, setReportQuery] = useState(""); const [reportStatus, setReportStatus] = useState("all"); const [urlReady, setUrlReady] = useState(false); const [staffContext, setStaffContext] = useState(false);
+  const [tab, setTab] = useState<TabKey>("overview"); const [showSetup, setShowSetup] = useState(false); const [loading, setLoading] = useState(true); const [error, setError] = useState(""); const [copied, setCopied] = useState(false);
+  const [selectedMembershipId, setSelectedMembershipId] = useState<number | null>(null); const [reportQuery, setReportQuery] = useState(""); const [reportStatus, setReportStatus] = useState("all"); const [urlReady, setUrlReady] = useState(false);
   const [trackingVersion, setTrackingVersion] = useState(0);
 
   const [refreshKey, setRefreshKey] = useState(0);
@@ -72,7 +72,6 @@ export default function AcceleratorWorkspacePage() {
     const savedAccelerator = Number(params.get("accelerator")); if (savedAccelerator > 0) setAcceleratorId(savedAccelerator);
     const savedCohort = Number(params.get("cohort")); if (savedCohort > 0) setCohortId(savedCohort);
     const savedResident = Number(params.get("resident")); if (savedResident > 0) setSelectedMembershipId(savedResident);
-    setStaffContext(params.get("context") === "staff");
     setReportQuery(params.get("q") || ""); setReportStatus(params.get("status") || "all"); setUrlReady(true);
   }, []);
   useEffect(() => {
@@ -124,12 +123,12 @@ export default function AcceleratorWorkspacePage() {
 
   useEffect(() => {
     let active = true;
-    if (!token || !acceleratorId || isResident) { setCohorts([]); setCohortId(null); setLoadingCohorts(false); return () => { active = false; }; }
-    setCohorts([]); setLoadingCohorts(true);
+    if (!token || !acceleratorId || isResident) { setCohorts([]); setCohortId(null); return () => { active = false; }; }
+    setCohorts([]);
     getAuthJson<Cohort[]>(`/api/accelerators/${acceleratorId}/cohorts`, token).then((rows) => {
       if (!active) return;
       setCohorts(rows); setCohortId((current) => current && rows.some((row) => row.id === current) ? current : rows[0]?.id || null);
-    }).catch((reason) => { if (active) setError(describeApiError(reason, "Не удалось загрузить потоки")); }).finally(() => { if (active) setLoadingCohorts(false); });
+    }).catch((reason) => { if (active) setError(describeApiError(reason, "Не удалось загрузить потоки")); });
     return () => { active = false; };
   }, [acceleratorId, isResident, token]);
 
@@ -190,7 +189,7 @@ export default function AcceleratorWorkspacePage() {
     <div className={canManage ? "organizer-content" : ""}>
     {error && <div role="alert" className="mb-6 rounded-2xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200">{error}</div>}
     {showSetup && isAdmin && <div className="mb-7"><AcceleratorSetupWizard token={token} onCancel={accelerators.length ? () => setShowSetup(false) : undefined} onCreated={async (result) => { await loadAccelerators(); setAcceleratorId(result.accelerator.id); setCohortId(result.cohort.id); setShowSetup(false); setTab("overview"); }} /></div>}
-    {!accelerators.length && !showSetup ? <EmptyState isAdmin={isAdmin} onCreate={() => setShowSetup(true)} /> : accelerators.length > 0 && <>
+    {!accelerators.length && !showSetup ? <EmptyState isAdmin={isAdmin} onCreate={() => setShowSetup(true)} /> : accelerators.length > 0 && !acceleratorId ? <AcceleratorPortfolio accelerators={accelerators} memberships={participantMemberships(residentWorkspace?.memberships || [])} staffContext={urlReady && new URLSearchParams(window.location.search).get("context") === "staff"} onOpenStaff={(id) => setAcceleratorId(id)} /> : accelerators.length > 0 && <>
       {!canManage && <div className={`mb-6 grid gap-3 ${isResident ? "" : "md:grid-cols-2"}`}><SelectCard label="Акселератор"><select value={acceleratorId || ""} onChange={(event) => { setAcceleratorId(Number(event.target.value)); setTab("overview"); }} className="workspace-input">{accelerators.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select><p className="mt-2 text-xs text-white/35">Роль: {selectedAccelerator?.access_role === "tracker" ? "трекер" : selectedAccelerator?.access_role === "expert" ? "эксперт" : "резидент"}</p></SelectCard>{!isResident && <SelectCard label="Поток"><select value={cohortId || ""} onChange={(event) => { setCohortId(Number(event.target.value)); setTab("overview"); }} className="workspace-input" disabled={!cohorts.length}>{cohorts.length ? cohorts.map((row) => <option key={row.id} value={row.id}>{row.name}</option>) : <option value="">Нет назначенных потоков</option>}</select>{selectedCohort && <p className="mt-2 text-xs text-white/35">{STATUS_LABELS[selectedCohort.status] || selectedCohort.status}</p>}</SelectCard>}</div>}
       {isResident && acceleratorId && <ResidentWorkspace acceleratorId={acceleratorId} data={residentWorkspace} onChanged={loadAccelerators} />}
       {!isResident && canReadCohort && selectedCohort && <>
@@ -198,8 +197,8 @@ export default function AcceleratorWorkspacePage() {
         {canManage && tab !== "overview" && <div className="mb-5 flex flex-wrap items-center gap-3"><button type="button" onClick={() => navigate("overview")} className="text-xs text-white/50 hover:text-white">← Обзор потока</button><span className="text-white/20">/</span><span className="text-sm text-white/70">{tabs.find(item => item.key === tab)?.label}</span><span className="ml-auto text-xs text-white/35">{selectedCohort.name}</span></div>}
         {tab === "overview" && canManage && (config ? <OrganizerOverview key={selectedCohort.id} token={token} cohort={selectedCohort} config={config} applications={applications} residents={residents} onCopy={copyApplicationLink} copied={copied} onNavigate={navigate} onOpenParticipant={setSelectedMembershipId} refreshKey={refreshKey} /> : <section className="workspace-card grid min-h-56 place-items-center"><Loader2 className="animate-spin text-white/40" /></section>)}
         {tab === "operations" && canManage && <AcceleratorOperations cohortId={selectedCohort.id} acceleratorId={selectedAccelerator.id} token={token} isAdmin={isAdmin} />}
-        {tab === "applications" && <ApplicationManager token={token} applications={applications} schema={selectedCohort.application_form_schema || {}} onChanged={loadCohortDetails} />}
-        {tab === "form" && <ApplicationFormEditor key={selectedCohort.id} schema={selectedCohort.application_form_schema || {}} cohortId={selectedCohort.id} token={token} publicUrl={`/accelerators/apply/${selectedCohort.id}`} onPublished={loadCohortDetails} />}
+        {tab === "applications" && <ApplicationManager token={token} applications={applications} schema={selectedCohort.application_form_schema || {}} cohortName={selectedCohort.name} publicUrl={"/accelerators/apply/" + selectedCohort.id} onChanged={loadCohortDetails} />}
+        {tab === "form" && <ApplicationFormEditor key={selectedCohort.id} schema={selectedCohort.application_form_schema || {}} cohortId={selectedCohort.id} token={token} publicUrl={`/accelerators/apply/${selectedCohort.id}`} cohortStatus={selectedCohort.status} onSettings={() => navigate("settings")} onApplications={() => navigate("applications")} onPublished={loadCohortDetails} />}
         {tab === "program" && <div className="space-y-6">
           <ProgramBuilder focusId={targetId} cohortId={selectedCohort.id} token={token} />
           {config?.modules.attendance && <AttendanceManager  cohortId={selectedCohort.id} token={token} />}
@@ -207,7 +206,6 @@ export default function AcceleratorWorkspacePage() {
         </div>}
         {tab === "homework" && config?.modules.homework && <div className="space-y-6"><HomeworkReviewQueue initialAssignmentId={targetId} cohortId={selectedCohort.id} token={token} />{canManage && <HomeworkManager focusId={targetId} cohortId={selectedCohort.id} token={token} residents={residents} isAdmin={isAdmin} pitchyEnabled={selectedCohort.homework_pitchy_enabled} />}</div>}
         {tab === "attendance" && config?.modules.attendance && (canManage ? <AttendanceManager focusId={tab === "attendance" ? targetId : undefined} cohortId={selectedCohort.id} token={token} /> : <TrackerAttendance cohortId={selectedCohort.id} token={token} />)}
-        {tab === "tracking" && config?.modules.progress_tracking && <TrackingDashboard cohortId={selectedCohort.id} token={token} onOpenParticipant={setSelectedMembershipId} />}
         {tab === "matching" && config?.modules.matchmaking && (canManage ? <MatchmakingManager cohortId={selectedCohort.id} token={token} /> : <MatchmakingWorkspace cohortId={selectedCohort.id} />)}
         {tab === "project_audit" && config?.modules.project_audit && <ProjectAuditWorkspace cohortId={selectedCohort.id} residents={residents} token={token} canCreateTasks taskIntegrationEnabled={Boolean(config.modules.progress_tracking)} />}
         {tab === "demo_day" && config?.modules.demo_day && <DemoDayWorkspace cohortId={selectedCohort.id} residents={residents} token={token} canManage={canManage} />}

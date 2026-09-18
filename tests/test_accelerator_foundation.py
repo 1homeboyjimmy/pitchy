@@ -1530,6 +1530,14 @@ async def test_application_form_versions_keep_submitted_schema_snapshot():
         await save_application_form_draft(
             cohort["id"], ApplicationFormDraftUpdate(schema=draft_schema), admin, db,
         )
+        draft_state = await get_application_form_draft(cohort["id"], admin, db)
+        assert draft_state["draft_revision"] == 1
+        with pytest.raises(HTTPException) as stale:
+            await save_application_form_draft(
+                cohort["id"], ApplicationFormDraftUpdate(schema={**draft_schema, "title": "Устаревший черновик"}, expected_revision=0), admin, db,
+            )
+        assert stale.value.status_code == 409
+        assert (await get_application_form_draft(cohort["id"], admin, db))["draft_schema"]["title"] == "Версия 2"
         before_publish = await get_public_application_form(cohort["id"], db)
         assert before_publish["published_version"] == 1
         assert before_publish["form_schema"]["title"] == "Версия 1"
@@ -2765,7 +2773,11 @@ async def test_resident_today_aggregate_feedback_and_persistent_recommendations(
         today = await membership_today(membership_id, resident, db)
         assert today["unavailable_sections"] == []
         assert today["required_actions"][0]["title"] == "Провести интервью"
+        assert today["required_actions"][0]["target_id"] > 0
         assert today["upcoming"][0]["title"] == "Встреча с трекером"
+        assert today["upcoming"][0]["section"] == "events"
+        assert today["upcoming"][0]["target_id"] == event["id"]
+        assert today["attendance"] == {"present": 0, "total": 0, "unmarked": 0, "percent": None}
         assert today["unread_feedback"][0]["id"] == feedback["id"]
         await db.refresh(project)
         assert today["progress"]["project_readiness"] == project.readiness_index
