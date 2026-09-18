@@ -62,7 +62,7 @@ test('overview shows real summary and connects actions and specific agenda entri
   await expect(page.getByRole('heading', { name: 'Участники' })).toBeVisible();
   await page.getByRole('button', { name: '← Обзор потока', exact: true }).click();
   await page.getByRole('button', { name: 'Разобрать', exact: true }).click();
-  await expect(page.getByText('Кандидат', { exact: true })).toBeVisible();
+  await expect(page.getByText('Кандидат', { exact: true }).first()).toBeVisible();
   const back = () => page.getByRole('button', { name: '← Обзор потока', exact: true }).click();
   await back();
   await page.getByRole('button', { name: 'Проверить', exact: true }).click();
