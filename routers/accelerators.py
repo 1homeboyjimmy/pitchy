@@ -2133,7 +2133,11 @@ async def update_program_config(
     db: AsyncSession = Depends(get_async_db),
 ):
     cohort = await get_cohort_or_404(db, cohort_id)
-    await require_cohort_manager(db, user, cohort)
+    # Product modules define what Pitchy sells to an accelerator. They are
+    # provisioned only by Pitchy owners (global admins), never by a customer
+    # organizer. Keep this check server-side so a hidden UI cannot be bypassed.
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Настройка разделов доступна только владельцам Pitchy")
     require_mutable_cohort(cohort)
     config = (await db.execute(
         select(AcceleratorProgramConfig)

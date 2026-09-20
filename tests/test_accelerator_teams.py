@@ -181,7 +181,7 @@ async def _create_cohort_context(db, suffix: str):
     await update_program_config(
         cohort["id"],
         ProgramConfigUpdate(version=1, modules={"matchmaking": True}),
-        organizer,
+        admin,
         db,
     )
     await update_cohort_status(
@@ -198,7 +198,7 @@ def _status(error: pytest.ExceptionInfo[HTTPException]) -> int:
 async def test_resident_without_project_creates_team_and_attaches_project_later():
     suffix = uuid.uuid4().hex[:10]
     async with AsyncSessionLocal() as db:
-        _, organizer, _, cohort = await _create_cohort_context(db, suffix)
+        admin, organizer, _, cohort = await _create_cohort_context(db, suffix)
         owner_user = User(email=f"forming-owner-{suffix}@example.test", name="Forming owner")
         member_user = User(email=f"forming-member-{suffix}@example.test", name="Forming member")
         db.add_all([owner_user, member_user])
@@ -378,7 +378,7 @@ async def test_team_invitation_contact_privacy_tracker_scope_and_withdrawal_clea
 async def test_team_candidate_boundaries_capacity_decline_and_expiration():
     suffix = uuid.uuid4().hex[:10]
     async with AsyncSessionLocal() as db:
-        _, organizer, _, cohort = await _create_cohort_context(db, suffix)
+        admin, organizer, _, cohort = await _create_cohort_context(db, suffix)
         users = [
             User(email=f"owner2-{suffix}@example.test", name="Owner two"),
             User(email=f"candidate-a-{suffix}@example.test", name="Candidate A"),
@@ -457,7 +457,7 @@ async def test_team_candidate_boundaries_capacity_decline_and_expiration():
         await update_program_config(
             cohort["id"],
             ProgramConfigUpdate(version=2, modules={"matchmaking": False}),
-            organizer,
+            admin,
             db,
         )
         with pytest.raises(HTTPException) as module_off:
@@ -521,7 +521,7 @@ async def test_owner_withdrawal_archives_team_and_cancels_pending_invitations():
 async def test_team_tracker_replaces_legacy_personal_assignments_and_grants_scope():
     suffix = uuid.uuid4().hex[:10]
     async with AsyncSessionLocal() as db:
-        _, organizer, accelerator, cohort = await _create_cohort_context(db, suffix)
+        admin, organizer, accelerator, cohort = await _create_cohort_context(db, suffix)
         owner_user = User(email=f"tracker-owner-{suffix}@example.test", name="Tracker owner")
         member_user = User(email=f"tracker-member-{suffix}@example.test", name="Tracker member")
         old_tracker_a = User(email=f"old-tracker-a-{suffix}@example.test", name="Old tracker A")
@@ -624,7 +624,7 @@ async def test_team_tracker_replaces_legacy_personal_assignments_and_grants_scop
             ProgramConfigUpdate(
                 version=2, modules={"matchmaking": True, "homework": True}
             ),
-            organizer,
+            admin,
             db,
         )
         team_homework = await create_homework_assignment(

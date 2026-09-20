@@ -81,7 +81,7 @@ async def _context(db, suffix: str):
     await update_program_config(
         cohort["id"],
         ProgramConfigUpdate(version=1, modules={"alumni": True}),
-        organizer,
+        admin,
         db,
     )
     await update_cohort_status(
@@ -301,11 +301,11 @@ async def test_explicit_cohort_closure_snapshots_and_opt_in_alumni_privacy():
 async def test_alumni_module_gate_and_withdrawn_resident_cannot_publish():
     suffix = uuid.uuid4().hex[:10]
     async with AsyncSessionLocal() as db:
-        _, organizer, _, second, _, _, cohort, membership_ids = await _context(db, suffix)
+        admin, organizer, _, second, _, _, cohort, membership_ids = await _context(db, suffix)
         await update_program_config(
             cohort["id"],
             ProgramConfigUpdate(version=2, modules={"alumni": False}),
-            organizer,
+            admin,
             db,
         )
         with pytest.raises(HTTPException) as module_off:

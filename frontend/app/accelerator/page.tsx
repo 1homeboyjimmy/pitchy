@@ -3,7 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Check, LayoutDashboard, Loader2, LogIn, Menu, X, RefreshCw, Rocket, Settings2 } from "lucide-react";
+import { ArrowRight, LayoutDashboard, Loader2, LogIn, Menu, X, RefreshCw, Rocket, Settings2 } from "lucide-react";
 
 import { describeApiError, getAuthJson, getMe, patchAuthJson, postAuthJson, type UserResponse } from "@/lib/api";
 import { useAuth } from "@/lib/hooks/useAuth";
@@ -41,6 +41,7 @@ type Cohort = { id: number; accelerator_id: number; name: string; status: string
 type ProgramConfig = { cohort_id: number; version: number; modules: Record<string, boolean>; locked_modules: Record<string, boolean> };
 type Resident = { membership_id: number; user_id: number; name: string; email: string; status: string; status_reason?: string | null; trackers?: Array<{ user_id: number; name: string }> };
 type TabKey = "overview" | "operations" | "applications" | "form" | "program" | "homework" | "attendance" | "trackers" | "reports" | "tracking" | "matching" | "project_audit" | "demo_day" | "artifacts" | "closure" | "quotas" | "settings" | "audit";
+type SettingsPanelKey = "cohort-general" | "cohort-modules" | "cohort-status" | "accelerator-general" | "cohorts" | "organizers" | "quotas" | "system-health" | "audit-log";
 
 const MODULE_LABELS: Record<string, string> = { applications: "Заявки", program: "Программа", homework: "Домашние задания", attendance: "Посещаемость", progress_tracking: "Трекинг прогресса", matchmaking: "Матчмейкинг", project_audit: "Аудит проекта", demo_day: "Демо-день и экспорт", pitchy_artifacts: "Результаты Pitchy", alumni: "Каталог выпускников" };
 const STATUS_LABELS: Record<string, string> = { draft: "Черновик", accepting: "Приём заявок", active: "Идёт", completed: "Завершён", archived: "Архив", accepted: "Принят", enrolled: "Зачислен" };
@@ -55,35 +56,48 @@ export default function AcceleratorWorkspacePage() {
   const [tab, setTab] = useState<TabKey>("overview"); const [showSetup, setShowSetup] = useState(false); const [loading, setLoading] = useState(true); const [error, setError] = useState(""); const [copied, setCopied] = useState(false);
   const [selectedMembershipId, setSelectedMembershipId] = useState<number | null>(null); const [reportQuery, setReportQuery] = useState(""); const [reportStatus, setReportStatus] = useState("all"); const [urlReady, setUrlReady] = useState(false);
   const [trackingVersion, setTrackingVersion] = useState(0);
+  const [settingsPanel, setSettingsPanel] = useState<SettingsPanelKey>("cohort-general");
 
   const [refreshKey, setRefreshKey] = useState(0);
   const [mobileMenu, setMobileMenu] = useState(false);
   const [targetId, setTargetId] = useState<number>();
   const detailRequest = useRef(0);
-  const navigate = (next: TabKey, target?: number) => { setTab(next); setTargetId(target); setMobileMenu(false); };
+  const navigate = (next: TabKey, target?: number) => {
+    const legacyPanels: Partial<Record<TabKey, SettingsPanelKey>> = { operations: "system-health", quotas: "quotas", audit: "audit-log", closure: "cohort-status" };
+    if (legacyPanels[next]) { setSettingsPanel(legacyPanels[next]!); setTab("settings"); }
+    else setTab(next);
+    setTargetId(target); setMobileMenu(false);
+  };
 
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const savedTab = params.get("section") as TabKey | null;
-    if (savedTab) setTab(savedTab === "trackers" ? "matching" : savedTab);
+    if (savedTab) {
+      const legacyPanels: Partial<Record<TabKey, SettingsPanelKey>> = { operations: "system-health", quotas: "quotas", audit: "audit-log", closure: "cohort-status" };
+      if (legacyPanels[savedTab]) { setTab("settings"); setSettingsPanel(legacyPanels[savedTab]!); }
+      else setTab(savedTab === "trackers" ? "matching" : savedTab);
+    }
+    const requestedPanel = params.get("panel") as SettingsPanelKey | null;
+    if (requestedPanel) setSettingsPanel(requestedPanel);
     const savedAccelerator = Number(params.get("accelerator")); if (savedAccelerator > 0) setAcceleratorId(savedAccelerator);
     const savedCohort = Number(params.get("cohort")); if (savedCohort > 0) setCohortId(savedCohort);
     const savedResident = Number(params.get("resident")); if (savedResident > 0) setSelectedMembershipId(savedResident);
     setReportQuery(params.get("q") || ""); setReportStatus(params.get("status") || "all"); setUrlReady(true);
   }, []);
   useEffect(() => {
-    if (!urlReady) return;
+    if (!urlReady || loading) return;
     if (window.location.pathname !== "/accelerator") return;
     const params = new URLSearchParams(window.location.search);
     params.set("section", tab);
+    if (tab === "settings") params.set("panel", settingsPanel); else params.delete("panel");
     if (acceleratorId) params.set("accelerator", String(acceleratorId)); else params.delete("accelerator");
     if (cohortId) params.set("cohort", String(cohortId)); else params.delete("cohort");
     if (selectedMembershipId) params.set("resident", String(selectedMembershipId)); else params.delete("resident");
     if (tab === "reports" && reportQuery) params.set("q", reportQuery); else params.delete("q");
     if (tab === "reports" && reportStatus !== "all") params.set("status", reportStatus); else params.delete("status");
     window.history.replaceState(window.history.state, "", `${window.location.pathname}?${params.toString()}`);
-  }, [acceleratorId, cohortId, reportQuery, reportStatus, selectedMembershipId, tab, urlReady]);
+  }, [acceleratorId, cohortId, loading, reportQuery, reportStatus, selectedMembershipId, settingsPanel, tab, urlReady]);
 
   const selectedAccelerator = accelerators.find((row) => row.id === acceleratorId) || null;
   const selectedCohort = cohorts.find((row) => row.id === cohortId) || null;
@@ -157,7 +171,7 @@ export default function AcceleratorWorkspacePage() {
       return rows;
     }
     if (isExpert) { const rows: Array<{ key: TabKey; label: string }> = []; if (config?.modules.matchmaking) rows.push({ key: "matching", label: "Мои связки" }); if (config?.modules.demo_day) rows.push({ key: "demo_day", label: "Демо-день" }); return rows; }
-    const rows: Array<{ key: TabKey; label: string }> = [{ key: "overview", label: "Обзор" }, { key: "operations", label: "Состояние" }, { key: "applications", label: "Заявки" }, { key: "form", label: "Анкета" }, { key: "program", label: "Программа" }];
+    const rows: Array<{ key: TabKey; label: string }> = [{ key: "overview", label: "Обзор" }, { key: "applications", label: "Заявки" }, { key: "form", label: "Анкета" }, { key: "program", label: "Программа" }];
     if (config?.modules.homework) rows.push({ key: "homework", label: "Домашние задания" });
     if (config?.modules.attendance) rows.push({ key: "attendance", label: "Посещаемость" });
     if (config?.modules.progress_tracking) rows.push({ key: "tracking", label: "Трекинг" });
@@ -166,10 +180,8 @@ export default function AcceleratorWorkspacePage() {
     if (config?.modules.demo_day) rows.push({ key: "demo_day", label: "Демо-день" });
     if (config?.modules.pitchy_artifacts) rows.push({ key: "artifacts", label: "Результаты Pitchy" });
     rows.push({ key: "reports", label: "Отчётность" });
-    rows.push({ key: "closure", label: "Завершение потока" });
-    if (isAdmin) rows.push({ key: "quotas", label: "Лимиты" });
-    rows.push({ key: "settings", label: "Настройки" }, { key: "audit", label: "Журнал" }); return rows;
-  }, [config, isAdmin, isExpert, isTracker]);
+    rows.push({ key: "settings", label: "Настройки" }); return rows;
+  }, [config, isExpert, isTracker]);
   useEffect(() => { if (!tabs.some((item) => item.key === tab)) setTab(tabs[0]?.key || "overview"); }, [tab, tabs]);
 
   const copyApplicationLink = async () => { if (!cohortId) return; try { await navigator.clipboard.writeText(`${window.location.origin}/accelerators/apply/${cohortId}`); setCopied(true); window.setTimeout(() => setCopied(false), 1600); } catch { setError("Не удалось скопировать ссылку. Откройте её в разделе «Анкета»."); } };
@@ -194,7 +206,6 @@ export default function AcceleratorWorkspacePage() {
         {!canManage && <nav className="mb-6 flex gap-2 overflow-x-auto pb-2" aria-label="Разделы акселератора">{tabs.map((item) => <button type="button" key={item.key} onClick={() => setTab(item.key)} className={`shrink-0 rounded-full border px-4 py-2 text-sm ${tab === item.key ? "border-white bg-white text-black" : "border-white/10 text-white/50 hover:text-white"}`}>{item.label}</button>)}</nav>}
         {canManage && tab !== "overview" && <div className="mb-5 flex flex-wrap items-center gap-3"><button type="button" onClick={() => navigate("overview")} className="text-xs text-white/50 hover:text-white">← Обзор потока</button><span className="text-white/20">/</span><span className="text-sm text-white/70">{tabs.find(item => item.key === tab)?.label}</span><span className="ml-auto text-xs text-white/35">{selectedCohort.name}</span></div>}
         {tab === "overview" && canManage && (config ? <OrganizerOverview key={selectedCohort.id} token={token} cohort={selectedCohort} config={config} applications={applications} residents={residents} onCopy={copyApplicationLink} copied={copied} onNavigate={navigate} onOpenParticipant={setSelectedMembershipId} refreshKey={refreshKey} /> : <section className="workspace-card grid min-h-56 place-items-center"><Loader2 className="animate-spin text-white/40" /></section>)}
-        {tab === "operations" && canManage && <AcceleratorOperations cohortId={selectedCohort.id} acceleratorId={selectedAccelerator.id} token={token} isAdmin={isAdmin} />}
         {tab === "applications" && <ApplicationManager token={token} applications={applications} schema={selectedCohort.application_form_schema || {}} cohortName={selectedCohort.name} publicUrl={"/accelerators/apply/" + selectedCohort.id} onChanged={loadCohortDetails} />}
         {tab === "form" && <ApplicationFormEditor key={selectedCohort.id} schema={selectedCohort.application_form_schema || {}} cohortId={selectedCohort.id} token={token} publicUrl={`/accelerators/apply/${selectedCohort.id}`} cohortStatus={selectedCohort.status} onSettings={() => navigate("settings")} onApplications={() => navigate("applications")} onPublished={loadCohortDetails} />}
         {tab === "program" && <ProgramBuilder focusId={targetId} cohortId={selectedCohort.id} token={token} />}
@@ -206,10 +217,7 @@ export default function AcceleratorWorkspacePage() {
         {tab === "artifacts" && config?.modules.pitchy_artifacts && <ArtifactWorkspace cohortId={selectedCohort.id} token={token} />}
         {tab === "reports" && <ResidentReport token={token} cohortId={selectedCohort.id} canManage={canManage} onChanged={loadCohortDetails} onOpenParticipant={setSelectedMembershipId} initialQuery={reportQuery} initialStatus={reportStatus} onFiltersChange={(query, status) => { setReportQuery(query); setReportStatus(status); }} />}
         {tab === "tracking" && config?.modules.progress_tracking && <TrackingDashboard key={trackingVersion} cohortId={selectedCohort.id} token={token} onOpenParticipant={setSelectedMembershipId} headerAction={<BulkTrackingTaskForm cohortId={selectedCohort.id} token={token} onCreated={() => setTrackingVersion((value) => value + 1)} />} />}
-        {tab === "closure" && canManage && <CohortClosure cohortId={selectedCohort.id} token={token} onCompleted={async () => { await loadAccelerators(); await loadCohortDetails(); }} />}
-        {tab === "quotas" && isAdmin && <QuotaManager token={token} cohortId={selectedCohort.id} initialTemplate={selectedCohort.default_quota_config} residents={residents} />}
-        {tab === "settings" && <SettingsPanel token={token} isAdmin={isAdmin} accelerator={selectedAccelerator} cohort={selectedCohort} config={config} onConfig={setConfig} onCohort={(updated) => setCohorts((rows) => rows.map((row) => row.id === updated.id ? updated : row))} onAccelerator={(updated) => setAccelerators((rows) => rows.map((row) => row.id === updated.id ? { ...row, ...updated } : row))} onCohortCreated={async (created) => { const rows = await getAuthJson<Cohort[]>(`/api/accelerators/${selectedAccelerator.id}/cohorts`, token); setCohorts(rows); setCohortId(created.id); }} />}
-        {tab === "audit" && <AuditLog token={token} acceleratorId={selectedAccelerator.id} />}
+        {tab === "settings" && <SettingsPanel token={token} isAdmin={isAdmin} accelerator={selectedAccelerator} cohort={selectedCohort} cohorts={cohorts} residents={residents} config={config} panel={settingsPanel} onPanel={setSettingsPanel} onConfig={setConfig} onCohort={(updated) => setCohorts((rows) => rows.map((row) => row.id === updated.id ? updated : row))} onSelectCohort={(id) => setCohortId(id)} onAccelerator={(updated) => setAccelerators((rows) => rows.map((row) => row.id === updated.id ? { ...row, ...updated } : row))} onCohortCreated={async (created) => { const rows = await getAuthJson<Cohort[]>(`/api/accelerators/${selectedAccelerator.id}/cohorts`, token); setCohorts(rows); setCohortId(created.id); setSettingsPanel("cohort-general"); }} onCompleted={async () => { await loadAccelerators(); await loadCohortDetails(); }} />}
         {selectedMembershipId && <ParticipantDrawer membershipId={selectedMembershipId} token={token} onClose={() => setSelectedMembershipId(null)} onChanged={loadCohortDetails} />}
       </>}
       {!isResident && canManage && !selectedCohort && selectedAccelerator && <FirstCohortSetup token={token} accelerator={selectedAccelerator} onCreated={async (created) => { const rows = await getAuthJson<Cohort[]>(`/api/accelerators/${selectedAccelerator.id}/cohorts`, token); setCohorts(rows); setCohortId(created.id); setTab("overview"); }} />}
@@ -235,21 +243,44 @@ function FirstCohortSetup({ token, accelerator, onCreated }: { token: string; ac
 }
 
 
-function SettingsPanel({ token, isAdmin, accelerator, cohort, config, onConfig, onCohort, onAccelerator, onCohortCreated }: { token: string; isAdmin: boolean; accelerator: Accelerator; cohort: Cohort; config: ProgramConfig | null; onConfig: (row: ProgramConfig) => void; onCohort: (row: Cohort) => void; onAccelerator: (row: Partial<Accelerator> & { id: number }) => void; onCohortCreated: (row: Cohort) => Promise<void> }) {
+function SettingsPanel({ token, isAdmin, accelerator, cohort, cohorts, residents, config, panel, onPanel, onConfig, onCohort, onSelectCohort, onAccelerator, onCohortCreated, onCompleted }: { token: string; isAdmin: boolean; accelerator: Accelerator; cohort: Cohort; cohorts: Cohort[]; residents: Resident[]; config: ProgramConfig | null; panel: SettingsPanelKey; onPanel: (panel: SettingsPanelKey) => void; onConfig: (row: ProgramConfig) => void; onCohort: (row: Cohort) => void; onSelectCohort: (id: number) => void; onAccelerator: (row: Partial<Accelerator> & { id: number }) => void; onCohortCreated: (row: Cohort) => Promise<void>; onCompleted: () => Promise<void> }) {
   const [acceleratorName, setAcceleratorName] = useState(accelerator.name); const [description, setDescription] = useState(accelerator.description || ""); const [cohortName, setCohortName] = useState(cohort.name); const [timezone, setTimezone] = useState(cohort.timezone || "Europe/Moscow"); const [startsAt, setStartsAt] = useState(toLocal(cohort.starts_at)); const [endsAt, setEndsAt] = useState(toLocal(cohort.ends_at)); const [newCohortName, setNewCohortName] = useState(""); const [busy, setBusy] = useState(""); const [error, setError] = useState("");
   useEffect(() => { setAcceleratorName(accelerator.name); setDescription(accelerator.description || ""); }, [accelerator]);
   useEffect(() => { setCohortName(cohort.name); setTimezone(cohort.timezone || "Europe/Moscow"); setStartsAt(toLocal(cohort.starts_at)); setEndsAt(toLocal(cohort.ends_at)); }, [cohort]);
-  const updateModule = async (key: string, value: boolean) => { if (!config) return; setBusy(`module-${key}`); try { onConfig(await patchAuthJson<ProgramConfig>(`/api/accelerators/cohorts/${cohort.id}/program-config`, { version: config.version, modules: { [key]: value } }, token)); } catch (reason) { setError(describeApiError(reason, "Не удалось изменить модуль")); } finally { setBusy(""); } };
+  const updateModule = async (key: string, value: boolean) => { if (!config || !isAdmin) return; if (!value && !window.confirm("Раздел будет скрыт у организаторов и участников. Существующие данные сохранятся. Продолжить?")) return; setBusy(`module-${key}`); setError(""); try { onConfig(await patchAuthJson<ProgramConfig>(`/api/accelerators/cohorts/${cohort.id}/program-config`, { version: config.version, modules: { [key]: value } }, token)); } catch (reason) { setError(describeApiError(reason, "Не удалось изменить раздел")); } finally { setBusy(""); } };
   const saveAccelerator = async () => { setBusy("accelerator"); setError(""); try { onAccelerator(await patchAuthJson<Partial<Accelerator> & { id: number }>(`/api/accelerators/${accelerator.id}`, { name: acceleratorName, description }, token)); } catch (reason) { setError(describeApiError(reason, "Не удалось сохранить акселератор")); } finally { setBusy(""); } };
   const saveCohort = async () => { setBusy("cohort"); setError(""); try { onCohort(await patchAuthJson<Cohort>(`/api/accelerators/cohorts/${cohort.id}`, { name: cohortName, timezone, starts_at: startsAt || null, ends_at: endsAt || null }, token)); } catch (reason) { setError(describeApiError(reason, "Не удалось сохранить поток")); } finally { setBusy(""); } };
   const statusChange = async (next: string) => { if (!window.confirm(`Изменить статус потока на «${STATUS_LABELS[next]}»?`)) return; setBusy("status"); try { onCohort(await patchAuthJson<Cohort>(`/api/accelerators/cohorts/${cohort.id}/status`, { status: next }, token)); } catch (reason) { setError(describeApiError(reason, "Не удалось изменить статус")); } finally { setBusy(""); } };
   const createCohort = async (event: FormEvent) => { event.preventDefault(); setBusy("new-cohort"); try { const created = await postAuthJson<Cohort>(`/api/accelerators/${accelerator.id}/cohorts`, { name: newCohortName, timezone: "Europe/Moscow", application_form_schema: defaultApplicationSchema(newCohortName) }, token); setNewCohortName(""); await onCohortCreated(created); } catch (reason) { setError(describeApiError(reason, "Не удалось создать поток")); } finally { setBusy(""); } };
-  return <div className="space-y-6"><section className="workspace-card"><h2 className="text-xl">Настройки акселератора</h2><p className="mt-1 text-sm text-white/40">Название и описание относятся ко всем потокам.</p><div className="mt-5 grid gap-4 sm:grid-cols-2"><Label text="Название"><input value={acceleratorName} onChange={(event) => setAcceleratorName(event.target.value)} className="workspace-input mt-2" /></Label><Label text="Описание"><textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={3} className="workspace-input mt-2 resize-y" /></Label></div><button type="button" onClick={() => void saveAccelerator()} disabled={Boolean(busy)} className="workspace-button mt-5">Сохранить акселератор</button></section>
-    <section className="workspace-card"><h2 className="text-xl">Настройки текущего потока</h2><p className="mt-1 text-sm text-white/40">Название, расписание и часовой пояс действуют только для выбранного потока.</p><div className="mt-5 grid gap-4 sm:grid-cols-2"><Label text="Поток"><input value={cohortName} onChange={(event) => setCohortName(event.target.value)} className="workspace-input mt-2" /></Label><Label text="Часовой пояс"><input list="accelerator-timezones" value={timezone} onChange={(event) => setTimezone(event.target.value)} className="workspace-input mt-2" /><datalist id="accelerator-timezones"><option value="Europe/Moscow" /><option value="Asia/Yekaterinburg" /><option value="Asia/Novosibirsk" /><option value="Asia/Vladivostok" /><option value="Europe/London" /><option value="UTC" /></datalist></Label><Label text="Начало"><input type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} className="workspace-input mt-2" /></Label><Label text="Окончание"><input type="datetime-local" value={endsAt} onChange={(event) => setEndsAt(event.target.value)} className="workspace-input mt-2" /></Label></div><button type="button" onClick={() => void saveCohort()} disabled={Boolean(busy)} className="workspace-button mt-5">Сохранить поток</button></section>
-    <section className="workspace-card"><h2 className="text-xl">Статус потока</h2><p className="mt-1 text-sm text-white/40">Открытие и архивирование выполняются здесь. Активный поток завершается только через итоговое решение по каждому резиденту.</p><div className="mt-4 flex flex-wrap gap-2"><span className="rounded-full border border-white/15 px-4 py-2 text-sm">Сейчас: {STATUS_LABELS[cohort.status] || cohort.status}</span>{(STATUS_TRANSITIONS[cohort.status] || []).map((next) => <button type="button" key={next} onClick={() => void statusChange(next)} disabled={Boolean(busy)} className="workspace-button !bg-transparent !text-white">Перевести: {STATUS_LABELS[next]}</button>)}</div></section>
-    <section className="workspace-card"><div className="mb-5 flex items-start gap-3"><Settings2 className="mt-1 text-white/45" /><div><h2 className="text-xl">Конструктор функций</h2><p className="text-sm text-white/40">Здесь только готовые модули. Заявки и программа обязательны.</p></div></div><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{config && Object.entries(config.modules).map(([key, enabled]) => { const locked = key in config.locked_modules; return <button type="button" key={key} disabled={locked || Boolean(busy)} onClick={() => void updateModule(key, !enabled)} className={`rounded-2xl border p-4 text-left ${enabled ? "border-emerald-400/25 bg-emerald-400/[.07]" : "border-white/10"}`}><span className="flex justify-between gap-3 text-sm">{MODULE_LABELS[key] || key}{enabled && <Check size={16} className="text-emerald-400" />}</span><span className="mt-2 block text-xs text-white/30">{locked ? "Обязательный" : enabled ? "Включён" : "Выключен"}</span></button>; })}</div></section>
-    <section className="workspace-card"><h2 className="text-xl">Добавить поток</h2><form onSubmit={createCohort} className="mt-4 flex flex-col gap-3 sm:flex-row"><input value={newCohortName} onChange={(event) => setNewCohortName(event.target.value)} required minLength={2} placeholder="Название нового потока" className="workspace-input" /><button disabled={Boolean(busy)} className="workspace-button shrink-0">Создать с базовой анкетой</button></form></section>
-    {isAdmin && <OrganizerManager token={token} acceleratorId={accelerator.id} />}{error && <p role="alert" className="rounded-2xl border border-red-400/20 bg-red-400/10 p-4 text-sm text-red-200">{error}</p>}
+  const dirtyCohort = cohortName !== cohort.name || timezone !== (cohort.timezone || "Europe/Moscow") || startsAt !== toLocal(cohort.starts_at) || endsAt !== toLocal(cohort.ends_at);
+  const dirtyAccelerator = acceleratorName !== accelerator.name || description !== (accelerator.description || "");
+  const dirty = panel === "cohort-general" ? dirtyCohort : panel === "accelerator-general" ? dirtyAccelerator : false;
+  useEffect(() => { const warn = (event: BeforeUnloadEvent) => { if (dirty) event.preventDefault(); }; window.addEventListener("beforeunload", warn); return () => window.removeEventListener("beforeunload", warn); }, [dirty]);
+  const switchPanel = (next: SettingsPanelKey) => { if (dirty && !window.confirm("Есть несохранённые изменения. Перейти без сохранения?")) return; onPanel(next); setError(""); };
+  const groups: Array<{ label: string; items: Array<{ key: SettingsPanelKey; label: string }> }> = [
+    { label: "Текущий поток", items: [{ key: "cohort-general", label: "Основное" }, ...(isAdmin ? [{ key: "cohort-modules" as const, label: "Разделы платформы" }] : []), { key: "cohort-status", label: "Статус потока" }] },
+    { label: "Акселератор", items: [{ key: "accelerator-general", label: "Общие сведения" }, { key: "cohorts", label: "Потоки" }, ...(isAdmin ? [{ key: "organizers" as const, label: "Организаторы" }] : [])] },
+    { label: "Администрирование", items: [...(isAdmin ? [{ key: "quotas" as const, label: "Лимиты" }] : []), { key: "system-health", label: "Состояние системы" }, { key: "audit-log", label: "Журнал действий" }] },
+  ];
+  const scope = panel.startsWith("cohort-") || panel === "quotas" || panel === "system-health" ? `Изменения относятся к потоку «${cohort.name}»` : panel === "audit-log" ? `Журнал акселератора «${accelerator.name}»` : `Изменения повлияют на все потоки акселератора «${accelerator.name}»`;
+  const transitionLabel: Record<string, string> = { draft: "Вернуть в черновик", accepting: "Открыть приём заявок", active: "Запустить программу", archived: "Переместить в архив" };
+  return <div>
+    <div className="mb-6"><h1 className="text-3xl">Настройки</h1><p className="mt-2 text-sm text-white/45">{scope}</p></div>
+    <div className="grid min-w-0 gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
+      <aside className="space-y-5" aria-label="Разделы настроек">{groups.map((group) => <div key={group.label}><p className="mb-2 px-3 text-[10px] uppercase tracking-[.18em] text-white/30">{group.label}</p><div className="space-y-1">{group.items.map((item) => <button key={item.key} type="button" aria-current={panel === item.key ? "page" : undefined} onClick={() => switchPanel(item.key)} className={`w-full rounded-lg px-3 py-2.5 text-left text-sm ${panel === item.key ? "bg-white/12 text-white" : "text-white/50 hover:bg-white/5 hover:text-white"}`}>{item.label}</button>)}</div></div>)}</aside>
+      <div className="min-w-0">
+        {error && <p role="alert" className="mb-4 rounded-xl border border-red-400/20 bg-red-400/10 p-4 text-sm text-red-200">{error}</p>}
+        {panel === "cohort-general" && <section className="workspace-card"><h2 className="text-xl">Основное</h2><p className="mt-1 text-sm text-white/40">Только выбранный поток: название, период и часовой пояс.</p><div className="mt-5 grid gap-4 sm:grid-cols-2"><Label text="Поток"><input value={cohortName} onChange={(event) => setCohortName(event.target.value)} className="workspace-input mt-2" /></Label><Label text="Часовой пояс"><input list="accelerator-timezones" value={timezone} onChange={(event) => setTimezone(event.target.value)} className="workspace-input mt-2" /><datalist id="accelerator-timezones"><option value="Europe/Moscow" /><option value="Asia/Yekaterinburg" /><option value="Asia/Novosibirsk" /><option value="Asia/Vladivostok" /><option value="Europe/London" /><option value="UTC" /></datalist></Label><Label text="Начало"><input type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} className="workspace-input mt-2" /></Label><Label text="Окончание"><input type="datetime-local" value={endsAt} min={startsAt || undefined} onChange={(event) => setEndsAt(event.target.value)} className="workspace-input mt-2" /></Label></div><button type="button" onClick={() => void saveCohort()} disabled={Boolean(busy) || !dirtyCohort || !cohortName.trim() || Boolean(startsAt && endsAt && endsAt < startsAt)} className="workspace-button mt-5">Сохранить изменения</button></section>}
+        {panel === "cohort-modules" && isAdmin && <section className="workspace-card"><div className="mb-5 flex items-start gap-3"><Settings2 className="mt-1 text-white/45" /><div><h2 className="text-xl">Разделы платформы</h2><p className="text-sm text-white/40">Доступно только владельцам Pitchy. Организаторы не видят эту панель и не могут изменить конфигурацию через API.</p></div></div><div className="divide-y divide-white/8">{config && Object.entries(config.modules).map(([key, enabled]) => { const locked = key in config.locked_modules; return <div key={key} className="flex items-center gap-4 py-4"><div className="min-w-0 flex-1"><p className="text-sm font-medium">{MODULE_LABELS[key] || key}</p><p className="mt-1 text-xs text-white/35">{locked ? "Обязательный раздел потока" : enabled ? "Доступен организаторам и участникам" : "Скрыт, сохранённые данные не удалены"}</p></div><span className={`text-xs ${enabled ? "text-emerald-300" : "text-white/35"}`}>{locked ? "Обязательный" : enabled ? "Включён" : "Выключен"}</span>{!locked && <button type="button" role="switch" aria-label={`${MODULE_LABELS[key] || key}: ${enabled ? "включён" : "выключен"}`} aria-checked={enabled} disabled={Boolean(busy)} onClick={() => void updateModule(key, !enabled)} className={`relative h-7 w-12 rounded-full border ${enabled ? "border-emerald-300/40 bg-emerald-400/25" : "border-white/15 bg-white/5"}`}><span className={`absolute top-1 size-5 rounded-full bg-white transition ${enabled ? "left-6" : "left-1"}`} /></button>}</div>; })}</div></section>}
+        {panel === "cohort-status" && <div className="space-y-5"><section className="workspace-card"><h2 className="text-xl">Статус потока</h2><p className="mt-1 text-sm text-white/40">Текущий статус: <span className="text-white">{STATUS_LABELS[cohort.status] || cohort.status}</span>. Недоступные переходы скрыты.</p><div className="mt-5 flex flex-wrap gap-3">{(STATUS_TRANSITIONS[cohort.status] || []).map((next) => <button type="button" key={next} onClick={() => void statusChange(next)} disabled={Boolean(busy)} className="overview-secondary">{transitionLabel[next] || STATUS_LABELS[next]}</button>)}</div></section>{cohort.status === "active" && <CohortClosure cohortId={cohort.id} token={token} onCompleted={onCompleted} />}</div>}
+        {panel === "accelerator-general" && <section className="workspace-card"><h2 className="text-xl">Общие сведения</h2><p className="mt-1 text-sm text-white/40">Название и описание видны во всех потоках акселератора.</p><div className="mt-5 grid gap-4 sm:grid-cols-2"><Label text="Название"><input value={acceleratorName} onChange={(event) => setAcceleratorName(event.target.value)} className="workspace-input mt-2" /></Label><Label text="Описание"><textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={3} className="workspace-input mt-2 resize-y" /></Label></div><button type="button" onClick={() => void saveAccelerator()} disabled={Boolean(busy) || !dirtyAccelerator || !acceleratorName.trim()} className="workspace-button mt-5">Сохранить изменения</button></section>}
+        {panel === "cohorts" && <section className="workspace-card"><div className="flex flex-wrap items-start justify-between gap-4"><div><h2 className="text-xl">Потоки</h2><p className="mt-1 text-sm text-white/40">Создание и выбор потоков вынесены из формы текущего потока.</p></div></div><div className="mt-5 divide-y divide-white/8">{cohorts.map((row) => <div key={row.id} className="flex items-center gap-4 py-4"><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{row.name}</p><p className="mt-1 text-xs text-white/35">{STATUS_LABELS[row.status] || row.status}{row.starts_at ? ` · ${new Date(row.starts_at).toLocaleDateString("ru-RU")}` : ""}</p></div><button type="button" onClick={() => { onSelectCohort(row.id); onPanel("cohort-general"); }} className="overview-secondary">Открыть</button></div>)}</div><form onSubmit={createCohort} className="mt-5 flex flex-col gap-3 border-t border-white/8 pt-5 sm:flex-row"><input value={newCohortName} onChange={(event) => setNewCohortName(event.target.value)} required minLength={2} placeholder="Название нового потока" className="workspace-input" /><button disabled={Boolean(busy)} className="workspace-button shrink-0">Новый поток</button></form><p className="mt-2 text-xs text-white/30">Будут созданы обязательные разделы и базовая анкета. Участники и рабочие данные не копируются.</p></section>}
+        {panel === "organizers" && isAdmin && <OrganizerManager token={token} acceleratorId={accelerator.id} />}
+        {panel === "quotas" && isAdmin && <QuotaManager token={token} cohortId={cohort.id} initialTemplate={cohort.default_quota_config} residents={residents} />}
+        {panel === "system-health" && <AcceleratorOperations cohortId={cohort.id} acceleratorId={accelerator.id} token={token} isAdmin={isAdmin} />}
+        {panel === "audit-log" && <AuditLog token={token} acceleratorId={accelerator.id} />}
+      </div>
+    </div>
   </div>;
 }
 
