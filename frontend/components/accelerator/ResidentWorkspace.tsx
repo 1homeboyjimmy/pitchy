@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowUpRight, Banknote, CalendarDays, Clock3, ExternalLink, FileText, GitBranch, History, Loader2, MapPin, MessageSquare, Paperclip, Rocket, Send, Sparkles, Users, X } from "lucide-react";
+import { ArrowUpRight, Banknote, BookOpen, BriefcaseBusiness, CalendarDays, Clock3, ExternalLink, FileText, GitBranch, History, Home, Loader2, MapPin, MessageSquare, Paperclip, Rocket, Send, Sparkles, Trophy, Users, UsersRound, X, type LucideIcon } from "lucide-react";
 
 import { describeApiError, getAuthJson, postAuthJson } from "@/lib/api";
 import { useAuth } from "@/lib/hooks/useAuth";
@@ -46,7 +46,13 @@ export type ResidentWorkspaceData = {
 };
 
 type ResidentSection = "today" | "program" | "homework" | "events" | "tracking" | "matching" | "project_audit" | "artifacts" | "demo_day" | "tools";
-type ResidentNavigationGroup = { key: string; label: string; sections: Array<{ id: ResidentSection; label: string }> };
+type ResidentNavigationGroup = {
+  key: string;
+  label: string;
+  icon: LucideIcon;
+  showChildren?: boolean;
+  sections: Array<{ id: ResidentSection; label: string }>;
+};
 
 const QUOTA_META = {
   messages: { label: "Сообщения", icon: MessageSquare },
@@ -74,19 +80,21 @@ export function ResidentMembershipView({ membership, quotas, onChanged }: { memb
   const [joining, setJoining] = useState(false);
   const [joinError, setJoinError] = useState("");
   const navigationGroups: ResidentNavigationGroup[] = [
-    { key: "today", label: "Сегодня", sections: [{ id: "today" as const, label: "Сегодня" }] },
-    { key: "path", label: "Программа", sections: [{ id: "program" as const, label: "Программа" }] },
-    ...(membership.modules.homework ? [{ key: "homework", label: "Мои задания", sections: [{ id: "homework" as const, label: "Мои задания" }] }] : []),
-    ...(membership.modules.attendance ? [{ key: "events", label: "Мероприятия", sections: [{ id: "events" as const, label: "Мероприятия" }] }] : []),
-    { key: "project", label: membership.project ? "Мой проект" : "Мой профиль", sections: [
+    { key: "today", label: "Сегодня", icon: Home, sections: [{ id: "today" as const, label: "Сегодня" }] },
+    { key: "path", label: "Программа", icon: BookOpen, sections: [
+      { id: "program" as const, label: "Мой путь" },
+      ...(membership.modules.homework ? [{ id: "homework" as const, label: "Домашние задания" }] : []),
+      ...(membership.modules.attendance ? [{ id: "events" as const, label: "Мероприятия" }] : []),
+    ] },
+    { key: "project", label: membership.project ? "Мой проект" : "Мой профиль", icon: BriefcaseBusiness, sections: [
       { id: "tools" as const, label: membership.project ? "Проект и инструменты" : "Инструменты" },
       ...(membership.modules.project_audit ? [{ id: "project_audit" as const, label: "Аудит проекта" }] : []),
     ] },
-    { key: "support", label: "Команда и поддержка", sections: [
+    { key: "support", label: "Команда и поддержка", icon: UsersRound, showChildren: true, sections: [
       ...(membership.modules.matchmaking ? [{ id: "matching" as const, label: "Команда" }] : []),
       ...(membership.modules.progress_tracking ? [{ id: "tracking" as const, label: "Трекинг" }] : []),
     ] },
-    { key: "results", label: "Результаты", sections: [
+    { key: "results", label: "Результаты", icon: Trophy, sections: [
       ...(membership.modules.pitchy_artifacts ? [{ id: "artifacts" as const, label: "Результаты Pitchy" }] : []),
       ...(membership.modules.demo_day ? [{ id: "demo_day" as const, label: "Демо-день" }] : []),
     ] },
@@ -123,10 +131,10 @@ export function ResidentMembershipView({ membership, quotas, onChanged }: { memb
   return (
     <div className="min-w-0 lg:grid lg:grid-cols-[236px_minmax(0,1fr)]" data-testid="resident-membership-workspace">
       {enrolled && <button type="button" onClick={() => setMobileMenu((open) => !open)} aria-expanded={mobileMenu} aria-label="Меню участника" className="m-4 rounded-lg border border-white/20 px-4 py-2 text-sm lg:hidden">Меню</button>}
-      {enrolled && <aside data-testid="resident-navigation" className={(mobileMenu ? "block " : "hidden ") + "min-w-0 border-r border-white/15 px-3 py-5 lg:sticky lg:top-0 lg:block lg:h-[calc(100dvh-76px)]"}>
-        <nav aria-label="Разделы участника" className="space-y-1">
-          {navigationGroups.map((group) => <div key={group.key}><ResidentTab active={activeGroup.key === group.key} onClick={() => navigate(group.sections[0].id)}>{group.label}</ResidentTab>
-            {activeGroup.key === group.key && group.sections.length > 1 && <div className="ml-5 border-l border-white/15 pl-2">{group.sections.map((item) => <ResidentSubTab key={item.id} active={section === item.id} onClick={() => navigate(item.id)}>{item.label}</ResidentSubTab>)}</div>}
+      {enrolled && <aside data-testid="resident-navigation" className={(mobileMenu ? "block " : "hidden ") + "min-w-0 border-r border-white/10 px-3 py-6 lg:sticky lg:top-0 lg:block lg:h-[calc(100dvh-76px)]"}>
+        <nav aria-label="Разделы участника" className="space-y-1.5">
+          {navigationGroups.map((group) => <div key={group.key}><ResidentTab icon={group.icon} active={activeGroup.key === group.key} onClick={() => navigate(group.sections[0].id)}>{group.label}</ResidentTab>
+            {group.showChildren && activeGroup.key === group.key && group.sections.length > 1 && <div className="ml-5 border-l border-white/15 pl-2">{group.sections.map((item) => <ResidentSubTab key={item.id} active={section === item.id} onClick={() => navigate(item.id)}>{item.label}</ResidentSubTab>)}</div>}
           </div>)}
         </nav>
         <Link href="/dashboard" className="mt-10 block px-3 py-3 text-sm text-white/60">← Назад в Pitchy</Link>
@@ -171,8 +179,8 @@ export function ResidentMembershipView({ membership, quotas, onChanged }: { memb
   );
 }
 
-function ResidentTab({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return <button type="button" onClick={onClick} className={`min-h-11 w-full rounded-lg px-3 py-2.5 text-left text-sm transition ${active ? "bg-white/15 text-white" : "text-white/60 hover:bg-white/5 hover:text-white"}`}>{children}</button>;
+function ResidentTab({ icon: Icon, active, onClick, children }: { icon: LucideIcon; active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return <button type="button" onClick={onClick} className={`flex min-h-12 w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition ${active ? "bg-white/10 text-white" : "text-white/60 hover:bg-white/5 hover:text-white"}`}><Icon size={19} strokeWidth={1.7} className="shrink-0" /><span>{children}</span></button>;
 }
 
 function ResidentSubTab({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {

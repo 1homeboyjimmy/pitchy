@@ -106,6 +106,7 @@ export function ProgramBuilder({ cohortId, token, focusId }: { cohortId: number;
   const [form, setForm] = useState(makeEmptyForm);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [formTab, setFormTab] = useState<"main" | "content" | "completion">("main");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
 
@@ -125,6 +126,7 @@ export function ProgramBuilder({ cohortId, token, focusId }: { cohortId: number;
     setForm(makeEmptyForm());
     setEditingId(null);
     setShowForm(false);
+    setFormTab("main");
   };
 
   const edit = (stage: ProgramStage) => {
@@ -146,6 +148,7 @@ export function ProgramBuilder({ cohortId, token, focusId }: { cohortId: number;
       })),
     });
     setEditingId(stage.id);
+    setFormTab("main");
     setShowForm(true);
   };
 
@@ -259,26 +262,25 @@ export function ProgramBuilder({ cohortId, token, focusId }: { cohortId: number;
         <h1 className="mt-3 text-3xl font-semibold">Этапы программы</h1>
         <p className="mt-2 text-sm text-white/40">{stages.length} этапов&nbsp; · &nbsp;{stages.filter((stage) => stage.status === "published").length} опубликовано&nbsp; · &nbsp;{stages.filter((stage) => stage.status === "draft").length} черновика</p>
       </div>
-      <button type="button" onClick={() => showForm ? reset() : setShowForm(true)} className="workspace-button">
+      <button type="button" onClick={() => showForm ? reset() : (setFormTab("main"), setShowForm(true))} className="workspace-button">
         <Plus size={15} />{showForm ? "Закрыть" : "Добавить этап"}
       </button>
     </div>
 
     {error && <p role="alert" className="mt-5 rounded-2xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200">{error}</p>}
 
-    {showForm && <div className="fixed inset-0 z-[80] flex justify-end bg-black/65" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) reset(); }}><form onSubmit={save} role="dialog" aria-modal="true" aria-labelledby="stage-form-title" className="h-full w-full max-w-3xl overflow-y-auto border-l border-white/10 bg-[#1c1b1b] p-5 shadow-2xl sm:p-6">
-      <div className="flex items-start justify-between"><div><h3 id="stage-form-title" className="text-2xl">{editingId ? "Редактирование этапа" : "Новый этап"}</h3><p className="mt-1 text-sm text-white/40">Основное, состав этапа и правила завершения</p></div><button type="button" onClick={reset} aria-label="Закрыть" className="rounded-full p-2 text-white/45 hover:bg-white/5"><X /></button></div>
-      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+    {showForm && <div className="fixed inset-0 z-[80] flex justify-end bg-black/65" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) reset(); }}><form onSubmit={save} role="dialog" aria-modal="true" aria-labelledby="stage-form-title" className="flex h-full w-full max-w-3xl flex-col border-l border-white/10 bg-[#1c1b1b] shadow-2xl">
+      <div className="flex items-start justify-between px-5 pb-4 pt-5 sm:px-6"><div><div className="flex flex-wrap items-center gap-3"><h3 id="stage-form-title" className="text-2xl">{editingId ? "Редактирование этапа" : "Новый этап"}</h3><span className="rounded-full border border-violet-300/25 bg-violet-400/10 px-2.5 py-1 text-xs text-violet-200">Черновик</span></div><p className="mt-1 text-sm text-white/40">{form.title || "Настройте этап программы"}</p></div><button type="button" onClick={reset} aria-label="Закрыть" className="rounded-full p-2 text-white/45 hover:bg-white/5"><X /></button></div>
+      <div className="grid grid-cols-3 border-b border-white/10 px-5 sm:px-6">{([['main','Основное'],['content','Состав этапа'],['completion','Завершение']] as const).map(([key,label])=><button key={key} type="button" onClick={()=>setFormTab(key)} className={`border-b-2 px-2 py-4 text-sm ${formTab===key?'border-white text-white':'border-transparent text-white/45'}`}>{label}</button>)}</div>
+      <div className="flex-1 overflow-y-auto p-5 sm:p-6">{formTab === "main" && <div className="grid gap-4 sm:grid-cols-2">
         <label className="text-sm text-white/60">Название<input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} minLength={2} required className="workspace-input mt-2" /></label>
         <label className="text-sm text-white/60">Открыть не раньше<input type="datetime-local" value={form.unlockAt} onChange={(event) => setForm({ ...form, unlockAt: event.target.value })} className="workspace-input mt-2" /></label>
         <label className="text-sm text-white/60">Срок этапа<input type="datetime-local" value={form.dueAt} onChange={(event) => setForm({ ...form, dueAt: event.target.value })} className="workspace-input mt-2" /></label>
-        <label className="text-sm text-white/60">Как завершается этап<select value={form.completionMode} onChange={(event) => setForm({ ...form, completionMode: event.target.value as "auto" | "manual" | "none" })} className="workspace-input mt-2"><option value="auto">Автоматически по требованиям</option><option value="manual">После подтверждения трекера</option><option value="none">Информационный, не влияет на процент</option></select></label>
         <label className="text-sm text-white/60 sm:col-span-2">Описание<textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={4} className="workspace-input mt-2 resize-y" /></label>
         <label className="flex items-center gap-3 text-sm text-white/60"><input type="checkbox" checked={form.required} onChange={(event) => setForm({ ...form, required: event.target.checked })} /> Обязательный этап</label>
-        <label className="flex items-center gap-3 text-sm text-white/60"><input type="checkbox" checked={form.attendanceRequired} onChange={(event) => setForm({ ...form, attendanceRequired: event.target.checked })} /> Требовать посещение всех мероприятий этапа</label>
-      </div>
+      </div>}
 
-      <div className="mt-7 flex flex-wrap items-center justify-between gap-3">
+      {formTab === "content" && <><div className="flex flex-wrap items-center justify-between gap-3">
         <div><h4>Действия Pitchy</h4><p className="mt-1 text-xs text-white/35">Проект и контекст этапа подставятся автоматически.</p></div>
         <button type="button" onClick={addAction} className="workspace-button !bg-transparent !text-white"><Plus size={14} /> Действие</button>
       </div>
@@ -312,9 +314,10 @@ export function ProgramBuilder({ cohortId, token, focusId }: { cohortId: number;
         <button type="button" onClick={() => setForm((current) => ({ ...current, materials: current.materials.filter((_, itemIndex) => itemIndex !== index) }))} className="rounded-full p-3 text-white/35 hover:text-red-300" aria-label="Удалить материал"><Trash2 size={17} /></button>
         {material.kind === "text" ? <textarea value={material.content || ""} onChange={(event) => patchMaterial(index, { content: event.target.value })} required rows={3} placeholder="Содержание" className="workspace-input resize-y sm:col-span-3" /> : <input value={material.url || ""} onChange={(event) => patchMaterial(index, { url: event.target.value })} required type="url" placeholder="https://…" className="workspace-input sm:col-span-3" />}
         <label className="flex items-center gap-2 text-xs text-white/45 sm:col-span-3"><input type="checkbox" checked={material.required} onChange={(event) => patchMaterial(index, { required: event.target.checked })} /> Обязательный материал</label>
-      </div>)}</div>
+      </div>)}</div></>}
 
-      <div className="sticky bottom-0 mt-6 flex justify-end gap-2 border-t border-white/8 bg-[#1c1b1b] py-4"><button type="button" onClick={reset} className="overview-secondary">Отмена</button><button disabled={busy === "save"} className="workspace-button">{busy === "save" && <Loader2 size={15} className="animate-spin" />} Сохранить черновик</button></div>
+      {formTab === "completion" && <div className="space-y-5"><div><h4 className="text-lg">Правила завершения</h4><p className="mt-1 text-sm text-white/40">Определите, когда участнику засчитывается этап.</p></div><label className="block text-sm text-white/60">Как завершается этап<select value={form.completionMode} onChange={(event) => setForm({ ...form, completionMode: event.target.value as "auto" | "manual" | "none" })} className="workspace-input mt-2"><option value="auto">Автоматически по требованиям</option><option value="manual">После подтверждения трекера</option><option value="none">Информационный, не влияет на процент</option></select></label><label className="flex items-center justify-between gap-4 rounded-xl border border-white/9 p-4 text-sm text-white/60"><span><b className="block font-medium text-white">Посещение мероприятий</b><small className="mt-1 block text-white/35">Все связанные мероприятия должны быть посещены.</small></span><input type="checkbox" checked={form.attendanceRequired} onChange={(event) => setForm({ ...form, attendanceRequired: event.target.checked })} /></label><div className="rounded-xl border border-white/8 p-4 text-sm text-white/45"><p>Материалы: {form.materials.filter(item=>item.required).length} обязательных</p><p className="mt-2">Действия Pitchy: {form.actions.filter(item=>item.required).length} обязательных</p><p className="mt-2">Домашние задания и мероприятия учитываются автоматически после привязки.</p></div></div>}</div>
+      <div className="flex items-center justify-between gap-2 border-t border-white/8 bg-[#1c1b1b] px-5 py-4 sm:px-6"><button type="button" onClick={()=>formTab==='main'?reset():setFormTab(formTab==='completion'?'content':'main')} className="overview-secondary">{formTab==='main'?'Отмена':'Назад'}</button><div className="flex gap-2"><button disabled={busy === "save"} className="overview-secondary">{busy === "save" && <Loader2 size={15} className="animate-spin" />} Сохранить черновик</button>{formTab!=='completion'&&<button type="button" onClick={()=>setFormTab(formTab==='main'?'content':'completion')} className="workspace-button">Продолжить</button>}</div></div>
     </form></div>}
 
     <div className="mt-6">
