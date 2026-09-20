@@ -1,131 +1,38 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, ClipboardPlus, Loader2, RefreshCw, Sparkles } from "lucide-react";
-
+import { AlertTriangle, CheckCircle2, ClipboardPlus, Loader2, RefreshCw, Search, Sparkles, X } from "lucide-react";
 import { ApiError, describeApiError, getAuthJson, postAuthJson } from "@/lib/api";
 import { useAuth } from "@/lib/hooks/useAuth";
 
-type ResidentOption = { membership_id: number; name: string; email?: string; status: string };
-type Finding = { title: string; description: string; severity: "low" | "medium" | "high"; evidence?: string | null };
-type Recommendation = { title: string; description: string; priority: "low" | "medium" | "high"; expected_result: string };
-type AuditResult = { summary: string; overall_score: number; strengths: string[]; findings: Finding[]; recommendations: Recommendation[]; data_gaps: string[] };
-type AuditRow = {
-  id: number; membership_id: number; audit_type: string; audit_type_label: string; focus?: string | null;
-  status: "running" | "completed" | "failed"; overall_score?: number | null; result?: AuditResult | null;
-  error_message?: string | null; quota: { resource: string; consumed: boolean };
-  resident?: { id: number; name: string } | null; requested_by?: { id: number; name: string } | null;
-  project?: { id: number; name: string } | null; linked_tasks: Array<{ recommendation_index: number; task: { id: number; title: string; status: string } }>;
-  comparison?: { previous_audit_id: number; score_delta: number; new_findings: string[]; resolved_findings: string[] } | null;
-  created_at: string;
-};
-type AuditList = { access_role: string; audits: AuditRow[] };
+type ResidentOption={membership_id:number;name:string;email?:string;status:string};
+type Finding={title:string;description:string;severity:"low"|"medium"|"high";evidence?:string|null};
+type Recommendation={title:string;description:string;priority:"low"|"medium"|"high";expected_result:string};
+type AuditResult={summary:string;overall_score:number;strengths:string[];findings:Finding[];recommendations:Recommendation[];data_gaps:string[]};
+type AuditRow={id:number;membership_id:number;audit_type:string;audit_type_label:string;focus?:string|null;status:"running"|"completed"|"failed";overall_score?:number|null;result?:AuditResult|null;error_message?:string|null;quota:{resource:string;consumed:boolean};resident?:{id:number;name:string}|null;requested_by?:{id:number;name:string}|null;project?:{id:number;name:string}|null;linked_tasks:Array<{recommendation_index:number;task:{id:number;title:string;status:string}}> ;comparison?:{previous_audit_id:number;score_delta:number;new_findings:string[];resolved_findings:string[]}|null;created_at:string};
+type AuditList={access_role:string;audits:AuditRow[]};
+const auditTypes=[["product","Продукт"],["market","Рынок"],["custdev","CustDev"],["business_model","Бизнес-модель"],["grant","Грантовая готовность"]] as const;
+const statusLabel={running:"Выполняется",completed:"Завершён",failed:"Ошибка"};
+const statusClass={running:"border-amber-300/25 text-amber-200",completed:"border-emerald-300/25 text-emerald-300",failed:"border-red-300/25 text-red-200"};
 
-const auditTypes = [
-  ["product", "Продукт"], ["market", "Рынок"], ["custdev", "CustDev"],
-  ["business_model", "Бизнес-модель"], ["grant", "Грантовая готовность"],
-] as const;
-const priorityClass = { low: "text-sky-200", medium: "text-amber-200", high: "text-red-200" };
-const severityLabel = { low: "Низкий", medium: "Средний", high: "Высокий" };
-
-export function ProjectAuditWorkspace({
-  cohortId,
-  membershipId,
-  residents = [],
-  token: providedToken,
-  canCreateTasks = false,
-  taskIntegrationEnabled = false,
-}: {
-  cohortId: number;
-  membershipId?: number;
-  residents?: ResidentOption[];
-  token?: string;
-  canCreateTasks?: boolean;
-  taskIntegrationEnabled?: boolean;
-}) {
-  const auth = useAuth(); const token = providedToken || auth.token;
-  const [selectedMembershipId, setSelectedMembershipId] = useState(membershipId ? String(membershipId) : "");
-  const [data, setData] = useState<AuditList | null>(null);
-  const [auditType, setAuditType] = useState<(typeof auditTypes)[number][0]>("product");
-  const [focus, setFocus] = useState(""); const [busy, setBusy] = useState(""); const [error, setError] = useState("");
-
-  useEffect(() => { if (membershipId) setSelectedMembershipId(String(membershipId)); }, [membershipId]);
-  const load = useCallback(async () => {
-    if (!token) return; setBusy("load"); setError("");
-    try {
-      const path = membershipId
-        ? `/api/accelerators/memberships/${membershipId}/project-audits`
-        : `/api/accelerators/cohorts/${cohortId}/project-audits`;
-      setData(await getAuthJson<AuditList>(path, token));
-    } catch (reason) { setError(describeApiError(reason, "Не удалось загрузить историю аудитов")); }
-    finally { setBusy(""); }
-  }, [cohortId, membershipId, token]);
-  useEffect(() => { void load(); }, [load]);
-
-  const visibleAudits = useMemo(() => {
-    const rows = data?.audits || [];
-    return !selectedMembershipId || membershipId ? rows : rows.filter((row) => row.membership_id === Number(selectedMembershipId));
-  }, [data, membershipId, selectedMembershipId]);
-
-  const createAudit = async (event: FormEvent) => {
-    event.preventDefault(); if (!token || !selectedMembershipId) return;
-    setBusy("create"); setError("");
-    try {
-      await postAuthJson(`/api/accelerators/memberships/${selectedMembershipId}/project-audits`, {
-        audit_type: auditType, focus: focus.trim() || null,
-        client_request_id: globalThis.crypto?.randomUUID?.() || `${Date.now()}-project-audit`,
-      }, token);
-      setFocus(""); await load();
-    } catch (reason) { setError(reason instanceof ApiError && reason.status === 402 ? "Лимит сообщений для этого резидента исчерпан." : describeApiError(reason, "Не удалось выполнить аудит проекта")); }
-    finally { setBusy(""); }
-  };
-
-  const createTask = async (audit: AuditRow, recommendationIndex: number) => {
-    if (!token) return; setBusy(`task-${audit.id}-${recommendationIndex}`); setError("");
-    try {
-      await postAuthJson(`/api/accelerators/project-audits/${audit.id}/tasks`, { recommendation_index: recommendationIndex, due_at: null }, token);
-      await load();
-    } catch (reason) { setError(describeApiError(reason, "Не удалось создать задачу из рекомендации")); }
-    finally { setBusy(""); }
-  };
-
-  return <div className="space-y-5">
-    <form onSubmit={createAudit} className="workspace-card">
-      <div className="flex flex-wrap items-start justify-between gap-4"><div><h2 className="text-xl">Аудит проекта</h2><p className="mt-1 max-w-2xl text-sm text-white/40">ИИ анализирует паспорт и недавние чек-ины, отмечает пробелы и предлагает проверяемые действия. При назначенной квоте расходуется одно сообщение.</p></div><button type="button" onClick={() => void load()} className="rounded-full border border-white/10 p-3 text-white/40" aria-label="Обновить"><RefreshCw size={16} /></button></div>
-      <div className="mt-5 grid gap-3 lg:grid-cols-[1fr_240px]">
-        {!membershipId && <label className="text-sm text-white/55">Резидент<select value={selectedMembershipId} onChange={(event) => setSelectedMembershipId(event.target.value)} required className="workspace-input mt-2"><option value="">Выберите резидента</option>{residents.filter((row) => row.status === "enrolled").map((row) => <option key={row.membership_id} value={row.membership_id}>{row.name}{row.email ? ` · ${row.email}` : ""}</option>)}</select></label>}
-        <label className={`text-sm text-white/55 ${membershipId ? "lg:col-span-2" : ""}`}>Тип анализа<select value={auditType} onChange={(event) => setAuditType(event.target.value as typeof auditType)} className="workspace-input mt-2">{auditTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-        <label className="text-sm text-white/55 lg:col-span-2">Дополнительный фокус<textarea value={focus} onChange={(event) => setFocus(event.target.value)} maxLength={5000} rows={3} className="workspace-input mt-2 resize-y" placeholder="Например: проверьте доказательства спроса и план следующих интервью" /></label>
-      </div>
-      <button disabled={!selectedMembershipId || busy === "create"} className="workspace-button mt-4">{busy === "create" ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />} Запустить аудит</button>
-    </form>
-
-    <section className="workspace-card"><div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-xl">История и результаты</h2><p className="mt-1 text-sm text-white/40">Повторный аудит того же типа показывает изменение оценки и списка проблем.</p></div>{!membershipId && <button type="button" onClick={() => setSelectedMembershipId("")} className="text-sm text-white/40">Показать весь поток</button>}</div>
-      {busy === "load" && !data ? <Loader2 className="mx-auto my-12 animate-spin text-white/35" /> : <div className="mt-5 space-y-4">{visibleAudits.map((audit) => <AuditCard key={audit.id} audit={audit} canCreateTasks={canCreateTasks} taskIntegrationEnabled={taskIntegrationEnabled} busy={busy} onCreateTask={createTask} />)}{!visibleAudits.length && <p className="py-8 text-center text-sm text-white/35">Аудитов пока нет.</p>}</div>}
-    </section>
-    {canCreateTasks && !taskIntegrationEnabled && <p className="rounded-2xl border border-amber-400/15 bg-amber-400/[.06] p-4 text-sm text-amber-100">Чтобы превращать рекомендации в задачи, включите модуль «Трекинг прогресса».</p>}
-    {error && <p role="alert" className="rounded-2xl border border-red-400/20 bg-red-400/10 p-4 text-sm text-red-200"><AlertTriangle size={15} className="mr-2 inline" />{error}</p>}
-  </div>;
+export function ProjectAuditWorkspace({cohortId,membershipId,residents=[],token:providedToken,canCreateTasks=false,taskIntegrationEnabled=false}:{cohortId:number;membershipId?:number;residents?:ResidentOption[];token?:string;canCreateTasks?:boolean;taskIntegrationEnabled?:boolean}){
+ const auth=useAuth();const token=providedToken||auth.token;const [data,setData]=useState<AuditList|null>(null);const [query,setQuery]=useState("");const [filter,setFilter]=useState<"all"|AuditRow["status"]>("all");const [selected,setSelected]=useState<AuditRow|null>(null);const [launch,setLaunch]=useState(false);const [selectedMembershipId,setSelectedMembershipId]=useState(membershipId?String(membershipId):"");const [auditType,setAuditType]=useState<(typeof auditTypes)[number][0]>("product");const [focus,setFocus]=useState("");const [busy,setBusy]=useState("");const [error,setError]=useState("");
+ const load=useCallback(async()=>{if(!token)return;setBusy("load");setError("");try{const path=membershipId?`/api/accelerators/memberships/${membershipId}/project-audits`:`/api/accelerators/cohorts/${cohortId}/project-audits`;setData(await getAuthJson<AuditList>(path,token));}catch(reason){setError(describeApiError(reason,"Не удалось загрузить историю аудитов"));}finally{setBusy("");}},[cohortId,membershipId,token]);
+ useEffect(()=>{void load()},[load]);useEffect(()=>{const close=(e:KeyboardEvent)=>{if(e.key==="Escape"){setSelected(null);setLaunch(false)}};window.addEventListener("keydown",close);return()=>window.removeEventListener("keydown",close)},[]);
+ const rows=useMemo(()=>{const needle=query.trim().toLowerCase();return(data?.audits||[]).filter(row=>(filter==="all"||row.status===filter)&&(!needle||`${row.resident?.name||""} ${row.project?.name||""}`.toLowerCase().includes(needle)));},[data,filter,query]);
+ const counts=useMemo(()=>({all:data?.audits.length||0,completed:data?.audits.filter(r=>r.status==="completed").length||0,running:data?.audits.filter(r=>r.status==="running").length||0,failed:data?.audits.filter(r=>r.status==="failed").length||0}),[data]);
+ const createAudit=async(e:FormEvent)=>{e.preventDefault();if(!token||!selectedMembershipId)return;setBusy("create");try{await postAuthJson(`/api/accelerators/memberships/${selectedMembershipId}/project-audits`,{audit_type:auditType,focus:focus.trim()||null,client_request_id:crypto.randomUUID()},token);setLaunch(false);setFocus("");await load()}catch(reason){setError(reason instanceof ApiError&&reason.status===402?"Лимит сообщений для этого резидента исчерпан.":describeApiError(reason,"Не удалось выполнить аудит"))}finally{setBusy("")}};
+ const createTask=async(audit:AuditRow,index:number)=>{if(!token)return;setBusy(`task-${audit.id}-${index}`);try{await postAuthJson(`/api/accelerators/project-audits/${audit.id}/tasks`,{recommendation_index:index,due_at:null},token);await load();const refreshed=(data?.audits||[]).find(row=>row.id===audit.id);if(refreshed)setSelected(refreshed)}catch(reason){setError(describeApiError(reason,"Не удалось создать задачу"))}finally{setBusy("")}};
+ return <section><header className="flex flex-wrap items-end justify-between gap-4 border-b border-white/8 pb-6"><div><p className="text-xs text-white/35">Обзор потока&nbsp; / &nbsp;Аудит проекта</p><h1 className="mt-3 text-3xl font-semibold">Аудит проекта</h1><p className="mt-2 text-sm text-white/45">ИИ анализирует паспорт проекта и последние чек-ины.</p><p className="mt-2 text-sm text-white/55">{counts.all} аудитов · {counts.completed} завершено · {counts.running} выполняются · {counts.failed} ошибок</p></div><div className="flex gap-2"><button type="button" onClick={()=>void load()} className="overview-secondary"><RefreshCw size={15}/>Обновить</button><button type="button" onClick={()=>setLaunch(true)} className="workspace-button"><Sparkles size={15}/>Запустить аудит</button></div></header>
+ <p className="mt-5 rounded-xl border border-white/8 px-4 py-3 text-sm text-white/45">При наличии персональной квоты аудит использует одно сообщение.</p>
+ <label className="relative mt-5 block"><Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30"/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Резидент или проект" className="workspace-input !pl-11"/></label>
+ <div className="mt-4 flex gap-2">{([['all','Все'],['completed','Завершены'],['running','Выполняются'],['failed','Ошибки']] as const).map(([key,label])=><button type="button" key={key} onClick={()=>setFilter(key)} className={`rounded-xl border px-3 py-2 text-sm ${filter===key?'border-white bg-white text-black':'border-white/10 text-white/50'}`}>{label}<span className="ml-2 opacity-60">{counts[key]}</span></button>)}</div>
+ {error&&<p role="alert" className="mt-5 rounded-xl border border-red-400/20 bg-red-400/10 p-3 text-red-200"><AlertTriangle size={15} className="mr-2 inline"/>{error}</p>}
+ {busy==="load"&&!data?<div className="grid min-h-60 place-items-center"><Loader2 className="animate-spin"/></div>:<div className="mt-5 overflow-hidden rounded-2xl border border-white/9"><div className="hidden grid-cols-[1.3fr_1fr_100px_100px_140px_auto] gap-3 border-b border-white/8 bg-white/[.025] px-4 py-3 text-xs text-white/35 lg:grid"><span>Резидент / проект</span><span>Тип аудита</span><span>Оценка</span><span>Изменение</span><span>Статус</span><span>Запущен</span></div>{rows.map(row=><button type="button" key={row.id} onClick={()=>setSelected(row)} className="grid w-full gap-3 border-b border-white/8 p-4 text-left last:border-0 lg:grid-cols-[1.3fr_1fr_100px_100px_140px_auto] lg:items-center"><span><b className="block text-sm">{row.resident?.name||"Резидент"}</b><small className="text-white/40">{row.project?.name||"Проект"}</small></span><span className="text-sm text-white/60">{row.audit_type_label}</span><span>{row.overall_score??"—"}{row.overall_score!=null?"/100":""}</span><span className={row.comparison&&row.comparison.score_delta>0?'text-emerald-300':'text-white/40'}>{row.comparison?`${row.comparison.score_delta>0?'+':''}${row.comparison.score_delta}`:'—'}</span><span className={`w-fit rounded-full border px-2.5 py-1 text-xs ${statusClass[row.status]}`}>{statusLabel[row.status]}</span><span className="text-xs text-white/40">{new Date(row.created_at).toLocaleString('ru-RU')}</span></button>)}{!rows.length&&<p className="py-14 text-center text-white/35">Аудитов пока нет.</p>}</div>}
+ {launch&&<Overlay onClose={()=>setLaunch(false)} title="Запустить аудит"><form onSubmit={createAudit} className="mt-6 space-y-4">{!membershipId&&<label className="block text-sm text-white/55">Резидент<select value={selectedMembershipId} onChange={e=>setSelectedMembershipId(e.target.value)} required className="workspace-input mt-2"><option value="">Выберите резидента</option>{residents.filter(r=>r.status==="enrolled").map(r=><option key={r.membership_id} value={r.membership_id}>{r.name}{r.email?` · ${r.email}`:''}</option>)}</select></label>}<label className="block text-sm text-white/55">Тип анализа<select value={auditType} onChange={e=>setAuditType(e.target.value as typeof auditType)} className="workspace-input mt-2">{auditTypes.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label><label className="block text-sm text-white/55">Фокус<textarea value={focus} onChange={e=>setFocus(e.target.value)} rows={5} className="workspace-input mt-2 resize-y" placeholder="Что особенно важно проверить"/></label><button disabled={!selectedMembershipId||busy==="create"} className="workspace-button">{busy==="create"&&<Loader2 size={15} className="animate-spin"/>}Запустить аудит</button></form></Overlay>}
+ {selected&&<Overlay onClose={()=>setSelected(null)} title={selected.project?.name||"Результат аудита"}><AuditResultView audit={selected} canCreateTasks={canCreateTasks&&taskIntegrationEnabled} busy={busy} onCreateTask={createTask}/></Overlay>}
+ </section>;
 }
-
-function AuditCard({ audit, canCreateTasks, taskIntegrationEnabled, busy, onCreateTask }: { audit: AuditRow; canCreateTasks: boolean; taskIntegrationEnabled: boolean; busy: string; onCreateTask: (audit: AuditRow, index: number) => Promise<void> }) {
-  const [collapsed, setCollapsed] = useState(false);
-  const linked = new Map(audit.linked_tasks.map((row) => [row.recommendation_index, row.task]));
-  const quotaLabel = audit.quota.resource === "messages" ? "Сообщения" : audit.quota.resource === "custdev" ? "CustDev" : audit.quota.resource;
-  return <article className="rounded-2xl border border-white/9 p-4 sm:p-5"><button type="button" onClick={() => setCollapsed((value) => !value)} aria-expanded={!collapsed} aria-label={`${collapsed ? "Развернуть" : "Свернуть"} аудит ${audit.project?.name || "проекта"}`} className="flex w-full items-center justify-between gap-4 text-left"><div className="min-w-0 sm:flex sm:flex-1 sm:items-center sm:gap-4"><p className="truncate text-xs uppercase tracking-wide text-white/30">{audit.resident?.name ? `${audit.resident.name} · ` : ""}{audit.audit_type_label}</p><h3 className="truncate text-lg sm:text-base">{audit.project?.name || "Проект"}</h3><p className="truncate text-xs text-white/30">{new Date(audit.created_at).toLocaleString("ru-RU")}</p></div><div className="flex shrink-0 items-center gap-3">{audit.status === "completed" ? <span className="rounded-full bg-emerald-400/10 px-3 py-1 text-sm text-emerald-300">{audit.overall_score}/100</span> : <span className={`rounded-full px-3 py-1 text-sm ${audit.status === "failed" ? "bg-red-400/10 text-red-200" : "bg-white/5 text-white/45"}`}>{audit.status === "failed" ? "Ошибка" : "Выполняется"}</span>}{collapsed ? <ChevronDown size={17} className="text-white/35" /> : <ChevronUp size={17} className="text-white/35" />}</div></button>
-    {!collapsed && <div><p className="mt-2 text-xs text-white/30">Запросил: {audit.requested_by?.name || "—"}</p>
-    {audit.focus && <p className="mt-4 rounded-xl bg-white/[.03] p-3 text-sm text-white/45">Фокус: {audit.focus}</p>}
-    {audit.error_message && <p className="mt-4 text-sm text-red-200">{audit.error_message}</p>}
-    {audit.result && <div className="mt-5 space-y-5"><p className="text-sm leading-6 text-white/65">{audit.result.summary}</p>
-      {audit.comparison && <div className="rounded-xl bg-white/[.03] p-3 text-sm"><p className={audit.comparison.score_delta >= 0 ? "text-emerald-300" : "text-red-200"}>Изменение оценки: {audit.comparison.score_delta > 0 ? "+" : ""}{audit.comparison.score_delta}</p>{audit.comparison.resolved_findings.length > 0 && <p className="mt-1 text-white/45">Устранено: {audit.comparison.resolved_findings.join(", ")}</p>}{audit.comparison.new_findings.length > 0 && <p className="mt-1 text-white/45">Новые проблемы: {audit.comparison.new_findings.join(", ")}</p>}</div>}
-      <div className="grid gap-4 lg:grid-cols-2"><ResultPanel title="Сильные стороны">{audit.result.strengths.length ? audit.result.strengths.map((row) => <p key={row} className="text-sm text-white/60">✓ {row}</p>) : <EmptyText />}</ResultPanel><ResultPanel title="Пробелы в данных">{audit.result.data_gaps.length ? audit.result.data_gaps.map((row) => <p key={row} className="text-sm text-white/50">• {row}</p>) : <EmptyText />}</ResultPanel></div>
-      <ResultPanel title="Риски и проблемы">{audit.result.findings.map((row) => <div key={`${row.title}-${row.severity}`} className="rounded-xl bg-black/20 p-3"><div className="flex justify-between gap-3"><p>{row.title}</p><span className={`text-xs ${priorityClass[row.severity]}`}>{severityLabel[row.severity]} риск</span></div><p className="mt-2 text-sm text-white/50">{row.description}</p>{row.evidence && <p className="mt-2 text-xs text-white/30">Основание: {row.evidence}</p>}</div>)}</ResultPanel>
-      <ResultPanel title="Рекомендации">{audit.result.recommendations.map((row, index) => { const task = linked.get(index); return <div key={`${row.title}-${index}`} className="rounded-xl border border-white/8 p-3"><div className="flex flex-wrap items-start justify-between gap-3"><div><p>{row.title}</p><p className={`mt-1 text-xs ${priorityClass[row.priority]}`}>Приоритет: {severityLabel[row.priority].toLowerCase()}</p></div>{task ? <span className="flex items-center gap-1 text-xs text-emerald-300"><CheckCircle2 size={14} /> Задача создана</span> : canCreateTasks && taskIntegrationEnabled && <button type="button" onClick={() => void onCreateTask(audit, index)} disabled={Boolean(busy)} className="flex items-center gap-1 rounded-full border border-white/10 px-3 py-1.5 text-xs text-white/55"><ClipboardPlus size={13} /> В задачи</button>}</div><p className="mt-2 text-sm text-white/50">{row.description}</p><p className="mt-2 text-xs text-white/30">Результат: {row.expected_result}</p></div>; })}</ResultPanel>
-      <p className="text-xs text-white/30">Квота «{quotaLabel}»: {audit.quota.consumed ? audit.quota.resource === "messages" ? "списано 1 сообщение" : "списана 1 генерация" : "персональная квота потока не назначена"}</p>
-    </div>}
-    </div>}
-  </article>;
-}
-
-function ResultPanel({ title, children }: { title: string; children: React.ReactNode }) { return <div><h4 className="mb-3 text-xs uppercase tracking-wide text-white/30">{title}</h4><div className="space-y-2">{children}</div></div>; }
-function EmptyText() { return <p className="text-sm text-white/30">Не отмечено.</p>; }
+function Overlay({onClose,title,children}:{onClose:()=>void;title:string;children:React.ReactNode}){return <div className="fixed inset-0 z-[80] flex justify-end bg-black/70" onMouseDown={e=>{if(e.target===e.currentTarget)onClose()}}><aside role="dialog" aria-modal="true" className="h-full w-full max-w-2xl overflow-y-auto border-l border-white/10 bg-[#1c1b1b] p-6"><div className="flex justify-between gap-4"><h2 className="text-2xl">{title}</h2><button onClick={onClose} aria-label="Закрыть"><X/></button></div>{children}</aside></div>}
+function AuditResultView({audit,canCreateTasks,busy,onCreateTask}:{audit:AuditRow;canCreateTasks:boolean;busy:string;onCreateTask:(audit:AuditRow,index:number)=>Promise<void>}){if(audit.status==="running")return <p className="mt-8 text-white/50">Аудит выполняется. Обновите страницу через несколько минут.</p>;if(audit.status==="failed")return <p className="mt-8 text-red-200">{audit.error_message||"Аудит завершился ошибкой."}</p>;if(!audit.result)return null;const linked=new Set(audit.linked_tasks.map(r=>r.recommendation_index));return <div className="mt-6 space-y-6"><div className="flex items-end justify-between border-b border-white/10 pb-5"><div><p className="text-sm text-white/40">{audit.audit_type_label}</p><p className="mt-2 text-white/70">{audit.result.summary}</p></div><strong className="text-4xl">{audit.result.overall_score}<small className="text-base text-white/35">/100</small></strong></div>{audit.comparison&&<p className="rounded-xl bg-white/[.03] p-3 text-sm">Изменение к прошлому аудиту: <span className={audit.comparison.score_delta>=0?'text-emerald-300':'text-red-200'}>{audit.comparison.score_delta>0?'+':''}{audit.comparison.score_delta}</span></p>}<Panel title="Сильные стороны">{audit.result.strengths.map(x=><p key={x} className="text-sm text-white/60">✓ {x}</p>)}</Panel><Panel title="Риски и пробелы">{audit.result.findings.map(x=><div key={x.title} className="rounded-xl border border-white/8 p-3"><p>{x.title}</p><p className="mt-1 text-sm text-white/45">{x.description}</p></div>)}</Panel><Panel title="Рекомендации">{audit.result.recommendations.map((x,i)=><div key={`${x.title}-${i}`} className="rounded-xl border border-white/8 p-3"><div className="flex justify-between gap-3"><p>{x.title}</p>{linked.has(i)?<span className="text-xs text-emerald-300"><CheckCircle2 size={13} className="inline"/> Задача создана</span>:canCreateTasks&&<button disabled={busy.startsWith('task-')} onClick={()=>void onCreateTask(audit,i)} className="overview-secondary !py-2"><ClipboardPlus size={13}/>В задачи</button>}</div><p className="mt-2 text-sm text-white/45">{x.description}</p><p className="mt-2 text-xs text-white/30">Ожидаемый результат: {x.expected_result}</p></div>)}</Panel></div>}
+function Panel({title,children}:{title:string;children:React.ReactNode}){return <section><h3 className="mb-3 text-sm font-medium">{title}</h3><div className="space-y-2">{children}</div></section>}

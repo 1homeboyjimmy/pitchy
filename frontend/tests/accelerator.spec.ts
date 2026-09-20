@@ -26,13 +26,13 @@ async function mockDashboardAccess(page: Page, state: DashboardAccessState) {
   await page.route(/\/api\/accelerators(?:\?.*)?$/, async (route) => route.fulfill({ json: state.accelerators.map((row) => ({ ...row, name: 'Тестовый акселератор', status: 'active' })) }));
 }
 
-async function mockManagerWorkspace(page: Page) {
+async function mockManagerWorkspace(page: Page, isAdmin = true) {
   await page.addInitScript(() => {
     localStorage.setItem('vi_auth_state', 'cookie-session');
     localStorage.setItem('pitchy_cookie_consent_v2', JSON.stringify({ choice: 'necessary', updatedAt: new Date().toISOString() }));
   });
-  await page.route('**/me', async (route) => route.fulfill({ json: { id: 1, email: 'admin@example.test', name: 'Admin', is_admin: true, is_active: true, email_verified: true, created_at: new Date().toISOString() } }));
-  await page.route('**/api/accelerators', async (route) => route.fulfill({ json: [{ id: 7, name: 'Тестовый акселератор', description: 'Программа для команд', status: 'draft', access_role: 'global_admin' }] }));
+  await page.route('**/me', async (route) => route.fulfill({ json: { id: 1, email: 'admin@example.test', name: 'Admin', is_admin: isAdmin, is_active: true, email_verified: true, created_at: new Date().toISOString() } }));
+  await page.route('**/api/accelerators', async (route) => route.fulfill({ json: [{ id: 7, name: 'Тестовый акселератор', description: 'Программа для команд', status: 'draft', access_role: isAdmin ? 'global_admin' : 'organizer' }] }));
   await page.route('**/api/accelerators/me/memberships', async (route) => route.fulfill({ json: { memberships: [], effective_quotas: {} } }));
   await page.route('**/api/accelerators/7/cohorts', async (route) => route.fulfill({ json: [{ id: 12, accelerator_id: 7, name: 'Поток 2026', status: 'draft', timezone: 'Europe/Moscow', application_form_schema: { title: 'Заявка', fields: [] }, default_quota_config: { messages: 70, roadmaps: 4, custdev: 2, grants: 1 } }] }));
   await page.route('**/api/accelerators/cohorts/12/program-config', async (route) => route.fulfill({ json: { cohort_id: 12, version: 1, modules: { applications: true, program: true, homework: true, attendance: false, progress_tracking: true, matchmaking: true, project_audit: true, demo_day: true, pitchy_artifacts: true }, locked_modules: { applications: true, program: true } } }));
@@ -95,13 +95,15 @@ test('manager workspace is split into focused sections', async ({ page }) => {
   await expect(mainNavigation.getByRole('button')).toHaveCount(7);
   await page.getByRole('button', { name: 'Программа', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Этапы программы' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Единая очередь проверки' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Домашние задания' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Домашние задания', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Домашние задания' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'На проверке', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Обзор', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Требует внимания' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Участники: 0', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Настройки', exact: true }).click();
-  await page.getByRole('button', { name: 'Состояние', exact: true }).click();
+  await page.getByRole('button', { name: 'Состояние системы', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Операционный обзор' })).toBeVisible();
   await expect(page.getByText('60%')).toBeVisible();
   await page.getByPlaceholder('Что произошло и когда проверить снова').fill('Плановые работы');
@@ -110,31 +112,45 @@ test('manager workspace is split into focused sections', async ({ page }) => {
   await expect(page.getByText('Плановые работы')).toBeVisible();
   await page.getByRole('button', { name: 'Результаты', exact: true }).click();
   await page.getByRole('button', { name: 'Результаты Pitchy', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Артефакты резидентов' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Результаты Pitchy' })).toBeVisible();
+  await page.getByRole('button', { name: /Резидент А.*Проект А.*Разобрать гипотезу/ }).click();
   await expect(page.getByText('Гипотеза уточнена и готова к проверке.')).toBeVisible();
+  await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Демо-день', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Demo Day 2026' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Результаты CSV' })).toBeVisible();
   await page.getByRole('button', { name: 'Аудит проекта', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Аудит проекта' })).toBeVisible();
+  await page.getByRole('button', { name: /Резидент А.*Проект А.*Продукт/ }).click();
   await expect(page.getByText('Проблема подтверждена, требуется проверить цену.')).toBeVisible();
-  await expect(page.getByText('Квота «Сообщения»: списано 1 сообщение')).toBeVisible();
   await expect(page.getByRole('button', { name: 'В задачи' })).toBeVisible();
-  await page.getByRole('button', { name: 'Свернуть аудит Проект А' }).click();
-  await expect(page.getByText('Проблема подтверждена, требуется проверить цену.')).toBeHidden();
-  await expect(page.getByRole('button', { name: 'Развернуть аудит Проект А' })).toBeVisible();
+  await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Команды и трекеры', exact: true }).click();
-  await page.getByRole('button', { name: 'Матчмейкинг', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Команды потока' })).toBeVisible();
-  await expect(page.getByText('Команда Проекта А')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Матчмейкинг' })).toBeVisible();
+  await page.getByRole('button', { name: /Команда Проекта А/ }).click();
   await expect(page.getByText('resident@example.test')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Принять' })).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'Эксперт потока' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: /Эксперты/ }).click();
+  await expect(page.getByText('Эксперт потока', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'История', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'История матчмейкинга' })).toBeVisible();
+  await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Настройки', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Конструктор функций' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Матчмейкинг Включён' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Демо-день и экспорт Включён' })).toBeVisible();
+  await page.getByRole('button', { name: 'Разделы платформы', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Разделы платформы' })).toBeVisible();
+  await expect(page.getByRole('switch', { name: 'Матчмейкинг: включён' })).toBeVisible();
+  await expect(page.getByRole('switch', { name: 'Демо-день и экспорт: включён' })).toBeVisible();
+});
+
+test('organizer cannot see or change Pitchy modules and limits', async ({ page }) => {
+  await mockManagerWorkspace(page, false);
+  await page.goto('/accelerator?section=settings');
+  await expect(page.getByRole('heading', { name: 'Настройки', exact: true })).toBeVisible();
+  const settingsNavigation = page.getByRole('navigation', { name: 'Разделы настроек' });
+  await expect(settingsNavigation.getByRole('button', { name: 'Разделы платформы' })).toHaveCount(0);
+  await expect(settingsNavigation.getByRole('button', { name: 'Лимиты' })).toHaveCount(0);
+  await expect(page.getByRole('switch')).toHaveCount(0);
 });
 
 test('application queue keeps filters and opens the full answer beside the list', async ({ page }, testInfo) => {
@@ -469,7 +485,7 @@ test('resident Today page prioritizes required work and keeps improvements optio
   await expect(page.getByText('Найти подходящего эксперта')).toBeVisible();
   await page.getByRole('button', { name: 'Сегодня' }).click();
   await page.getByRole('button', { name: 'Открыть задачу' }).click();
-  await expect(page.getByRole('heading', { name: 'Еженедельный чек-ин' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Трекинг', exact: true })).toBeVisible();
   await expect(page.locator('#resident-tracking-71')).toBeFocused();
 });
 
@@ -666,7 +682,7 @@ test('resident launches a Pitchy action and controls result visibility', async (
   await page.route('**/dashboard?tab=chat&session=33', async (route) => route.fulfill({ contentType: 'text/html', body: '<title>Pitchy chat</title><main>Chat session 33</main>' }));
 
   await page.goto('/accelerator');
-  await page.getByRole('button', { name: 'Программа', exact: true }).click();
+  await page.getByRole('button', { name: 'Результаты', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Действия и результаты' })).toBeVisible();
   await expect(page.getByText('Разобрать гипотезу', { exact: true })).toBeVisible();
   const popupPromise = page.waitForEvent('popup');
@@ -834,15 +850,15 @@ test('tracker sees reporting only for assigned residents', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Создать обязательную задачу' })).toBeVisible();
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Трекинг', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Массовая задача' })).toBeVisible();
-  await page.getByRole('button', { name: 'Назначить', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Трекинг', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Назначить задачу', exact: true }).click();
   await page.getByRole('checkbox').check();
   await page.getByPlaceholder('Что нужно сделать').fill('Связаться с клиентами');
   const bulkRequest = page.waitForRequest((request) => request.url().includes('/tracking-tasks/bulk'));
   await page.getByRole('button', { name: 'Назначить (1)' }).click();
   expect((await bulkRequest).postDataJSON()).toMatchObject({ membership_ids: [101], title: 'Связаться с клиентами' });
-  await expect(page.getByRole('heading', { name: 'Трекинг прогресса' })).toBeVisible();
-  await expect(page.getByText('Нужна внимательность')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Трекинг', exact: true })).toBeVisible();
+  await expect(page.getByText('Требует внимания').first()).toBeVisible();
   await page.getByRole('button', { name: 'Аудит проекта', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Аудит проекта' })).toBeVisible();
 });

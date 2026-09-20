@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowUpRight, Banknote, CalendarDays, Check, ClipboardCheck, Clock3, ExternalLink, FileText, GitBranch, History, Loader2, LockKeyhole, MapPin, MessageSquare, Paperclip, Rocket, Send, Sparkles, Users, X } from "lucide-react";
+import { ArrowUpRight, Banknote, CalendarDays, Clock3, ExternalLink, FileText, GitBranch, History, Loader2, MapPin, MessageSquare, Paperclip, Rocket, Send, Sparkles, Users, X } from "lucide-react";
 
 import { describeApiError, getAuthJson, postAuthJson } from "@/lib/api";
 import { useAuth } from "@/lib/hooks/useAuth";
@@ -11,10 +11,11 @@ import { ResidentTracking } from "@/components/accelerator/ResidentTracking";
 import { MatchmakingWorkspace } from "@/components/accelerator/MatchmakingWorkspace";
 import { ProjectAuditWorkspace } from "@/components/accelerator/ProjectAuditWorkspace";
 import { DemoDayWorkspace } from "@/components/accelerator/DemoDayWorkspace";
-import { ResidentArtifacts } from "@/components/accelerator/ResidentArtifacts";
 import { AlumniWorkspace } from "@/components/accelerator/AlumniWorkspace";
 import { ResidentToday } from "@/components/accelerator/ResidentToday";
 import { ResidentProjectRecommendations } from "@/components/accelerator/ResidentProjectRecommendations";
+import { ResidentProgramWorkspace } from "@/components/accelerator/ResidentProgramWorkspace";
+import { ResidentArtifacts } from "@/components/accelerator/ResidentArtifacts";
 
 export type ResidentQuota = {
   membership_id: number;
@@ -44,7 +45,7 @@ export type ResidentWorkspaceData = {
   effective_quotas: Record<string, ResidentQuota>;
 };
 
-type ResidentSection = "today" | "program" | "homework" | "events" | "tracking" | "matching" | "project_audit" | "demo_day" | "tools";
+type ResidentSection = "today" | "program" | "homework" | "events" | "tracking" | "matching" | "project_audit" | "artifacts" | "demo_day" | "tools";
 type ResidentNavigationGroup = { key: string; label: string; sections: Array<{ id: ResidentSection; label: string }> };
 
 const QUOTA_META = {
@@ -86,6 +87,7 @@ export function ResidentMembershipView({ membership, quotas, onChanged }: { memb
       ...(membership.modules.progress_tracking ? [{ id: "tracking" as const, label: "Трекинг" }] : []),
     ] },
     { key: "results", label: "Результаты", sections: [
+      ...(membership.modules.pitchy_artifacts ? [{ id: "artifacts" as const, label: "Результаты Pitchy" }] : []),
       ...(membership.modules.demo_day ? [{ id: "demo_day" as const, label: "Демо-день" }] : []),
     ] },
   ].filter((group) => group.sections.length > 0);
@@ -145,16 +147,18 @@ export function ResidentMembershipView({ membership, quotas, onChanged }: { memb
 
       {enrolled && section === "tools" && <section className="workspace-card"><h2 className="mb-5 text-xl">Лимиты Pitchy</h2><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{Object.entries(QUOTA_META).map(([resource, meta]) => { const quota = quotas[resource]; const Icon = meta.icon; const appliesHere = quota?.membership_id === membership.membership_id; return <article key={resource} className="rounded-2xl border border-white/8 bg-white/[0.02] p-4"><Icon size={18} className="mb-4 text-white/40" /><p className="text-sm text-white/45">{meta.label}</p><p className="mt-1 text-2xl">{appliesHere ? quota.limit === -1 ? "∞" : quota.remaining : "—"}</p><p className="mt-1 text-xs text-white/30">{appliesHere ? quota.limit === -1 ? "Без ограничений" : `из ${quota.limit}, использовано ${quota.used}` : "Не назначено этому потоку"}</p></article>; })}</div></section>}
 
-      {enrolled && section === "program" && <div className="space-y-6"><ResidentProgram membershipId={membership.membership_id} />{membership.modules.pitchy_artifacts && <ResidentArtifacts membershipId={membership.membership_id} />}</div>}
+      {enrolled && section === "program" && <ResidentProgramWorkspace membershipId={membership.membership_id} onNavigate={navigate} />}
       {enrolled && section === "events" && membership.modules.attendance && <ResidentEvents membershipId={membership.membership_id} />}
 
       {enrolled && section === "homework" && membership.modules.homework && <ResidentHomework membershipId={membership.membership_id} />}
 
-      {enrolled && section === "tracking" && membership.modules.progress_tracking && <ResidentTracking membershipId={membership.membership_id} />}
+      {enrolled && section === "tracking" && membership.modules.progress_tracking && <ResidentTracking membershipId={membership.membership_id} focusTaskId={focusTarget} />}
 
       {enrolled && section === "matching" && membership.modules.matchmaking && <MatchmakingWorkspace cohortId={membership.cohort.id} membershipId={membership.membership_id} project={membership.project} />}
 
       {enrolled && section === "project_audit" && membership.modules.project_audit && <ProjectAuditWorkspace cohortId={membership.cohort.id} membershipId={membership.membership_id} />}
+
+      {enrolled && section === "artifacts" && membership.modules.pitchy_artifacts && <ResidentArtifacts membershipId={membership.membership_id} />}
 
       {enrolled && section === "demo_day" && membership.modules.demo_day && <DemoDayWorkspace cohortId={membership.cohort.id} membershipId={membership.membership_id} />}
 
@@ -179,31 +183,6 @@ function Action({ href, label, icon: Icon, external }: { href: string; label: st
   const className = "group flex items-center justify-between rounded-2xl border border-white/10 p-4 text-white/65 hover:border-white/25 hover:text-white";
   const content = <><span className="flex items-center gap-3"><Icon size={18} />{label}</span><ArrowUpRight size={16} className="text-white/25 group-hover:text-white/70" /></>;
   return external ? <a href={href} target="_blank" rel="noreferrer" className={className}>{content}</a> : <Link href={href} className={className}>{content}</Link>;
-}
-
-type ResidentMaterial = { id: number; title: string; kind: "link" | "video" | "text"; url?: string | null; content?: string | null; required: boolean; completed: boolean };
-type ResidentStage = { id: number; title: string; description?: string | null; unlock_at?: string | null; due_at?: string | null; required: boolean; state: "locked" | "available" | "in_progress" | "completed" | "overdue" | "waived"; completion_source?: "auto" | "manual" | "waived" | null; waiver_reason?: string | null; completed_required: number; required_total: number; blockers: Array<{ kind: string; id: number; title: string; reason: string }>; materials: ResidentMaterial[]; timeline: Array<{ key: string; kind: "material" | "homework" | "event"; id: number; title: string; sort_at?: string | null; required: boolean; status?: string | null; event_format?: string }> };
-
-const residentStageLabel: Record<ResidentStage["state"], string> = { locked: "Закрыт", available: "Доступен", in_progress: "В работе", completed: "Завершён", overdue: "Просрочен", waived: "Требование снято" };
-
-function ResidentProgram({ membershipId }: { membershipId: number }) {
-  const { token } = useAuth();
-  const [stages, setStages] = useState<ResidentStage[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState("");
-  const [error, setError] = useState("");
-  const load = useCallback(async () => {
-    if (!token) return;
-    try {
-      const rows = await getAuthJson<ResidentStage[]>(`/api/accelerators/memberships/${membershipId}/program-stages`, token);
-      setStages(rows.map((stage) => ({ ...stage, blockers: stage.blockers || [], timeline: stage.timeline || [], materials: stage.materials || [] })));
-    }
-    catch (reason) { setError(describeApiError(reason, "Не удалось загрузить программу")); }
-    finally { setLoading(false); }
-  }, [membershipId, token]);
-  useEffect(() => { void load(); }, [load]);
-  const completeMaterial = async (id: number) => { if (!token) return; setBusy(`material-${id}`); try { await postAuthJson(`/api/accelerators/program/materials/${id}/complete`, {}, token); await load(); } catch (reason) { setError(describeApiError(reason, "Не удалось отметить материал")); } finally { setBusy(""); } };
-  return <section className="workspace-card"><div className="mb-5"><h2 className="text-xl">Путь по программе</h2><p className="mt-1 text-sm text-white/40">Этап завершается автоматически, когда выполнены все обязательные условия.</p></div>{error && <p role="alert" className="mb-4 rounded-2xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200">{error}</p>}{loading ? <Loader2 className="mx-auto animate-spin text-white/40" /> : !stages.length ? <p className="py-5 text-center text-sm text-white/35">Организатор ещё не опубликовал этапы.</p> : <div className="space-y-3">{stages.map((stage, index) => <article id={"resident-program-" + stage.id} tabIndex={-1} key={stage.id} className={`rounded-2xl border p-4 sm:p-5 ${stage.state === "completed" || stage.state === "waived" ? "border-emerald-400/20 bg-emerald-400/[0.04]" : stage.state === "locked" ? "border-white/6 bg-white/[0.01] opacity-60" : stage.state === "overdue" ? "border-red-400/20 bg-red-400/[0.035]" : "border-white/10 bg-white/[0.025]"}`}><div className="flex items-start gap-3"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white/8 text-sm">{stage.state === "completed" || stage.state === "waived" ? <Check size={15} className="text-emerald-300" /> : stage.state === "locked" ? <LockKeyhole size={14} /> : index + 1}</span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center justify-between gap-3"><h3 className="text-lg">{stage.title}</h3><span className="text-xs text-white/35">{residentStageLabel[stage.state]}{stage.required_total ? ` · ${stage.completed_required}/${stage.required_total}` : ""}</span></div>{stage.description && <p className="mt-2 whitespace-pre-wrap text-sm text-white/45">{stage.description}</p>}{stage.state === "locked" && stage.unlock_at && <p className="mt-3 text-xs text-white/35">Не раньше {new Date(stage.unlock_at).toLocaleString("ru-RU")}</p>}{stage.due_at && stage.state !== "completed" && stage.state !== "waived" && <p className="mt-3 text-xs text-white/35">Срок: {new Date(stage.due_at).toLocaleString("ru-RU")}</p>}{stage.waiver_reason && <p className="mt-3 text-sm text-emerald-200">Требование снято: {stage.waiver_reason}</p>}{stage.state !== "locked" && stage.blockers.length > 0 && <div className="mt-4 rounded-xl border border-amber-300/15 bg-amber-300/[0.04] p-3"><p className="text-xs uppercase tracking-wide text-amber-200/70">Что осталось сделать</p>{stage.blockers.map((blocker) => <p key={`${blocker.kind}:${blocker.id}`} className="mt-2 text-sm text-white/55">• {blocker.title}: {blocker.reason}</p>)}</div>}{stage.state !== "locked" && (stage.timeline || []).length > 0 && <div className="mt-4 rounded-2xl border border-white/8 bg-black/20 p-3"><p className="mb-3 text-xs uppercase tracking-[.16em] text-white/30">План этапа</p><div className="space-y-2">{stage.timeline.map((item) => { const Icon = item.kind === "event" ? CalendarDays : item.kind === "homework" ? ClipboardCheck : FileText; return <div key={item.key} className="flex items-center gap-3 rounded-xl bg-white/[0.025] p-3"><Icon size={14} className="shrink-0 text-white/40" /><div className="min-w-0 flex-1"><p className="truncate text-sm text-white/65">{item.title}</p><p className="text-xs text-white/30">{item.kind === "event" ? "Мероприятие" : item.kind === "homework" ? "Домашнее задание" : "Материал"}{item.sort_at ? ` · ${new Date(item.sort_at).toLocaleString("ru-RU")}` : ""}</p></div></div>; })}</div></div>}{stage.state !== "locked" && stage.materials.length > 0 && <div className="mt-4 space-y-2">{stage.materials.map((material) => <div id={"resident-program-material-" + material.id} tabIndex={-1} key={material.id} className="rounded-xl border border-white/7 p-3"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm">{material.title}{material.required && <span className="ml-2 text-xs text-white/30">обязательный</span>}</p>{material.kind === "text" && material.content && <details className="mt-2 text-sm text-white/45"><summary className="cursor-pointer">Открыть материал</summary><p className="mt-2 whitespace-pre-wrap">{material.content}</p></details>}{material.url && <a href={material.url} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-xs text-blue-300 underline">Открыть <ExternalLink size={12} /></a>}</div><button onClick={() => void completeMaterial(material.id)} disabled={material.completed || busy === `material-${material.id}`} className={`rounded-full px-3 py-2 text-xs ${material.completed ? "bg-emerald-400/10 text-emerald-300" : "border border-white/10 text-white/55"}`}>{material.completed ? "Изучено" : "Отметить"}</button></div></div>)}</div>}</div></div></article>)}</div>}</section>;
 }
 
 type ResidentEvent = { id: number; title: string; description?: string | null; preview_url?: string | null; event_type: string; host_name?: string | null; starts_at: string; ends_at: string; event_format: "online" | "offline" | "hybrid"; location?: string | null; meeting_url?: string | null; online_platform?: string | null; venue_details?: string | null; map_url?: string | null; recording_url?: string | null; outcome?: string | null; next_step?: string | null; post_materials: Array<{ title: string; url: string }>; cancellation_reason?: string | null; homework_links: Array<{ assignment_id: number; relation: "before" | "during" | "after"; title?: string }>; status: "published" | "completed" | "cancelled"; timezone?: string | null; attendance?: { status: string; checked_in_at?: string | null } | null };

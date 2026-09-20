@@ -8,10 +8,6 @@ import {
   ArrowDown,
   ArrowUp,
   Banknote,
-  BookOpen,
-  CalendarDays,
-  Check,
-  ClipboardCheck,
   Copy,
   FileSearch,
   GitBranch,
@@ -23,6 +19,7 @@ import {
   Send,
   Trash2,
   Users,
+  X,
 } from "lucide-react";
 
 import { describeApiError, getAuthJson, postAuthJson, putAuthJson } from "@/lib/api";
@@ -122,6 +119,7 @@ export function ProgramBuilder({ cohortId, token, focusId }: { cohortId: number;
   }, [cohortId, token]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => { const close = (event: KeyboardEvent) => { if (event.key === "Escape") { setForm(makeEmptyForm()); setEditingId(null); setShowForm(false); } }; window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, []);
 
   const reset = () => {
     setForm(makeEmptyForm());
@@ -254,11 +252,12 @@ export function ProgramBuilder({ cohortId, token, focusId }: { cohortId: number;
     actions: current.actions.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item),
   }));
 
-  return <section className="workspace-card">
-    <div className="flex flex-wrap items-start justify-between gap-4">
+  return <section>
+    <div className="flex flex-wrap items-end justify-between gap-4 border-b border-white/8 pb-6">
       <div>
-        <h2 className="text-xl">Этапы программы</h2>
-        <p className="mt-1 text-sm text-white/40">Соберите путь из материалов и действий Pitchy. Обязательные результаты блокируют завершение этапа.</p>
+        <p className="text-xs text-white/35">Обзор потока&nbsp; / &nbsp;Программа</p>
+        <h1 className="mt-3 text-3xl font-semibold">Этапы программы</h1>
+        <p className="mt-2 text-sm text-white/40">{stages.length} этапов&nbsp; · &nbsp;{stages.filter((stage) => stage.status === "published").length} опубликовано&nbsp; · &nbsp;{stages.filter((stage) => stage.status === "draft").length} черновика</p>
       </div>
       <button type="button" onClick={() => showForm ? reset() : setShowForm(true)} className="workspace-button">
         <Plus size={15} />{showForm ? "Закрыть" : "Добавить этап"}
@@ -267,8 +266,8 @@ export function ProgramBuilder({ cohortId, token, focusId }: { cohortId: number;
 
     {error && <p role="alert" className="mt-5 rounded-2xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200">{error}</p>}
 
-    {showForm && <form onSubmit={save} className="mt-6 rounded-2xl border border-white/10 bg-black/25 p-4 sm:p-5">
-      <h3>{editingId ? "Редактирование этапа" : "Новый этап"}</h3>
+    {showForm && <div className="fixed inset-0 z-[80] flex justify-end bg-black/65" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) reset(); }}><form onSubmit={save} role="dialog" aria-modal="true" aria-labelledby="stage-form-title" className="h-full w-full max-w-3xl overflow-y-auto border-l border-white/10 bg-[#1c1b1b] p-5 shadow-2xl sm:p-6">
+      <div className="flex items-start justify-between"><div><h3 id="stage-form-title" className="text-2xl">{editingId ? "Редактирование этапа" : "Новый этап"}</h3><p className="mt-1 text-sm text-white/40">Основное, состав этапа и правила завершения</p></div><button type="button" onClick={reset} aria-label="Закрыть" className="rounded-full p-2 text-white/45 hover:bg-white/5"><X /></button></div>
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <label className="text-sm text-white/60">Название<input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} minLength={2} required className="workspace-input mt-2" /></label>
         <label className="text-sm text-white/60">Открыть не раньше<input type="datetime-local" value={form.unlockAt} onChange={(event) => setForm({ ...form, unlockAt: event.target.value })} className="workspace-input mt-2" /></label>
@@ -315,14 +314,14 @@ export function ProgramBuilder({ cohortId, token, focusId }: { cohortId: number;
         <label className="flex items-center gap-2 text-xs text-white/45 sm:col-span-3"><input type="checkbox" checked={material.required} onChange={(event) => patchMaterial(index, { required: event.target.checked })} /> Обязательный материал</label>
       </div>)}</div>
 
-      <div className="mt-5 flex justify-end"><button disabled={busy === "save"} className="workspace-button">{busy === "save" && <Loader2 size={15} className="animate-spin" />} Сохранить черновик</button></div>
-    </form>}
+      <div className="sticky bottom-0 mt-6 flex justify-end gap-2 border-t border-white/8 bg-[#1c1b1b] py-4"><button type="button" onClick={reset} className="overview-secondary">Отмена</button><button disabled={busy === "save"} className="workspace-button">{busy === "save" && <Loader2 size={15} className="animate-spin" />} Сохранить черновик</button></div>
+    </form></div>}
 
-    <div className="mt-6 space-y-3">
-      {!stages.length ? <p className="py-6 text-center text-sm text-white/35">Этапов пока нет.</p> : stages.map((stage, index) => <article id={`dashboard-stage-${stage.id}`} key={stage.id} className="rounded-2xl border border-white/9 bg-white/[0.02] p-4 sm:p-5">
+    <div className="mt-6">
+      {!stages.length ? <div className="grid min-h-[420px] place-items-center rounded-2xl border border-white/8"><div className="max-w-md text-center"><GitBranch className="mx-auto text-white/25" size={44} /><h2 className="mt-5 text-2xl">Программа пока не собрана</h2><p className="mt-2 text-sm text-white/40">Создайте первый этап и добавьте в него материалы, действия, мероприятия и задания.</p><button type="button" onClick={() => setShowForm(true)} className="workspace-button mt-6"><Plus size={15} /> Создать первый этап</button></div></div> : <div className="relative before:absolute before:bottom-8 before:left-5 before:top-8 before:w-px before:bg-white/12">{stages.map((stage, index) => <article id={`dashboard-stage-${stage.id}`} key={stage.id} className="relative border-b border-white/8 py-6 pl-16 last:border-0">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex min-w-0 gap-3">
-            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white/8 text-sm">{index + 1}</span>
+            <span className="absolute left-0 z-10 grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/20 bg-[#1c1b1b] text-sm">{index + 1}</span>
             <div>
               <div className="flex flex-wrap items-center gap-2"><h3 className="text-lg">{stage.title}</h3><span className={`rounded-full px-2 py-1 text-xs ${stage.status === "published" ? "bg-emerald-400/10 text-emerald-300" : "bg-white/7 text-white/40"}`}>{stage.status === "published" ? "Опубликован" : "Черновик"}</span>{!stage.required && <span className="text-xs text-white/30">необязательный</span>}</div>
               {stage.description && <p className="mt-2 text-sm text-white/45">{stage.description}</p>}
@@ -337,9 +336,7 @@ export function ProgramBuilder({ cohortId, token, focusId }: { cohortId: number;
             <button type="button" onClick={() => void lifecycle(stage, "archive")} disabled={Boolean(busy)} title="Архивировать" className="rounded-full border border-white/10 p-2 text-white/50 hover:text-red-300"><Archive size={15} /></button>
           </div>
         </div>
-        {(stage.actions || []).length > 0 && <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{stage.actions.map((action, actionIndex) => { const meta = ACTION_META[action.action_type]; const Icon = meta.icon; return <div key={action.id || `${action.action_type}-${actionIndex}`} className="flex items-center gap-3 rounded-xl border border-violet-300/10 bg-violet-300/[0.03] p-3 text-sm text-white/60"><Icon size={15} className="text-violet-200/60" /><span className="truncate">{action.title}</span>{action.required && <Check size={13} className="ml-auto text-emerald-400" />}</div>; })}</div>}
-        {(stage.timeline || []).length > 0 && <div className="mt-4 rounded-2xl border border-white/8 bg-black/20 p-4"><p className="mb-3 text-xs uppercase tracking-[.16em] text-white/30">Хронология этапа</p><div className="space-y-2">{stage.timeline.map((item) => { const Icon = item.kind === "event" ? CalendarDays : item.kind === "homework" ? ClipboardCheck : BookOpen; return <div key={item.key} className="flex items-center gap-3 rounded-xl bg-white/[0.025] p-3"><Icon size={15} className="shrink-0 text-white/40" /><div className="min-w-0 flex-1"><p className="truncate text-sm text-white/65">{item.title}</p><p className="mt-0.5 text-xs text-white/30">{item.kind === "event" ? `Мероприятие${item.event_format ? ` · ${item.event_format === "online" ? "онлайн" : item.event_format === "offline" ? "очно" : "гибрид"}` : ""}` : item.kind === "homework" ? "Домашнее задание" : "Материал"}{item.sort_at ? ` · ${new Date(item.sort_at).toLocaleString("ru-RU")}` : ""}</p></div>{item.required && <Check size={13} className="shrink-0 text-emerald-400" />}</div>; })}</div></div>}
-      </article>)}
+      </article>)}</div>}
     </div>
   </section>;
 }

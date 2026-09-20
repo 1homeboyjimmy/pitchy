@@ -91,7 +91,7 @@ export function OrganizerOverview({ token, cohort, config, applications, residen
       <Metric icon={Users} label="Участники" value={participants.length} onClick={() => onNavigate("reports")} />
       <Metric icon={BookOpen} label="Пройдено программы" value={loading ? "…" : programPercent} onClick={() => onNavigate("program")} />
       {modules.attendance ? <Metric icon={BarChart3} label="Посещаемость" value={loading ? "…" : attendancePercent} onClick={() => onNavigate("attendance")} disabled={!available("attendance")} /> : <Metric icon={FileText} label="Заявки в работе" value={applications.filter(row => ["submitted", "under_review", "needs_info", "waitlisted"].includes(row.status)).length} onClick={() => onNavigate("applications")} />}
-      <Metric icon={UserRoundCheck} label="Трекеры" value={loading ? "…" : data.trackers ? new Set(data.trackers.map(row => row.user_id)).size : "—"} onClick={() => onNavigate("trackers")} />
+      <Metric icon={UserRoundCheck} label="Трекеры" value={loading ? "…" : data.trackers ? new Set(data.trackers.map(row => row.user_id)).size : "—"} onClick={() => onNavigate("matching")} />
     </div>
     <div className="grid gap-5 xl:grid-cols-[1.35fr_1fr]">
       <Panel title="Требует внимания">

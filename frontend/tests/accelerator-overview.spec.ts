@@ -74,7 +74,7 @@ test('overview shows real summary and connects actions and specific agenda entri
   await page.keyboard.press('Escape');
   await back();
   await page.getByRole('button', { name: 'Открыть', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Трекинг прогресса' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Трекинг', exact: true })).toBeVisible();
   await expect(page.getByText('Нет чек-ина')).toBeVisible();
   await back();
   await page.getByRole('button', { name: 'Открыть событие', exact: true }).click();

@@ -1,163 +1,30 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  ArrowUpRight,
-  Banknote,
-  Eye,
-  EyeOff,
-  FileSearch,
-  GitBranch,
-  Loader2,
-  MessageSquare,
-  Presentation,
-  RefreshCw,
-  Search,
-  Users,
-} from "lucide-react";
-
+import { ArrowUpRight, FileSearch, Loader2, RefreshCw, Search, X } from "lucide-react";
 import { describeApiError, getAuthJson } from "@/lib/api";
 
 type ArtifactStatus = "started" | "ready" | "failed";
 type ActionType = "chat" | "roadmap" | "research" | "custdev" | "grants" | "presentation";
+type Artifact = { id:number; artifact_type:ActionType; status:ArtifactStatus; title:string; summary?:string|null; url?:string|null; updated_at?:string|null; details_visible:boolean; resident:{id:number;name:string}; project:{id:number;name:string}; action:{id:number;title:string;action_type:ActionType}; stage:{id:number;title:string} };
+type Response = { access_role:"global_admin"|"organizer"|"tracker"; artifacts:Artifact[] };
+const statusLabel={started:"В работе",ready:"Готово",failed:"Ошибка"} as const;
+const statusClass={started:"text-amber-200 border-amber-300/25",ready:"text-emerald-300 border-emerald-300/25",failed:"text-red-200 border-red-300/25"} as const;
+const typeLabel:Record<ActionType,string>={chat:"Чат",roadmap:"Дорожная карта",research:"Исследование",custdev:"CustDev",grants:"Гранты",presentation:"Презентация"};
 
-type CohortArtifact = {
-  id: number;
-  artifact_type: ActionType;
-  status: ArtifactStatus;
-  title: string;
-  summary?: string | null;
-  url?: string | null;
-  visibility: { organizer?: boolean; tracker?: boolean };
-  updated_at?: string | null;
-  details_visible: boolean;
-  resident: { id: number; name: string };
-  project: { id: number; name: string };
-  action: { id: number; title: string; action_type: ActionType };
-  stage: { id: number; title: string };
-};
-
-type ArtifactResponse = {
-  access_role: "global_admin" | "organizer" | "tracker";
-  artifacts: CohortArtifact[];
-};
-
-const ACTION_META = {
-  chat: { label: "Чат", icon: MessageSquare },
-  roadmap: { label: "Дорожная карта", icon: GitBranch },
-  research: { label: "Исследование", icon: FileSearch },
-  custdev: { label: "Кастдев", icon: Users },
-  grants: { label: "Грантовая заявка", icon: Banknote },
-  presentation: { label: "Презентация", icon: Presentation },
-} satisfies Record<ActionType, { label: string; icon: typeof MessageSquare }>;
-
-const STATUS_META: Record<ArtifactStatus, { label: string; className: string }> = {
-  started: { label: "В работе", className: "bg-amber-400/10 text-amber-200" },
-  ready: { label: "Готов", className: "bg-emerald-400/10 text-emerald-300" },
-  failed: { label: "Ошибка", className: "bg-red-400/10 text-red-200" },
-};
-
-export function ArtifactWorkspace({ cohortId, token }: { cohortId: number; token: string }) {
-  const [data, setData] = useState<ArtifactResponse | null>(null);
-  const [status, setStatus] = useState<"all" | ArtifactStatus>("all");
-  const [query, setQuery] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      setData(await getAuthJson<ArtifactResponse>(`/api/accelerators/cohorts/${cohortId}/artifacts`, token));
-    } catch (reason) {
-      setError(describeApiError(reason, "Не удалось загрузить результаты резидентов"));
-    } finally {
-      setLoading(false);
-    }
-  }, [cohortId, token]);
-
-  useEffect(() => { void load(); }, [load]);
-
-  const rows = useMemo(() => {
-    const normalized = query.trim().toLocaleLowerCase("ru");
-    return (data?.artifacts || []).filter((artifact) => {
-      if (status !== "all" && artifact.status !== status) return false;
-      if (!normalized) return true;
-      return [artifact.resident.name, artifact.project.name, artifact.action.title, artifact.stage.title]
-        .some((value) => value.toLocaleLowerCase("ru").includes(normalized));
-    });
-  }, [data, query, status]);
-
-  const stats = useMemo(() => ({
-    total: data?.artifacts.length || 0,
-    ready: data?.artifacts.filter((artifact) => artifact.status === "ready").length || 0,
-    shared: data?.artifacts.filter((artifact) => artifact.details_visible).length || 0,
-  }), [data]);
-
-  return (
-    <div className="space-y-5">
-      <section className="workspace-card">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div><p className="text-xs uppercase tracking-[.18em] text-white/30">Результаты Pitchy</p><h2 className="mt-2 text-2xl">Артефакты резидентов</h2><p className="mt-2 max-w-2xl text-sm text-white/40">Здесь видно только опубликованное резидентом краткое описание. Полные чаты, исследования и другие рабочие данные остаются в его личном пространстве.</p></div>
-          <button type="button" onClick={() => void load()} disabled={loading} className="rounded-full border border-white/10 p-3 text-white/45" aria-label="Обновить результаты"><RefreshCw size={17} className={loading ? "animate-spin" : ""} /></button>
-        </div>
-        <div className="mt-5 grid gap-3 sm:grid-cols-3">
-          <Stat label="Всего запущено" value={stats.total} />
-          <Stat label="Готово" value={stats.ready} />
-          <Stat label="Открыто вам" value={stats.shared} />
-        </div>
-      </section>
-
-      <section className="workspace-card">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <label className="relative block md:max-w-md md:flex-1"><Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Резидент, проект, этап или действие" className="workspace-input !pl-11" /></label>
-          <div className="flex gap-2 overflow-x-auto">
-            {(["all", "ready", "started", "failed"] as const).map((value) => <button type="button" key={value} onClick={() => setStatus(value)} className={`shrink-0 rounded-full border px-3 py-2 text-xs ${status === value ? "border-white bg-white text-black" : "border-white/10 text-white/45"}`}>{value === "all" ? "Все" : STATUS_META[value].label}</button>)}
-          </div>
-        </div>
-      </section>
-
-      {loading && !data ? <section className="workspace-card grid min-h-48 place-items-center"><Loader2 className="animate-spin text-white/35" /></section> : rows.length ? (
-        <div className="grid gap-4 xl:grid-cols-2">
-          {rows.map((artifact) => {
-            const meta = ACTION_META[artifact.action.action_type];
-            const Icon = meta.icon;
-            const statusMeta = STATUS_META[artifact.status];
-            return (
-              <article key={artifact.id} className="workspace-card">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex min-w-0 gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-white/[0.06] text-white/45"><Icon size={18} /></span><div className="min-w-0"><h3 className="truncate text-lg">{artifact.action.title}</h3><p className="mt-1 truncate text-xs text-white/35">{artifact.stage.title} · {meta.label}</p></div></div>
-                  <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs ${statusMeta.className}`}>{statusMeta.label}</span>
-                </div>
-                <div className="mt-4 grid gap-3 rounded-2xl border border-white/8 bg-white/[0.02] p-4 sm:grid-cols-2">
-                  <div><p className="text-xs text-white/30">Резидент</p><p className="mt-1 text-sm">{artifact.resident.name}</p></div>
-                  <div><p className="text-xs text-white/30">Проект</p><p className="mt-1 text-sm">{artifact.project.name}</p></div>
-                </div>
-                {artifact.details_visible ? (
-                  <div className="mt-4">
-                    <p className="flex items-center gap-2 text-xs text-emerald-300"><Eye size={14} /> Резидент опубликовал описание</p>
-                    <h4 className="mt-3 font-medium">{artifact.title}</h4>
-                    {artifact.summary && <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-white/50">{artifact.summary}</p>}
-                    {artifact.url && <a href={artifact.url} target="_blank" rel="noreferrer" className="workspace-button mt-4"><ArrowUpRight size={15} /> Открыть результат</a>}
-                  </div>
-                ) : (
-                  <div className="mt-4 flex gap-3 rounded-2xl border border-white/8 p-4 text-sm text-white/40"><EyeOff size={17} className="mt-0.5 shrink-0" /><p>Резидент ещё не поделился содержимым результата с вашей ролью.</p></div>
-                )}
-                {artifact.updated_at && <p className="mt-4 text-xs text-white/25">Обновлено {formatDateTime(artifact.updated_at)}</p>}
-              </article>
-            );
-          })}
-        </div>
-      ) : <section className="workspace-card py-12 text-center"><FileSearch className="mx-auto mb-4 text-white/25" size={34} /><h3 className="text-xl">Результатов пока нет</h3><p className="mx-auto mt-2 max-w-lg text-sm text-white/40">Они появятся, когда резиденты запустят действия из опубликованных этапов программы.</p></section>}
-      {error && <p role="alert" className="rounded-2xl border border-red-400/20 bg-red-400/10 p-4 text-sm text-red-200">{error}</p>}
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: number }) {
-  return <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-4"><p className="text-2xl">{value}</p><p className="mt-1 text-xs text-white/35">{label}</p></div>;
-}
-
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+export function ArtifactWorkspace({cohortId,token}:{cohortId:number;token:string}){
+  const [data,setData]=useState<Response|null>(null); const [query,setQuery]=useState(""); const [filter,setFilter]=useState<"all"|ArtifactStatus|"shared">("all"); const [selected,setSelected]=useState<Artifact|null>(null); const [loading,setLoading]=useState(true); const [error,setError]=useState("");
+  const load=useCallback(async()=>{setLoading(true);setError("");try{setData(await getAuthJson<Response>(`/api/accelerators/cohorts/${cohortId}/artifacts`,token));}catch(reason){setError(describeApiError(reason,"Не удалось загрузить результаты Pitchy"));}finally{setLoading(false);}},[cohortId,token]);
+  useEffect(()=>{void load();},[load]); useEffect(()=>{const close=(event:KeyboardEvent)=>{if(event.key==="Escape")setSelected(null)};window.addEventListener("keydown",close);return()=>window.removeEventListener("keydown",close)},[]);
+  const rows=useMemo(()=>{const needle=query.trim().toLowerCase();return(data?.artifacts||[]).filter(row=>(filter==="all"||(filter==="shared"?row.details_visible:row.status===filter))&&(!needle||[row.resident.name,row.project.name,row.stage.title,row.action.title].some(value=>value.toLowerCase().includes(needle))));},[data,filter,query]);
+  const counts=useMemo(()=>({all:data?.artifacts.length||0,ready:data?.artifacts.filter(r=>r.status==="ready").length||0,started:data?.artifacts.filter(r=>r.status==="started").length||0,failed:data?.artifacts.filter(r=>r.status==="failed").length||0,shared:data?.artifacts.filter(r=>r.details_visible).length||0}),[data]);
+  return <section>
+    <header className="flex flex-wrap items-end justify-between gap-4 border-b border-white/8 pb-6"><div><p className="text-xs text-white/35">Обзор потока&nbsp; / &nbsp;Результаты</p><h1 className="mt-3 text-3xl font-semibold">Результаты Pitchy</h1><p className="mt-2 text-sm text-white/45">{counts.all} запущено · {counts.ready} готово · {counts.shared} открыто вам</p></div><button type="button" onClick={()=>void load()} className="overview-secondary" disabled={loading}><RefreshCw size={15} className={loading?"animate-spin":""}/>Обновить</button></header>
+    <p className="mt-5 rounded-xl border border-white/8 px-4 py-3 text-sm text-white/45">Здесь отображаются только опубликованные резидентами описания. Полные рабочие данные остаются в их личном пространстве.</p>
+    <div className="mt-5"><label className="relative block"><Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30"/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Резидент, проект, этап или результат" className="workspace-input !pl-11"/></label></div>
+    <div className="mt-4 flex gap-2 overflow-x-auto">{([['all','Все'],['ready','Готово'],['started','В работе'],['failed','Ошибка'],['shared','Доступно мне']] as const).map(([key,label])=><button key={key} type="button" onClick={()=>setFilter(key)} className={`shrink-0 rounded-xl border px-3 py-2 text-sm ${filter===key?'border-white bg-white text-black':'border-white/10 text-white/50'}`}>{label}<span className="ml-2 opacity-60">{counts[key]}</span></button>)}</div>
+    {error&&<p role="alert" className="mt-5 rounded-xl border border-red-400/20 bg-red-400/10 p-3 text-red-200">{error}</p>}
+    {loading&&!data?<div className="grid min-h-64 place-items-center"><Loader2 className="animate-spin text-white/35"/></div>:<div className="mt-5 overflow-hidden rounded-2xl border border-white/9"><div className="hidden grid-cols-[1.15fr_1.2fr_1fr_120px_140px_135px] gap-4 border-b border-white/8 bg-white/[.025] px-4 py-3 text-xs text-white/35 lg:grid"><span>Резидент / проект</span><span>Результат</span><span>Этап</span><span>Статус</span><span>Доступ</span><span>Обновлено</span></div>{rows.map(row=><button key={row.id} type="button" onClick={()=>row.details_visible&&setSelected(row)} disabled={!row.details_visible} className="grid w-full gap-3 border-b border-white/8 p-4 text-left last:border-0 disabled:cursor-default lg:grid-cols-[1.15fr_1.2fr_1fr_120px_140px_135px] lg:items-center"><span><b className="block text-sm font-medium">{row.resident.name}</b><small className="text-white/40">{row.project.name}</small></span><span><b className="block text-sm font-medium">{row.action.title}</b><small className="text-white/40">{typeLabel[row.action.action_type]}</small></span><span className="text-sm text-white/55">{row.stage.title}</span><span className={`w-fit rounded-full border px-2.5 py-1 text-xs ${statusClass[row.status]}`}>{statusLabel[row.status]}</span><span className={`text-sm ${row.details_visible?'text-emerald-300':'text-white/35'}`}>{row.details_visible?'Доступ открыт':'Не опубликовано'}</span><span className="text-xs text-white/40">{row.updated_at?new Date(row.updated_at).toLocaleString('ru-RU'):'—'}</span></button>)}{!rows.length&&<div className="py-16 text-center"><FileSearch className="mx-auto text-white/20"/><p className="mt-3">Результаты не найдены</p></div>}</div>}
+    {selected&&<div className="fixed inset-0 z-[80] flex justify-end bg-black/70" onMouseDown={e=>{if(e.target===e.currentTarget)setSelected(null)}}><aside role="dialog" aria-modal="true" aria-labelledby="artifact-title" className="h-full w-full max-w-xl overflow-y-auto border-l border-white/10 bg-[#1c1b1b] p-6"><div className="flex justify-between gap-4"><div><p className="text-xs text-white/35">{selected.resident.name} · {selected.project.name}</p><h2 id="artifact-title" className="mt-2 text-2xl">{selected.title||selected.action.title}</h2></div><button onClick={()=>setSelected(null)} aria-label="Закрыть"><X/></button></div><p className="mt-3 text-sm text-white/45">{selected.stage.title} · {typeLabel[selected.action.action_type]}</p>{selected.summary?<p className="mt-6 whitespace-pre-wrap leading-7 text-white/70">{selected.summary}</p>:<p className="mt-6 text-white/40">Опубликованное описание не заполнено.</p>}{selected.url&&<a href={selected.url} target="_blank" rel="noreferrer" className="workspace-button mt-6">Открыть результат <ArrowUpRight size={15}/></a>}</aside></div>}
+  </section>;
 }

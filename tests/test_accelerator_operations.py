@@ -135,7 +135,7 @@ async def _context(db, suffix: str):
         await update_program_config(
             cohort["id"],
             ProgramConfigUpdate(version=1, modules={"homework": True, "matchmaking": True}),
-            organizer,
+            admin,
             db,
         )
     return admin, organizer, outsider, accelerator, first, second

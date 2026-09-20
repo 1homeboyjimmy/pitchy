@@ -326,7 +326,7 @@ async def test_application_enrollment_and_per_resident_quota_precedence():
         program = await update_program_config(
             cohort["id"],
             ProgramConfigUpdate(version=1, modules={"homework": True}),
-            organizer,
+            admin,
             db,
         )
         assert program["modules"]["homework"] is True
@@ -636,10 +636,18 @@ async def test_role_boundaries_block_cross_accelerator_management_and_quota_chan
             foreign_accelerator["id"], CohortCreate(name="Foreign cohort"), admin, db
         )
 
+        with pytest.raises(HTTPException) as organizer_modules:
+            await update_program_config(
+                own_cohort["id"],
+                ProgramConfigUpdate(version=1, modules={"homework": True}),
+                organizer,
+                db,
+            )
+        assert organizer_modules.value.status_code == 403
         own_config = await update_program_config(
             own_cohort["id"],
             ProgramConfigUpdate(version=1, modules={"homework": True}),
-            organizer,
+            admin,
             db,
         )
         assert own_config["modules"]["homework"] is True
@@ -720,7 +728,7 @@ async def test_tracker_report_scope_and_resident_lifecycle():
                 version=1,
                 modules={"homework": True, "attendance": True, "progress_tracking": True},
             ),
-            organizer,
+            admin,
             db,
         )
         await assign_cohort_quota(
@@ -1026,7 +1034,7 @@ async def test_matchmaking_profiles_recommendations_matches_and_role_boundaries(
         )
         await update_program_config(
             cohort["id"], ProgramConfigUpdate(version=1, modules={"matchmaking": True}),
-            organizer, db,
+            admin, db,
         )
         await update_cohort_status(
             cohort["id"], StatusUpdate(status="accepting"), organizer, db
@@ -1195,7 +1203,7 @@ async def test_project_audit_uses_message_quota_scopes_tracker_and_creates_task(
                 version=1,
                 modules={"project_audit": True, "progress_tracking": True},
             ),
-            organizer,
+            admin,
             db,
         )
         await update_cohort_status(
@@ -2015,7 +2023,7 @@ async def test_demo_day_selection_scoring_ranking_and_exports():
         await update_program_config(
             cohort["id"],
             ProgramConfigUpdate(version=1, modules={"demo_day": True}),
-            organizer,
+            admin,
             db,
         )
         await update_cohort_status(
@@ -2323,7 +2331,7 @@ async def test_stage_actions_artifacts_access_completion_and_visibility():
         await update_program_config(
             cohort["id"],
             ProgramConfigUpdate(version=1, modules={"pitchy_artifacts": True}),
-            organizer,
+            admin,
             db,
         )
 
@@ -2520,7 +2528,7 @@ async def test_homework_quiz_history_review_queue_and_admin_pitchy_controls():
             accelerator["id"], CohortCreate(name="Homework cohort"), organizer, db
         )
         await update_program_config(
-            cohort["id"], ProgramConfigUpdate(version=1, modules={"homework": True}), organizer, db
+            cohort["id"], ProgramConfigUpdate(version=1, modules={"homework": True}), admin, db
         )
         await update_cohort_status(
             cohort["id"], StatusUpdate(status="accepting"), organizer, db
