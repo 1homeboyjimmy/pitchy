@@ -34,6 +34,7 @@ from routers.accelerator_teams import (
     get_membership_team,
     invite_team_member,
     list_cohort_teams,
+    patch_team,
     put_team_project,
     patch_team_member,
     patch_team_member_contact,
@@ -515,6 +516,53 @@ async def test_owner_withdrawal_archives_team_and_cancels_pending_invitations():
         archived = next(row for row in manager_view["teams"] if row["id"] == team["id"])
         assert archived["status"] == "archived"
         assert archived["can_manage"] is False
+
+
+@pytest.mark.asyncio
+async def test_archived_team_does_not_block_new_team_for_same_owner_and_project():
+    suffix = uuid.uuid4().hex[:10]
+    async with AsyncSessionLocal() as db:
+        _, organizer, _, cohort = await _create_cohort_context(db, suffix)
+        owner_user = User(
+            email=f"archive-restart-{suffix}@example.test", name="Archive restart"
+        )
+        db.add(owner_user)
+        await db.commit()
+        owner = await _enroll_resident(
+            db,
+            cohort_id=cohort["id"],
+            manager=organizer,
+            resident=owner_user,
+            with_project=True,
+        )
+        first = await create_membership_team(
+            owner.membership_id,
+            AcceleratorTeamCreate(name="First team", max_members=3),
+            owner_user,
+            db,
+        )
+
+        await patch_team(
+            first["id"],
+            AcceleratorTeamUpdate(status="archived", reason="Start over"),
+            BackgroundTasks(),
+            organizer,
+            db,
+        )
+
+        payload = await get_membership_team(owner.membership_id, owner_user, db)
+        assert payload["team"] is None
+        assert payload["can_create"] is True
+
+        second = await create_membership_team(
+            owner.membership_id,
+            AcceleratorTeamCreate(name="Second team", max_members=5),
+            owner_user,
+            db,
+        )
+        assert second["id"] != first["id"]
+        assert second["status"] == "active"
+        assert second["project"]["id"] == first["project"]["id"]
 
 
 @pytest.mark.asyncio

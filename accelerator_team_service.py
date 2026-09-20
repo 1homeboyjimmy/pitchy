@@ -179,9 +179,14 @@ async def pending_invitation_count(db: AsyncSession, team_id: int) -> int:
 async def active_team_member(
     db: AsyncSession, membership_id: int, *, lock: bool = False
 ) -> AcceleratorTeamMember | None:
-    query = select(AcceleratorTeamMember).where(
-        AcceleratorTeamMember.membership_id == membership_id,
-        AcceleratorTeamMember.status == "active",
+    query = (
+        select(AcceleratorTeamMember)
+        .join(AcceleratorTeam, AcceleratorTeam.id == AcceleratorTeamMember.team_id)
+        .where(
+            AcceleratorTeamMember.membership_id == membership_id,
+            AcceleratorTeamMember.status == "active",
+            AcceleratorTeam.status == "active",
+        )
     )
     if lock:
         query = query.with_for_update()
@@ -220,28 +225,15 @@ async def queue_team_notification(
 async def find_team_for_membership(
     db: AsyncSession, membership_id: int
 ) -> AcceleratorTeam | None:
-    active = (await db.execute(
+    return (await db.execute(
         select(AcceleratorTeam)
         .join(AcceleratorTeamMember, AcceleratorTeamMember.team_id == AcceleratorTeam.id)
         .where(
             AcceleratorTeamMember.membership_id == membership_id,
             AcceleratorTeamMember.status == "active",
+            AcceleratorTeam.status == "active",
         )
         .order_by(AcceleratorTeam.created_at.desc())
-        .limit(1)
-    )).scalar_one_or_none()
-    if active:
-        return active
-    owned = (await db.execute(select(AcceleratorTeam).where(
-        AcceleratorTeam.owner_membership_id == membership_id
-    ).order_by(AcceleratorTeam.created_at.desc()).limit(1))).scalar_one_or_none()
-    if owned:
-        return owned
-    return (await db.execute(
-        select(AcceleratorTeam)
-        .join(AcceleratorTeamMember, AcceleratorTeamMember.team_id == AcceleratorTeam.id)
-        .where(AcceleratorTeamMember.membership_id == membership_id)
-        .order_by(AcceleratorTeamMember.created_at.desc())
         .limit(1)
     )).scalar_one_or_none()
 
@@ -548,11 +540,15 @@ async def create_team(
         raise HTTPException(status_code=409, detail="Канонический проект резидента недоступен")
     if await active_team_member(db, membership.id, lock=True):
         raise HTTPException(status_code=409, detail="Резидент уже состоит в активной команде")
-    duplicate_conditions = [AcceleratorTeam.owner_membership_id == membership.id]
+    duplicate_conditions = [
+        (AcceleratorTeam.owner_membership_id == membership.id)
+        & (AcceleratorTeam.status == "active")
+    ]
     if project:
         duplicate_conditions.append(
             (AcceleratorTeam.cohort_id == cohort.id)
             & (AcceleratorTeam.project_id == project.id)
+            & (AcceleratorTeam.status == "active")
         )
     existing = (await db.execute(select(AcceleratorTeam.id).where(
         or_(*duplicate_conditions)

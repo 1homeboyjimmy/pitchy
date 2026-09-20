@@ -786,9 +786,21 @@ class AcceleratorMatch(Base):
 class AcceleratorTeam(Base):
     __tablename__ = "accelerator_teams"
     __table_args__ = (
-        UniqueConstraint("cohort_id", "project_id", name="uq_accelerator_team_project"),
-        UniqueConstraint(
-            "cohort_id", "owner_membership_id", name="uq_accelerator_team_owner"
+        Index(
+            "uq_accelerator_team_active_project",
+            "cohort_id",
+            "project_id",
+            unique=True,
+            postgresql_where=text("status = 'active' AND project_id IS NOT NULL"),
+            sqlite_where=text("status = 'active' AND project_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_accelerator_team_active_owner",
+            "cohort_id",
+            "owner_membership_id",
+            unique=True,
+            postgresql_where=text("status = 'active'"),
+            sqlite_where=text("status = 'active'"),
         ),
     )
 
