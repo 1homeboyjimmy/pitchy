@@ -1,114 +1,36 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { History, Loader2, Plus, Search, UserRoundCheck } from "lucide-react";
-
+import { History, Plus, RefreshCw, Search, UserRoundCheck, X } from "lucide-react";
 import { describeApiError, getAuthJson, postAuthJson, putAuthJson } from "@/lib/api";
 import type { MatchProfile } from "@/components/accelerator/MatchmakingWorkspace";
 import { TeamManager } from "@/components/accelerator/TeamManager";
+import { TrackerManager } from "@/components/accelerator/TrackerManager";
 
 type Candidate = { id: number; name: string; email: string };
-type HistoryRow = { id: number; action: string; target_type: string; target_id: number | null; actor_user_id: number | null; details: Record<string, unknown>; created_at: string };
+type HistoryRow = { id: number; action: string; target_type: string; target_id: number | null; details: Record<string, unknown>; created_at: string };
+const labels: Record<string,string> = { "team.application_created":"Подана заявка в команду", "team.application_accepted":"Заявка принята", "team.application_declined":"Заявка отклонена", "team.application_cancelled":"Заявка отозвана", "team.member_left":"Участник вышел из команды", "team.member_removed":"Участник исключён", "team.captain_transferred":"Передано капитанство", "team.recruiting_updated":"Изменён статус набора", "team.closed_by_last_member":"Команда закрыта", "tracker.team_assigned":"Назначен трекер команды", "tracker.assigned":"Назначен персональный трекер", "tracker.assignments_updated":"Изменены назначения трекера", "tracker.removed":"Трекер снят", "cohort.expert_assigned":"Назначен эксперт потока" };
+const tags = (value: string) => Array.from(new Set(value.split(",").map((item) => item.trim()).filter(Boolean)));
 
-const HISTORY_LABELS: Record<string, string> = {
-  "team.application_created": "Подана заявка в команду",
-  "team.application_accepted": "Заявка в команду принята",
-  "team.application_declined": "Заявка в команду отклонена",
-  "team.application_cancelled": "Заявка в команду отозвана",
-  "team.member_left": "Участник вышел из команды",
-  "team.member_removed": "Участник исключён из команды",
-  "team.captain_transferred": "Передано капитанство",
-  "team.recruiting_updated": "Изменён статус набора",
-  "team.closed_by_last_member": "Команда закрыта последним участником",
-  "tracker.team_assigned": "Назначен трекер команды",
-  "tracker.assigned": "Назначен персональный трекер",
-  "tracker.assignments_updated": "Изменены назначения трекера",
-  "tracker.removed": "Трекер снят",
-  "cohort.expert_assigned": "Назначен эксперт потока",
-};
+export function MatchmakingManager({ cohortId, token, residents = [] }: { cohortId: number; token: string; residents?: Array<{ membership_id: number; name: string; email: string; status: string }> }) {
+  const [view, setView] = useState<"teams"|"trackers"|"experts">("teams"); const [profiles, setProfiles] = useState<MatchProfile[]>([]); const [currentExpert, setCurrentExpert] = useState<{ user_id:number; name:string; email:string }|null>(null); const [selectedExpert, setSelectedExpert] = useState(""); const [history, setHistory] = useState<HistoryRow[]>([]); const [historyOpen, setHistoryOpen] = useState(false); const [addOpen, setAddOpen] = useState(false); const [query, setQuery] = useState(""); const [candidates, setCandidates] = useState<Candidate[]>([]); const [candidate, setCandidate] = useState<Candidate|null>(null); const [form, setForm] = useState({ bio:"", expertise:"", industries:"", goals:"", formats:"", maxMatches:5 }); const [busy, setBusy] = useState(""); const [error, setError] = useState("");
+  const load = useCallback(async () => { setBusy("load"); setError(""); try { const [pool, expert, log] = await Promise.all([getAuthJson<MatchProfile[]>(`/api/accelerators/cohorts/${cohortId}/matchmaking/profiles`,token),getAuthJson<{user_id:number;name:string;email:string}|null>(`/api/accelerators/cohorts/${cohortId}/expert`,token),getAuthJson<HistoryRow[]>(`/api/accelerators/cohorts/${cohortId}/matchmaking-history`,token)]); setProfiles(pool); setCurrentExpert(expert); setSelectedExpert(expert ? String(expert.user_id) : ""); setHistory(log); } catch(reason){setError(describeApiError(reason,"Не удалось загрузить матчмейкинг"));} finally{setBusy("");}},[cohortId,token]);
+  useEffect(()=>{void load();},[load]);
+  useEffect(()=>{const close=(event:KeyboardEvent)=>{if(event.key==="Escape"){setHistoryOpen(false);setAddOpen(false);}};window.addEventListener("keydown",close);return()=>window.removeEventListener("keydown",close);},[]);
+  const experts=useMemo(()=>profiles.filter((row)=>row.role==="expert"&&row.active),[profiles]);
+  const search=async()=>{if(query.trim().length<2)return;setBusy("search");try{setCandidates(await getAuthJson<Candidate[]>(`/api/accelerators/cohorts/${cohortId}/matchmaking/candidates?role=expert&q=${encodeURIComponent(query)}`,token));}catch(reason){setError(describeApiError(reason,"Не удалось найти эксперта"));}finally{setBusy("");}};
+  const add=async(event:FormEvent)=>{event.preventDefault();if(!candidate)return;setBusy("add");try{await postAuthJson(`/api/accelerators/cohorts/${cohortId}/matchmaking/profiles`,{user_id:candidate.id,role:"expert",bio:form.bio||null,expertise:tags(form.expertise),needs:[],industries:tags(form.industries),goals:tags(form.goals),preferred_formats:tags(form.formats),max_matches:form.maxMatches,active:true},token);setAddOpen(false);setCandidate(null);setCandidates([]);setQuery("");setForm({bio:"",expertise:"",industries:"",goals:"",formats:"",maxMatches:5});await load();}catch(reason){setError(describeApiError(reason,"Не удалось добавить эксперта"));}finally{setBusy("");}};
+  const assign=async()=>{const userId=Number(selectedExpert);if(!userId)return;setBusy("assign");try{setCurrentExpert(await putAuthJson(`/api/accelerators/cohorts/${cohortId}/expert`,{user_id:userId},token));await load();}catch(reason){setError(describeApiError(reason,"Не удалось назначить эксперта потока"));}finally{setBusy("");}};
 
-const parseTags = (value: string) => Array.from(new Set(value.split(",").map((item) => item.trim()).filter(Boolean)));
-
-export function MatchmakingManager({ cohortId, token }: { cohortId: number; token: string }) {
-  const [profiles, setProfiles] = useState<MatchProfile[]>([]);
-  const [currentExpert, setCurrentExpert] = useState<{ user_id: number; name: string; email: string } | null>(null);
-  const [history, setHistory] = useState<HistoryRow[]>([]);
-  const [query, setQuery] = useState("");
-  const [candidates, setCandidates] = useState<Candidate[]>([]);
-  const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null);
-  const [poolForm, setPoolForm] = useState({ bio: "", expertise: "", industries: "", goals: "", formats: "", maxMatches: 5 });
-  const [busy, setBusy] = useState("");
-  const [error, setError] = useState("");
-
-  const load = useCallback(async () => {
-    setBusy("load"); setError("");
-    try {
-      const [profileRows, expert, historyRows] = await Promise.all([
-        getAuthJson<MatchProfile[]>(`/api/accelerators/cohorts/${cohortId}/matchmaking/profiles`, token),
-        getAuthJson<{ user_id: number; name: string; email: string } | null>(`/api/accelerators/cohorts/${cohortId}/expert`, token),
-        getAuthJson<HistoryRow[]>(`/api/accelerators/cohorts/${cohortId}/matchmaking-history`, token),
-      ]);
-      setProfiles(profileRows); setCurrentExpert(expert); setHistory(historyRows);
-    } catch (reason) { setError(describeApiError(reason, "Не удалось загрузить матчмейкинг")); }
-    finally { setBusy(""); }
-  }, [cohortId, token]);
-  useEffect(() => { void load(); }, [load]);
-
-  const experts = useMemo(() => profiles.filter((row) => row.role === "expert" && row.active), [profiles]);
-
-  const search = async () => {
-    if (query.trim().length < 2) return;
-    setBusy("search"); setError("");
-    try { setCandidates(await getAuthJson<Candidate[]>(`/api/accelerators/cohorts/${cohortId}/matchmaking/candidates?role=expert&q=${encodeURIComponent(query)}`, token)); }
-    catch (reason) { setError(describeApiError(reason, "Не удалось найти эксперта")); }
-    finally { setBusy(""); }
-  };
-
-  const addExpertProfile = async (event: FormEvent) => {
-    event.preventDefault(); if (!selectedCandidate) return;
-    setBusy("add"); setError("");
-    try {
-      await postAuthJson(`/api/accelerators/cohorts/${cohortId}/matchmaking/profiles`, {
-        user_id: selectedCandidate.id, role: "expert", bio: poolForm.bio || null,
-        expertise: parseTags(poolForm.expertise), needs: [], industries: parseTags(poolForm.industries),
-        goals: parseTags(poolForm.goals), preferred_formats: parseTags(poolForm.formats),
-        max_matches: poolForm.maxMatches, active: true,
-      }, token);
-      setSelectedCandidate(null); setCandidates([]); setQuery("");
-      setPoolForm({ bio: "", expertise: "", industries: "", goals: "", formats: "", maxMatches: 5 });
-      await load();
-    } catch (reason) { setError(describeApiError(reason, "Не удалось добавить эксперта")); }
-    finally { setBusy(""); }
-  };
-
-  const assignExpert = async (userId: number) => {
-    if (!userId) return;
-    setBusy("expert"); setError("");
-    try { setCurrentExpert(await putAuthJson(`/api/accelerators/cohorts/${cohortId}/expert`, { user_id: userId }, token)); await load(); }
-    catch (reason) { setError(describeApiError(reason, "Не удалось назначить эксперта потока")); }
-    finally { setBusy(""); }
-  };
-
-  return <div className="space-y-5">
-    <TeamManager cohortId={cohortId} token={token} />
-
-    <section className="workspace-card"><h2 className="text-xl">Эксперт потока</h2><p className="mt-1 text-sm text-white/40">У потока один эксперт. Организатор может заменить его; изменение попадёт в историю.</p><div className="mt-5 flex flex-wrap items-center gap-3"><select aria-label="Эксперт потока" value={currentExpert?.user_id || ""} onChange={(event) => void assignExpert(Number(event.target.value))} className="workspace-input !w-auto"><option value="">Выберите эксперта</option>{experts.map((row) => <option key={row.id} value={row.user_id}>{row.name}</option>)}</select>{currentExpert && <span className="text-sm text-emerald-300">Назначен: {currentExpert.name}</span>}</div></section>
-
-    <section className="workspace-card">
-      <h2 className="flex items-center gap-2 text-xl"><Plus size={18} /> Добавить эксперта</h2>
-      <p className="mt-1 text-sm text-white/40">Сначала добавьте профиль эксперта в поток, затем выберите его выше.</p>
-      <div className="mt-5 flex gap-3"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Имя или email пользователя" className="workspace-input" /><button type="button" onClick={() => void search()} disabled={busy === "search"} className="workspace-button shrink-0"><Search size={15} /> Найти</button></div>
-      {!!candidates.length && <div className="mt-3 flex flex-wrap gap-2">{candidates.map((row) => <button type="button" key={row.id} onClick={() => setSelectedCandidate(row)} className={`rounded-full border px-3 py-2 text-sm ${selectedCandidate?.id === row.id ? "border-white bg-white text-black" : "border-white/10 text-white/55"}`}>{row.name} · {row.email}</button>)}</div>}
-      {selectedCandidate && <form onSubmit={addExpertProfile} className="mt-5 grid gap-3 rounded-2xl border border-white/10 p-4 sm:grid-cols-2"><p className="sm:col-span-2">{selectedCandidate.name}</p><label className="text-sm text-white/55 sm:col-span-2">Описание<textarea value={poolForm.bio} onChange={(event) => setPoolForm({ ...poolForm, bio: event.target.value })} rows={2} className="workspace-input mt-2 resize-y" /></label><PoolInput label="Компетенции" value={poolForm.expertise} onChange={(value) => setPoolForm({ ...poolForm, expertise: value })} /><PoolInput label="Отрасли" value={poolForm.industries} onChange={(value) => setPoolForm({ ...poolForm, industries: value })} /><PoolInput label="Цели" value={poolForm.goals} onChange={(value) => setPoolForm({ ...poolForm, goals: value })} /><PoolInput label="Форматы" value={poolForm.formats} onChange={(value) => setPoolForm({ ...poolForm, formats: value })} /><label className="text-sm text-white/55">Лимит активных назначений<input type="number" min={1} max={100} value={poolForm.maxMatches} onChange={(event) => setPoolForm({ ...poolForm, maxMatches: Number(event.target.value) })} className="workspace-input mt-2" /></label><div className="flex items-end"><button disabled={busy === "add"} className="workspace-button"><UserRoundCheck size={15} /> Добавить</button></div></form>}
-      <div className="mt-6 grid gap-3 md:grid-cols-2">{experts.map((row) => <article key={row.id} className="rounded-2xl border border-white/8 p-4"><p>{row.name}</p><p className="text-xs text-white/35">{row.email}</p><p className="mt-3 text-sm text-white/45">{row.expertise.join(", ") || "Компетенции не указаны"}</p></article>)}</div>
-    </section>
-
-    <section className="workspace-card"><h2 className="flex items-center gap-2 text-xl"><History size={18} /> История матчмейкинга</h2><div className="mt-5 space-y-3">{history.slice(0, 50).map((row) => <article key={row.id} className="flex flex-wrap items-start justify-between gap-3 border-l border-white/15 pl-4"><div><p className="text-sm">{HISTORY_LABELS[row.action] || row.action}</p><p className="mt-1 text-xs text-white/35">{row.target_type}{row.target_id ? ` #${row.target_id}` : ""}</p></div><time className="text-xs text-white/30">{new Date(row.created_at).toLocaleString("ru-RU")}</time></article>)}{!history.length && <p className="text-sm text-white/35">История пока пуста.</p>}</div></section>
-    {busy === "load" && <Loader2 className="mx-auto animate-spin text-white/35" />}
-    {error && <p role="alert" className="rounded-2xl border border-red-400/20 bg-red-400/10 p-4 text-sm text-red-200">{error}</p>}
-  </div>;
+  return <section>
+    <header className="flex flex-wrap items-end justify-between gap-4 border-b border-white/8 pb-6"><div><p className="text-xs text-white/35">Обзор потока&nbsp; / &nbsp;Матчмейкинг</p><h1 className="mt-3 text-3xl font-semibold">Матчмейкинг</h1><p className="mt-1 text-sm text-white/45">Команды и эксперты потока</p></div><div className="flex flex-wrap gap-2"><button type="button" onClick={()=>void load()} disabled={busy==="load"} className="overview-secondary"><RefreshCw size={15} className={busy==="load"?"animate-spin":""}/>Обновить</button><button type="button" onClick={()=>setHistoryOpen(true)} className="overview-secondary"><History size={15}/>История</button>{view==="experts"&&<button type="button" onClick={()=>setAddOpen(true)} className="workspace-button"><Plus size={15}/>Добавить эксперта</button>}</div></header>
+    <div className="mt-5 flex border-b border-white/10"><Tab active={view==="teams"} onClick={()=>setView("teams")}>Команды</Tab><Tab active={view==="trackers"} onClick={()=>setView("trackers")}>Трекеры</Tab><Tab active={view==="experts"} onClick={()=>setView("experts")}>Эксперты <span className="ml-2 rounded-md bg-white/8 px-2 py-0.5 text-xs">{experts.length}</span></Tab></div>
+    {error&&<p role="alert" className="mt-5 rounded-xl bg-red-400/10 p-3 text-sm text-red-200">{error}</p>}
+    <div className="mt-5">{view==="teams"?<TeamManager cohortId={cohortId} token={token}/>:view==="trackers"?<TrackerManager cohortId={cohortId} token={token} residents={residents}/>:<div className="space-y-5"><div className="rounded-2xl border border-white/9 p-5"><p className="text-xs uppercase tracking-[.16em] text-white/35">Эксперт потока</p><div className="mt-4 flex flex-wrap items-end gap-3"><label className="min-w-64 flex-1 text-xs text-white/45">Выберите из экспертного пула<select value={selectedExpert} onChange={(event)=>setSelectedExpert(event.target.value)} className="workspace-input mt-2"><option value="">Не назначен</option>{experts.map((row)=><option key={row.id} value={row.user_id}>{row.name}</option>)}</select></label><button type="button" onClick={()=>void assign()} disabled={!selectedExpert||busy==="assign"||String(currentExpert?.user_id||"")===selectedExpert} className="workspace-button">Подтвердить назначение</button></div>{currentExpert&&<p className="mt-3 text-xs text-emerald-300">Сейчас назначен: {currentExpert.name}</p>}</div><div className="overflow-hidden rounded-2xl border border-white/9">{experts.map((row)=><article key={row.id} className="grid gap-3 border-b border-white/8 p-4 last:border-0 md:grid-cols-[1fr_1.3fr_120px_130px] md:items-center"><div><p>{row.name}</p><p className="text-xs text-white/35">{row.email}</p></div><p className="text-sm text-white/50">{row.expertise.join(", ")||"Компетенции не указаны"}</p><p className="text-sm text-white/50">{row.active_matches}/{row.max_matches}</p><span className="text-xs text-emerald-300">{row.user_id===currentExpert?.user_id?"Эксперт потока":"Доступен"}</span></article>)}{!experts.length&&<div className="py-14 text-center"><UserRoundCheck className="mx-auto text-white/20"/><p className="mt-4">Экспертный пул пока пуст</p><button type="button" onClick={()=>setAddOpen(true)} className="workspace-button mt-5"><Plus size={15}/>Добавить эксперта</button></div>}</div></div>}</div>
+    {addOpen&&<div className="fixed inset-0 z-[80] grid place-items-center bg-black/70 p-4" role="presentation" onMouseDown={(event)=>{if(event.target===event.currentTarget)setAddOpen(false);}}><form onSubmit={add} role="dialog" aria-modal="true" aria-labelledby="expert-title" className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-white/10 bg-[#1c1b1b] p-6 shadow-2xl"><div className="flex justify-between"><div><h2 id="expert-title" className="text-2xl">Добавить эксперта</h2><p className="mt-1 text-sm text-white/40">Найдите пользователя и создайте экспертный профиль</p></div><button type="button" onClick={()=>setAddOpen(false)}><X className="text-white/45"/></button></div><div className="mt-5 flex gap-2"><input value={query} onChange={(event)=>setQuery(event.target.value)} placeholder="Имя или email" className="workspace-input"/><button type="button" onClick={()=>void search()} className="overview-secondary"><Search size={15}/>Найти</button></div>{candidates.length>0&&<div className="mt-3 space-y-2">{candidates.map((row)=><button type="button" key={row.id} onClick={()=>setCandidate(row)} className={`block w-full rounded-xl border p-3 text-left text-sm ${candidate?.id===row.id?"border-white/35 bg-white/5":"border-white/8"}`}>{row.name}<span className="ml-2 text-white/35">{row.email}</span></button>)}</div>}{candidate&&<div className="mt-5 grid gap-3 sm:grid-cols-2"><p className="sm:col-span-2">{candidate.name}</p><label className="text-xs text-white/45 sm:col-span-2">Описание<textarea value={form.bio} onChange={(event)=>setForm({...form,bio:event.target.value})} rows={2} className="workspace-input mt-2"/></label><Input label="Компетенции" value={form.expertise} onChange={(value)=>setForm({...form,expertise:value})}/><Input label="Отрасли" value={form.industries} onChange={(value)=>setForm({...form,industries:value})}/><Input label="Цели" value={form.goals} onChange={(value)=>setForm({...form,goals:value})}/><Input label="Форматы" value={form.formats} onChange={(value)=>setForm({...form,formats:value})}/><label className="text-xs text-white/45">Лимит назначений<input type="number" min={1} value={form.maxMatches} onChange={(event)=>setForm({...form,maxMatches:Number(event.target.value)})} className="workspace-input mt-2"/></label></div>}<div className="mt-6 flex justify-end gap-2"><button type="button" onClick={()=>setAddOpen(false)} className="overview-secondary">Отмена</button><button disabled={!candidate||busy==="add"} className="workspace-button">Добавить эксперта</button></div></form></div>}
+    {historyOpen&&<div className="fixed inset-0 z-[80] flex justify-end bg-black/65" role="presentation" onMouseDown={(event)=>{if(event.target===event.currentTarget)setHistoryOpen(false);}}><aside role="dialog" aria-modal="true" aria-labelledby="history-title" className="h-full w-full max-w-xl overflow-y-auto border-l border-white/10 bg-[#1c1b1b] p-6"><div className="flex justify-between"><div><h2 id="history-title" className="text-2xl">История матчмейкинга</h2><p className="mt-1 text-sm text-white/40">Последние изменения команд и назначений</p></div><button type="button" onClick={()=>setHistoryOpen(false)}><X className="text-white/45"/></button></div><div className="mt-8 space-y-0">{history.slice(0,50).map((row)=><div key={row.id} className="relative border-l border-white/15 pb-7 pl-6 before:absolute before:-left-1 before:top-1 before:h-2 before:w-2 before:rounded-full before:bg-white/40"><p className="text-sm">{labels[row.action]||row.action}</p><p className="mt-1 text-xs text-white/35">{row.target_type}{row.target_id?` #${row.target_id}`:""}</p><time className="mt-2 block text-xs text-white/30">{new Date(row.created_at).toLocaleString("ru-RU")}</time></div>)}</div></aside></div>}
+  </section>;
 }
 
-function PoolInput({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
-  return <label className="text-sm text-white/55">{label}<input value={value} onChange={(event) => onChange(event.target.value)} placeholder="через запятую" className="workspace-input mt-2" /></label>;
-}
+function Tab({active,onClick,children}:{active:boolean;onClick:()=>void;children:React.ReactNode}){return <button type="button" onClick={onClick} className={`border-b-2 px-4 py-3 text-sm ${active?"border-white text-white":"border-transparent text-white/45"}`}>{children}</button>}
+function Input({label,value,onChange}:{label:string;value:string;onChange:(value:string)=>void}){return <label className="text-xs text-white/45">{label}<input value={value} onChange={(event)=>onChange(event.target.value)} placeholder="через запятую" className="workspace-input mt-2"/></label>}

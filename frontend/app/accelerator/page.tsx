@@ -12,14 +12,12 @@ import { ApplicationFormEditor, type ApplicationFormSchema } from "@/components/
 import { ApplicationManager, type AcceleratorApplication } from "@/components/accelerator/ApplicationManager";
 import { AttendanceManager } from "@/components/accelerator/AttendanceManager";
 import { AuditLog } from "@/components/accelerator/AuditLog";
-import { HomeworkManager } from "@/components/accelerator/HomeworkManager";
-import { HomeworkReviewQueue } from "@/components/accelerator/HomeworkReviewQueue";
+import { HomeworkWorkspace } from "@/components/accelerator/HomeworkWorkspace";
 import { OrganizerManager } from "@/components/accelerator/OrganizerManager";
 import { ProgramBuilder } from "@/components/accelerator/ProgramBuilder";
 import { QuotaManager, type Limits } from "@/components/accelerator/QuotaManager";
 import { ResidentWorkspace, type ResidentWorkspaceData } from "@/components/accelerator/ResidentWorkspace";
 import { ResidentReport } from "@/components/accelerator/ResidentReport";
-import { TrackerManager } from "@/components/accelerator/TrackerManager";
 import { TrackerAttendance } from "@/components/accelerator/TrackerAttendance";
 import { MatchmakingManager } from "@/components/accelerator/MatchmakingManager";
 import { MatchmakingWorkspace } from "@/components/accelerator/MatchmakingWorkspace";
@@ -68,7 +66,7 @@ export default function AcceleratorWorkspacePage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const savedTab = params.get("section") as TabKey | null;
-    if (savedTab) setTab(savedTab);
+    if (savedTab) setTab(savedTab === "trackers" ? "matching" : savedTab);
     const savedAccelerator = Number(params.get("accelerator")); if (savedAccelerator > 0) setAcceleratorId(savedAccelerator);
     const savedCohort = Number(params.get("cohort")); if (savedCohort > 0) setCohortId(savedCohort);
     const savedResident = Number(params.get("resident")); if (savedResident > 0) setSelectedMembershipId(savedResident);
@@ -167,7 +165,7 @@ export default function AcceleratorWorkspacePage() {
     if (config?.modules.project_audit) rows.push({ key: "project_audit", label: "Аудит проекта" });
     if (config?.modules.demo_day) rows.push({ key: "demo_day", label: "Демо-день" });
     if (config?.modules.pitchy_artifacts) rows.push({ key: "artifacts", label: "Результаты Pitchy" });
-    rows.push({ key: "trackers", label: "Трекеры" }, { key: "reports", label: "Отчётность" });
+    rows.push({ key: "reports", label: "Отчётность" });
     rows.push({ key: "closure", label: "Завершение потока" });
     if (isAdmin) rows.push({ key: "quotas", label: "Лимиты" });
     rows.push({ key: "settings", label: "Настройки" }, { key: "audit", label: "Журнал" }); return rows;
@@ -199,20 +197,15 @@ export default function AcceleratorWorkspacePage() {
         {tab === "operations" && canManage && <AcceleratorOperations cohortId={selectedCohort.id} acceleratorId={selectedAccelerator.id} token={token} isAdmin={isAdmin} />}
         {tab === "applications" && <ApplicationManager token={token} applications={applications} schema={selectedCohort.application_form_schema || {}} cohortName={selectedCohort.name} publicUrl={"/accelerators/apply/" + selectedCohort.id} onChanged={loadCohortDetails} />}
         {tab === "form" && <ApplicationFormEditor key={selectedCohort.id} schema={selectedCohort.application_form_schema || {}} cohortId={selectedCohort.id} token={token} publicUrl={`/accelerators/apply/${selectedCohort.id}`} cohortStatus={selectedCohort.status} onSettings={() => navigate("settings")} onApplications={() => navigate("applications")} onPublished={loadCohortDetails} />}
-        {tab === "program" && <div className="space-y-6">
-          <ProgramBuilder focusId={targetId} cohortId={selectedCohort.id} token={token} />
-          {config?.modules.attendance && <AttendanceManager  cohortId={selectedCohort.id} token={token} />}
-          {config?.modules.homework && <><HomeworkReviewQueue  cohortId={selectedCohort.id} token={token} /><HomeworkManager cohortId={selectedCohort.id} token={token} residents={residents} isAdmin={isAdmin} pitchyEnabled={selectedCohort.homework_pitchy_enabled} /></>}
-        </div>}
-        {tab === "homework" && config?.modules.homework && <div className="space-y-6"><HomeworkReviewQueue initialAssignmentId={targetId} cohortId={selectedCohort.id} token={token} />{canManage && <HomeworkManager focusId={targetId} cohortId={selectedCohort.id} token={token} residents={residents} isAdmin={isAdmin} pitchyEnabled={selectedCohort.homework_pitchy_enabled} />}</div>}
+        {tab === "program" && <ProgramBuilder focusId={targetId} cohortId={selectedCohort.id} token={token} />}
+        {tab === "homework" && config?.modules.homework && <HomeworkWorkspace focusId={targetId} cohortId={selectedCohort.id} token={token} residents={residents} isAdmin={isAdmin} pitchyEnabled={selectedCohort.homework_pitchy_enabled} />}
         {tab === "attendance" && config?.modules.attendance && (canManage ? <AttendanceManager focusId={tab === "attendance" ? targetId : undefined} cohortId={selectedCohort.id} token={token} /> : <TrackerAttendance cohortId={selectedCohort.id} token={token} />)}
-        {tab === "matching" && config?.modules.matchmaking && (canManage ? <MatchmakingManager cohortId={selectedCohort.id} token={token} /> : <MatchmakingWorkspace cohortId={selectedCohort.id} />)}
+        {tab === "matching" && config?.modules.matchmaking && (canManage ? <MatchmakingManager cohortId={selectedCohort.id} token={token} residents={residents} /> : <MatchmakingWorkspace cohortId={selectedCohort.id} />)}
         {tab === "project_audit" && config?.modules.project_audit && <ProjectAuditWorkspace cohortId={selectedCohort.id} residents={residents} token={token} canCreateTasks taskIntegrationEnabled={Boolean(config.modules.progress_tracking)} />}
         {tab === "demo_day" && config?.modules.demo_day && <DemoDayWorkspace cohortId={selectedCohort.id} residents={residents} token={token} canManage={canManage} />}
         {tab === "artifacts" && config?.modules.pitchy_artifacts && <ArtifactWorkspace cohortId={selectedCohort.id} token={token} />}
-        {tab === "trackers" && canManage && <TrackerManager token={token} cohortId={selectedCohort.id} residents={residents} />}
         {tab === "reports" && <ResidentReport token={token} cohortId={selectedCohort.id} canManage={canManage} onChanged={loadCohortDetails} onOpenParticipant={setSelectedMembershipId} initialQuery={reportQuery} initialStatus={reportStatus} onFiltersChange={(query, status) => { setReportQuery(query); setReportStatus(status); }} />}
-        {tab === "tracking" && config?.modules.progress_tracking && <div className="space-y-5"><BulkTrackingTaskForm cohortId={selectedCohort.id} token={token} onCreated={() => setTrackingVersion((value) => value + 1)} /><TrackingDashboard key={trackingVersion} cohortId={selectedCohort.id} token={token} onOpenParticipant={setSelectedMembershipId} /></div>}
+        {tab === "tracking" && config?.modules.progress_tracking && <TrackingDashboard key={trackingVersion} cohortId={selectedCohort.id} token={token} onOpenParticipant={setSelectedMembershipId} headerAction={<BulkTrackingTaskForm cohortId={selectedCohort.id} token={token} onCreated={() => setTrackingVersion((value) => value + 1)} />} />}
         {tab === "closure" && canManage && <CohortClosure cohortId={selectedCohort.id} token={token} onCompleted={async () => { await loadAccelerators(); await loadCohortDetails(); }} />}
         {tab === "quotas" && isAdmin && <QuotaManager token={token} cohortId={selectedCohort.id} initialTemplate={selectedCohort.default_quota_config} residents={residents} />}
         {tab === "settings" && <SettingsPanel token={token} isAdmin={isAdmin} accelerator={selectedAccelerator} cohort={selectedCohort} config={config} onConfig={setConfig} onCohort={(updated) => setCohorts((rows) => rows.map((row) => row.id === updated.id ? updated : row))} onAccelerator={(updated) => setAccelerators((rows) => rows.map((row) => row.id === updated.id ? { ...row, ...updated } : row))} onCohortCreated={async (created) => { const rows = await getAuthJson<Cohort[]>(`/api/accelerators/${selectedAccelerator.id}/cohorts`, token); setCohorts(rows); setCohortId(created.id); }} />}
