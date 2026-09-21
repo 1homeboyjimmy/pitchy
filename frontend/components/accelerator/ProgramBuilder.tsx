@@ -13,6 +13,7 @@ import {
   GitBranch,
   Loader2,
   MessageSquare,
+  Paperclip,
   Pencil,
   Plus,
   Presentation,
@@ -27,7 +28,7 @@ import { describeApiError, getAuthJson, postAuthJson, putAuthJson } from "@/lib/
 type Material = {
   id?: number;
   title: string;
-  kind: "link" | "video" | "text";
+  kind: "link" | "video" | "text" | "file";
   url?: string | null;
   content?: string | null;
   required: boolean;
@@ -239,6 +240,42 @@ export function ProgramBuilder({ cohortId, token, focusId }: { cohortId: number;
     materials: current.materials.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item),
   }));
 
+  const uploadMaterialFile = async (index: number, file: File | undefined) => {
+    if (!file) return;
+    setBusy(`material-upload-${index}`);
+    setError("");
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      const headers: Record<string, string> = { "x-pitchy-api": "1" };
+      if (token !== "cookie-session") headers.Authorization = `Bearer ${token}`;
+      const response = await fetch(`/api/accelerators/cohorts/${cohortId}/program-files`, {
+        method: "POST",
+        headers,
+        body,
+        credentials: "include",
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.detail || `Не удалось загрузить ${file.name}`);
+      }
+      const result = await response.json() as { name: string; url: string };
+      setForm((current) => ({
+        ...current,
+        materials: current.materials.map((item, itemIndex) => itemIndex === index ? {
+          ...item,
+          title: item.title.trim() ? item.title : result.name,
+          url: result.url,
+          content: "",
+        } : item),
+      }));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Не удалось загрузить файл материала");
+    } finally {
+      setBusy("");
+    }
+  };
+
   const addAction = () => setForm((current) => ({
     ...current,
     actions: [...current.actions, {
@@ -310,14 +347,21 @@ export function ProgramBuilder({ cohortId, token, focusId }: { cohortId: number;
       </div>
       <div className="mt-3 space-y-3">{form.materials.map((material, index) => <div key={index} className="grid gap-3 rounded-2xl border border-white/8 p-4 sm:grid-cols-[1fr_150px_auto]">
         <input value={material.title} onChange={(event) => patchMaterial(index, { title: event.target.value })} required placeholder="Название материала" className="workspace-input" />
-        <select value={material.kind} onChange={(event) => patchMaterial(index, { kind: event.target.value as Material["kind"] })} className="workspace-input"><option value="link">Ссылка</option><option value="video">Видео</option><option value="text">Текст</option></select>
+        <select value={material.kind} onChange={(event) => patchMaterial(index, { kind: event.target.value as Material["kind"], url: "", content: "" })} className="workspace-input"><option value="link">Ссылка</option><option value="video">Видео</option><option value="text">Текст</option><option value="file">Файл</option></select>
         <button type="button" onClick={() => setForm((current) => ({ ...current, materials: current.materials.filter((_, itemIndex) => itemIndex !== index) }))} className="rounded-full p-3 text-white/35 hover:text-red-300" aria-label="Удалить материал"><Trash2 size={17} /></button>
-        {material.kind === "text" ? <textarea value={material.content || ""} onChange={(event) => patchMaterial(index, { content: event.target.value })} required rows={3} placeholder="Содержание" className="workspace-input resize-y sm:col-span-3" /> : <input value={material.url || ""} onChange={(event) => patchMaterial(index, { url: event.target.value })} required type="url" placeholder="https://…" className="workspace-input sm:col-span-3" />}
+        {material.kind === "text" ? <textarea value={material.content || ""} onChange={(event) => patchMaterial(index, { content: event.target.value })} required rows={3} placeholder="Содержание" className="workspace-input resize-y sm:col-span-3" /> : material.kind === "file" ? <div className="rounded-xl border border-dashed border-white/15 p-4 sm:col-span-3">
+          <label className={`inline-flex items-center gap-2 text-sm ${busy === `material-upload-${index}` ? "cursor-wait text-white/35" : "cursor-pointer text-white/65"}`}>
+            {busy === `material-upload-${index}` ? <Loader2 size={15} className="animate-spin" /> : <Paperclip size={15} />}
+            {busy === `material-upload-${index}` ? "Загрузка…" : material.url ? "Заменить файл" : "Прикрепить файл"}
+            <input type="file" disabled={busy === `material-upload-${index}`} accept=".pdf,.doc,.docx,.txt,.md,.xls,.xlsx,.csv,.ppt,.pptx,.jpg,.jpeg,.png,.webp,.mp3,.wav,.m4a,.mp4,.mov,.webm" className="sr-only" onChange={(event) => { void uploadMaterialFile(index, event.target.files?.[0]); event.target.value = ""; }} />
+          </label>
+          {material.url ? <a href={material.url} target="_blank" rel="noreferrer" className="ml-3 text-xs text-blue-300 underline">Файл загружен</a> : <p className="mt-2 text-xs text-white/30">PDF, DOC/DOCX, TXT, MD, таблицы, презентации, изображения, аудио и видео</p>}
+        </div> : <input value={material.url || ""} onChange={(event) => patchMaterial(index, { url: event.target.value })} required type="url" placeholder="https://…" className="workspace-input sm:col-span-3" />}
         <label className="flex items-center gap-2 text-xs text-white/45 sm:col-span-3"><input type="checkbox" checked={material.required} onChange={(event) => patchMaterial(index, { required: event.target.checked })} /> Обязательный материал</label>
       </div>)}</div></>}
 
       {formTab === "completion" && <div className="space-y-5"><div><h4 className="text-lg">Правила завершения</h4><p className="mt-1 text-sm text-white/40">Определите, когда участнику засчитывается этап.</p></div><label className="block text-sm text-white/60">Как завершается этап<select value={form.completionMode} onChange={(event) => setForm({ ...form, completionMode: event.target.value as "auto" | "manual" | "none" })} className="workspace-input mt-2"><option value="auto">Автоматически по требованиям</option><option value="manual">После подтверждения трекера</option><option value="none">Информационный, не влияет на процент</option></select></label><label className="flex items-center justify-between gap-4 rounded-xl border border-white/9 p-4 text-sm text-white/60"><span><b className="block font-medium text-white">Посещение мероприятий</b><small className="mt-1 block text-white/35">Все связанные мероприятия должны быть посещены.</small></span><input type="checkbox" checked={form.attendanceRequired} onChange={(event) => setForm({ ...form, attendanceRequired: event.target.checked })} /></label><div className="rounded-xl border border-white/8 p-4 text-sm text-white/45"><p>Материалы: {form.materials.filter(item=>item.required).length} обязательных</p><p className="mt-2">Действия Pitchy: {form.actions.filter(item=>item.required).length} обязательных</p><p className="mt-2">Домашние задания и мероприятия учитываются автоматически после привязки.</p></div></div>}</div>
-      <div className="flex items-center justify-between gap-2 border-t border-white/8 bg-[#1c1b1b] px-5 py-4 sm:px-6"><button type="button" onClick={()=>formTab==='main'?reset():setFormTab(formTab==='completion'?'content':'main')} className="overview-secondary">{formTab==='main'?'Отмена':'Назад'}</button><div className="flex gap-2"><button disabled={busy === "save"} className="overview-secondary">{busy === "save" && <Loader2 size={15} className="animate-spin" />} Сохранить черновик</button>{formTab!=='completion'&&<button type="button" onClick={()=>setFormTab(formTab==='main'?'content':'completion')} className="workspace-button">Продолжить</button>}</div></div>
+      <div className="flex items-center justify-between gap-2 border-t border-white/8 bg-[#1c1b1b] px-5 py-4 sm:px-6"><button type="button" onClick={()=>formTab==='main'?reset():setFormTab(formTab==='completion'?'content':'main')} className="overview-secondary">{formTab==='main'?'Отмена':'Назад'}</button><div className="flex gap-2"><button disabled={Boolean(busy)} className="overview-secondary">{busy === "save" && <Loader2 size={15} className="animate-spin" />} Сохранить черновик</button>{formTab!=='completion'&&<button type="button" onClick={()=>setFormTab(formTab==='main'?'content':'completion')} className="workspace-button">Продолжить</button>}</div></div>
     </form></div>}
 
     <div className="mt-6">

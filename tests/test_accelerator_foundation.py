@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+import io
 import json
 import uuid
 
 import pytest
-from fastapi import BackgroundTasks, HTTPException
+from fastapi import BackgroundTasks, HTTPException, UploadFile
 from pydantic import ValidationError
 
 from accelerator_service import accelerator_quota_snapshot
@@ -24,6 +25,7 @@ from models import (
     AcceleratorAttendanceRecord,
     AcceleratorEvent,
     AcceleratorEventChange,
+    AcceleratorFile,
     AcceleratorNotificationOutbox,
     AcceleratorAuditLog,
     AcceleratorProgramConfig,
@@ -141,6 +143,7 @@ from routers.accelerators import (
     update_cohort_status,
     update_membership_status,
     update_tracker_assignments,
+    upload_program_file,
     mark_event_attendance,
     mark_membership_feedback_read,
     membership_today,
@@ -1506,6 +1509,64 @@ def test_application_file_signature_validation_rejects_spoofed_content():
     assert accelerator_file_signature_matches(".docx", b"PK\x03\x04archive") is True
     assert accelerator_file_signature_matches(".png", b"plain text renamed to png") is False
     assert accelerator_file_signature_matches(".mp4", b"plain text renamed to mp4") is False
+
+
+def test_program_file_material_requires_uploaded_file_url():
+    material = ProgramMaterialCreate(
+        title="Методика",
+        kind="file",
+        url="/api/accelerators/files/upload-token",
+    )
+    assert material.kind == "file"
+    with pytest.raises(ValidationError):
+        ProgramMaterialCreate(title="Методика", kind="file", url="https://example.com/file.pdf")
+    with pytest.raises(ValidationError):
+        ProgramMaterialCreate(title="Методика", kind="file")
+
+
+@pytest.mark.asyncio
+async def test_program_file_upload_is_claimed_when_stage_is_created(tmp_path, monkeypatch):
+    suffix = uuid.uuid4().hex
+    monkeypatch.setattr("routers.accelerators.ACCELERATOR_UPLOAD_DIR", tmp_path)
+    async with AsyncSessionLocal() as db:
+        admin = User(email=f"admin-program-file-{suffix}@example.test", name="Admin", is_admin=True)
+        db.add(admin)
+        await db.commit()
+        await db.refresh(admin)
+        accelerator = await create_accelerator(
+            AcceleratorCreate(name="Program files accelerator"), admin, db
+        )
+        cohort = await create_cohort(
+            accelerator["id"], CohortCreate(name="Program files cohort"), admin, db
+        )
+
+        uploaded = await upload_program_file(
+            cohort["id"],
+            UploadFile(filename="guide.md", file=io.BytesIO(b"# Guide\n\nRead me")),
+            admin,
+            db,
+        )
+        stored = (await db.execute(select(AcceleratorFile).where(
+            AcceleratorFile.cohort_id == cohort["id"]
+        ))).scalar_one()
+        assert stored.purpose == "program_draft"
+        assert (tmp_path / stored.stored_name).is_file()
+
+        stage = await create_program_stage(
+            cohort["id"],
+            ProgramStageCreate(
+                title="Материалы этапа",
+                materials=[ProgramMaterialCreate(
+                    title=uploaded["name"], kind="file", url=uploaded["url"]
+                )],
+            ),
+            admin,
+            db,
+        )
+        await db.refresh(stored)
+        assert stored.purpose == "program"
+        assert stage["materials"][0]["kind"] == "file"
+        assert stage["materials"][0]["url"] == uploaded["url"]
 
 
 @pytest.mark.asyncio

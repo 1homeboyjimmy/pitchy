@@ -752,7 +752,7 @@ class HomeworkReview(BaseModel):
 
 class ProgramMaterialCreate(BaseModel):
     title: str = Field(min_length=2, max_length=300)
-    kind: Literal["link", "video", "text"] = "link"
+    kind: Literal["link", "video", "text", "file"] = "link"
     url: str | None = Field(default=None, max_length=2000)
     content: str | None = Field(default=None, max_length=30000)
     required: bool = True
@@ -762,6 +762,9 @@ class ProgramMaterialCreate(BaseModel):
         if self.kind in ("link", "video"):
             if not (self.url or "").strip().lower().startswith(("https://", "http://")):
                 raise ValueError("Для ссылки или видео укажите корректный http(s)-адрес")
+        elif self.kind == "file":
+            if not (self.url or "").strip().startswith("/api/accelerators/files/"):
+                raise ValueError("Для файлового материала сначала загрузите файл")
         elif not (self.content or "").strip():
             raise ValueError("Для текстового материала добавьте содержание")
         return self

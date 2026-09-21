@@ -140,6 +140,7 @@ from schemas.accelerators import (
     TrackerAssignmentsUpdate,
     MembershipTrackerUpdate,
     ProgramConfigUpdate,
+    ProgramMaterialCreate,
     ProgramStageCreate,
     ProgramStageManualComplete,
     ProgramStageReorder,
@@ -847,7 +848,7 @@ async def save_accelerator_file(
     stale_rows = list((await db.execute(select(AcceleratorFile).where(
         AcceleratorFile.application_id.is_(None),
         AcceleratorFile.submission_id.is_(None),
-        AcceleratorFile.purpose != "event",
+        AcceleratorFile.purpose.notin_(("event", "program")),
         AcceleratorFile.created_at < datetime.utcnow() - timedelta(hours=24),
     ).limit(200))).scalars().all())
     for stale in stale_rows:
@@ -937,6 +938,32 @@ def accelerator_file_tokens(value) -> set[str]:
     elif isinstance(value, str) and value.startswith("/api/accelerators/files/"):
         tokens.add(value.rsplit("/", 1)[-1])
     return tokens
+
+
+async def claim_program_material_files(
+    db: AsyncSession,
+    *,
+    cohort_id: int,
+    materials: list[ProgramMaterialCreate],
+) -> None:
+    tokens = {
+        (material.url or "").strip().rsplit("/", 1)[-1]
+        for material in materials
+        if material.kind == "file"
+    }
+    if not tokens:
+        return
+    rows = list((await db.execute(select(AcceleratorFile).where(
+        AcceleratorFile.token.in_(tokens)
+    ).with_for_update())).scalars().all())
+    if len(rows) != len(tokens) or any(
+        row.cohort_id != cohort_id
+        or row.purpose not in {"program_draft", "program"}
+        for row in rows
+    ):
+        raise HTTPException(status_code=422, detail="Один из файлов материала недоступен")
+    for row in rows:
+        row.purpose = "program"
 
 
 async def claim_accelerator_files(
@@ -2326,6 +2353,9 @@ async def create_program_stage(
     cohort = await get_cohort_or_404(db, cohort_id)
     await require_cohort_manager(db, user, cohort)
     require_mutable_cohort(cohort)
+    await claim_program_material_files(
+        db, cohort_id=cohort.id, materials=payload.materials
+    )
     max_position = (await db.execute(select(func.max(AcceleratorProgramStage.position)).where(
         AcceleratorProgramStage.cohort_id == cohort.id
     ))).scalar_one()
@@ -2387,6 +2417,9 @@ async def update_program_stage(
     require_mutable_cohort(cohort)
     if stage.status != "draft":
         raise HTTPException(status_code=409, detail="Опубликованный этап нельзя менять")
+    await claim_program_material_files(
+        db, cohort_id=cohort.id, materials=payload.materials
+    )
     stage.title = payload.title.strip()
     stage.description = (payload.description or "").strip() or None
     stage.unlock_at = payload.unlock_at
@@ -4776,6 +4809,26 @@ async def upload_event_file(
     return accelerator_file_dict(row)
 
 
+@router.post("/cohorts/{cohort_id}/program-files")
+async def upload_program_file(
+    cohort_id: int,
+    file: UploadFile = File(...),
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    cohort = await get_cohort_or_404(db, cohort_id)
+    await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
+    row = await save_accelerator_file(
+        db,
+        cohort=cohort,
+        upload=file,
+        purpose="program_draft",
+        uploader_user_id=user.id,
+    )
+    return accelerator_file_dict(row)
+
+
 @router.get("/files/{token}")
 async def download_accelerator_file(
     token: str,
@@ -4834,7 +4887,7 @@ async def download_accelerator_file(
                         allowed = False
         else:
             allowed = row.uploader_user_id == user.id
-    if not allowed and row.purpose == "event":
+    if not allowed and row.purpose in {"event", "program"}:
         allowed = (await db.execute(select(AcceleratorMembership.id).where(
             AcceleratorMembership.cohort_id == cohort.id,
             AcceleratorMembership.user_id == user.id,
