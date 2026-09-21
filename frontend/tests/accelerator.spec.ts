@@ -185,10 +185,20 @@ test('organizer cannot see or change Pitchy modules and limits', async ({ page }
   await mockManagerWorkspace(page, false);
   await page.goto('/accelerator?section=settings');
   await expect(page.getByRole('heading', { name: 'Настройки', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Дашборд', exact: true })).toHaveAttribute('href', '/dashboard');
+  await expect(page.getByRole('button', { name: 'Все акселераторы', exact: true })).toHaveCount(0);
   const settingsNavigation = page.getByRole('navigation', { name: 'Разделы настроек' });
   await expect(settingsNavigation.getByRole('button', { name: 'Разделы платформы' })).toHaveCount(0);
   await expect(settingsNavigation.getByRole('button', { name: 'Лимиты' })).toHaveCount(0);
   await expect(page.getByRole('switch')).toHaveCount(0);
+});
+
+test('global admin can return to the full accelerator list', async ({ page }) => {
+  await mockManagerWorkspace(page);
+  await page.goto('/accelerator');
+  await page.getByRole('button', { name: 'Все акселераторы', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Все акселераторы', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Дашборд', exact: true })).toHaveCount(0);
 });
 
 test('application queue keeps filters and opens the full answer beside the list', async ({ page }, testInfo) => {
@@ -624,7 +634,8 @@ test('participant can choose and switch between several accelerator streams', as
   await expect(page.getByLabel('Поток')).toHaveValue('102');
   await page.getByLabel('Поток').selectOption('101');
   await expect(page).toHaveURL(/\/accelerator\/my\/101$/);
-  await expect(page.getByRole('link', { name: 'Все акселераторы' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Дашборд', exact: true })).toHaveAttribute('href', '/dashboard');
+  await expect(page.getByRole('link', { name: 'Все акселераторы' })).toHaveCount(0);
 });
 
 test('participant query parameters cannot open staff context', async ({ page }) => {
