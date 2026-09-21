@@ -556,6 +556,39 @@ test('combined role starts as participant and opens staff context explicitly', a
   await expect(page.getByRole('heading', { name: 'Сегодня', exact: true })).toHaveCount(0);
 });
 
+test('staff participation button follows the currently selected cohort', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('vi_auth_state', 'cookie-session');
+    localStorage.setItem('pitchy_cookie_consent_v2', JSON.stringify({ choice: 'necessary', updatedAt: new Date().toISOString() }));
+  });
+  const cohort = (id: number, name: string) => ({ id, accelerator_id: 7, name, status: 'active', timezone: 'Europe/Moscow', application_form_schema: { fields: [] } });
+  const membership = (membershipId: number, cohortId: number, cohortName: string) => ({
+    membership_id: membershipId, application_id: membershipId + 100, status: 'enrolled', accepted_at: new Date().toISOString(), enrolled_at: new Date().toISOString(),
+    accelerator: { id: 7, name: 'Тестовый акселератор', status: 'active' },
+    cohort: { id: cohortId, name: cohortName, status: 'active', timezone: 'Europe/Moscow' },
+    project: null, modules: {},
+  });
+  const cohorts = [cohort(12, 'Весенний поток'), cohort(13, 'Осенний поток')];
+  const memberships = [membership(101, 12, 'Весенний поток'), membership(102, 13, 'Осенний поток')];
+
+  await page.route('**/me', async (route) => route.fulfill({ json: { id: 1, email: 'admin@example.test', name: 'Admin', is_admin: true, is_active: true, email_verified: true, created_at: new Date().toISOString() } }));
+  await page.route('**/api/accelerators', async (route) => route.fulfill({ json: [{ id: 7, name: 'Тестовый акселератор', status: 'active', access_role: 'global_admin' }] }));
+  await page.route('**/api/accelerators/me/memberships', async (route) => route.fulfill({ json: { memberships, effective_quotas: {} } }));
+  await page.route('**/api/accelerators/7/cohorts', async (route) => route.fulfill({ json: cohorts }));
+  await page.route(/\/api\/accelerators\/cohorts\/(12|13)\/program-config$/, async (route) => route.fulfill({ json: { version: 1, modules: { applications: true, program: true }, locked_modules: {} } }));
+  await page.route(/\/api\/accelerators\/cohorts\/(12|13)\/(applications|residents)$/, async (route) => route.fulfill({ json: [] }));
+  await page.route('**/api/accelerators/notifications/unread-count', async (route) => route.fulfill({ json: { count: 0 } }));
+
+  await page.goto('/accelerator?context=staff&accelerator=7&cohort=12');
+  const participationLink = page.getByRole('link', { name: 'Моё участие' });
+  await expect(page.getByLabel('Поток')).toHaveValue('12');
+  await expect(participationLink).toHaveAttribute('href', '/accelerator/my/101');
+
+  await page.getByLabel('Поток').selectOption('13');
+  await expect(page.getByLabel('Поток')).toHaveValue('13');
+  await expect(participationLink).toHaveAttribute('href', '/accelerator/my/102');
+});
+
 test('participant can choose and switch between several accelerator streams', async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem('vi_auth_state', 'cookie-session');

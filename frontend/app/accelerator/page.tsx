@@ -101,7 +101,9 @@ export default function AcceleratorWorkspacePage() {
 
   const selectedAccelerator = accelerators.find((row) => row.id === acceleratorId) || null;
   const selectedCohort = cohorts.find((row) => row.id === cohortId) || null;
-  const selectedResidentMembership = residentWorkspace?.memberships.find((membership) => membership.accelerator.id === acceleratorId) || null;
+  const selectedResidentMembership = participantMemberships(residentWorkspace?.memberships || []).find(
+    (membership) => membership.accelerator.id === acceleratorId && membership.cohort.id === cohortId,
+  ) || null;
   const isResident = selectedAccelerator?.access_role === "resident";
   const isAdmin = Boolean(profile?.is_admin); const isTracker = !isResident && selectedAccelerator?.access_role === "tracker"; const isExpert = !isResident && selectedAccelerator?.access_role === "expert"; const canManage = !isResident && (selectedAccelerator?.access_role === "global_admin" || selectedAccelerator?.access_role === "organizer"); const canReadCohort = canManage || isTracker || isExpert;
 
