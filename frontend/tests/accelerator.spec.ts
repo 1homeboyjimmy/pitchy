@@ -159,9 +159,10 @@ test('accelerator draft workflows expose the complete organizer windows', async 
   await page.getByRole('button', { name: 'Домашние задания', exact: true }).click();
   await page.getByRole('button', { name: 'Все задания', exact: true }).click();
   await page.getByRole('button', { name: 'Новое задание', exact: true }).click();
-  await expect(page.getByRole('dialog')).toContainText('Основное');
-  await expect(page.getByRole('dialog')).toContainText('Выполнение');
-  await expect(page.getByRole('dialog')).toContainText('Настройки');
+  const homeworkDialog = page.getByRole('dialog');
+  await expect(homeworkDialog.getByRole('button', { name: 'Основное', exact: true })).toHaveCount(0);
+  await expect(homeworkDialog.getByRole('button', { name: 'Выполнение', exact: true })).toHaveCount(0);
+  await expect(homeworkDialog.getByRole('button', { name: 'Настройки', exact: true })).toHaveCount(0);
   await page.keyboard.press('Escape');
 
   await page.getByRole('button', { name: 'Посещаемость', exact: true }).click();
