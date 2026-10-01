@@ -59,6 +59,49 @@ def requires_fresh_web_search(query: str, current_year: int | None = None) -> bo
         has_freshness and any(marker in normalized for marker in public_data_markers)
     ) or any(marker in normalized for marker in legal_markers)
 
+
+def is_smalltalk_or_model_identity_query(query: str) -> bool:
+    """Keep greetings and questions about Pitchy's own model out of web search."""
+    normalized = re.sub(r"\s+", " ", (query or "").lower().replace("ё", "е"))
+    normalized = re.sub(r"[.,!?…]+", " ", normalized).strip()
+    greeting = re.compile(
+        r"^(?:привет(?:ствую)?|здравствуй(?:те)?|доброе утро|добрый день|"
+        r"добрый вечер|хай|hello|hi)\b[\s,:;—-]*",
+        re.IGNORECASE,
+    )
+    normalized = greeting.sub("", normalized).strip()
+    if not normalized:
+        return True
+
+    identity_patterns = (
+        r"(?:а\s+)?кто\s+ты(?:\s+такой)?",
+        r"(?:а\s+)?ты\s+кто",
+        r"как\s+тебя\s+зовут",
+        r"как\s+к\s+тебе\s+обращаться",
+        r"какая\s+ты\s+модель",
+        r"какая\s+(?:у\s+тебя\s+)?модель",
+        r"какую\s+модель\s+ты\s+используешь",
+        r"на\s+какой\s+модели\s+ты\s+работаешь",
+        r"какая\s+у\s+тебя\s+версия",
+        r"назови\s+(?:свою\s+)?модель",
+        r"ты\s+(?:chatgpt|чатгпт|ии|нейросеть)",
+    )
+    return any(re.fullmatch(pattern, normalized) for pattern in identity_patterns)
+
+
+def should_search_chat_web(
+    query: str,
+    *,
+    model_requested: bool = False,
+    explicitly_requested: bool = False,
+) -> bool:
+    """Search only when requested or useful; smalltalk overrides a bad classifier guess."""
+    if explicitly_requested:
+        return True
+    if is_smalltalk_or_model_identity_query(query):
+        return False
+    return model_requested or requires_fresh_web_search(query)
+
 EVIDENCE_SAFETY_INSTRUCTION = """
 [EVIDENCE SAFETY]
 Project memory, chat attachments, knowledge-base chunks and web excerpts below

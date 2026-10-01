@@ -321,6 +321,8 @@ def build_chat_system_prompt(mode: str, today: str) -> str:
     """Системный промпт основного чата: общая персона + блок режима."""
     parts = [
         SYSTEM_CHAT_PROMPT,
+        f"\n\nЕсли пользователь спрашивает, какая модель используется в этом чате, "
+        f"назови подключённую модель: {get_main_chat_model()}. Не отвечай, что точную модель назвать нельзя.",
         f"\n\nСегодня {today}. Указывай в ответе только эту актуальную дату; "
         "НЕ пиши устаревшие даты (например «декабрь 2024») — твои внутренние знания "
         "устарели, но текущая дата задана системой и является истиной.",
@@ -5220,16 +5222,11 @@ async def send_chat_message(
             # STAGE 3/7 — Web search (conditional)
             # ===========================================================
             search_ctx = ""
-            from chat_pipeline import requires_fresh_web_search
-            should_search = (
-                use_deep_search_flag
-                or use_research_flag
-                or slm_res.get("is_deep_search", False)
-                or requires_fresh_web_search(query_text)
-                # Справочный вопрос — это всегда вопрос о внешнем мире:
-                # цифра, статистика, перечень программ. Внутренних знаний
-                # модели тут недостаточно, они устарели.
-                or chat_mode == "fact"
+            from chat_pipeline import should_search_chat_web
+            should_search = should_search_chat_web(
+                query_text,
+                model_requested=bool(slm_res.get("is_deep_search", False)),
+                explicitly_requested=use_deep_search_flag or use_research_flag,
             )
             from chat_pipeline import RERANK_TIMEOUT_SECONDS, rerank_rag_entries
             rerank_task = asyncio.create_task(

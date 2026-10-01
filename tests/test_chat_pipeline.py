@@ -57,6 +57,39 @@ def test_fresh_public_statistics_force_web_search():
     )
 
 
+@pytest.mark.parametrize("query", [
+    "Привет, какая ты модель?",
+    "Какая у тебя модель",
+    "Кто ты?",
+    "Привет!",
+])
+def test_smalltalk_and_model_identity_do_not_need_web_search(query):
+    assert chat_pipeline.is_smalltalk_or_model_identity_query(query)
+
+
+@pytest.mark.parametrize("query", [
+    "Какая модель сейчас лучше для эмбеддингов?",
+    "Сколько сейчас МСП в РФ?",
+])
+def test_external_model_and_current_fact_questions_are_not_smalltalk(query):
+    assert not chat_pipeline.is_smalltalk_or_model_identity_query(query)
+
+
+def test_smalltalk_overrides_misclassified_web_search():
+    assert not chat_pipeline.should_search_chat_web(
+        "Привет, какая ты модель?", model_requested=True
+    )
+
+
+def test_explicit_search_and_fresh_facts_still_use_web():
+    assert chat_pipeline.should_search_chat_web(
+        "Привет, какая ты модель?", explicitly_requested=True
+    )
+    assert chat_pipeline.should_search_chat_web(
+        "Сколько сейчас МСП в РФ?", model_requested=False
+    )
+
+
 def test_tree_chat_request_enforces_shared_limits():
     request = TreeChatRequest(message="hello", client_id="c", assistant_client_id="a")
     assert request.message == "hello"
