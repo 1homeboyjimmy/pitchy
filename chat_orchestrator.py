@@ -198,7 +198,8 @@ class ChatOrchestrator:
                 {
                     "role": m.role,
                     "content": m.message,
-                    "thoughts": m.thoughts,
+                    # Stored legacy traces may include model chain-of-thought.
+                    "thoughts": None,
                     "model_used": m.model_used,
                     "timestamp": m.timestamp.isoformat(),
                     "client_id": m.client_id
@@ -331,15 +332,15 @@ class ChatOrchestrator:
             if isinstance(chunk, dict):
                 # Flush buffer before handling metadata/dict chunks
                 if buffer:
-                    if active_start_tag:
-                        yield self._format_sse({"type": "thought", "content": buffer})
-                    else:
+                    if active_start_tag == "[STATUS:":
+                        yield self._format_sse({"type": "status", "content": buffer})
+                    elif not active_start_tag:
                         yield self._format_sse({"type": "chunk", "content": buffer})
                     buffer = ""
 
                 # Handle native reasoning_content from Polza/Z-AI
                 if "__thinking__" in chunk:
-                    yield self._format_sse({"type": "thought", "content": chunk["__thinking__"]})
+                    # Never forward private model reasoning to the chat client.
                     continue
                 elif "__usage__" in chunk:
                     yield self._format_sse({"type": "metadata", "usage": chunk["__usage__"]})
@@ -375,13 +376,11 @@ class ChatOrchestrator:
                         if start_tag == active_start_tag:
                             e_idx = buffer.find(end_tag)
                             if e_idx != -1:
-                                # Content inside tags is a thought
+                                # [STATUS] is safe progress text; thought/tool blocks stay private.
                                 thought_content = buffer[:e_idx]
                                 if thought_content:
                                     if active_start_tag == "[STATUS:":
                                         yield self._format_sse({"type": "status", "content": thought_content})
-                                    else:
-                                        yield self._format_sse({"type": "thought", "content": thought_content})
                                 
                                 # Move buffer past the end tag
                                 buffer = buffer[e_idx + len(end_tag):]
@@ -411,8 +410,6 @@ class ChatOrchestrator:
                             buffer = buffer[-end_tag_len:]
                             if active_start_tag == "[STATUS:":
                                 yield self._format_sse({"type": "status", "content": to_yield})
-                            else:
-                                yield self._format_sse({"type": "thought", "content": to_yield})
                     break
                         
         if buffer:
@@ -422,10 +419,10 @@ class ChatOrchestrator:
                 final_content = final_content.replace(start_tag, "").replace(end_tag, "")
             
             if final_content.strip():
-                # FALLBACK: If we are at the end of the stream and still have an active_start_tag,
-                # we decide whether to hide it or leak it.
-                is_pure_thought = active_start_tag in ["<think>", "<thought>", "<think_process>"]
-                yield self._format_sse({"type": "thought" if is_pure_thought else "chunk", "content": final_content})
+                if active_start_tag == "[STATUS:":
+                    yield self._format_sse({"type": "status", "content": final_content})
+                elif active_start_tag not in ["<think>", "<thought>", "<think_process>", "<tool_call>", "<tool_thought>", "ǏǏǏ"]:
+                    yield self._format_sse({"type": "chunk", "content": final_content})
 
 
     def _extract_mini_graph(self, state: dict) -> str:
@@ -961,7 +958,7 @@ class ChatOrchestrator:
                     await self.add_chat_message(
                         "assistant", 
                         reply_full, 
-                        thoughts=thoughts_full.strip() if thoughts_full else None, 
+                        thoughts=None,
                         node_id=active_node_id, 
                         model_used=model_used, 
                         client_id=assistant_client_id, 
@@ -1009,7 +1006,7 @@ class ChatOrchestrator:
         # 4. Finalize (happy path — stream completed successfully)
         if persist_user_message:
             await self.add_chat_message("user", user_message, node_id=active_node_id, client_id=client_id)
-        await self.add_chat_message("assistant", reply_full, thoughts=thoughts_full.strip() if thoughts_full else None, node_id=active_node_id, model_used=model_used, client_id=assistant_client_id, sources=sources_list)
+        await self.add_chat_message("assistant", reply_full, thoughts=None, node_id=active_node_id, model_used=model_used, client_id=assistant_client_id, sources=sources_list)
         message_saved = True # Mark AFTER successful save to prevent duplicate in finally
 
         # Step 3: Background Cache Save

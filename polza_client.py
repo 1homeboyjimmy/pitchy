@@ -125,9 +125,6 @@ async def stream_polza(
             if not chunk.choices:
                 continue
             delta = chunk.choices[0].delta
-            reasoning = getattr(delta, "reasoning", None) or getattr(delta, "reasoning_content", None)
-            if reasoning:
-                yield {"__thinking__": reasoning}
             content = delta.content
             if not content:
                 continue

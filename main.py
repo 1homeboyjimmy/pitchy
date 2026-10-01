@@ -2472,15 +2472,13 @@ async def parse_thought_generator(generator):
         if isinstance(chunk, dict):
             # Flush buffer before handling metadata/dict chunks
             if buffer:
-                if active_start_tag in ["<think>", "<thought>"]:
-                    yield format_sse({"type": "thought", "content": buffer})
-                else:
+                if active_start_tag not in ["<think>", "<thought>", "<tool_call>", "<tool_thought>"]:
                     yield format_sse({"type": "chunk", "content": buffer})
                 buffer = ""
 
             # Handle native reasoning_content 
             if "__thinking__" in chunk:
-                yield format_sse({"type": "thought", "content": chunk["__thinking__"]})
+                # Provider reasoning is private model output, never user-facing progress.
                 continue
             elif "__usage__" in chunk:
                 # Pass usage directly as a wrapped JSON line
@@ -2520,13 +2518,7 @@ async def parse_thought_generator(generator):
                     if start_tag == active_start_tag:
                         e_idx = buffer.find(end_tag)
                         if e_idx != -1:
-                            # Content inside tags is a thought (or soon-to-be-ignored tool call)
-                            content = buffer[:e_idx]
-                            is_thought = active_start_tag in ["<think>", "<thought>"]
-                            
-                            if is_thought and content:
-                                yield format_sse({"type": "thought", "content": content})
-                            
+                            # Thought and tool-call blocks are private/internal; discard them.
                             buffer = buffer[e_idx + len(end_tag):]
                             active_start_tag = None
                             found_tag = True
@@ -2546,8 +2538,7 @@ async def parse_thought_generator(generator):
                     if len(buffer) > max_tag_len:
                         to_yield = buffer[:-max_tag_len]
                         buffer = buffer[-max_tag_len:]
-                        if active_start_tag in ["<think>", "<thought>"]:
-                            yield format_sse({"type": "thought", "content": to_yield})
+                        # Keep buffering tags privately until their closing marker arrives.
                 break
                     
     if buffer:
@@ -2556,9 +2547,8 @@ async def parse_thought_generator(generator):
         for start_tag, end_tag in tags:
             final_content = final_content.replace(start_tag, "").replace(end_tag, "")
         
-        if final_content:
-            is_thought = active_start_tag in ["<think>", "<thought>"]
-            yield format_sse({"type": "thought" if is_thought else "chunk", "content": final_content})
+        if final_content and active_start_tag not in ["<think>", "<thought>", "<tool_call>", "<tool_thought>"]:
+            yield format_sse({"type": "chunk", "content": final_content})
 
 def save_assistant_message(session_id: int, content: str, thoughts: str | None = None, client_id: str | None = None, sources: list[dict] | None = None):
     from db import SessionLocal
@@ -2623,8 +2613,6 @@ def replay_chat_message(message: DbChatMessage) -> EventSourceResponse:
         yield format_sse({"type": "metadata", "model": "Pitchy (replay)"})
         if message.sources:
             yield format_sse({"type": "sources", "data": message.sources})
-        if message.thoughts:
-            yield format_sse({"type": "thought", "content": message.thoughts})
         yield format_sse({"type": "chunk", "content": message.content or ""})
 
     return EventSourceResponse(
@@ -2977,14 +2965,14 @@ async def create_chat_message(
             logger.error(f"Streaming failed: {e}")
             yield format_sse({"type": "error", "content": str(e)})
         finally:
-            if full_text.strip() or full_thoughts.strip():
+            if full_text.strip():
                 # Rescue save logic
                 async def _save_bg():
                     try:
                         await async_save_assistant_message( 
                             session_id=session.id, 
                             content=full_text.strip(),
-                            thoughts=full_thoughts.strip() if full_thoughts.strip() else None,
+                            thoughts=None,
                             client_id=payload.assistant_client_id,
                             sources=sources_list if sources_list else None
                         )
@@ -5125,7 +5113,7 @@ async def send_chat_message(
                             save_assistant_message,
                             session_id=session.id,
                             content=full_response,
-                            thoughts=full_thoughts.strip() or None,
+                            thoughts=None,
                             client_id=payload.assistant_client_id,
                             sources=cached_sources or None,
                         ))
@@ -5562,7 +5550,7 @@ Never print raw URLs, scraped navigation, long date sequences, or a
                     new_msg_id = await async_save_assistant_message(
                         session_id=session.id,
                         content=stored_response,
-                        thoughts=full_thoughts.strip() if full_thoughts.strip() else None,
+                        thoughts=None,
                         client_id=payload.assistant_client_id,
                         sources=sources if (use_deep_search_flag or use_research_flag) else None,
                     )
@@ -5585,7 +5573,7 @@ Never print raw URLs, scraped navigation, long date sequences, or a
                         save_assistant_message,
                         session_id=session.id,
                         content=full_response,
-                        thoughts=full_thoughts.strip() if full_thoughts.strip() else None,
+                        thoughts=None,
                         client_id=payload.assistant_client_id,
                         sources=sources if (use_deep_search_flag or use_research_flag) else None
                     )
@@ -5645,7 +5633,7 @@ Never print raw URLs, scraped navigation, long date sequences, or a
                         save_assistant_message, 
                         session_id=session.id, 
                         content=full_response,
-                        thoughts=full_thoughts.strip() if full_thoughts.strip() else None,
+                        thoughts=None,
                         client_id=payload.assistant_client_id,
                         sources=sources if (use_deep_search_flag or use_research_flag) else None
                     )

@@ -18,7 +18,7 @@ import {
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ResearchJob } from "@/lib/api";
-import { hostFromUrl } from "@/lib/utils";
+import { hostFromUrl, linkWebCitations } from "@/lib/utils";
 import { ExportMenu } from "./ExportMenu";
 import { ResearchActivityOrb } from "./ResearchActivityOrb";
 
@@ -230,7 +230,7 @@ export function ResearchDrawer({
                                         Отчёт готов. Его можно скачать в PDF, DOCX, Markdown или TXT.
                                     </div>
                                     <div className="min-w-0 max-w-full break-words [overflow-wrap:anywhere] text-[14px] leading-[1.75] text-white/75 sm:text-[16px] [&_a]:break-all [&_a]:text-white [&_blockquote]:border-l-2 [&_blockquote]:border-white/15 [&_blockquote]:pl-4 [&_h2]:mb-4 [&_h2]:mt-10 [&_h2]:text-2xl [&_h2]:font-semibold [&_h2]:text-white [&_h3]:mb-3 [&_h3]:mt-7 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-white/90 [&_li]:mb-2 [&_ol]:mb-5 [&_ol]:pl-6 [&_ol]:list-decimal [&_p]:mb-5 [&_strong]:text-white [&_table]:w-full [&_td]:border-b [&_td]:border-white/5 [&_td]:p-3 [&_th]:border-b [&_th]:border-white/10 [&_th]:p-3 [&_ul]:mb-5 [&_ul]:list-disc [&_ul]:pl-6">
-                                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{job.report || ""}</ReactMarkdown>
+                                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{linkWebCitations(job.report || "", job.sources)}</ReactMarkdown>
                                     </div>
                                 </article>
                             )}

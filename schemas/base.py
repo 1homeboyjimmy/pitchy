@@ -153,7 +153,7 @@ class ChatMessageResponse(BaseModel):
     id: int
     role: str
     content: str
-    thoughts: str | None = None
+    thoughts: str | None = Field(default=None, exclude=True)
     sources: list[dict] | None = None
     created_at: datetime
     client_id: str | None = None

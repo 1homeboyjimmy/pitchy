@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ChatInput } from "@/components/chat/ChatInput";
 import { CollapsibleUserMessage } from "@/components/chat/CollapsibleUserMessage";
 import { CopyButton, serializeMessageHtml } from "@/components/chat/CopyButton";
+import { linkWebCitations } from "@/lib/utils";
 import { stripThoughts, hostFromUrl } from "@/lib/utils";
 
 interface Message {
@@ -442,12 +443,12 @@ export function TreeChatInterface({ treeId, activeNode, onUpdateTree, onClose }:
                                   th: ({...props}) => <th className="p-2 text-[11px] font-bold text-white/80 border-b border-white/10 uppercase tracking-wider" {...props} />,
                                   td: ({...props}) => <td className="p-2 text-[12px] text-white/80 border-b border-white/5 last:border-0" {...props} />,
                                 }}>
-                                  {stripThoughts(msg.content)}
+                                  {linkWebCitations(stripThoughts(msg.content), msg.sources)}
                                 </ReactMarkdown>
                               </div>
                               <div className="flex justify-end -mb-1 -mr-1">
                                 <CopyButton
-                                  text={stripThoughts(msg.content)}
+                                  text={linkWebCitations(stripThoughts(msg.content), msg.sources)}
                                   getHtml={() => {
                                     const el = messageContentRefs.current.get(String(getMsgKey(msg)));
                                     return el ? serializeMessageHtml(el) : null;

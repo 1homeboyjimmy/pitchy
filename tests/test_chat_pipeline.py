@@ -81,6 +81,17 @@ def test_smalltalk_overrides_misclassified_web_search():
     )
 
 
+@pytest.mark.parametrize("query", [
+    "Какой сейчас год и день?",
+    "Какое сегодня число?",
+    "Какой сегодня день недели?",
+    "What day is it today?",
+])
+def test_simple_current_date_questions_do_not_trigger_web_search(query):
+    assert chat_pipeline.is_current_date_query(query)
+    assert not chat_pipeline.should_search_chat_web(query, model_requested=True)
+
+
 def test_explicit_search_and_fresh_facts_still_use_web():
     assert chat_pipeline.should_search_chat_web(
         "Привет, какая ты модель?", explicitly_requested=True

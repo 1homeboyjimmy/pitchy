@@ -19,7 +19,7 @@ import { PresentationSlide, importContext, type ResearchJob } from "@/lib/api";
 import { ContextImportModal } from "@/components/chat/ContextImportModal";
 import { UpgradeModal } from "@/components/chat/UpgradeModal";
 import { notifyError } from "@/lib/ui";
-import { stripThoughts, stripPitchySignature, hostFromUrl, parseAttachments, parseExports, type MessageAttachment, type MessageExport } from "@/lib/utils";
+import { stripThoughts, stripPitchySignature, hostFromUrl, linkWebCitations, parseAttachments, parseExports, type MessageAttachment, type MessageExport } from "@/lib/utils";
 
 // Плейсхолдеры названий чата — держать в синхроне с _DEFAULT_CHAT_TITLES
 // в main.py. Пока сессия так называется, бэкенд генерирует ей название по
@@ -1042,7 +1042,7 @@ export function ChatInterface({
                                                 <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-300 ${msg.thoughtExpanded ? '' : '-rotate-90'}`} />
                                                 <span className="font-mono text-[9px] uppercase tracking-[0.2em] flex items-center gap-2.5 font-bold">
                                                     {isLoading && isLastAssistant && !msg.thoughtTime ? <Activity className="w-3.5 h-3.5 animate-pulse text-emerald-400" /> : <Cpu className="w-3.5 h-3.5 text-white/20" />}
-                                                    {msg.thoughtTime ? `ПРОЦЕСС МЫШЛЕНИЯ (${msg.thoughtTime} СЕК)` : "ПРОЦЕСС МЫШЛЕНИЯ..."}
+                                                    {msg.thoughtTime ? `ХОД ОБРАБОТКИ (${msg.thoughtTime} СЕК)` : "ХОД ОБРАБОТКИ..."}
                                                 </span>
                                             </summary>
                                             <motion.div
@@ -1125,7 +1125,7 @@ export function ChatInterface({
                                                     td: ({...props}) => <td className="p-3.5 sm:p-5 text-white/50 border-b border-white/5 last:border-0 align-top min-w-[7.5rem] max-w-[20rem]" {...props} />,
                                                 }}
                                             >
-                                                {getDisplayContent(msg)}
+                                                {linkWebCitations(getDisplayContent(msg), msg.sources)}
                                             </ReactMarkdown>
                                             {getSafeKey(msg) === typingMessageId?.toString() && (
                                                 <motion.span
@@ -1158,7 +1158,7 @@ export function ChatInterface({
                                         <div className="flex items-center justify-between mt-8 pt-8 border-t border-white/5 w-full transition-all duration-500">
                                             <div className="flex items-center gap-3">
                                                 <CopyButton
-                                                    text={stripPitchySignature(parseExports(stripThoughts(msg.content || "")).text)}
+                                                    text={stripPitchySignature(linkWebCitations(parseExports(stripThoughts(msg.content || "")).text, msg.sources))}
                                                     getHtml={() => {
                                                         const el = messageContentRefs.current.get(getSafeKey(msg));
                                                         return el ? serializeMessageHtml(el) : null;

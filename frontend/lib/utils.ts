@@ -113,6 +113,29 @@ export function hostFromUrl(url: string | undefined | null): string {
     }
 }
 
+export type ChatSourceLink = { title?: string | null; url?: string | null };
+
+/** Turn internal [WEBn] citations into compact, named Markdown links. */
+export function linkWebCitations(content: string, sources?: ChatSourceLink[] | null): string {
+    if (!content) return "";
+    return content.replace(/\[WEB(\d+)\]/gi, (_marker, rawIndex: string, offset: number, whole: string) => {
+        const index = Number(rawIndex) - 1;
+        const source = Number.isInteger(index) && index >= 0 ? sources?.[index] : undefined;
+        const url = source?.url?.trim() || "";
+        let safeUrl = "";
+        try {
+            const parsed = new URL(url);
+            if (parsed.protocol === "http:" || parsed.protocol === "https:") safeUrl = parsed.href;
+        } catch { /* An invalid/unavailable URL is shown as plain source text. */ }
+        const title = (source?.title || hostFromUrl(url) || `Источник ${rawIndex}`)
+            .replace(/\s+/g, " ").trim().slice(0, 70)
+            .replace(/[\\`*_{}\[\]()#+.!|>~-]/g, "\\$&");
+        const nextMarker = /^\[WEB\d+\]/i.test(whole.slice(offset + _marker.length));
+        const label = safeUrl ? `[${title}](${safeUrl})` : title;
+        return label + (nextMarker ? ", " : "");
+    });
+}
+
 // Backend returns naive UTC timestamps without timezone; admin viewers in MSK expect +3h.
 export function adminDate(value: string | null | undefined): Date | null {
     if (!value) return null;

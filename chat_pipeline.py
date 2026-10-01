@@ -89,6 +89,23 @@ def is_smalltalk_or_model_identity_query(query: str) -> bool:
     return any(re.fullmatch(pattern, normalized) for pattern in identity_patterns)
 
 
+def is_current_date_query(query: str) -> bool:
+    """Answer simple questions about today's date from the system clock, without web search."""
+    normalized = re.sub(r"\s+", " ", (query or "").lower().replace("ё", "е"))
+    normalized = re.sub(r"[.,!?…]+", " ", normalized).strip()
+    patterns = (
+        r"какой\s+(?:сейчас\s+)?год\s+и\s+(?:какой\s+)?день",
+        r"какое\s+(?:сейчас\s+)?число\s+и\s+(?:какой\s+)?день",
+        r"(?:какой|какое)\s+(?:сейчас\s+)?(?:сегодня\s+)?(?:сегодняшний\s+)?(?:год|день|дата)",
+        r"какое\s+сегодня\s+число",
+        r"какой\s+сегодня\s+день\s+недели",
+        r"(?:скажи\s+)?(?:текущая|сегодняшняя)\s+дата",
+        r"(?:what\s+is\s+)?today(?:'s)?\s+date",
+        r"what\s+day\s+is\s+it(?:\s+today)?",
+    )
+    return any(re.fullmatch(pattern, normalized) for pattern in patterns)
+
+
 def should_search_chat_web(
     query: str,
     *,
@@ -98,7 +115,7 @@ def should_search_chat_web(
     """Search only when requested or useful; smalltalk overrides a bad classifier guess."""
     if explicitly_requested:
         return True
-    if is_smalltalk_or_model_identity_query(query):
+    if is_smalltalk_or_model_identity_query(query) or is_current_date_query(query):
         return False
     return model_requested or requires_fresh_web_search(query)
 
