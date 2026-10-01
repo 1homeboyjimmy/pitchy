@@ -43,6 +43,12 @@ _REVIEW_VERB_RE = re.compile(
     re.IGNORECASE | re.UNICODE,
 )
 
+_PROJECT_REVIEW_SUBJECT_RE = re.compile(
+    r"(иде[яию]|проект|стартап|бизнес|продукт|сервис|модель|компан|питч|"
+    r"экономик|юнит|презентац|документ|концепц|гипотез)",
+    re.IGNORECASE | re.UNICODE,
+)
+
 # Справочные зачины. Проверяем начало запроса: «сколько сейчас МСП в РФ»,
 # «что такое CAC», «какие гранты есть для IT».
 _FACT_START_RE = re.compile(
@@ -73,7 +79,9 @@ def resolve_chat_mode(
 
     # «Оцени мою идею», «разбери нашу экономику», а также «разбери» с
     # приложенным файлом — это всегда разбор.
-    if asks_for_review and (about_own_project or has_attachments):
+    if asks_for_review and (
+        about_own_project or has_attachments or _PROJECT_REVIEW_SUBJECT_RE.search(text)
+    ):
         return CHAT_MODE_REVIEW
 
     # Справочный зачин без упоминания своего бизнеса — факт, даже если SLM

@@ -40,6 +40,16 @@ def test_project_review_requests(query):
     assert resolve_chat_mode(query) == CHAT_MODE_REVIEW
 
 
+@pytest.mark.parametrize("query", [
+    "проанализируй идею: AirSock — прокат носков по подписке",
+    "оцени бизнес-модель доставки чистых носков",
+    "найди слабые места концепции приложения",
+])
+def test_review_subject_is_enough_without_my_our_or_attachment(query):
+    """Users often paste an idea without saying it is theirs or attaching a file."""
+    assert resolve_chat_mode(query, slm_mode="consult") == CHAT_MODE_REVIEW
+
+
 def test_review_verb_with_attachment_without_pronoun():
     """«Разбери» + приложенный файл — тоже разбор, даже без «мой/наш»."""
     assert resolve_chat_mode("разбери это", has_attachments=True) == CHAT_MODE_REVIEW
