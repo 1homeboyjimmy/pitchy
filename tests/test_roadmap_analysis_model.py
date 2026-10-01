@@ -48,7 +48,7 @@ async def test_step_analysis_uses_main_chat_model(monkeypatch, roadmap_module):
         return "step analysis", None, {"total_tokens": 1}
 
     monkeypatch.setattr(roadmap_analysis, "_rag_context", no_rag)
-    monkeypatch.setattr(roadmap_analysis, "call_routerai", fake_call)
+    monkeypatch.setattr(roadmap_analysis, "call_polza", fake_call)
 
     passport = {**CORE_PASSPORT, "legal": {"entity_type": "ООО"}}
     result = await roadmap_analysis.analyze_step(passport, checkpoint_id="legal")
@@ -78,7 +78,7 @@ async def test_overall_analysis_uses_main_chat_model(monkeypatch, roadmap_module
 
     monkeypatch.setattr(roadmap_analysis, "_rag_context", no_rag)
     monkeypatch.setattr(roadmap_analysis, "_web_context", no_web)
-    monkeypatch.setattr(roadmap_analysis, "call_routerai", fake_call)
+    monkeypatch.setattr(roadmap_analysis, "call_polza", fake_call)
 
     result = await roadmap_analysis.analyze_overall({"core": {"name": "Pitchy"}})
 
@@ -120,7 +120,7 @@ async def test_streaming_analysis_uses_main_chat_model(monkeypatch, roadmap_modu
 
     monkeypatch.setattr(roadmap_analysis, "_rag_context", no_rag)
     monkeypatch.setattr(roadmap_analysis, "_web_context", no_web)
-    monkeypatch.setattr(roadmap_analysis, "stream_routerai", fake_stream)
+    monkeypatch.setattr(roadmap_analysis, "stream_polza", fake_stream)
     monkeypatch.setattr(roadmap_analysis, "AsyncSessionLocal", FakeSession)
 
     events = [event async for event in roadmap_analysis.stream_overall(
@@ -155,7 +155,7 @@ async def test_step_analysis_is_persisted(monkeypatch, roadmap_module):
         )
 
     monkeypatch.setattr(roadmap_analysis, "_rag_context", no_rag)
-    monkeypatch.setattr(roadmap_analysis, "call_routerai", fake_call)
+    monkeypatch.setattr(roadmap_analysis, "call_polza", fake_call)
     monkeypatch.setattr(roadmap_analysis, "_persist_step_analysis", fake_persist)
 
     result = await roadmap_analysis.analyze_step(

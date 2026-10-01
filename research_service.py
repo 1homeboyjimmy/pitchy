@@ -11,19 +11,19 @@ from typing import Any
 from sqlalchemy import delete, select
 
 from db_async import AsyncSessionLocal
-from makura_client import call_makura
+from polza_client import call_polza
 from models import ChatMessage, ResearchClaim, ResearchEvidence, ResearchJob, ResearchSource
-from routerai_client import call_routerai, rerank_documents
+from routerai_client import rerank_documents
 from search_agent import research_search_documents
 
 logger = logging.getLogger("app.research")
-PLANNER_MODEL = os.getenv("RESEARCH_PLANNER_MODEL", "glm-5")
-WRITER_MODEL = os.getenv("RESEARCH_WRITER_MODEL", "glm-5")
-EXTRACTOR_MODEL = os.getenv("RESEARCH_EXTRACTOR_MODEL", "glm-5")
-EXTRACTOR_FALLBACK_MODEL = os.getenv("RESEARCH_EXTRACTOR_FALLBACK_MODEL", "glm-4.7")
+PLANNER_MODEL = os.getenv("RESEARCH_PLANNER_MODEL", "qwen/qwen3-32b")
+WRITER_MODEL = os.getenv("RESEARCH_WRITER_MODEL", "openai/gpt-6-luna-pro")
+EXTRACTOR_MODEL = os.getenv("RESEARCH_EXTRACTOR_MODEL", "qwen/qwen3-32b")
+EXTRACTOR_FALLBACK_MODEL = os.getenv("RESEARCH_EXTRACTOR_FALLBACK_MODEL", "openai/gpt-6-luna-pro")
 VERIFIER_MODEL = os.getenv("RESEARCH_VERIFIER_MODEL", "moonshotai/kimi-k2.6")
-CRITIC_MODEL = os.getenv("RESEARCH_CRITIC_MODEL", "openai/gpt-4.1-mini")
-RERANK_MODEL = os.getenv("RESEARCH_RERANK_MODEL", "cohere/rerank-v3.5")
+CRITIC_MODEL = os.getenv("RESEARCH_CRITIC_MODEL", "openai/gpt-6-luna-pro")
+RERANK_MODEL = os.getenv("RESEARCH_RERANK_MODEL", os.getenv("ROUTERAI_RERANK_MODEL", "cohere/rerank-v3.5"))
 RERANK_MIN_SCORE = float(os.getenv("RESEARCH_RERANK_MIN_SCORE", "0.03"))
 RERANK_MIN_DOCUMENTS = int(os.getenv("RESEARCH_RERANK_MIN_DOCUMENTS", "15"))
 
@@ -64,7 +64,7 @@ async def _update(job_id: int, phase: str, progress: int, message: str, **values
 
 async def _plan(query: str) -> dict:
     system = """Ты — Research Planner. Построй универсальный план исследования под конкретный запрос, не применяй фиксированный рыночный шаблон. Верни только JSON: objective, research_type, scope, questions (5-8 объектов с id, question, importance, preferred_sources), report_sections (4-8 объектов id,title,supported_by), validation_rules. Обязательно включи прямой ответ, доказательства и ограничения, но остальные разделы выбирай по смыслу запроса."""
-    content, _, _ = await call_makura(system, query, model=PLANNER_MODEL)
+    content, _, _ = await call_polza(system, query, model=PLANNER_MODEL)
     fallback = {"objective": query, "research_type": "general", "scope": {}, "questions": [{"id": f"q{i+1}", "question": q, "importance": "high", "preferred_sources": ["primary", "official"]} for i, q in enumerate([query, f"Ключевые факты и определения: {query}", f"Альтернативные позиции и противоречия: {query}", f"Практические последствия: {query}", f"Ограничения доступных данных: {query}"])], "report_sections": [{"id":"summary","title":"Краткий ответ","supported_by":["q1"]},{"id":"evidence","title":"Результаты исследования","supported_by":["q1","q2","q3"]},{"id":"implications","title":"Практические выводы","supported_by":["q4"]},{"id":"limitations","title":"Ограничения исследования","supported_by":["q5"]}], "validation_rules":["Каждая цифра подтверждена источником", "Оценки явно отделены от фактов"]}
     plan = _json_object(content, fallback)
     if not isinstance(plan.get("questions"), list) or not plan["questions"]:
@@ -142,7 +142,7 @@ async def _extract_claims(query: str, docs: list[dict]) -> list[dict]:
         extractor_models = tuple(dict.fromkeys((EXTRACTOR_MODEL, EXTRACTOR_FALLBACK_MODEL)))
         for attempt, extractor_model in enumerate(extractor_models, 1):
             async with semaphore:
-                content, _, usage = await call_makura(system, prompt, model=extractor_model)
+                content, _, usage = await call_polza(system, prompt, model=extractor_model)
             data = _json_object(content, {"claims": []})
             extracted = data.get("claims", []) if isinstance(data, dict) else []
             cleaned_content = re.sub(r"^```(?:json)?", "", (content or "").strip()).lstrip()
@@ -186,7 +186,7 @@ async def _verify(query: str, claims: list[dict], docs: list[dict]) -> list[dict
         prompt = f"Исходный запрос: {query}\n\nУтверждения:\n{json.dumps(batch, ensure_ascii=False)}"
         for attempt, max_tokens in enumerate((3000, 5000), 1):
             async with semaphore:
-                content, _, usage = await call_routerai(
+                content, _, usage = await call_polza(
                     system, prompt, model=VERIFIER_MODEL, max_tokens=max_tokens,
                     response_format={"type": "json_object"},
                 )
@@ -272,7 +272,7 @@ async def _build_research_brief(query: str, plan: dict, claims: list[dict]) -> d
         f"Цель и рамки: {json.dumps({'objective': plan.get('objective'), 'scope': plan.get('scope')}, ensure_ascii=False)}\n"
         f"Проверенный реестр фактов: {json.dumps(usable, ensure_ascii=False)}"
     )
-    content, _, _ = await call_routerai(
+    content, _, _ = await call_polza(
         system,
         prompt,
         model=CRITIC_MODEL,
@@ -305,7 +305,7 @@ async def _edit_report(query: str, report: str, brief: dict) -> str:
         f"Единый research brief:\n{json.dumps(brief, ensure_ascii=False)}\n\n"
         f"Черновик отчёта:\n{report}"
     )
-    edited, _, _ = await call_routerai(
+    edited, _, _ = await call_polza(
         system,
         prompt,
         model=CRITIC_MODEL,
@@ -359,7 +359,7 @@ async def _write_report(job_id: int, query: str, plan: dict, claims: list[dict],
             target_length = "100–200 слов"
         system = """Напиши один раздел профессионального глубокого исследования на русском языке. Синтезируй данные, не пересказывай источники по очереди. Единый research brief — обязательный глобальный контракт: раздел не должен противоречить его прямому ответу, метрикам, географии и ограничениям. Используй только утверждения из evidence: не добавляй факты, числа, даты, названия организаций или выводы, которых там нет. Не используй отвергнутые факты. Различай подтверждённые факты, выводы Pitchy и рабочие гипотезы. Не выдавай корреляцию, техническую метрику или косвенный признак за доказанную причинно-следственную связь. Если данных недостаточно, честно и кратко укажи ограничение вместо догадки. Не вставляй URL, Markdown-ссылки, номера источников или список источников — интерфейс показывает источники отдельно. Не повторяй название раздела и не добавляй вводную или заключение за его пределами."""
         prompt = f"Исходный запрос: {query}\nНазвание раздела: {section_title}\nЦель: {plan.get('objective')}\nЕдиный research brief: {json.dumps(brief, ensure_ascii=False)}\nЦелевой объём: {target_length}. Раскрой связи, сравнения, неопределённости и практическое значение, только если это подтверждается evidence. Не растягивай текст повторениями и не пересказывай общий прямой ответ без необходимости.\nПроверенные утверждения:\n{json.dumps(evidence[:60], ensure_ascii=False)}"
-        content, _, _ = await call_makura(system, prompt, model=WRITER_MODEL)
+        content, _, _ = await call_polza(system, prompt, model=WRITER_MODEL)
         body = (content or "Недостаточно подтверждённых данных для раздела.").strip()
         body = re.sub(r"^\s*#{1,6}\s+[^\n]+\n+", "", body, count=1)
         sections.append(f"## {section_title}\n\n{body}")

@@ -20,7 +20,7 @@ logger = logging.getLogger("app")
 # images are base64-encoded into the vision request, so keep them smaller.
 MAX_UPLOAD_BYTES = 15 * 1024 * 1024
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
-# Per-file cap on extracted text. GLM context fits far more, but the block is
+# Per-file cap on extracted text. Keep attachment context bounded for the chat model;
 # embedded into the stored message and round-trips through the client.
 MAX_TEXT_CHARS = 15_000
 MAX_FILES_PER_MESSAGE = 5
@@ -153,8 +153,7 @@ async def describe_image(data: bytes, mime: str, filename: str = "") -> str | No
     """Runs the image through a vision model and returns the extracted
     description/text, or None when no vision provider is reachable.
 
-    Providers are OpenAI-compatible; tried in order Makura → RouterAI so an
-    outage or a missing vision model on one side degrades gracefully.
+    Uses Polza's OpenAI-compatible API for vision requests.
     """
     import base64
 
@@ -168,18 +167,11 @@ async def describe_image(data: bytes, mime: str, filename: str = "") -> str | No
         {"role": "user", "content": user_content},
     ]
 
-    attempts = [
-        (
-            "https://api.makura.ai/v1",
-            os.getenv("MAKURA_API_KEY"),
-            os.getenv("MAKURA_VISION_MODEL", "glm-4.5v"),
-        ),
-        (
-            os.getenv("ROUTERAI_API_BASE", os.getenv("ROUTERAI_BASE_URL", "https://routerai.ru/api/v1")),
-            os.getenv("ROUTERAI_API_KEY"),
-            os.getenv("ROUTERAI_VISION_MODEL", "gpt-4o-mini"),
-        ),
-    ]
+    attempts = [(
+        os.getenv("POLZA_API_BASE", "https://polza.ai/api/v1"),
+        os.getenv("POLZA_API_KEY"),
+        os.getenv("POLZA_VISION_MODEL", "openai/gpt-6-luna-pro"),
+    )]
 
     for base_url, api_key, model in attempts:
         if not api_key:

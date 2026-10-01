@@ -35,6 +35,14 @@
 - `AUTH_RATE_MAX`: Max auth requests per window per IP.
 - `EXA_API_KEY`: Exa key for web search.
 - `LOCKBOX_EXA_API_KEY_SECRET_ID` / `..._ENTRY_KEY`: optional Lockbox source for the shared Exa web-search key.
+- `POLZA_API_KEY`: Polza key for chat, structured LLM calls, and embeddings.
+- `LOCKBOX_POLZA_API_KEY_SECRET_ID` / `LOCKBOX_POLZA_API_KEY_ENTRY_KEY`: optional Lockbox source for the Polza key.
+- `POLZA_API_BASE`: Polza OpenAI-compatible API base (defaults to `https://polza.ai/api/v1`).
+- `POLZA_EMBEDDING_MODEL`: RAG embedding model (defaults to `qwen/qwen3-embedding-4b`). Changing it rebuilds incompatible Chroma collections at RAG startup.
+- `ROUTERAI_API_KEY`: RouterAI key used only by the dedicated reranker.
+- `LOCKBOX_ROUTERAI_API_KEY_SECRET_ID` / `LOCKBOX_ROUTERAI_API_KEY_ENTRY_KEY`: optional Lockbox source for the reranker key.
+- `ROUTERAI_API_BASE`: RouterAI API base (defaults to `https://routerai.ru/api/v1`).
+- `ROUTERAI_RERANK_MODEL`: dedicated reranker model (defaults to `cohere/rerank-v3.5`).
 - `EXA_HTTPS_PROXY`: HTTP CONNECT proxy for `api.exa.ai` (`http://user:pass@host:port`).
   Required on RU hosts — Cloudflare answers 403 there, and the search silently
   degrades to "Интернет-поиск временно недоступен" without it. `SEARCH_HTTPS_PROXY`

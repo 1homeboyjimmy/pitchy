@@ -106,7 +106,7 @@
 
 После поиска документы проходят независимое ранжирование.
 
-Используемая модель:
+Используемая модель через специализированный endpoint RouterAI:
 
 ```text
 cohere/rerank-v3.5
@@ -115,7 +115,7 @@ cohere/rerank-v3.5
 Провайдер:
 
 ```text
-RouterAI
+RouterAI `/api/v1/rerank`
 ```
 
 Правила отбора:
@@ -141,16 +141,16 @@ RouterAI
 - номер источника;
 - подтверждающий фрагмент.
 
-Основная модель через Makura:
+Основная модель через Polza.ai:
 
 ```text
-glm-5
+qwen/qwen3-32b
 ```
 
-Резервная модель через Makura:
+Резервная модель через Polza.ai:
 
 ```text
-glm-4.7
+openai/gpt-6-luna-pro
 ```
 
 Если основная модель недоступна или возвращает некорректный результат, экстрактор автоматически переключается на резервную модель.
@@ -281,7 +281,7 @@ Research brief сохраняется в blueprint задачи. Все посл
 Модель:
 
 ```text
-openai/gpt-4.1-mini
+openai/gpt-6-luna-pro
 ```
 
 Редактор-критик:
@@ -407,15 +407,17 @@ openai/gpt-4.1-mini
 
 | Задача | Модель | Провайдер |
 |---|---|---|
-| Планирование | `glm-5` | Makura |
+| Планирование | `qwen/qwen3-32b` | Polza.ai |
 | Поиск | Exa Deep Research | Exa |
-| Реранжирование | `cohere/rerank-v3.5` | RouterAI |
-| Извлечение утверждений | `glm-5` | Makura |
-| Резервное извлечение | `glm-4.7` | Makura |
-| Проверка утверждений | `moonshotai/kimi-k2.6` | RouterAI |
-| Написание разделов | `glm-5` | Makura |
-| Research brief | `openai/gpt-4.1-mini` | RouterAI |
-| Финальный редактор-критик | `openai/gpt-4.1-mini` | RouterAI |
+| Реранжирование | `cohere/rerank-v3.5` | RouterAI `/api/v1/rerank` |
+| Извлечение утверждений | `qwen/qwen3-32b` | Polza.ai |
+| Резервное извлечение | `openai/gpt-6-luna-pro` | Polza.ai |
+| Проверка утверждений | `moonshotai/kimi-k2.6` | Polza.ai |
+| Написание разделов | `openai/gpt-6-luna-pro` | Polza.ai |
+| Research brief | `openai/gpt-6-luna-pro` | Polza.ai |
+| Финальный редактор-критик | `openai/gpt-6-luna-pro` | Polza.ai |
+
+Эмбеддинги основного RAG Pitchy строятся через Polza моделью `qwen/qwen3-embedding-4b`; смена ID автоматически инвалидирует старые Chroma-коллекции, чтобы пересоздать их в одном векторном пространстве. Реранкинг выполняется специализированной `cohere/rerank-v3.5` через RouterAI `/api/v1/rerank`; RouterAI используется в Pitchy только на этом этапе. Каталог RouterAI указывает поддержку более 100 языков и тарификацию по поисковым единицам (около 109 ₽ за 1K единиц на момент проверки). Основные модели пайплайна остаются в Polza: [Qwen3-32B](https://polza.ai/models/qwen/qwen3-32b) — около 9,67 ₽/млн входных и 33,86 ₽/млн выходных токенов; [GPT-6 Luna Pro](https://polza.ai/models/openai/gpt-6-luna-pro) — около 5,90 ₽/млн входных и 29,50 ₽/млн выходных токенов. Qwen3-32B близок по цене к прежнему RouterAI Qwen3-30B-A3B (13/55 ₽ за миллион); GPT-6 Luna Pro также заметно дешевле прежнего GPT-4.1 Mini (45/180 ₽ за миллион). [Kimi K2.6 в Polza](https://polza.ai/models/moonshotai/kimi-k2.6) оставлен для независимого фактчека; его вход дороже примерно на 10%, а выход — примерно на 48%, чем [RouterAI](https://routerai.ru/models/moonshotai/kimi-k2.6). Фактчекер выдаёт короткие вердикты, поэтому рост касается небольшой доли отчёта.
 
 ---
 
@@ -434,16 +436,7 @@ openai/gpt-4.1-mini
 
 ## Текущее состояние production
 
-На последней проверке:
-
-- production использует актуальную версию;
-- `/health` возвращает `200`;
-- Exa доступна через HTTPS-прокси;
-- backend находится в состоянии `healthy`;
-- deployment workflow завершён успешно;
-- проходят 7 из 7 регрессионных тестов;
-- research brief проверен живым вызовом RouterAI;
-- финальный редактор-критик проверен живым вызовом RouterAI.
+Архитектура кода и примеры окружений настроены на Polza для LLM/эмбеддингов и RouterAI только для специализированного Cohere rerank. После переключения требуется обновить production secrets и выполнить живую проверку: в локальном окружении этого checkout сейчас нет ключей Polza и RouterAI, поэтому состояние production и доступность этих API этой правкой не подтверждаются.
 
 ---
 

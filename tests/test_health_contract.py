@@ -11,23 +11,19 @@ def test_health_endpoint_has_no_jina_dependency():
     assert "jina" not in render_source
 
 
-def test_health_html_renders_routerai_without_jina():
+def test_health_html_renders_polza_without_jina():
     html = main._render_health_html({
         "status": "ok",
         "summary": {"healthy": 1, "warning": 0, "down": 0, "skipped": 0},
         "checks": {
-            "routerai": {
+            "polza": {
                 "state": "healthy",
                 "ok": True,
                 "configured": True,
-                "reranker_model": "voyageai/rerank-2.5-lite",
-                "reranker_endpoint": "https://routerai.ru/api/v1/rerank",
             },
             "system": {},
         },
     }).lower()
 
-    assert "routerai" in html
-    assert "voyageai/rerank-2.5-lite" in html
-    assert "https://routerai.ru/api/v1/rerank" in html
+    assert "polza" in html
     assert "jina" not in html

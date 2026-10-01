@@ -129,9 +129,9 @@ export function PresentationDrawer({
                   ? "bg-white/15 text-white border-white/30"
                   : "bg-white/5 text-white/60 border-white/10"
               }`}
-              title={provider === "zai" ? "Native Z.AI slides_glm_agent" : "Fallback на Makura GLM-5"}
+              title={provider === "zai" ? "Native Z.AI slides_glm_agent" : "Polza GPT-6 Luna Pro"}
             >
-              {provider === "zai" ? "Z.AI" : "Makura"}
+              {provider === "zai" ? "Z.AI" : "Polza"}
             </span>
           )}
           {isLoading && slides.length > 0 && (

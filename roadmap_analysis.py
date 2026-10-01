@@ -24,7 +24,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 import passport as plib
 import rag
-from routerai_client import call_routerai, get_main_chat_model, stream_routerai
+from polza_client import call_polza, get_main_chat_model, stream_polza
 from chat_pipeline import RAG_TIMEOUT_SECONDS, WEB_SEARCH_TIMEOUT_SECONDS
 from search_agent import async_search_with_sources, is_exa_configured
 from db_async import AsyncSessionLocal
@@ -289,7 +289,7 @@ async def analyze_step(
     )
     raw, usage = None, {}
     for attempt in range(2):
-        raw, _, usage = await call_routerai(
+        raw, _, usage = await call_polza(
             system_prompt,
             user_prompt,
             model=get_main_chat_model(),
@@ -347,7 +347,7 @@ async def analyze_overall(passport: dict | None) -> dict:
         + f"ДАТА АНАЛИЗА: {datetime.now().strftime('%d.%m.%Y')}\n"
         + "Сформируй полную аналитику проекта по правилам текущей стадии."
     )
-    raw, _, usage = await call_routerai(
+    raw, _, usage = await call_polza(
         _overall_system(passport),
         user_prompt,
         model=get_main_chat_model(),
@@ -413,12 +413,12 @@ async def stream_overall(passport: dict | None, project_id: int):
     last_generation_error = None
     for attempt in range(2):
         try:
-            async for chunk in stream_routerai(
+            async for chunk in stream_polza(
                 system_prompt=_overall_system(passport),
                 user_message=user_prompt,
                 model=get_main_chat_model(),
             ):
-                # stream_routerai отдаёт строки-контент + dict-сентинелы
+                # stream_polza отдаёт строки-контент + dict-сентинелы
                 # (__thinking__/__usage__) — берём только текстовый контент.
                 if isinstance(chunk, str) and chunk:
                     full += chunk

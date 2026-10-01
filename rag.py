@@ -40,22 +40,23 @@ CHROMA_HTTP_HOST = os.getenv("CHROMA_HTTP_HOST")
 CHROMA_HTTP_PORT = int(os.getenv("CHROMA_HTTP_PORT", "8000"))
 
 # --- Model Configuration ---
-EMBEDDING_MODEL_NAME = "google/gemini-embedding-001"
-EMBEDDING_API_BASE = "https://routerai.ru/api/v1"
+EMBEDDING_MODEL_NAME = os.getenv("POLZA_EMBEDDING_MODEL", "qwen/qwen3-embedding-4b")
+EMBEDDING_DIMENSION = 2560
+EMBEDDING_API_BASE = os.getenv("POLZA_API_BASE", "https://polza.ai/api/v1")
 # Metadata key to track which model was used for embeddings
 MODEL_META_KEY = "embedding_model"
 
 
-class GeminiEmbeddingFunction(EmbeddingFunction):
-    """Embedding function using Google Gemini Embedding via RouterAI API.
+class PolzaEmbeddingFunction(EmbeddingFunction):
+    """Embedding function using the configured embedding model via Polza API.
     Uses OpenAI-compatible /v1/embeddings endpoint.
     """
     def __init__(self):
         import httpx
         from openai import OpenAI
-        api_key = os.getenv("ROUTERAI_API_KEY", "")
+        api_key = os.getenv("POLZA_API_KEY", "")
         if not api_key:
-            logger.warning("ROUTERAI_API_KEY not set — embeddings will fail")
+            logger.warning("POLZA_API_KEY not set — embeddings will fail")
         # Custom httpx client with a long keepalive_expiry (default is 5s —
         # so a connection idle >5s gets dropped and the next call pays full
         # TLS + provider cold-start, ~30s on prod). 300s keepalive means the
@@ -65,7 +66,7 @@ class GeminiEmbeddingFunction(EmbeddingFunction):
             limits=httpx.Limits(max_keepalive_connections=4, keepalive_expiry=300.0),
         )
         # Explicit timeout + bounded retries. The OpenAI SDK default is a
-        # 600s timeout with 2 retries — a cold or throttled RouterAI could
+        # 600s timeout with 2 retries — a cold or throttled provider could
         # then hang a chat request for over a minute. 20s/1-retry fails
         # fast enough that a degraded embedding doesn't wreck a live demo.
         self._client = OpenAI(
@@ -78,7 +79,7 @@ class GeminiEmbeddingFunction(EmbeddingFunction):
         self._model = EMBEDDING_MODEL_NAME
 
     def warmup(self) -> bool:
-        """Fire a tiny embedding call to keep the RouterAI TLS connection
+        """Fire a tiny embedding call to keep the Polza TLS connection
         and any provider-side cold path warm. Called periodically by a
         background task so the FIRST real query of a session isn't slow."""
         # A transient 502 is common while the provider is waking up. Retry
@@ -112,7 +113,7 @@ class GeminiEmbeddingFunction(EmbeddingFunction):
             except Exception as e:
                 logger.error(f"Embedding API error (batch {start}–{start+len(batch)}): {e}")
                 # Return zero vectors so ChromaDB doesn't crash; data quality will be poor
-                dim = 3072
+                dim = EMBEDDING_DIMENSION
                 all_embeddings.extend([[0.0] * dim for _ in batch])
         return all_embeddings
 
@@ -127,7 +128,7 @@ class GeminiEmbeddingFunction(EmbeddingFunction):
             return response.data[0].embedding
         except Exception as e:
             logger.error(f"Embedding API error (query): {e}")
-            return [0.0] * 3072
+            return [0.0] * EMBEDDING_DIMENSION
 
 
 def _chunk_text(text: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> List[str]:
@@ -316,7 +317,7 @@ def _merge_chroma_candidates(entries: List[dict], distances: List[float]) -> Lis
 
     This retrieval-layer helper deliberately performs no model-based reranking
     and no network calls. Chat pipelines pass the resulting candidates to the
-    dedicated VoyageAI reranker through RouterAI.
+    dedicated Cohere reranker through RouterAI.
     """
     if not entries:
         return []
@@ -352,7 +353,7 @@ def _merge_chroma_candidates(entries: List[dict], distances: List[float]) -> Lis
 class StartupRAG:
     client: chromadb.ClientAPI
     collections: dict[str, Collection]
-    embedding_fn: GeminiEmbeddingFunction
+    embedding_fn: PolzaEmbeddingFunction
 
     @classmethod
     async def build_async(cls) -> "StartupRAG":
@@ -372,7 +373,7 @@ class StartupRAG:
     @classmethod
     async def _actually_build(cls) -> "StartupRAG":
         raw_docs = _load_raw_documents()
-        embedding_fn = GeminiEmbeddingFunction()
+        embedding_fn = PolzaEmbeddingFunction()
         client = _build_client()
         reindex = _should_reindex()
 
@@ -576,7 +577,7 @@ async def init_rag() -> None:
 
 async def run_embedding_keepwarm_loop(interval_seconds: int = 60) -> None:
     """Background task: ping the embedding endpoint every `interval_seconds`
-    so the RouterAI TLS connection (and any provider cold path) never goes
+    so the Polza TLS connection (and any provider cold path) never goes
     stale. The first embedding after an idle gap was measured at ~30s on
     prod — unacceptable for a live demo. A warm connection keeps it ~1s.
 
@@ -646,7 +647,7 @@ def healthcheck() -> bool:
 def index_successful_chat_interaction(user_query: str, ai_response: str, message_id: int):
     """Saves a highly-rated chat pair into the successful_chats collection for future RAG usage."""
     client = _build_client()
-    embedding_fn = GeminiEmbeddingFunction()
+    embedding_fn = PolzaEmbeddingFunction()
     
     collection = client.get_or_create_collection(
         name="successful_chats",
@@ -666,7 +667,7 @@ def index_successful_chat_interaction(user_query: str, ai_response: str, message
 def search_successful_chats(query: str, top_k: int = 1) -> List[dict]:
     """Finds a previously highly-rated similar interaction."""
     client = _build_client()
-    embedding_fn = GeminiEmbeddingFunction()
+    embedding_fn = PolzaEmbeddingFunction()
     try:
         collection = client.get_collection(
             name="successful_chats",
@@ -700,7 +701,7 @@ def search_successful_chats(query: str, top_k: int = 1) -> List[dict]:
 async def asearch_successful_chats(query: str, top_k: int = 1) -> List[dict]:
     """Finds a previously highly-rated similar interaction asynchronously."""
     client = _build_client()
-    embedding_fn = GeminiEmbeddingFunction()
+    embedding_fn = PolzaEmbeddingFunction()
     try:
         collection = client.get_collection(
             name="successful_chats",

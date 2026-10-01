@@ -92,10 +92,14 @@ If you store secrets in Lockbox, `deploy.sh` can resolve them before `docker com
    - `LOCKBOX_ENABLED=true`
    - `LOCKBOX_APP_SECRET_KEY_SECRET_ID=<secret-id>`
    - `LOCKBOX_YC_API_KEY_SECRET_ID=<secret-id>`
+   - `LOCKBOX_POLZA_API_KEY_SECRET_ID=<secret-id>`
+   - `LOCKBOX_ROUTERAI_API_KEY_SECRET_ID=<secret-id>`
    - `LOCKBOX_POSTGRES_PASSWORD_SECRET_ID=<secret-id>`
 3. Optional: set entry keys if your secret entry names differ:
    - `LOCKBOX_APP_SECRET_KEY_ENTRY_KEY`
    - `LOCKBOX_YC_API_KEY_ENTRY_KEY`
+   - `LOCKBOX_POLZA_API_KEY_ENTRY_KEY`
+   - `LOCKBOX_ROUTERAI_API_KEY_ENTRY_KEY`
    - `LOCKBOX_POSTGRES_PASSWORD_ENTRY_KEY`
 4. Run `/opt/ai-startup/deploy.sh`. It generates `.env.runtime` and uses it for compose.
 

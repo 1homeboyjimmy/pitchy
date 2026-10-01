@@ -37,7 +37,7 @@ ZAI_HTTP_PROXY = os.getenv("ZAI_HTTP_PROXY", "").strip() or None
 
 def is_configured() -> bool:
     """Cheap check used by the orchestrator to decide between native Z.AI
-    and the Makura-based fallback. Returns False when the key is unset, so
+    and the Polza-based fallback. Returns False when the key is unset, so
     the chat flow silently degrades to the existing path."""
     return bool(os.getenv("ZAI_API_KEY"))
 
@@ -57,7 +57,7 @@ async def stream_slides(user_message: str,
       {type: "chunk",         content: str}                 # error text
 
     On any failure raises; the orchestrator wraps the call so it can fall
-    back to the Makura path.
+    back to the Polza path.
     """
     api_key = os.getenv("ZAI_API_KEY", "").strip()
     if not api_key:

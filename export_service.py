@@ -632,8 +632,8 @@ async def classify_export_intent(query: str, timeout: float = 5.0):
     from schemas.llm import ExportIntent
 
     try:
-        client = get_instructor_client("routerai")
-        model = os.getenv("DISPATCHER_MODEL", "qwen/qwen-2.5-7b-instruct")
+        client = get_instructor_client("polza")
+        model = os.getenv("DISPATCHER_MODEL", "qwen/qwen3-32b")
         res = await asyncio.wait_for(
             client.chat.completions.create(
                 model=model,

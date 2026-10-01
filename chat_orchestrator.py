@@ -8,7 +8,7 @@ from typing import Any, Optional
 from datetime import datetime
 
 from redis_client import get_redis
-from makura_client import call_makura, stream_makura
+from polza_client import call_polza, stream_polza
 from tree_orchestrator import _normalize_tree_data
 from search_agent import execute_search_agent
 from core_tree import CORE_SKELETON
@@ -314,7 +314,7 @@ class ChatOrchestrator:
         # provided".
         messages.append({"role": "user", "content": clip_text(user_message, MAX_USER_CHARS)})
         
-        async for chunk in stream_makura(messages=messages):
+        async for chunk in stream_polza(messages=messages):
             yield chunk
 
     async def _parse_thought_generator(self, generator):
@@ -337,7 +337,7 @@ class ChatOrchestrator:
                         yield self._format_sse({"type": "chunk", "content": buffer})
                     buffer = ""
 
-                # Handle native reasoning_content from Makura/Z-AI
+                # Handle native reasoning_content from Polza/Z-AI
                 if "__thinking__" in chunk:
                     yield self._format_sse({"type": "thought", "content": chunk["__thinking__"]})
                     continue
@@ -620,7 +620,7 @@ class ChatOrchestrator:
         # Force deep search if query contains 2026 or "сейчас"
         is_deep_search = is_deep_search or ("2026" in user_message or "сейчас" in user_message.lower())
         
-        model_used = "Makura (GLM-5)" # Default for intent/RAG
+        model_used = "Polza (GPT-6 Luna Pro)" # Default for intent/RAG
         enriched_data = {}
         sources_list = []
         usage_data = None
@@ -647,7 +647,7 @@ class ChatOrchestrator:
                 tags=[intent, "deep_search" if use_deep_search else "basic_search"]
             )
 
-        # Start VoyageAI reranking before optional web search so the two
+        # Start model-based reranking before optional web search so the two
         # independent network stages overlap. Keep entries structured so
         # source metadata survives into the final evidence context.
         rerank_task = asyncio.create_task(
@@ -722,7 +722,7 @@ class ChatOrchestrator:
         try:
             reranked_entries = await rerank_task
         except Exception as rerank_err:
-            logger.warning("Roadmap VoyageAI rerank failed; using Chroma order: %s", rerank_err)
+            logger.warning("Polza rerank failed; using Chroma order: %s", rerank_err)
             pipeline_meta["fallbacks"].append("reranker")
             reranked_entries = initial_rag_chunks[:6]
         pipeline_meta["reranked_candidates"] = len(reranked_entries)
@@ -785,7 +785,7 @@ class ChatOrchestrator:
             yield self._format_sse({"type": "status", "content": "Синтезирую финальный ответ..."})
             await asyncio.sleep(0.01)
             if intent == "chat" or intent not in ["roadmap", "finance", "search", "legal", "presentation", "tree"]:
-                model_used = "Makura (GLM-5)"
+                model_used = "Polza (GPT-6 Luna Pro)"
                 yield self._format_sse({"type": "metadata", "model": model_used})
                 start_time = time.time()
                 ttft = None
@@ -840,7 +840,7 @@ class ChatOrchestrator:
                 if sources_list:
                     yield self._format_sse({"type": "sources", "data": sources_list})
                     
-                async for json_chunk in self._parse_thought_generator(keep_alive_generator(stream_makura(system, prompt))):
+                async for json_chunk in self._parse_thought_generator(keep_alive_generator(stream_polza(system, prompt))):
                     if isinstance(json_chunk, dict):
                         if json_chunk.get("type") == "ping":
                             yield self._format_sse(json_chunk)
@@ -867,7 +867,7 @@ class ChatOrchestrator:
                 yield self._format_sse({"type": "metadata", "model": model_used})
             
             elif intent == "finance":
-                model_used = "Makura (Finance Expert)"
+                model_used = "Polza (GPT-6 Luna Pro, Finance Expert)"
                 yield self._format_sse({"type": "metadata", "model": model_used})
                 
                 node_info = next((n for n in state["nodes"] if n["id"] == active_node_id), {})
@@ -886,7 +886,7 @@ class ChatOrchestrator:
                 )
                 system_prompt = f"Ты финансовый эксперт Pitchy. На основе контекста ответь пользователю:\n{compiled_rag_context}"
                 
-                async for json_chunk in self._parse_thought_generator(keep_alive_generator(stream_makura(prompt, system_prompt=system_prompt))):
+                async for json_chunk in self._parse_thought_generator(keep_alive_generator(stream_polza(system_prompt, prompt))):
                     if isinstance(json_chunk, dict):
                         if json_chunk.get("type") == "ping":
                             yield self._format_sse(json_chunk)
@@ -914,7 +914,7 @@ class ChatOrchestrator:
                     yield self._format_sse({"type": "chunk", "content": msg})
                     return
                     
-                model_used = "Makura (Presentation Builder)"
+                model_used = "Polza (GPT-6 Luna Pro, Presentation Builder)"
                 yield self._format_sse({"type": "metadata", "model": model_used})
                 
                 yield self._format_sse({"type": "chunk", "content": "Начинаю сборку вашей презентации... Пожалуйста, подождите.\n\n"})
@@ -932,7 +932,7 @@ class ChatOrchestrator:
                     reply_full += "\nНе удалось сгенерировать."
             
             else:
-                model_used = "Makura (GLM-5)"
+                model_used = "Polza (GPT-6 Luna Pro)"
                 yield self._format_sse({"type": "metadata", "model": model_used})
                 async for json_chunk in self._parse_thought_generator(keep_alive_generator(self._stream_chat(user_message, history, state, active_node_id))):
                     if isinstance(json_chunk, dict):
@@ -1060,7 +1060,7 @@ class ChatOrchestrator:
 
 
     async def _handle_finance(self, user_message: str, state: dict, active_node_id: str):
-        """Handle financial calculations via Makura with streaming."""
+        """Handle financial calculations via Polza with streaming."""
         node_info = next((n for n in state["nodes"] if n["id"] == active_node_id), {})
         tree_metrics = {}
         for n in state["nodes"]:
@@ -1087,14 +1087,14 @@ class ChatOrchestrator:
         )
         system_prompt = f"Ты финансовый эксперт Pitchy. На основе предоставленного контекста ответь пользователю:\n{full_context}"
         
-        # Use stream_makura for immediate feedback
-        async for chunk in stream_makura(prompt, system_prompt=system_prompt):
+        # Use the Polza stream for immediate feedback
+        async for chunk in stream_polza(system_prompt, prompt):
             if isinstance(chunk, dict):
                 continue  # Skip usage sentinel
             yield self._format_sse({"type": "chunk", "content": chunk})
 
     async def _handle_search(self, user_message: str, use_deep_search: bool = False, use_research: bool = False):
-        """Handle internet search intent by calling Tavily streaming research or basic search."""
+        """Handle internet search intent with Exa basic or deep search."""
         if use_research:
             from search_agent import stream_deep_research
             async for chunk in stream_deep_research(user_message):
@@ -1119,17 +1119,17 @@ class ChatOrchestrator:
         )
         system = "Ты — эксперт по поиску и сводке информации. Сначала напиши свои мысли в <thought>...</thought>, а затем ответ."
         
-        async for chunk in self._parse_thought_generator(stream_makura(system, prompt)):
+        async for chunk in self._parse_thought_generator(stream_polza(system, prompt)):
             yield chunk
 
     async def _handle_legal(self, user_message: str, rag_context: str = "") -> str:
-        """Handle legal questions via Makura (specialized for RU law) + RAG."""
+        """Handle legal questions via Polza (specialized for RU law) + RAG."""
         system_prompt = "Ты — квалифицированный юрист по российскому законодательству. Отвечай на вопросы о налогах, праве и регистрации бизнеса в РФ."
         if rag_context:
             system_prompt += f"\nИспользуй следующие выдержки из нормативных документов для подготовки ответа:\n{rag_context}"
             
         try:
-            reply, _, _ = await call_makura(system_prompt, user_message)
+            reply, _, _ = await call_polza(system_prompt, user_message)
             return reply or "Юридический помощник временно недоступен."
         except Exception as e:
             logger.error(f"Legal call failed: {e}")
@@ -1160,7 +1160,7 @@ class ChatOrchestrator:
             return "Извините, не удалось обработать изменение дорожной карты.", {}
 
     async def _handle_chat(self, user_message: str, chat_history: str = "", active_node: dict = None) -> str:
-        """Handle general chat via Makura (GLM-5)."""
+        """Handle general chat via Polza (GPT-6 Luna Pro)."""
         node_context = ""
         
         base_prompt = "Ты — бизнес-ассистент платформы Pitchy."
@@ -1172,11 +1172,7 @@ class ChatOrchestrator:
         system_prompt = f"{base_prompt} {node_context}Отвечай на русском языке. Сначала запиши свои мысли/размышления о запросе внутри тегов <thought>...</thought>, а затем дай итоговый ответ пользователю."
         prompt = f"История чата:\n{chat_history}\n\nПользователь: {user_message}"
         
-        provider = os.getenv("PRIMARY_PROVIDER", "makura")
-        if provider == "makura":
-            reply, json_metrics, _ = await call_makura(system_prompt, prompt)
-        else:
-            reply, json_metrics, _ = await call_makura(system_prompt, prompt)
+        reply, json_metrics, _ = await call_polza(system_prompt, prompt)
         
         if json_metrics:
             # Assuming _save_metrics_from_json is defined elsewhere or will be added
@@ -1186,7 +1182,7 @@ class ChatOrchestrator:
         return reply or "Извините, сейчас я не могу ответить."
 
     async def _handle_presentation(self, user_message: str, state: dict, rag_context: str = "") -> tuple[list, str, dict]:
-        """Handle presentation generation via Makura."""
+        """Handle presentation generation via Polza."""
         tree_metadata = json.dumps(state.get("nodes", []), ensure_ascii=False)
         
         system_prompt = "Ты — эксперт по созданию презентаций (pitch decks) для стартапов."
@@ -1206,7 +1202,7 @@ class ChatOrchestrator:
             "]\n"
         )
         
-        reply, _, usage_data = await call_makura(system_prompt, prompt, model=os.getenv("MAKURA_MODEL", "glm-5"))
+        reply, _, usage_data = await call_polza(system_prompt, prompt, model=os.getenv("POLZA_MODEL", "openai/gpt-6-luna-pro"))
         
         if not reply:
             return [], "", {}

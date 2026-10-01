@@ -396,7 +396,7 @@ async def evaluate_node(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Evaluate a node using form data and dynamic branching."""
-    from makura_client import call_makura
+    from polza_client import call_polza
     import copy
 
     res = await db.execute(select(ProjectTree).where(ProjectTree.id == tree_id, ProjectTree.user_id == user.id))
@@ -426,7 +426,7 @@ async def evaluate_node(
 
     with get_span(name="LLM Analysis") as span:
         try:
-            raw_ai, _, _ = await call_makura("Ты — бизнес-аналитик. Отвечай СТРОГО в формате JSON.", prompt)
+            raw_ai, _, _ = await call_polza("Ты — бизнес-аналитик. Отвечай СТРОГО в формате JSON.", prompt)
             # Parse JSON from AI
             start = raw_ai.find("{")
             end = raw_ai.rfind("}") + 1

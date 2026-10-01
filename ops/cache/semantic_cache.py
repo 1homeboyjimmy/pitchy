@@ -20,16 +20,18 @@ from redis.commands.search.index_definition import IndexDefinition, IndexType
 from redis.commands.search.query import Query
 from redis.exceptions import ResponseError
 
-from rag import GeminiEmbeddingFunction
+from rag import EMBEDDING_DIMENSION, PolzaEmbeddingFunction
 
 logger = logging.getLogger("app")
 
 class SemanticCache:
     ENTRY_PREFIX = "__pitchy_cache_v2__:"
     def __init__(self):
-        self.embedding_fn = GeminiEmbeddingFunction()
-        self.index_name = "idx:semantic_cache"
-        self.prefix = "semantic_cache:"
+        self.embedding_fn = PolzaEmbeddingFunction()
+        # A new Redis prefix/index isolates Qwen vectors from cached entries
+        # created with the previous 3072-dimensional Gemini embedding space.
+        self.index_name = "idx:semantic_cache_qwen3_embedding_4b"
+        self.prefix = "semantic_cache_qwen3_embedding_4b:"
         self.ttl_seconds = 300  # 5 minutes
         
         # We create a separate client without decode_responses=True for safe raw bytes vector operations
@@ -51,7 +53,7 @@ class SemanticCache:
                         TextField("response"),
                         VectorField("query_vector", "FLAT", {
                             "TYPE": "FLOAT32",
-                            "DIM": 3072,
+                            "DIM": EMBEDDING_DIMENSION,
                             "DISTANCE_METRIC": "COSINE"
                         })
                     ]

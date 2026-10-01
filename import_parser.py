@@ -3,7 +3,7 @@ import json
 import logging
 from typing import Optional
 from schemas import ProjectContext
-from makura_client import call_makura
+from polza_client import call_polza
 
 logger = logging.getLogger("app")
 
@@ -38,7 +38,7 @@ class ImportParser:
         if not extracted:
             logger.info("ImportParser: Valid JSON not found, falling back to LLM.")
             try:
-                ai_reply, _, _ = await call_makura(
+                ai_reply, _, _ = await call_polza(
                     system_prompt=cls.SYSTEM_PROMPT,
                     user_message=f"Извлеки данные из следующего текста:\n\n{raw_text}"
                 )

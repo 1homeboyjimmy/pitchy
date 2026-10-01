@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import pytest
 
 import grants_service
-import makura_client
+import polza_client
 from schemas import GrantResponse
 
 
@@ -13,7 +13,7 @@ async def test_generation_fails_when_every_model_group_fails(monkeypatch):
     async def unavailable(*_args, **_kwargs):
         raise RuntimeError("upstream unavailable")
 
-    monkeypatch.setattr(makura_client, "call_makura", unavailable)
+    monkeypatch.setattr(polza_client, "call_polza", unavailable)
 
     grant = SimpleNamespace(
         name="Старт-ИИ",

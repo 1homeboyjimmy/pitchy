@@ -236,7 +236,7 @@ async def execute_deep_research(query: str) -> tuple[str, list[dict]]:
     return context, sources
 
 async def stream_deep_research(query: str):
-    """Отключаем стриминг Tavily в Pitchy 2.0."""
+    """Stream Exa deep-search results through the shared research flow."""
     yield {"type": "thought", "content": "Инициализация Exa Search...\n"}
     sources, context = await async_search_with_sources(query, use_deep_search=True)
     yield {"type": "sources", "data": sources}

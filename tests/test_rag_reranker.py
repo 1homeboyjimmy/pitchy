@@ -4,7 +4,7 @@ import rag_reranker
 
 
 @pytest.mark.asyncio
-async def test_rerank_chunks_uses_voyageai_through_router(monkeypatch):
+async def test_rerank_chunks_uses_cohere_through_router(monkeypatch):
     calls = []
 
     async def fake_rerank_documents(**kwargs):
@@ -25,7 +25,7 @@ async def test_rerank_chunks_uses_voyageai_through_router(monkeypatch):
         "query": "best market",
         "documents": ["first", "second", "third"],
         "top_n": 2,
-        "model": "voyageai/rerank-2.5-lite",
+        "model": "cohere/rerank-v3.5",
     }]
 
 

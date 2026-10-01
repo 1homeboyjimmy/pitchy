@@ -280,10 +280,10 @@ async def extract_grant_from_url(url: str) -> dict:
     )
     user_prompt = f"URL: {url}\nСЕГОДНЯ: {today}\n\nТЕКСТ СТРАНИЦЫ:\n{text}"
 
-    from makura_client import call_makura
+    from polza_client import call_polza
     import os
-    model = os.getenv("GRANTS_MODEL") or os.getenv("MAKURA_MODEL")
-    raw, _, _usage = await call_makura(system_prompt, user_prompt, model=model)
+    model = os.getenv("GRANTS_MODEL") or os.getenv("POLZA_MODEL")
+    raw, _, _usage = await call_polza(system_prompt, user_prompt, model=model)
 
     parsed: dict = {}
     if raw:
@@ -458,7 +458,7 @@ def _passport_brief(passport: dict | None) -> tuple[str, list[str]]:
 async def _generate_group(group: dict, *, fund_guidance: str, grant_facts: str,
                           brief: str, extra_context: str, model: str | None) -> tuple[dict, dict]:
     """Один LLM-вызов на группу разделов шаблона. Возвращает (секции, usage)."""
-    from makura_client import call_makura
+    from polza_client import call_polza
 
     spec = "\n".join(
         f'- "{s["key"]}" — {s["label"]}: {s.get("hint", "")}'.rstrip()
@@ -478,7 +478,7 @@ async def _generate_group(group: dict, *, fund_guidance: str, grant_facts: str,
         + (f"ДОПОЛНИТЕЛЬНО ОТ ПОЛЬЗОВАТЕЛЯ:\n{extra_context}\n\n" if extra_context else "")
         + f"ПОЛЯ РАЗДЕЛА «{group['title']}» (заполни каждое):\n{spec}"
     )
-    raw, _, usage = await call_makura(system_prompt, user_prompt, model=model)
+    raw, _, usage = await call_polza(system_prompt, user_prompt, model=model)
     out: dict[str, str] = {}
     if raw:
         try:
@@ -515,7 +515,7 @@ async def generate_application(passport: dict | None, grant, extra_context: str 
         f"ТРЕБОВАНИЯ ГРАНТА: {json.dumps(requirements, ensure_ascii=False)}\n\n"
     )
 
-    model = os.getenv("GRANTS_MODEL") or os.getenv("MAKURA_MODEL")
+    model = os.getenv("GRANTS_MODEL") or os.getenv("POLZA_MODEL")
     sections: dict[str, str] = {}
     usage_total = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 

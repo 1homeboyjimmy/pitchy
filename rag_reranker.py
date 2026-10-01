@@ -1,4 +1,4 @@
-"""Dedicated reranking for RAG chunks through RouterAI.
+"""Reranking for RAG chunks through RouterAI's dedicated rerank API.
 
 The reranker is a quality enhancer, not a hard dependency: if RouterAI is
 unconfigured or unavailable, callers keep the source retrieval order.
@@ -7,12 +7,13 @@ unconfigured or unavailable, callers keep the source retrieval order.
 from __future__ import annotations
 
 import logging
+import os
 
 from routerai_client import rerank_documents
 
 logger = logging.getLogger("app.reranker")
 
-RERANKER_MODEL = "voyageai/rerank-2.5-lite"
+RERANKER_MODEL = os.getenv("ROUTERAI_RERANK_MODEL", "cohere/rerank-v3.5")
 
 
 async def rerank_indices(query: str, documents: list[str], top_k: int = 6) -> list[int]:
@@ -67,9 +68,8 @@ async def rerank_indices(query: str, documents: list[str], top_k: int = 6) -> li
 async def rerank_chunks(query: str, chunks: list[str], top_k: int = 6) -> list[str]:
     """Return up to ``top_k`` chunks ordered by relevance to ``query``.
 
-    RouterAI's dedicated rerank endpoint returns indices into ``chunks``. The
-    response is validated here so a malformed provider response cannot break
-    the chat pipeline or select a document more than once.
+    RouterAI returns indices into ``chunks``. The response is validated so a
+    malformed provider response cannot break chat or select a document twice.
     """
     indices = await rerank_indices(query, chunks, top_k=top_k)
     return [chunks[index] for index in indices]

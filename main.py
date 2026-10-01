@@ -104,8 +104,7 @@ import uuid
 import ipaddress
 from redis_client import get_redis
 from slm_dispatcher import slm_dispatcher
-from makura_client import call_makura, stream_makura
-from routerai_client import get_main_chat_model, stream_routerai
+from polza_client import call_polza, get_main_chat_model, stream_polza
 from search_agent import execute_search_agent, execute_deep_research, async_search_with_sources, get_exa_proxy
 from db import SessionLocal, get_db, engine
 from db_async import get_async_db
@@ -1106,9 +1105,8 @@ async def _gather_health() -> dict:
             return {"state": "warning", "ok": False, "error": type(e).__name__}
 
     # --- external probes, run in parallel ---
-    makura_key = os.getenv("MAKURA_API_KEY", "")
-    routerai_key = os.getenv("ROUTERAI_API_KEY", "")
-    routerai_base_url = os.getenv("ROUTERAI_BASE_URL", "https://routerai.ru/api/v1").rstrip("/")
+    polza_key = os.getenv("POLZA_API_KEY", "")
+    polza_base_url = os.getenv("POLZA_API_BASE", "https://polza.ai/api/v1").rstrip("/")
     exa_key = os.getenv("EXA_API_KEY", "")
     langfuse_url = os.getenv("LANGFUSE_BASE_URL", "https://cloud.langfuse.com").rstrip("/")
     langfuse_configured = bool(os.getenv("LANGFUSE_PUBLIC_KEY") and os.getenv("LANGFUSE_SECRET_KEY"))
@@ -1140,7 +1138,7 @@ async def _gather_health() -> dict:
             return default
 
     (db_check, redis_check, rag_ok, alembic_check, sys_info, research_check,
-     makura_check, routerai_check, exa_check, smtp_check,
+     polza_check, exa_check, smtp_check,
      chroma_check, frontend_check, loki_check, grafana_check, crowdsec_check,
      langfuse_check) = await asyncio.gather(
         _safe_thread(_db_details, {"state": "down", "ok": False, "error": "timeout"}),
@@ -1149,11 +1147,8 @@ async def _gather_health() -> dict:
         _safe_thread(_alembic_state, {"ok": False, "error": "timeout"}),
         _safe_thread(_system_info, {}),
         _safe_thread(_research_details, {"state": "warning", "ok": False, "error": "timeout"}),
-        _check_http("https://api.makura.ai/v1/models",
-                    headers={"Authorization": f"Bearer {makura_key}"} if makura_key else None,
-                    method="GET"),
-        _check_http(f"{routerai_base_url}/models",
-                    headers={"Authorization": f"Bearer {routerai_key}"} if routerai_key else None,
+        _check_http(f"{polza_base_url}/models",
+                    headers={"Authorization": f"Bearer {polza_key}"} if polza_key else None,
                     method="GET"),
         _check_tcp(exa_probe_host, exa_probe_port, timeout=5.0),
         smtp_probe,
@@ -1181,19 +1176,12 @@ async def _gather_health() -> dict:
         ) + ("" if exa_key else " (no key configured)")
     if not exa_key:
         exa_check.setdefault("note", "EXA_API_KEY not set")
-    # makura "configured: false" if no key
-    if not makura_key:
-        makura_check["state"] = "skipped"
-        makura_check["note"] = "MAKURA_API_KEY not set"
-    if not routerai_key:
-        routerai_check["state"] = "skipped"
-        routerai_check["note"] = "ROUTERAI_API_KEY not set"
-    from rag_reranker import RERANKER_MODEL
-    routerai_check["reranker_model"] = RERANKER_MODEL
-    routerai_check["reranker_endpoint"] = f"{routerai_base_url}/rerank"
-    routerai_check["note"] = (
-        (routerai_check.get("note") + "; ") if routerai_check.get("note") else ""
-    ) + "health probe checks RouterAI reachability; chat uses the dedicated rerank endpoint"
+    if not polza_key:
+        polza_check["state"] = "skipped"
+        polza_check["note"] = "POLZA_API_KEY not set"
+    polza_check["note"] = (
+        (polza_check.get("note") + "; ") if polza_check.get("note") else ""
+    ) + "LLM and embeddings use Polza"
     if not langfuse_configured:
         langfuse_check["state"] = "skipped"
         langfuse_check["note"] = "Langfuse credentials not configured"
@@ -1218,8 +1206,7 @@ async def _gather_health() -> dict:
         "frontend": frontend_check,
         "research": research_check,
         "smtp":    {**smtp_check, "host": smtp_host, "port": smtp_port},
-        "makura":  {**makura_check, "configured": bool(makura_key)},
-        "routerai": {**routerai_check, "configured": bool(routerai_key)},
+        "polza": {**polza_check, "configured": bool(polza_key)},
         "exa":     {**exa_check, "configured": bool(exa_key)},
         "langfuse": {**langfuse_check, "configured": langfuse_configured},
         "loki": loki_check,
@@ -1299,7 +1286,7 @@ def _render_health_html(data: dict) -> str:
     sys_info = checks.pop("system", {})
     ordered = [
         "db", "redis", "chroma", "rag", "alembic", "frontend", "research",
-        "smtp", "makura", "routerai", "exa", "langfuse",
+        "smtp", "polza", "exa", "langfuse",
         "loki", "grafana", "crowdsec",
     ]
     cards_html = "".join(card(k, checks[k]) for k in ordered if k in checks)
@@ -1398,8 +1385,8 @@ async def health() -> dict:
         "summary": data.get("summary", {}),
         "capabilities": {
             "main_chat": bool(
-                (checks.get("routerai") or {}).get("configured")
-                and (checks.get("routerai") or {}).get("ok")
+                (checks.get("polza") or {}).get("configured")
+                and (checks.get("polza") or {}).get("ok")
             ),
             "web_search": bool(
                 (checks.get("exa") or {}).get("configured")
@@ -2054,12 +2041,8 @@ async def analyze_startup(payload: AnalyzeRequest) -> AnalyzeResponse:
     user_prompt = _build_user_prompt(payload.description, context_chunks)
 
     try:
-        provider = os.getenv("PRIMARY_PROVIDER", "makura")
-        if provider == "makura":
-            raw_text, _, usage = await call_makura(SYSTEM_PROMPT, user_prompt)
-        else:
-            raw_text, _, usage = await call_makura(SYSTEM_PROMPT, user_prompt)
-        logger.info(f"AI token usage ({provider} /analyze): {usage}")
+        raw_text, _, usage = await call_polza(SYSTEM_PROMPT, user_prompt)
+        logger.info(f"AI token usage (Polza /analyze): {usage}")
         data = extract_json_zai(raw_text)
     except Exception as exc:
         logger.error(f"Analysis error: {exc}")
@@ -2374,12 +2357,8 @@ async def create_analysis(
     user_prompt = _build_user_prompt(description, context_chunks)
 
     try:
-        provider = os.getenv("PRIMARY_PROVIDER", "makura")
-        if provider == "makura":
-            raw_text, _, usage = await call_makura(SYSTEM_PROMPT, user_prompt)
-        else:
-            raw_text, _, usage = await call_makura(SYSTEM_PROMPT, user_prompt)
-        logger.info(f"AI token usage ({provider} website analysis): {usage}")
+        raw_text, _, usage = await call_polza(SYSTEM_PROMPT, user_prompt)
+        logger.info(f"AI token usage (Polza website analysis): {usage}")
         data = extract_json_zai(raw_text)
     except Exception as exc:
         logger.error(f"Analysis error: {exc}")
@@ -2677,12 +2656,12 @@ async def chat(payload: ChatRequest):
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     user_prompt = _build_chat_prompt(payload.messages, context_chunks)
-    provider = os.getenv("PRIMARY_PROVIDER", "makura")
+    provider = "polza"
 
     async def chat_generator():
         full_response = ""
         try:
-            raw_gen = stream_makura(SYSTEM_CHAT_PROMPT, user_prompt)
+            raw_gen = stream_polza(SYSTEM_CHAT_PROMPT, user_prompt)
             async for json_chunk in parse_thought_generator(raw_gen):
                 # Usage sentinel passed as dict
                 if isinstance(json_chunk, dict):
@@ -2958,7 +2937,7 @@ async def create_chat_message(
     # -----------------------------------
 
     user_prompt = _build_chat_prompt(chat_messages, context_chunks)
-    provider = os.getenv("PRIMARY_PROVIDER", "makura")
+    provider = "polza"
 
     async def session_chat_generator():
         full_text = ""
@@ -2973,10 +2952,7 @@ async def create_chat_message(
             if sources_list:
                 yield format_sse({"type": "sources", "data": sources_list})
 
-            if provider == "makura":
-                raw_gen = stream_makura(SYSTEM_CHAT_PROMPT, user_prompt)
-            else:
-                raw_gen = stream_makura(SYSTEM_CHAT_PROMPT, user_prompt)
+            raw_gen = stream_polza(SYSTEM_CHAT_PROMPT, user_prompt)
                 
             async for json_chunk in parse_thought_generator(raw_gen):
                 if isinstance(json_chunk, dict):
@@ -5076,7 +5052,7 @@ async def send_chat_message(
             )
 
         main_chat_model = get_main_chat_model()
-        provider = f"routerai/{main_chat_model}"
+        provider = f"polza/{main_chat_model}"
         full_response = ""
         full_thoughts = ""
         usage_data = None
@@ -5408,9 +5384,9 @@ async def send_chat_message(
 
                     # Sync the slide-agent output into the chat history as a
                     # system breadcrumb. Without this, a follow-up like "сделай
-                    # 3-й слайд короче" routes through Makura — which never
+                    # 3-й слайд короче" routes through the chat model — which never
                     # saw the slides and replies "о каких слайдах речь?". With
-                    # the breadcrumb in history_text, Makura now knows the
+                    # the breadcrumb in history_text, the chat model now knows the
                     # deck shape (titles + provider) and can either edit
                     # inline or recommend re-running the presentation intent.
                     try:
@@ -5470,7 +5446,7 @@ Never print raw URLs, scraped navigation, long date sequences, or a
                 yield _emit_thought(
                     "Источники собраны. Сопоставляю факты и формирую аналитический отчёт.\n"
                 )
-                raw_gen = stream_routerai(
+                raw_gen = stream_polza(
                     research_system,
                     research_prompt,
                     model=main_chat_model,
@@ -5495,7 +5471,7 @@ Never print raw URLs, scraped navigation, long date sequences, or a
             # 4. MODE: QUICK SEARCH OR REGULAR CHAT
             else:
                 # =======================================================
-                # STAGE 6/7 — GLM-5 Reduce phase (synthesis + streaming)
+                # STAGE 6/7 — GPT-6 Luna Pro synthesis and streaming
                 # =======================================================
                 from chat_pipeline import build_history_text
                 history_text = build_history_text(chat_history)
@@ -5527,7 +5503,7 @@ Never print raw URLs, scraped navigation, long date sequences, or a
                         "напиши, что данных о проекте недостаточно, и попроси описать проект или заполнить "
                         "паспорт проекта. Никаких выдуманных данных."
                     )
-                raw_gen = stream_routerai(
+                raw_gen = stream_polza(
                     _export_system,
                     user_prompt,
                     model=main_chat_model,
@@ -5838,7 +5814,7 @@ async def _handle_presentation_in_chat(user_message: str, history_text: str,
     Provider preference, in order:
       1. Z.AI native slides_glm_agent (when ZAI_API_KEY is set) — purpose-
          built, returns styled HTML per slide.
-      2. Makura glm-5 + our JSONL prompt — fallback when Z.AI isn't
+      2. Polza GPT-6 Luna Pro + our JSONL prompt — fallback when Z.AI isn't
          configured or its first attempt fails before any output.
 
     Conversation continuity: if `session_id` is supplied AND a previous deck
@@ -5888,17 +5864,17 @@ async def _handle_presentation_in_chat(user_message: str, history_text: str,
                     })
                     return
             except Exception as e:
-                logger.warning(f"Z.AI slide agent failed before output, falling back to Makura: "
+                logger.warning(f"Z.AI slide agent failed before output, falling back to Polza: "
                                f"{type(e).__name__}: {e}")
-                # fall through to Makura path
+                # fall through to the Polza path
     except Exception as e:
         logger.warning(f"Z.AI slide agent module unavailable: {e}")
 
-    # ── Path 2: Makura GLM-5 with JSONL streaming ─────────────────────────
-    yield {"type": "provider", "name": "makura"}
+    # ── Path 2: Polza GPT-6 Luna Pro with JSONL streaming ──────────────────
+    yield {"type": "provider", "name": "polza"}
 
     system_prompt = (
-        "Ты — GLM Slide Agent, эксперт по инвестиционным презентациям (Pitch Decks). "
+        "Ты — эксперт по созданию инвестиционных презентаций (Pitch Decks). "
         "Создай 6-10 слайдов на русском в профессиональном бизнес-стиле.\n\n"
         "СТРОГИЕ ПРАВИЛА:\n"
         "1. Каждый элемент `content` — это КОРОТКАЯ ФРАЗА (3-8 слов), а НЕ предложение. "
@@ -5931,7 +5907,7 @@ async def _handle_presentation_in_chat(user_message: str, history_text: str,
     buffer = ""
     all_slides: list[dict] = []
     try:
-        async for chunk in stream_makura(system_prompt, prompt):
+        async for chunk in stream_polza(system_prompt, prompt):
             if isinstance(chunk, dict):
                 if "__thinking__" in chunk:
                     yield {"type": "thought", "content": chunk["__thinking__"]}
@@ -5952,7 +5928,7 @@ async def _handle_presentation_in_chat(user_message: str, history_text: str,
         # array (the inline slide events above are the primary channel).
         if all_slides:
             yield {"type": "presentation", "data": all_slides}
-            _pres_save_state(session_id, {"provider": "makura", "slides": all_slides})
+            _pres_save_state(session_id, {"provider": "polza", "slides": all_slides})
             return
 
         # Fallback: if streaming-parse found nothing, try the legacy "one big
@@ -5969,7 +5945,7 @@ async def _handle_presentation_in_chat(user_message: str, history_text: str,
                 for i, s in enumerate(slides, 1):
                     yield {"type": "slide", "data": s, "position": i}
                 yield {"type": "presentation", "data": slides}
-                _pres_save_state(session_id, {"provider": "makura", "slides": slides})
+                _pres_save_state(session_id, {"provider": "polza", "slides": slides})
                 return
 
         yield {"type": "chunk", "content": "\nНе удалось собрать слайды — модель вернула неструктурированный ответ."}
@@ -6089,19 +6065,15 @@ async def _generate_interviewer_response(session: ChatSession, db: AsyncSession)
 
 
         try:
-            provider = os.getenv("PRIMARY_PROVIDER", "makura")
-            if provider == "makura":
-                raw_response, _, usage = await call_makura(system_prompt_final, final_user_prompt)
-            else:
-                raw_response, _, usage = await call_makura(system_prompt_final, final_user_prompt)
+            raw_response, _, usage = await call_polza(system_prompt_final, final_user_prompt)
             if usage:
-                logger.info(f"AI token usage ({provider} background summary): {usage}")
+                logger.info(f"AI token usage (Polza background summary): {usage}")
         except Exception as e:
             logger.error(f"Interviewer provider call failed: {e}")
             raw_response, usage = None, None
 
         if not raw_response:
-            logger.error("Interviewer (Makura) failed: No response")
+            logger.error("Interviewer (Polza) failed: No response")
             return "Извините, я задумался. Можете повторить?"
 
         # Check if JSON

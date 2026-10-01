@@ -12,37 +12,32 @@ except ImportError:
 
 T = TypeVar("T", bound="Any")
 
-def get_instructor_client(provider: str = "routerai"):
+def get_instructor_client(provider: str = "polza"):
     """
     Возвращает клиент instructor для работы со структурированными данными.
-    По умолчанию использует RouterAI (OpenAI-совместимый API).
+    Использует Polza (OpenAI-совместимый API).
     """
-    if provider == "routerai":
-        base_url = os.getenv("ROUTERAI_API_BASE", "https://routerai.ru/api/v1")
-        api_key = os.getenv("ROUTERAI_API_KEY")
-        client = AsyncOpenAI(base_url=base_url, api_key=api_key)
-    elif provider == "makura":
-        base_url = "https://api.makura.ai/v1"
-        api_key = os.getenv("MAKURA_API_KEY")
-        client = AsyncOpenAI(base_url=base_url, api_key=api_key)
-    else:
-        # Fallback to standard OpenAI if configured
-        client = AsyncOpenAI()
+    if provider != "polza":
+        raise ValueError("Structured LLM requests must use the Polza provider")
+    client = AsyncOpenAI(
+        base_url=os.getenv("POLZA_API_BASE", "https://polza.ai/api/v1"),
+        api_key=os.getenv("POLZA_API_KEY"),
+    )
         
     return instructor.from_openai(client)
 
 @observe(name="dispatch_intent")
 async def dispatch_intent(query: str, client = None) -> Any:
     """
-    Классифицирует интент пользователя с помощью сверхбыстрой модели Qwen 2.5 7B.
+    Классифицирует интент пользователя с помощью Qwen3-32B через Polza.
     Использует instructor для получения строго валидного Pydantic-объекта.
     """
     from schemas.llm import IntentClassification
     
     if client is None:
-        client = get_instructor_client("routerai")
+        client = get_instructor_client("polza")
         
-    model = os.getenv("DISPATCHER_MODEL", "qwen/qwen-2.5-7b-instruct")
+    model = os.getenv("DISPATCHER_MODEL", "qwen/qwen3-32b")
     
     return await client.chat.completions.create(
         model=model,
@@ -63,9 +58,9 @@ async def request_roadmap_edit(query: str, project_context: str, client = None) 
     from schemas.llm import RoadmapEditResponse
     
     if client is None:
-        client = get_instructor_client("routerai")
+        client = get_instructor_client("polza")
         
-    model = os.getenv("DISPATCHER_MODEL", "qwen/qwen-2.5-7b-instruct")
+    model = os.getenv("DISPATCHER_MODEL", "qwen/qwen3-32b")
     
     return await client.chat.completions.create(
         model=model,

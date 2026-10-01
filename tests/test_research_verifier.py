@@ -34,7 +34,7 @@ async def test_verify_splits_claims_into_small_batches(monkeypatch):
         ]
         return json.dumps({"verdicts": verdicts}), None, {}
 
-    monkeypatch.setattr(research_service, "call_routerai", fake_call)
+    monkeypatch.setattr(research_service, "call_polza", fake_call)
     result = await research_service._verify("query", _claims(17), [])
 
     assert sorted(len(batch) for batch in calls) == [1, 8, 8]
@@ -50,7 +50,7 @@ async def test_verify_degrades_missing_verdicts_without_failing_job(monkeypatch)
         calls += 1
         return "", None, {"completion_tokens": 5000}
 
-    monkeypatch.setattr(research_service, "call_routerai", fake_call)
+    monkeypatch.setattr(research_service, "call_polza", fake_call)
     result = await research_service._verify("query", _claims(9), [])
 
     assert calls == 4
@@ -125,7 +125,7 @@ async def test_extract_claims_uses_structured_extractor_and_retries_invalid_json
             }]
         }), None, {}
 
-    monkeypatch.setattr(research_service, "call_makura", fake_call)
+    monkeypatch.setattr(research_service, "call_polza", fake_call)
     docs = [{"source_index": 1, "title": "Flowers", "url": "https://example.com", "content": "Evidence"}]
 
     claims = await research_service._extract_claims("цветочные магазины Москвы", docs)
@@ -155,7 +155,7 @@ async def test_research_brief_becomes_global_metric_contract(monkeypatch):
             "caveats": ["Нет сопоставимой выручки"],
         }), None, {}
 
-    monkeypatch.setattr(research_service, "call_routerai", fake_call)
+    monkeypatch.setattr(research_service, "call_polza", fake_call)
     claims = [{
         "claim": "У A 10 точек в Москве",
         "value_text": "10",
@@ -183,7 +183,7 @@ async def test_critic_preserves_draft_when_rewrite_is_empty(monkeypatch):
         assert kwargs["max_tokens"] == 8000
         return "", None, {}
 
-    monkeypatch.setattr(research_service, "call_routerai", fake_call)
+    monkeypatch.setattr(research_service, "call_polza", fake_call)
     draft = "## Прямой ответ\n\n" + ("Проверенный текст. " * 80)
 
     edited = await research_service._edit_report(

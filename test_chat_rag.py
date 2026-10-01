@@ -147,11 +147,11 @@ if __name__ == "__main__":
     result1 = asyncio.run(test_rag_retrieval_only())
     
     # Test 2: Full orchestrator pipeline (needs API keys)
-    has_api_keys = bool(os.getenv("MAKURA_API_KEY") or os.getenv("YC_API_KEY"))
+    has_api_keys = bool(os.getenv("POLZA_API_KEY") or os.getenv("YC_API_KEY"))
     if has_api_keys:
         result2 = asyncio.run(test_orchestrator_with_rag())
     else:
-        print("\n⚠️  Skipping orchestrator test (no MAKURA_API_KEY/YC_API_KEY in .env)")
+        print("\n⚠️  Skipping orchestrator test (no POLZA_API_KEY/YC_API_KEY configured)")
         result2 = None
     
     print("\n\n" + "="*60)

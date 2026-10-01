@@ -1,4 +1,4 @@
-from routerai_client import looks_like_upstream_error
+from polza_client import looks_like_upstream_error
 
 
 def test_detects_bot_block_returned_as_model_content():

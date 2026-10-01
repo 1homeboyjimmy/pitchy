@@ -28,8 +28,8 @@ async def generate_project_audit(
     if audit_type not in AUDIT_TYPE_INSTRUCTIONS:
         raise ValueError("Неизвестный тип аудита")
     if client is None:
-        client = get_instructor_client("routerai")
-    model = os.getenv("PROJECT_AUDIT_MODEL", "openai/gpt-4.1-mini")
+        client = get_instructor_client("polza")
+    model = os.getenv("PROJECT_AUDIT_MODEL", "openai/gpt-6-luna-pro")
     context = json.dumps(project_snapshot, ensure_ascii=False, default=str)
     if len(context) > 60000:
         context = context[:60000]

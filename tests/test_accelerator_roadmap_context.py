@@ -52,7 +52,7 @@ async def test_contextual_roadmap_debits_exact_membership_once_and_checks_owners
     # the paid AI pipeline out of this test so CI never needs provider keys.
     roadmap_analysis = types.ModuleType("roadmap_analysis")
     roadmap_analysis.validate_passport_for_analysis = lambda _passport: (True, "")
-    monkeypatch.setenv("ROUTERAI_API_KEY", "test-router-key")
+    monkeypatch.setenv("POLZA_API_KEY", "test-polza-key")
 
     async def stream_overall(_passport, _project_id):
         if False:  # pragma: no cover - keep this an async generator

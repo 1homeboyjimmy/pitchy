@@ -427,8 +427,8 @@ async def analyze_roadmap_overall(
     if not valid:
         raise HTTPException(status_code=422, detail=validation_message)
 
-    from routerai_client import is_routerai_configured
-    if not is_routerai_configured():
+    from polza_client import is_polza_configured
+    if not is_polza_configured():
         raise HTTPException(
             status_code=503,
             detail="Основная модель чата временно не настроена. Попробуйте позже.",

@@ -1,6 +1,6 @@
 """
 AI Orchestrator for Smart Roadmap generation.
-Powered by Makura (GLM-5).
+Powered by Polza (GPT-6 Luna Pro).
 """
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from typing import Any
 
 import httpx
 
-from makura_client import call_makura
+from polza_client import call_polza
 from core_tree import CORE_SKELETON
 
 try:
@@ -103,24 +103,20 @@ ENRICH_NODE_PROMPT = """Ты — бизнес-эксперт по российс
 async def generate_tree_from_text(description: str) -> dict[str, Any]:
     """
     Generate a Smart Roadmap structure from text description.
-    Uses Makura (GLM) for structure generation.
+    Uses GPT-6 Luna Pro via Polza for structure generation.
     Extracts flat key-value pairs and injects them into the CORE_SKELETON.
     """
     prompt = TREE_EXTRACTION_PROMPT.replace("{description}", description)
 
-    # Use GLM-5 via RouterAI or Makura
-    provider = os.getenv("PRIMARY_PROVIDER", "makura")
-    logger.info(f"Using {provider} for Smart Roadmap structure generation")
+    # Use GPT-6 Luna Pro via Polza.
+    logger.info("Using Polza for Smart Roadmap structure generation")
     
     extracted = {}
     with get_span(name="Structure Extraction") as span:
-        if provider == "makura":
-            raw, _, _ = await call_makura("Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON.", prompt)
-        else:
-            raw, _, _ = await call_makura("Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON.", prompt)
+        raw, _, _ = await call_polza("Ты — бизнес-аналитик. Извлекай данные СТРОГО в формате JSON.", prompt)
 
         if not raw:
-            logger.error("Makura extraction failed")
+            logger.error("Polza extraction failed")
             return _generate_fallback_tree(description)
 
         # Parse JSON

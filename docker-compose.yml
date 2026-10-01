@@ -69,7 +69,12 @@ services:
       CHROMA_HTTP_HOST: chroma
       CHROMA_HTTP_PORT: 8000
       CHROMA_REINDEX: ${CHROMA_REINDEX:-false}
+      POLZA_API_KEY: ${POLZA_API_KEY:-}
+      POLZA_API_BASE: ${POLZA_API_BASE:-https://polza.ai/api/v1}
       ROUTERAI_API_KEY: ${ROUTERAI_API_KEY:-}
+      ROUTERAI_API_BASE: ${ROUTERAI_API_BASE:-https://routerai.ru/api/v1}
+      ROUTERAI_RERANK_MODEL: ${ROUTERAI_RERANK_MODEL:-cohere/rerank-v3.5}
+      POLZA_EMBEDDING_MODEL: ${POLZA_EMBEDDING_MODEL:-qwen/qwen3-embedding-4b}
       EXA_API_KEY: ${EXA_API_KEY:-}
       EXA_HTTPS_PROXY: ${EXA_HTTPS_PROXY:-}
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}

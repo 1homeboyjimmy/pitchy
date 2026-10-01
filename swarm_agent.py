@@ -22,11 +22,11 @@ class ChunkAnalysis(BaseModel):
     confidence: float = Field(description="Уверенность в данных от 0.0 до 1.0", ge=0.0, le=1.0)
 
 def get_patched_client():
-    api_key = os.getenv("ROUTERAI_API_KEY")
+    api_key = os.getenv("POLZA_API_KEY")
     if not api_key:
         return None
     client = AsyncOpenAI(
-        base_url="https://routerai.ru/api/v1",
+        base_url=os.getenv("POLZA_API_BASE", "https://polza.ai/api/v1"),
         api_key=api_key,
     )
     return instructor.from_openai(client)
@@ -44,7 +44,7 @@ async def _process_single_chunk(client, chunk: str, trace_id: str = None, parent
         
     try:
         response = await client.chat.completions.create(
-            model="qwen/qwen-2.5-7b-instruct", 
+            model=os.getenv("SWARM_MODEL", "qwen/qwen3-32b"),
             response_model=ChunkAnalysis,
             messages=[
                 {"role": "system", "content": "Извлеки только самые важные бизнес-данные. Верни строгий JSON. Максимум 20 конкурентов и 30 метрик; не перечисляй повторяющиеся значения."},
@@ -53,12 +53,12 @@ async def _process_single_chunk(client, chunk: str, trace_id: str = None, parent
             temperature=0.1,
             max_retries=2
         )
-        # RouterAI may occasionally return an empty response object during a
+        # Polza may occasionally return an empty response object during a
         # provider hiccup. Instructor then raises a misleading
         # ``NoneType is not subscriptable`` while parsing choices. Convert it
         # into a clear, retryable failure handled by the swarm fallback.
         if response is None:
-            raise RuntimeError("RouterAI returned an empty swarm response")
+            raise RuntimeError("Polza returned an empty swarm response")
         return response
     except Exception as e:
         logger.error(f"Swarm chunk error: {e}", exc_info=True)
@@ -67,8 +67,8 @@ async def _process_single_chunk(client, chunk: str, trace_id: str = None, parent
 @observe(name="run_analytical_swarm")
 async def run_analytical_swarm(chunks: List[str], trace_id: str = None, parent_observation_id: str = None) -> List[ChunkAnalysis]:
     """Параллельный запуск роя на N чанков (возвращает список)."""
-    if not os.getenv("ROUTERAI_API_KEY"):
-        logger.info("Analytical swarm skipped: ROUTERAI_API_KEY is missing")
+    if not os.getenv("POLZA_API_KEY"):
+        logger.info("Analytical swarm skipped: POLZA_API_KEY is missing")
         return []
     results = []
     async for res in stream_analytical_swarm(chunks, trace_id, parent_observation_id):
@@ -90,7 +90,7 @@ async def stream_analytical_swarm(chunks: List[str], trace_id: str = None, paren
         
     client = get_patched_client()
     if client is None:
-        logger.info("Analytical swarm skipped: ROUTERAI_API_KEY is missing")
+        logger.info("Analytical swarm skipped: POLZA_API_KEY is missing")
         return
     tasks = [_process_single_chunk(client, chunk, trace_id=trace_id, parent_observation_id=parent_observation_id) for chunk in chunks]
     
