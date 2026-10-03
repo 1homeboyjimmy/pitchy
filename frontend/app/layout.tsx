@@ -1,27 +1,27 @@
 import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
-import { Prata, Inter, JetBrains_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 
-// Self-hosted fonts (next/font downloads & serves them from our own origin —
-// no runtime dependency on fonts.googleapis.com, which is unreliable/blocked
-// in RU). Cyrillic subset is mandatory: the whole site is Russian.
-const prata = Prata({
-  subsets: ["latin", "cyrillic"],
-  weight: "400",
+// Keep production builds independent of Google Fonts network availability.
+const prata = localFont({
+  src: "./fonts/Prata-Regular.ttf",
   variable: "--font-prata",
   display: "swap",
 });
 
-const inter = Inter({
-  subsets: ["latin", "cyrillic"],
-  style: ["normal", "italic"],
+const inter = localFont({
+  src: [
+    { path: "./fonts/Inter-Regular.otf", weight: "400", style: "normal" },
+    { path: "./fonts/Inter-SemiBold.otf", weight: "600", style: "normal" },
+    { path: "./fonts/Inter-Bold.otf", weight: "700", style: "normal" },
+  ],
   variable: "--font-inter",
   display: "swap",
 });
 
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin", "cyrillic"],
+const jetbrainsMono = localFont({
+  src: "./fonts/JetBrainsMono-Regular.ttf",
   variable: "--font-jetbrains",
   display: "swap",
 });

@@ -107,7 +107,7 @@ export default function AudienceSimulationOperatorPage() {
   const start = async () => {
     setBusy(true); setError("");
     try {
-      const created = await request<{ run_id: number; access_token: string }>(`/api/audience-simulations/campaigns/${encodeURIComponent(code)}/runs`, {
+      const created = await request<{ run_id: number; access_token: string; status: SimRun["status"] }>(`/api/audience-simulations/campaigns/${encodeURIComponent(code)}/runs`, {
         method: "POST", body: JSON.stringify({ idea: idea.trim(), audience: audience.trim() || null, price: price.trim() || null }),
       });
       sessionStorage.setItem(`audience-simulation:${code}`, JSON.stringify({ runId: created.run_id, token: created.access_token }));
