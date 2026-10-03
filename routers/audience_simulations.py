@@ -67,6 +67,12 @@ def _token_hash(raw: str) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+def _utc_naive(value: datetime | None) -> datetime | None:
+    if value is not None and value.tzinfo is not None:
+        return value.astimezone(timezone.utc).replace(tzinfo=None)
+    return value
+
+
 def _validate_campaign_settings(settings: dict) -> None:
     minimum = settings.get("min_valid_responses", 8)
     if isinstance(minimum, bool) or not isinstance(minimum, int) or not 5 <= minimum <= 12:
@@ -152,8 +158,10 @@ async def create_campaign(
     admin: User = Depends(require_async_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
+    starts_at = _utc_naive(payload.starts_at)
+    ends_at = _utc_naive(payload.ends_at)
     _validate_campaign_settings(payload.settings)
-    if payload.starts_at and payload.ends_at and payload.ends_at <= payload.starts_at:
+    if starts_at and ends_at and ends_at <= starts_at:
         raise HTTPException(status_code=422, detail="Дата окончания должна быть позже даты начала")
     if await db.scalar(select(AudienceSimulationCampaign.id).where(AudienceSimulationCampaign.code == payload.code)):
         raise HTTPException(status_code=409, detail="Код кампании уже занят")
@@ -161,8 +169,8 @@ async def create_campaign(
         name=payload.name.strip(),
         code=payload.code,
         status="draft",
-        starts_at=payload.starts_at,
-        ends_at=payload.ends_at,
+        starts_at=starts_at,
+        ends_at=ends_at,
         settings=payload.settings,
         created_by_user_id=admin.id,
     )
