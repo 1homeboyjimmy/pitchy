@@ -2191,3 +2191,84 @@ class AdminAuditLog(Base):
     ip_address: Mapped[str | None] = mapped_column(String(64), nullable=True)
     user_agent: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class AudienceSimulationCampaign(Base):
+    """Time-bounded access policy for a private Pitchy exhibition campaign."""
+    __tablename__ = "audience_simulation_campaigns"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    code: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    status: Mapped[str] = mapped_column(String(20), default="draft", server_default="draft", index=True)
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    settings: Mapped[dict] = mapped_column(JSON, default=dict, server_default=text("'{}'"))
+    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AudienceSimulationRun(Base):
+    """Persisted run snapshot, event log, and result for a campaign visitor."""
+    __tablename__ = "audience_simulation_runs"
+    __table_args__ = (
+        Index("ix_audience_sim_runs_campaign_created", "campaign_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    campaign_id: Mapped[int] = mapped_column(ForeignKey("audience_simulation_campaigns.id", ondelete="CASCADE"), index=True)
+    owner_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    access_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(40), default="preparing", server_default="preparing", index=True)
+    revision: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    idea: Mapped[str] = mapped_column(Text)
+    audience: Mapped[str | None] = mapped_column(Text, nullable=True)
+    price: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    input_data: Mapped[dict] = mapped_column(JSON, default=dict, server_default=text("'{}'"))
+    evidence: Mapped[list] = mapped_column(JSON, default=list, server_default=text("'[]'"))
+    findings: Mapped[list] = mapped_column(JSON, default=list, server_default=text("'[]'"))
+    selection: Mapped[dict] = mapped_column(JSON, default=dict, server_default=text("'{}'"))
+    responses: Mapped[list] = mapped_column(JSON, default=list, server_default=text("'[]'"))
+    aggregate: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    summary: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    events: Mapped[list] = mapped_column(JSON, default=list, server_default=text("'[]'"))
+    config_snapshot: Mapped[dict] = mapped_column(JSON, default=dict, server_default=text("'{}'"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AudienceSimulationParticipant(Base):
+    """Campaign claim, private leaderboard score, consent, and reward state."""
+    __tablename__ = "audience_simulation_participants"
+    __table_args__ = (
+        UniqueConstraint("campaign_id", "user_id", name="uq_audience_sim_campaign_user"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    campaign_id: Mapped[int] = mapped_column(ForeignKey("audience_simulation_campaigns.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("audience_simulation_runs.id", ondelete="RESTRICT"), unique=True)
+    consent_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    consent_version: Mapped[str] = mapped_column(String(40), default="forum-2026-v1", server_default="forum-2026-v1")
+    campaign_badge: Mapped[str] = mapped_column(String(200), default="Форум «Цифровые решения»")
+    event_score: Mapped[float | None] = mapped_column(Numeric(6, 2), nullable=True)
+    score_version: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    reward_status: Mapped[str] = mapped_column(String(30), default="not_issued", server_default="not_issued")
+    reward_issued_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    reward_issued_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class AudienceSimulationAccessToken(Base):
+    """Hashed, expiring one-use token for viewing or claiming a saved run."""
+    __tablename__ = "audience_simulation_access_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("audience_simulation_runs.id", ondelete="CASCADE"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    purpose: Mapped[str] = mapped_column(String(20), index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    claimed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

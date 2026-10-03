@@ -421,6 +421,8 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(sync_redis_to_pg())
     from research_service import resume_pending_research_jobs
     asyncio.create_task(resume_pending_research_jobs())
+    from routers.audience_simulations import resume_pending_runs
+    asyncio.create_task(resume_pending_runs())
     
     # Start RAG initialization in background task so server starts immediately
     async def _init_rag_bg():
@@ -563,6 +565,9 @@ app.include_router(accelerator_operations_router.router)
 
 from routers import accelerator_governance as accelerator_governance_router
 app.include_router(accelerator_governance_router.router)
+
+from routers import audience_simulations as audience_simulations_router
+app.include_router(audience_simulations_router.router)
 
 
 allowed_origins = [

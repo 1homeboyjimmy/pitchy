@@ -38,6 +38,10 @@
 - `POLZA_API_KEY`: Polza key for chat, structured LLM calls, and embeddings.
 - `LOCKBOX_POLZA_API_KEY_SECRET_ID` / `LOCKBOX_POLZA_API_KEY_ENTRY_KEY`: optional Lockbox source for the Polza key.
 - `POLZA_API_BASE`: Polza OpenAI-compatible API base (defaults to `https://polza.ai/api/v1`).
+- `AUDIENCE_PERSONA_MODEL`: model used for persona generation, interviews, and summaries (defaults to `openai/gpt-6-luna-pro`).
+- `AUDIENCE_SEARCH_MODEL`: web-grounded model used for audience evidence (defaults to `perplexity/sonar`).
+- `AUDIENCE_SEARCH_CONTEXT_SIZE`: Perplexity search depth (`low`, `medium`, or `high`; defaults to `low`).
+- `PUBLIC_SITE_URL`: canonical web origin embedded in exhibition claim QR codes; use the staging origin in staging.
 - `POLZA_EMBEDDING_MODEL`: RAG embedding model (defaults to `qwen/qwen3-embedding-4b`). Changing it rebuilds incompatible Chroma collections at RAG startup.
 - `ROUTERAI_API_KEY`: RouterAI key used only by the dedicated reranker.
 - `LOCKBOX_ROUTERAI_API_KEY_SECRET_ID` / `LOCKBOX_ROUTERAI_API_KEY_ENTRY_KEY`: optional Lockbox source for the reranker key.
