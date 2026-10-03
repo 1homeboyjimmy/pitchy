@@ -114,20 +114,22 @@
 .hero-art-frame {
   position: absolute;
   z-index: 0;
-  top: 23.5%;
-  right: 0;
-  left: 0;
-  height: 76.5%;
+  top: 18%;
+  right: 5%;
+  left: 5%;
+  height: 90%;
   overflow: hidden;
   pointer-events: none;
 }
-.hero-art { object-fit: fill; }
+.hero-art { object-fit: contain; object-position: center top; }
 .hero-art-shade {
   position: absolute;
   z-index: 1;
   inset: 0;
   pointer-events: none;
-  background: linear-gradient(0deg, #050505 0%, #050505a8 7%, transparent 19%);
+  background:
+    linear-gradient(180deg, #050505 0%, #050505 26%, #050505df 32%, #05050555 37%, transparent 44%),
+    linear-gradient(0deg, #050505 0%, #050505a8 7%, transparent 19%);
 }
 .hero-slide > .audience-eyebrow,
 .hero-slide > .audience-title,
@@ -391,6 +393,10 @@
   .hero-title { font-size: clamp(24px, 8.2vw, 32px); line-height: .98; }
   .hero-lead { max-width: 94%; font-size: clamp(8px, 1.5vh, 13px); line-height: 1.4; }
   .hero-slide .audience-glowline { margin: 4% 0; }
+}
+
+@media (max-width: 600px) and (max-aspect-ratio: 1 / 2) {
+  .hero-art-frame { top: 22%; right: 2.5%; left: 2.5%; height: 78%; }
 }
 
 @media (prefers-reduced-motion: reduce) {

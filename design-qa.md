@@ -49,11 +49,11 @@ The local visual run used a temporary API fixture on port 8000 because the backe
 3. That comparison found the new audience-build action clipped by the footer. The candidate-cloud height was reduced and its panel spacing tightened. Screen 04 was recaptured with the action fully visible.
 4. The completed-interview disclaimer collided with the footer. The duplicate long text was replaced with a concise synthetic-response notice in the existing helper. Screen 06 was recaptured cleanly.
 5. The map's pointer-only response selection was made keyboard-accessible with arrow keys and a visible focus ring. Pointer and keyboard selection both passed in the final browser run.
-6. The opening screen now uses the supplied text-free 9:16 scene with editable HTML copy over it. A same-size 941 × 1672 Chrome comparison aligned the header, headline, accent line, mascot, and bubbles with the reference. The demo arrows / counter / autoplay strip visible in that reference remains excluded as requested.
+6. The opening screen uses the supplied text-free 9:16 scene with editable HTML copy over it. The art is fitted with its original proportions and narrow black side margins, including a taller-phone adjustment. Same-size Chrome comparisons at 941 × 1672 align the headline, accent line, mascot, and bubbles with the reference. The demo arrows / counter / autoplay strip visible in that reference remains excluded as requested.
 
 ## Follow-up polish
 
 - The user-provided screens are mobile-sized. The final comparison used their supplied mobile viewport; a separate desktop visual review was outside this pass.
-- The new first-screen art was checked in Chrome at 307 × 538, 390 × 844, and 941 × 1672. The logo and eyebrow do not overlap; the art loads without console or HTTP errors; the first screen continues to the existing idea form; the demo control panel remains absent.
+- The first-screen art was checked in Chrome at 307 × 538, 390 × 844, and 941 × 1672. It preserves the source 9:16 ratio without stretching. The logo and eyebrow do not overlap; the art loads without console or HTTP errors; the first screen continues to the existing idea form; the demo control panel remains absent.
 
 final result: passed
