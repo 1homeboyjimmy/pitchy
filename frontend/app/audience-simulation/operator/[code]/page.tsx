@@ -1,32 +1,315 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import { ArrowLeft, ArrowRight, Check, LoaderCircle, RotateCcw, Search, Sparkles } from "lucide-react";
+import Image from "next/image";
+import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
+import {
+  ArrowRight,
+  Check,
+  Loader,
+  RotateCcw,
+  Search,
+} from "react-feather";
+import "../audience-operator.css";
 
-type CampaignConfig = { name: string; limits: { min_audience: number; max_audience: number; default_audience: number }; disclaimer: string };
+type CampaignConfig = {
+  name: string;
+  limits: { min_audience: number; max_audience: number; default_audience: number };
+  disclaimer: string;
+};
 type Persona = { id: string; group: string; profile: string; selection_reason: string };
-type Finding = { text: string; source_ids: string[]; claim_type: "sourced_paraphrase" | "hypothesis" | "assumption"; limitation: string };
+type Finding = {
+  text: string;
+  source_ids: string[];
+  claim_type: "sourced_paraphrase" | "hypothesis" | "assumption";
+  limitation: string;
+};
+type Evidence = { id: string; url: string; domain: string; title: string };
+type ResponsePoint = {
+  persona_id: string;
+  group?: string;
+  problem_relevance?: number | null;
+  interest?: number | null;
+  willingness_to_try?: number | null;
+  reaction?: string;
+};
 type SimRun = {
-  id: number; status: string; revision: number; idea: string; audience: string | null; price: string | null;
-  evidence: Array<{ id: string; url: string; domain: string; title: string }>;
+  id: number;
+  status: string;
+  revision: number;
+  idea: string;
+  audience: string | null;
+  price: string | null;
+  evidence: Evidence[];
   findings: Finding[];
-  selection: { version?: number; members?: Persona[]; groups?: Array<{ name: string; basis: string }>; uncertainty?: string[] };
-  responses: Array<{ persona_id: string; group?: string; problem_relevance?: number | null; interest?: number | null; willingness_to_try?: number | null; reaction?: string }>;
-  aggregate: { valid_responses?: number; requested_responses?: number; averages?: Record<string, number | null>; percent_at_least_7?: Record<string, number | null> } | null;
+  selection: {
+    version?: number;
+    members?: Persona[];
+    groups?: Array<{ name: string; basis: string }>;
+    uncertainty?: string[];
+  };
+  responses: ResponsePoint[];
+  aggregate: {
+    valid_responses?: number;
+    requested_responses?: number;
+    averages?: Record<string, number | null>;
+    percent_at_least_7?: Record<string, number | null>;
+  } | null;
   summary: { headline?: string; observations?: string[]; next_checks?: string[] } | null;
   events: Array<{ sequence: number; type: string; payload?: Record<string, unknown> }>;
 };
 
-const label: Record<string, string> = {
+const stageNames = [
+  "ИДЕЯ → АУДИТОРИЯ",
+  "ВАША ГИПОТЕЗА",
+  "РЕАЛЬНЫЕ СИГНАЛЫ",
+  "ОТБОР ПЕРСОН",
+  "ПРОСМОТР АУДИТОРИИ",
+  "СИМУЛЯЦИЯ",
+  "КАРТА РЕАКЦИЙ",
+  "ВЫВОДЫ",
+  "ИТОГ → QR",
+];
+
+const statusText: Record<string, string> = {
   preparing: "Ищем сигналы и формируем аудиторию",
-  awaiting_search_fallback: "Ничего с проверяемыми ссылками не найдено",
-  awaiting_audience_confirmation: "Проверьте аудиторию",
-  interviewing: "Собираем ответы виртуальных персон",
+  awaiting_search_fallback: "Не нашли достаточно проверяемых ссылок",
+  awaiting_audience_confirmation: "Аудитория собрана",
+  interviewing: "Персоны отвечают на вопросы",
   completed: "Результат готов",
   partial: "Готов частичный результат",
   failed: "Не удалось подготовить запуск",
 };
+
+const palette = ["#7ce6ff", "#b48cff", "#f0bd69", "#9be5ca"];
+
+function hashSeed(value: string) {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function PersonaNetwork({
+  members,
+  responses,
+  mode,
+  activeIds,
+  onPick,
+}: {
+  members: Persona[];
+  responses: ResponsePoint[];
+  mode: "crowd" | "map";
+  activeIds?: Set<string>;
+  onPick?: (id: string) => void;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const pointsRef = useRef<Array<{ x: number; y: number; id: string; color: string }>>([]);
+  const dataKey = useMemo(
+    () => members.map((person) => person.id + person.group).join("|") + responses.map((person) => person.persona_id + person.interest + person.problem_relevance).join("|"),
+    [members, responses],
+  );
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context) return;
+    let frame = 0;
+    let width = 0;
+    let height = 0;
+    let pixelRatio = 1;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const validResponses = responses.filter(
+      (person) => typeof person.interest === "number" && typeof person.problem_relevance === "number",
+    );
+
+    const render = (time = 0) => {
+      if (!context) return;
+      context.setTransform(1, 0, 0, 1, 0, 0);
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.save();
+      context.scale(pixelRatio, pixelRatio);
+      const mapped: Array<{ x: number; y: number; id: string; color: string; radius: number; person: boolean }> = [];
+      const people = mode === "map" ? validResponses : members;
+      const groups = Array.from(new Set(people.map((person) => person.group || "Аудитория")));
+
+      if (!people.length) {
+        let seed = 5107;
+        const random = () => {
+          seed = (Math.imul(seed, 16807) + 19) % 2147483647;
+          return (seed - 1) / 2147483646;
+        };
+        for (let index = 0; index < 105; index += 1) {
+          const angle = random() * Math.PI * 2;
+          const radius = Math.sqrt(random());
+          mapped.push({
+            x: width / 2 + Math.cos(angle) * radius * width * 0.48,
+            y: height * 0.52 + Math.sin(angle) * radius * height * 0.36,
+            id: "",
+            color: palette[index % palette.length],
+            radius: 2.3 + random() * 1.2,
+            person: false,
+          });
+        }
+      } else if (mode === "map") {
+        for (const person of validResponses) {
+          const groupIndex = Math.max(0, groups.indexOf(person.group || "Аудитория"));
+          mapped.push({
+            x: width * (0.1 + (person.interest || 0) * 0.08),
+            y: height * (0.9 - (person.problem_relevance || 0) * 0.08),
+            id: person.persona_id,
+            color: palette[groupIndex % palette.length],
+            radius: 3.4,
+            person: true,
+          });
+        }
+      } else {
+        const groupCenters = groups.map((_, index) => {
+          const angle = (Math.PI * 2 * index) / Math.max(groups.length, 1) - Math.PI / 2;
+          return {
+            x: width * (0.5 + Math.cos(angle) * (groups.length > 1 ? 0.19 : 0)),
+            y: height * (0.49 + Math.sin(angle) * (groups.length > 1 ? 0.18 : 0)),
+          };
+        });
+        members.forEach((person, index) => {
+          const groupIndex = Math.max(0, groups.indexOf(person.group || "Аудитория"));
+          const center = groupCenters[groupIndex] || { x: width / 2, y: height / 2 };
+          let seed = hashSeed(person.id + person.profile);
+          const random = () => {
+            seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+            return seed / 4294967296;
+          };
+          mapped.push({
+            x: center.x + (random() - 0.5) * width * 0.21 + (index % 2 ? width * 0.012 : 0),
+            y: center.y + (random() - 0.5) * height * 0.32,
+            id: person.id,
+            color: palette[groupIndex % palette.length],
+            radius: 3.1,
+            person: true,
+          });
+        });
+      }
+
+      pointsRef.current = mapped;
+      if (mode === "map") {
+        context.strokeStyle = "rgba(255,255,255,.08)";
+        context.lineWidth = 1;
+        context.setLineDash([3, 7]);
+        context.beginPath();
+        context.moveTo(width / 2, 0);
+        context.lineTo(width / 2, height);
+        context.moveTo(0, height / 2);
+        context.lineTo(width, height / 2);
+        context.stroke();
+        context.setLineDash([]);
+      } else if (mapped.length > 12) {
+        context.strokeStyle = "rgba(156,207,255,.17)";
+        context.lineWidth = 0.7;
+        for (let index = 0; index < mapped.length; index += 1) {
+          const point = mapped[index];
+          const nearest = mapped
+            .map((candidate, candidateIndex) => ({
+              candidate,
+              candidateIndex,
+              distance: Math.hypot(candidate.x - point.x, candidate.y - point.y),
+            }))
+            .filter((candidate) => candidate.candidateIndex > index)
+            .sort((first, second) => first.distance - second.distance)
+            .slice(0, 1);
+          for (const neighbor of nearest) {
+            if (neighbor.distance > Math.min(width, height) * 0.22) continue;
+            context.beginPath();
+            context.moveTo(point.x, point.y);
+            context.lineTo(neighbor.candidate.x, neighbor.candidate.y);
+            context.stroke();
+          }
+        }
+      }
+
+      const pulse = reducedMotion ? 0 : Math.sin(time / 950) * 0.7;
+      for (const point of mapped) {
+        const selected = Boolean(point.id && activeIds?.has(point.id));
+        const glow = point.person ? 10 + (selected ? 14 : 0) : 4;
+        context.beginPath();
+        context.fillStyle = point.color;
+        context.shadowColor = point.color;
+        context.shadowBlur = glow;
+        context.globalAlpha = point.person ? 0.92 : 0.86;
+        context.arc(point.x, point.y, Math.max(1.2, point.radius + pulse * 0.18), 0, Math.PI * 2);
+        context.fill();
+        if (selected) {
+          context.beginPath();
+          context.strokeStyle = "rgba(255,255,255,.85)";
+          context.lineWidth = 1;
+          context.shadowBlur = 0;
+          context.arc(point.x, point.y, 7, 0, Math.PI * 2);
+          context.stroke();
+        }
+      }
+      context.restore();
+      if (!reducedMotion) frame = window.requestAnimationFrame(render);
+    };
+
+    const resize = () => {
+      const bounds = canvas.getBoundingClientRect();
+      width = bounds.width;
+      height = bounds.height;
+      pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.round(width * pixelRatio);
+      canvas.height = Math.round(height * pixelRatio);
+      render();
+    };
+    const observer = new ResizeObserver(resize);
+    observer.observe(canvas);
+    resize();
+    return () => {
+      observer.disconnect();
+      window.cancelAnimationFrame(frame);
+    };
+  }, [activeIds, dataKey, members, mode, responses]);
+
+  const pickNearest = (event: ReactMouseEvent<HTMLCanvasElement>) => {
+    if (!onPick) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    const nearest = pointsRef.current
+      .filter((point) => point.id)
+      .map((point) => ({ point, distance: Math.hypot(point.x - x, point.y - y) }))
+      .sort((first, second) => first.distance - second.distance)[0];
+    if (nearest && nearest.distance < 22) onPick(nearest.point.id);
+  };
+
+  const pickWithKeyboard = (event: ReactKeyboardEvent<HTMLCanvasElement>) => {
+    if (!onPick) return;
+    const points = pointsRef.current.filter((point) => point.id);
+    if (!points.length || !["ArrowRight", "ArrowDown", "ArrowLeft", "ArrowUp", "Enter", " "].includes(event.key)) return;
+    event.preventDefault();
+    const currentIndex = points.findIndex((point) => activeIds?.has(point.id));
+    const backwards = event.key === "ArrowLeft" || event.key === "ArrowUp";
+    const nextIndex = event.key === "Enter" || event.key === " "
+      ? (currentIndex < 0 ? 0 : currentIndex)
+      : currentIndex < 0
+        ? (backwards ? points.length - 1 : 0)
+        : (currentIndex + (backwards ? points.length - 1 : 1)) % points.length;
+    onPick(points[nextIndex].id);
+  };
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="audience-network"
+      onClick={pickNearest}
+      onKeyDown={onPick ? pickWithKeyboard : undefined}
+      role={onPick ? "application" : "img"}
+      tabIndex={onPick ? 0 : undefined}
+      aria-label={onPick ? "Интерактивная карта ответов. Выбирайте персоны клавишами со стрелками." : mode === "map" ? "Карта ответов: каждая точка — синтетическая персона" : "Облако синтетических персон"}
+    />
+  );
+}
 
 export default function AudienceSimulationOperatorPage() {
   const params = useParams<{ code: string }>();
@@ -41,9 +324,14 @@ export default function AudienceSimulationOperatorPage() {
   const [error, setError] = useState("");
   const [audienceSize, setAudienceSize] = useState(12);
   const [constraints, setConstraints] = useState("");
+  const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
+  const [showAudienceControls, setShowAudienceControls] = useState(false);
   const [claimToken, setClaimToken] = useState("");
   const [selectedResponseId, setSelectedResponseId] = useState("");
-  const [step, setStep] = useState<"welcome" | "idea" | "processing" | "audience" | "interview" | "result">("welcome");
+  const [activeSlide, setActiveSlide] = useState(0);
+  const [showAudienceField, setShowAudienceField] = useState(false);
+  const [showPriceField, setShowPriceField] = useState(false);
+  const lastAutoStatusRef = useRef("");
 
   const request = useCallback(async <T,>(path: string, init: RequestInit = {}, token?: string): Promise<T> => {
     const response = await fetch(path, {
@@ -58,43 +346,58 @@ export default function AudienceSimulationOperatorPage() {
 
   useEffect(() => {
     let active = true;
-    void request<CampaignConfig>(`/api/audience-simulations/campaigns/${encodeURIComponent(code)}/config`)
+    void request<CampaignConfig>("/api/audience-simulations/campaigns/" + encodeURIComponent(code) + "/config")
       .then((data) => {
         if (!active) return;
         setConfig(data);
-        const saved = sessionStorage.getItem(`audience-simulation:${code}`);
+        const saved = sessionStorage.getItem("audience-simulation:" + code);
         if (!saved) return;
         try {
-          const { runId, token } = JSON.parse(saved) as { runId: number; token: string };
-          if (!Number.isInteger(runId) || !token) throw new Error("bad session");
-          void request<SimRun>(`/api/audience-simulations/runs/${runId}`, {}, token)
+          const session = JSON.parse(saved) as { runId: number; token: string };
+          if (!Number.isInteger(session.runId) || !session.token) throw new Error("bad session");
+          void request<SimRun>("/api/audience-simulations/runs/" + session.runId, {}, session.token)
             .then((savedRun) => {
               if (!active) return;
-              setRun(savedRun); setRunToken(token);
-              if (savedRun.status === "awaiting_audience_confirmation") setStep("audience");
-              else if (savedRun.status === "interviewing") setStep("interview");
-              else if (["completed", "partial"].includes(savedRun.status)) setStep("result");
-              else setStep("processing");
+              setRun(savedRun);
+              setRunToken(session.token);
+              lastAutoStatusRef.current = savedRun.status;
+              const allGroups = Array.from(new Set((savedRun.selection.members || []).map((person) => person.group)));
+              setSelectedGroups(allGroups);
+              if (savedRun.status === "awaiting_audience_confirmation") setActiveSlide(2);
+              else if (savedRun.status === "interviewing") setActiveSlide(5);
+              else if (["completed", "partial"].includes(savedRun.status)) setActiveSlide(6);
+              else setActiveSlide(2);
             })
-            .catch(() => sessionStorage.removeItem(`audience-simulation:${code}`));
-        } catch { sessionStorage.removeItem(`audience-simulation:${code}`); }
+            .catch(() => sessionStorage.removeItem("audience-simulation:" + code));
+        } catch {
+          sessionStorage.removeItem("audience-simulation:" + code);
+        }
       })
-      .catch((reason: unknown) => { if (active) setError(reason instanceof Error ? reason.message : "Кампания недоступна"); });
+      .catch((reason: unknown) => {
+        if (active) setError(reason instanceof Error ? reason.message : "Кампания недоступна");
+      });
     return () => { active = false; };
   }, [code, request]);
 
   useEffect(() => {
-    if (!run || !runToken || !["preparing", "interviewing"].includes(run.status)) return;
+    const runId = run?.id;
+    const runStatus = run?.status;
+    if (!runId || !runToken || !["preparing", "interviewing"].includes(runStatus || "")) return;
     let stopped = false;
     const poll = async () => {
       try {
-        const next = await request<SimRun>(`/api/audience-simulations/runs/${run.id}`, {}, runToken);
-        if (!stopped) {
-          setRun(next);
-          if (next.status === "awaiting_audience_confirmation") setStep("audience");
-          if (next.status === "interviewing") setStep("interview");
-          if (["completed", "partial", "failed"].includes(next.status)) setStep(next.status === "failed" ? "processing" : "result");
+        const next = await request<SimRun>("/api/audience-simulations/runs/" + runId, {}, runToken);
+        if (stopped) return;
+        setRun(next);
+        if (next.status !== lastAutoStatusRef.current) {
+          lastAutoStatusRef.current = next.status;
+          if (next.status === "awaiting_audience_confirmation") {
+            setSelectedGroups(Array.from(new Set((next.selection.members || []).map((person) => person.group))));
+          }
+          if (next.status === "interviewing") setActiveSlide(5);
+          if (["completed", "partial"].includes(next.status)) setActiveSlide(6);
         }
+        if (next.status === "failed") setError("Не удалось подготовить запуск. Можно начать проверку заново.");
       } catch (reason) {
         if (!stopped) setError(reason instanceof Error ? reason.message : "Потеряно соединение");
       }
@@ -105,168 +408,450 @@ export default function AudienceSimulationOperatorPage() {
   }, [request, run?.id, run?.status, runToken]);
 
   const start = async () => {
-    setBusy(true); setError("");
+    if (idea.trim().length < 20) {
+      setError("Опишите идею подробнее: нужно не меньше 20 символов.");
+      return;
+    }
+    setBusy(true);
+    setError("");
     try {
-      const created = await request<{ run_id: number; access_token: string; status: SimRun["status"] }>(`/api/audience-simulations/campaigns/${encodeURIComponent(code)}/runs`, {
-        method: "POST", body: JSON.stringify({ idea: idea.trim(), audience: audience.trim() || null, price: price.trim() || null }),
-      });
-      sessionStorage.setItem(`audience-simulation:${code}`, JSON.stringify({ runId: created.run_id, token: created.access_token }));
+      const created = await request<{ run_id: number; access_token: string; status: string }>(
+        "/api/audience-simulations/campaigns/" + encodeURIComponent(code) + "/runs",
+        { method: "POST", body: JSON.stringify({ idea: idea.trim(), audience: audience.trim() || null, price: price.trim() || null }) },
+      );
+      sessionStorage.setItem("audience-simulation:" + code, JSON.stringify({ runId: created.run_id, token: created.access_token }));
+      lastAutoStatusRef.current = created.status;
       setRunToken(created.access_token);
-      setRun({ id: created.run_id, status: created.status, revision: 1, idea, audience: audience || null, price: price || null, evidence: [], findings: [], selection: {}, responses: [], aggregate: null, summary: null, events: [] });
-      setStep("processing");
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "Не удалось запустить проверку"); }
-    finally { setBusy(false); }
+      setRun({
+        id: created.run_id,
+        status: created.status,
+        revision: 1,
+        idea: idea.trim(),
+        audience: audience.trim() || null,
+        price: price.trim() || null,
+        evidence: [],
+        findings: [],
+        selection: {},
+        responses: [],
+        aggregate: null,
+        summary: null,
+        events: [],
+      });
+      setActiveSlide(2);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Не удалось запустить проверку");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const confirmAudience = async () => {
     if (!run) return;
-    setBusy(true); setError("");
+    const included = personas.filter((person) => selectedGroups.includes(person.group));
+    const safeSize = Math.min(audienceSize, included.length);
+    if (safeSize < (config?.limits.min_audience || 5)) {
+      setError("Выберите группы, в которых останется не меньше пяти профилей.");
+      return;
+    }
+    setBusy(true);
+    setError("");
     try {
-      const selection = await request<SimRun["selection"]>(`/api/audience-simulations/runs/${run.id}/selection`, {
-        method: "PATCH", body: JSON.stringify({ selection_version: run.selection.version, size: audienceSize, include_groups: [], constraints: constraints.trim() || null }),
+      const selection = await request<SimRun["selection"]>("/api/audience-simulations/runs/" + run.id + "/selection", {
+        method: "PATCH",
+        body: JSON.stringify({
+          selection_version: run.selection.version,
+          size: safeSize,
+          include_groups: selectedGroups,
+          constraints: constraints.trim() || null,
+        }),
       }, runToken);
-      setRun({ ...run, selection });
-      const response = await request<{ status: string }>(`/api/audience-simulations/runs/${run.id}/start?selection_version=${selection.version}`, { method: "POST" }, runToken);
+      const response = await request<{ status: string }>(
+        "/api/audience-simulations/runs/" + run.id + "/start?selection_version=" + selection.version,
+        { method: "POST" },
+        runToken,
+      );
       setRun({ ...run, selection, status: response.status });
-      setStep("interview");
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "Не удалось подтвердить аудиторию"); }
-    finally { setBusy(false); }
+      lastAutoStatusRef.current = response.status;
+      setAudienceSize(safeSize);
+      setActiveSlide(5);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Не удалось подтвердить аудиторию");
+    } finally {
+      setBusy(false);
+    }
   };
+
   const continueWithoutSearch = async () => {
     if (!run) return;
-    setBusy(true); setError("");
+    setBusy(true);
+    setError("");
     try {
-      await request(`/api/audience-simulations/runs/${run.id}/continue-without-search`, { method: "POST" }, runToken);
+      await request("/api/audience-simulations/runs/" + run.id + "/continue-without-search", { method: "POST" }, runToken);
+      lastAutoStatusRef.current = "preparing";
       setRun({ ...run, status: "preparing" });
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "Не удалось продолжить запуск"); }
-    finally { setBusy(false); }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Не удалось продолжить запуск");
+    } finally {
+      setBusy(false);
+    }
   };
+
   const reviseIdea = async () => {
     if (!run) return;
-    setBusy(true); setError("");
+    setBusy(true);
+    setError("");
     try {
-      await request(`/api/audience-simulations/runs/${run.id}/cancel`, { method: "POST" }, runToken);
-      sessionStorage.removeItem(`audience-simulation:${code}`);
-      setRun(null); setRunToken(""); setStep("idea");
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "Не удалось остановить проверку"); }
-    finally { setBusy(false); }
+      await request("/api/audience-simulations/runs/" + run.id + "/cancel", { method: "POST" }, runToken);
+      sessionStorage.removeItem("audience-simulation:" + code);
+      setRun(null);
+      setRunToken("");
+      setActiveSlide(1);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Не удалось остановить проверку");
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const makeClaimLink = async () => {
+  const makeClaimLink = useCallback(async () => {
     if (!run) return;
-    setBusy(true); setError("");
+    setBusy(true);
+    setError("");
     try {
-      const result = await request<{ token: string }>(`/api/audience-simulations/runs/${run.id}/claim-links`, { method: "POST" }, runToken);
+      const result = await request<{ token: string }>("/api/audience-simulations/runs/" + run.id + "/claim-links", { method: "POST" }, runToken);
       setClaimToken(result.token);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "Не удалось подготовить ссылку"); }
-    finally { setBusy(false); }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Не удалось подготовить ссылку");
+    } finally {
+      setBusy(false);
+    }
+  }, [request, run, runToken]);
+
+  const reset = () => {
+    sessionStorage.removeItem("audience-simulation:" + code);
+    setRun(null);
+    setRunToken("");
+    setClaimToken("");
+    setSelectedResponseId("");
+    setSelectedGroups([]);
+    setShowAudienceControls(false);
+    setIdea("");
+    setAudience("");
+    setPrice("");
+    setConstraints("");
+    setAudienceSize(12);
+    setError("");
+    setActiveSlide(0);
   };
-  const reset = () => { sessionStorage.removeItem(`audience-simulation:${code}`); setRun(null); setRunToken(""); setClaimToken(""); setSelectedResponseId(""); setIdea(""); setAudience(""); setPrice(""); setConstraints(""); setAudienceSize(12); setError(""); setStep("welcome"); };
-  const personas = run?.selection.members || [];
+
+  const personas = useMemo(() => run?.selection.members || [], [run?.selection.members]);
   const progress = run?.aggregate?.valid_responses ?? run?.responses.length ?? 0;
-  const groups = useMemo(() => [...new Set(personas.map((persona) => persona.group))], [personas]);
+  const groups = useMemo(() => Array.from(new Set(personas.map((persona) => persona.group))), [personas]);
+  const chosenCount = personas.filter((person) => selectedGroups.includes(person.group)).length;
+  const isFinished = Boolean(run && ["completed", "partial"].includes(run.status));
+  const maxSlide = !run
+    ? 1
+    : run.status === "awaiting_audience_confirmation"
+      ? 4
+      : run.status === "interviewing"
+        ? 5
+        : isFinished
+          ? 8
+          : 2;
+  const validRate = run?.aggregate?.percent_at_least_7?.problem_relevance;
+  const interestRate = run?.aggregate?.percent_at_least_7?.interest;
+  const tryRate = run?.aggregate?.percent_at_least_7?.willingness_to_try;
+  const activeResponse = run?.responses.find((response) => response.persona_id === selectedResponseId);
+  const sourcedCount = run?.findings.filter((finding) => finding.source_ids.length > 0).length || 0;
+  const searchingLabel = run?.status === "awaiting_search_fallback"
+    ? "Проверяем другие формулировки"
+    : run?.status === "awaiting_audience_confirmation"
+      ? "Источники изучены"
+      : run?.status === "failed"
+        ? "Поиск остановился"
+        : run?.evidence.length
+          ? "Связываем сигналы с источниками"
+          : "Подключаем источники поиска";
+
+  const goToSlide = useCallback((index: number) => {
+    setActiveSlide(Math.max(0, Math.min(maxSlide, index)));
+    setError("");
+  }, [maxSlide]);
+
+  useEffect(() => {
+    if (activeSlide === 8 && isFinished && !claimToken && !busy) void makeClaimLink();
+  }, [activeSlide, busy, claimToken, isFinished, makeClaimLink]);
+
+  const sourceCategories = [
+    { title: "Отзывы покупателей", note: "маркетплейсы · отзывы", color: "cyan", count: run?.evidence.filter((source) => /market|ozon|wildberries|otzovik/i.test(source.domain)).length || 0 },
+    { title: "Профессиональные сообщества", note: "Хабр · VC.ru · форумы", color: "violet", count: run?.evidence.filter((source) => /habr|vc\.ru|reddit|forum|community/i.test(source.domain)).length || 0 },
+    { title: "Поисковые материалы", note: "статьи · обсуждения", color: "gold", count: run?.evidence.filter((source) => !/market|ozon|wildberries|otzovik|habr|vc\.ru|reddit|forum|community/i.test(source.domain)).length || 0 },
+    { title: "Повторяющиеся сигналы", note: "связаны с источниками", color: "mint", count: sourcedCount },
+  ];
 
   return (
-    <main className="min-h-[100dvh] bg-[#09090c] text-white antialiased">
-      <div className="mx-auto flex min-h-[100dvh] w-full max-w-[min(100vw,56.25vh)] flex-col px-5 py-6 sm:px-10">
-        <header className="flex items-center justify-between border-b border-white/10 pb-5">
-          <div><span className="text-lg font-semibold tracking-tight">Pitchy<span className="text-sky-300">.pro</span></span><span className="ml-3 text-xs text-white/40">Симуляция аудитории</span></div>
-          {run && <button type="button" onClick={reset} className="flex items-center gap-2 text-xs text-white/50 hover:text-white"><RotateCcw size={14} /> Следующий участник</button>}
+    <main className="audience-stage">
+      <div className="audience-screen">
+        <div className="audience-scene" aria-hidden="true" />
+        <header className="audience-topbar">
+          <div className="audience-brand">Pitchy<i>.pro</i></div>
+          <div className="audience-topnote">Симуляция аудитории</div>
         </header>
 
-        {!config && !error && <div className="grid flex-1 place-items-center"><LoaderCircle className="animate-spin text-sky-200" /></div>}
-        {error && <div role="alert" className="mt-8 rounded-2xl border border-rose-300/20 bg-rose-300/5 p-4 text-sm text-rose-100">{error}</div>}
-
-        {config && step === "welcome" && <section className="flex flex-1 flex-col items-center justify-center py-16 text-center">
-          <div className="mb-8 grid h-28 w-28 place-items-center rounded-full border border-sky-200/20 bg-sky-200/5 text-sky-100 shadow-[0_0_70px_#7ce6ff15]"><Sparkles size={38} /></div>
-          <p className="text-xs uppercase tracking-[.24em] text-white/40">{config.name}</p>
-          <h1 className="mt-5 max-w-xl text-4xl font-medium leading-tight tracking-tight sm:text-6xl">Как люди отреагируют на вашу идею?</h1>
-          <p className="mt-6 max-w-md text-sm leading-6 text-white/55">Сначала реальные сигналы из открытых источников. Затем — виртуальная аудитория и смоделированные ответы.</p>
-          <button onClick={() => { setError(""); setStep("idea"); }} className="mt-10 inline-flex items-center gap-3 rounded-full bg-white px-7 py-4 text-sm font-medium text-black hover:bg-sky-100">Начать проверку <ArrowRight size={16} /></button>
-          <p className="mt-8 max-w-md text-xs leading-5 text-white/30">{config.disclaimer}</p>
-        </section>}
-
-        {config && step === "idea" && <section className="flex flex-1 flex-col py-12">
-          <button onClick={() => setStep("welcome")} className="mb-8 inline-flex w-fit items-center gap-2 text-xs text-white/40 hover:text-white"><ArrowLeft size={14} /> Назад</button>
-          <p className="text-xs uppercase tracking-[.2em] text-sky-200/65">01 / Начало проверки</p>
-          <h1 className="mt-4 text-4xl tracking-tight sm:text-5xl">Что проверяем?</h1>
-          <label className="mt-8 text-sm text-white/70">Опишите идею продукта или услуги
-            <textarea value={idea} onChange={(event) => setIdea(event.target.value)} rows={6} maxLength={6000} placeholder="Какую проблему решает продукт и как он работает?" className="mt-3 w-full resize-y rounded-2xl border border-white/10 bg-white/[.035] p-4 text-base leading-6 text-white outline-none placeholder:text-white/25 focus:border-sky-200/40" />
-          </label>
-          <label className="mt-5 text-sm text-white/70">Кого хотите проверить? <span className="text-white/30">Необязательно</span>
-            <textarea value={audience} onChange={(event) => setAudience(event.target.value)} rows={2} maxLength={1200} placeholder="Например: небольшие интернет-магазины" className="mt-3 w-full resize-y rounded-2xl border border-white/10 bg-white/[.035] p-4 text-sm text-white outline-none placeholder:text-white/25 focus:border-sky-200/40" />
-          </label>
-          <label className="mt-5 text-sm text-white/70">Цена или бизнес-модель <span className="text-white/30">Необязательно</span>
-            <input value={price} onChange={(event) => setPrice(event.target.value)} maxLength={300} placeholder="Например: 990 ₽ в месяц" className="mt-3 w-full rounded-2xl border border-white/10 bg-white/[.035] p-4 text-sm text-white outline-none placeholder:text-white/25 focus:border-sky-200/40" />
-          </label>
-          <button disabled={busy || idea.trim().length < 20} onClick={() => void start()} className="mt-auto inline-flex items-center justify-center gap-3 rounded-full bg-white px-7 py-4 text-sm font-medium text-black disabled:cursor-not-allowed disabled:opacity-40">{busy ? <LoaderCircle size={16} className="animate-spin" /> : <Search size={16} />} Запустить поиск</button>
-        </section>}
-
-        {run && step === "processing" && <section className="flex flex-1 flex-col items-center justify-center py-14 text-center">
-          <div className="mb-7 grid h-24 w-24 place-items-center rounded-full border border-violet-200/20 bg-violet-200/5 text-violet-100"><Search size={30} /></div>
-          <p className="text-xs uppercase tracking-[.2em] text-sky-200/65">02 / Открытые источники</p>
-          <h1 className="mt-4 text-3xl tracking-tight">Слушаем рынок</h1>
-          <p className="mt-3 max-w-sm text-sm leading-6 text-white/45">{label[run.status] || label.preparing}. Счётчики появятся по мере поступления данных.</p>
-          <div className="mt-8 grid w-full gap-3 text-left sm:grid-cols-2">
-            <div className="rounded-2xl border border-white/10 bg-white/[.025] p-4"><span className="text-2xl font-light">{run.evidence.length}</span><p className="mt-1 text-xs text-white/40">источников с ссылками</p></div>
-            <div className="rounded-2xl border border-white/10 bg-white/[.025] p-4"><span className="text-2xl font-light">{run.findings.length}</span><p className="mt-1 text-xs text-white/40">тем, выделенных в материалах</p></div>
+        {error && (
+          <div className="audience-alert" role="alert">
+            <span>{error}</span>
+            <button type="button" onClick={() => setError("")} aria-label="Закрыть сообщение">×</button>
           </div>
-          {run.evidence.slice(0, 4).map((source) => <a key={source.url} href={source.url} target="_blank" rel="noreferrer" className="mt-3 w-full rounded-xl border border-white/8 p-3 text-left text-xs text-white/65 hover:border-sky-200/30"><span className="block text-white/35">{source.domain}</span>{source.title}</a>)}
-          {run.status === "awaiting_search_fallback" && <div className="mt-8 rounded-2xl border border-amber-100/15 bg-amber-100/[.035] p-5 text-left"><p className="text-sm text-white/75">Поиск не вернул проверяемых ссылок. Можно изменить формулировку или продолжить без найденных сигналов.</p><div className="mt-4 flex flex-wrap gap-3"><button disabled={busy} onClick={() => void continueWithoutSearch()} className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-3 text-sm text-black disabled:opacity-40">Продолжить без источников <ArrowRight size={15} /></button><button disabled={busy} onClick={() => void reviseIdea()} className="rounded-full border border-white/15 px-5 py-3 text-sm text-white/70 disabled:opacity-40">Изменить идею</button></div></div>}
-          {run.status === "failed" && <button onClick={reset} className="mt-8 rounded-full border border-white/15 px-5 py-3 text-sm">Начать заново</button>}
-        </section>}
+        )}
 
-        {run && step === "audience" && <section className="flex flex-1 flex-col py-12">
-          <p className="text-xs uppercase tracking-[.2em] text-sky-200/65">03 / Предпросмотр аудитории</p>
-          <h1 className="mt-4 text-4xl tracking-tight">Кто будет отвечать?</h1>
-          <p className="mt-3 text-sm leading-6 text-white/45">Профили созданы для этой идеи. Это вымышленные персонажи, а не цифровые копии людей из источников.</p>
-          {run.findings.length > 0 && <div className="mt-6 space-y-2">{run.findings.slice(0, 5).map((finding, index) => { const linked = run.evidence.filter((source) => finding.source_ids.includes(source.id)); return <article key={`${finding.text}-${index}`} className="rounded-xl border border-white/8 bg-white/[.02] p-3"><p className="text-sm text-white/75">{finding.text}</p><p className="mt-2 text-[10px] uppercase tracking-[.12em] text-white/35">{finding.claim_type === "sourced_paraphrase" ? "Пересказ источников" : finding.claim_type === "hypothesis" ? "Гипотеза" : "Предположение"}{finding.limitation ? ` · ${finding.limitation}` : ""}</p>{linked.map((source) => <a key={source.id} href={source.url} target="_blank" rel="noreferrer" className="mt-2 mr-3 inline-block text-xs text-sky-200/70 underline decoration-white/15 underline-offset-4">{source.domain}</a>)}</article>; })}</div>}
-          <div className="mt-6 flex items-center justify-between gap-4 rounded-2xl border border-white/10 p-4"><div><p className="text-sm">Размер панели</p><p className="mt-1 text-xs text-white/35">Модельный тест, не статистическая выборка</p></div><select value={audienceSize} onChange={(event) => setAudienceSize(Number(event.target.value))} className="rounded-xl border border-white/15 bg-[#131319] px-3 py-2 text-sm">{[5, 8, 12].map((value) => <option key={value} value={value}>{value} персон</option>)}</select></div>
-          <label className="mt-4 text-sm text-white/65">Ограничения или правки состава <span className="text-white/30">Необязательно</span><textarea value={constraints} onChange={(event) => setConstraints(event.target.value)} rows={2} placeholder="Например: исключить тех, кто уже использует такое решение" className="mt-3 w-full resize-y rounded-2xl border border-white/10 bg-white/[.035] p-4 text-sm text-white outline-none placeholder:text-white/25 focus:border-sky-200/40" /></label>
-          <div className="mt-5 flex flex-wrap gap-2">{groups.map((group) => <span key={group} className="rounded-full bg-white/5 px-3 py-1.5 text-xs text-white/55">{group}</span>)}</div>
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">{personas.slice(0, 4).map((persona) => <article key={persona.id} className="rounded-2xl border border-white/10 bg-white/[.025] p-4"><p className="text-xs text-violet-200/75">{persona.group}</p><p className="mt-2 text-sm leading-5 text-white/75">{persona.profile}</p><p className="mt-3 text-xs leading-5 text-white/35">{persona.selection_reason}</p></article>)}</div>
-          {run.selection.uncertainty?.map((item) => <p key={item} className="mt-3 text-xs text-amber-100/65">Неопределённость: {item}</p>)}
-          <button disabled={busy || personas.length < 5} onClick={() => void confirmAudience()} className="mt-auto inline-flex items-center justify-center gap-3 rounded-full bg-white px-7 py-4 text-sm font-medium text-black disabled:opacity-40">{busy ? <LoaderCircle size={16} className="animate-spin" /> : <Check size={16} />} Подтвердить и начать интервью</button>
-        </section>}
+        {!config && !error && (
+          <div className="audience-loading" aria-label="Загружаем кампанию"><Loader size={18} className="audience-spin" /></div>
+        )}
 
-        {run && step === "interview" && <section className="flex flex-1 flex-col items-center justify-center py-14 text-center">
-          <div className="mb-7 grid h-24 w-24 place-items-center rounded-full border border-emerald-200/20 bg-emerald-200/5 text-emerald-100"><Sparkles size={30} /></div>
-          <p className="text-xs uppercase tracking-[.2em] text-sky-200/65">04 / Синтетическое исследование</p>
-          <h1 className="mt-4 text-3xl tracking-tight">Аудитория отвечает</h1>
-          <p className="mt-3 text-sm text-white/45">Каждый ответ — модельная реакция отдельного синтетического профиля.</p>
-          <p className="mt-10 text-6xl font-light tracking-tight">{progress}<span className="text-white/30"> / {personas.length}</span></p>
-          <div className="mt-5 h-1 w-full overflow-hidden rounded-full bg-white/10"><div className="h-full bg-gradient-to-r from-sky-200 to-violet-300 transition-all" style={{ width: `${personas.length ? Math.min(100, progress / personas.length * 100) : 0}%` }} /></div>
-          <p className="mt-5 text-xs text-white/35">{label[run.status]}</p>
-        </section>}
-
-        {run && step === "result" && <section className="flex flex-1 flex-col py-12">
-          <p className="text-xs uppercase tracking-[.2em] text-sky-200/65">Результат проверки</p>
-          <h1 className="mt-4 text-4xl tracking-tight">{run.summary?.headline || "Реакция виртуальной аудитории"}</h1>
-          <p className="mt-3 text-sm text-white/45">Валидных ответов: {run.aggregate?.valid_responses ?? 0} из {run.aggregate?.requested_responses ?? personas.length}</p>
-          <div className="mt-7 grid gap-3 sm:grid-cols-3">{[
-            ["Актуальность проблемы", run.aggregate?.averages?.problem_relevance],
-            ["Интерес к решению", run.aggregate?.averages?.interest],
-            ["Готовность попробовать", run.aggregate?.averages?.willingness_to_try],
-          ].map(([title, value]) => <div key={String(title)} className="rounded-2xl border border-white/10 bg-white/[.025] p-4"><p className="text-xs text-white/40">{title}</p><p className="mt-3 text-4xl font-light">{typeof value === "number" ? `${value.toFixed(1)}` : "—"}<span className="text-base text-white/30"> / 10</span></p></div>)}</div>
-          <p className="mt-7 text-sm text-white/40">Доля ответов с оценкой 7–10 (собственный знаменатель для каждого вопроса)</p>
-          <div className="mt-3 grid gap-3 sm:grid-cols-3">{Object.entries(run.aggregate?.percent_at_least_7 || {}).map(([key, value]) => <div key={key} className="rounded-2xl bg-white/[.025] p-4"><p className="text-xs text-white/35">{key === "problem_relevance" ? "Проблема актуальна" : key === "interest" ? "Интересно решение" : "Готовы попробовать"}</p><p className="mt-2 text-2xl">{value == null ? "—" : `${value}%`}</p></div>)}</div>
-          <div className="mt-8 rounded-2xl border border-white/10 bg-white/[.02] p-4">
-            <p className="text-xs uppercase tracking-[.16em] text-white/35">Карта ответов</p>
-            <div className="relative mt-4 aspect-[1.55] border-b border-l border-white/20 bg-[linear-gradient(90deg,transparent_49.8%,#ffffff12_50%,transparent_50.2%),linear-gradient(0deg,transparent_49.8%,#ffffff12_50%,transparent_50.2%)]">
-              {run.responses.filter((item) => typeof item.interest === "number" && typeof item.problem_relevance === "number").map((item) => <button key={item.persona_id} type="button" title={`${item.group || "Персона"}: интерес ${item.interest}/10, актуальность ${item.problem_relevance}/10`} aria-label={`Персона ${item.persona_id}`} onClick={() => setSelectedResponseId(selectedResponseId === item.persona_id ? "" : item.persona_id)} className={`absolute h-3 w-3 -translate-x-1/2 translate-y-1/2 rounded-full border border-white/70 transition-transform hover:scale-150 ${item.interest! >= 7 ? "bg-emerald-200 shadow-[0_0_14px_#9be5ca80]" : item.interest! >= 4 ? "bg-amber-200 shadow-[0_0_14px_#f0bd6980]" : "bg-violet-300 shadow-[0_0_14px_#b48cff80]"}`} style={{ left: `${item.interest! * 10}%`, bottom: `${item.problem_relevance! * 10}%` }} />)}
+        {config && <div className="audience-slides">
+          <section className={"audience-slide hero-slide" + (activeSlide === 0 ? " is-active" : "")} aria-hidden={activeSlide !== 0}>
+            <div className="hero-halo" aria-hidden="true" />
+            <p className="audience-eyebrow">Проверьте идею до запуска</p>
+            <h1 className="audience-title hero-title">Как люди<br />отреагируют<br />на <span className="audience-shine">вашу идею?</span></h1>
+            <p className="audience-lead hero-lead">Сначала реальные сигналы. Затем виртуальная аудитория. Потом - реакция на продукт.</p>
+            <div className="audience-glowline" />
+            <div className="hero-network-wrap">
+              <PersonaNetwork members={[]} responses={[]} mode="crowd" />
+              <div className="idea-signal">ВАША ИДЕЯ</div>
             </div>
-            <div className="mt-2 flex justify-between text-[10px] text-white/35"><span>Актуальность проблемы</span><span>Интерес к решению →</span></div>
-            {run.responses.filter((item) => item.persona_id === selectedResponseId).map((item) => <div key={item.persona_id} className="mt-4 border-l-2 border-violet-200/50 pl-3"><p className="text-[10px] uppercase tracking-[.14em] text-violet-100/55">Ответ виртуального респондента · синтетический профиль</p><p className="mt-2 text-sm leading-6 text-white/75">{item.reaction || "Персона не оставила короткую реплику."}</p></div>)}
-            <p className="mt-3 text-[10px] leading-4 text-white/30">Каждая точка — ответ отдельной синтетической персоны. Цвет не заменяет оценки по осям.</p>
-          </div>
-          <div className="mt-7 space-y-3">{(run.summary?.observations || []).map((item) => <p key={item} className="rounded-xl border-l-2 border-sky-200/60 bg-white/[.025] px-4 py-3 text-sm leading-6 text-white/70">{item}</p>)}</div>
-          {run.summary?.next_checks?.length ? <div className="mt-6 rounded-2xl border border-violet-200/15 bg-violet-200/[.04] p-5"><p className="text-xs uppercase tracking-[.15em] text-violet-100/55">Что проверить дальше</p><ul className="mt-3 space-y-2 text-sm text-white/70">{run.summary.next_checks.map((item) => <li key={item}>· {item}</li>)}</ul></div> : null}
-          <div className="mt-auto pt-8"><p className="text-xs leading-5 text-white/35">Ответы смоделированы. Результат помогает сформулировать следующие проверки, но не прогнозирует продажи и не является статистически репрезентативной выборкой.</p>
-            {!claimToken ? <button disabled={busy} onClick={() => void makeClaimLink()} className="mt-6 inline-flex w-full items-center justify-center gap-3 rounded-full border border-white/15 px-7 py-4 text-sm font-medium disabled:opacity-40">{busy ? <LoaderCircle size={16} className="animate-spin" /> : null} Подготовить QR для сохранения результата</button> : <div className="mt-6 flex items-center gap-5 rounded-2xl border border-white/10 p-4"><img src={`/api/audience-simulations/claims/${encodeURIComponent(claimToken)}/qr`} alt="QR-код для сохранения результата" className="h-28 w-28 rounded bg-white p-2" /><div className="min-w-0"><p className="text-sm text-white/80">Откройте результат на телефоне</p><a className="mt-2 block break-all text-xs text-sky-200/60" href={`/audience-simulation/claim/${encodeURIComponent(claimToken)}`}>{window.location.origin}/audience-simulation/claim/…</a><p className="mt-2 text-xs text-white/35">Ссылка одноразовая и действует 7 дней</p></div></div>}
-            <button onClick={reset} className="mt-4 inline-flex w-full items-center justify-center gap-3 rounded-full bg-white px-7 py-4 text-sm font-medium text-black">Завершить и очистить экран <RotateCcw size={15} /></button></div>
-        </section>}
+            <div className="intro-label"><i className="signal-dot" />Реальные боли → релевантные персоны → реакция</div>
+            <button type="button" className="slide-hit-target" onClick={() => goToSlide(1)} aria-label="Начать проверку идеи" />
+          </section>
 
-        <footer className="mt-5 flex items-center justify-between border-t border-white/8 pt-4 text-[10px] uppercase tracking-[.16em] text-white/25"><span>{step === "result" ? "ИТОГ" : "ИДЕЯ → АУДИТОРИЯ"}</span><span>{step !== "welcome" ? step.toUpperCase() : "ФОРУМНЫЙ СТЕНД"}</span></footer>
+          <section className={"audience-slide idea-slide" + (activeSlide === 1 ? " is-active" : "")} aria-hidden={activeSlide !== 1}>
+            <p className="audience-eyebrow">01 / Начало проверки</p>
+            <h2 className="audience-title">Что<br />проверяем?</h2>
+            <label className="idea-box">
+              <span className="sr-only">Опишите идею продукта или услуги</span>
+              <textarea value={idea} onChange={(event) => setIdea(event.target.value)} rows={4} maxLength={6000} placeholder="Опишите идею продукта или услуги..." />
+            </label>
+            <div className="input-options">
+              <button type="button" className="input-option" onClick={() => setShowAudienceField((value) => !value)} aria-expanded={showAudienceField}>
+                <span>Аудитория</span><i>{showAudienceField ? "скрыть" : "добавить, если уже определили"}</i>
+              </button>
+              {showAudienceField && <input className="audience-compact-input" value={audience} onChange={(event) => setAudience(event.target.value)} maxLength={1200} placeholder="Например: небольшие интернет-магазины" />}
+              <button type="button" className="input-option" onClick={() => setShowPriceField((value) => !value)} aria-expanded={showPriceField}>
+                <span>Цена</span><i>{showPriceField ? "скрыть" : "необязательно"}</i>
+              </button>
+              {showPriceField && <input className="audience-compact-input" value={price} onChange={(event) => setPrice(event.target.value)} maxLength={300} placeholder="Например: 990 ₽ в месяц" />}
+            </div>
+            <div className="idea-action">
+              <p className={idea.trim().length >= 20 ? "field-hint is-ready" : "field-hint"}>
+                {idea.trim().length >= 20 ? "Описание готово к проверке" : "Добавьте подробностей: от 20 символов"}
+              </p>
+            <button type="button" disabled={busy} onClick={() => void start()} className="audience-cta">
+                {busy ? <Loader size={14} className="audience-spin" /> : <Search size={14} />}
+                {busy ? "Запускаем проверку" : "Запустить проверку"}
+                {!busy && <ArrowRight size={14} />}
+              </button>
+            </div>
+          </section>
+
+          <section className={"audience-slide sources-slide" + (activeSlide === 2 ? " is-active" : "")} aria-hidden={activeSlide !== 2}>
+            <p className="audience-eyebrow">02 / Открытые источники</p>
+            <h2 className="audience-title">Сначала слушаем<br /><span className="audience-shine">рынок</span></h2>
+            <p className="audience-lead">Ищем, кто и как уже говорит об этой проблеме.</p>
+            <div className="source-stats">
+              <div className="audience-card"><strong>{run?.evidence.length || 0}</strong><span>источников с ссылками</span></div>
+              <div className="audience-card"><strong>{run?.findings.length || 0}</strong><span>сигналов отобрано</span></div>
+            </div>
+            <div className="source-grid">
+              {sourceCategories.map((category) => (
+                <div className={"source-card source-" + category.color} key={category.title}>
+                  <i className="source-mark" />
+                  <span>{category.title}<small>{category.note} · {category.count}</small></span>
+                </div>
+              ))}
+            </div>
+            <p className="search-readout">{searchingLabel}{run?.status === "preparing" ? <span className="typing-dots">...</span> : null}</p>
+            <div className="signal-sweep"><i /></div>
+            {run?.evidence.length ? (
+              <details className="source-disclosure">
+                <summary>Показать источники · {run.evidence.length}</summary>
+                <div className="source-links">
+                  {run.evidence.slice(0, 3).map((source) => (
+                    <a key={source.id} href={source.url} target="_blank" rel="noreferrer" className="source-link">
+                      <span>{source.domain}</span>{source.title || source.url}
+                    </a>
+                  ))}
+                </div>
+              </details>
+            ) : null}
+            {run?.status === "awaiting_search_fallback" && (
+              <div className="fallback-actions">
+                <p>Не нашли достаточно проверяемых ссылок. Можно продолжить без открытых сигналов или уточнить идею.</p>
+                <button type="button" className="audience-cta" disabled={busy} onClick={() => void continueWithoutSearch()}><ArrowRight size={14} /> Продолжить без источников</button>
+                <button type="button" className="text-action" disabled={busy} onClick={() => void reviseIdea()}>Изменить идею</button>
+              </div>
+            )}
+            {run?.status === "failed" && <button type="button" className="text-action" onClick={reset}>Начать заново</button>}
+            {run?.status === "awaiting_audience_confirmation" && (
+              <button type="button" className="audience-cta source-continue" onClick={() => goToSlide(3)}>
+                Перейти к аудитории <ArrowRight size={14} />
+              </button>
+            )}
+            <p className="source-foot">Найденные упоминания связываем с источниками и повторяющимися темами.</p>
+          </section>
+
+          <section className={"audience-slide audience-build-slide" + (activeSlide === 3 ? " is-active" : "")} aria-hidden={activeSlide !== 3}>
+            <p className="audience-eyebrow">03 / Формируем аудиторию</p>
+            <h2 className="audience-title">Персоны<br /><span className="audience-shine">под вашу идею</span></h2>
+            <p className="audience-lead">Генерируем виртуальное общество и отбираем тех, кому может быть близка проблема.</p>
+            <div className="candidate-label"><span>{statusText[run?.status || "preparing"]}</span><span>{personas.length} профилей</span></div>
+            <div className="persona-cloud">
+              <PersonaNetwork members={personas} responses={[]} mode="crowd" />
+            </div>
+            <div className="audience-card audience-build-note">
+              <p>Сначала широкий круг профилей. После отбора остаются персоны, связанные с вашей гипотезой.</p>
+              <div className="audience-chips">
+                {groups.slice(0, 3).map((group) => <span key={group} className="audience-chip">{group}</span>)}
+                {!groups.length && <span className="audience-chip">Формируем группы</span>}
+              </div>
+              {run?.status === "awaiting_audience_confirmation" && (
+                <button type="button" className="audience-cta build-continue" onClick={() => goToSlide(4)}>
+                  Посмотреть аудиторию <ArrowRight size={14} />
+                </button>
+              )}
+            </div>
+          </section>
+
+          <section className={"audience-slide preview-slide" + (activeSlide === 4 ? " is-active" : "")} aria-hidden={activeSlide !== 4}>
+            <p className="audience-eyebrow">04 / Предпросмотр аудитории</p>
+            <h2 className="audience-title">Кто будет<br />отвечать</h2>
+            <div className="candidate-label"><span>Состав аудитории</span><span>{chosenCount || personas.length} персон · {selectedGroups.length} групп</span></div>
+            <div className="preview-map"><PersonaNetwork members={personas} responses={[]} mode="crowd" /></div>
+            <div className="profile-strip">
+              <span>Профили<b>{chosenCount || personas.length}</b></span>
+              <span>Группы<b>{groups.length}</b></span>
+              <span>Цена<b>{price.trim() || "не задана"}</b></span>
+            </div>
+            <p className="audience-helper">Синтетические профили по сигналам. <button type="button" className="audience-edit-link" onClick={() => setShowAudienceControls((value) => !value)} aria-expanded={showAudienceControls}>Настроить состав</button></p>
+            <div className={"audience-editor" + (showAudienceControls ? " is-open" : "")} aria-hidden={!showAudienceControls}>
+              <div className="editor-heading"><strong>Состав аудитории</strong><button type="button" onClick={() => setShowAudienceControls(false)}>Готово</button></div>
+              <div className="group-picker">
+              {groups.map((group, index) => {
+                const count = personas.filter((person) => person.group === group).length;
+                const active = selectedGroups.includes(group);
+                return (
+                  <button type="button" className={"group-toggle " + (active ? "selected" : "")} key={group} onClick={() => {
+                    const next = active ? selectedGroups.filter((item) => item !== group) : [...selectedGroups, group];
+                    if (!next.length || personas.filter((person) => next.includes(person.group)).length < (config?.limits.min_audience || 5)) {
+                      setError("Оставьте в аудитории не меньше пяти профилей.");
+                      return;
+                    }
+                    setSelectedGroups(next);
+                    setAudienceSize((current) => Math.min(current, personas.filter((person) => next.includes(person.group)).length));
+                    setError("");
+                  }}>
+                    <i style={{ backgroundColor: palette[index % palette.length] }} />{group}<small>{count}</small>
+                  </button>
+                );
+              })}
+              </div>
+              <div className="preview-controls">
+                <label>Размер панели
+                  <select value={Math.min(audienceSize, Math.max(chosenCount, 5))} onChange={(event) => setAudienceSize(Number(event.target.value))}>
+                    {[5, 8, 12].filter((value) => value <= chosenCount).map((value) => <option key={value} value={value}>{value} персон</option>)}
+                  </select>
+                </label>
+                <label className="constraints-field">Ограничения
+                  <input value={constraints} onChange={(event) => setConstraints(event.target.value)} maxLength={1200} placeholder="Необязательно" />
+                </label>
+              </div>
+            </div>
+            <button type="button" disabled={busy || chosenCount < 5} onClick={() => void confirmAudience()} className="audience-cta preview-cta">
+              {busy ? <Loader size={14} className="audience-spin" /> : <Check size={14} />}{busy ? "Готовим исследование" : "Запустить исследование"}<ArrowRight size={14} />
+            </button>
+          </section>
+
+          <section className={"audience-slide interview-slide" + (activeSlide === 5 ? " is-active" : "")} aria-hidden={activeSlide !== 5}>
+            <p className="audience-eyebrow">05 / Синтетическое исследование</p>
+            <h2 className="audience-title">Идея проходит<br />через общество</h2>
+            <p className="audience-lead">Каждая персона отвечает с учётом своего профиля и найденных сигналов.</p>
+            <div className="candidate-label"><span>{progress ? "Персоны отвечают в группах" : "Подключаем персоны"}</span><span>{progress} / {personas.length || audienceSize}</span></div>
+            <div className="interview-network">
+              <PersonaNetwork members={personas} responses={[]} mode="crowd" activeIds={new Set((run?.responses || []).map((response) => response.persona_id))} />
+              <div className="idea-signal">ИДЕЯ</div>
+            </div>
+            <div className="people-count"><strong>{progress}</strong><span>/ {personas.length || audienceSize} ответов</span></div>
+            <div className="audience-meter"><i style={{ width: (personas.length ? Math.min(100, (progress / personas.length) * 100) : 0) + "%" }} /></div>
+            <p className="audience-helper center">Синтетические персоны обмениваются сигналами. Это не прогноз продаж.</p>
+          </section>
+
+          <section className={"audience-slide reaction-slide" + (activeSlide === 6 ? " is-active" : "")} aria-hidden={activeSlide !== 6}>
+            <p className="audience-eyebrow">06 / Карта реакции</p>
+            <h2 className="audience-title">Реакция<br /><span className="audience-shine">разделилась</span></h2>
+            <p className="audience-lead">Каждая точка — отдельная синтетическая персона.</p>
+            <div className="reaction-map">
+              <PersonaNetwork members={personas} responses={run?.responses || []} mode="map" activeIds={selectedResponseId ? new Set([selectedResponseId]) : undefined} onPick={(id) => setSelectedResponseId((current) => current === id ? "" : id)} />
+              <span className="map-axis-y">АКТУАЛЬНОСТЬ ПРОБЛЕМЫ</span>
+              <span className="map-axis-x">ИНТЕРЕС К РЕШЕНИЮ →</span>
+            </div>
+            {activeResponse && <div className="reaction-detail"><span>{activeResponse.group || "Синтетическая персона"}</span><p>{activeResponse.reaction || "Для этой персоны нет короткой реплики."}</p></div>}
+            <div className="group-counts">
+              {groups.slice(0, 3).map((group, index) => <span key={group}><b style={{ color: palette[index % palette.length] }}>{run?.responses.filter((response) => response.group === group).length || 0}</b>{group}</span>)}
+              {!groups.length && <span><b>{run?.responses.length || 0}</b>ответов</span>}
+            </div>
+            <p className="audience-helper">Нажмите на точку или выберите её клавишами со стрелками.</p>
+            <button type="button" className="slide-next-cta reaction-continue" onClick={() => goToSlide(7)}>
+              Перейти к выводам <ArrowRight size={15} />
+            </button>
+          </section>
+
+          <section className={"audience-slide insights-slide" + (activeSlide === 7 ? " is-active" : "")} aria-hidden={activeSlide !== 7}>
+            <p className="audience-eyebrow">07 / Выводы</p>
+            <h2 className="audience-title">Что говорит<br /><span className="audience-shine">аудитория</span></h2>
+            <div className="primary-result">{typeof validRate === "number" ? validRate + "%" : "—"}</div>
+            <div className="result-label">отметили проблему в своём опыте</div>
+            <div className="audience-meter"><i style={{ width: (typeof validRate === "number" ? validRate : 0) + "%" }} /></div>
+            <div className="result-row">
+              <div className="audience-card result-card"><strong>{typeof interestRate === "number" ? interestRate + "%" : "—"}</strong><span>заинтересованы</span></div>
+              <div className="audience-card result-card"><strong>{typeof tryRate === "number" ? tryRate + "%" : "—"}</strong><span>готовы попробовать</span></div>
+            </div>
+            <div className="insight-list">
+              {(run?.summary?.observations || []).slice(0, 3).map((item, index) => <div className="insight-item" key={item}><i style={{ backgroundColor: palette[index % palette.length] }} /><span>{item}</span></div>)}
+              {!run?.summary?.observations?.length && <div className="insight-item"><i /><span>Собрано ответов: {progress}</span></div>}
+            </div>
+            {run?.summary?.next_checks?.length ? <div className="next-step"><small>СЛЕДУЮЩАЯ ПРОВЕРКА</small>{run.summary.next_checks[0]}</div> : null}
+            <button type="button" className="slide-next-cta insights-continue" onClick={() => goToSlide(8)}>
+              Открыть результат <ArrowRight size={15} />
+            </button>
+            <p className="audience-disclaimer">Ответы смоделированы. Они помогают сформулировать следующие проверки, но не прогнозируют продажи.</p>
+          </section>
+
+          <section className={"audience-slide result-slide" + (activeSlide === 8 ? " is-active" : "")} aria-hidden={activeSlide !== 8}>
+            <p className="audience-eyebrow">Результат готов</p>
+            <h2 className="audience-title">Продолжите<br />изучать свою<br /><span className="audience-shine">идею</span></h2>
+            <p className="audience-lead">Отсканируйте код, чтобы открыть краткий итог и сохранить проверку.</p>
+            {claimToken ? (
+              <div className="qr-layout">
+                <Image className="qr-image" src={"/api/audience-simulations/claims/" + encodeURIComponent(claimToken) + "/qr"} width={144} height={144} unoptimized alt="QR-код результата исследования" />
+                <div className="qr-caption"><strong>Откройте результат<br />на телефоне</strong><a href={"/audience-simulation/claim/" + encodeURIComponent(claimToken)}>{typeof window !== "undefined" ? window.location.host : "pitchy.pro"}/audience-simulation/claim/…</a></div>
+              </div>
+            ) : (
+              <button type="button" disabled={busy} onClick={() => void makeClaimLink()} className="qr-create-button">
+                {busy ? <Loader size={14} className="audience-spin" /> : <Search size={14} />}{busy ? "Готовим код" : "Создать QR-код результата"}
+              </button>
+            )}
+            <div className="audience-glowline result-glowline" />
+            <div className="audience-card result-card-note"><p>Хотите проверить глубже? Передайте идею и найденные сигналы в полноценный CustDev Pitchy.</p></div>
+            <p className="audience-disclaimer">{config.disclaimer}</p>
+            {claimToken && <button type="button" onClick={reset} className="reset-run"><RotateCcw size={12} /> Завершить проверку</button>}
+          </section>
+        </div>}
+
+        <footer className="audience-bottom">
+          <span>{stageNames[activeSlide]}</span>
+          <span>{String(activeSlide + 1).padStart(2, "0")} / 09</span>
+        </footer>
+        <div className="audience-progress"><i style={{ width: ((activeSlide + 1) / 9) * 100 + "%" }} /></div>
+
       </div>
     </main>
   );
