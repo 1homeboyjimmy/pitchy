@@ -57,6 +57,13 @@ export function SideNavBar({
 
   if (isAdmin) {
     topNavItems.push({ id: "admin", label: "Админ", icon: Shield, locked: false });
+    topNavItems.push({
+      id: "audience-simulation",
+      label: "Симуляция аудитории",
+      icon: Users,
+      href: "/audience-simulation/admin",
+      locked: false,
+    });
   }
 
   const handleTabClick = (id: string, locked: boolean, label: string) => {
