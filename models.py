@@ -2238,6 +2238,25 @@ class AudienceSimulationRun(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class AudienceSimulationPersona(Base):
+    """Versioned synthetic persona bank used to compose audience panels."""
+    __tablename__ = "audience_simulation_personas"
+    __table_args__ = (
+        UniqueConstraint("dataset_id", "persona_id", name="uq_audience_sim_personas_dataset_persona"),
+        Index("ix_audience_sim_personas_dataset_market", "dataset_id", "market"),
+        Index("ix_audience_sim_personas_dataset_label", "dataset_id", "profile_label"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    dataset_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    persona_id: Mapped[str] = mapped_column(String(40), nullable=False)
+    profile_version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    market: Mapped[str] = mapped_column(String(30), nullable=False)
+    profile_label: Mapped[str] = mapped_column(String(240), nullable=False)
+    profile_data: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, server_default=text("CURRENT_TIMESTAMP"))
+
+
 class AudienceSimulationParticipant(Base):
     """Campaign claim, private leaderboard score, consent, and reward state."""
     __tablename__ = "audience_simulation_participants"

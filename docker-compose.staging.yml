@@ -23,6 +23,7 @@ services:
     environment:
       APP_ENV: staging
       FRONTEND_URL: https://dev.pitchy.pro
+      AUDIENCE_SEARCH_CONTEXT_SIZE: high
     # Apply migrations at container startup on dev. The base compose sets
     # `command: uvicorn ...`, which SHADOWS the image's Dockerfile CMD
     # (`alembic upgrade head && exec uvicorn`) — so on staging the only thing

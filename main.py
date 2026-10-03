@@ -423,6 +423,19 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(resume_pending_research_jobs())
     from routers.audience_simulations import resume_pending_runs
     asyncio.create_task(resume_pending_runs())
+    from audience_simulation_service import ensure_persona_catalog_seeded
+
+    async def _seed_audience_personas_bg():
+        try:
+            imported = await ensure_persona_catalog_seeded()
+            logger.info(
+                "Audience simulation persona catalog ready: %s (%s profiles)",
+                imported["dataset_id"], imported["count"],
+            )
+        except Exception:
+            logger.exception("Failed to seed the audience simulation persona catalog")
+
+    asyncio.create_task(_seed_audience_personas_bg())
     
     # Start RAG initialization in background task so server starts immediately
     async def _init_rag_bg():
