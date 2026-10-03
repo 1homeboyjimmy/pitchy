@@ -107,25 +107,34 @@
   background: linear-gradient(145deg, #131313, #0d0d0d);
 }
 
-.hero-slide { justify-content: center; }
-.hero-slide .audience-title { max-width: 95%; margin-bottom: 3%; }
-.hero-title { font-size: clamp(38px, 6.1vh, 82px); }
-.hero-lead { max-width: 82%; }
-.hero-halo {
+.hero-slide { justify-content: flex-start; padding-top: clamp(40px, 7vh, 125px); }
+.hero-slide .audience-title { max-width: 100%; margin-bottom: 2.4%; }
+.hero-title { font-size: clamp(27px, 8.2vw, 78px); }
+.hero-lead { max-width: 90%; font-size: clamp(10px, 1.5vh, 20px); }
+.hero-art-frame {
   position: absolute;
-  inset: 39% -24% 9%;
   z-index: 0;
-  border-radius: 50%;
-  background: radial-gradient(ellipse, #10121a 10%, #0b0b0d 53%, transparent 70%);
+  top: 23.5%;
+  right: 0;
+  left: 0;
+  height: 76.5%;
+  overflow: hidden;
+  pointer-events: none;
+}
+.hero-art { object-fit: fill; }
+.hero-art-shade {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(0deg, #050505 0%, #050505a8 7%, transparent 19%);
 }
 .hero-slide > .audience-eyebrow,
 .hero-slide > .audience-title,
 .hero-slide > .audience-lead,
 .hero-slide > .audience-glowline,
-.hero-slide > .hero-network-wrap,
-.hero-slide > .intro-label { position: relative; z-index: 1; }
+.hero-slide > .intro-label { position: relative; z-index: 2; }
 .audience-glowline { width: 26%; height: 2px; flex: 0 0 2px; margin: 5% 0; border-radius: 2px; background: var(--audience-glow); }
-.hero-network-wrap { position: relative; height: 38%; flex: 0 0 38%; margin: 4% -7% 0; mask-image: radial-gradient(ellipse, #000 48%, transparent 77%); }
 .audience-network { display: block; width: 100%; height: 100%; overflow: visible; }
 .idea-signal {
   position: absolute;
@@ -376,6 +385,12 @@
 
 @media (max-width: 600px) {
   .audience-screen { width: 100vw; height: 100dvh; max-width: 100vw; }
+  .hero-slide { padding-top: clamp(44px, 7vh, 58px); }
+  .hero-slide .audience-eyebrow { margin-bottom: 1.6%; }
+  .hero-slide .audience-title { margin-bottom: 2%; }
+  .hero-title { font-size: clamp(24px, 8.2vw, 32px); line-height: .98; }
+  .hero-lead { max-width: 94%; font-size: clamp(8px, 1.5vh, 13px); line-height: 1.4; }
+  .hero-slide .audience-glowline { margin: 4% 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {

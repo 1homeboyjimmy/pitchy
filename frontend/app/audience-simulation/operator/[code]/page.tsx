@@ -611,15 +611,21 @@ export default function AudienceSimulationOperatorPage() {
 
         {config && <div className="audience-slides">
           <section className={"audience-slide hero-slide" + (activeSlide === 0 ? " is-active" : "")} aria-hidden={activeSlide !== 0}>
-            <div className="hero-halo" aria-hidden="true" />
+            <div className="hero-art-frame" aria-hidden="true">
+              <Image
+                src="/images/audience-simulation/hero-scene.png"
+                alt=""
+                fill
+                priority
+                sizes="(max-width: 600px) 100vw, 56.25vh"
+                className="hero-art"
+              />
+            </div>
+            <div className="hero-art-shade" aria-hidden="true" />
             <p className="audience-eyebrow">Проверьте идею до запуска</p>
             <h1 className="audience-title hero-title">Как люди<br />отреагируют<br />на <span className="audience-shine">вашу идею?</span></h1>
-            <p className="audience-lead hero-lead">Сначала реальные сигналы. Затем виртуальная аудитория. Потом - реакция на продукт.</p>
+            <p className="audience-lead hero-lead">Сначала реальные сигналы. Затем виртуальная аудитория. Потом — реакция на продукт.</p>
             <div className="audience-glowline" />
-            <div className="hero-network-wrap">
-              <PersonaNetwork members={[]} responses={[]} mode="crowd" />
-              <div className="idea-signal">ВАША ИДЕЯ</div>
-            </div>
             <div className="intro-label"><i className="signal-dot" />Реальные боли → релевантные персоны → реакция</div>
             <button type="button" className="slide-hit-target" onClick={() => goToSlide(1)} aria-label="Начать проверку идеи" />
           </section>

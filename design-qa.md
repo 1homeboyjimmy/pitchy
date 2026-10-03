@@ -6,6 +6,7 @@
 - **Implementation:** /audience-simulation/operator/[code] in the existing campaign flow. No route or separate prototype page was added.
 - **Full-view comparison:** C:/Users/eat07/AppData/Local/Temp/pitchy-audience-paired-final.png; each source screen is directly beside the corresponding browser capture.
 - **Focused comparisons:** screens 03–09 are saved as C:/Users/eat07/AppData/Local/Temp/pitchy-audience-pair-03.png through pitchy-audience-pair-09.png.
+- **Opening-screen comparison:** the supplied 941 × 1672 reference is paired with the updated Chrome capture at C:/Users/eat07/AppData/Local/Temp/audience-hero-side-by-side.png; the browser capture is C:/Users/eat07/AppData/Local/Temp/audience-hero-final-reference-size.png.
 - **Browser captures:** C:/Users/eat07/AppData/Local/Temp/pitchy-audience-qa/ (01-hero.png through 09-result.png).
 - **Viewport and density:** Chrome, 307 × 538 CSS px, deviceScaleFactor 1. The source files range from 286 × 538 to 307 × 538 pixels; smaller captures were centered on a 307 × 538 canvas without resampling. Source DPR was not recorded.
 
@@ -48,9 +49,11 @@ The local visual run used a temporary API fixture on port 8000 because the backe
 3. That comparison found the new audience-build action clipped by the footer. The candidate-cloud height was reduced and its panel spacing tightened. Screen 04 was recaptured with the action fully visible.
 4. The completed-interview disclaimer collided with the footer. The duplicate long text was replaced with a concise synthetic-response notice in the existing helper. Screen 06 was recaptured cleanly.
 5. The map's pointer-only response selection was made keyboard-accessible with arrow keys and a visible focus ring. Pointer and keyboard selection both passed in the final browser run.
+6. The opening screen now uses the supplied text-free 9:16 scene with editable HTML copy over it. A same-size 941 × 1672 Chrome comparison aligned the header, headline, accent line, mascot, and bubbles with the reference. The demo arrows / counter / autoplay strip visible in that reference remains excluded as requested.
 
 ## Follow-up polish
 
 - The user-provided screens are mobile-sized. The final comparison used their supplied mobile viewport; a separate desktop visual review was outside this pass.
+- The new first-screen art was checked in Chrome at 307 × 538, 390 × 844, and 941 × 1672. The logo and eyebrow do not overlap; the art loads without console or HTTP errors; the first screen continues to the existing idea form; the demo control panel remains absent.
 
 final result: passed
