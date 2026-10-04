@@ -224,7 +224,7 @@
 .idea-action .audience-cta { width: 100%; justify-content: space-between; padding-inline: 16px; }
 
 .sources-slide .audience-title { margin-bottom: 2%; }
-.source-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 5%; }
+.source-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin-top: 5%; }
 .source-stats .audience-card { min-height: 60px; padding: 7px 9px; }
 .source-stats strong { display: block; font-size: clamp(24px, 4vh, 50px); font-weight: 400; letter-spacing: -.07em; line-height: 1; }
 .source-stats span { display: block; margin-top: 5px; color: #929292; font-size: clamp(7px, .75vh, 10px); }
@@ -247,6 +247,12 @@
 .source-link { display: grid; gap: 2px; overflow: hidden; color: #aaa; font-size: 9px; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
 .source-link span { color: #636363; font-size: 8px; }
 .source-link:hover { color: var(--audience-cyan); }
+.verified-disclosures { margin-top: 2%; }
+.verified-quote { padding: 5px 0; border-bottom: 1px solid #252525; white-space: normal; }
+.verified-quote strong { color: #ddd; font-weight: 500; line-height: 1.35; }
+.verified-quote blockquote { margin: 4px 0 0; color: #999; line-height: 1.35; }
+.verified-quote blockquote a { display: block; margin-top: 2px; color: var(--audience-cyan); font-size: 8px; text-decoration: none; }
+.verified-disclosures[open] { max-height: 120px; }
 .source-foot { margin: auto 0 0; padding-top: 3%; color: #777; font-size: clamp(7px, .75vh, 10px); line-height: 1.4; }
 .fallback-actions { margin-top: 4%; padding: 4%; border: 1px solid #4a3f26; border-radius: 12px; background: #19150d; }
 .fallback-actions p { margin: 0 0 9px; color: #d7c5a2; font-size: 10px; line-height: 1.4; }

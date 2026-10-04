@@ -24,8 +24,9 @@ type Finding = {
   source_ids: string[];
   claim_type: "sourced_paraphrase" | "hypothesis" | "assumption";
   limitation: string;
+  evidence?: Array<{ source_id: string; quote: string }>;
 };
-type Evidence = { id: string; url: string; domain: string; title: string };
+type Evidence = { id: string; url: string; domain: string; title: string; fetch_status?: string; page_title?: string; supported_claim_count?: number };
 type ResponsePoint = {
   persona_id: string;
   group?: string;
@@ -234,14 +235,31 @@ function PersonaNetwork({
       const pulse = reducedMotion ? 0 : Math.sin(time / 950) * 0.7;
       for (const point of mapped) {
         const selected = Boolean(point.id && activeIds?.has(point.id));
-        const glow = point.person ? 10 + (selected ? 14 : 0) : 4;
-        context.beginPath();
-        context.fillStyle = point.color;
-        context.shadowColor = point.color;
-        context.shadowBlur = glow;
-        context.globalAlpha = point.person ? 0.92 : 0.86;
-        context.arc(point.x, point.y, Math.max(1.2, point.radius + pulse * 0.18), 0, Math.PI * 2);
-        context.fill();
+        if (mode === "map") {
+          // A faint halo preserves the palette; the crisp center keeps nearby scores distinguishable.
+          context.beginPath();
+          context.fillStyle = point.color;
+          context.shadowColor = point.color;
+          context.shadowBlur = selected ? 5 : 2;
+          context.globalAlpha = selected ? 0.35 : 0.18;
+          context.arc(point.x, point.y, selected ? 6 : 4.5, 0, Math.PI * 2);
+          context.fill();
+          context.beginPath();
+          context.fillStyle = point.color;
+          context.shadowBlur = 0;
+          context.globalAlpha = 1;
+          context.arc(point.x, point.y, selected ? 3.5 : 2.8, 0, Math.PI * 2);
+          context.fill();
+        } else {
+          const glow = point.person ? 10 + (selected ? 14 : 0) : 4;
+          context.beginPath();
+          context.fillStyle = point.color;
+          context.shadowColor = point.color;
+          context.shadowBlur = glow;
+          context.globalAlpha = point.person ? 0.92 : 0.86;
+          context.arc(point.x, point.y, Math.max(1.2, point.radius + pulse * 0.18), 0, Math.PI * 2);
+          context.fill();
+        }
         if (selected) {
           context.beginPath();
           context.strokeStyle = "rgba(255,255,255,.85)";
@@ -607,6 +625,7 @@ export default function AudienceSimulationOperatorPage() {
     if (activeSlide === 8 && isFinished && !claimToken && !busy) void makeClaimLink();
   }, [activeSlide, busy, claimToken, isFinished, makeClaimLink]);
 
+  const openedSourceCount = run?.evidence.filter((source) => source.fetch_status === "opened").length || 0;
   const sourceCategories = [
     { title: "Отзывы покупателей", note: "маркетплейсы · отзывы", color: "cyan", count: run?.evidence.filter((source) => /market|ozon|wildberries|otzovik/i.test(source.domain)).length || 0 },
     { title: "Профессиональные сообщества", note: "Хабр · VC.ru · форумы", color: "violet", count: run?.evidence.filter((source) => /habr|vc\.ru|reddit|forum|community/i.test(source.domain)).length || 0 },
@@ -689,8 +708,9 @@ export default function AudienceSimulationOperatorPage() {
             <h2 className="audience-title">Сначала слушаем<br /><span className="audience-shine">рынок</span></h2>
             <p className="audience-lead">Ищем, кто и как уже говорит об этой проблеме.</p>
             <div className="source-stats">
-              <div className="audience-card"><strong>{run?.evidence.length || 0}</strong><span>источников с ссылками</span></div>
-              <div className="audience-card"><strong>{run?.findings.length || 0}</strong><span>сигналов отобрано</span></div>
+              <div className="audience-card"><strong>{run?.evidence.length || 0}</strong><span>ссылок найдено</span></div>
+              <div className="audience-card"><strong>{openedSourceCount}</strong><span>страниц открыто</span></div>
+              <div className="audience-card"><strong>{sourcedCount}</strong><span>сигналов подтверждено</span></div>
             </div>
             <div className="source-grid">
               {sourceCategories.map((category) => (
@@ -704,16 +724,32 @@ export default function AudienceSimulationOperatorPage() {
             <div className="signal-sweep"><i /></div>
             {run?.evidence.length ? (
               <details className="source-disclosure">
-                <summary>Показать источники · {run.evidence.length}</summary>
+                <summary>Ссылки и статус страниц · {run.evidence.length}</summary>
                 <div className="source-links">
-                  {run.evidence.slice(0, 3).map((source) => (
+                  {run.evidence.slice(0, 20).map((source) => (
                     <a key={source.id} href={source.url} target="_blank" rel="noreferrer" className="source-link">
-                      <span>{source.domain}</span>{source.title || source.url}
+                      <span>{source.domain} · {source.fetch_status === "opened" ? "страница открыта" : source.fetch_status === "blocked" ? "адрес заблокирован" : source.fetch_status || "не проверена"}</span>{source.page_title || source.title || source.url}
                     </a>
                   ))}
                 </div>
               </details>
             ) : null}
+            {run?.findings.some((finding) => finding.evidence?.length) && (
+              <details className="source-disclosure verified-disclosures">
+                <summary>Подтверждённые цитаты · {sourcedCount}</summary>
+                <div className="source-links">
+                  {run.findings.filter((finding) => finding.evidence?.length).slice(0, 8).map((finding, index) => (
+                    <div className="verified-quote" key={`${finding.source_ids.join(",")}-${index}`}>
+                      <strong>{finding.text}</strong>
+                      {finding.evidence?.map((item) => {
+                        const source = run.evidence.find((entry) => entry.id === item.source_id);
+                        return <blockquote key={`${item.source_id}-${item.quote}`}><q>{item.quote}</q>{source && <a href={source.url} target="_blank" rel="noreferrer">{source.domain} ↗</a>}</blockquote>;
+                      })}
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
             {run?.status === "awaiting_search_fallback" && (
               <div className="fallback-actions">
                 <p>Sonar не вернул проверяемые ссылки. Можно продолжить без открытых сигналов или уточнить идею.</p>
@@ -834,7 +870,7 @@ export default function AudienceSimulationOperatorPage() {
               <span className="map-axis-y">АКТУАЛЬНОСТЬ ПРОБЛЕМЫ</span>
               <span className="map-axis-x">ИНТЕРЕС К РЕШЕНИЮ →</span>
             </div>
-            {activeResponse && <div className="reaction-detail"><span>{activeResponse.group || "Синтетическая персона"}</span><p>{activeResponse.reaction || "Для этой персоны нет короткой реплики."}</p></div>}
+            {activeResponse && <div className="reaction-detail"><span>{activeResponse.group || "Синтетическая персона"} · проблема {activeResponse.problem_relevance ?? "—"}/10 · интерес {activeResponse.interest ?? "—"}/10</span><p>{activeResponse.reaction || "Для этой персоны нет короткой реплики."}</p></div>}
             <div className="group-counts">
               {groups.slice(0, 3).map((group, index) => <span key={group}><b style={{ color: palette[index % palette.length] }}>{run?.responses.filter((response) => response.group === group).length || 0}</b>{group}</span>)}
               {!groups.length && <span><b>{run?.responses.length || 0}</b>ответов</span>}
