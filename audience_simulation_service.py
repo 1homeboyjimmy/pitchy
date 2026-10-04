@@ -29,6 +29,7 @@ from polza_client import POLZA_BASE_URL
 
 logger = logging.getLogger("app.audience_simulation")
 PERSONA_MODEL = os.getenv("AUDIENCE_PERSONA_MODEL", "openai/gpt-6-luna-pro")
+EVIDENCE_MODEL = os.getenv("AUDIENCE_EVIDENCE_MODEL", "xiaomi/mimo-v2.6-flash")
 SEARCH_MODEL = os.getenv("AUDIENCE_SEARCH_MODEL", "perplexity/sonar")
 SEARCH_CONTEXT_SIZE = os.getenv("AUDIENCE_SEARCH_CONTEXT_SIZE", "low").strip().lower()
 if SEARCH_CONTEXT_SIZE not in {"low", "medium", "high"}:
@@ -463,12 +464,14 @@ async def generate_json(
     operation: str = "json_generation",
     run_id: int | None = None,
     persona_id: str | None = None,
+    model: str | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     started_at = time.perf_counter()
+    selected_model = model or PERSONA_MODEL
     try:
         client = _client()
         response = await client.chat.completions.create(
-            model=PERSONA_MODEL,
+            model=selected_model,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -484,7 +487,7 @@ async def generate_json(
                 "event": "audience_model_request_failed",
                 "stage": operation,
                 "operation": operation,
-                "model": PERSONA_MODEL,
+                "model": selected_model,
                 "run_id": run_id,
                 "persona_id": persona_id,
                 "duration_ms": int((time.perf_counter() - started_at) * 1000),
@@ -509,7 +512,7 @@ async def generate_json(
                 "event": "audience_model_json_repair_started",
                 "stage": operation,
                 "operation": operation,
-                "model": PERSONA_MODEL,
+                "model": selected_model,
                 "run_id": run_id,
                 "persona_id": persona_id,
                 "error_type": type(first_error).__name__,
@@ -519,7 +522,7 @@ async def generate_json(
         )
         try:
             repaired_response = await client.chat.completions.create(
-                model=PERSONA_MODEL,
+                model=selected_model,
                 messages=[
                     {
                         "role": "system",
@@ -552,7 +555,7 @@ async def generate_json(
                     "event": "audience_model_json_repair_failed",
                     "stage": operation,
                     "operation": operation,
-                    "model": PERSONA_MODEL,
+                    "model": selected_model,
                     "run_id": run_id,
                     "persona_id": persona_id,
                     "duration_ms": int((time.perf_counter() - started_at) * 1000),
@@ -576,7 +579,7 @@ async def generate_json(
             "event": "audience_model_request_completed",
             "stage": operation,
             "operation": operation,
-            "model": PERSONA_MODEL,
+            "model": selected_model,
             "run_id": run_id,
             "persona_id": persona_id,
             "duration_ms": int((time.perf_counter() - started_at) * 1000),
