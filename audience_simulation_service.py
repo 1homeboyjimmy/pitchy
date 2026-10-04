@@ -302,14 +302,19 @@ async def search_evidence(idea: str, audience: str | None, price: str | None) ->
     texts: list[str] = []
     attempts = 0
     for query in query_variants:
+        try:
+            response = await _client().chat.completions.create(
+                model=SEARCH_MODEL,
+                messages=[{"role": "system", "content": system}, {"role": "user", "content": query}],
+                temperature=0.1,
+                max_tokens=1800,
+                extra_body={"search_context_size": SEARCH_CONTEXT_SIZE},
+            )
+        except Exception:
+            if texts:
+                break
+            raise
         attempts += 1
-        response = await _client().chat.completions.create(
-            model=SEARCH_MODEL,
-            messages=[{"role": "system", "content": system}, {"role": "user", "content": query}],
-            temperature=0.1,
-            max_tokens=1800,
-            extra_body={"search_context_size": SEARCH_CONTEXT_SIZE},
-        )
         raw = response.model_dump()
         text = response.choices[0].message.content or ""
         texts.append(text)

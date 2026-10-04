@@ -691,7 +691,7 @@ export default function AudienceSimulationOperatorPage() {
             ) : null}
             {run?.status === "awaiting_search_fallback" && (
               <div className="fallback-actions">
-                <p>Проверили исходную и уточнённую формулировки, но не получили проверяемых ссылок. Можно продолжить без открытых сигналов или уточнить идею.</p>
+                <p>Sonar не вернул проверяемые ссылки. Можно продолжить без открытых сигналов или уточнить идею.</p>
                 <button type="button" className="audience-cta" disabled={busy} onClick={() => void continueWithoutSearch()}><ArrowRight size={14} /> Продолжить без источников</button>
                 <button type="button" className="text-action" disabled={busy} onClick={() => void reviseIdea()}>Изменить идею</button>
               </div>
