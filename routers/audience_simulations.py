@@ -37,6 +37,7 @@ from audience_simulation_service import (
 from audience_demo_scenarios import (
     aggregate_prebuilt_responses,
     build_prebuilt_responses,
+    get_demo_search_stats,
     get_prebuilt_scenario,
 )
 from auth import get_async_current_user, require_async_admin
@@ -359,6 +360,7 @@ def _serialize(run: AudienceSimulationRun) -> dict:
         "audience": run.audience,
         "price": run.price,
         "scenario_id": (run.input_data or {}).get("prebuilt_scenario_id"),
+        "demo_search_stats": get_demo_search_stats(str((run.input_data or {}).get("prebuilt_scenario_id") or "")),
         "evidence": run.evidence or [],
         "findings": run.findings or [],
         "selection": run.selection or {},

@@ -36,8 +36,10 @@ SCENARIOS: dict[str, dict[str, Any]] = {
         ],
         "sources": [
             ("food-wciom", "wciom.ru", "ВЦИОМ: «Еда по правилам и без»", "https://wciom.ru/analytical-reviews/analiticheskii-obzor/eda-po-pravilam-i-bez"),
+            ("food-app-study", "cyberleninka.ru", "Исследование приложения для здорового питания (опрос 305 человек)", "https://cyberleninka.ru/article/n/marketingovoe-issledovanie-tselesoobraznosti-vyvedeniya-na-rynok-prilozheniya-dlya-zdorovogo-pitaniya"),
             ("fatsecret-premium", "fatsecret.com", "fatsecret Premium: фотооценка продуктов и порций", "https://www.fatsecret.com/ru/premium"),
             ("fatsecret-store", "apps.apple.com", "Счётчик калорий fatsecret — App Store РФ", "https://apps.apple.com/ru/app/id347184248"),
+            ("fatsecret-reviews", "otzovik.com", "Отзывы о счётчике калорий fatsecret", "https://www.otzovik.com/reviews/schetchik_kaloriy_fatsecret/"),
             ("yazio-store", "apps.apple.com", "YAZIO — App Store РФ", "https://apps.apple.com/ru/app/id946099227"),
         ],
         "observations": ["Сильная сторона сценария — скорость записи еды.", "Фото не гарантирует точный размер порции: важно дать человеку быстро исправить результат.", "Наличие потребности в здоровом питании не доказывает спрос на платный фотоучёт."],
@@ -70,8 +72,13 @@ SCENARIOS: dict[str, dict[str, Any]] = {
         ],
         "sources": [
             ("levada-languages", "levada.ru", "Левада-Центр: иностранные языки, август 2023", "https://www.levada.ru/2023/09/14/inostrannye-yazyki-avgust-2023-goda/"),
+            ("english-career", "novostiitkanala.ru", "Опрос: влияние английского языка на карьеру", "https://www.novostiitkanala.ru/news/detail.php?ID=195156"),
+            ("praktika-store", "apps.apple.com", "Praktika — App Store РФ", "https://apps.apple.com/ru/app/id1624701477"),
+            ("puzzle-english", "puzzle-english.com", "Puzzle English: тарифы и подписка", "https://puzzle-english.com/buy"),
+            ("englex-pricing", "englex.ru", "Инглекс: стоимость занятий английским", "https://englex.ru/cost/"),
             ("language-app-survey", "iom.anketolog.ru", "Какие приложения для изучения языков популярны в России", "https://iom.anketolog.ru/2022/09/16/prilozheniya-dlya-izucheniya-yazykov"),
             ("tbank-edtech-spend", "companies.rbc.ru", "Сколько россияне тратили на онлайн-образование в 2025", "https://companies.rbc.ru/news/LHFwvKajtM/skolko-rossiyane-tratili-na-onlajn-obrazovanie-v-2025/"),
+            ("tbank-online-learning", "secrets.tbank.ru", "Т-Бизнес и T-Data: оплата онлайн-обучения россиянами", "https://secrets.tbank.ru/trendy/issledovanie-oplat-v-onlajn-obuchenii/"),
             ("duolingo-store", "play.google.com", "Duolingo — Google Play", "https://play.google.com/store/apps/details?id=com.duolingo&hl=ru"),
         ],
         "observations": ["Практика под конкретную ситуацию отличает сценарий от обычного набора уроков.", "Ключевой риск — конкуренция с универсальными голосовыми ИИ и языковыми платформами.", "Нужны измеримый прогресс и достоверная обратная связь, а не только разговорный интерфейс."],
@@ -103,10 +110,14 @@ SCENARIOS: dict[str, dict[str, Any]] = {
             ("Российские сервисы учёта расходов показывают сформированную категорию; функции банков остаются прямой бесплатной альтернативой.", ["dzen-money", "coinkeeper"]),
         ],
         "sources": [
+            ("apple-russia-billing", "support.apple.com", "Apple: оплата покупок и подписок в России", "https://support.apple.com/en-ie/126891"),
             ("nafi-budget", "nafi.ru", "НАФИ: большинство ведущих бюджет россиян делают это в уме", "https://nafi.ru/polls/bolshinstvo-vedushchikh-lichnyy-ili-semeynyy-byudzhet-rossiyan-delayut-eto-v-ume/"),
             ("nafi-literacy", "nafi.ru", "Финансовая грамотность россиян — 2024", "https://nafi.ru/projects/finansovaya-gramotnost-rossiyan-2024/"),
             ("dzen-money", "apps.apple.com", "Дзен-мани — App Store РФ", "https://apps.apple.com/ru/app/%D0%B4%D0%B7%D0%B5%D0%BD-%D0%BC%D0%B0%D0%BD%D0%B8-%D1%83%D1%87%D0%B5%D1%82-%D1%80%D0%B0%D1%81%D1%85%D0%BE%D0%B4%D0%BE%D0%B2/id905934786"),
             ("coinkeeper", "coinkeeper.me", "CoinKeeper", "https://coinkeeper.me/3"),
+            ("coinkeeper-reviews", "tbank.ru", "Отзывы о CoinKeeper на Т-Банке", "https://www.tbank.ru/reviews/company/coinkeeper/100464/"),
+            ("budget-apps-review", "t-j.ru", "Т—Ж: приложения для ведения бюджета", "https://t-j.ru/short/all-budget-apps/"),
+            ("coinkeeper-store", "apps.apple.com", "CoinKeeper — App Store", "https://apps.apple.com/us/app/%D1%84%D0%B8%D0%BD%D0%B0%D0%BD%D1%81%D1%8B-%D0%B1%D1%8E%D0%B4%D0%B6%D0%B5%D1%82-%D1%81-coinkeeper/id1335547405?l=ru"),
         ],
         "observations": ["Самая понятная ценность — ответ о доступном остатке и предстоящих платежах.", "Ручной ввод и недоверие к передаче финансовых данных создают сильное трение.", "Наличие сервисов учёта не доказывает спрос на отдельную платную ИИ-подписку."],
         "next_checks": ["Проверить, какие данные люди готовы ввести вручную и доверили бы ли они сервису банковские операции."],
@@ -138,6 +149,10 @@ SCENARIOS: dict[str, dict[str, Any]] = {
         ],
         "sources": [
             ("tutu-weekend", "travelvesti.ru", "Туту: сколько россияне тратят на поездки выходного дня", "https://travelvesti.ru/news/v-tutu-vyyasnili-skolko-rossiyane-tratyat-na-poezdki-vykhodnogo-dnya.html"),
+            ("tutu-weekend-page", "tutu.ru", "Туту: поездки на выходные", "https://www.tutu.ru/weekend/"),
+            ("tutu-rustore", "rustore.ru", "Туту — RuStore", "https://www.rustore.ru/catalog/app/ru.tutu.tutu_emp"),
+            ("tutu-review-refunds", "otzovik.com", "Отзыв о возврате билетов Туту", "https://otzovik.com/review_18460800.html"),
+            ("tutu-review-fees", "otzovik.com", "Отзыв о сборах и дополнительных услугах Туту", "https://www.otzovik.com/review_16301717.html"),
             ("yandex-weekend", "yandex.ru", "Яндекс Путешествия: поездки на выходные", "https://yandex.ru/company/news/01-22-07-2024"),
             ("yandex-help", "yandex.ru", "Справка Яндекс Путешествий: поездки на выходные", "https://yandex.ru/support/travel-app/ru/weekend"),
             ("rg-autotravel", "rg.ru", "Российская газета: интерес к автотуризму в России", "https://rg.ru/2023/09/19/nazvany-samye-privlekatelnye-napravleniia-dlia-avtoturizma-v-rossii.html"),
@@ -162,6 +177,27 @@ def _stable_spread(seed: int, channel: str, scale: float) -> float:
 
 def get_prebuilt_scenario(scenario_id: str) -> dict[str, Any] | None:
     return SCENARIOS.get(scenario_id)
+
+
+def get_demo_search_stats(scenario_id: str) -> dict[str, Any] | None:
+    """Return a visibly illustrative search animation volume, not a URL count."""
+    if scenario_id not in SCENARIOS:
+        return None
+    seed = _stable_number(scenario_id, "exhibition-search-volume")
+    mentions = 60 + seed % 61
+    review_share = 0.24 + ((seed >> 4) % 11) / 100
+    community_share = 0.19 + ((seed >> 9) % 10) / 100
+    reviews = round(mentions * review_share)
+    communities = round(mentions * community_share)
+    return {
+        "kind": "illustrative_demo_volume",
+        "mentions": mentions,
+        "categories": {
+            "reviews": reviews,
+            "communities": communities,
+            "search_materials": mentions - reviews - communities,
+        },
+    }
 
 
 def build_prebuilt_responses(scenario_id: str, members: list[dict[str, Any]]) -> list[dict[str, Any]]:
