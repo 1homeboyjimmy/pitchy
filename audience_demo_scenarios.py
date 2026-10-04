@@ -226,7 +226,10 @@ def build_prebuilt_responses(scenario_id: str, members: list[dict[str, Any]]) ->
         interest_score = round(max(1, min(10, interest + _stable_spread(index, "interest", 1.9) + (0.35 if digital_skill >= 4 else 0))), 1)
         # Trial intent is lower than interest: switching cost, price and trust matter even
         # when a person recognizes the problem or likes the idea.
-        try_score = round(max(1, min(10, willingness - 1.05 + _stable_spread(index, "trial", 2.0) - (0.65 if price_sensitivity >= 4 else 0))), 1)
+        # The calorie-photo exhibition preset has a fixed +1.4 calibration so its synthetic
+        # panel lands near 10–15% willingness 7+ without changing other scenario scores.
+        scenario_trial_adjustment = 1.4 if scenario_id == "calorie-photo" else 0.0
+        try_score = round(max(1, min(10, willingness - 1.05 + scenario_trial_adjustment + _stable_spread(index, "trial", 2.0) - (0.65 if price_sensitivity >= 4 else 0))), 1)
         context = str(current[index % len(current)]) if current else "" 
         reaction_text = reaction
         if context:

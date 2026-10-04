@@ -765,7 +765,8 @@ export default function AudienceSimulationOperatorPage() {
     const activeBeforePause = 1800;
     const pauseDuration = 800;
     const animate = (now: number) => {
-      const elapsed = now - started;
+      // Let the source-search screen settle before any counters begin moving.
+      const elapsed = Math.max(0, now - started - 3000);
       const cycle = activeBeforePause + pauseDuration;
       const completedCycles = Math.floor(elapsed / cycle);
       const currentCycleElapsed = elapsed % cycle;
