@@ -118,6 +118,7 @@ def select_balanced_personas(
     *,
     seed: str,
     size: int,
+    group_weights: dict[str, float] | None = None,
 ) -> list[dict[str, Any]]:
     """Take a reproducible, round-robin panel from existing catalog records."""
     by_group: dict[tuple[str, str], list[dict[str, Any]]] = {}
@@ -148,12 +149,25 @@ def select_balanced_personas(
         )
 
     panel: list[dict[str, Any]] = []
+    selected_by_group = {key: 0 for key in requested_groups}
     while len(panel) < size:
         progressed = False
-        for key in requested_groups:
+        ordered_groups = requested_groups
+        if group_weights:
+            ordered_groups = sorted(
+                requested_groups,
+                key=lambda key: (
+                    (selected_by_group[key] + 1) / max(0.1, float(group_weights.get(key[1], 1.0))),
+                    hashlib.sha256(f"{seed}:{key[1]}".encode("utf-8")).hexdigest(),
+                ),
+            )
+        for key in ordered_groups:
             if buckets[key]:
                 panel.append(buckets[key].pop(0))
+                selected_by_group[key] += 1
                 progressed = True
+                if group_weights:
+                    break
                 if len(panel) >= size:
                     break
         if not progressed:

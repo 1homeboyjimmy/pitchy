@@ -175,9 +175,12 @@ def build_prebuilt_responses(scenario_id: str, members: list[dict[str, Any]]) ->
         # Existing catalog traits shape the scenario response; no trait or biography is invented.
         price_sensitivity = int(behavior.get("price_sensitivity") or 3)
         digital_skill = int(behavior.get("digital_skill") or 3)
-        problem_score = max(1, min(10, problem + ((index % 3) - 1)))
-        interest_score = max(1, min(10, interest + ((index // 3 % 3) - 1) + (1 if digital_skill >= 4 else 0)))
-        try_score = max(1, min(10, willingness + ((index // 7 % 3) - 1) - (1 if price_sensitivity >= 5 else 0)))
+        # A wider, stable spread avoids depicting the whole panel as equally enthusiastic.
+        problem_score = max(1, min(10, problem + ((index % 5) - 2)))
+        interest_score = max(1, min(10, interest + ((index // 3 % 5) - 2) + (1 if digital_skill >= 4 else 0)))
+        # Trial intent is lower than interest: switching cost, price and trust matter even
+        # when a person recognizes the problem or likes the idea.
+        try_score = max(1, min(10, willingness - 1 + ((index // 7 % 5) - 2) - (1 if price_sensitivity >= 4 else 0)))
         context = str(current[index % len(current)]) if current else "" 
         reaction_text = reaction
         if context:

@@ -122,7 +122,7 @@ function PersonaNetwork({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pointsRef = useRef<Array<{ x: number; y: number; id: string; color: string }>>([]);
   const dataKey = useMemo(
-    () => members.map((person) => person.id + person.group).join("|") + responses.map((person) => person.persona_id + person.interest + person.problem_relevance).join("|"),
+    () => members.map((person) => person.id + person.group).join("|") + responses.map((person) => person.persona_id + person.willingness_to_try + person.problem_relevance).join("|"),
     [members, responses],
   );
 
@@ -180,7 +180,7 @@ function PersonaNetwork({
           const angle = (rank * 2.399963) + (hashSeed(person.persona_id) % 6283) / 1000;
           const spread = rank ? Math.min(12, 3.2 * Math.sqrt(rank)) : 0;
           mapped.push({
-            x: width * (0.1 + (person.interest || 0) * 0.08) + Math.cos(angle) * spread,
+            x: width * (0.1 + (person.willingness_to_try || 0) * 0.08) + Math.cos(angle) * spread,
             y: height * (0.9 - (person.problem_relevance || 0) * 0.08) + Math.sin(angle) * spread,
             id: person.persona_id,
             color: palette[groupIndex % palette.length],
@@ -272,10 +272,12 @@ function PersonaNetwork({
         } else {
           const glow = point.person ? 10 + (selected ? 14 : 0) : 4;
           context.beginPath();
-          context.fillStyle = point.color;
-          context.shadowColor = point.color;
+          const lit = !activeIds || activeIds.has(point.id);
+          const pointColor = lit ? point.color : "#414348";
+          context.fillStyle = pointColor;
+          context.shadowColor = pointColor;
           context.shadowBlur = glow;
-          context.globalAlpha = point.person ? 0.92 : 0.86;
+          context.globalAlpha = lit ? (point.person ? 0.92 : 0.86) : 0.48;
           context.arc(point.x, point.y, Math.max(1.2, point.radius + pulse * 0.18), 0, Math.PI * 2);
           context.fill();
         }
@@ -373,6 +375,7 @@ export default function AudienceSimulationOperatorPage() {
   const [ideaMode, setIdeaMode] = useState<"choose" | "custom" | "prebuilt">("choose");
   const [selectedScenarioId, setSelectedScenarioId] = useState("");
   const [demoProgress, setDemoProgress] = useState(0);
+  const [audienceReveal, setAudienceReveal] = useState(0);
   const lastAutoStatusRef = useRef("");
 
   const request = useCallback(async <T,>(path: string, init: RequestInit = {}, token?: string): Promise<T> => {
@@ -642,6 +645,7 @@ export default function AudienceSimulationOperatorPage() {
     setIdeaMode("choose");
     setSelectedScenarioId("");
     setDemoProgress(0);
+    setAudienceReveal(0);
   };
 
   const personas = useMemo(() => run?.selection.members || [], [run?.selection.members]);
@@ -689,20 +693,38 @@ export default function AudienceSimulationOperatorPage() {
   }, [activeSlide, busy, claimToken, isFinished, makeClaimLink]);
 
   useEffect(() => {
+    if (activeSlide !== 3 || !selectedScenarioId) return;
+    setAudienceReveal(0);
+    const total = run?.selection.members?.length || 100;
+    let current = 0;
+    let timer = 0;
+    const reveal = () => {
+      current = Math.min(total, current + Math.max(1, Math.ceil(total / 52)));
+      setAudienceReveal(current);
+      if (current < total) timer = window.setTimeout(reveal, 75);
+    };
+    timer = window.setTimeout(reveal, 250);
+    return () => window.clearTimeout(timer);
+  }, [activeSlide, run?.selection.members?.length, selectedScenarioId]);
+
+  useEffect(() => {
     if (activeSlide !== 5 || !isFinished || !selectedScenarioId) return;
     setDemoProgress(0);
     const total = run?.responses.length || 100;
-    const timer = window.setInterval(() => {
-      setDemoProgress((current) => {
-        const next = Math.min(total, current + 3);
-        if (next >= total) {
-          window.clearInterval(timer);
-          window.setTimeout(() => setActiveSlide(6), 450);
-        }
-        return next;
-      });
-    }, 90);
-    return () => window.clearInterval(timer);
+    let current = 0;
+    let timer = 0;
+    const answerNext = () => {
+      current = Math.min(total, current + 1);
+      setDemoProgress(current);
+      if (current >= total) {
+        timer = window.setTimeout(() => setActiveSlide(6), 900);
+        return;
+      }
+      // Brief pauses make the response sequence readable instead of racing to 100%.
+      timer = window.setTimeout(answerNext, current % 12 === 0 ? 720 : 125);
+    };
+    timer = window.setTimeout(answerNext, 500);
+    return () => window.clearTimeout(timer);
   }, [activeSlide, isFinished, run?.responses.length, selectedScenarioId]);
 
   const openedSourceCount = run?.evidence.filter((source) => source.fetch_status === "opened").length || 0;
@@ -712,6 +734,25 @@ export default function AudienceSimulationOperatorPage() {
     { title: "Поисковые материалы", note: "статьи · обсуждения", color: "gold", count: run?.evidence.filter((source) => !/market|ozon|wildberries|otzovik|habr|vc\.ru|reddit|forum|community/i.test(source.domain)).length || 0 },
     { title: "Повторяющиеся сигналы", note: "связаны с источниками", color: "mint", count: sourcedCount },
   ];
+  const [sourceCounterProgress, setSourceCounterProgress] = useState(0);
+  const sourceCountsKey = sourceCategories.map((category) => category.count).join(":");
+  useEffect(() => {
+    if (activeSlide !== 2 || !selectedScenarioId) {
+      setSourceCounterProgress(1);
+      return;
+    }
+    setSourceCounterProgress(0);
+    const started = performance.now();
+    let frame = 0;
+    const animate = (now: number) => {
+      const progress = Math.min(1, (now - started) / 4200);
+      setSourceCounterProgress(progress);
+      if (progress < 1) frame = window.requestAnimationFrame(animate);
+    };
+    frame = window.requestAnimationFrame(animate);
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeSlide, selectedScenarioId, sourceCountsKey]);
+  const displayCount = (count: number) => Math.floor(count * sourceCounterProgress);
 
   return (
     <main className="audience-stage">
@@ -806,15 +847,15 @@ export default function AudienceSimulationOperatorPage() {
             <h2 className="audience-title">Сначала слушаем<br /><span className="audience-shine">рынок</span></h2>
             <p className="audience-lead">Ищем, кто и как уже говорит об этой проблеме.</p>
             <div className="source-stats">
-              <div className="audience-card"><strong>{run?.evidence.length || 0}</strong><span>ссылок найдено</span></div>
-              <div className="audience-card"><strong>{selectedScenarioId ? run?.evidence.length || 0 : openedSourceCount}</strong><span>{selectedScenarioId ? "источников в обзоре" : "страниц открыто"}</span></div>
-              <div className="audience-card"><strong>{sourcedCount}</strong><span>{selectedScenarioId ? "выводов со ссылками" : "сигналов подтверждено"}</span></div>
+              <div className="audience-card"><strong>{displayCount(run?.evidence.length || 0)}</strong><span>ссылок найдено</span></div>
+              <div className="audience-card"><strong>{displayCount(selectedScenarioId ? run?.evidence.length || 0 : openedSourceCount)}</strong><span>{selectedScenarioId ? "источников в обзоре" : "страниц открыто"}</span></div>
+              <div className="audience-card"><strong>{displayCount(sourcedCount)}</strong><span>{selectedScenarioId ? "выводов со ссылками" : "сигналов подтверждено"}</span></div>
             </div>
             <div className="source-grid">
               {sourceCategories.map((category) => (
                 <div className={"source-card source-" + category.color} key={category.title}>
                   <i className="source-mark" />
-                  <span>{category.title}<small>{category.note} · {category.count}</small></span>
+                  <span>{category.title}<small>{category.note} · {displayCount(category.count)}</small></span>
                 </div>
               ))}
             </div>
@@ -877,10 +918,10 @@ export default function AudienceSimulationOperatorPage() {
           <section className={"audience-slide audience-build-slide" + (activeSlide === 3 ? " is-active" : "")} aria-hidden={activeSlide !== 3}>
             <p className="audience-eyebrow">03 / Формируем аудиторию</p>
             <h2 className="audience-title">Персоны<br /><span className="audience-shine">под вашу идею</span></h2>
-            <p className="audience-lead">Подбираем 100 персон из каталога и отбираем тех, кому может быть близка проблема.</p>
+            <p className="audience-lead">Подбираем персоны из каталога и отбираем тех, кому может быть близка проблема.</p>
             <div className="candidate-label"><span>{statusText[run?.status || "preparing"]}</span><span>{personas.length} профилей</span></div>
             <div className="persona-cloud">
-              <PersonaNetwork members={personas} responses={[]} mode="crowd" />
+              <PersonaNetwork members={personas} responses={[]} mode="crowd" activeIds={selectedScenarioId ? new Set(personas.slice(0, audienceReveal).map((person) => person.id)) : undefined} />
             </div>
             <div className="audience-card audience-build-note">
               <p>Сначала широкий круг профилей. После отбора остаются персоны, связанные с вашей гипотезой.</p>
@@ -931,7 +972,7 @@ export default function AudienceSimulationOperatorPage() {
               </div>
               <div className="preview-controls">
                 {selectedScenarioId
-                  ? <p className="fixed-panel-note">Готовый сценарий · 100 персон · состав подобран из каталога 1 500 профилей</p>
+                  ? <p className="fixed-panel-note">Готовый сценарий · {personas.length} персон · состав подобран из каталога 1 500 профилей</p>
                   : <label>Размер панели
                     <select value={Math.min(audienceSize, Math.max(chosenCount, 5))} onChange={(event) => setAudienceSize(Number(event.target.value))}>
                       {[5, 8, 12, 25, 50, 75, 100].filter((value) => value <= chosenCount).map((value) => <option key={value} value={value}>{value} персон</option>)}
@@ -950,7 +991,7 @@ export default function AudienceSimulationOperatorPage() {
           <section className={"audience-slide interview-slide" + (activeSlide === 5 ? " is-active" : "")} aria-hidden={activeSlide !== 5}>
             <p className="audience-eyebrow">05 / Синтетическое исследование</p>
             <h2 className="audience-title">Идея проходит<br />через общество</h2>
-            <p className="audience-lead">Каждая персона отвечает с учётом своего профиля и найденных сигналов.</p>
+            <p className="audience-lead">Каждая персона оценивает идею отдельно с учётом своего профиля.</p>
             <div className="candidate-label"><span>{progress ? "Персоны отвечают в группах" : "Подключаем персоны"}</span><span>{progress} / {personas.length || audienceSize}</span></div>
             <div className="interview-network">
               <PersonaNetwork members={selectedScenarioId && activeSlide === 5 ? personas.slice(0, progress) : personas} responses={[]} mode="crowd" activeIds={new Set((run?.responses || []).slice(0, progress).map((response) => response.persona_id))} />
@@ -958,22 +999,22 @@ export default function AudienceSimulationOperatorPage() {
             </div>
             <div className="people-count"><strong>{progress}</strong><span>/ {personas.length || audienceSize} ответов</span></div>
             <div className="audience-meter"><i style={{ width: (personas.length ? Math.min(100, (progress / personas.length) * 100) : 0) + "%" }} /></div>
-            <p className="audience-helper center">Синтетические персоны обмениваются сигналами. Это не прогноз продаж.</p>
+            <p className="audience-helper center">Синтетические ответы появляются по одному. Это не прогноз продаж.</p>
           </section>
 
           <section className={"audience-slide reaction-slide" + (activeSlide === 6 ? " is-active" : "")} aria-hidden={activeSlide !== 6}>
             <p className="audience-eyebrow">06 / Карта реакции</p>
             <h2 className="audience-title">Реакция<br /><span className="audience-shine">разделилась</span></h2>
-            <p className="audience-lead">Каждая точка — отдельная синтетическая персона.</p>
+            <p className="audience-lead">Каждая точка — персона: проблема по вертикали, готовность попробовать по горизонтали.</p>
             <div className="reaction-map">
               <PersonaNetwork members={personas} responses={run?.responses || []} mode="map" activeIds={activeResponse ? new Set([activeResponse.persona_id]) : undefined} onPick={(id) => setSelectedResponseId(id)} />
               <span className="map-axis-y">АКТУАЛЬНОСТЬ ПРОБЛЕМЫ</span>
-              <span className="map-axis-x">ИНТЕРЕС К РЕШЕНИЮ →</span>
+              <span className="map-axis-x">ГОТОВНОСТЬ ПОПРОБОВАТЬ →</span>
             </div>
             <p className="audience-helper">На карте {plottedResponseCount} из {run?.responses.length || 0} ответов: точки с одинаковыми оценками слегка разнесены, выбранная точка показывает точные баллы.</p>
-            {activeResponse && <div className="reaction-detail"><span>{activeResponse.group || "Синтетическая персона"}</span><small>{activePersona?.profile ? activePersona.profile.split(" · ").slice(1, 4).join(" · ") + " · " : ""}проблема {activeResponse.problem_relevance ?? "—"}/10 · интерес {activeResponse.interest ?? "—"}/10</small><p>{activeResponse.reaction || "Для этой персоны нет короткой реплики."}</p></div>}
+            {activeResponse && <div className="reaction-detail"><span>{activeResponse.group || "Синтетическая персона"}</span><small>{activePersona?.profile ? activePersona.profile.split(" · ").slice(1, 4).join(" · ") + " · " : ""}проблема {activeResponse.problem_relevance ?? "—"}/10 · готовность попробовать {activeResponse.willingness_to_try ?? "—"}/10 · интерес {activeResponse.interest ?? "—"}/10</small><p>{activeResponse.reaction || "Для этой персоны нет короткой реплики."}</p></div>}
             <div className="group-counts">
-              {groups.slice(0, 4).map((group, index) => <span key={group}><b style={{ color: palette[index % palette.length] }}>{run?.responses.filter((response) => response.group === group).length || 0}</b>{group}</span>)}
+              {groups.map((group, index) => <span key={group}><b style={{ color: palette[index % palette.length] }}>{run?.responses.filter((response) => response.group === group).length || 0}</b>{group}</span>)}
               {!groups.length && <span><b>{run?.responses.length || 0}</b>ответов</span>}
             </div>
             <p className="audience-helper">Совпавшие оценки слегка разнесены; при выборе показаны точные баллы. Точку можно выбрать мышью или клавишами со стрелками.</p>

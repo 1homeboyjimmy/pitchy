@@ -562,13 +562,20 @@ async def create_prebuilt_run(
         "profile_data": item.profile_data,
     } for item in catalog_rows]
     selection_seed = f"pitchy-prebuilt-v1:{code}:{payload.scenario_id}"
+    # Keep the demo repeatable per campaign and scenario while varying the panel size.
+    audience_size = 100 + int(hashlib.sha256(selection_seed.encode("utf-8")).hexdigest()[:8], 16) % 57
+    group_weights = {
+        group: 0.55 + (int(hashlib.sha256(f"{selection_seed}:{group}".encode("utf-8")).hexdigest()[:8], 16) % 1000) / 1000
+        for group in scenario["groups"]
+    }
     selected = select_balanced_personas(
         catalog_personas,
         [{"market": "consumer", "profile_label": group} for group in scenario["groups"]],
         seed=selection_seed,
-        size=100,
+        size=audience_size,
+        group_weights=group_weights,
     )
-    if len(selected) < 100:
+    if len(selected) < audience_size:
         raise HTTPException(status_code=503, detail="В каталоге недостаточно профилей для готового сценария")
 
     members = [{
@@ -619,10 +626,10 @@ async def create_prebuilt_run(
             "target_market": "consumer",
             "dataset_id": dataset_id,
             "selection_seed": selection_seed,
-            "selection_method": "curated_scenario_balanced_catalog_v1",
+            "selection_method": "curated_scenario_weighted_catalog_v1",
             "uncertainty": ["Состав отобран из синтетического каталога, он не является случайной выборкой населения России."],
-            "requested_size": 100,
-            "candidate_pool_size": 100,
+            "requested_size": audience_size,
+            "candidate_pool_size": audience_size,
         },
         responses=[],
         events=[],
@@ -630,7 +637,7 @@ async def create_prebuilt_run(
             "mode": "prebuilt_scenario_v1",
             "persona_dataset_id": dataset_id,
             "persona_selection_seed": selection_seed,
-            "audience_size": 100,
+            "audience_size": audience_size,
             "interview_version": "curated_rules_v1",
         },
     )
