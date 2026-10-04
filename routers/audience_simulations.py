@@ -4,6 +4,7 @@ import asyncio
 import difflib
 import hashlib
 import ipaddress
+import json
 import logging
 import os
 import secrets
@@ -51,6 +52,32 @@ from routerai_client import rerank_documents
 router = APIRouter(prefix="/api/audience-simulations", tags=["audience-simulations"])
 _interview_limit = asyncio.Semaphore(10)
 logger = logging.getLogger("app.audience_simulation")
+
+
+def _infer_persona_market(idea: str, audience: str | None) -> str | None:
+    """Constrain persona selection when the idea clearly targets a consumer or business market."""
+    consumer_markers = (
+        "калор", "питан", "похуд", "рацион", "фитнес", "трениров", "сон", "здоров",
+        "домашн", "личн", "для людей", "потребител", "пациент", "диетолог", "нутрициолог",
+    )
+    business_markers = (
+        "b2b", "для бизнеса", "для компаний", "для сотрудников", "для организации", "корпоратив",
+        "предпринимател", "магазин", "закуп", "команд", "руководител", "клиник",
+    )
+    audience_text = (audience or "").casefold()
+    idea_text = (idea or "").casefold()
+    # An explicitly provided audience has priority over hints inferred from the product idea.
+    if audience_text:
+        if any(marker in audience_text for marker in business_markers):
+            return "business"
+        if any(marker in audience_text for marker in consumer_markers):
+            return "consumer"
+    combined = f"{idea_text} {audience_text}"
+    if any(marker in combined for marker in business_markers):
+        return "business"
+    if any(marker in combined for marker in consumer_markers):
+        return "consumer"
+    return None
 
 
 def _canonical_source_url(url: str) -> str:
@@ -1007,6 +1034,10 @@ async def _prepare_run(run_id: int) -> None:
         if not catalog_personas:
             raise RuntimeError(f"Каталог персон {dataset_id} не найден в базе данных")
         catalog_groups = persona_catalog_group_options(catalog_personas)
+        target_market = _infer_persona_market(snapshot["idea"], snapshot["audience"])
+        eligible_catalog_groups = [group for group in catalog_groups if group["market"] == target_market] if target_market else catalog_groups
+        if not eligible_catalog_groups:
+            eligible_catalog_groups = catalog_groups
 
         if snapshot["input_data"].get("continue_without_search"):
             search = {"sources": snapshot["evidence"], "text": "Поиск не дал источников. Пользователь подтвердил продолжение без открытых сигналов."}
@@ -1107,7 +1138,7 @@ async def _prepare_run(run_id: int) -> None:
             f"Подтверждённые сигналы с цитатами: {search.get('grounded_findings', [])}\n"
             f"Статистика страниц: найдено {len(snapshot['evidence'])}, открыто "
             f"{sum(1 for source in snapshot['evidence'] if source.get('fetch_status') == 'opened')}\n\n"
-            f"Группы доступных профилей из постоянного каталога: {catalog_groups}\n"
+            f"Группы доступных профилей из постоянного каталога: {eligible_catalog_groups}\n"
             "Выбери до 4 наиболее подходящих групп из каталога. В persona_targets указывай только точные "
             "market и profile_label из списка. Ничего не генерируй про сами профили.",
             operation="audience_signal_extraction",
@@ -1154,7 +1185,7 @@ async def _prepare_run(run_id: int) -> None:
 
         available_group_keys = {
             (str(group["market"]), str(group["profile_label"]))
-            for group in catalog_groups
+            for group in eligible_catalog_groups
         }
         raw_persona_targets = finding_data.get("persona_targets") or {}
         raw_target_groups = raw_persona_targets.get("groups", []) if isinstance(raw_persona_targets, dict) else []
@@ -1170,10 +1201,19 @@ async def _prepare_run(run_id: int) -> None:
                     seen_target_groups.add(key)
                 if len(target_groups) >= 4:
                     break
+        if target_market and len(target_groups) < 4:
+            selected_keys = {(item["market"], item["profile_label"]) for item in target_groups}
+            for group in eligible_catalog_groups:
+                key = (str(group["market"]), str(group["profile_label"]))
+                if key not in selected_keys:
+                    target_groups.append({"market": key[0], "profile_label": key[1]})
+                    selected_keys.add(key)
+                if len(target_groups) >= 4:
+                    break
         if not target_groups:
             target_groups = [
                 {"market": str(group["market"]), "profile_label": str(group["profile_label"])}
-                for group in catalog_groups[:4]
+                for group in eligible_catalog_groups[:4]
             ]
 
         requested = 100
@@ -1209,6 +1249,7 @@ async def _prepare_run(run_id: int) -> None:
                 "members": valid[:candidate_pool_size],
                 "groups": group_specs,
                 "persona_groups": target_groups,
+                "target_market": target_market,
                 "dataset_id": dataset_id,
                 "selection_seed": selection_seed,
                 "selection_method": "catalog_round_robin_hash_v1",
@@ -1220,7 +1261,7 @@ async def _prepare_run(run_id: int) -> None:
             run.status = "awaiting_audience_confirmation" if len(valid) >= 5 else "failed"
             run.revision += 1
             run.updated_at = datetime.utcnow()
-            _event(run, "selection_ready", {"count": len(valid[:candidate_pool_size]), "version": 1, "dataset_id": dataset_id})
+            _event(run, "selection_ready", {"count": len(valid[:candidate_pool_size]), "version": 1, "dataset_id": dataset_id, "target_market": target_market})
             await db.commit()
             logger.info(
                 "audience_preparation_completed",
@@ -1233,6 +1274,7 @@ async def _prepare_run(run_id: int) -> None:
                     "requested_count": requested,
                     "completed_count": len(valid[:candidate_pool_size]),
                     "source_count": len(snapshot["evidence"]),
+                    "target_market": target_market,
                     "failed_count": int(search.get("failed_queries") or 0),
                     "duration_ms": int((datetime.utcnow() - started_at).total_seconds() * 1000),
                 },
@@ -1279,14 +1321,28 @@ async def _ask_persona(run_snapshot: dict, persona: dict) -> dict:
         "Не выдумывай различия с другими респондентами: если вывод похож, сформулируй собственную причину именно этого профиля."
     )
     async with _interview_limit:
-        data, _ = await generate_json(
-            system,
-            user,
-            max_tokens=550,
-            operation="persona_interview",
-            run_id=run_snapshot.get("run_id"),
-            persona_id=str(persona.get("id")),
-        )
+        try:
+            data, _ = await generate_json(
+                system,
+                user,
+                max_tokens=550,
+                operation="persona_interview",
+                run_id=run_snapshot.get("run_id"),
+                persona_id=str(persona.get("id")),
+            )
+        except json.JSONDecodeError:
+            logger.warning(
+                "audience_persona_json_retry_started",
+                extra={"event": "audience_persona_json_retry_started", "stage": "interview", "run_id": run_snapshot.get("run_id"), "persona_id": str(persona.get("id")), "model": PERSONA_MODEL},
+            )
+            data, _ = await generate_json(
+                system + " Верни только компактный JSON-объект без Markdown и без дополнительных полей.",
+                user,
+                max_tokens=400,
+                operation="persona_interview_json_retry",
+                run_id=run_snapshot.get("run_id"),
+                persona_id=str(persona.get("id")),
+            )
     data["persona_id"] = str(persona["id"])
     data["group"] = persona["group"]
     return data

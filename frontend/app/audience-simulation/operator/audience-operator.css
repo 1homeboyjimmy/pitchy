@@ -308,21 +308,24 @@
 .map-axis-x { right: 4%; bottom: 4%; }
 .map-axis-y { top: 50%; left: 2%; transform: translate(-30%, -50%) rotate(-90deg); transform-origin: center; }
 .reaction-detail { max-height: 57px; overflow: hidden; margin-top: 2%; padding: 2% 3%; border-left: 2px solid var(--audience-violet); background: #0c0c0c; }
+.audience-mismatch-note { margin-top: 3%; padding: 8px 10px; border: 1px solid #735a37; border-radius: 9px; background: #17120b; color: #d5c5a9; font-size: 9px; line-height: 1.4; }
 .reaction-detail span { color: #a995c7; font-size: 8px; }
 .reaction-detail p { display: -webkit-box; overflow: hidden; margin: 3px 0 0; color: #ccc; font-size: 9px; line-height: 1.35; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-.group-counts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 3%; }
+.group-counts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 3%; }
 .group-counts span { display: grid; gap: 2px; color: #898989; font-size: 8px; line-height: 1.25; }
 .group-counts b { color: #f7f5f1; font-size: clamp(17px, 2.5vh, 26px); font-weight: 400; }
 
 .insights-slide .audience-title { margin-bottom: 2%; }
 .primary-result { margin-top: 1%; font-size: clamp(38px, 6.5vh, 64px); font-weight: 400; line-height: 1; letter-spacing: -.08em; }
 .result-label { margin-top: 2%; color: #aaa; font-size: clamp(8px, .88vh, 11px); }
+.result-average { margin-top: 2px; color: #777; font-size: 8px; }
 .insights-slide .audience-meter { margin-top: 4%; margin-bottom: 5%; }
 .result-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .result-card { position: relative; min-height: 60px; overflow: hidden; padding: 7px 9px; }
 .result-card::before { position: absolute; top: -12px; right: -16px; width: 65px; height: 65px; transform: rotate(-25deg); border: 5px solid #9dcfff33; border-top-color: #7ce6ff; border-right-color: #b48cff; border-radius: 50%; content: ""; filter: drop-shadow(0 0 8px #8cbfff55); }
 .result-card strong { display: block; font-size: clamp(24px, 4vh, 50px); font-weight: 400; letter-spacing: -.07em; line-height: 1.05; }
 .result-card span { color: #929292; font-size: clamp(7px, .75vh, 10px); }
+.result-card small { display: block; margin-top: 3px; color: #777; font-size: 7px; }
 .insight-list { display: grid; gap: 7px; margin-top: 5%; }
 .insight-item { display: grid; grid-template-columns: 7px minmax(0, 1fr); align-items: start; gap: 9px; color: #d0d0d0; font-size: clamp(8px, .9vh, 11px); line-height: 1.35; }
 .insight-item i { width: 7px; height: 7px; margin-top: 2px; border-radius: 50%; background: var(--audience-cyan); box-shadow: 0 0 8px currentColor; }

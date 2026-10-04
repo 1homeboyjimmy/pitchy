@@ -18,7 +18,7 @@ type CampaignConfig = {
   limits: { min_audience: number; max_audience: number; default_audience: number };
   disclaimer: string;
 };
-type Persona = { id: string; group: string; profile: string; selection_reason: string };
+type Persona = { id: string; market?: string; group: string; profile: string; selection_reason: string };
 type Finding = {
   text: string;
   source_ids: string[];
@@ -47,6 +47,8 @@ type SimRun = {
   selection: {
     version?: number;
     members?: Persona[];
+    target_market?: string | null;
+    persona_groups?: Array<{ market: string; profile_label: string }>;
     groups?: Array<{ name: string; basis: string }>;
     uncertainty?: string[];
   };
@@ -158,11 +160,20 @@ function PersonaNetwork({
           });
         }
       } else if (mode === "map") {
-        for (const person of validResponses) {
+        // Scores are integers, so many personas can share the exact same pixel.
+        // A small deterministic jitter exposes overlapping answers; selected details retain exact scores.
+        const stackRanks = new Map<string, number>();
+        const orderedResponses = [...validResponses].sort((first, second) => first.persona_id.localeCompare(second.persona_id));
+        for (const person of orderedResponses) {
           const groupIndex = Math.max(0, groups.indexOf(person.group || "Аудитория"));
+          const scoreKey = `${person.interest}:${person.problem_relevance}`;
+          const rank = stackRanks.get(scoreKey) || 0;
+          stackRanks.set(scoreKey, rank + 1);
+          const angle = (rank * 2.399963) + (hashSeed(person.persona_id) % 6283) / 1000;
+          const spread = rank ? Math.min(12, 3.2 * Math.sqrt(rank)) : 0;
           mapped.push({
-            x: width * (0.1 + (person.interest || 0) * 0.08),
-            y: height * (0.9 - (person.problem_relevance || 0) * 0.08),
+            x: width * (0.1 + (person.interest || 0) * 0.08) + Math.cos(angle) * spread,
+            y: height * (0.9 - (person.problem_relevance || 0) * 0.08) + Math.sin(angle) * spread,
             id: person.persona_id,
             color: palette[groupIndex % palette.length],
             radius: 3.4,
@@ -605,6 +616,9 @@ export default function AudienceSimulationOperatorPage() {
   const interestRate = run?.aggregate?.percent_at_least_7?.interest;
   const tryRate = run?.aggregate?.percent_at_least_7?.willingness_to_try;
   const activeResponse = run?.responses.find((response) => response.persona_id === selectedResponseId);
+  const plottedResponseCount = run?.responses.filter((response) => typeof response.interest === "number" && typeof response.problem_relevance === "number").length || 0;
+  const selectedMarkets = new Set((run?.selection.members || []).map((person) => person.market).filter(Boolean));
+  const consumerIdeaWithBusinessPanel = Boolean(run && /калор|питан|похуд|рацион|фитнес|трениров|сон|здоров/i.test(run.idea) && selectedMarkets.has("business") && !selectedMarkets.has("consumer"));
   const sourcedCount = run?.findings.filter((finding) => finding.source_ids.length > 0).length || 0;
   const searchingLabel = run?.status === "awaiting_search_fallback"
     ? "Источники не найдены"
@@ -870,12 +884,13 @@ export default function AudienceSimulationOperatorPage() {
               <span className="map-axis-y">АКТУАЛЬНОСТЬ ПРОБЛЕМЫ</span>
               <span className="map-axis-x">ИНТЕРЕС К РЕШЕНИЮ →</span>
             </div>
+            <p className="audience-helper">На карте {plottedResponseCount} из {run?.responses.length || 0} ответов: точки с одинаковыми оценками слегка разнесены, выбранная точка показывает точные баллы.</p>
             {activeResponse && <div className="reaction-detail"><span>{activeResponse.group || "Синтетическая персона"} · проблема {activeResponse.problem_relevance ?? "—"}/10 · интерес {activeResponse.interest ?? "—"}/10</span><p>{activeResponse.reaction || "Для этой персоны нет короткой реплики."}</p></div>}
             <div className="group-counts">
-              {groups.slice(0, 3).map((group, index) => <span key={group}><b style={{ color: palette[index % palette.length] }}>{run?.responses.filter((response) => response.group === group).length || 0}</b>{group}</span>)}
+              {groups.slice(0, 4).map((group, index) => <span key={group}><b style={{ color: palette[index % palette.length] }}>{run?.responses.filter((response) => response.group === group).length || 0}</b>{group}</span>)}
               {!groups.length && <span><b>{run?.responses.length || 0}</b>ответов</span>}
             </div>
-            <p className="audience-helper">Нажмите на точку или выберите её клавишами со стрелками.</p>
+            <p className="audience-helper">Совпавшие оценки слегка разнесены; при выборе показаны точные баллы. Точку можно выбрать мышью или клавишами со стрелками.</p>
             <button type="button" className="slide-next-cta reaction-continue" onClick={() => goToSlide(7)}>
               Перейти к выводам <ArrowRight size={15} />
             </button>
@@ -885,11 +900,13 @@ export default function AudienceSimulationOperatorPage() {
             <p className="audience-eyebrow">07 / Выводы</p>
             <h2 className="audience-title">Что говорит<br /><span className="audience-shine">аудитория</span></h2>
             <div className="primary-result">{typeof validRate === "number" ? validRate + "%" : "—"}</div>
-            <div className="result-label">отметили проблему в своём опыте</div>
+            <div className="result-label">оценили актуальность проблемы на 7/10 или выше</div>
+            <div className="result-average">Средняя оценка актуальности: {run?.aggregate?.averages?.problem_relevance ?? "—"}/10</div>
+            {consumerIdeaWithBusinessPanel && <div className="audience-mismatch-note">В этой проверке выбраны B2B-профили, а идея похожа на потребительский продукт. Этот результат не показывает интерес конечных пользователей.</div>}
             <div className="audience-meter"><i style={{ width: (typeof validRate === "number" ? validRate : 0) + "%" }} /></div>
             <div className="result-row">
-              <div className="audience-card result-card"><strong>{typeof interestRate === "number" ? interestRate + "%" : "—"}</strong><span>заинтересованы</span></div>
-              <div className="audience-card result-card"><strong>{typeof tryRate === "number" ? tryRate + "%" : "—"}</strong><span>готовы попробовать</span></div>
+              <div className="audience-card result-card"><strong>{typeof interestRate === "number" ? interestRate + "%" : "—"}</strong><span>интерес 7+/10</span><small>средняя оценка: {run?.aggregate?.averages?.interest ?? "—"}/10</small></div>
+              <div className="audience-card result-card"><strong>{typeof tryRate === "number" ? tryRate + "%" : "—"}</strong><span>готовность попробовать 7+/10</span><small>средняя оценка: {run?.aggregate?.averages?.willingness_to_try ?? "—"}/10</small></div>
             </div>
             <div className="insight-list">
               {(run?.summary?.observations || []).slice(0, 3).map((item, index) => <div className="insight-item" key={item}><i style={{ backgroundColor: palette[index % palette.length] }} /><span>{item}</span></div>)}
