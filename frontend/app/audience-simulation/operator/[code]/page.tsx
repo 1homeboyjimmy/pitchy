@@ -752,8 +752,16 @@ export default function AudienceSimulationOperatorPage() {
     setSourceCounterProgress(0);
     const started = performance.now();
     let frame = 0;
+    const activeDuration = 12000;
+    const activeBeforePause = 1500;
+    const pauseDuration = 450;
     const animate = (now: number) => {
-      const progress = Math.min(1, (now - started) / 4200);
+      const elapsed = now - started;
+      const cycle = activeBeforePause + pauseDuration;
+      const completedCycles = Math.floor(elapsed / cycle);
+      const currentCycleElapsed = elapsed % cycle;
+      const activeElapsed = completedCycles * activeBeforePause + Math.min(currentCycleElapsed, activeBeforePause);
+      const progress = Math.min(1, activeElapsed / activeDuration);
       setSourceCounterProgress(progress);
       if (progress < 1) frame = window.requestAnimationFrame(animate);
     };
