@@ -737,9 +737,9 @@ export default function AudienceSimulationOperatorPage() {
   const openedSourceCount = run?.evidence.filter((source) => source.fetch_status === "opened").length || 0;
   const demoSearchStats = selectedScenarioId ? run?.demo_search_stats : null;
   const sourceCategories = [
-    { title: "Отзывы покупателей", note: "демо-упоминания", color: "cyan", count: demoSearchStats?.categories.reviews ?? run?.evidence.filter((source) => /market|ozon|wildberries|otzovik/i.test(source.domain)).length ?? 0 },
-    { title: "Профессиональные сообщества", note: "демо-упоминания", color: "violet", count: demoSearchStats?.categories.communities ?? run?.evidence.filter((source) => /habr|vc\.ru|reddit|forum|community/i.test(source.domain)).length ?? 0 },
-    { title: "Поисковые материалы", note: "демо-упоминания", color: "gold", count: demoSearchStats?.categories.search_materials ?? run?.evidence.filter((source) => !/market|ozon|wildberries|otzovik|habr|vc\.ru|reddit|forum|community/i.test(source.domain)).length ?? 0 },
+    { title: "Отзывы покупателей", note: demoSearchStats ? "источники в сценарии" : "найденные страницы", color: "cyan", count: demoSearchStats?.categories.reviews ?? run?.evidence.filter((source) => /market|ozon|wildberries|otzovik/i.test(source.domain)).length ?? 0 },
+    { title: "Профессиональные сообщества", note: demoSearchStats ? "источники в сценарии" : "найденные страницы", color: "violet", count: demoSearchStats?.categories.communities ?? run?.evidence.filter((source) => /habr|vc\.ru|reddit|forum|community/i.test(source.domain)).length ?? 0 },
+    { title: "Поисковые материалы", note: demoSearchStats ? "источники в сценарии" : "найденные страницы", color: "gold", count: demoSearchStats?.categories.search_materials ?? run?.evidence.filter((source) => !/market|ozon|wildberries|otzovik|habr|vc\.ru|reddit|forum|community/i.test(source.domain)).length ?? 0 },
     { title: "Повторяющиеся сигналы", note: "связаны с источниками", color: "mint", count: sourcedCount },
   ];
   const [sourceCounterProgress, setSourceCounterProgress] = useState(0);
@@ -855,8 +855,8 @@ export default function AudienceSimulationOperatorPage() {
             <h2 className="audience-title">Сначала слушаем<br /><span className="audience-shine">рынок</span></h2>
             <p className="audience-lead">Ищем, кто и как уже говорит об этой проблеме.</p>
             <div className="source-stats">
-              <div className="audience-card"><strong>{displayCount(demoSearchStats?.mentions ?? run?.evidence.length ?? 0)}</strong><span>{demoSearchStats ? "упоминаний в демо-поиске" : "ссылок найдено"}</span></div>
-              <div className="audience-card"><strong>{displayCount(selectedScenarioId ? run?.evidence.length || 0 : openedSourceCount)}</strong><span>{selectedScenarioId ? "реальных ссылок в подборке" : "страниц открыто"}</span></div>
+              <div className="audience-card"><strong>{displayCount(demoSearchStats?.mentions ?? run?.evidence.length ?? 0)}</strong><span>{demoSearchStats ? "найденных источников · сценарий" : "ссылок найдено"}</span></div>
+              <div className="audience-card"><strong>{displayCount(selectedScenarioId ? run?.evidence.length || 0 : openedSourceCount)}</strong><span>{selectedScenarioId ? "ссылок в аналитической подборке" : "страниц открыто"}</span></div>
               <div className="audience-card"><strong>{displayCount(sourcedCount)}</strong><span>{selectedScenarioId ? "выводов со ссылками" : "сигналов подтверждено"}</span></div>
             </div>
             <div className="source-grid">
@@ -920,7 +920,7 @@ export default function AudienceSimulationOperatorPage() {
                 Перейти к аудитории <ArrowRight size={14} />
               </button>
             )}
-            <p className="source-foot">{demoSearchStats ? "Объём поисковых упоминаний в этой анимации сценарный; ссылки ниже ведут на реальные материалы исследования." : "Найденные упоминания связываем с источниками и повторяющимися темами."}</p>
+            <p className="source-foot">{demoSearchStats ? "Сценарный объём поиска для готовой идеи; ссылки ниже ведут на материалы аналитической подборки." : "Найденные упоминания связываем с источниками и повторяющимися темами."}</p>
           </section>
 
           <section className={"audience-slide audience-build-slide" + (activeSlide === 3 ? " is-active" : "")} aria-hidden={activeSlide !== 3}>

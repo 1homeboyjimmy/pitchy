@@ -360,7 +360,9 @@ def _serialize(run: AudienceSimulationRun) -> dict:
         "audience": run.audience,
         "price": run.price,
         "scenario_id": (run.input_data or {}).get("prebuilt_scenario_id"),
-        "demo_search_stats": get_demo_search_stats(str((run.input_data or {}).get("prebuilt_scenario_id") or "")),
+        "demo_search_stats": get_demo_search_stats(
+            str((run.input_data or {}).get("prebuilt_scenario_id") or ""), run.id,
+        ),
         "evidence": run.evidence or [],
         "findings": run.findings or [],
         "selection": run.selection or {},

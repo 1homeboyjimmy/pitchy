@@ -179,11 +179,11 @@ def get_prebuilt_scenario(scenario_id: str) -> dict[str, Any] | None:
     return SCENARIOS.get(scenario_id)
 
 
-def get_demo_search_stats(scenario_id: str) -> dict[str, Any] | None:
-    """Return a visibly illustrative search animation volume, not a URL count."""
+def get_demo_search_stats(scenario_id: str, run_id: int | None = None) -> dict[str, Any] | None:
+    """Return per-run illustrative volume for the prebuilt scenario animation."""
     if scenario_id not in SCENARIOS:
         return None
-    seed = _stable_number(scenario_id, "exhibition-search-volume")
+    seed = _stable_number(scenario_id, f"exhibition-search-volume:{run_id or 0}")
     mentions = 60 + seed % 61
     review_share = 0.24 + ((seed >> 4) % 11) / 100
     community_share = 0.19 + ((seed >> 9) % 10) / 100
