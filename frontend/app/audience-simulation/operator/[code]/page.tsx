@@ -914,7 +914,7 @@ export default function AudienceSimulationOperatorPage() {
                 const count = personas.filter((person) => person.group === group).length;
                 const active = selectedGroups.includes(group);
                 return (
-                  <button type="button" className={"group-toggle " + (active ? "selected" : "")} key={group} onClick={() => {
+                  <button type="button" disabled={Boolean(selectedScenarioId)} className={"group-toggle " + (active ? "selected" : "")} key={group} onClick={() => {
                     const next = active ? selectedGroups.filter((item) => item !== group) : [...selectedGroups, group];
                     if (!next.length || personas.filter((person) => next.includes(person.group)).length < (config?.limits.min_audience || 5)) {
                       setError("Оставьте в аудитории не меньше пяти профилей.");
@@ -930,11 +930,13 @@ export default function AudienceSimulationOperatorPage() {
               })}
               </div>
               <div className="preview-controls">
-                <label>Размер панели
-                  <select value={Math.min(audienceSize, Math.max(chosenCount, 5))} onChange={(event) => setAudienceSize(Number(event.target.value))}>
-                    {[5, 8, 12, 25, 50, 75, 100].filter((value) => value <= chosenCount).map((value) => <option key={value} value={value}>{value} персон</option>)}
-                  </select>
-                </label>
+                {selectedScenarioId
+                  ? <p className="fixed-panel-note">Готовый сценарий · 100 персон · состав подобран из каталога 1 500 профилей</p>
+                  : <label>Размер панели
+                    <select value={Math.min(audienceSize, Math.max(chosenCount, 5))} onChange={(event) => setAudienceSize(Number(event.target.value))}>
+                      {[5, 8, 12, 25, 50, 75, 100].filter((value) => value <= chosenCount).map((value) => <option key={value} value={value}>{value} персон</option>)}
+                    </select>
+                  </label>}
                 {!selectedScenarioId && <label className="constraints-field">Ограничения
                   <input value={constraints} onChange={(event) => setConstraints(event.target.value)} maxLength={1200} placeholder="Необязательно" />
                 </label>}
