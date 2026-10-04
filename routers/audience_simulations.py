@@ -766,13 +766,16 @@ async def update_selection(
             if len(members) >= payload.size:
                 break
     else:
-        selection_seed = str(selection.get("selection_seed") or run.id)
-        members = select_balanced_panel_members(
-            members,
-            {str(group) for group in allowed if group},
-            seed=selection_seed,
-            size=payload.size,
-        )
+        selected_groups = {str(group) for group in allowed if group}
+        existing_groups = {str(item.get("group") or "") for item in members}
+        if not (is_prebuilt and payload.size == len(members) and existing_groups <= selected_groups):
+            selection_seed = str(selection.get("selection_seed") or run.id)
+            members = select_balanced_panel_members(
+                members,
+                selected_groups,
+                seed=selection_seed,
+                size=payload.size,
+            )
     if len(members) < 5:
         raise HTTPException(status_code=422, detail="По этим условиям не набирается минимальная аудитория")
     run.selection = {**selection, "version": selection.get("version", 0) + 1, "members": members, "constraints": payload.constraints}

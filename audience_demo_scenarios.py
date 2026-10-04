@@ -153,6 +153,13 @@ def _stable_number(seed: str, key: str) -> int:
     return int(hashlib.sha256(f"{seed}:{key}".encode("utf-8")).hexdigest()[:8], 16)
 
 
+def _stable_spread(seed: int, channel: str, scale: float) -> float:
+    digest = hashlib.sha256(f"{seed}:{channel}".encode("utf-8")).digest()
+    # Summing independent uniform values gives a natural, centered spread instead of score bands.
+    centered = sum(int.from_bytes(digest[offset:offset + 2], "big") / 65535 for offset in (0, 2, 4)) - 1.5
+    return centered * scale
+
+
 def get_prebuilt_scenario(scenario_id: str) -> dict[str, Any] | None:
     return SCENARIOS.get(scenario_id)
 
@@ -175,12 +182,13 @@ def build_prebuilt_responses(scenario_id: str, members: list[dict[str, Any]]) ->
         # Existing catalog traits shape the scenario response; no trait or biography is invented.
         price_sensitivity = int(behavior.get("price_sensitivity") or 3)
         digital_skill = int(behavior.get("digital_skill") or 3)
-        # A wider, stable spread avoids depicting the whole panel as equally enthusiastic.
-        problem_score = max(1, min(10, problem + ((index % 5) - 2)))
-        interest_score = max(1, min(10, interest + ((index // 3 % 5) - 2) + (1 if digital_skill >= 4 else 0)))
+        # A continuous, stable spread avoids depicting the panel as equally enthusiastic or
+        # drawing responses in visible horizontal/vertical bands.
+        problem_score = round(max(1, min(10, problem + _stable_spread(index, "problem", 1.55))), 1)
+        interest_score = round(max(1, min(10, interest + _stable_spread(index, "interest", 1.9) + (0.35 if digital_skill >= 4 else 0))), 1)
         # Trial intent is lower than interest: switching cost, price and trust matter even
         # when a person recognizes the problem or likes the idea.
-        try_score = max(1, min(10, willingness - 1 + ((index // 7 % 5) - 2) - (1 if price_sensitivity >= 4 else 0)))
+        try_score = round(max(1, min(10, willingness - 1.05 + _stable_spread(index, "trial", 2.0) - (0.65 if price_sensitivity >= 4 else 0))), 1)
         context = str(current[index % len(current)]) if current else "" 
         reaction_text = reaction
         if context:
@@ -207,7 +215,7 @@ def build_prebuilt_responses(scenario_id: str, members: list[dict[str, Any]]) ->
 def aggregate_prebuilt_responses(responses: list[dict[str, Any]], requested: int) -> dict[str, Any]:
     keys = ("problem_relevance", "interest", "willingness_to_try", "problem_severity", "solution_clarity")
     averages = {
-        key: round(sum(int(item[key]) for item in responses if isinstance(item.get(key), int)) / len(responses), 2)
+        key: round(sum(float(item[key]) for item in responses if isinstance(item.get(key), (int, float))) / len(responses), 2)
         if responses else None
         for key in keys
     }

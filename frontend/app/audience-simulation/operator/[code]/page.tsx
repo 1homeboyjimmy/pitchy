@@ -111,12 +111,14 @@ function PersonaNetwork({
   responses,
   mode,
   activeIds,
+  litIds,
   onPick,
 }: {
   members: Persona[];
   responses: ResponsePoint[];
   mode: "crowd" | "map";
   activeIds?: Set<string>;
+  litIds?: Set<string>;
   onPick?: (id: string) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -251,7 +253,7 @@ function PersonaNetwork({
         }
       }
 
-      const pulse = reducedMotion ? 0 : Math.sin(time / 950) * 0.7;
+      const pulse = reducedMotion ? 0 : Math.sin(time / 950) * 0.18;
       for (const point of mapped) {
         const selected = Boolean(point.id && activeIds?.has(point.id));
         if (mode === "map") {
@@ -259,26 +261,26 @@ function PersonaNetwork({
           context.beginPath();
           context.fillStyle = point.color;
           context.shadowColor = point.color;
-          context.shadowBlur = selected ? 5 : 2;
-          context.globalAlpha = selected ? 0.35 : 0.18;
-          context.arc(point.x, point.y, selected ? 6 : 4.5, 0, Math.PI * 2);
+          context.shadowBlur = selected ? 1.5 : 0.7;
+          context.globalAlpha = selected ? 0.22 : 0.1;
+          context.arc(point.x, point.y, selected ? 4.6 : 3.5, 0, Math.PI * 2);
           context.fill();
           context.beginPath();
           context.fillStyle = point.color;
           context.shadowBlur = 0;
           context.globalAlpha = 1;
-          context.arc(point.x, point.y, selected ? 3.5 : 2.8, 0, Math.PI * 2);
+          context.arc(point.x, point.y, selected ? 3 : 2.5, 0, Math.PI * 2);
           context.fill();
         } else {
-          const glow = point.person ? 10 + (selected ? 14 : 0) : 4;
+          const glow = point.person ? 2.5 + (selected ? 2.5 : 0) : 1.5;
           context.beginPath();
-          const lit = !activeIds || activeIds.has(point.id);
+          const lit = !litIds || litIds.has(point.id);
           const pointColor = lit ? point.color : "#414348";
           context.fillStyle = pointColor;
           context.shadowColor = pointColor;
-          context.shadowBlur = glow;
-          context.globalAlpha = lit ? (point.person ? 0.92 : 0.86) : 0.48;
-          context.arc(point.x, point.y, Math.max(1.2, point.radius + pulse * 0.18), 0, Math.PI * 2);
+          context.shadowBlur = lit ? glow : 0;
+          context.globalAlpha = lit ? 0.95 : 0.38;
+          context.arc(point.x, point.y, Math.max(1.4, point.radius + pulse), 0, Math.PI * 2);
           context.fill();
         }
         if (selected) {
@@ -310,7 +312,7 @@ function PersonaNetwork({
       observer.disconnect();
       window.cancelAnimationFrame(frame);
     };
-  }, [activeIds, dataKey, members, mode, responses]);
+  }, [activeIds, dataKey, litIds, members, mode, responses]);
 
   const pickNearest = (event: ReactMouseEvent<HTMLCanvasElement>) => {
     if (!onPick) return;
@@ -509,7 +511,7 @@ export default function AudienceSimulationOperatorPage() {
       setRun(ready);
       setRunToken(created.access_token);
       setSelectedGroups(Array.from(new Set((ready.selection.members || []).map((person) => person.group))));
-      setAudienceSize(100);
+      setAudienceSize(ready.selection.members?.length || 100);
       setIdea(ready.idea);
       setAudience(ready.audience || "");
       setActiveSlide(2);
@@ -752,7 +754,7 @@ export default function AudienceSimulationOperatorPage() {
     frame = window.requestAnimationFrame(animate);
     return () => window.cancelAnimationFrame(frame);
   }, [activeSlide, selectedScenarioId, sourceCountsKey]);
-  const displayCount = (count: number) => Math.floor(count * sourceCounterProgress);
+  const displayCount = (count: number) => Math.max(0, Math.floor(count * sourceCounterProgress));
 
   return (
     <main className="audience-stage">
@@ -921,7 +923,7 @@ export default function AudienceSimulationOperatorPage() {
             <p className="audience-lead">Подбираем персоны из каталога и отбираем тех, кому может быть близка проблема.</p>
             <div className="candidate-label"><span>{statusText[run?.status || "preparing"]}</span><span>{personas.length} профилей</span></div>
             <div className="persona-cloud">
-              <PersonaNetwork members={personas} responses={[]} mode="crowd" activeIds={selectedScenarioId ? new Set(personas.slice(0, audienceReveal).map((person) => person.id)) : undefined} />
+              <PersonaNetwork members={personas} responses={[]} mode="crowd" litIds={selectedScenarioId ? new Set(personas.slice(0, audienceReveal).map((person) => person.id)) : undefined} />
             </div>
             <div className="audience-card audience-build-note">
               <p>Сначала широкий круг профилей. После отбора остаются персоны, связанные с вашей гипотезой.</p>
@@ -994,7 +996,7 @@ export default function AudienceSimulationOperatorPage() {
             <p className="audience-lead">Каждая персона оценивает идею отдельно с учётом своего профиля.</p>
             <div className="candidate-label"><span>{progress ? "Персоны отвечают в группах" : "Подключаем персоны"}</span><span>{progress} / {personas.length || audienceSize}</span></div>
             <div className="interview-network">
-              <PersonaNetwork members={selectedScenarioId && activeSlide === 5 ? personas.slice(0, progress) : personas} responses={[]} mode="crowd" activeIds={new Set((run?.responses || []).slice(0, progress).map((response) => response.persona_id))} />
+              <PersonaNetwork members={personas} responses={[]} mode="crowd" litIds={new Set((run?.responses || []).slice(0, progress).map((response) => response.persona_id))} activeIds={progress ? new Set([(run?.responses || [])[Math.min(progress, (run?.responses.length || 1)) - 1]?.persona_id || ""]) : undefined} />
               <div className="idea-signal">ИДЕЯ</div>
             </div>
             <div className="people-count"><strong>{progress}</strong><span>/ {personas.length || audienceSize} ответов</span></div>
