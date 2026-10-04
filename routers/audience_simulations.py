@@ -190,9 +190,21 @@ async def _enrich_search_sources(run_id: int, idea: str, audience: str | None, s
     opened = [page for page in pages if page.get("fetch_status") == "opened" and len(page.get("page_text", "")) >= 160]
     logger.info("audience_source_fetch_completed", extra={"event": "audience_source_fetch_completed", "stage": "source_analysis", "run_id": run_id, "found_count": len(sources), "selected_count": len(selected), "opened_count": len(opened)})
 
-    extracted: list[dict] = []
-    for offset in range(0, len(opened), 5):
-        batch = opened[offset:offset + 5]
+    # Persist page-open results before the slower, independent model calls. This keeps
+    # the source screen truthful while evidence extraction and verification continue.
+    public_enriched = [{key: value for key, value in source.items() if key != "page_text"} for source in enriched]
+    async with AsyncSessionLocal() as db:
+        run = await db.get(AudienceSimulationRun, run_id)
+        if run and run.status == "preparing":
+            run.evidence = public_enriched
+            _event(run, "source_pages_opened", {
+                "found_count": len(sources),
+                "opened_count": sum(1 for source in public_enriched if source.get("fetch_status") == "opened"),
+                "selected_count": len(selected),
+            })
+            await db.commit()
+
+    async def extract_batch(batch: list[dict]) -> list[dict]:
         docs_for_model = [{"id": page["id"], "title": page["page_title"], "url": page["url"], "text": page["page_text"][:6500]} for page in batch]
         data, _ = await generate_json(
             "Извлеки только конкретные утверждения о проблемах, опыте, текущих альтернативах или потребностях пользователей. "
@@ -201,6 +213,7 @@ async def _enrich_search_sources(run_id: int, idea: str, audience: str | None, s
             f"Идея: {idea}\nАудитория: {audience or 'не задана'}\nСтраницы: {docs_for_model}",
             max_tokens=2200, operation="audience_page_claim_extraction", run_id=run_id,
         )
+        extracted_batch: list[dict] = []
         claims = data.get("claims", []) if isinstance(data, dict) else []
         for claim in claims[:30] if isinstance(claims, list) else []:
             if not isinstance(claim, dict):
@@ -211,14 +224,27 @@ async def _enrich_search_sources(run_id: int, idea: str, audience: str | None, s
             page_text = " ".join(str(page.get("page_text") or "").split()) if page else ""
             if not page or len(quote) < 20 or quote.casefold() not in page_text.casefold() or not text:
                 continue
-            extracted.append({"text": text[:400], "source_id": page["id"], "quote": quote[:500], "claim_type": "sourced_paraphrase"})
+            extracted_batch.append({"text": text[:400], "source_id": page["id"], "quote": quote[:500], "claim_type": "sourced_paraphrase"})
+        return extracted_batch
+
+    extraction_batches = [opened[offset:offset + 5] for offset in range(0, len(opened), 5)]
+    extraction_slots = asyncio.Semaphore(3)
+
+    async def bounded_extract(batch: list[dict]) -> list[dict]:
+        async with extraction_slots:
+            return await extract_batch(batch)
+
+    extracted_results = await asyncio.gather(*(bounded_extract(batch) for batch in extraction_batches), return_exceptions=True)
+    extracted = []
+    for result in extracted_results:
+        if isinstance(result, Exception):
+            logger.warning("audience_claim_batch_failed", extra={"event": "audience_claim_batch_failed", "stage": "source_analysis", "run_id": run_id, "error_type": type(result).__name__})
+            continue
+        extracted.extend(result)
 
     findings: list[dict] = []
     # A second model pass checks that each proposed paraphrase is actually supported by its exact quotation.
-    for offset in range(0, len(extracted), 15):
-        batch = extracted[offset:offset + 15]
-        if not batch:
-            continue
+    async def verify_batch(batch: list[dict]) -> list[dict]:
         verified, _ = await generate_json(
             "Проверь каждую пару утверждение/цитата. Поддерживает ли цитата утверждение напрямую? "
             "Отмечай true только для прямого смыслового подтверждения. Не додумывай контекст. Верни JSON {checks:[{index,supported}]}.",
@@ -227,10 +253,27 @@ async def _enrich_search_sources(run_id: int, idea: str, audience: str | None, s
         )
         checks = verified.get("checks", []) if isinstance(verified, dict) else []
         supported = {item.get("index") for item in checks if isinstance(item, dict) and item.get("supported") is True and isinstance(item.get("index"), int)} if isinstance(checks, list) else set()
+        verified_findings = []
         for index, item in enumerate(batch):
             if index not in supported:
                 continue
-            findings.append({"text": item["text"], "source_ids": [item["source_id"]], "claim_type": "sourced_paraphrase", "limitation": "Подтверждено цитатой со страницы источника.", "evidence": [{"source_id": item["source_id"], "quote": item["quote"]}]})
+            verified_findings.append({"text": item["text"], "source_ids": [item["source_id"]], "claim_type": "sourced_paraphrase", "limitation": "Подтверждено цитатой со страницы источника.", "evidence": [{"source_id": item["source_id"], "quote": item["quote"]}]})
+        return verified_findings
+
+    verification_batches = [extracted[offset:offset + 15] for offset in range(0, len(extracted), 15)]
+    verification_slots = asyncio.Semaphore(3)
+
+    async def bounded_verify(batch: list[dict]) -> list[dict]:
+        async with verification_slots:
+            return await verify_batch(batch)
+
+    verified_results = await asyncio.gather(*(bounded_verify(batch) for batch in verification_batches), return_exceptions=True)
+    findings = []
+    for result in verified_results:
+        if isinstance(result, Exception):
+            logger.warning("audience_verification_batch_failed", extra={"event": "audience_verification_batch_failed", "stage": "source_analysis", "run_id": run_id, "error_type": type(result).__name__})
+            continue
+        findings.extend(result)
     # Merge repeated paraphrases across pages while retaining every independent citation.
     deduplicated: list[dict] = []
     for finding in findings:

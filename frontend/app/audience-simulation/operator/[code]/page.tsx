@@ -690,7 +690,9 @@ export default function AudienceSimulationOperatorPage() {
       : run?.status === "failed"
         ? "Поиск остановился"
         : run?.evidence.length
-          ? "Связываем сигналы с источниками"
+          ? (run.evidence.some((source) => source.fetch_status === "opened") && !selectedScenarioId
+              ? `Открыто страниц: ${run.evidence.filter((source) => source.fetch_status === "opened").length} · проверяем цитаты`
+              : "Связываем сигналы с источниками")
           : "Подключаем источники поиска";
 
   const goToSlide = useCallback((index: number) => {
