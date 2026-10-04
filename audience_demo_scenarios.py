@@ -192,6 +192,8 @@ def get_demo_search_stats(scenario_id: str, run_id: int | None = None) -> dict[s
     return {
         "kind": "illustrative_demo_volume",
         "mentions": mentions,
+        "bundle_links": 50 + _stable_number(scenario_id, "curated-bundle-volume") % 11,
+        "linked_findings": 40 + _stable_number(scenario_id, "linked-findings-volume") % 11,
         "categories": {
             "reviews": reviews,
             "communities": communities,

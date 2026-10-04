@@ -53,6 +53,8 @@ type SimRun = {
   demo_search_stats?: {
     kind: "illustrative_demo_volume";
     mentions: number;
+    bundle_links: number;
+    linked_findings: number;
     categories: { reviews: number; communities: number; search_materials: number };
   } | null;
   evidence: Evidence[];
@@ -377,6 +379,7 @@ export default function AudienceSimulationOperatorPage() {
   const [claimToken, setClaimToken] = useState("");
   const [selectedResponseId, setSelectedResponseId] = useState("");
   const [activeSlide, setActiveSlide] = useState(0);
+  const [slideEntranceDone, setSlideEntranceDone] = useState(false);
   const [showAudienceField, setShowAudienceField] = useState(false);
   const [showPriceField, setShowPriceField] = useState(false);
   const [ideaMode, setIdeaMode] = useState<"choose" | "custom" | "prebuilt">("choose");
@@ -696,6 +699,12 @@ export default function AudienceSimulationOperatorPage() {
   }, [maxSlide]);
 
   useEffect(() => {
+    setSlideEntranceDone(false);
+    const timer = window.setTimeout(() => setSlideEntranceDone(true), 600);
+    return () => window.clearTimeout(timer);
+  }, [activeSlide]);
+
+  useEffect(() => {
     if (activeSlide === 8 && isFinished && !claimToken && !busy) void makeClaimLink();
   }, [activeSlide, busy, claimToken, isFinished, makeClaimLink]);
 
@@ -740,7 +749,7 @@ export default function AudienceSimulationOperatorPage() {
     { title: "Отзывы покупателей", note: demoSearchStats ? "источники в сценарии" : "найденные страницы", color: "cyan", count: demoSearchStats?.categories.reviews ?? run?.evidence.filter((source) => /market|ozon|wildberries|otzovik/i.test(source.domain)).length ?? 0 },
     { title: "Профессиональные сообщества", note: demoSearchStats ? "источники в сценарии" : "найденные страницы", color: "violet", count: demoSearchStats?.categories.communities ?? run?.evidence.filter((source) => /habr|vc\.ru|reddit|forum|community/i.test(source.domain)).length ?? 0 },
     { title: "Поисковые материалы", note: demoSearchStats ? "источники в сценарии" : "найденные страницы", color: "gold", count: demoSearchStats?.categories.search_materials ?? run?.evidence.filter((source) => !/market|ozon|wildberries|otzovik|habr|vc\.ru|reddit|forum|community/i.test(source.domain)).length ?? 0 },
-    { title: "Повторяющиеся сигналы", note: "связаны с источниками", color: "mint", count: sourcedCount },
+    { title: "Повторяющиеся сигналы", note: demoSearchStats ? "выводы в сценарии" : "связаны с источниками", color: "mint", count: demoSearchStats?.linked_findings ?? sourcedCount },
   ];
   const [sourceCounterProgress, setSourceCounterProgress] = useState(0);
   const sourceCountsKey = sourceCategories.map((category) => category.count).join(":");
@@ -752,9 +761,9 @@ export default function AudienceSimulationOperatorPage() {
     setSourceCounterProgress(0);
     const started = performance.now();
     let frame = 0;
-    const activeDuration = 12000;
-    const activeBeforePause = 1500;
-    const pauseDuration = 450;
+    const activeDuration = 18000;
+    const activeBeforePause = 1800;
+    const pauseDuration = 800;
     const animate = (now: number) => {
       const elapsed = now - started;
       const cycle = activeBeforePause + pauseDuration;
@@ -769,6 +778,8 @@ export default function AudienceSimulationOperatorPage() {
     return () => window.cancelAnimationFrame(frame);
   }, [activeSlide, selectedScenarioId, sourceCountsKey]);
   const displayCount = (count: number) => Math.max(0, Math.floor(count * sourceCounterProgress));
+  const sourceStageReady = Boolean(run?.status === "awaiting_audience_confirmation" && slideEntranceDone && (!selectedScenarioId || sourceCounterProgress >= 1));
+  const audienceStageReady = Boolean(slideEntranceDone && (!selectedScenarioId || audienceReveal >= personas.length));
 
   return (
     <main className="audience-stage">
@@ -864,8 +875,8 @@ export default function AudienceSimulationOperatorPage() {
             <p className="audience-lead">Ищем, кто и как уже говорит об этой проблеме.</p>
             <div className="source-stats">
               <div className="audience-card"><strong>{displayCount(demoSearchStats?.mentions ?? run?.evidence.length ?? 0)}</strong><span>{demoSearchStats ? "найденных источников · сценарий" : "ссылок найдено"}</span></div>
-              <div className="audience-card"><strong>{displayCount(selectedScenarioId ? run?.evidence.length || 0 : openedSourceCount)}</strong><span>{selectedScenarioId ? "ссылок в аналитической подборке" : "страниц открыто"}</span></div>
-              <div className="audience-card"><strong>{displayCount(sourcedCount)}</strong><span>{selectedScenarioId ? "выводов со ссылками" : "сигналов подтверждено"}</span></div>
+              <div className="audience-card"><strong>{displayCount(demoSearchStats?.bundle_links ?? (selectedScenarioId ? run?.evidence.length || 0 : openedSourceCount))}</strong><span>{selectedScenarioId ? "ссылок в сценарной подборке" : "страниц открыто"}</span></div>
+              <div className="audience-card"><strong>{displayCount(demoSearchStats?.linked_findings ?? sourcedCount)}</strong><span>{selectedScenarioId ? "выводов со ссылками · сценарий" : "сигналов подтверждено"}</span></div>
             </div>
             <div className="source-grid">
               {sourceCategories.map((category) => (
@@ -876,7 +887,7 @@ export default function AudienceSimulationOperatorPage() {
               ))}
             </div>
             <p className="search-readout">{searchingLabel}{run?.status === "preparing" ? <span className="typing-dots">...</span> : null}</p>
-            <div className="signal-sweep"><i /></div>
+            <div className={"signal-sweep" + (sourceStageReady ? " is-complete" : "")}><i /></div>
             {run?.evidence.length ? (
               <details className="source-disclosure">
                 <summary>Ссылки и статус страниц · {run.evidence.length}</summary>
@@ -924,11 +935,11 @@ export default function AudienceSimulationOperatorPage() {
               </div>
             )}
             {run?.status === "awaiting_audience_confirmation" && (
-              <button type="button" className="audience-cta source-continue" onClick={() => goToSlide(3)}>
+              <button type="button" disabled={!sourceStageReady} className="audience-cta source-continue" onClick={() => goToSlide(3)}>
                 Перейти к аудитории <ArrowRight size={14} />
               </button>
             )}
-            <p className="source-foot">{demoSearchStats ? "Сценарный объём поиска для готовой идеи; ссылки ниже ведут на материалы аналитической подборки." : "Найденные упоминания связываем с источниками и повторяющимися темами."}</p>
+            <p className="source-foot">{demoSearchStats ? "Счётчики объёма и выводов заданы для демо-сценария; ниже показаны ссылки из реальной аналитической подборки." : "Найденные упоминания связываем с источниками и повторяющимися темами."}</p>
           </section>
 
           <section className={"audience-slide audience-build-slide" + (activeSlide === 3 ? " is-active" : "")} aria-hidden={activeSlide !== 3}>
@@ -946,7 +957,7 @@ export default function AudienceSimulationOperatorPage() {
                 {!groups.length && <span className="audience-chip">Формируем группы</span>}
               </div>
               {run?.status === "awaiting_audience_confirmation" && (
-                <button type="button" className="audience-cta build-continue" onClick={() => goToSlide(4)}>
+                <button type="button" disabled={!audienceStageReady} className="audience-cta build-continue" onClick={() => goToSlide(4)}>
                   Посмотреть аудиторию <ArrowRight size={14} />
                 </button>
               )}
@@ -999,7 +1010,7 @@ export default function AudienceSimulationOperatorPage() {
                 </label>}
               </div>
             </div>
-            <button type="button" disabled={busy || chosenCount < 5} onClick={() => void confirmAudience()} className="audience-cta preview-cta">
+            <button type="button" disabled={busy || chosenCount < 5 || !slideEntranceDone} onClick={() => void confirmAudience()} className="audience-cta preview-cta">
               {busy ? <Loader size={14} className="audience-spin" /> : <Check size={14} />}{busy ? "Готовим исследование" : "Запустить исследование"}<ArrowRight size={14} />
             </button>
           </section>
@@ -1034,7 +1045,7 @@ export default function AudienceSimulationOperatorPage() {
               {!groups.length && <span><b>{run?.responses.length || 0}</b>ответов</span>}
             </div>
             <p className="audience-helper">Совпавшие оценки слегка разнесены; при выборе показаны точные баллы. Точку можно выбрать мышью или клавишами со стрелками.</p>
-            <button type="button" className="slide-next-cta reaction-continue" onClick={() => goToSlide(7)}>
+            <button type="button" disabled={!slideEntranceDone} className="slide-next-cta reaction-continue" onClick={() => goToSlide(7)}>
               Перейти к выводам <ArrowRight size={15} />
             </button>
           </section>
@@ -1056,7 +1067,7 @@ export default function AudienceSimulationOperatorPage() {
               {!run?.summary?.observations?.length && <div className="insight-item"><i /><span>Собрано ответов: {progress}</span></div>}
             </div>
             {run?.summary?.next_checks?.length ? <div className="next-step"><small>СЛЕДУЮЩАЯ ПРОВЕРКА</small>{run.summary.next_checks[0]}</div> : null}
-            <button type="button" className="slide-next-cta insights-continue" onClick={() => goToSlide(8)}>
+            <button type="button" disabled={!slideEntranceDone} className="slide-next-cta insights-continue" onClick={() => goToSlide(8)}>
               Открыть результат <ArrowRight size={15} />
             </button>
             <p className="audience-disclaimer">Ответы смоделированы. Они помогают сформулировать следующие проверки, но не прогнозируют продажи.</p>

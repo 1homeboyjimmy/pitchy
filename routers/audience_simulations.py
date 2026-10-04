@@ -566,8 +566,10 @@ async def create_prebuilt_run(
         "profile_label": item.profile_label,
         "profile_data": item.profile_data,
     } for item in catalog_rows]
-    selection_seed = f"pitchy-prebuilt-v1:{code}:{payload.scenario_id}"
-    # Keep the demo repeatable per campaign and scenario while varying the panel size.
+    # The same prepared scenario must select the same catalog panel and therefore
+    # produce the same aggregate, even when it is opened in another campaign.
+    selection_seed = f"pitchy-prebuilt-v2:{payload.scenario_id}"
+    # Keep each scenario's panel size stable while allowing different presets to vary.
     audience_size = 100 + int(hashlib.sha256(selection_seed.encode("utf-8")).hexdigest()[:8], 16) % 57
     group_weights = {
         group: 0.55 + (int(hashlib.sha256(f"{selection_seed}:{group}".encode("utf-8")).hexdigest()[:8], 16) % 1000) / 1000

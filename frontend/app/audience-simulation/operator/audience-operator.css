@@ -253,6 +253,7 @@
 .typing-dots { display: inline-block; width: 18px; overflow: hidden; animation: audience-dots 1.1s steps(4, end) infinite; }
 .signal-sweep { height: 2px; overflow: hidden; margin-top: 3%; background: #262626; }
 .signal-sweep i { display: block; width: 35%; height: 100%; background: var(--audience-glow); box-shadow: 0 0 16px #9cbbff; animation: audience-sweep 2.3s ease-in-out infinite; }
+.signal-sweep.is-complete i { width: 100%; background: linear-gradient(90deg, var(--audience-cyan), var(--audience-violet), var(--audience-gold)); box-shadow: none; animation: none; transition: width .45s ease; }
 .source-continue { width: 100%; min-height: 36px; justify-content: space-between; margin-top: 3%; font-size: 10px !important; }
 .source-links { display: grid; gap: 5px; margin-top: 3%; }
 .source-disclosure { margin-top: 3%; color: #aaa; font-size: 9px; }
@@ -350,6 +351,7 @@
 .next-step { margin-top: 4%; padding: 4%; border: 1px solid #41344d; border-radius: 12px; background: linear-gradient(100deg, #17131d, #101010); font-size: clamp(9px, 1.05vh, 13px); line-height: 1.35; }
 .next-step small { display: block; margin-bottom: 2%; color: #999; font-size: clamp(7px, .7vh, 9px); letter-spacing: .12em; }
 .slide-next-cta { display: inline-flex; min-height: 38px; align-items: center; justify-content: space-between; gap: 8px; border: 0; border-radius: 30px; background: #f5f3ef; padding: 0 16px; color: #101010 !important; font-size: 10px !important; font-weight: 500; }
+.slide-next-cta:disabled { cursor: not-allowed; opacity: .42; }
 .reaction-continue { width: 100%; margin-top: auto; }
 .insights-continue { width: 100%; margin-top: 3%; }
 .insights-slide .audience-disclaimer { margin-top: 3%; }
