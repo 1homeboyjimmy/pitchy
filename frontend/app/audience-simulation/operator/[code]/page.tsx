@@ -615,7 +615,7 @@ export default function AudienceSimulationOperatorPage() {
   const validRate = run?.aggregate?.percent_at_least_7?.problem_relevance;
   const interestRate = run?.aggregate?.percent_at_least_7?.interest;
   const tryRate = run?.aggregate?.percent_at_least_7?.willingness_to_try;
-  const activeResponse = run?.responses.find((response) => response.persona_id === selectedResponseId);
+  const activeResponse = run?.responses.find((response) => response.persona_id === selectedResponseId) || run?.responses[0];
   const plottedResponseCount = run?.responses.filter((response) => typeof response.interest === "number" && typeof response.problem_relevance === "number").length || 0;
   const selectedMarkets = new Set((run?.selection.members || []).map((person) => person.market).filter(Boolean));
   const consumerIdeaWithBusinessPanel = Boolean(run && /калор|питан|похуд|рацион|фитнес|трениров|сон|здоров/i.test(run.idea) && selectedMarkets.has("business") && !selectedMarkets.has("consumer"));
@@ -880,7 +880,7 @@ export default function AudienceSimulationOperatorPage() {
             <h2 className="audience-title">Реакция<br /><span className="audience-shine">разделилась</span></h2>
             <p className="audience-lead">Каждая точка — отдельная синтетическая персона.</p>
             <div className="reaction-map">
-              <PersonaNetwork members={personas} responses={run?.responses || []} mode="map" activeIds={selectedResponseId ? new Set([selectedResponseId]) : undefined} onPick={(id) => setSelectedResponseId((current) => current === id ? "" : id)} />
+              <PersonaNetwork members={personas} responses={run?.responses || []} mode="map" activeIds={activeResponse ? new Set([activeResponse.persona_id]) : undefined} onPick={(id) => setSelectedResponseId(id)} />
               <span className="map-axis-y">АКТУАЛЬНОСТЬ ПРОБЛЕМЫ</span>
               <span className="map-axis-x">ИНТЕРЕС К РЕШЕНИЮ →</span>
             </div>
