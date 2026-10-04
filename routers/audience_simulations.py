@@ -344,6 +344,26 @@ async def continue_without_search(
     return {"run_id": run.id, "status": run.status}
 
 
+@router.post("/runs/{run_id}/retry-preparation", status_code=202)
+async def retry_preparation(
+    run_id: int,
+    background_tasks: BackgroundTasks,
+    x_audience_token: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_async_db),
+):
+    run = await _get_run(db, run_id, x_audience_token)
+    if run.status != "failed" or (run.aggregate or {}).get("error") != "SEARCH_OR_SELECTION_FAILED":
+        raise HTTPException(status_code=409, detail="Этот запуск нельзя повторно подготовить")
+    run.status = "preparing"
+    run.aggregate = None
+    run.revision += 1
+    run.updated_at = datetime.utcnow()
+    _event(run, "preparation_retry", {"source_count": len(run.evidence or [])})
+    await db.commit()
+    background_tasks.add_task(_prepare_run, run.id)
+    return {"run_id": run.id, "status": run.status}
+
+
 @router.post("/runs/{run_id}/cancel")
 async def cancel_run(
     run_id: int,

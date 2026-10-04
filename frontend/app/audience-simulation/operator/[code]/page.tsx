@@ -51,6 +51,8 @@ type SimRun = {
   };
   responses: ResponsePoint[];
   aggregate: {
+    error?: string;
+    retryable?: boolean;
     valid_responses?: number;
     requested_responses?: number;
     averages?: Record<string, number | null>;
@@ -397,7 +399,11 @@ export default function AudienceSimulationOperatorPage() {
           if (next.status === "interviewing") setActiveSlide(5);
           if (["completed", "partial"].includes(next.status)) setActiveSlide(6);
         }
-        if (next.status === "failed") setError("Не удалось подготовить запуск. Можно начать проверку заново.");
+        if (next.status === "failed") {
+          setError(next.evidence.length
+            ? "Источники найдены, но не удалось обработать результат. Их можно обработать повторно."
+            : "Не удалось подготовить запуск. Можно повторить попытку.");
+        }
       } catch (reason) {
         if (!stopped) setError(reason instanceof Error ? reason.message : "Потеряно соединение");
       }
@@ -491,6 +497,25 @@ export default function AudienceSimulationOperatorPage() {
       setRun({ ...run, status: "preparing" });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось продолжить запуск");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const retryPreparation = async () => {
+    if (!run) return;
+    setBusy(true);
+    setError("");
+    try {
+      const response = await request<{ status: string }>(
+        "/api/audience-simulations/runs/" + run.id + "/retry-preparation",
+        { method: "POST" },
+        runToken,
+      );
+      lastAutoStatusRef.current = response.status;
+      setRun({ ...run, status: response.status, aggregate: null });
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Не удалось повторить подготовку");
     } finally {
       setBusy(false);
     }
@@ -696,7 +721,17 @@ export default function AudienceSimulationOperatorPage() {
                 <button type="button" className="text-action" disabled={busy} onClick={() => void reviseIdea()}>Изменить идею</button>
               </div>
             )}
-            {run?.status === "failed" && <button type="button" className="text-action" onClick={reset}>Начать заново</button>}
+            {run?.status === "failed" && (
+              <div className="fallback-actions">
+                {run.aggregate?.retryable && (
+                  <button type="button" className="audience-cta" disabled={busy} onClick={() => void retryPreparation()}>
+                    {busy ? <Loader size={14} className="audience-spin" /> : <RotateCcw size={14} />}
+                    {run.evidence.length ? "Повторить обработку источников" : "Повторить подготовку"}
+                  </button>
+                )}
+                <button type="button" className="text-action" onClick={reset}>Начать заново</button>
+              </div>
+            )}
             {run?.status === "awaiting_audience_confirmation" && (
               <button type="button" className="audience-cta source-continue" onClick={() => goToSlide(3)}>
                 Перейти к аудитории <ArrowRight size={14} />
