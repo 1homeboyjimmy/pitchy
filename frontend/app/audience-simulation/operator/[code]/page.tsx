@@ -453,6 +453,16 @@ export default function AudienceSimulationOperatorPage() {
   }, []);
 
   useEffect(() => {
+    const section = document.querySelectorAll<HTMLElement>(".audience-slide")[activeSlide];
+    if (!section) return;
+    const frame = window.requestAnimationFrame(() => {
+      section.tabIndex = -1;
+      section.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeSlide, config]);
+
+  useEffect(() => {
     let active = true;
     void request<CampaignConfig>("/api/audience-simulations/campaigns/" + encodeURIComponent(code) + "/config")
       .then((data) => {
@@ -594,28 +604,33 @@ export default function AudienceSimulationOperatorPage() {
     setBusy(true);
     setError("");
     try {
-      const selection = await request<SimRun["selection"]>("/api/audience-simulations/runs/" + run.id + "/selection", {
-        method: "PATCH",
-        body: JSON.stringify({
-          selection_version: run.selection.version,
-          size: safeSize,
-          include_groups: selectedGroups,
-          constraints: constraints.trim() || null,
-        }),
-      }, runToken);
-      const response = await request<{ status: string }>(
-        "/api/audience-simulations/runs/" + run.id + "/start?selection_version=" + selection.version,
-        { method: "POST" },
-        runToken,
-      );
       if (selectedScenarioId) {
-        const completed = await request<SimRun>("/api/audience-simulations/runs/" + run.id, {}, runToken);
+        const completed = await request<SimRun>(
+          "/api/audience-simulations/runs/" + run.id + "/start?selection_version=" + run.selection.version,
+          { method: "POST" },
+          runToken,
+        );
         setRun(completed);
         setDemoProgress(0);
+        lastAutoStatusRef.current = completed.status;
       } else {
+        const selection = await request<SimRun["selection"]>("/api/audience-simulations/runs/" + run.id + "/selection", {
+          method: "PATCH",
+          body: JSON.stringify({
+            selection_version: run.selection.version,
+            size: safeSize,
+            include_groups: selectedGroups,
+            constraints: constraints.trim() || null,
+          }),
+        }, runToken);
+        const response = await request<{ status: string }>(
+          "/api/audience-simulations/runs/" + run.id + "/start?selection_version=" + selection.version,
+          { method: "POST" },
+          runToken,
+        );
         setRun({ ...run, selection, status: response.status });
+        lastAutoStatusRef.current = response.status;
       }
-      lastAutoStatusRef.current = response.status;
       setAudienceSize(safeSize);
       setActiveSlide(5);
     } catch (reason) {
@@ -859,7 +874,7 @@ export default function AudienceSimulationOperatorPage() {
         )}
 
         {config && <div className="audience-slides">
-          <section className={"audience-slide hero-slide" + (activeSlide === 0 ? " is-active" : "")} aria-hidden={activeSlide !== 0}>
+          <section className={"audience-slide hero-slide" + (activeSlide === 0 ? " is-active" : "")} inert={activeSlide !== 0}>
             <div className="hero-art-frame" aria-hidden="true">
               <Image
                 src="/images/audience-simulation/hero-scene.png"
@@ -879,7 +894,7 @@ export default function AudienceSimulationOperatorPage() {
             <button type="button" className="slide-hit-target" onClick={() => goToSlide(1)} aria-label="Начать проверку идеи" />
           </section>
 
-          <section className={"audience-slide idea-slide" + (activeSlide === 1 ? " is-active" : "")} aria-hidden={activeSlide !== 1}>
+          <section className={"audience-slide idea-slide" + (activeSlide === 1 ? " is-active" : "")} inert={activeSlide !== 1}>
             <p className="audience-eyebrow">01 / Начало проверки</p>
             <h2 className="audience-title">Что<br />проверяем?</h2>
             {ideaMode === "choose" && <div className="idea-mode-picker">
@@ -926,7 +941,7 @@ export default function AudienceSimulationOperatorPage() {
             </>}
           </section>
 
-          <section className={"audience-slide sources-slide" + (activeSlide === 2 ? " is-active" : "")} aria-hidden={activeSlide !== 2}>
+          <section className={"audience-slide sources-slide" + (activeSlide === 2 ? " is-active" : "")} inert={activeSlide !== 2}>
             <p className="audience-eyebrow">02 / Открытые источники</p>
             <h2 className="audience-title">Сначала слушаем<br /><span className="audience-shine">рынок</span></h2>
             <p className="audience-lead">Ищем, кто и как уже говорит об этой проблеме.</p>
@@ -999,7 +1014,7 @@ export default function AudienceSimulationOperatorPage() {
             <p className="source-foot">{demoSearchStats ? "Счётчики объёма и выводов заданы для демо-сценария; ниже показаны ссылки из реальной аналитической подборки." : "Найденные упоминания связываем с источниками и повторяющимися темами."}</p>
           </section>
 
-          <section className={"audience-slide audience-build-slide" + (activeSlide === 3 ? " is-active" : "")} aria-hidden={activeSlide !== 3}>
+          <section className={"audience-slide audience-build-slide" + (activeSlide === 3 ? " is-active" : "")} inert={activeSlide !== 3}>
             <p className="audience-eyebrow">03 / Формируем аудиторию</p>
             <h2 className="audience-title">Персоны<br /><span className="audience-shine">под вашу идею</span></h2>
             <p className="audience-lead">Подбираем персоны из каталога и отбираем тех, кому может быть близка проблема.</p>
@@ -1021,7 +1036,7 @@ export default function AudienceSimulationOperatorPage() {
             </div>
           </section>
 
-          <section className={"audience-slide preview-slide" + (activeSlide === 4 ? " is-active" : "")} aria-hidden={activeSlide !== 4}>
+          <section className={"audience-slide preview-slide" + (activeSlide === 4 ? " is-active" : "")} inert={activeSlide !== 4}>
             <p className="audience-eyebrow">04 / Предпросмотр аудитории</p>
             <h2 className="audience-title">Кто будет<br />отвечать</h2>
             <div className="candidate-label"><span>Состав аудитории</span><span>{chosenCount || personas.length} персон · {selectedGroups.length} групп</span></div>
@@ -1032,8 +1047,8 @@ export default function AudienceSimulationOperatorPage() {
               <span>Цена<b>{price.trim() || "не задана"}</b></span>
             </div>
             <p className="audience-helper">Синтетические профили по сигналам. <button type="button" className="audience-edit-link" onClick={() => setShowAudienceControls((value) => !value)} aria-expanded={showAudienceControls}>Настроить состав</button></p>
-            <div className={"audience-editor" + (showAudienceControls ? " is-open" : "")} aria-hidden={!showAudienceControls}>
-              <div className="editor-heading"><strong>Состав аудитории</strong><button type="button" onClick={() => setShowAudienceControls(false)}>Готово</button></div>
+            <div className={"audience-editor" + (showAudienceControls ? " is-open" : "")} inert={!showAudienceControls}>
+              <div className="editor-heading"><strong>Состав аудитории</strong><button type="button" onClick={(event) => { event.currentTarget.blur(); setShowAudienceControls(false); }}>Готово</button></div>
               <div className="group-picker">
               {groups.map((group, index) => {
                 const count = personas.filter((person) => person.group === group).length;
@@ -1072,7 +1087,7 @@ export default function AudienceSimulationOperatorPage() {
             </button>
           </section>
 
-          <section className={"audience-slide interview-slide" + (activeSlide === 5 ? " is-active" : "")} aria-hidden={activeSlide !== 5}>
+          <section className={"audience-slide interview-slide" + (activeSlide === 5 ? " is-active" : "")} inert={activeSlide !== 5}>
             <p className="audience-eyebrow">05 / Синтетическое исследование</p>
             <h2 className="audience-title">Идея проходит<br />через общество</h2>
             <p className="audience-lead">Каждая персона оценивает идею отдельно с учётом своего профиля.</p>
@@ -1086,7 +1101,7 @@ export default function AudienceSimulationOperatorPage() {
             <p className="audience-helper center">Синтетические ответы появляются по одному. Это не прогноз продаж.</p>
           </section>
 
-          <section className={"audience-slide reaction-slide" + (activeSlide === 6 ? " is-active" : "")} aria-hidden={activeSlide !== 6}>
+          <section className={"audience-slide reaction-slide" + (activeSlide === 6 ? " is-active" : "")} inert={activeSlide !== 6}>
             <p className="audience-eyebrow">06 / Карта реакции</p>
             <h2 className="audience-title">Реакция<br /><span className="audience-shine">разделилась</span></h2>
             <p className="audience-lead">Каждая точка — персона: проблема по вертикали, готовность попробовать по горизонтали.</p>
@@ -1108,7 +1123,7 @@ export default function AudienceSimulationOperatorPage() {
             </button>
           </section>
 
-          <section className={"audience-slide insights-slide" + (activeSlide === 7 ? " is-active" : "")} aria-hidden={activeSlide !== 7}>
+          <section className={"audience-slide insights-slide" + (activeSlide === 7 ? " is-active" : "")} inert={activeSlide !== 7}>
             <p className="audience-eyebrow">07 / Выводы</p>
             <h2 className="audience-title">Что говорит<br /><span className="audience-shine">аудитория</span></h2>
             <div className="primary-result">{typeof validRate === "number" ? validRate + "%" : "—"}</div>
@@ -1132,7 +1147,7 @@ export default function AudienceSimulationOperatorPage() {
             <p className="audience-disclaimer">Ответы смоделированы. Они помогают сформулировать следующие проверки, но не прогнозируют продажи.</p>
           </section>
 
-          <section className={"audience-slide result-slide" + (activeSlide === 8 ? " is-active" : "")} aria-hidden={activeSlide !== 8}>
+          <section className={"audience-slide result-slide" + (activeSlide === 8 ? " is-active" : "")} inert={activeSlide !== 8}>
             <p className="audience-eyebrow">Результат готов</p>
             <h2 className="audience-title">Продолжите<br />изучать свою<br /><span className="audience-shine">идею</span></h2>
             <p className="audience-lead">Отсканируйте код, чтобы открыть краткий итог и сохранить проверку.</p>

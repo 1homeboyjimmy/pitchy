@@ -889,7 +889,7 @@ async def start_interviews(
                    "campaign_id": run.campaign_id, "scenario_id": scenario_id, "requested_count": requested_count,
                    "completed_count": len(responses), "valid_count": len(valid_responses), "excluded_count": len(responses) - len(valid_responses), "model_calls": 0},
         )
-        return {"run_id": run.id, "status": run.status, "aggregate": run.aggregate, "summary": run.summary, "responses": run.responses}
+        return _serialize(run)
     run.status = "interviewing"
     requested_count = len(selection.get("members") or [])
     _event(run, "interviews_started", {"count": requested_count})

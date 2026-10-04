@@ -68,6 +68,7 @@
   padding: 13% 7% 12%;
 }
 .audience-slide.is-active { display: flex; animation: audience-arrive .45s ease both; }
+.audience-slide:focus { outline: none; }
 
 .audience-eyebrow {
   flex: 0 0 auto;
