@@ -311,6 +311,18 @@ async def create_run(
     db.add(run)
     await db.commit()
     await db.refresh(run)
+    logger.info(
+        "audience_run_created",
+        extra={
+            "event": "audience_run_created",
+            "stage": "run_creation",
+            "run_id": run.id,
+            "campaign_id": campaign.id,
+            "user_id": operator.id,
+            "requested_count": 100,
+            "model": SEARCH_MODEL,
+        },
+    )
     background_tasks.add_task(_prepare_run, run.id)
     return {"run_id": run.id, "access_token": raw_token, "status": run.status}
 
@@ -405,6 +417,8 @@ async def update_selection(
             f"Условия пользователя: {payload.constraints}\n"
             f"Разрешённые группы: {sorted(group for group in allowed if group)}\n"
             f"Нужно профилей: {payload.size}\nКандидаты каталога: {candidates}",
+            operation="constrained_persona_selection",
+            run_id=run.id,
         )
         available_by_id = {str(item.get("id")): item for item in candidates}
         selected_ids = revised.get("selected_ids", []) if isinstance(revised, dict) else []
@@ -450,8 +464,21 @@ async def start_interviews(
     if run.status != "awaiting_audience_confirmation" or selection_version != selection.get("version"):
         raise HTTPException(status_code=409, detail="Подтвердите актуальный состав аудитории")
     run.status = "interviewing"
-    _event(run, "interviews_started", {"count": len(selection.get("members") or [])})
+    requested_count = len(selection.get("members") or [])
+    _event(run, "interviews_started", {"count": requested_count})
     await db.commit()
+    logger.info(
+        "audience_interviews_started",
+        extra={
+            "event": "audience_interviews_started",
+            "stage": "interview",
+            "run_id": run.id,
+            "campaign_id": run.campaign_id,
+            "model": PERSONA_MODEL,
+            "requested_count": requested_count,
+            "completed_count": len(run.responses or []),
+        },
+    )
     background_tasks.add_task(_interview_run, run.id)
     return {"run_id": run.id, "status": run.status}
 
@@ -773,6 +800,11 @@ async def issue_reward(
 
 
 async def _prepare_run(run_id: int) -> None:
+    started_at = datetime.utcnow()
+    logger.info(
+        "audience_preparation_started",
+        extra={"event": "audience_preparation_started", "stage": "preparation", "run_id": run_id},
+    )
     try:
         async with AsyncSessionLocal() as db:
             run = await db.get(AudienceSimulationRun, run_id)
@@ -813,7 +845,31 @@ async def _prepare_run(run_id: int) -> None:
         elif snapshot["evidence"] and snapshot["input_data"].get("search_summary"):
             search = {"sources": snapshot["evidence"], "text": snapshot["input_data"]["search_summary"]}
         else:
-            search = await search_evidence(snapshot["idea"], snapshot["audience"], snapshot["price"])
+            logger.info(
+                "audience_search_started",
+                extra={
+                    "event": "audience_search_started",
+                    "stage": "search",
+                    "run_id": run_id,
+                    "model": SEARCH_MODEL,
+                    "context_size": SEARCH_CONTEXT_SIZE,
+                },
+            )
+            search = await search_evidence(
+                snapshot["idea"], snapshot["audience"], snapshot["price"], run_id=run_id,
+            )
+            logger.info(
+                "audience_search_stage_completed",
+                extra={
+                    "event": "audience_search_stage_completed",
+                    "stage": "search",
+                    "run_id": run_id,
+                    "model": search.get("model", SEARCH_MODEL),
+                    "context_size": search.get("search_context_size", SEARCH_CONTEXT_SIZE),
+                    "attempts": search.get("attempts", 0),
+                    "source_count": len(search.get("sources") or []),
+                },
+            )
             snapshot["evidence"] = search["sources"]
             snapshot["input_data"]["search_summary"] = search["text"]
             async with AsyncSessionLocal() as db:
@@ -828,6 +884,17 @@ async def _prepare_run(run_id: int) -> None:
                     run.updated_at = datetime.utcnow()
                     _event(run, "search_empty")
                     await db.commit()
+                    logger.warning(
+                        "audience_search_returned_no_sources",
+                        extra={
+                            "event": "audience_search_returned_no_sources",
+                            "stage": "search",
+                            "run_id": run_id,
+                            "model": search.get("model", SEARCH_MODEL),
+                            "attempts": search.get("attempts", 0),
+                            "failed_count": search.get("failed_queries", 0),
+                        },
+                    )
                     return
                 await db.commit()
 
@@ -844,6 +911,8 @@ async def _prepare_run(run_id: int) -> None:
             f"Группы доступных профилей из постоянного каталога: {catalog_groups}\n"
             "Выбери до 4 наиболее подходящих групп из каталога. В persona_targets указывай только точные "
             "market и profile_label из списка. Ничего не генерируй про сами профили.",
+            operation="audience_signal_extraction",
+            run_id=run_id,
         )
         if not isinstance(finding_data, dict):
             finding_data = {}
@@ -953,8 +1022,33 @@ async def _prepare_run(run_id: int) -> None:
             run.updated_at = datetime.utcnow()
             _event(run, "selection_ready", {"count": len(valid[:candidate_pool_size]), "version": 1, "dataset_id": dataset_id})
             await db.commit()
-    except Exception:
-        logger.exception("Audience simulation preparation failed (run_id=%s)", run_id)
+            logger.info(
+                "audience_preparation_completed",
+                extra={
+                    "event": "audience_preparation_completed",
+                    "stage": "preparation",
+                    "run_id": run_id,
+                    "campaign_id": run.campaign_id,
+                    "status": run.status,
+                    "requested_count": requested,
+                    "completed_count": len(valid[:candidate_pool_size]),
+                    "source_count": len(snapshot["evidence"]),
+                    "failed_count": int(search.get("failed_queries") or 0),
+                    "duration_ms": int((datetime.utcnow() - started_at).total_seconds() * 1000),
+                },
+            )
+    except Exception as exc:
+        logger.exception(
+            "audience_preparation_failed",
+            extra={
+                "event": "audience_preparation_failed",
+                "stage": "preparation",
+                "run_id": run_id,
+                "duration_ms": int((datetime.utcnow() - started_at).total_seconds() * 1000),
+                "error_type": type(exc).__name__,
+                "error_message": str(exc)[:300],
+            },
+        )
         async with AsyncSessionLocal() as db:
             run = await db.get(AudienceSimulationRun, run_id)
             if not run or run.status not in {"preparing", "interviewing"}:
@@ -982,7 +1076,14 @@ async def _ask_persona(run_snapshot: dict, persona: dict) -> dict:
         f"Ваш синтетический профиль: {persona}\nСигналы из открытых источников (это не ваш опыт): {run_snapshot.get('findings')}"
     )
     async with _interview_limit:
-        data, _ = await generate_json(system, user, max_tokens=550)
+        data, _ = await generate_json(
+            system,
+            user,
+            max_tokens=550,
+            operation="persona_interview",
+            run_id=run_snapshot.get("run_id"),
+            persona_id=str(persona.get("id")),
+        )
     data["persona_id"] = str(persona["id"])
     data["group"] = persona["group"]
     return data
@@ -1004,21 +1105,92 @@ def _valid_response(item: dict, persona_id: str, price_was_provided: bool) -> bo
 
 
 async def _interview_run(run_id: int) -> None:
+    try:
+        await _interview_run_impl(run_id)
+    except asyncio.CancelledError:
+        logger.warning(
+            "audience_interview_worker_cancelled",
+            extra={"event": "audience_interview_worker_cancelled", "stage": "interview", "run_id": run_id},
+        )
+        raise
+    except Exception as exc:
+        logger.exception(
+            "audience_interview_worker_failed",
+            extra={
+                "event": "audience_interview_worker_failed",
+                "stage": "interview",
+                "run_id": run_id,
+                "error_type": type(exc).__name__,
+                "error_message": str(exc)[:300],
+            },
+        )
+        raise
+
+
+async def _interview_run_impl(run_id: int) -> None:
+    started_at = datetime.utcnow()
     async with AsyncSessionLocal() as db:
         run = await db.get(AudienceSimulationRun, run_id)
         if not run or run.status != "interviewing":
+            logger.warning(
+                "audience_interview_skipped",
+                extra={
+                    "event": "audience_interview_skipped",
+                    "stage": "interview",
+                    "run_id": run_id,
+                    "validation_reason": "run_missing_or_not_interviewing",
+                },
+            )
             return
-        snapshot = {"idea": run.idea, "price": run.price, "findings": run.findings, "price_was_provided": bool((run.input_data or {}).get("price_was_provided"))}
+        snapshot = {"idea": run.idea, "price": run.price, "findings": run.findings, "price_was_provided": bool((run.input_data or {}).get("price_was_provided")), "run_id": run.id}
         members = list((run.selection or {}).get("members") or [])
         answered_ids = {str(item.get("persona_id")) for item in (run.responses or [])}
     pending_members = [persona for persona in members if str(persona.get("id")) not in answered_ids]
+    logger.info(
+        "audience_interview_batch_started",
+        extra={
+            "event": "audience_interview_batch_started",
+            "stage": "interview",
+            "run_id": run_id,
+            "model": PERSONA_MODEL,
+            "requested_count": len(members),
+            "completed_count": len(answered_ids),
+            "attempts": len(pending_members),
+        },
+    )
+
     async def work(persona: dict):
         try:
             result = await _ask_persona(snapshot, persona)
             if not _valid_response(result, str(persona["id"]), snapshot["price_was_provided"]):
+                logger.warning(
+                    "audience_persona_response_rejected",
+                    extra={
+                        "event": "audience_persona_response_rejected",
+                        "stage": "interview",
+                        "run_id": run_id,
+                        "persona_id": str(persona.get("id")),
+                        "model": PERSONA_MODEL,
+                        "validation_reason": "response_failed_schema_validation",
+                    },
+                )
                 return persona, None
             return persona, result
-        except Exception:
+        except Exception as exc:
+            logger.exception(
+                "audience_persona_response_failed",
+                extra={
+                    "event": "audience_persona_response_failed",
+                    "stage": "interview",
+                    "run_id": run_id,
+                    "persona_id": str(persona.get("id")),
+                    "model": PERSONA_MODEL,
+                    "error_type": type(exc).__name__,
+                    "error_message": str(exc)[:300],
+                    "provider_status_code": getattr(exc, "status_code", None),
+                    "provider_request_id": getattr(exc, "request_id", None),
+                },
+            )
             return persona, None
     tasks = [asyncio.create_task(work(persona)) for persona in pending_members]
     # Responses are written one at a time as tasks finish. This makes the
@@ -1042,6 +1214,18 @@ async def _interview_run(run_id: int) -> None:
             progress_run.updated_at = datetime.utcnow()
             _event(progress_run, "persona_answered", {"persona_id": persona["id"], "valid_responses": len(responses), "requested_responses": len(members)})
             await progress_db.commit()
+            logger.info(
+                "audience_persona_response_saved",
+                extra={
+                    "event": "audience_persona_response_saved",
+                    "stage": "interview",
+                    "run_id": run_id,
+                    "persona_id": str(persona["id"]),
+                    "model": PERSONA_MODEL,
+                    "completed_count": len(responses),
+                    "requested_count": len(members),
+                },
+            )
     async with AsyncSessionLocal() as db:
         run = await db.get(AudienceSimulationRun, run_id)
         if not run or run.status != "interviewing":
@@ -1072,12 +1256,29 @@ async def _interview_run(run_id: int) -> None:
         run.updated_at = datetime.utcnow()
         _event(run, "result_ready", {"valid_responses": denominator, "requested_responses": len(members)})
         await db.commit()
+        logger.info(
+            "audience_interviews_completed",
+            extra={
+                "event": "audience_interviews_completed",
+                "stage": "aggregation",
+                "run_id": run_id,
+                "campaign_id": run.campaign_id,
+                "model": PERSONA_MODEL,
+                "status": run.status,
+                "requested_count": len(members),
+                "completed_count": denominator,
+                "failed_count": max(0, len(members) - denominator),
+                "duration_ms": int((datetime.utcnow() - started_at).total_seconds() * 1000),
+            },
+        )
         try:
             summary, _ = await generate_json(
                 "Сделай краткие выводы только по переданным агрегатам и частым мотиваторам/барьерам. "
                 "Не утверждай статистическую точность или прогноз продаж. JSON: headline, observations (массив), next_checks (массив).",
                 f"Агрегаты: {run.aggregate}\nОтветы: {valid}",
                 max_tokens=700,
+                operation="result_summary",
+                run_id=run_id,
             )
             run = await db.get(AudienceSimulationRun, run_id)
             if run:
@@ -1086,7 +1287,16 @@ async def _interview_run(run_id: int) -> None:
                 await db.commit()
         except Exception:
             # The calculated result remains available if narrative generation fails.
-            pass
+            logger.exception(
+                "audience_result_summary_failed",
+                extra={
+                    "event": "audience_result_summary_failed",
+                    "stage": "summary",
+                    "run_id": run_id,
+                    "model": PERSONA_MODEL,
+                    "error_type": "summary_generation_failed",
+                },
+            )
 
 
 async def resume_pending_runs() -> None:
@@ -1095,10 +1305,30 @@ async def resume_pending_runs() -> None:
         run_ids = (await db.execute(select(AudienceSimulationRun.id).where(
             AudienceSimulationRun.status.in_(["preparing", "interviewing"]),
         ))).scalars().all()
+    if run_ids:
+        logger.warning(
+            "audience_runs_resuming_after_restart",
+            extra={
+                "event": "audience_runs_resuming_after_restart",
+                "stage": "recovery",
+                "requested_count": len(run_ids),
+            },
+        )
     for run_id in run_ids:
         async with AsyncSessionLocal() as db:
             run = await db.get(AudienceSimulationRun, run_id)
             if not run:
                 continue
             worker = _prepare_run if run.status == "preparing" else _interview_run
+            logger.info(
+                "audience_run_resume_scheduled",
+                extra={
+                    "event": "audience_run_resume_scheduled",
+                    "stage": "recovery",
+                    "run_id": run_id,
+                    "validation_reason": run.status,
+                    "completed_count": len(run.responses or []),
+                    "requested_count": len((run.selection or {}).get("members") or []),
+                },
+            )
         asyncio.create_task(worker(run_id))
