@@ -1,6 +1,6 @@
 """Add the persistent persona catalog for audience simulations.
 
-Revision ID: 20261004_audience_persona_catalog
+Revision ID: 20261004_personas
 Revises: e81a2b3c4d5e
 """
 
@@ -8,7 +8,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "20261004_audience_persona_catalog"
+revision = "20261004_personas"
 down_revision = "e81a2b3c4d5e"
 branch_labels = None
 depends_on = None
