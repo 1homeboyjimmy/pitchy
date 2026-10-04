@@ -271,7 +271,8 @@ class PrebuiltRunCreate(BaseModel):
 
 class SelectionUpdate(BaseModel):
     selection_version: int = Field(ge=1)
-    size: int = Field(ge=5, le=100)
+    # Prebuilt exhibition panels intentionally vary from 100 to 156 personas.
+    size: int = Field(ge=5, le=156)
     include_groups: list[str] = Field(default_factory=list, max_length=12)
     constraints: str | None = Field(default=None, max_length=1200)
 
