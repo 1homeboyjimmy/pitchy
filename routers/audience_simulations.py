@@ -34,6 +34,11 @@ from audience_simulation_service import (
     select_balanced_panel_members,
     select_balanced_personas,
 )
+from audience_demo_scenarios import (
+    aggregate_prebuilt_responses,
+    build_prebuilt_responses,
+    get_prebuilt_scenario,
+)
 from auth import get_async_current_user, require_async_admin
 from db_async import AsyncSessionLocal, get_async_db
 from models import (
@@ -259,6 +264,10 @@ class RunCreate(BaseModel):
     price: str | None = Field(default=None, max_length=300)
 
 
+class PrebuiltRunCreate(BaseModel):
+    scenario_id: str = Field(min_length=1, max_length=80)
+
+
 class SelectionUpdate(BaseModel):
     selection_version: int = Field(ge=1)
     size: int = Field(ge=5, le=100)
@@ -349,6 +358,7 @@ def _serialize(run: AudienceSimulationRun) -> dict:
         "idea": run.idea,
         "audience": run.audience,
         "price": run.price,
+        "scenario_id": (run.input_data or {}).get("prebuilt_scenario_id"),
         "evidence": run.evidence or [],
         "findings": run.findings or [],
         "selection": run.selection or {},
@@ -522,6 +532,123 @@ async def create_run(
     return {"run_id": run.id, "access_token": raw_token, "status": run.status}
 
 
+@router.post("/campaigns/{code}/prebuilt-runs", status_code=201)
+async def create_prebuilt_run(
+    code: str,
+    payload: PrebuiltRunCreate,
+    operator: User = Depends(require_async_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Start a curated scenario from the existing persona catalog without model calls."""
+    campaign = await _get_campaign(db, code)
+    scenario = get_prebuilt_scenario(payload.scenario_id)
+    if not scenario:
+        raise HTTPException(status_code=404, detail="Готовый сценарий не найден")
+
+    seed_info = await ensure_persona_catalog_seeded()
+    dataset_id = str(seed_info["dataset_id"])
+    catalog_rows = (await db.execute(
+        select(AudienceSimulationPersona).where(
+            AudienceSimulationPersona.dataset_id == dataset_id,
+            AudienceSimulationPersona.market == "consumer",
+            AudienceSimulationPersona.profile_label.in_(scenario["groups"]),
+        ).order_by(AudienceSimulationPersona.persona_id)
+    )).scalars().all()
+    catalog_personas = [{
+        "dataset_id": item.dataset_id,
+        "persona_id": item.persona_id,
+        "market": item.market,
+        "profile_label": item.profile_label,
+        "profile_data": item.profile_data,
+    } for item in catalog_rows]
+    selection_seed = f"pitchy-prebuilt-v1:{code}:{payload.scenario_id}"
+    selected = select_balanced_personas(
+        catalog_personas,
+        [{"market": "consumer", "profile_label": group} for group in scenario["groups"]],
+        seed=selection_seed,
+        size=100,
+    )
+    if len(selected) < 100:
+        raise HTTPException(status_code=503, detail="В каталоге недостаточно профилей для готового сценария")
+
+    members = [{
+        "id": str(item["persona_id"]),
+        "source_persona_id": str(item["persona_id"]),
+        "dataset_id": dataset_id,
+        "market": str(item["market"]),
+        "group": str(item["profile_label"]),
+        "profile": persona_display_text(item["profile_data"]),
+        "traits": item["profile_data"],
+        "selection_reason": f"Профиль из каталога {dataset_id}; сегмент выбран для сценария «{scenario['title']}».",
+    } for item in selected]
+    evidence = [{
+        "id": source_id,
+        "url": url,
+        "domain": domain,
+        "title": title,
+        "fetch_status": "referenced",
+    } for source_id, domain, title, url in scenario["sources"]]
+    findings = [{
+        "text": text,
+        "source_ids": source_ids,
+        "claim_type": "sourced_paraphrase",
+        "limitation": "Факт взят из приложенного аналитического обзора; он описывает указанный источник и не является оценкой спроса на весь продукт.",
+    } for text, source_ids in scenario["findings"]]
+
+    raw_token = secrets.token_urlsafe(32)
+    run = AudienceSimulationRun(
+        campaign_id=campaign.id,
+        owner_user_id=None,
+        access_token_hash=_token_hash(raw_token),
+        status="awaiting_audience_confirmation",
+        idea=scenario["idea"],
+        audience=scenario["audience"],
+        price=None,
+        input_data={
+            "operator_id": operator.id,
+            "prebuilt_scenario_id": payload.scenario_id,
+            "price_was_provided": False,
+        },
+        evidence=evidence,
+        findings=findings,
+        selection={
+            "version": 1,
+            "members": members,
+            "groups": [{"name": label, "basis": f"Целевая группа готового сценария «{scenario['title']}».", "source_ids": []} for label in scenario["groups"]],
+            "persona_groups": [{"market": "consumer", "profile_label": label} for label in scenario["groups"]],
+            "target_market": "consumer",
+            "dataset_id": dataset_id,
+            "selection_seed": selection_seed,
+            "selection_method": "curated_scenario_balanced_catalog_v1",
+            "uncertainty": ["Состав отобран из синтетического каталога, он не является случайной выборкой населения России."],
+            "requested_size": 100,
+            "candidate_pool_size": 100,
+        },
+        responses=[],
+        events=[],
+        config_snapshot={
+            "mode": "prebuilt_scenario_v1",
+            "persona_dataset_id": dataset_id,
+            "persona_selection_seed": selection_seed,
+            "audience_size": 100,
+            "interview_version": "curated_rules_v1",
+        },
+    )
+    _event(run, "run_created", {"mode": "prebuilt_scenario", "scenario_id": payload.scenario_id})
+    _event(run, "research_bundle_loaded", {"source_count": len(evidence), "finding_count": len(findings)})
+    _event(run, "selection_ready", {"count": len(members), "version": 1, "dataset_id": dataset_id, "target_market": "consumer"})
+    db.add(run)
+    await db.commit()
+    await db.refresh(run)
+    logger.info(
+        "audience_prebuilt_scenario_created",
+        extra={"event": "audience_prebuilt_scenario_created", "stage": "preparation", "run_id": run.id,
+               "campaign_id": campaign.id, "user_id": operator.id, "scenario_id": payload.scenario_id,
+               "persona_count": len(members), "source_count": len(evidence), "model_calls": 0},
+    )
+    return {"run_id": run.id, "access_token": raw_token, "status": run.status, "scenario_id": payload.scenario_id}
+
+
 @router.get("/runs/{run_id}")
 async def get_run(
     run_id: int,
@@ -604,6 +731,9 @@ async def update_selection(
     if payload.size > len(members):
         raise HTTPException(status_code=422, detail=f"Доступно только {len(members)} проверенных профилей")
     allowed = set(payload.include_groups) if payload.include_groups else {p.get("group") for p in members}
+    is_prebuilt = bool((run.input_data or {}).get("prebuilt_scenario_id"))
+    if is_prebuilt and payload.constraints and payload.constraints.strip():
+        raise HTTPException(status_code=422, detail="Для готового сценария нельзя менять условия отбора через модель")
     if payload.constraints:
         candidates = [item for item in members if item.get("group") in allowed]
         revised, _ = await generate_json(
@@ -658,6 +788,28 @@ async def start_interviews(
     selection = run.selection or {}
     if run.status != "awaiting_audience_confirmation" or selection_version != selection.get("version"):
         raise HTTPException(status_code=409, detail="Подтвердите актуальный состав аудитории")
+    scenario_id = str((run.input_data or {}).get("prebuilt_scenario_id") or "")
+    scenario = get_prebuilt_scenario(scenario_id) if scenario_id else None
+    if scenario:
+        members = list(selection.get("members") or [])
+        responses = build_prebuilt_responses(scenario_id, members)
+        requested_count = len(members)
+        run.responses = responses
+        run.aggregate = aggregate_prebuilt_responses(responses, requested_count)
+        run.summary = {"headline": scenario["title"], "observations": scenario["observations"], "next_checks": scenario["next_checks"]}
+        run.status = "completed" if len(responses) >= 5 else "partial"
+        run.updated_at = datetime.utcnow()
+        run.revision += 1
+        _event(run, "prebuilt_responses_ready", {"scenario_id": scenario_id, "completed_count": len(responses), "requested_count": requested_count, "model_calls": 0})
+        _event(run, "result_ready", {"valid_responses": len(responses), "requested_responses": requested_count})
+        await db.commit()
+        logger.info(
+            "audience_prebuilt_scenario_completed",
+            extra={"event": "audience_prebuilt_scenario_completed", "stage": "aggregation", "run_id": run.id,
+                   "campaign_id": run.campaign_id, "scenario_id": scenario_id, "requested_count": requested_count,
+                   "completed_count": len(responses), "model_calls": 0},
+        )
+        return {"run_id": run.id, "status": run.status, "aggregate": run.aggregate, "summary": run.summary, "responses": run.responses}
     run.status = "interviewing"
     requested_count = len(selection.get("members") or [])
     _event(run, "interviews_started", {"count": requested_count})

@@ -35,6 +35,13 @@ type ResponsePoint = {
   willingness_to_try?: number | null;
   reaction?: string;
 };
+
+const prebuiltScenarios = [
+  { id: "calorie-photo", title: "ИИ-трекер калорий", note: "Фото блюда → состав, порция и калорийность" },
+  { id: "english-coach", title: "Тренер разговорного английского", note: "Практика под работу, учёбу и поездки" },
+  { id: "family-budget", title: "Помощник по личному бюджету", note: "План расходов до следующего дохода" },
+  { id: "weekend-trip", title: "Планировщик поездки", note: "Маршрут выходного дня под ваши условия" },
+];
 type SimRun = {
   id: number;
   status: string;
@@ -42,6 +49,7 @@ type SimRun = {
   idea: string;
   audience: string | null;
   price: string | null;
+  scenario_id?: string | null;
   evidence: Evidence[];
   findings: Finding[];
   selection: {
@@ -362,6 +370,9 @@ export default function AudienceSimulationOperatorPage() {
   const [activeSlide, setActiveSlide] = useState(0);
   const [showAudienceField, setShowAudienceField] = useState(false);
   const [showPriceField, setShowPriceField] = useState(false);
+  const [ideaMode, setIdeaMode] = useState<"choose" | "custom" | "prebuilt">("choose");
+  const [selectedScenarioId, setSelectedScenarioId] = useState("");
+  const [demoProgress, setDemoProgress] = useState(0);
   const lastAutoStatusRef = useRef("");
 
   const request = useCallback(async <T,>(path: string, init: RequestInit = {}, token?: string): Promise<T> => {
@@ -391,6 +402,7 @@ export default function AudienceSimulationOperatorPage() {
               if (!active) return;
               setRun(savedRun);
               setRunToken(session.token);
+              setSelectedScenarioId(savedRun.scenario_id || "");
               lastAutoStatusRef.current = savedRun.status;
               const allGroups = Array.from(new Set((savedRun.selection.members || []).map((person) => person.group)));
               setSelectedGroups(allGroups);
@@ -480,6 +492,31 @@ export default function AudienceSimulationOperatorPage() {
     }
   };
 
+  const startPrebuilt = async () => {
+    if (!selectedScenarioId) return;
+    setBusy(true);
+    setError("");
+    try {
+      const created = await request<{ run_id: number; access_token: string }>(
+        "/api/audience-simulations/campaigns/" + encodeURIComponent(code) + "/prebuilt-runs",
+        { method: "POST", body: JSON.stringify({ scenario_id: selectedScenarioId }) },
+      );
+      sessionStorage.setItem("audience-simulation:" + code, JSON.stringify({ runId: created.run_id, token: created.access_token }));
+      const ready = await request<SimRun>("/api/audience-simulations/runs/" + created.run_id, {}, created.access_token);
+      setRun(ready);
+      setRunToken(created.access_token);
+      setSelectedGroups(Array.from(new Set((ready.selection.members || []).map((person) => person.group))));
+      setAudienceSize(100);
+      setIdea(ready.idea);
+      setAudience(ready.audience || "");
+      setActiveSlide(2);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Не удалось открыть готовый сценарий");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const confirmAudience = async () => {
     if (!run) return;
     const included = personas.filter((person) => selectedGroups.includes(person.group));
@@ -505,7 +542,13 @@ export default function AudienceSimulationOperatorPage() {
         { method: "POST" },
         runToken,
       );
-      setRun({ ...run, selection, status: response.status });
+      if (selectedScenarioId) {
+        const completed = await request<SimRun>("/api/audience-simulations/runs/" + run.id, {}, runToken);
+        setRun(completed);
+        setDemoProgress(0);
+      } else {
+        setRun({ ...run, selection, status: response.status });
+      }
       lastAutoStatusRef.current = response.status;
       setAudienceSize(safeSize);
       setActiveSlide(5);
@@ -596,10 +639,15 @@ export default function AudienceSimulationOperatorPage() {
     setAudienceSize(100);
     setError("");
     setActiveSlide(0);
+    setIdeaMode("choose");
+    setSelectedScenarioId("");
+    setDemoProgress(0);
   };
 
   const personas = useMemo(() => run?.selection.members || [], [run?.selection.members]);
-  const progress = run?.aggregate?.valid_responses ?? run?.responses.length ?? 0;
+  const progress = selectedScenarioId && activeSlide === 5 && run?.status === "completed"
+    ? demoProgress
+    : run?.aggregate?.valid_responses ?? run?.responses.length ?? 0;
   const groups = useMemo(() => Array.from(new Set(personas.map((persona) => persona.group))), [personas]);
   const chosenCount = personas.filter((person) => selectedGroups.includes(person.group)).length;
   const isFinished = Boolean(run && ["completed", "partial"].includes(run.status));
@@ -616,6 +664,7 @@ export default function AudienceSimulationOperatorPage() {
   const interestRate = run?.aggregate?.percent_at_least_7?.interest;
   const tryRate = run?.aggregate?.percent_at_least_7?.willingness_to_try;
   const activeResponse = run?.responses.find((response) => response.persona_id === selectedResponseId) || run?.responses[0];
+  const activePersona = activeResponse ? personas.find((persona) => persona.id === activeResponse.persona_id) : undefined;
   const plottedResponseCount = run?.responses.filter((response) => typeof response.interest === "number" && typeof response.problem_relevance === "number").length || 0;
   const selectedMarkets = new Set((run?.selection.members || []).map((person) => person.market).filter(Boolean));
   const consumerIdeaWithBusinessPanel = Boolean(run && /калор|питан|похуд|рацион|фитнес|трениров|сон|здоров/i.test(run.idea) && selectedMarkets.has("business") && !selectedMarkets.has("consumer"));
@@ -638,6 +687,23 @@ export default function AudienceSimulationOperatorPage() {
   useEffect(() => {
     if (activeSlide === 8 && isFinished && !claimToken && !busy) void makeClaimLink();
   }, [activeSlide, busy, claimToken, isFinished, makeClaimLink]);
+
+  useEffect(() => {
+    if (activeSlide !== 5 || !isFinished || !selectedScenarioId) return;
+    setDemoProgress(0);
+    const total = run?.responses.length || 100;
+    const timer = window.setInterval(() => {
+      setDemoProgress((current) => {
+        const next = Math.min(total, current + 3);
+        if (next >= total) {
+          window.clearInterval(timer);
+          window.setTimeout(() => setActiveSlide(6), 450);
+        }
+        return next;
+      });
+    }, 90);
+    return () => window.clearInterval(timer);
+  }, [activeSlide, isFinished, run?.responses.length, selectedScenarioId]);
 
   const openedSourceCount = run?.evidence.filter((source) => source.fetch_status === "opened").length || 0;
   const sourceCategories = [
@@ -691,6 +757,23 @@ export default function AudienceSimulationOperatorPage() {
           <section className={"audience-slide idea-slide" + (activeSlide === 1 ? " is-active" : "")} aria-hidden={activeSlide !== 1}>
             <p className="audience-eyebrow">01 / Начало проверки</p>
             <h2 className="audience-title">Что<br />проверяем?</h2>
+            {ideaMode === "choose" && <div className="idea-mode-picker">
+              <button type="button" className="idea-mode-card" onClick={() => setIdeaMode("custom")}><strong>Своя идея</strong><span>Запустить поиск и текущую проверку</span><ArrowRight size={16} /></button>
+              <button type="button" className="idea-mode-card" onClick={() => setIdeaMode("prebuilt")}><strong>Готовая идея</strong><span>Выбрать исследованный сценарий</span><ArrowRight size={16} /></button>
+            </div>}
+            {ideaMode === "prebuilt" && <div className="prebuilt-picker">
+              <button type="button" className="text-action prebuilt-back" onClick={() => { setIdeaMode("choose"); setSelectedScenarioId(""); }}>← Назад</button>
+              <div className="prebuilt-list">
+                {prebuiltScenarios.map((scenario) => <button type="button" key={scenario.id} className={"prebuilt-option" + (selectedScenarioId === scenario.id ? " is-selected" : "")} onClick={() => setSelectedScenarioId(scenario.id)} aria-pressed={selectedScenarioId === scenario.id}>
+                  <strong>{scenario.title}</strong><span>{scenario.note}</span>
+                </button>)}
+              </div>
+              {selectedScenarioId && <button type="button" disabled={busy} onClick={() => void startPrebuilt()} className="audience-cta preset-cta">
+                {busy ? <Loader size={14} className="audience-spin" /> : <Search size={14} />}{busy ? "Загружаем сценарий" : "Запустить готовую проверку"}{!busy && <ArrowRight size={14} />}
+              </button>}
+            </div>}
+            {ideaMode === "custom" && <>
+            <button type="button" className="text-action custom-back" onClick={() => setIdeaMode("choose")}>← Выбрать готовую идею</button>
             <label className="idea-box">
               <span className="sr-only">Опишите идею продукта или услуги</span>
               <textarea value={idea} onChange={(event) => setIdea(event.target.value)} rows={4} maxLength={6000} placeholder="Опишите идею продукта или услуги..." />
@@ -715,6 +798,7 @@ export default function AudienceSimulationOperatorPage() {
                 {!busy && <ArrowRight size={14} />}
               </button>
             </div>
+            </>}
           </section>
 
           <section className={"audience-slide sources-slide" + (activeSlide === 2 ? " is-active" : "")} aria-hidden={activeSlide !== 2}>
@@ -723,8 +807,8 @@ export default function AudienceSimulationOperatorPage() {
             <p className="audience-lead">Ищем, кто и как уже говорит об этой проблеме.</p>
             <div className="source-stats">
               <div className="audience-card"><strong>{run?.evidence.length || 0}</strong><span>ссылок найдено</span></div>
-              <div className="audience-card"><strong>{openedSourceCount}</strong><span>страниц открыто</span></div>
-              <div className="audience-card"><strong>{sourcedCount}</strong><span>сигналов подтверждено</span></div>
+              <div className="audience-card"><strong>{selectedScenarioId ? run?.evidence.length || 0 : openedSourceCount}</strong><span>{selectedScenarioId ? "источников в обзоре" : "страниц открыто"}</span></div>
+              <div className="audience-card"><strong>{sourcedCount}</strong><span>{selectedScenarioId ? "выводов со ссылками" : "сигналов подтверждено"}</span></div>
             </div>
             <div className="source-grid">
               {sourceCategories.map((category) => (
@@ -742,7 +826,7 @@ export default function AudienceSimulationOperatorPage() {
                 <div className="source-links">
                   {run.evidence.slice(0, 20).map((source) => (
                     <a key={source.id} href={source.url} target="_blank" rel="noreferrer" className="source-link">
-                      <span>{source.domain} · {source.fetch_status === "opened" ? "страница открыта" : source.fetch_status === "blocked" ? "адрес заблокирован" : source.fetch_status || "не проверена"}</span>{source.page_title || source.title || source.url}
+                      <span>{source.domain} · {source.fetch_status === "opened" ? "страница открыта" : source.fetch_status === "blocked" ? "адрес заблокирован" : source.fetch_status === "referenced" ? "источник аналитического обзора" : source.fetch_status || "не проверена"}</span>{source.page_title || source.title || source.url}
                     </a>
                   ))}
                 </div>
@@ -851,9 +935,9 @@ export default function AudienceSimulationOperatorPage() {
                     {[5, 8, 12, 25, 50, 75, 100].filter((value) => value <= chosenCount).map((value) => <option key={value} value={value}>{value} персон</option>)}
                   </select>
                 </label>
-                <label className="constraints-field">Ограничения
+                {!selectedScenarioId && <label className="constraints-field">Ограничения
                   <input value={constraints} onChange={(event) => setConstraints(event.target.value)} maxLength={1200} placeholder="Необязательно" />
-                </label>
+                </label>}
               </div>
             </div>
             <button type="button" disabled={busy || chosenCount < 5} onClick={() => void confirmAudience()} className="audience-cta preview-cta">
@@ -867,7 +951,7 @@ export default function AudienceSimulationOperatorPage() {
             <p className="audience-lead">Каждая персона отвечает с учётом своего профиля и найденных сигналов.</p>
             <div className="candidate-label"><span>{progress ? "Персоны отвечают в группах" : "Подключаем персоны"}</span><span>{progress} / {personas.length || audienceSize}</span></div>
             <div className="interview-network">
-              <PersonaNetwork members={personas} responses={[]} mode="crowd" activeIds={new Set((run?.responses || []).map((response) => response.persona_id))} />
+              <PersonaNetwork members={selectedScenarioId && activeSlide === 5 ? personas.slice(0, progress) : personas} responses={[]} mode="crowd" activeIds={new Set((run?.responses || []).slice(0, progress).map((response) => response.persona_id))} />
               <div className="idea-signal">ИДЕЯ</div>
             </div>
             <div className="people-count"><strong>{progress}</strong><span>/ {personas.length || audienceSize} ответов</span></div>
@@ -885,7 +969,7 @@ export default function AudienceSimulationOperatorPage() {
               <span className="map-axis-x">ИНТЕРЕС К РЕШЕНИЮ →</span>
             </div>
             <p className="audience-helper">На карте {plottedResponseCount} из {run?.responses.length || 0} ответов: точки с одинаковыми оценками слегка разнесены, выбранная точка показывает точные баллы.</p>
-            {activeResponse && <div className="reaction-detail"><span>{activeResponse.group || "Синтетическая персона"} · проблема {activeResponse.problem_relevance ?? "—"}/10 · интерес {activeResponse.interest ?? "—"}/10</span><p>{activeResponse.reaction || "Для этой персоны нет короткой реплики."}</p></div>}
+            {activeResponse && <div className="reaction-detail"><span>{activeResponse.group || "Синтетическая персона"}</span><small>{activePersona?.profile ? activePersona.profile.split(" · ").slice(1, 4).join(" · ") + " · " : ""}проблема {activeResponse.problem_relevance ?? "—"}/10 · интерес {activeResponse.interest ?? "—"}/10</small><p>{activeResponse.reaction || "Для этой персоны нет короткой реплики."}</p></div>}
             <div className="group-counts">
               {groups.slice(0, 4).map((group, index) => <span key={group}><b style={{ color: palette[index % palette.length] }}>{run?.responses.filter((response) => response.group === group).length || 0}</b>{group}</span>)}
               {!groups.length && <span><b>{run?.responses.length || 0}</b>ответов</span>}
