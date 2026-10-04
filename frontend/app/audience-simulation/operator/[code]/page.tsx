@@ -322,7 +322,7 @@ export default function AudienceSimulationOperatorPage() {
   const [runToken, setRunToken] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [audienceSize, setAudienceSize] = useState(12);
+  const [audienceSize, setAudienceSize] = useState(100);
   const [constraints, setConstraints] = useState("");
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [showAudienceControls, setShowAudienceControls] = useState(false);
@@ -539,7 +539,7 @@ export default function AudienceSimulationOperatorPage() {
     setAudience("");
     setPrice("");
     setConstraints("");
-    setAudienceSize(12);
+    setAudienceSize(100);
     setError("");
     setActiveSlide(0);
   };
@@ -564,7 +564,7 @@ export default function AudienceSimulationOperatorPage() {
   const activeResponse = run?.responses.find((response) => response.persona_id === selectedResponseId);
   const sourcedCount = run?.findings.filter((finding) => finding.source_ids.length > 0).length || 0;
   const searchingLabel = run?.status === "awaiting_search_fallback"
-    ? "Проверяем другие формулировки"
+    ? "Источники не найдены"
     : run?.status === "awaiting_audience_confirmation"
       ? "Источники изучены"
       : run?.status === "failed"
@@ -691,7 +691,7 @@ export default function AudienceSimulationOperatorPage() {
             ) : null}
             {run?.status === "awaiting_search_fallback" && (
               <div className="fallback-actions">
-                <p>Не нашли достаточно проверяемых ссылок. Можно продолжить без открытых сигналов или уточнить идею.</p>
+                <p>Проверили исходную и уточнённую формулировки, но не получили проверяемых ссылок. Можно продолжить без открытых сигналов или уточнить идею.</p>
                 <button type="button" className="audience-cta" disabled={busy} onClick={() => void continueWithoutSearch()}><ArrowRight size={14} /> Продолжить без источников</button>
                 <button type="button" className="text-action" disabled={busy} onClick={() => void reviseIdea()}>Изменить идею</button>
               </div>
@@ -708,7 +708,7 @@ export default function AudienceSimulationOperatorPage() {
           <section className={"audience-slide audience-build-slide" + (activeSlide === 3 ? " is-active" : "")} aria-hidden={activeSlide !== 3}>
             <p className="audience-eyebrow">03 / Формируем аудиторию</p>
             <h2 className="audience-title">Персоны<br /><span className="audience-shine">под вашу идею</span></h2>
-            <p className="audience-lead">Генерируем виртуальное общество и отбираем тех, кому может быть близка проблема.</p>
+            <p className="audience-lead">Подбираем 100 персон из каталога и отбираем тех, кому может быть близка проблема.</p>
             <div className="candidate-label"><span>{statusText[run?.status || "preparing"]}</span><span>{personas.length} профилей</span></div>
             <div className="persona-cloud">
               <PersonaNetwork members={personas} responses={[]} mode="crowd" />
@@ -763,7 +763,7 @@ export default function AudienceSimulationOperatorPage() {
               <div className="preview-controls">
                 <label>Размер панели
                   <select value={Math.min(audienceSize, Math.max(chosenCount, 5))} onChange={(event) => setAudienceSize(Number(event.target.value))}>
-                    {[5, 8, 12].filter((value) => value <= chosenCount).map((value) => <option key={value} value={value}>{value} персон</option>)}
+                    {[5, 8, 12, 25, 50, 75, 100].filter((value) => value <= chosenCount).map((value) => <option key={value} value={value}>{value} персон</option>)}
                   </select>
                 </label>
                 <label className="constraints-field">Ограничения

@@ -66,7 +66,7 @@ class RunCreate(BaseModel):
 
 class SelectionUpdate(BaseModel):
     selection_version: int = Field(ge=1)
-    size: int = Field(ge=5, le=30)
+    size: int = Field(ge=5, le=100)
     include_groups: list[str] = Field(default_factory=list, max_length=12)
     constraints: str | None = Field(default=None, max_length=1200)
 
@@ -88,8 +88,8 @@ def _utc_naive(value: datetime | None) -> datetime | None:
 
 def _validate_campaign_settings(settings: dict) -> None:
     minimum = settings.get("min_valid_responses", 8)
-    if isinstance(minimum, bool) or not isinstance(minimum, int) or not 5 <= minimum <= 12:
-        raise HTTPException(status_code=422, detail="Минимум ответов должен быть от 5 до 12")
+    if isinstance(minimum, bool) or not isinstance(minimum, int) or not 5 <= minimum <= 100:
+        raise HTTPException(status_code=422, detail="Минимум ответов должен быть от 5 до 100")
     if settings.get("competition_enabled"):
         formula = settings.get("score_formula") or {}
         if formula.get("weights") != {"problem_relevance": 40, "interest": 35, "willingness_to_try": 25}:
@@ -263,7 +263,7 @@ async def campaign_config(
     persona_catalog = load_persona_catalog()
     return {
         "name": campaign.name,
-        "limits": {"min_audience": 5, "max_audience": 12, "default_audience": 12},
+        "limits": {"min_audience": 5, "max_audience": 100, "default_audience": 100},
         "audience_model": PERSONA_MODEL,
         "search_model": SEARCH_MODEL,
         "search_context_size": SEARCH_CONTEXT_SIZE,
@@ -301,7 +301,7 @@ async def create_run(
             "search_context_size": SEARCH_CONTEXT_SIZE,
             "persona_dataset_id": persona_dataset_id,
             "persona_selection_seed": secrets.token_hex(8),
-            "audience_size": 12,
+            "audience_size": 100,
             "interview_version": "v1",
         },
         events=[],
@@ -887,8 +887,8 @@ async def _prepare_run(run_id: int) -> None:
                 for group in catalog_groups[:4]
             ]
 
-        requested = 12
-        candidate_pool_size = 60
+        requested = 100
+        candidate_pool_size = 100
         selected_catalog_personas = select_balanced_personas(
             catalog_personas,
             target_groups,
@@ -926,6 +926,7 @@ async def _prepare_run(run_id: int) -> None:
                 "uncertainty": [str(item)[:300] for item in raw_uncertainty[:10]],
                 "requested_size": requested,
                 "candidate_pool_size": candidate_pool_size,
+                "search_attempts": int(search.get("attempts") or 1),
             }
             run.status = "awaiting_audience_confirmation" if len(valid) >= 5 else "failed"
             run.revision += 1
