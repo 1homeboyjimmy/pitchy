@@ -30,6 +30,9 @@ type Evidence = { id: string; url: string; domain: string; title: string; fetch_
 type ResponsePoint = {
   persona_id: string;
   group?: string;
+  included?: boolean;
+  exclusion_reason?: string | null;
+  raw_answer?: Record<string, unknown> | null;
   problem_relevance?: number | null;
   interest?: number | null;
   willingness_to_try?: number | null;
@@ -73,6 +76,7 @@ type SimRun = {
     retryable?: boolean;
     valid_responses?: number;
     requested_responses?: number;
+    excluded_responses?: number;
     averages?: Record<string, number | null>;
     percent_at_least_7?: Record<string, number | null>;
   } | null;
@@ -103,6 +107,13 @@ const statusText: Record<string, string> = {
 };
 
 const palette = ["#7ce6ff", "#b48cff", "#f0bd69", "#9be5ca"];
+const exclusionReasonLabels: Record<string, string> = {
+  missing_required_score: "нет обязательной оценки",
+  invalid_score: "оценка не целая или вне диапазона 0–10",
+  response_generation_failed: "ответ не сформирован",
+  response_not_received: "ответ не получен",
+  persona_mismatch: "профиль ответа не совпал",
+};
 
 function hashSeed(value: string) {
   let hash = 2166136261;
@@ -129,9 +140,9 @@ function PersonaNetwork({
   onPick?: (id: string) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const pointsRef = useRef<Array<{ x: number; y: number; id: string; color: string }>>([]);
+  const pointsRef = useRef<Array<{ x: number; y: number; id: string; color: string; excluded?: boolean }>>([]);
   const dataKey = useMemo(
-    () => members.map((person) => person.id + person.group).join("|") + responses.map((person) => person.persona_id + person.willingness_to_try + person.problem_relevance).join("|"),
+    () => members.map((person) => person.id + person.group).join("|") + responses.map((person) => person.persona_id + person.willingness_to_try + person.problem_relevance + person.included + person.exclusion_reason).join("|"),
     [members, responses],
   );
 
@@ -144,9 +155,11 @@ function PersonaNetwork({
     let height = 0;
     let pixelRatio = 1;
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const validResponses = responses.filter(
-      (person) => typeof person.interest === "number" && typeof person.problem_relevance === "number",
-    );
+    const validResponses = responses;
+    const excludedResponses = responses.filter((item) => item.included === false
+      || typeof item.problem_relevance !== "number"
+      || typeof item.interest !== "number"
+      || typeof item.willingness_to_try !== "number");
 
     const render = (time = 0) => {
       if (!context) return;
@@ -154,7 +167,7 @@ function PersonaNetwork({
       context.clearRect(0, 0, canvas.width, canvas.height);
       context.save();
       context.scale(pixelRatio, pixelRatio);
-      const mapped: Array<{ x: number; y: number; id: string; color: string; radius: number; person: boolean }> = [];
+      const mapped: Array<{ x: number; y: number; id: string; color: string; radius: number; person: boolean; excluded?: boolean }> = [];
       const people = mode === "map" ? validResponses : members;
       const groups = Array.from(new Set(people.map((person) => person.group || "Аудитория")));
 
@@ -181,8 +194,26 @@ function PersonaNetwork({
         // A small deterministic jitter exposes overlapping answers; selected details retain exact scores.
         const stackRanks = new Map<string, number>();
         const orderedResponses = [...validResponses].sort((first, second) => first.persona_id.localeCompare(second.persona_id));
+        let excludedIndex = 0;
         for (const person of orderedResponses) {
           const groupIndex = Math.max(0, groups.indexOf(person.group || "Аудитория"));
+          const excluded = person.included === false
+            || typeof person.problem_relevance !== "number"
+            || typeof person.interest !== "number"
+            || typeof person.willingness_to_try !== "number";
+          if (excluded) {
+            const laneIndex = excludedIndex++;
+            mapped.push({
+              x: 18 + ((laneIndex + 0.5) / Math.max(1, excludedResponses.length)) * (width - 36),
+              y: height * (laneIndex % 2 === 0 ? 0.88 : 0.83),
+              id: person.persona_id,
+              color: palette[groupIndex % palette.length],
+              radius: 4,
+              person: true,
+              excluded: true,
+            });
+            continue;
+          }
           const scoreKey = `${person.interest}:${person.problem_relevance}`;
           const rank = stackRanks.get(scoreKey) || 0;
           stackRanks.set(scoreKey, rank + 1);
@@ -190,11 +221,12 @@ function PersonaNetwork({
           const spread = rank ? Math.min(12, 3.2 * Math.sqrt(rank)) : 0;
           mapped.push({
             x: width * (0.1 + (person.willingness_to_try || 0) * 0.08) + Math.cos(angle) * spread,
-            y: height * (0.9 - (person.problem_relevance || 0) * 0.08) + Math.sin(angle) * spread,
+            y: height * (0.78 - (person.problem_relevance || 0) * 0.068) + Math.sin(angle) * spread,
             id: person.persona_id,
             color: palette[groupIndex % palette.length],
             radius: 3.4,
             person: true,
+            excluded: false,
           });
         }
       } else {
@@ -236,6 +268,13 @@ function PersonaNetwork({
         context.lineTo(width, height / 2);
         context.stroke();
         context.setLineDash([]);
+        context.strokeStyle = "rgba(255,255,255,.12)";
+        context.setLineDash([2, 5]);
+        context.beginPath();
+        context.moveTo(0, height * 0.81);
+        context.lineTo(width, height * 0.81);
+        context.stroke();
+        context.setLineDash([]);
       } else if (mapped.length > 12) {
         context.strokeStyle = "rgba(156,207,255,.17)";
         context.lineWidth = 0.7;
@@ -264,6 +303,20 @@ function PersonaNetwork({
       for (const point of mapped) {
         const selected = Boolean(point.id && activeIds?.has(point.id));
         if (mode === "map") {
+          if (point.excluded) {
+            context.beginPath();
+            context.strokeStyle = selected ? "#ffffff" : "#ff777e";
+            context.lineWidth = selected ? 1.7 : 1.35;
+            context.shadowColor = "#ff777e";
+            context.shadowBlur = selected ? 2 : 0;
+            context.moveTo(point.x - 3.2, point.y - 3.2);
+            context.lineTo(point.x + 3.2, point.y + 3.2);
+            context.moveTo(point.x + 3.2, point.y - 3.2);
+            context.lineTo(point.x - 3.2, point.y + 3.2);
+            context.stroke();
+            context.shadowBlur = 0;
+            continue;
+          }
           // A faint halo preserves the palette; the crisp center keeps nearby scores distinguishable.
           context.beginPath();
           context.fillStyle = point.color;
@@ -679,7 +732,8 @@ export default function AudienceSimulationOperatorPage() {
   const tryRate = run?.aggregate?.percent_at_least_7?.willingness_to_try;
   const activeResponse = run?.responses.find((response) => response.persona_id === selectedResponseId) || run?.responses[0];
   const activePersona = activeResponse ? personas.find((persona) => persona.id === activeResponse.persona_id) : undefined;
-  const plottedResponseCount = run?.responses.filter((response) => typeof response.interest === "number" && typeof response.problem_relevance === "number").length || 0;
+  const plottedResponseCount = run?.responses.filter((response) => response.included !== false && typeof response.interest === "number" && typeof response.problem_relevance === "number" && typeof response.willingness_to_try === "number").length || 0;
+  const excludedResponseCount = run?.responses.filter((response) => response.included === false || typeof response.interest !== "number" || typeof response.problem_relevance !== "number" || typeof response.willingness_to_try !== "number").length || 0;
   const selectedMarkets = new Set((run?.selection.members || []).map((person) => person.market).filter(Boolean));
   const consumerIdeaWithBusinessPanel = Boolean(run && /калор|питан|похуд|рацион|фитнес|трениров|сон|здоров/i.test(run.idea) && selectedMarkets.has("business") && !selectedMarkets.has("consumer"));
   const sourcedCount = run?.findings.filter((finding) => finding.source_ids.length > 0).length || 0;
@@ -1040,9 +1094,10 @@ export default function AudienceSimulationOperatorPage() {
               <PersonaNetwork members={personas} responses={run?.responses || []} mode="map" activeIds={activeResponse ? new Set([activeResponse.persona_id]) : undefined} onPick={(id) => setSelectedResponseId(id)} />
               <span className="map-axis-y">АКТУАЛЬНОСТЬ ПРОБЛЕМЫ</span>
               <span className="map-axis-x">ГОТОВНОСТЬ ПОПРОБОВАТЬ →</span>
+              {excludedResponseCount > 0 && <span className="map-excluded-key">× НЕ УЧТЁН · {excludedResponseCount}</span>}
             </div>
-            <p className="audience-helper">На карте {plottedResponseCount} из {run?.responses.length || 0} ответов: точки с одинаковыми оценками слегка разнесены, выбранная точка показывает точные баллы.</p>
-            {activeResponse && <div className="reaction-detail"><span>{activeResponse.group || "Синтетическая персона"}</span><small>{activePersona?.profile ? activePersona.profile.split(" · ").slice(1, 4).join(" · ") + " · " : ""}проблема {activeResponse.problem_relevance ?? "—"}/10 · готовность попробовать {activeResponse.willingness_to_try ?? "—"}/10 · интерес {activeResponse.interest ?? "—"}/10</small><p>{activeResponse.reaction || "Для этой персоны нет короткой реплики."}</p></div>}
+            <p className="audience-helper">Учтено {plottedResponseCount}; не учтено {excludedResponseCount} из {run?.responses.length || 0}. Крестики вынесены в отдельную полосу: {excludedResponseCount > 0 ? "выберите крестик, чтобы увидеть причину" : "все ответы прошли проверку"}.</p>
+            {activeResponse && <div className="reaction-detail"><span>{activeResponse.group || "Синтетическая персона"}{activeResponse.included === false ? " · НЕ УЧТЁН" : " · УЧТЁН"}</span><small>{activePersona?.profile ? activePersona.profile.split(" · ").slice(1, 4).join(" · ") + " · " : ""}проблема {activeResponse.problem_relevance ?? "—"}/10 · готовность попробовать {activeResponse.willingness_to_try ?? "—"}/10 · интерес {activeResponse.interest ?? "—"}/10{activeResponse.exclusion_reason ? ` · причина: ${exclusionReasonLabels[activeResponse.exclusion_reason] || activeResponse.exclusion_reason}` : ""}</small><p>{activeResponse.reaction || (activeResponse.included === false ? "Этот ответ сохранён, но не вошёл в расчёты." : "Для этой персоны нет короткой реплики.")}</p>{activeResponse.raw_answer && <details className="raw-answer"><summary>Исходный ответ модели</summary><pre>{JSON.stringify(activeResponse.raw_answer, null, 2)}</pre></details>}</div>}
             <div className="group-counts">
               {groups.map((group, index) => <span key={group}><b style={{ color: palette[index % palette.length] }}>{run?.responses.filter((response) => response.group === group).length || 0}</b>{group}</span>)}
               {!groups.length && <span><b>{run?.responses.length || 0}</b>ответов</span>}
@@ -1059,6 +1114,7 @@ export default function AudienceSimulationOperatorPage() {
             <div className="primary-result">{typeof validRate === "number" ? validRate + "%" : "—"}</div>
             <div className="result-label">оценили актуальность проблемы на 7/10 или выше</div>
             <div className="result-average">Средняя оценка актуальности: {run?.aggregate?.averages?.problem_relevance ?? "—"}/10</div>
+            <p className="audience-helper">В расчётах учтено {run?.aggregate?.valid_responses ?? progress} из {run?.aggregate?.requested_responses ?? personas.length}; исключено {run?.aggregate?.excluded_responses ?? excludedResponseCount} ответов по правилам полноты и проверки оценок.</p>
             {consumerIdeaWithBusinessPanel && <div className="audience-mismatch-note">В этой проверке выбраны B2B-профили, а идея похожа на потребительский продукт. Этот результат не показывает интерес конечных пользователей.</div>}
             <div className="audience-meter"><i style={{ width: (typeof validRate === "number" ? validRate : 0) + "%" }} /></div>
             <div className="result-row">

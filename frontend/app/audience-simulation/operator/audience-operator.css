@@ -325,11 +325,15 @@
 .map-axis-x, .map-axis-y { position: absolute; color: #666; font-size: clamp(6px, .66vh, 8px); letter-spacing: .08em; pointer-events: none; }
 .map-axis-x { right: 4%; bottom: 4%; }
 .map-axis-y { top: 50%; left: 2%; transform: translate(-30%, -50%) rotate(-90deg); transform-origin: center; }
+.map-excluded-key { position: absolute; z-index: 1; left: 4%; bottom: 4%; color: #ff858a; font-size: clamp(6px, .66vh, 8px); letter-spacing: .06em; pointer-events: none; }
 .reaction-detail { max-height: 84px; overflow-y: auto; margin-top: 2%; padding: 2% 3%; border-left: 2px solid var(--audience-violet); background: #0c0c0c; }
 .audience-mismatch-note { margin-top: 3%; padding: 8px 10px; border: 1px solid #735a37; border-radius: 9px; background: #17120b; color: #d5c5a9; font-size: 9px; line-height: 1.4; }
 .reaction-detail span { color: #a995c7; font-size: 8px; }
 .reaction-detail small { display: block; margin-top: 3px; color: #737373; font-size: 7px; }
 .reaction-detail p { margin: 5px 0 0; color: #ccc; font-size: 9px; line-height: 1.4; }
+.raw-answer { margin-top: 6px; color: #858585; font-size: 8px; }
+.raw-answer summary { cursor: pointer; }
+.raw-answer pre { max-height: 120px; overflow: auto; white-space: pre-wrap; color: #aaa; font: inherit; line-height: 1.4; }
 .group-counts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 6px; margin-top: 2%; }
 .group-counts span { display: grid; gap: 1px; color: #898989; font-size: 7px; line-height: 1.2; }
 .group-counts b { color: #f7f5f1; font-size: clamp(14px, 2vh, 22px); font-weight: 400; }

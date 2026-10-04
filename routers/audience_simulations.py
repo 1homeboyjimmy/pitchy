@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import difflib
 import hashlib
 import ipaddress
 import json
 import logging
+import math
 import os
 import secrets
 import socket
@@ -853,22 +855,39 @@ async def start_interviews(
     scenario = get_prebuilt_scenario(scenario_id) if scenario_id else None
     if scenario:
         members = list(selection.get("members") or [])
-        responses = build_prebuilt_responses(scenario_id, members)
+        valid_responses = build_prebuilt_responses(scenario_id, members)
+        valid_ids = {str(response.get("persona_id") or "") for response in valid_responses}
+        responses = list(valid_responses)
+        for member in members:
+            persona_id = str(member.get("id") or "")
+            if persona_id and persona_id not in valid_ids:
+                responses.append({
+                    "persona_id": persona_id,
+                    "group": str(member.get("group") or ""),
+                    "raw_answer": None,
+                    "included": False,
+                    "exclusion_reason": "response_not_received",
+                })
+        for response in valid_responses:
+            response["raw_answer"] = copy.deepcopy(response)
+            response["included"] = True
+            response["exclusion_reason"] = None
         requested_count = len(members)
         run.responses = responses
-        run.aggregate = aggregate_prebuilt_responses(responses, requested_count)
+        run.aggregate = aggregate_prebuilt_responses(valid_responses, requested_count)
+        run.aggregate["excluded_responses"] = len(responses) - len(valid_responses)
         run.summary = {"headline": scenario["title"], "observations": scenario["observations"], "next_checks": scenario["next_checks"]}
-        run.status = "completed" if len(responses) >= 5 else "partial"
+        run.status = "completed" if len(valid_responses) >= 5 else "partial"
         run.updated_at = datetime.utcnow()
         run.revision += 1
-        _event(run, "prebuilt_responses_ready", {"scenario_id": scenario_id, "completed_count": len(responses), "requested_count": requested_count, "model_calls": 0})
-        _event(run, "result_ready", {"valid_responses": len(responses), "requested_responses": requested_count})
+        _event(run, "prebuilt_responses_ready", {"scenario_id": scenario_id, "completed_count": len(responses), "valid_count": len(valid_responses), "excluded_count": len(responses) - len(valid_responses), "requested_count": requested_count, "model_calls": 0})
+        _event(run, "result_ready", {"valid_responses": len(valid_responses), "excluded_responses": len(responses) - len(valid_responses), "requested_responses": requested_count})
         await db.commit()
         logger.info(
             "audience_prebuilt_scenario_completed",
             extra={"event": "audience_prebuilt_scenario_completed", "stage": "aggregation", "run_id": run.id,
                    "campaign_id": run.campaign_id, "scenario_id": scenario_id, "requested_count": requested_count,
-                   "completed_count": len(responses), "model_calls": 0},
+                   "completed_count": len(responses), "valid_count": len(valid_responses), "excluded_count": len(responses) - len(valid_responses), "model_calls": 0},
         )
         return {"run_id": run.id, "status": run.status, "aggregate": run.aggregate, "summary": run.summary, "responses": run.responses}
     run.status = "interviewing"
@@ -1556,6 +1575,7 @@ async def _ask_persona(run_snapshot: dict, persona: dict) -> dict:
                 run_id=run_snapshot.get("run_id"),
                 persona_id=str(persona.get("id")),
             )
+    data["_original_model_answer"] = copy.deepcopy(data)
     data["persona_id"] = str(persona["id"])
     data["group"] = persona["group"]
     return data
@@ -1568,12 +1588,32 @@ def _valid_response(item: dict, persona_id: str, price_was_provided: bool) -> bo
         value = item.get(key)
         if value is not None and (not isinstance(value, int) or isinstance(value, bool) or not 0 <= value <= 10):
             return False
+    if any(not isinstance(item.get(key), int) or isinstance(item.get(key), bool) or not 0 <= item[key] <= 10
+           for key in ("problem_relevance", "interest", "willingness_to_try")):
+        return False
     if not price_was_provided:
         item.pop("price_assessment", None)
     item["reaction"] = str(item.get("reaction") or "")[:250]
     item["motivators"] = list(item.get("motivators") or [])[:3]
     item["barriers"] = list(item.get("barriers") or [])[:3]
     return True
+
+
+def _response_exclusion_reason(item: dict, persona_id: str) -> str | None:
+    if item.get("persona_id") != persona_id:
+        return "persona_mismatch"
+    core_scores = ("problem_relevance", "interest", "willingness_to_try")
+    if any(item.get(key) is None for key in core_scores):
+        return "missing_required_score"
+    score_fields = (*core_scores, "problem_severity", "solution_clarity")
+    if any(
+        value is not None and (
+            not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value) or not 0 <= value <= 10
+        )
+        for value in (item.get(key) for key in score_fields)
+    ):
+        return "invalid_score"
+    return None
 
 
 async def _interview_run(run_id: int) -> None:
@@ -1634,7 +1674,13 @@ async def _interview_run_impl(run_id: int) -> None:
     async def work(persona: dict):
         try:
             result = await _ask_persona(snapshot, persona)
-            if not _valid_response(result, str(persona["id"]), snapshot["price_was_provided"]):
+            raw_answer = result.pop("_original_model_answer", copy.deepcopy(result))
+            generated_persona_id = raw_answer.get("persona_id") if isinstance(raw_answer, dict) else None
+            exclusion_reason = "persona_mismatch" if generated_persona_id and str(generated_persona_id) != str(persona["id"]) else _response_exclusion_reason(result, str(persona["id"]))
+            result["raw_answer"] = raw_answer
+            if exclusion_reason or not _valid_response(result, str(persona["id"]), snapshot["price_was_provided"]):
+                result["included"] = False
+                result["exclusion_reason"] = exclusion_reason or "invalid_score"
                 logger.warning(
                     "audience_persona_response_rejected",
                     extra={
@@ -1643,10 +1689,12 @@ async def _interview_run_impl(run_id: int) -> None:
                         "run_id": run_id,
                         "persona_id": str(persona.get("id")),
                         "model": PERSONA_MODEL,
-                        "validation_reason": "response_failed_schema_validation",
+                        "validation_reason": result["exclusion_reason"],
                     },
                 )
-                return persona, None
+                return persona, result
+            result["included"] = True
+            result["exclusion_reason"] = None
             return persona, result
         except Exception as exc:
             logger.exception(
@@ -1663,7 +1711,13 @@ async def _interview_run_impl(run_id: int) -> None:
                     "provider_request_id": getattr(exc, "request_id", None),
                 },
             )
-            return persona, None
+            return persona, {
+                "persona_id": str(persona["id"]),
+                "group": str(persona.get("group") or ""),
+                "raw_answer": None,
+                "included": False,
+                "exclusion_reason": "response_generation_failed",
+            }
     tasks = [asyncio.create_task(work(persona)) for persona in pending_members]
     # Responses are written one at a time as tasks finish. This makes the
     # progress endpoint reflect saved answers and avoids concurrent lost JSON updates.
@@ -1684,7 +1738,12 @@ async def _interview_run_impl(run_id: int) -> None:
             responses.append(response)
             progress_run.responses = responses
             progress_run.updated_at = datetime.utcnow()
-            _event(progress_run, "persona_answered", {"persona_id": persona["id"], "valid_responses": len(responses), "requested_responses": len(members)})
+            _event(progress_run, "persona_answered", {
+                "persona_id": persona["id"],
+                "valid_responses": sum(1 for item in responses if item.get("included") is not False),
+                "completed_responses": len(responses),
+                "requested_responses": len(members),
+            })
             await progress_db.commit()
             logger.info(
                 "audience_persona_response_saved",
@@ -1695,6 +1754,7 @@ async def _interview_run_impl(run_id: int) -> None:
                     "persona_id": str(persona["id"]),
                     "model": PERSONA_MODEL,
                     "completed_count": len(responses),
+                    "valid_count": sum(1 for item in responses if item.get("included") is not False),
                     "requested_count": len(members),
                 },
             )
@@ -1702,7 +1762,32 @@ async def _interview_run_impl(run_id: int) -> None:
         run = await db.get(AudienceSimulationRun, run_id)
         if not run or run.status != "interviewing":
             return
-        valid = list(run.responses or [])
+        all_responses = list(run.responses or [])
+        member_ids = {str(person.get("id") or "") for person in members}
+        seen_response_ids = {str(item.get("persona_id") or "") for item in all_responses}
+        for persona in members:
+            persona_id = str(persona.get("id") or "")
+            if persona_id and persona_id not in seen_response_ids:
+                all_responses.append({
+                    "persona_id": persona_id,
+                    "group": str(persona.get("group") or ""),
+                    "raw_answer": None,
+                    "included": False,
+                    "exclusion_reason": "response_not_received",
+                })
+        for response in all_responses:
+            persona_id = str(response.get("persona_id") or "")
+            reason = _response_exclusion_reason(response, persona_id)
+            if response.get("included") is False and response.get("exclusion_reason") in {
+                "response_generation_failed", "response_not_received", "missing_required_score", "invalid_score", "persona_mismatch",
+            }:
+                reason = response["exclusion_reason"]
+            if persona_id not in member_ids:
+                reason = "persona_mismatch"
+            response["included"] = reason is None
+            response["exclusion_reason"] = reason
+        valid = [item for item in all_responses if item.get("included") is True]
+        run.responses = all_responses
         scores: dict[str, list[int]] = {key: [] for key in ("problem_relevance", "interest", "willingness_to_try", "problem_severity", "solution_clarity")}
         for response in valid:
             for key in scores:
@@ -1720,13 +1805,14 @@ async def _interview_run_impl(run_id: int) -> None:
         run.aggregate = {
             "valid_responses": denominator,
             "requested_responses": len(members),
+            "excluded_responses": len(all_responses) - denominator,
             "averages": averages,
             "percent_at_least_7": percentages,
             "denominators": score_denominators,
         }
         run.status = "completed" if denominator >= 5 else "partial"
         run.updated_at = datetime.utcnow()
-        _event(run, "result_ready", {"valid_responses": denominator, "requested_responses": len(members)})
+        _event(run, "result_ready", {"valid_responses": denominator, "excluded_responses": len(all_responses) - denominator, "requested_responses": len(members)})
         await db.commit()
         logger.info(
             "audience_interviews_completed",
