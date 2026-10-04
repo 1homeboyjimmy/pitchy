@@ -30,6 +30,8 @@ SEARCH_MODEL = os.getenv("AUDIENCE_SEARCH_MODEL", "perplexity/sonar")
 SEARCH_CONTEXT_SIZE = os.getenv("AUDIENCE_SEARCH_CONTEXT_SIZE", "low").strip().lower()
 if SEARCH_CONTEXT_SIZE not in {"low", "medium", "high"}:
     SEARCH_CONTEXT_SIZE = "low"
+SEARCH_SOURCE_TARGET = 60
+SEARCH_QUERY_CONCURRENCY = 3
 PERSONA_CATALOG_PATH = Path(__file__).resolve().parent / "data" / "audience_simulation_personas_v1.json"
 _PERSONA_IMPORT_LOCK = asyncio.Lock()
 
@@ -270,7 +272,7 @@ def _citations(raw: dict[str, Any]) -> list[dict[str, str]]:
 
 
 async def search_evidence(idea: str, audience: str | None, price: str | None) -> dict[str, Any]:
-    """Search current discussions, retry with narrower wording, and retain provider URLs."""
+    """Search multiple angles and retain unique provider URLs up to the source target."""
     system = (
         "Ты выполняешь веб-поиск для исследования идеи. Ищи публичные обсуждения "
         "существующей проблемы, текущих способов её решения и повторяющихся неудобств. "
@@ -285,40 +287,47 @@ async def search_evidence(idea: str, audience: str | None, price: str | None) ->
         if re.search(r"калор|питан|food|calorie|nutrition", idea, flags=re.IGNORECASE)
         else f"Ищи также отзывы и обсуждения о похожих решениях для задачи «{idea}»."
     )
+    search_angles = [
+        "Пользовательские отзывы на маркетплейсах и в магазинах приложений: конкретные плюсы, жалобы и причины низких оценок.",
+        "Тематические форумы и сообщества: реальные вопросы людей, обсуждения проблемы и используемые обходные решения.",
+        "Обсуждения в Reddit, Quora, Pikabu и профильных сообществах; ищи русские и английские формулировки проблемы.",
+        "Статьи и разборы пользовательского опыта: что неудобно в существующих решениях и чего людям не хватает.",
+        "Отзывы о прямых конкурентах и похожих приложениях: привычка использования, точность, цена и причины отказа.",
+        "Поиск по альтернативным формулировкам, синонимам и связанным задачам; не ограничивайся названием категории продукта.",
+        "Обсуждения целевой аудитории и профессиональные сообщества, где люди описывают задачу своими словами.",
+        "Независимые обзоры, сравнения и страницы с комментариями, содержащие конкретный пользовательский опыт.",
+        "Русскоязычные источники и региональные сообщества: ищи локальные сервисы, отзывы и обсуждения.",
+        "Англоязычные источники: ищи отзывы и обсуждения по разным синонимам проблемы и названиям решений.",
+    ]
     query_variants = [
         (
             f"Идея: {idea}\nАудитория: {audience or 'не указана'}\nЦена: {price or 'не указана'}\n\n"
-            "Найди реальные публичные отзывы и обсуждения о проблеме и существующих способах её решения. "
-            "Ищи на русском и английском языках. Нужны конкретные страницы с URL, а не только общий обзор."
-        ),
-        (
-            f"Уточнённый поиск для идеи «{idea}». Аудитория: {audience or 'не указана'}.\n"
-            "Ищи пользовательские отзывы, форумы и сообщества о ручном вводе данных, точности, "
-            "удобстве повседневного использования, привычке и причинах отказа от похожих решений. "
-            f"{focused_topic} "
-            "Верни только сигналы, относящиеся к задаче, и прямые URL страниц."
-        ),
+            f"{angle} {focused_topic}\n"
+            f"Найди до 10 разных релевантных страниц именно для этого направления. Ищи на русском и английском. "
+            "Отдавай предпочтение первичным пользовательским отзывам и обсуждениям. Верни прямые URL "
+            "найденных страниц; не повторяй одну страницу под разными параметрами и не выдумывай ссылки."
+        )
+        for angle in search_angles
     ]
     all_sources: list[dict[str, str]] = []
     texts: list[str] = []
     attempts = 0
-    for query in query_variants:
-        try:
-            response = await _client().chat.completions.create(
-                model=SEARCH_MODEL,
-                messages=[{"role": "system", "content": system}, {"role": "user", "content": query}],
-                temperature=0.1,
-                max_tokens=1800,
-                extra_body={"search_context_size": SEARCH_CONTEXT_SIZE},
-            )
-        except Exception:
-            if texts:
-                break
-            raise
-        attempts += 1
+    semaphore = asyncio.Semaphore(SEARCH_QUERY_CONCURRENCY)
+
+    async def run_query(query: str) -> tuple[str, list[dict[str, str]], Exception | None]:
+        async with semaphore:
+            try:
+                response = await _client().chat.completions.create(
+                    model=SEARCH_MODEL,
+                    messages=[{"role": "system", "content": system}, {"role": "user", "content": query}],
+                    temperature=0.1,
+                    max_tokens=2500,
+                    extra_body={"search_context_size": SEARCH_CONTEXT_SIZE},
+                )
+            except Exception as exc:
+                return "", [], exc
         raw = response.model_dump()
         text = response.choices[0].message.content or ""
-        texts.append(text)
         citations = _citations(raw)
         # Some OpenAI-compatible gateways return citation URLs in the answer
         # but omit structured citation fields. Retain only URLs present in it.
@@ -334,20 +343,39 @@ async def search_evidence(idea: str, audience: str | None, price: str | None) ->
                         "domain": parsed.netloc.lower(),
                         "title": "Источник из ответа поиска",
                     })
-        known_urls = {source["canonical_url"] for source in all_sources}
-        for source in citations:
-            if source["canonical_url"] in known_urls:
-                continue
-            known_urls.add(source["canonical_url"])
-            source["id"] = f"source_{len(all_sources) + 1}"
-            all_sources.append(source)
-        if len(all_sources) >= 5:
+        return text, citations, None
+
+    # Run a few focused searches at a time to broaden coverage without issuing
+    # all requests simultaneously. Process each batch in prompt order so IDs
+    # and the final source list remain deterministic.
+    for offset in range(0, len(query_variants), SEARCH_QUERY_CONCURRENCY):
+        batch = query_variants[offset:offset + SEARCH_QUERY_CONCURRENCY]
+        results = await asyncio.gather(*(run_query(query) for query in batch))
+        attempts += len(batch)
+        errors = [error for _, _, error in results if error is not None]
+        for text, citations, _ in results:
+            if text:
+                texts.append(text)
+            known_urls = {source["canonical_url"] for source in all_sources}
+            for source in citations:
+                if source["canonical_url"] in known_urls:
+                    continue
+                known_urls.add(source["canonical_url"])
+                source["id"] = f"source_{len(all_sources) + 1}"
+                all_sources.append(source)
+                if len(all_sources) >= SEARCH_SOURCE_TARGET:
+                    break
+            if len(all_sources) >= SEARCH_SOURCE_TARGET:
+                break
+        if len(all_sources) >= SEARCH_SOURCE_TARGET:
             break
+        if errors and not texts:
+            raise errors[0]
     return {
         "model": SEARCH_MODEL,
         "search_context_size": SEARCH_CONTEXT_SIZE,
         "text": "\n\n".join(texts),
-        "sources": all_sources,
+        "sources": all_sources[:SEARCH_SOURCE_TARGET],
         "attempts": attempts,
     }
 
