@@ -40,10 +40,10 @@ type ResponsePoint = {
 };
 
 const prebuiltScenarios = [
-  { id: "calorie-photo", title: "ИИ-трекер калорий", note: "Фото блюда → состав, порция и калорийность" },
-  { id: "english-coach", title: "Тренер разговорного английского", note: "Практика под работу, учёбу и поездки" },
-  { id: "family-budget", title: "Помощник по личному бюджету", note: "План расходов до следующего дохода" },
-  { id: "weekend-trip", title: "Планировщик поездки", note: "Маршрут выходного дня под ваши условия" },
+  { id: "calorie-photo", title: "ИИ-трекер калорий", note: "Распознаёт блюдо по фото, оценивает состав и порцию, помогает вести дневник питания и замечать изменения в рационе." },
+  { id: "english-coach", title: "Тренер разговорного английского", note: "Проводит короткие диалоги голосом, подстраивает сложность и лексику под работу, учёбу и поездки." },
+  { id: "family-budget", title: "Помощник по личному бюджету", note: "Распределяет доходы и регулярные расходы, показывает остаток до следующей зарплаты и помогает планировать покупки." },
+  { id: "weekend-trip", title: "Планировщик поездки", note: "Собирает маршрут выходного дня с учётом бюджета, интересов, времени в пути и предпочтений компании." },
 ];
 type SimRun = {
   id: number;
@@ -486,8 +486,8 @@ export default function AudienceSimulationOperatorPage() {
               const allGroups = Array.from(new Set((savedRun.selection.members || []).map((person) => person.group)));
               setSelectedGroups(allGroups);
               if (savedRun.status === "awaiting_audience_confirmation") setActiveSlide(2);
-              else if (savedRun.status === "interviewing") setActiveSlide(5);
-              else if (["completed", "partial"].includes(savedRun.status)) setActiveSlide(6);
+              else if (savedRun.status === "interviewing") setActiveSlide(4);
+              else if (["completed", "partial"].includes(savedRun.status)) setActiveSlide(5);
               else setActiveSlide(2);
             })
             .catch(() => sessionStorage.removeItem("audience-simulation:" + code));
@@ -516,8 +516,8 @@ export default function AudienceSimulationOperatorPage() {
           if (next.status === "awaiting_audience_confirmation") {
             setSelectedGroups(Array.from(new Set((next.selection.members || []).map((person) => person.group))));
           }
-          if (next.status === "interviewing") setActiveSlide(5);
-          if (["completed", "partial"].includes(next.status)) setActiveSlide(6);
+          if (next.status === "interviewing") setActiveSlide(4);
+          if (["completed", "partial"].includes(next.status)) setActiveSlide(5);
         }
         if (next.status === "failed") {
           setError(next.evidence.length
@@ -540,9 +540,7 @@ export default function AudienceSimulationOperatorPage() {
     }
     setBusy(true);
     setError("");
-    // Move to the response stage immediately; the server work can finish in the background.
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-    setActiveSlide(5);
     try {
       const created = await request<{ run_id: number; access_token: string; status: string }>(
         "/api/audience-simulations/campaigns/" + encodeURIComponent(code) + "/runs",
@@ -605,7 +603,7 @@ export default function AudienceSimulationOperatorPage() {
     setError("");
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     // Show the next stage immediately; request latency should not leave the button spinning on this screen.
-    setActiveSlide(5);
+    setActiveSlide(4);
     try {
       // Audience confirmation is not polled while the user is reviewing it. Refresh the run
       // first so a stale selection version cannot trigger a 409 on the start request.
@@ -616,7 +614,7 @@ export default function AudienceSimulationOperatorPage() {
         return;
       }
       if (["completed", "partial"].includes(latest.status)) {
-        setActiveSlide(6);
+        setActiveSlide(5);
         return;
       }
       if (latest.status !== "awaiting_audience_confirmation") {
@@ -627,7 +625,7 @@ export default function AudienceSimulationOperatorPage() {
       const included = latestMembers.filter((person) => currentGroups.includes(person.group));
       const safeSize = Math.min(audienceSize, included.length);
       if (safeSize < (config?.limits.min_audience || 5)) {
-        setActiveSlide(4);
+        setActiveSlide(3);
         setSelectedGroups(Array.from(new Set(latestMembers.map((person) => person.group))));
         throw new Error("Состав аудитории обновился. Проверьте выбранные группы и запустите исследование ещё раз.");
       }
@@ -667,11 +665,11 @@ export default function AudienceSimulationOperatorPage() {
         setRun(latest);
         if (latest.status === "awaiting_audience_confirmation") {
           setSelectedGroups(Array.from(new Set((latest.selection.members || []).map((person) => person.group))));
-          setActiveSlide(4);
-        } else if (["completed", "partial"].includes(latest.status)) setActiveSlide(6);
-        else if (latest.status === "interviewing") setActiveSlide(5);
+          setActiveSlide(3);
+        } else if (["completed", "partial"].includes(latest.status)) setActiveSlide(5);
+        else if (latest.status === "interviewing") setActiveSlide(4);
       } catch {
-        setActiveSlide(4);
+        setActiveSlide(3);
       }
     } finally {
       setBusy(false);
@@ -765,7 +763,7 @@ export default function AudienceSimulationOperatorPage() {
   };
 
   const personas = useMemo(() => run?.selection.members || [], [run?.selection.members]);
-  const progress = selectedScenarioId && activeSlide === 5 && run?.status === "completed"
+  const progress = selectedScenarioId && activeSlide === 4 && run?.status === "completed"
     ? demoProgress
     : run?.aggregate?.valid_responses ?? run?.responses.length ?? 0;
   const groups = useMemo(() => Array.from(new Set(personas.map((persona) => persona.group))), [personas]);
@@ -774,11 +772,11 @@ export default function AudienceSimulationOperatorPage() {
   const maxSlide = !run
     ? 1
     : run.status === "awaiting_audience_confirmation"
-      ? 4
+      ? 3
       : run.status === "interviewing"
-        ? 5
+        ? 4
         : isFinished
-          ? 8
+          ? 7
           : 2;
   const validRate = run?.aggregate?.percent_at_least_7?.problem_relevance;
   const interestRate = run?.aggregate?.percent_at_least_7?.interest;
@@ -815,14 +813,14 @@ export default function AudienceSimulationOperatorPage() {
   }, [activeSlide]);
 
   useEffect(() => {
-    if (activeSlide === 8 && isFinished && !claimToken && !busy) void makeClaimLink();
+    if (activeSlide === 7 && isFinished && !claimToken && !busy) void makeClaimLink();
   }, [activeSlide, busy, claimToken, isFinished, makeClaimLink]);
 
   useEffect(() => {
     if (activeSlide !== 3) return;
     setAudienceReveal(0);
     const total = run?.selection.members?.length || 100;
-    const revealStep = Math.max(1, Math.ceil(total / 70));
+    const revealStep = Math.max(1, Math.ceil(total / 30));
     let current = 0;
     let tick = 0;
     let timer = 0;
@@ -830,14 +828,14 @@ export default function AudienceSimulationOperatorPage() {
       current = Math.min(total, current + revealStep);
       tick += 1;
       setAudienceReveal(current);
-      if (current < total) timer = window.setTimeout(reveal, tick % 12 === 0 ? 360 : 50);
+      if (current < total) timer = window.setTimeout(reveal, tick % 5 === 0 ? 600 + Math.floor(Math.random() * 801) : 160 + Math.floor(Math.random() * 161));
     };
     timer = window.setTimeout(reveal, 3000);
     return () => window.clearTimeout(timer);
   }, [activeSlide, run?.selection.members?.length]);
 
   useEffect(() => {
-    if (activeSlide !== 5 || !isFinished || !selectedScenarioId) return;
+    if (activeSlide !== 4 || !isFinished || !selectedScenarioId) return;
     setDemoProgress(0);
     const total = run?.responses.length || 100;
     let current = 0;
@@ -848,7 +846,7 @@ export default function AudienceSimulationOperatorPage() {
       current = Math.min(total, current + 1);
       setDemoProgress(current);
       if (current >= total) {
-        timer = window.setTimeout(() => setActiveSlide(6), 900);
+        timer = window.setTimeout(() => setActiveSlide(5), 900);
         return;
       }
       answersInBatch += 1;
@@ -905,19 +903,17 @@ export default function AudienceSimulationOperatorPage() {
   const nextEnabled = activeSlide === 1
     ? (run ? !busy : ideaMode === "custom" ? idea.trim().length >= 20 && !busy : ideaMode === "prebuilt" ? Boolean(selectedScenarioId) && !busy : false)
     : activeSlide === 2 ? sourceStageReady || (run?.status === "awaiting_search_fallback" && slideEntranceDone && !busy)
-      : activeSlide === 3 ? audienceStageReady
-        : activeSlide === 4 ? slideEntranceDone && !busy && chosenCount >= 5
-            : activeSlide === 5 ? Boolean(isFinished && slideEntranceDone && (selectedScenarioId ? progress >= (run?.responses.length || 0) : true))
-            : activeSlide === 6 || activeSlide === 7 ? slideEntranceDone
-              : activeSlide === 8 ? !claimToken && !busy : false;
+      : activeSlide === 3 ? audienceStageReady && !busy && chosenCount >= 5
+        : activeSlide === 4 ? Boolean(isFinished && slideEntranceDone && (selectedScenarioId ? progress >= (run?.responses.length || 0) : true))
+          : activeSlide === 5 || activeSlide === 6 ? slideEntranceDone
+            : activeSlide === 7 ? !claimToken && !busy : false;
   const nextLabel = activeSlide === 1
     ? (ideaMode === "prebuilt" ? "Запустить сценарий" : run ? "К источникам" : "Начать проверку")
     : activeSlide === 2 ? (run?.status === "awaiting_search_fallback" ? "Продолжить без источников" : "К аудитории")
-      : activeSlide === 3 ? "Посмотреть аудиторию"
-        : activeSlide === 4 ? (busy ? "Готовим исследование" : "Запустить исследование")
-          : activeSlide === 5 ? (isFinished && (selectedScenarioId ? progress >= (run?.responses.length || 0) : true) ? "К карте реакций" : "Собираем ответы")
-            : activeSlide === 6 ? "К выводам"
-              : activeSlide === 7 ? "Открыть результат"
+      : activeSlide === 3 ? (busy ? "Готовим исследование" : "Запустить исследование")
+        : activeSlide === 4 ? (isFinished && (selectedScenarioId ? progress >= (run?.responses.length || 0) : true) ? "К карте реакций" : "Собираем ответы")
+          : activeSlide === 5 ? "К выводам"
+            : activeSlide === 6 ? "Открыть результат"
                 : "Создать QR-код";
   const handleNext = () => {
     if (!nextEnabled) return;
@@ -928,12 +924,11 @@ export default function AudienceSimulationOperatorPage() {
     } else if (activeSlide === 2) {
       if (run?.status === "awaiting_search_fallback") void continueWithoutSearch();
       else goToSlide(3);
-    } else if (activeSlide === 3) goToSlide(4);
-    else if (activeSlide === 4) void confirmAudience();
+    } else if (activeSlide === 3) void confirmAudience();
+    else if (activeSlide === 4) goToSlide(5);
     else if (activeSlide === 5) goToSlide(6);
     else if (activeSlide === 6) goToSlide(7);
-    else if (activeSlide === 7) goToSlide(8);
-    else if (activeSlide === 8) void makeClaimLink();
+    else if (activeSlide === 7) void makeClaimLink();
   };
   const handleBack = () => {
     if (activeSlide === 1 && !run && ideaMode !== "choose") {
@@ -972,7 +967,7 @@ export default function AudienceSimulationOperatorPage() {
                 alt=""
                 fill
                 preload
-                sizes="(max-width: 600px) 100vw, 56.25vh"
+                sizes="100vw"
                 className="hero-art"
               />
             </div>
@@ -1091,23 +1086,21 @@ export default function AudienceSimulationOperatorPage() {
             <p className="audience-eyebrow">03 / Формируем аудиторию</p>
             <h2 className="audience-title">Персоны<br /><span className="audience-shine">под вашу идею</span></h2>
             <p className="audience-lead">Генерируем состав аудитории с учётом вашей идеи и найденных сигналов.</p>
-            <div className="candidate-label"><span>{audienceReveal >= personas.length ? statusText[run?.status || "preparing"] : "Подключаем профили"}</span><span>{audienceReveal} профилей</span></div>
-            <div className="persona-cloud">
-              <PersonaNetwork members={personas} responses={[]} mode="crowd" litIds={new Set(personas.slice(0, audienceReveal).map((person) => person.id))} />
+            <div className="candidate-label"><span>{audienceReveal >= personas.length ? statusText[run?.status || "preparing"] : "Формируем профили"}</span><span>{audienceReveal} / {personas.length} · {chosenCount} выбрано</span></div>
+            <div className="persona-card-list" aria-live="polite">
+              {personas.slice(0, Math.min(audienceReveal, 4)).map((person, index) => (
+                <article className="persona-card" key={person.id} style={{ animationDelay: `${index * 110}ms` }}>
+                  <div className="persona-avatar" aria-hidden="true"><i /></div>
+                  <div className="persona-card-copy">
+                    <div className="persona-card-meta"><span>ID {person.id.slice(-6).toUpperCase()}</span><b style={{ color: palette[Math.max(0, groups.indexOf(person.group)) % palette.length] }}>{person.group}</b></div>
+                    <strong>{person.profile}</strong>
+                    {person.selection_reason && <p>{person.selection_reason}</p>}
+                  </div>
+                </article>
+              ))}
+              {!audienceReveal && <p className="persona-card-empty">Сопоставляем аудиторию с сигналами рынка…</p>}
             </div>
-          </section>
-
-          <section className={"audience-slide preview-slide" + (activeSlide === 4 ? " is-active" : "")} inert={activeSlide !== 4}>
-            <p className="audience-eyebrow">04 / Предпросмотр аудитории</p>
-            <h2 className="audience-title">Кто будет<br />отвечать</h2>
-            <div className="candidate-label"><span>Состав аудитории</span><span>{chosenCount || personas.length} персон · {selectedGroups.length} групп</span></div>
-            <div className="preview-map"><PersonaNetwork members={personas} responses={[]} mode="crowd" /></div>
-            <div className="profile-strip">
-              <span>Профили<b>{chosenCount || personas.length}</b></span>
-              <span>Группы<b>{groups.length}</b></span>
-              <span>Цена<b>{price.trim() || "не задана"}</b></span>
-            </div>
-            <p className="audience-helper">Синтетические профили по сигналам. <button type="button" className="audience-edit-link" onClick={() => setShowAudienceControls((value) => !value)} aria-expanded={showAudienceControls}>Настроить состав</button></p>
+            <p className="audience-helper"><button type="button" className="audience-edit-link" onClick={() => setShowAudienceControls((value) => !value)} aria-expanded={showAudienceControls}>Настроить состав и ограничения</button></p>
             <div className={"audience-editor" + (showAudienceControls ? " is-open" : "")} inert={!showAudienceControls}>
               <div className="editor-heading"><strong>Состав аудитории</strong><button type="button" onClick={(event) => { event.currentTarget.blur(); setShowAudienceControls(false); }}>Готово</button></div>
               <div className="group-picker">
@@ -1145,7 +1138,7 @@ export default function AudienceSimulationOperatorPage() {
             </div>
           </section>
 
-          <section className={"audience-slide interview-slide" + (activeSlide === 5 ? " is-active" : "")} inert={activeSlide !== 5}>
+          <section className={"audience-slide interview-slide" + (activeSlide === 4 ? " is-active" : "")} inert={activeSlide !== 4}>
             <p className="audience-eyebrow">05 / Синтетическое исследование</p>
             <h2 className="audience-title">Собираем<br /><span className="audience-shine">реакции аудитории</span></h2>
             <div className="candidate-label"><span>{busy ? "Запускаем исследование" : progress ? "Персоны отвечают в группах" : "Подключаем персоны"}</span><span>{progress} / {personas.length || audienceSize}</span></div>
@@ -1156,7 +1149,7 @@ export default function AudienceSimulationOperatorPage() {
             <div className="audience-meter"><i style={{ width: (personas.length ? Math.min(100, (progress / personas.length) * 100) : 0) + "%" }} /></div>
           </section>
 
-          <section className={"audience-slide reaction-slide" + (activeSlide === 6 ? " is-active" : "")} inert={activeSlide !== 6}>
+          <section className={"audience-slide reaction-slide" + (activeSlide === 5 ? " is-active" : "")} inert={activeSlide !== 5}>
             <p className="audience-eyebrow">06 / Карта реакции</p>
             <h2 className="audience-title">Реакция<br /><span className="audience-shine">аудитории</span></h2>
             <div className="reaction-map">
@@ -1173,7 +1166,7 @@ export default function AudienceSimulationOperatorPage() {
             </div>
           </section>
 
-          <section className={"audience-slide insights-slide" + (activeSlide === 7 ? " is-active" : "")} inert={activeSlide !== 7}>
+          <section className={"audience-slide insights-slide" + (activeSlide === 6 ? " is-active" : "")} inert={activeSlide !== 6}>
             <p className="audience-eyebrow">07 / Выводы</p>
             <h2 className="audience-title">Что говорит<br /><span className="audience-shine">аудитория</span></h2>
             <div className="primary-result">{typeof validRate === "number" ? validRate + "%" : "—"}</div>
@@ -1191,7 +1184,7 @@ export default function AudienceSimulationOperatorPage() {
             </div>
           </section>
 
-          <section className={"audience-slide result-slide" + (activeSlide === 8 ? " is-active" : "")} inert={activeSlide !== 8}>
+          <section className={"audience-slide result-slide" + (activeSlide === 7 ? " is-active" : "")} inert={activeSlide !== 7}>
             <p className="audience-eyebrow">Результат готов</p>
             <h2 className="audience-title">Продолжите<br />изучать свою<br /><span className="audience-shine">идею</span></h2>
             <p className="audience-lead">Отсканируйте код, чтобы открыть краткий итог и сохранить проверку.</p>
@@ -1204,19 +1197,17 @@ export default function AudienceSimulationOperatorPage() {
               <div className="qr-create-prompt">Создайте QR-код, чтобы открыть и сохранить краткий итог проверки.</div>
             )}
             <div className="audience-glowline result-glowline" />
-            <div className="audience-card result-card-note"><p>Хотите проверить глубже? Передайте идею и найденные сигналы в полноценный CustDev Pitchy.</p></div>
-            <p className="audience-disclaimer">{config.disclaimer}</p>
-            {claimToken && <button type="button" onClick={reset} className="reset-run"><RotateCcw size={12} /> Завершить проверку</button>}
+            {claimToken && <button type="button" onClick={reset} className="reset-run"><RotateCcw size={14} /> Новая проверка</button>}
           </section>
         </div>}
 
         {activeSlide > 0 && <nav className="audience-step-nav" aria-label="Переход между этапами">
           <button type="button" className="step-back" onClick={handleBack} aria-label="Назад"><ArrowLeft size={18} /></button>
-          {activeSlide < 8 || !claimToken ? <button type="button" className="step-next" disabled={!nextEnabled} onClick={handleNext}>
-            {busy && [1, 4, 8].includes(activeSlide) ? <Loader size={15} className="audience-spin" /> : null}{nextLabel}<ArrowRight size={17} />
-          </button> : <span className="step-finished">Проверка завершена</span>}
+          {activeSlide < 7 || !claimToken ? <button type="button" className="step-next" disabled={!nextEnabled} onClick={handleNext}>
+            {busy && [1, 3, 7].includes(activeSlide) ? <Loader size={15} className="audience-spin" /> : null}{nextLabel}<ArrowRight size={17} />
+          </button> : null}
         </nav>}
-        <div className="audience-progress"><i style={{ width: ((activeSlide + 1) / 9) * 100 + "%" }} /></div>
+        <div className="audience-progress"><i style={{ width: ((activeSlide + 1) / 8) * 100 + "%" }} /></div>
 
       </div>
     </main>
