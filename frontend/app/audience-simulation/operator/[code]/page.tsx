@@ -310,26 +310,25 @@ function PersonaNetwork({
           context.beginPath();
           context.fillStyle = point.color;
           context.shadowColor = point.color;
-          context.shadowBlur = selected ? 1.5 : 0.7;
+          context.shadowBlur = 0;
           context.globalAlpha = selected ? 0.22 : 0.1;
-          context.arc(point.x, point.y, selected ? 4.6 : 3.5, 0, Math.PI * 2);
+          context.arc(point.x, point.y, selected ? 4.1 : 3.1, 0, Math.PI * 2);
           context.fill();
           context.beginPath();
           context.fillStyle = point.color;
           context.shadowBlur = 0;
           context.globalAlpha = 1;
-          context.arc(point.x, point.y, selected ? 3 : 2.5, 0, Math.PI * 2);
+          context.arc(point.x, point.y, selected ? 3 : 2.4, 0, Math.PI * 2);
           context.fill();
         } else {
-          const glow = point.person ? 2.5 + (selected ? 2.5 : 0) : 1.5;
           context.beginPath();
           const lit = !litIdsRef.current || litIdsRef.current.has(point.id);
           const pointColor = lit ? point.color : "#414348";
           context.fillStyle = pointColor;
           context.shadowColor = pointColor;
-          context.shadowBlur = lit ? glow : 0;
+          context.shadowBlur = 0;
           context.globalAlpha = lit ? 0.95 : 0.38;
-          context.arc(point.x, point.y, Math.max(1.4, point.radius), 0, Math.PI * 2);
+          context.arc(point.x, point.y, Math.max(1.8, point.radius * 0.9), 0, Math.PI * 2);
           context.fill();
         }
         if (selected) {
@@ -349,7 +348,7 @@ function PersonaNetwork({
       const bounds = canvas.getBoundingClientRect();
       width = bounds.width;
       height = bounds.height;
-      pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+      pixelRatio = Math.min(window.devicePixelRatio || 1, 3);
       canvas.width = Math.round(width * pixelRatio);
       canvas.height = Math.round(height * pixelRatio);
       render();
@@ -1155,7 +1154,6 @@ export default function AudienceSimulationOperatorPage() {
             </div>
             <div className="people-count"><strong>{progress}</strong><span>/ {personas.length || audienceSize} ответов</span></div>
             <div className="audience-meter"><i style={{ width: (personas.length ? Math.min(100, (progress / personas.length) * 100) : 0) + "%" }} /></div>
-            <p className="audience-helper center">Ответы появляются по одному</p>
           </section>
 
           <section className={"audience-slide reaction-slide" + (activeSlide === 6 ? " is-active" : "")} inert={activeSlide !== 6}>
@@ -1188,8 +1186,8 @@ export default function AudienceSimulationOperatorPage() {
               <div className="audience-card result-card"><strong>{typeof tryRate === "number" ? tryRate + "%" : "—"}</strong><span>готовы попробовать · 7+</span></div>
             </div>
             <div className="insight-list">
-              {(run?.summary?.observations || []).slice(0, 2).map((item, index) => <div className="insight-item" key={item}><i style={{ backgroundColor: palette[index % palette.length] }} /><span>{item}</span></div>)}
-              {!run?.summary?.observations?.length && <div className="insight-item"><i /><span>Собрано ответов: {progress}</span></div>}
+              {(run?.summary?.observations || []).filter((item) => !/фото не гарантирует точный размер порции/i.test(item)).slice(0, 2).map((item, index) => <div className="insight-item" key={item}><i style={{ backgroundColor: palette[index % palette.length] }} /><span>{item}</span></div>)}
+              {!(run?.summary?.observations || []).some((item) => !/фото не гарантирует точный размер порции/i.test(item)) && <div className="insight-item"><i /><span>Собрано ответов: {progress}</span></div>}
             </div>
           </section>
 
