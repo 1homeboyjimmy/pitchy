@@ -280,8 +280,6 @@
 .audience-build-slide .audience-lead { max-width: 100%; }
 .candidate-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 2%; color: #999; font-size: clamp(8px, .8vh, 10px); }
 .persona-cloud { position: relative; height: 38%; min-height: 150px; flex: 0 0 38%; margin: 1% -7% 0; mask-image: radial-gradient(ellipse, #000 50%, transparent 80%); }
-.audience-build-note { margin-top: auto; padding: 3.2%; }
-.audience-build-note p { margin: 0; color: #ddd; font-size: clamp(9px, 1.1vh, 14px); line-height: 1.4; }
 .audience-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2.5%; }
 .audience-chip { padding: 6px 8px; border: 1px solid #303030; border-radius: 30px; color: #aaa; font-size: clamp(8px, .85vh, 11px); }
 .build-continue { width: 100%; min-height: 34px; justify-content: space-between; margin-top: 2%; font-size: 10px !important; }
@@ -409,6 +407,7 @@
 .idea-action { margin-top: auto; padding-bottom: 2%; }
 .build-note-heading { display: flex; align-items: center; justify-content: space-between; color: #ddd; font-size: 12px; }
 .build-note-heading img { width: 50px; height: 50px; object-fit: contain; }
+.audience-mascot-stage, .stage-mascot { display: none; pointer-events: none; }
 .audience-chips { margin-top: 0; }
 .audience-chip { border-color: #333; background: #111; }
 .reaction-map { height: 50%; min-height: 220px; flex-basis: 50%; margin-top: 2%; }
@@ -470,6 +469,117 @@
 
 @media (max-width: 600px) and (max-aspect-ratio: 1 / 2) {
   .hero-art-frame { top: 22%; right: 2.5%; left: 2.5%; height: 78%; }
+}
+
+/* 43-inch Full HD touch panels use a presentation layout in landscape. */
+@media (min-width: 900px) and (min-aspect-ratio: 4 / 3) {
+  .audience-screen { width: min(100vw, 177.78dvh); height: min(100dvh, 56.25vw); }
+  .audience-topbar { top: 2.8%; right: 4.5%; left: 4.5%; }
+  .audience-brand { font-size: 24px; }
+  .audience-topnote { font-size: 13px; }
+  .audience-slide { padding: 7.5% 7% 10%; }
+  .audience-eyebrow { margin-bottom: 1.2%; font-size: 14px; }
+  .audience-title { margin-bottom: 1.5%; font-size: clamp(48px, 6.2vh, 76px); }
+  .audience-lead { max-width: 78%; font-size: 20px; }
+  .hero-slide { padding: 8% 7% 8%; }
+  .hero-slide .audience-title { max-width: 64%; font-size: clamp(62px, 8vw, 104px); }
+  .hero-lead { max-width: 58%; font-size: 21px; }
+  .hero-art-frame { top: 10%; right: -2%; left: 35%; height: 108%; }
+  .hero-art-shade { background: linear-gradient(90deg, #050505 0%, #050505ed 32%, #05050588 48%, transparent 67%); }
+  .audience-glowline { margin: 2.5% 0; }
+  .idea-slide .audience-title { margin-top: 0; }
+  .idea-mode-picker { width: 68%; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 3%; }
+  .idea-mode-card { min-height: 140px; justify-content: center; padding: 24px 54px 24px 24px; border-radius: 20px; }
+  .idea-mode-card strong { font-size: 24px; }
+  .idea-mode-card span { font-size: 16px; }
+  .prebuilt-picker { width: 67%; margin-top: 1%; }
+  .prebuilt-list { grid-template-columns: 1fr 1fr; gap: 12px; }
+  .prebuilt-option { min-height: 88px; padding: 14px 16px; border-radius: 16px; }
+  .prebuilt-option strong { font-size: 17px; }
+  .prebuilt-option span { font-size: 14px; }
+  .idea-box { width: 68%; min-height: 30%; flex-basis: 30%; margin-top: 2.5%; padding: 2.5%; }
+  .idea-box textarea { font-size: 19px; }
+  .input-options { width: 68%; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 1.5%; }
+  .input-option { min-height: 58px; padding: 0 18px; font-size: 16px !important; }
+  .input-option i { font-size: 13px; }
+  .audience-compact-input { min-height: 52px; padding: 10px 14px; font-size: 16px !important; }
+  .idea-action { width: 68%; margin-top: 1.5%; }
+  .field-hint { font-size: 14px; }
+  .source-stats { width: 76%; gap: 14px; margin-top: 2.5%; }
+  .source-stats .audience-card { min-height: 100px; padding: 14px 18px; }
+  .source-stats strong { font-size: 54px; }
+  .source-stats span { font-size: 13px; }
+  .source-grid { width: 76%; gap: 12px; margin-top: 1.8%; }
+  .source-card { min-height: 66px; gap: 10px; padding: 14px; border-radius: 14px; font-size: 15px; }
+  .source-card small { font-size: 12px; }
+  .search-readout { width: 76%; margin-top: 1.8%; font-size: 15px; }
+  .signal-sweep { width: 76%; margin-top: 1.2%; }
+  .source-disclosure { width: 76%; margin-top: 1.2%; font-size: 13px; }
+  .source-link { font-size: 12px; }
+  .source-link span { font-size: 11px; }
+  .fallback-actions { width: 76%; margin-top: 1.5%; }
+  .fallback-actions p { font-size: 14px; }
+  .audience-build-slide > .audience-eyebrow { position: absolute; top: 8%; left: 8%; }
+  .audience-build-slide > .audience-title { position: absolute; top: 15%; left: 8%; width: 49%; font-size: clamp(58px, 7vh, 82px); }
+  .audience-build-slide > .audience-lead { position: absolute; top: 34%; left: 8%; width: 43%; max-width: none; font-size: 19px; }
+  .audience-build-slide > .candidate-label { position: absolute; top: 43%; left: 8%; width: 43%; font-size: 15px; }
+  .audience-build-slide > .persona-cloud { position: absolute; top: 49%; left: 5%; width: 48%; height: 40%; min-height: 0; margin: 0; }
+  .audience-mascot-stage { position: absolute; top: 10%; right: 5%; bottom: 4%; display: grid; width: 43%; place-items: center; }
+  .audience-mascot-stage img { width: 100%; height: 100%; object-fit: contain; }
+  .preview-slide .audience-title, .preview-slide .candidate-label, .preview-map, .profile-strip, .preview-slide > .audience-helper { width: 64%; max-width: 64%; }
+  .preview-map { height: 50%; min-height: 0; flex-basis: 50%; margin-top: 1%; }
+  .profile-strip { gap: 12px; margin-top: 1.5%; }
+  .profile-strip span { min-height: 60px; padding: 10px 14px; font-size: 13px; }
+  .profile-strip b { font-size: 17px; }
+  .preview-slide .audience-helper { font-size: 14px; }
+  .preview-mascot { position: absolute; top: 20%; right: 4%; display: grid; width: 25%; height: 55%; place-items: center; }
+  .preview-mascot img, .stage-mascot img { width: 100%; height: 100%; object-fit: contain; }
+  .interview-slide .audience-title, .interview-slide > .candidate-label, .people-count, .interview-slide > .audience-meter, .interview-slide > .audience-helper { width: 64%; max-width: 64%; }
+  .interview-network { width: 64%; height: 53%; min-height: 0; flex-basis: 53%; margin: 1% 0 0 -2%; }
+  .people-count strong { font-size: 56px; }
+  .people-count span { font-size: 15px; }
+  .interview-slide > .audience-helper { font-size: 14px; }
+  .interview-mascot { position: absolute; top: 19%; right: 4%; display: grid; width: 27%; height: 61%; place-items: center; }
+  .reaction-slide .audience-title, .reaction-map, .reaction-validity, .group-counts { width: 64%; max-width: 64%; }
+  .reaction-map { height: 48%; min-height: 0; flex-basis: 48%; margin-top: 1%; border-radius: 20px; }
+  .map-axis-x, .map-axis-y, .map-excluded-key { font-size: 11px; }
+  .reaction-hover-card { right: 5%; bottom: 8%; left: 5%; min-height: 100px; padding: 14px 16px; border-radius: 16px; }
+  .reaction-hover-card > span { font-size: 13px; }
+  .reaction-scores b, .reaction-hover-card p { font-size: 12px; }
+  .reaction-validity { font-size: 14px; }
+  .group-counts { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 1.2%; }
+  .group-counts span { min-height: 64px; padding: 9px 12px; font-size: 12px; }
+  .group-counts b { font-size: 24px; }
+  .reaction-mascot { position: absolute; top: 21%; right: 4%; display: grid; width: 27%; height: 56%; place-items: center; }
+  .insights-slide > :not(.stage-mascot) { max-width: 58%; }
+  .insights-slide .audience-title { font-size: clamp(56px, 7vh, 80px); }
+  .primary-result { font-size: 78px; }
+  .result-label, .result-validity { font-size: 15px; }
+  .insights-slide .audience-meter { margin-top: 2%; margin-bottom: 2%; }
+  .result-row { gap: 12px; }
+  .result-card { min-height: 100px; padding: 12px 16px; }
+  .result-card strong { font-size: 52px; }
+  .result-card span { font-size: 13px; }
+  .insight-list { gap: 10px; margin-top: 2%; }
+  .insight-item { font-size: 14px; }
+  .insights-disclaimer { margin-top: 1%; font-size: 13px; }
+  .insights-mascot { position: absolute; top: 20%; right: 4%; display: grid; width: 34%; height: 62%; place-items: center; }
+  .result-slide > :not(.stage-mascot) { max-width: 58%; }
+  .result-slide .audience-title { font-size: clamp(58px, 7vh, 82px); }
+  .result-slide .audience-lead { font-size: 19px; }
+  .qr-layout { gap: 24px; margin-top: 3%; }
+  .qr-image { width: 200px; flex-basis: 200px; }
+  .qr-caption { font-size: 18px; }
+  .qr-caption a { font-size: 13px; }
+  .result-card-note { padding: 18px; }
+  .result-card-note p, .result-slide .audience-disclaimer { font-size: 14px; }
+  .result-slide .audience-disclaimer { margin-top: 2%; }
+  .audience-step-nav { right: 4%; bottom: 2.2%; left: 4%; grid-template-columns: 72px minmax(0, 430px); justify-content: end; gap: 14px; }
+  .step-back { width: 72px; height: 72px; }
+  .step-back svg { width: 24px; height: 24px; }
+  .step-next { min-height: 72px; padding: 0 24px; font-size: 18px !important; }
+  .step-next svg { width: 22px; height: 22px; }
+  .audience-progress { height: 3px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

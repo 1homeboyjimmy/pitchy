@@ -750,6 +750,7 @@ export default function AudienceSimulationOperatorPage() {
   const interestRate = run?.aggregate?.percent_at_least_7?.interest;
   const tryRate = run?.aggregate?.percent_at_least_7?.willingness_to_try;
   const activeResponse = run?.responses.find((response) => response.persona_id === (hoveredResponseId || selectedResponseId));
+  const reactionActiveIds = useMemo(() => activeResponse ? new Set([activeResponse.persona_id]) : undefined, [activeResponse?.persona_id]);
   const plottedResponseCount = run?.responses.filter((response) => response.included !== false && typeof response.interest === "number" && typeof response.problem_relevance === "number" && typeof response.willingness_to_try === "number").length || 0;
   const excludedResponseCount = run?.responses.filter((response) => response.included === false || typeof response.interest !== "number" || typeof response.problem_relevance !== "number" || typeof response.willingness_to_try !== "number").length || 0;
   const selectedMarkets = new Set((run?.selection.members || []).map((person) => person.market).filter(Boolean));
@@ -1050,12 +1051,8 @@ export default function AudienceSimulationOperatorPage() {
             <div className="persona-cloud">
               <PersonaNetwork members={personas} responses={[]} mode="crowd" litIds={selectedScenarioId ? new Set(personas.slice(0, audienceReveal).map((person) => person.id)) : undefined} />
             </div>
-            <div className="audience-card audience-build-note">
-              <div className="build-note-heading"><span>Сегменты аудитории</span><Image src="/images/audience-simulation/mascot-wave.png" alt="" width={56} height={56} /></div>
-              <div className="audience-chips">
-                {groups.slice(0, 3).map((group) => <span key={group} className="audience-chip">{group}</span>)}
-                {!groups.length && <span className="audience-chip">Формируем группы</span>}
-              </div>
+            <div className="audience-mascot-stage" aria-hidden="true">
+              <Image src="/images/audience-simulation/mascot-pointing.png" alt="" width={720} height={720} priority />
             </div>
           </section>
 
@@ -1064,6 +1061,7 @@ export default function AudienceSimulationOperatorPage() {
             <h2 className="audience-title">Кто будет<br />отвечать</h2>
             <div className="candidate-label"><span>Состав аудитории</span><span>{chosenCount || personas.length} персон · {selectedGroups.length} групп</span></div>
             <div className="preview-map"><PersonaNetwork members={personas} responses={[]} mode="crowd" /></div>
+            <div className="stage-mascot preview-mascot" aria-hidden="true"><Image src="/images/audience-simulation/mascot-welcome.png" alt="" width={320} height={320} /></div>
             <div className="profile-strip">
               <span>Профили<b>{chosenCount || personas.length}</b></span>
               <span>Группы<b>{groups.length}</b></span>
@@ -1114,6 +1112,7 @@ export default function AudienceSimulationOperatorPage() {
             <div className="interview-network">
               <PersonaNetwork members={personas} responses={[]} mode="crowd" litIds={new Set((run?.responses || []).slice(0, progress).map((response) => response.persona_id))} activeIds={progress ? new Set([(run?.responses || [])[Math.min(progress, (run?.responses.length || 1)) - 1]?.persona_id || ""]) : undefined} />
             </div>
+            <div className="stage-mascot interview-mascot" aria-hidden="true"><Image src="/images/audience-simulation/mascot-running.png" alt="" width={340} height={340} /></div>
             <div className="people-count"><strong>{progress}</strong><span>/ {personas.length || audienceSize} ответов</span></div>
             <div className="audience-meter"><i style={{ width: (personas.length ? Math.min(100, (progress / personas.length) * 100) : 0) + "%" }} /></div>
             <p className="audience-helper center">Ответы появляются по одному</p>
@@ -1123,7 +1122,7 @@ export default function AudienceSimulationOperatorPage() {
             <p className="audience-eyebrow">06 / Карта реакции</p>
             <h2 className="audience-title">Реакция<br /><span className="audience-shine">аудитории</span></h2>
             <div className="reaction-map">
-              <PersonaNetwork members={personas} responses={run?.responses || []} mode="map" activeIds={activeResponse ? new Set([activeResponse.persona_id]) : undefined} onPick={(id) => setSelectedResponseId(id)} onHover={(id) => setHoveredResponseId(id || "")} />
+              <PersonaNetwork members={personas} responses={run?.responses || []} mode="map" activeIds={reactionActiveIds} onPick={(id) => setSelectedResponseId(id)} onHover={(id) => setHoveredResponseId(id || "")} />
               <span className="map-axis-y">АКТУАЛЬНОСТЬ ПРОБЛЕМЫ</span>
               <span className="map-axis-x">ГОТОВНОСТЬ ПОПРОБОВАТЬ →</span>
               {excludedResponseCount > 0 && <span className="map-excluded-key">× НЕ УЧТЁН · {excludedResponseCount}</span>}
@@ -1134,6 +1133,7 @@ export default function AudienceSimulationOperatorPage() {
               {groups.map((group, index) => <span key={group}><b style={{ color: palette[index % palette.length] }}>{run?.responses.filter((response) => response.group === group).length || 0}</b>{group}</span>)}
               {!groups.length && <span><b>{run?.responses.length || 0}</b>ответов</span>}
             </div>
+            <div className="stage-mascot reaction-mascot" aria-hidden="true"><Image src="/images/audience-simulation/mascot-thinking.png" alt="" width={340} height={340} /></div>
           </section>
 
           <section className={"audience-slide insights-slide" + (activeSlide === 7 ? " is-active" : "")} inert={activeSlide !== 7}>
@@ -1152,6 +1152,7 @@ export default function AudienceSimulationOperatorPage() {
               {(run?.summary?.observations || []).slice(0, 2).map((item, index) => <div className="insight-item" key={item}><i style={{ backgroundColor: palette[index % palette.length] }} /><span>{item}</span></div>)}
               {!run?.summary?.observations?.length && <div className="insight-item"><i /><span>Собрано ответов: {progress}</span></div>}
             </div>
+            <div className="stage-mascot insights-mascot" aria-hidden="true"><Image src="/images/audience-simulation/mascot-celebrate.png" alt="" width={380} height={380} /></div>
             <p className="insights-disclaimer">Синтетические ответы помогают выбрать следующую проверку.</p>
           </section>
 
