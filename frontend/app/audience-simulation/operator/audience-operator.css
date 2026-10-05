@@ -29,6 +29,7 @@
 }
 
 .audience-screen * { box-sizing: border-box; }
+.audience-screen [class*="mascot"] { display: none !important; }
 .audience-screen button, .audience-screen input, .audience-screen textarea, .audience-screen select { font: inherit; }
 .audience-screen button { color: inherit; cursor: pointer; }
 .audience-screen button:focus-visible, .audience-screen a:focus-visible, .audience-screen textarea:focus-visible, .audience-screen input:focus-visible, .audience-screen select:focus-visible, .audience-network:focus-visible {
