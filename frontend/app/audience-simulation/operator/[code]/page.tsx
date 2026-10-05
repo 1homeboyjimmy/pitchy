@@ -5,11 +5,11 @@ import { useParams } from "next/navigation";
 import Image from "next/image";
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
 import {
+  ArrowLeft,
   ArrowRight,
   Check,
   Loader,
   RotateCcw,
-  Search,
 } from "react-feather";
 import "../audience-operator.css";
 
@@ -84,18 +84,6 @@ type SimRun = {
   events: Array<{ sequence: number; type: string; payload?: Record<string, unknown> }>;
 };
 
-const stageNames = [
-  "ИДЕЯ → АУДИТОРИЯ",
-  "ВАША ГИПОТЕЗА",
-  "РЕАЛЬНЫЕ СИГНАЛЫ",
-  "ОТБОР ПЕРСОН",
-  "ПРОСМОТР АУДИТОРИИ",
-  "СИМУЛЯЦИЯ",
-  "КАРТА РЕАКЦИЙ",
-  "ВЫВОДЫ",
-  "ИТОГ → QR",
-];
-
 const statusText: Record<string, string> = {
   preparing: "Ищем сигналы и формируем аудиторию",
   awaiting_search_fallback: "Не нашли достаточно проверяемых ссылок",
@@ -131,6 +119,7 @@ function PersonaNetwork({
   activeIds,
   litIds,
   onPick,
+  onHover,
 }: {
   members: Persona[];
   responses: ResponsePoint[];
@@ -138,6 +127,7 @@ function PersonaNetwork({
   activeIds?: Set<string>;
   litIds?: Set<string>;
   onPick?: (id: string) => void;
+  onHover?: (id: string | null) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pointsRef = useRef<Array<{ x: number; y: number; id: string; color: string; excluded?: boolean }>>([]);
@@ -386,6 +376,17 @@ function PersonaNetwork({
     if (nearest && nearest.distance < 22) onPick(nearest.point.id);
   };
 
+  const hoverNearest = (event: ReactMouseEvent<HTMLCanvasElement>) => {
+    if (!onHover) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    const nearest = pointsRef.current.filter((point) => point.id)
+      .map((point) => ({ point, distance: Math.hypot(point.x - x, point.y - y) }))
+      .sort((first, second) => first.distance - second.distance)[0];
+    onHover(nearest && nearest.distance < 24 ? nearest.point.id : null);
+  };
+
   const pickWithKeyboard = (event: ReactKeyboardEvent<HTMLCanvasElement>) => {
     if (!onPick) return;
     const points = pointsRef.current.filter((point) => point.id);
@@ -406,6 +407,8 @@ function PersonaNetwork({
       ref={canvasRef}
       className="audience-network"
       onClick={pickNearest}
+      onMouseMove={hoverNearest}
+      onMouseLeave={() => onHover?.(null)}
       onKeyDown={onPick ? pickWithKeyboard : undefined}
       role={onPick ? "application" : "img"}
       tabIndex={onPick ? 0 : undefined}
@@ -431,6 +434,7 @@ export default function AudienceSimulationOperatorPage() {
   const [showAudienceControls, setShowAudienceControls] = useState(false);
   const [claimToken, setClaimToken] = useState("");
   const [selectedResponseId, setSelectedResponseId] = useState("");
+  const [hoveredResponseId, setHoveredResponseId] = useState("");
   const [activeSlide, setActiveSlide] = useState(0);
   const [slideEntranceDone, setSlideEntranceDone] = useState(false);
   const [showAudienceField, setShowAudienceField] = useState(false);
@@ -745,8 +749,7 @@ export default function AudienceSimulationOperatorPage() {
   const validRate = run?.aggregate?.percent_at_least_7?.problem_relevance;
   const interestRate = run?.aggregate?.percent_at_least_7?.interest;
   const tryRate = run?.aggregate?.percent_at_least_7?.willingness_to_try;
-  const activeResponse = run?.responses.find((response) => response.persona_id === selectedResponseId) || run?.responses[0];
-  const activePersona = activeResponse ? personas.find((persona) => persona.id === activeResponse.persona_id) : undefined;
+  const activeResponse = run?.responses.find((response) => response.persona_id === (hoveredResponseId || selectedResponseId));
   const plottedResponseCount = run?.responses.filter((response) => response.included !== false && typeof response.interest === "number" && typeof response.problem_relevance === "number" && typeof response.willingness_to_try === "number").length || 0;
   const excludedResponseCount = run?.responses.filter((response) => response.included === false || typeof response.interest !== "number" || typeof response.problem_relevance !== "number" || typeof response.willingness_to_try !== "number").length || 0;
   const selectedMarkets = new Set((run?.selection.members || []).map((person) => person.market).filter(Boolean));
@@ -765,6 +768,7 @@ export default function AudienceSimulationOperatorPage() {
           : "Подключаем источники поиска";
 
   const goToSlide = useCallback((index: number) => {
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     setActiveSlide(Math.max(0, Math.min(maxSlide, index)));
     setError("");
   }, [maxSlide]);
@@ -852,6 +856,47 @@ export default function AudienceSimulationOperatorPage() {
   const displayCount = (count: number) => Math.max(0, Math.floor(count * sourceCounterProgress));
   const sourceStageReady = Boolean(run?.status === "awaiting_audience_confirmation" && slideEntranceDone && (!selectedScenarioId || sourceCounterProgress >= 1));
   const audienceStageReady = Boolean(slideEntranceDone && (!selectedScenarioId || audienceReveal >= personas.length));
+  const nextEnabled = activeSlide === 1
+    ? (run ? !busy : ideaMode === "custom" ? idea.trim().length >= 20 && !busy : ideaMode === "prebuilt" ? Boolean(selectedScenarioId) && !busy : false)
+    : activeSlide === 2 ? sourceStageReady || (run?.status === "awaiting_search_fallback" && slideEntranceDone && !busy)
+      : activeSlide === 3 ? audienceStageReady
+        : activeSlide === 4 ? slideEntranceDone && !busy && chosenCount >= 5
+            : activeSlide === 5 ? Boolean(isFinished && slideEntranceDone && (selectedScenarioId ? progress >= (run?.responses.length || 0) : true))
+            : activeSlide === 6 || activeSlide === 7 ? slideEntranceDone
+              : activeSlide === 8 ? !claimToken && !busy : false;
+  const nextLabel = activeSlide === 1
+    ? (ideaMode === "prebuilt" ? "Запустить сценарий" : run ? "К источникам" : "Начать проверку")
+    : activeSlide === 2 ? (run?.status === "awaiting_search_fallback" ? "Продолжить без источников" : "К аудитории")
+      : activeSlide === 3 ? "Посмотреть аудиторию"
+        : activeSlide === 4 ? (busy ? "Готовим исследование" : "Запустить исследование")
+          : activeSlide === 5 ? (isFinished && (selectedScenarioId ? progress >= (run?.responses.length || 0) : true) ? "К карте реакций" : "Собираем ответы")
+            : activeSlide === 6 ? "К выводам"
+              : activeSlide === 7 ? "Открыть результат"
+                : "Создать QR-код";
+  const handleNext = () => {
+    if (!nextEnabled) return;
+    if (activeSlide === 1) {
+      if (run) goToSlide(2);
+      else if (ideaMode === "prebuilt") void startPrebuilt();
+      else void start();
+    } else if (activeSlide === 2) {
+      if (run?.status === "awaiting_search_fallback") void continueWithoutSearch();
+      else goToSlide(3);
+    } else if (activeSlide === 3) goToSlide(4);
+    else if (activeSlide === 4) void confirmAudience();
+    else if (activeSlide === 5) goToSlide(6);
+    else if (activeSlide === 6) goToSlide(7);
+    else if (activeSlide === 7) goToSlide(8);
+    else if (activeSlide === 8) void makeClaimLink();
+  };
+  const handleBack = () => {
+    if (activeSlide === 1 && !run && ideaMode !== "choose") {
+      setIdeaMode("choose");
+      setSelectedScenarioId("");
+      return;
+    }
+    goToSlide(activeSlide - 1);
+  };
 
   return (
     <main className="audience-stage">
@@ -888,9 +933,8 @@ export default function AudienceSimulationOperatorPage() {
             <div className="hero-art-shade" aria-hidden="true" />
             <p className="audience-eyebrow">Проверьте идею до запуска</p>
             <h1 className="audience-title hero-title">Как люди<br />отреагируют<br />на <span className="audience-shine">вашу идею?</span></h1>
-            <p className="audience-lead hero-lead">Сначала реальные сигналы. Затем виртуальная аудитория. Потом — реакция на продукт.</p>
+            <p className="audience-lead hero-lead">Поймите, кому может быть полезна идея и что в ней важно.</p>
             <div className="audience-glowline" />
-            <div className="intro-label"><i className="signal-dot" />Реальные боли → релевантные персоны → реакция</div>
             <button type="button" className="slide-hit-target" onClick={() => goToSlide(1)} aria-label="Начать проверку идеи" />
           </section>
 
@@ -902,18 +946,13 @@ export default function AudienceSimulationOperatorPage() {
               <button type="button" className="idea-mode-card" onClick={() => setIdeaMode("prebuilt")}><strong>Готовая идея</strong><span>Выбрать исследованный сценарий</span><ArrowRight size={16} /></button>
             </div>}
             {ideaMode === "prebuilt" && <div className="prebuilt-picker">
-              <button type="button" className="text-action prebuilt-back" onClick={() => { setIdeaMode("choose"); setSelectedScenarioId(""); }}>← Назад</button>
               <div className="prebuilt-list">
                 {prebuiltScenarios.map((scenario) => <button type="button" key={scenario.id} className={"prebuilt-option" + (selectedScenarioId === scenario.id ? " is-selected" : "")} onClick={() => setSelectedScenarioId(scenario.id)} aria-pressed={selectedScenarioId === scenario.id}>
                   <strong>{scenario.title}</strong><span>{scenario.note}</span>
                 </button>)}
               </div>
-              {selectedScenarioId && <button type="button" disabled={busy} onClick={() => void startPrebuilt()} className="audience-cta preset-cta">
-                {busy ? <Loader size={14} className="audience-spin" /> : <Search size={14} />}{busy ? "Загружаем сценарий" : "Запустить готовую проверку"}{!busy && <ArrowRight size={14} />}
-              </button>}
             </div>}
             {ideaMode === "custom" && <>
-            <button type="button" className="text-action custom-back" onClick={() => setIdeaMode("choose")}>← Выбрать готовую идею</button>
             <label className="idea-box">
               <span className="sr-only">Опишите идею продукта или услуги</span>
               <textarea value={idea} onChange={(event) => setIdea(event.target.value)} rows={4} maxLength={6000} placeholder="Опишите идею продукта или услуги..." />
@@ -930,13 +969,8 @@ export default function AudienceSimulationOperatorPage() {
             </div>
             <div className="idea-action">
               <p className={idea.trim().length >= 20 ? "field-hint is-ready" : "field-hint"}>
-                {idea.trim().length >= 20 ? "Описание готово к проверке" : "Добавьте подробностей: от 20 символов"}
+                {idea.trim().length >= 20 ? <><Check size={13} /> Достаточно деталей для проверки</> : <>Добавьте ещё деталей · минимум 20 символов</>}
               </p>
-            <button type="button" disabled={busy} onClick={() => void start()} className="audience-cta">
-                {busy ? <Loader size={14} className="audience-spin" /> : <Search size={14} />}
-                {busy ? "Запускаем проверку" : "Запустить проверку"}
-                {!busy && <ArrowRight size={14} />}
-              </button>
             </div>
             </>}
           </section>
@@ -991,7 +1025,6 @@ export default function AudienceSimulationOperatorPage() {
             {run?.status === "awaiting_search_fallback" && (
               <div className="fallback-actions">
                 <p>Sonar не вернул проверяемые ссылки. Можно продолжить без открытых сигналов или уточнить идею.</p>
-                <button type="button" className="audience-cta" disabled={busy} onClick={() => void continueWithoutSearch()}><ArrowRight size={14} /> Продолжить без источников</button>
                 <button type="button" className="text-action" disabled={busy} onClick={() => void reviseIdea()}>Изменить идею</button>
               </div>
             )}
@@ -1006,33 +1039,23 @@ export default function AudienceSimulationOperatorPage() {
                 <button type="button" className="text-action" onClick={reset}>Начать заново</button>
               </div>
             )}
-            {run?.status === "awaiting_audience_confirmation" && (
-              <button type="button" disabled={!sourceStageReady} className="audience-cta source-continue" onClick={() => goToSlide(3)}>
-                Перейти к аудитории <ArrowRight size={14} />
-              </button>
-            )}
             <p className="source-foot">{demoSearchStats ? "Счётчики объёма и выводов заданы для демо-сценария; ниже показаны ссылки из реальной аналитической подборки." : "Найденные упоминания связываем с источниками и повторяющимися темами."}</p>
           </section>
 
           <section className={"audience-slide audience-build-slide" + (activeSlide === 3 ? " is-active" : "")} inert={activeSlide !== 3}>
             <p className="audience-eyebrow">03 / Формируем аудиторию</p>
             <h2 className="audience-title">Персоны<br /><span className="audience-shine">под вашу идею</span></h2>
-            <p className="audience-lead">Подбираем персоны из каталога и отбираем тех, кому может быть близка проблема.</p>
+            <p className="audience-lead">Генерируем состав аудитории с учётом вашей идеи и найденных сигналов.</p>
             <div className="candidate-label"><span>{statusText[run?.status || "preparing"]}</span><span>{personas.length} профилей</span></div>
             <div className="persona-cloud">
               <PersonaNetwork members={personas} responses={[]} mode="crowd" litIds={selectedScenarioId ? new Set(personas.slice(0, audienceReveal).map((person) => person.id)) : undefined} />
             </div>
             <div className="audience-card audience-build-note">
-              <p>Сначала широкий круг профилей. После отбора остаются персоны, связанные с вашей гипотезой.</p>
+              <div className="build-note-heading"><span>Сегменты аудитории</span><Image src="/images/audience-simulation/mascot-wave.png" alt="" width={56} height={56} /></div>
               <div className="audience-chips">
                 {groups.slice(0, 3).map((group) => <span key={group} className="audience-chip">{group}</span>)}
                 {!groups.length && <span className="audience-chip">Формируем группы</span>}
               </div>
-              {run?.status === "awaiting_audience_confirmation" && (
-                <button type="button" disabled={!audienceStageReady} className="audience-cta build-continue" onClick={() => goToSlide(4)}>
-                  Посмотреть аудиторию <ArrowRight size={14} />
-                </button>
-              )}
             </div>
           </section>
 
@@ -1082,45 +1105,35 @@ export default function AudienceSimulationOperatorPage() {
                 </label>}
               </div>
             </div>
-            <button type="button" disabled={busy || chosenCount < 5 || !slideEntranceDone} onClick={() => void confirmAudience()} className="audience-cta preview-cta">
-              {busy ? <Loader size={14} className="audience-spin" /> : <Check size={14} />}{busy ? "Готовим исследование" : "Запустить исследование"}<ArrowRight size={14} />
-            </button>
           </section>
 
           <section className={"audience-slide interview-slide" + (activeSlide === 5 ? " is-active" : "")} inert={activeSlide !== 5}>
             <p className="audience-eyebrow">05 / Синтетическое исследование</p>
-            <h2 className="audience-title">Идея проходит<br />через общество</h2>
-            <p className="audience-lead">Каждая персона оценивает идею отдельно с учётом своего профиля.</p>
+            <h2 className="audience-title">Собираем<br /><span className="audience-shine">реакции аудитории</span></h2>
             <div className="candidate-label"><span>{progress ? "Персоны отвечают в группах" : "Подключаем персоны"}</span><span>{progress} / {personas.length || audienceSize}</span></div>
             <div className="interview-network">
               <PersonaNetwork members={personas} responses={[]} mode="crowd" litIds={new Set((run?.responses || []).slice(0, progress).map((response) => response.persona_id))} activeIds={progress ? new Set([(run?.responses || [])[Math.min(progress, (run?.responses.length || 1)) - 1]?.persona_id || ""]) : undefined} />
-              <div className="idea-signal">ИДЕЯ</div>
             </div>
             <div className="people-count"><strong>{progress}</strong><span>/ {personas.length || audienceSize} ответов</span></div>
             <div className="audience-meter"><i style={{ width: (personas.length ? Math.min(100, (progress / personas.length) * 100) : 0) + "%" }} /></div>
-            <p className="audience-helper center">Синтетические ответы появляются по одному. Это не прогноз продаж.</p>
+            <p className="audience-helper center">Ответы появляются по одному</p>
           </section>
 
           <section className={"audience-slide reaction-slide" + (activeSlide === 6 ? " is-active" : "")} inert={activeSlide !== 6}>
             <p className="audience-eyebrow">06 / Карта реакции</p>
-            <h2 className="audience-title">Реакция<br /><span className="audience-shine">разделилась</span></h2>
-            <p className="audience-lead">Каждая точка — персона: проблема по вертикали, готовность попробовать по горизонтали.</p>
+            <h2 className="audience-title">Реакция<br /><span className="audience-shine">аудитории</span></h2>
             <div className="reaction-map">
-              <PersonaNetwork members={personas} responses={run?.responses || []} mode="map" activeIds={activeResponse ? new Set([activeResponse.persona_id]) : undefined} onPick={(id) => setSelectedResponseId(id)} />
+              <PersonaNetwork members={personas} responses={run?.responses || []} mode="map" activeIds={activeResponse ? new Set([activeResponse.persona_id]) : undefined} onPick={(id) => setSelectedResponseId(id)} onHover={(id) => setHoveredResponseId(id || "")} />
               <span className="map-axis-y">АКТУАЛЬНОСТЬ ПРОБЛЕМЫ</span>
               <span className="map-axis-x">ГОТОВНОСТЬ ПОПРОБОВАТЬ →</span>
               {excludedResponseCount > 0 && <span className="map-excluded-key">× НЕ УЧТЁН · {excludedResponseCount}</span>}
+              <div className="reaction-hover-card" aria-live="polite">{activeResponse && <><span>{activeResponse.group || "Персона"} · {activeResponse.included === false ? "исключена" : "учтена"}</span><div className="reaction-scores"><b>Проблема {activeResponse.problem_relevance ?? "—"}</b><b>Интерес {activeResponse.interest ?? "—"}</b><b>Попробовать {activeResponse.willingness_to_try ?? "—"}</b></div><p>{activeResponse.reaction || (activeResponse.exclusion_reason ? exclusionReasonLabels[activeResponse.exclusion_reason] || activeResponse.exclusion_reason : "Ответ без короткой реплики")}</p></>}</div>
             </div>
-            <p className="audience-helper">Учтено {plottedResponseCount}; не учтено {excludedResponseCount} из {run?.responses.length || 0}. Крестики вынесены в отдельную полосу: {excludedResponseCount > 0 ? "выберите крестик, чтобы увидеть причину" : "все ответы прошли проверку"}.</p>
-            {activeResponse && <div className="reaction-detail"><span>{activeResponse.group || "Синтетическая персона"}{activeResponse.included === false ? " · НЕ УЧТЁН" : " · УЧТЁН"}</span><small>{activePersona?.profile ? activePersona.profile.split(" · ").slice(1, 4).join(" · ") + " · " : ""}проблема {activeResponse.problem_relevance ?? "—"}/10 · готовность попробовать {activeResponse.willingness_to_try ?? "—"}/10 · интерес {activeResponse.interest ?? "—"}/10{activeResponse.exclusion_reason ? ` · причина: ${exclusionReasonLabels[activeResponse.exclusion_reason] || activeResponse.exclusion_reason}` : ""}</small><p>{activeResponse.reaction || (activeResponse.included === false ? "Этот ответ сохранён, но не вошёл в расчёты." : "Для этой персоны нет короткой реплики.")}</p>{activeResponse.raw_answer && <details className="raw-answer"><summary>Исходный ответ модели</summary><pre>{JSON.stringify(activeResponse.raw_answer, null, 2)}</pre></details>}</div>}
+            <p className="reaction-validity">Учтено {plottedResponseCount} · исключено {excludedResponseCount}</p>
             <div className="group-counts">
               {groups.map((group, index) => <span key={group}><b style={{ color: palette[index % palette.length] }}>{run?.responses.filter((response) => response.group === group).length || 0}</b>{group}</span>)}
               {!groups.length && <span><b>{run?.responses.length || 0}</b>ответов</span>}
             </div>
-            <p className="audience-helper">Совпавшие оценки слегка разнесены; при выборе показаны точные баллы. Точку можно выбрать мышью или клавишами со стрелками.</p>
-            <button type="button" disabled={!slideEntranceDone} className="slide-next-cta reaction-continue" onClick={() => goToSlide(7)}>
-              Перейти к выводам <ArrowRight size={15} />
-            </button>
           </section>
 
           <section className={"audience-slide insights-slide" + (activeSlide === 7 ? " is-active" : "")} inert={activeSlide !== 7}>
@@ -1128,23 +1141,18 @@ export default function AudienceSimulationOperatorPage() {
             <h2 className="audience-title">Что говорит<br /><span className="audience-shine">аудитория</span></h2>
             <div className="primary-result">{typeof validRate === "number" ? validRate + "%" : "—"}</div>
             <div className="result-label">оценили актуальность проблемы на 7/10 или выше</div>
-            <div className="result-average">Средняя оценка актуальности: {run?.aggregate?.averages?.problem_relevance ?? "—"}/10</div>
-            <p className="audience-helper">В расчётах учтено {run?.aggregate?.valid_responses ?? progress} из {run?.aggregate?.requested_responses ?? personas.length}; исключено {run?.aggregate?.excluded_responses ?? excludedResponseCount} ответов по правилам полноты и проверки оценок.</p>
-            {consumerIdeaWithBusinessPanel && <div className="audience-mismatch-note">В этой проверке выбраны B2B-профили, а идея похожа на потребительский продукт. Этот результат не показывает интерес конечных пользователей.</div>}
+            <p className="result-validity">Учтено {run?.aggregate?.valid_responses ?? progress} · исключено {run?.aggregate?.excluded_responses ?? excludedResponseCount}</p>
+            {consumerIdeaWithBusinessPanel && <div className="audience-mismatch-note">Выбраны бизнес-профили, а идея рассчитана на потребителей.</div>}
             <div className="audience-meter"><i style={{ width: (typeof validRate === "number" ? validRate : 0) + "%" }} /></div>
             <div className="result-row">
-              <div className="audience-card result-card"><strong>{typeof interestRate === "number" ? interestRate + "%" : "—"}</strong><span>интерес 7+/10</span><small>средняя оценка: {run?.aggregate?.averages?.interest ?? "—"}/10</small></div>
-              <div className="audience-card result-card"><strong>{typeof tryRate === "number" ? tryRate + "%" : "—"}</strong><span>готовность попробовать 7+/10</span><small>средняя оценка: {run?.aggregate?.averages?.willingness_to_try ?? "—"}/10</small></div>
+              <div className="audience-card result-card"><strong>{typeof interestRate === "number" ? interestRate + "%" : "—"}</strong><span>интерес · оценка 7+</span></div>
+              <div className="audience-card result-card"><strong>{typeof tryRate === "number" ? tryRate + "%" : "—"}</strong><span>готовы попробовать · 7+</span></div>
             </div>
             <div className="insight-list">
-              {(run?.summary?.observations || []).slice(0, 3).map((item, index) => <div className="insight-item" key={item}><i style={{ backgroundColor: palette[index % palette.length] }} /><span>{item}</span></div>)}
+              {(run?.summary?.observations || []).slice(0, 2).map((item, index) => <div className="insight-item" key={item}><i style={{ backgroundColor: palette[index % palette.length] }} /><span>{item}</span></div>)}
               {!run?.summary?.observations?.length && <div className="insight-item"><i /><span>Собрано ответов: {progress}</span></div>}
             </div>
-            {run?.summary?.next_checks?.length ? <div className="next-step"><small>СЛЕДУЮЩАЯ ПРОВЕРКА</small>{run.summary.next_checks[0]}</div> : null}
-            <button type="button" disabled={!slideEntranceDone} className="slide-next-cta insights-continue" onClick={() => goToSlide(8)}>
-              Открыть результат <ArrowRight size={15} />
-            </button>
-            <p className="audience-disclaimer">Ответы смоделированы. Они помогают сформулировать следующие проверки, но не прогнозируют продажи.</p>
+            <p className="insights-disclaimer">Синтетические ответы помогают выбрать следующую проверку.</p>
           </section>
 
           <section className={"audience-slide result-slide" + (activeSlide === 8 ? " is-active" : "")} inert={activeSlide !== 8}>
@@ -1157,9 +1165,7 @@ export default function AudienceSimulationOperatorPage() {
                 <div className="qr-caption"><strong>Откройте результат<br />на телефоне</strong><a href={"/audience-simulation/claim/" + encodeURIComponent(claimToken)}>{typeof window !== "undefined" ? window.location.host : "pitchy.pro"}/audience-simulation/claim/…</a></div>
               </div>
             ) : (
-              <button type="button" disabled={busy} onClick={() => void makeClaimLink()} className="qr-create-button">
-                {busy ? <Loader size={14} className="audience-spin" /> : <Search size={14} />}{busy ? "Готовим код" : "Создать QR-код результата"}
-              </button>
+              <div className="qr-create-prompt">Создайте QR-код, чтобы открыть и сохранить краткий итог проверки.</div>
             )}
             <div className="audience-glowline result-glowline" />
             <div className="audience-card result-card-note"><p>Хотите проверить глубже? Передайте идею и найденные сигналы в полноценный CustDev Pitchy.</p></div>
@@ -1168,10 +1174,12 @@ export default function AudienceSimulationOperatorPage() {
           </section>
         </div>}
 
-        <footer className="audience-bottom">
-          <span>{stageNames[activeSlide]}</span>
-          <span>{String(activeSlide + 1).padStart(2, "0")} / 09</span>
-        </footer>
+        {activeSlide > 0 && <nav className="audience-step-nav" aria-label="Переход между этапами">
+          <button type="button" className="step-back" onClick={handleBack} aria-label="Назад"><ArrowLeft size={18} /></button>
+          {activeSlide < 8 || !claimToken ? <button type="button" className="step-next" disabled={!nextEnabled} onClick={handleNext}>
+            {busy && [1, 4, 8].includes(activeSlide) ? <Loader size={15} className="audience-spin" /> : null}{nextLabel}<ArrowRight size={17} />
+          </button> : <span className="step-finished">Проверка завершена</span>}
+        </nav>}
         <div className="audience-progress"><i style={{ width: ((activeSlide + 1) / 9) * 100 + "%" }} /></div>
 
       </div>
