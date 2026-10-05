@@ -833,7 +833,7 @@ export default function AudienceSimulationOperatorPage() {
       setAudienceReveal(current);
       if (current < total) timer = window.setTimeout(reveal, tick % 12 === 0 ? 360 : 50);
     };
-    timer = window.setTimeout(reveal, 220);
+    timer = window.setTimeout(reveal, 3000);
     return () => window.clearTimeout(timer);
   }, [activeSlide, run?.selection.members?.length]);
 
