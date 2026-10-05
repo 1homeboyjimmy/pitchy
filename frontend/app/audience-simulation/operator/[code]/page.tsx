@@ -131,6 +131,11 @@ function PersonaNetwork({
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pointsRef = useRef<Array<{ x: number; y: number; id: string; color: string; excluded?: boolean }>>([]);
+  const redrawRef = useRef<() => void>(() => undefined);
+  const activeIdsRef = useRef(activeIds);
+  const litIdsRef = useRef(litIds);
+  activeIdsRef.current = activeIds;
+  litIdsRef.current = litIds;
   const dataKey = useMemo(
     () => members.map((person) => person.id + person.group).join("|") + responses.map((person) => person.persona_id + person.willingness_to_try + person.problem_relevance + person.included + person.exclusion_reason).join("|"),
     [members, responses],
@@ -141,6 +146,7 @@ function PersonaNetwork({
     const context = canvas?.getContext("2d");
     if (!canvas || !context) return;
     let frame = 0;
+    let lastPaint = 0;
     let width = 0;
     let height = 0;
     let pixelRatio = 1;
@@ -151,8 +157,14 @@ function PersonaNetwork({
       || typeof item.interest !== "number"
       || typeof item.willingness_to_try !== "number");
 
-    const render = (time = 0) => {
+    const render = (time = 0, force = false) => {
       if (!context) return;
+      const frameDelay = mode === "crowd" ? 80 : 100;
+      if (!force && !reducedMotion && time - lastPaint < frameDelay) {
+        frame = window.requestAnimationFrame(render);
+        return;
+      }
+      lastPaint = force ? performance.now() : time;
       context.setTransform(1, 0, 0, 1, 0, 0);
       context.clearRect(0, 0, canvas.width, canvas.height);
       context.save();
@@ -270,28 +282,25 @@ function PersonaNetwork({
         context.lineWidth = 0.7;
         for (let index = 0; index < mapped.length; index += 1) {
           const point = mapped[index];
-          const nearest = mapped
-            .map((candidate, candidateIndex) => ({
-              candidate,
-              candidateIndex,
-              distance: Math.hypot(candidate.x - point.x, candidate.y - point.y),
-            }))
-            .filter((candidate) => candidate.candidateIndex > index)
-            .sort((first, second) => first.distance - second.distance)
-            .slice(0, 1);
-          for (const neighbor of nearest) {
-            if (neighbor.distance > Math.min(width, height) * 0.22) continue;
-            context.beginPath();
-            context.moveTo(point.x, point.y);
-            context.lineTo(neighbor.candidate.x, neighbor.candidate.y);
-            context.stroke();
+          let nearest: { candidate: typeof point; distanceSquared: number } | null = null;
+          for (let candidateIndex = index + 1; candidateIndex < mapped.length; candidateIndex += 1) {
+            const candidate = mapped[candidateIndex];
+            const dx = candidate.x - point.x;
+            const dy = candidate.y - point.y;
+            const distanceSquared = dx * dx + dy * dy;
+            if (!nearest || distanceSquared < nearest.distanceSquared) nearest = { candidate, distanceSquared };
           }
+          if (!nearest || nearest.distanceSquared > Math.pow(Math.min(width, height) * 0.22, 2)) continue;
+          context.beginPath();
+          context.moveTo(point.x, point.y);
+          context.lineTo(nearest.candidate.x, nearest.candidate.y);
+          context.stroke();
         }
       }
 
       const pulse = reducedMotion ? 0 : Math.sin(time / 950) * 0.18;
       for (const point of mapped) {
-        const selected = Boolean(point.id && activeIds?.has(point.id));
+        const selected = Boolean(point.id && activeIdsRef.current?.has(point.id));
         if (mode === "map") {
           if (point.excluded) {
             context.beginPath();
@@ -324,7 +333,7 @@ function PersonaNetwork({
         } else {
           const glow = point.person ? 2.5 + (selected ? 2.5 : 0) : 1.5;
           context.beginPath();
-          const lit = !litIds || litIds.has(point.id);
+          const lit = !litIdsRef.current || litIdsRef.current.has(point.id);
           const pointColor = lit ? point.color : "#414348";
           context.fillStyle = pointColor;
           context.shadowColor = pointColor;
@@ -345,6 +354,7 @@ function PersonaNetwork({
       context.restore();
       if (!reducedMotion) frame = window.requestAnimationFrame(render);
     };
+    redrawRef.current = () => render(0, true);
 
     const resize = () => {
       const bounds = canvas.getBoundingClientRect();
@@ -362,7 +372,9 @@ function PersonaNetwork({
       observer.disconnect();
       window.cancelAnimationFrame(frame);
     };
-  }, [activeIds, dataKey, litIds, members, mode, responses]);
+  }, [dataKey, members, mode, responses]);
+
+  useEffect(() => { redrawRef.current(); }, [activeIds, litIds]);
 
   const pickNearest = (event: ReactMouseEvent<HTMLCanvasElement>) => {
     if (!onPick) return;
@@ -541,6 +553,9 @@ export default function AudienceSimulationOperatorPage() {
     }
     setBusy(true);
     setError("");
+    // Move to the response stage immediately; the server work can finish in the background.
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    setActiveSlide(5);
     try {
       const created = await request<{ run_id: number; access_token: string; status: string }>(
         "/api/audience-simulations/campaigns/" + encodeURIComponent(code) + "/runs",
@@ -636,7 +651,6 @@ export default function AudienceSimulationOperatorPage() {
         lastAutoStatusRef.current = response.status;
       }
       setAudienceSize(safeSize);
-      setActiveSlide(5);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось подтвердить аудиторию");
     } finally {
@@ -785,19 +799,22 @@ export default function AudienceSimulationOperatorPage() {
   }, [activeSlide, busy, claimToken, isFinished, makeClaimLink]);
 
   useEffect(() => {
-    if (activeSlide !== 3 || !selectedScenarioId) return;
+    if (activeSlide !== 3) return;
     setAudienceReveal(0);
     const total = run?.selection.members?.length || 100;
+    const revealStep = Math.max(1, Math.ceil(total / 70));
     let current = 0;
+    let tick = 0;
     let timer = 0;
     const reveal = () => {
-      current = Math.min(total, current + Math.max(1, Math.ceil(total / 52)));
+      current = Math.min(total, current + revealStep);
+      tick += 1;
       setAudienceReveal(current);
-      if (current < total) timer = window.setTimeout(reveal, 75);
+      if (current < total) timer = window.setTimeout(reveal, tick % 12 === 0 ? 360 : 50);
     };
-    timer = window.setTimeout(reveal, 250);
+    timer = window.setTimeout(reveal, 220);
     return () => window.clearTimeout(timer);
-  }, [activeSlide, run?.selection.members?.length, selectedScenarioId]);
+  }, [activeSlide, run?.selection.members?.length]);
 
   useEffect(() => {
     if (activeSlide !== 5 || !isFinished || !selectedScenarioId) return;
@@ -856,7 +873,7 @@ export default function AudienceSimulationOperatorPage() {
   }, [activeSlide, selectedScenarioId, sourceCountsKey]);
   const displayCount = (count: number) => Math.max(0, Math.floor(count * sourceCounterProgress));
   const sourceStageReady = Boolean(run?.status === "awaiting_audience_confirmation" && slideEntranceDone && (!selectedScenarioId || sourceCounterProgress >= 1));
-  const audienceStageReady = Boolean(slideEntranceDone && (!selectedScenarioId || audienceReveal >= personas.length));
+  const audienceStageReady = Boolean(slideEntranceDone && audienceReveal >= personas.length);
   const nextEnabled = activeSlide === 1
     ? (run ? !busy : ideaMode === "custom" ? idea.trim().length >= 20 && !busy : ideaMode === "prebuilt" ? Boolean(selectedScenarioId) && !busy : false)
     : activeSlide === 2 ? sourceStageReady || (run?.status === "awaiting_search_fallback" && slideEntranceDone && !busy)
@@ -1047,9 +1064,9 @@ export default function AudienceSimulationOperatorPage() {
             <p className="audience-eyebrow">03 / Формируем аудиторию</p>
             <h2 className="audience-title">Персоны<br /><span className="audience-shine">под вашу идею</span></h2>
             <p className="audience-lead">Генерируем состав аудитории с учётом вашей идеи и найденных сигналов.</p>
-            <div className="candidate-label"><span>{statusText[run?.status || "preparing"]}</span><span>{personas.length} профилей</span></div>
+            <div className="candidate-label"><span>{audienceReveal >= personas.length ? statusText[run?.status || "preparing"] : "Подключаем профили"}</span><span>{audienceReveal} профилей</span></div>
             <div className="persona-cloud">
-              <PersonaNetwork members={personas} responses={[]} mode="crowd" litIds={selectedScenarioId ? new Set(personas.slice(0, audienceReveal).map((person) => person.id)) : undefined} />
+              <PersonaNetwork members={personas} responses={[]} mode="crowd" litIds={new Set(personas.slice(0, audienceReveal).map((person) => person.id))} />
             </div>
             <div className="audience-mascot-stage" aria-hidden="true">
               <Image src="/images/audience-simulation/mascot-pointing.png" alt="" width={720} height={720} priority />
@@ -1108,7 +1125,7 @@ export default function AudienceSimulationOperatorPage() {
           <section className={"audience-slide interview-slide" + (activeSlide === 5 ? " is-active" : "")} inert={activeSlide !== 5}>
             <p className="audience-eyebrow">05 / Синтетическое исследование</p>
             <h2 className="audience-title">Собираем<br /><span className="audience-shine">реакции аудитории</span></h2>
-            <div className="candidate-label"><span>{progress ? "Персоны отвечают в группах" : "Подключаем персоны"}</span><span>{progress} / {personas.length || audienceSize}</span></div>
+            <div className="candidate-label"><span>{busy ? "Запускаем исследование" : progress ? "Персоны отвечают в группах" : "Подключаем персоны"}</span><span>{progress} / {personas.length || audienceSize}</span></div>
             <div className="interview-network">
               <PersonaNetwork members={personas} responses={[]} mode="crowd" litIds={new Set((run?.responses || []).slice(0, progress).map((response) => response.persona_id))} activeIds={progress ? new Set([(run?.responses || [])[Math.min(progress, (run?.responses.length || 1)) - 1]?.persona_id || ""]) : undefined} />
             </div>

@@ -409,7 +409,12 @@
 .idea-action { margin-top: auto; padding-bottom: 2%; }
 .build-note-heading { display: flex; align-items: center; justify-content: space-between; color: #ddd; font-size: 12px; }
 .build-note-heading img { width: 50px; height: 50px; object-fit: contain; }
-.audience-mascot-stage, .stage-mascot { display: none; pointer-events: none; }
+.stage-mascot { display: none; pointer-events: none; }
+.audience-mascot-stage { position: absolute; z-index: 2; right: 4%; bottom: 13%; display: grid; width: 62%; height: 27%; place-items: center; pointer-events: none; }
+.audience-mascot-stage img { width: 100%; height: 100%; object-fit: contain; }
+.preview-mascot { position: absolute; z-index: 2; top: 37%; right: 4%; display: grid; width: 30%; height: 26%; place-items: center; pointer-events: none; }
+.preview-mascot img { width: 100%; height: 100%; object-fit: contain; }
+.preview-slide .audience-title, .preview-slide .candidate-label, .preview-map, .profile-strip, .preview-slide > .audience-helper { width: 64%; max-width: 64%; }
 .audience-chips { margin-top: 0; }
 .audience-chip { border-color: #333; background: #111; }
 .reaction-map { height: 50%; min-height: 220px; flex-basis: 50%; margin-top: 2%; }
@@ -525,11 +530,12 @@
   .audience-build-slide > .audience-lead { max-width: 100%; }
   .candidate-label { margin-top: 3%; font-size: 16px; }
   .persona-cloud { height: 29%; min-height: 0; flex-basis: 29%; margin: 2% -4% 0; }
-  .audience-mascot-stage { position: absolute; z-index: 2; right: 4%; bottom: 9%; display: grid; width: 62%; height: 29%; place-items: center; }
+  .audience-mascot-stage { position: absolute; z-index: 2; right: 4%; bottom: 12%; display: grid; width: 62%; height: 27%; place-items: center; }
   .audience-mascot-stage img { width: 100%; height: 100%; object-fit: contain; }
   .preview-map { height: 42%; min-height: 0; flex-basis: 42%; margin-top: 3%; }
-  .preview-slide .audience-title, .preview-slide .candidate-label { max-width: 70%; }
-  .preview-mascot { position: absolute; top: 14%; right: 5%; display: grid; width: 26%; height: 16%; place-items: center; }
+  .preview-slide .audience-title, .preview-slide .candidate-label { max-width: 64%; }
+  .preview-slide .candidate-label, .preview-map, .profile-strip, .preview-slide > .audience-helper { width: 64%; }
+  .preview-mascot { top: 37%; right: 4%; width: 30%; height: 26%; }
   .preview-mascot img { width: 100%; height: 100%; object-fit: contain; }
   .profile-strip { gap: 10px; margin-top: 3%; }
   .profile-strip span { min-height: 58px; padding: 9px 12px; font-size: 13px; }
