@@ -967,6 +967,16 @@ export default function AudienceSimulationOperatorPage() {
 
         {config && <div className="audience-slides">
           <section className={"audience-slide hero-slide" + (activeSlide === 0 ? " is-active" : "")} inert={activeSlide !== 0}>
+            <div className="hero-art-frame" aria-hidden="true">
+              <Image
+                src="/images/audience-simulation/hero-network.svg"
+                alt=""
+                fill
+                preload
+                sizes="(max-width: 600px) 100vw, 56.25vh"
+                className="hero-art"
+              />
+            </div>
             <p className="audience-eyebrow">Проверьте идею до запуска</p>
             <h1 className="audience-title hero-title">Как люди<br />отреагируют<br />на <span className="audience-shine">вашу идею?</span></h1>
             <p className="audience-lead hero-lead">Поймите, кому может быть полезна идея и что в ней важно.</p>
