@@ -959,17 +959,6 @@ export default function AudienceSimulationOperatorPage() {
 
         {config && <div className="audience-slides">
           <section className={"audience-slide hero-slide" + (activeSlide === 0 ? " is-active" : "")} inert={activeSlide !== 0}>
-            <div className="hero-art-frame" aria-hidden="true">
-              <Image
-                src="/images/audience-simulation/hero-scene.png"
-                alt=""
-                fill
-                priority
-                sizes="(max-width: 600px) 100vw, 56.25vh"
-                className="hero-art"
-              />
-            </div>
-            <div className="hero-art-shade" aria-hidden="true" />
             <p className="audience-eyebrow">Проверьте идею до запуска</p>
             <h1 className="audience-title hero-title">Как люди<br />отреагируют<br />на <span className="audience-shine">вашу идею?</span></h1>
             <p className="audience-lead hero-lead">Поймите, кому может быть полезна идея и что в ней важно.</p>
@@ -1166,7 +1155,6 @@ export default function AudienceSimulationOperatorPage() {
               {groups.map((group, index) => <span key={group}><b style={{ color: palette[index % palette.length] }}>{run?.responses.filter((response) => response.group === group).length || 0}</b>{group}</span>)}
               {!groups.length && <span><b>{run?.responses.length || 0}</b>ответов</span>}
             </div>
-            <div className="stage-mascot reaction-mascot" aria-hidden="true"><Image src="/images/audience-simulation/mascot-thinking.png" alt="" width={340} height={340} /></div>
           </section>
 
           <section className={"audience-slide insights-slide" + (activeSlide === 7 ? " is-active" : "")} inert={activeSlide !== 7}>
@@ -1185,8 +1173,6 @@ export default function AudienceSimulationOperatorPage() {
               {(run?.summary?.observations || []).slice(0, 2).map((item, index) => <div className="insight-item" key={item}><i style={{ backgroundColor: palette[index % palette.length] }} /><span>{item}</span></div>)}
               {!run?.summary?.observations?.length && <div className="insight-item"><i /><span>Собрано ответов: {progress}</span></div>}
             </div>
-            <div className="stage-mascot insights-mascot" aria-hidden="true"><Image src="/images/audience-simulation/mascot-celebrate.png" alt="" width={380} height={380} /></div>
-            <p className="insights-disclaimer">Синтетические ответы помогают выбрать следующую проверку.</p>
           </section>
 
           <section className={"audience-slide result-slide" + (activeSlide === 8 ? " is-active" : "")} inert={activeSlide !== 8}>
