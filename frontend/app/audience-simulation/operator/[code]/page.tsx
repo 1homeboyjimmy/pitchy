@@ -978,7 +978,6 @@ export default function AudienceSimulationOperatorPage() {
               />
             </div>
             <div className="hero-art-shade" aria-hidden="true" />
-            <p className="audience-eyebrow">Проверьте идею до запуска</p>
             <h1 className="audience-title hero-title">Как люди<br />отреагируют<br />на <span className="audience-shine">вашу идею?</span></h1>
             <p className="audience-lead hero-lead">Поймите, кому может быть полезна идея и что в ней важно.</p>
             <div className="audience-glowline" />
