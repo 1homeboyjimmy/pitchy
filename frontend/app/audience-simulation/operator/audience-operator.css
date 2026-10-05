@@ -471,8 +471,8 @@
   .hero-art-frame { top: 22%; right: 2.5%; left: 2.5%; height: 78%; }
 }
 
-/* 43-inch Full HD touch panels use a presentation layout in landscape. */
-@media (min-width: 900px) and (min-aspect-ratio: 4 / 3) {
+/* Wide desktop browsers use a presentation layout; the kiosk itself is portrait 9:16. */
+@media (min-width: 900px) and (min-aspect-ratio: 4 / 3) and (orientation: landscape) {
   .audience-screen { width: min(100vw, 177.78dvh); height: min(100dvh, 56.25vw); }
   .audience-topbar { top: 2.8%; right: 4.5%; left: 4.5%; }
   .audience-brand { font-size: 24px; }
@@ -579,6 +579,118 @@
   .step-back svg { width: 24px; height: 24px; }
   .step-next { min-height: 72px; padding: 0 24px; font-size: 18px !important; }
   .step-next svg { width: 22px; height: 22px; }
+  .audience-progress { height: 3px; }
+}
+
+/* 43-inch Full HD touch panel: portrait 1080 × 1920, 9:16. */
+@media (min-width: 900px) and (max-aspect-ratio: 3 / 4) {
+  .audience-screen { width: min(100vw, 56.25dvh); height: min(100dvh, 177.78vw); }
+  .audience-topbar { top: 2.8%; right: 6%; left: 6%; }
+  .audience-brand { font-size: 28px; }
+  .audience-topnote { font-size: 14px; }
+  .audience-slide { padding: 8% 6% 13%; }
+  .audience-slide:not(.hero-slide) { padding-bottom: 13%; }
+  .audience-eyebrow { margin-bottom: 1.8%; font-size: 16px; }
+  .audience-title { margin-bottom: 2.2%; font-size: clamp(68px, 6.8vh, 112px); }
+  .audience-lead { max-width: 100%; font-size: 26px; line-height: 1.4; }
+  .hero-slide { padding: 10% 6% 10%; }
+  .hero-slide .audience-title { max-width: 100%; font-size: clamp(72px, 8.5vw, 110px); }
+  .hero-lead { max-width: 96%; font-size: 23px; }
+  .hero-art-frame { top: 28%; right: -5%; left: -5%; height: 74%; }
+  .hero-art-shade { background: linear-gradient(180deg, #050505 0%, #050505 20%, #050505b0 31%, transparent 48%), linear-gradient(0deg, #050505 0%, #05050588 10%, transparent 28%); }
+  .audience-glowline { margin: 4% 0; }
+  .idea-mode-picker { gap: 18px; margin-top: 8%; }
+  .idea-mode-card { min-height: 140px; padding: 24px 54px 24px 24px; border-radius: 20px; }
+  .idea-mode-card strong { font-size: 24px; }
+  .idea-mode-card span { font-size: 16px; }
+  .prebuilt-picker { margin-top: 1%; }
+  .prebuilt-list { gap: 14px; }
+  .prebuilt-option { min-height: 94px; padding: 16px 18px; border-radius: 16px; }
+  .prebuilt-option strong { font-size: 19px; }
+  .prebuilt-option span { font-size: 15px; }
+  .idea-box { min-height: 29%; flex-basis: 29%; margin-top: 5%; padding: 5%; }
+  .idea-box textarea { font-size: 22px; }
+  .input-options { gap: 12px; margin-top: 4%; }
+  .input-option { min-height: 68px; padding: 0 18px; border-radius: 14px; font-size: 19px !important; }
+  .input-option i { font-size: 14px; }
+  .audience-compact-input { min-height: 56px; padding: 12px 15px; border-radius: 12px; font-size: 17px !important; }
+  .idea-action { margin-top: auto; padding-bottom: 3%; }
+  .field-hint { min-height: 28px; font-size: 15px; }
+  .source-stats { gap: 12px; margin-top: 5%; }
+  .source-stats .audience-card { min-height: 120px; padding: 14px; }
+  .source-stats strong { font-size: clamp(46px, 5vh, 74px); }
+  .source-stats span { margin-top: 8px; font-size: 13px; }
+  .source-grid { gap: 12px; margin-top: 4%; }
+  .source-card { min-height: 72px; gap: 10px; padding: 14px; border-radius: 14px; font-size: 15px; }
+  .source-card small { margin-top: 6px; font-size: 12px; }
+  .search-readout { margin-top: 4%; font-size: 16px; }
+  .signal-sweep { height: 3px; margin-top: 2.5%; }
+  .source-disclosure { margin-top: 3%; font-size: 13px; }
+  .source-link { font-size: 12px; }
+  .source-link span { font-size: 11px; }
+  .fallback-actions { margin-top: 3%; padding: 4%; }
+  .fallback-actions p { font-size: 14px; }
+  .audience-build-slide > .audience-title { max-width: 100%; }
+  .audience-build-slide > .audience-lead { max-width: 100%; }
+  .candidate-label { margin-top: 3%; font-size: 16px; }
+  .persona-cloud { height: 29%; min-height: 0; flex-basis: 29%; margin: 2% -4% 0; }
+  .audience-mascot-stage { position: absolute; z-index: 2; right: 4%; bottom: 9%; display: grid; width: 62%; height: 29%; place-items: center; }
+  .audience-mascot-stage img { width: 100%; height: 100%; object-fit: contain; }
+  .preview-map { height: 42%; min-height: 0; flex-basis: 42%; margin-top: 3%; }
+  .preview-slide .audience-title, .preview-slide .candidate-label { max-width: 70%; }
+  .preview-mascot { position: absolute; top: 14%; right: 5%; display: grid; width: 26%; height: 16%; place-items: center; }
+  .preview-mascot img { width: 100%; height: 100%; object-fit: contain; }
+  .profile-strip { gap: 10px; margin-top: 3%; }
+  .profile-strip span { min-height: 58px; padding: 9px 12px; font-size: 13px; }
+  .profile-strip b { font-size: 16px; }
+  .preview-slide .audience-helper, .interview-slide .audience-helper { font-size: 14px; }
+  .audience-helper { font-size: 14px; }
+  .group-toggle { min-height: 44px; gap: 9px; padding: 8px 12px; font-size: 12px !important; }
+  .group-toggle i { width: 8px; height: 8px; }
+  .group-toggle small { font-size: 10px; }
+  .preview-controls { gap: 10px; margin-top: 4%; }
+  .preview-controls label { gap: 8px; font-size: 13px; }
+  .preview-controls select, .preview-controls input { height: 48px; font-size: 14px !important; }
+  .interview-network { height: 43%; min-height: 0; flex-basis: 43%; margin: 2% -5% 0; }
+  .people-count { margin-top: auto; }
+  .people-count strong { font-size: clamp(58px, 7vh, 92px); }
+  .people-count span { font-size: 18px; }
+  .audience-meter { height: 4px; flex-basis: 4px; margin: 3% 0; }
+  .interview-slide .audience-helper.center { font-size: 15px; }
+  .reaction-map { height: 40%; min-height: 0; flex-basis: 40%; margin-top: 3%; border-radius: 20px; }
+  .map-axis-x, .map-axis-y, .map-excluded-key { font-size: 10px; }
+  .reaction-hover-card { right: 5%; bottom: 7%; left: 5%; min-height: 110px; padding: 14px 16px; border-radius: 16px; }
+  .reaction-hover-card > span { font-size: 14px; }
+  .reaction-scores { gap: 8px; margin-top: 9px; }
+  .reaction-scores b, .reaction-hover-card p { font-size: 13px; }
+  .reaction-validity { margin-top: 2%; font-size: 15px; }
+  .reaction-validity, .group-counts { max-width: 66%; }
+  .group-counts { gap: 8px; margin-top: 3%; }
+  .group-counts span { min-height: 58px; gap: 4px; padding: 8px 11px; font-size: 11px; }
+  .group-counts b { font-size: 22px; }
+  .primary-result { margin-top: 2%; font-size: clamp(72px, 8vh, 110px); }
+  .result-label, .result-validity { font-size: 15px; }
+  .insights-slide .audience-meter { margin-top: 4%; margin-bottom: 4%; }
+  .result-row { gap: 12px; }
+  .result-card { min-height: 106px; padding: 11px 14px; }
+  .result-card strong { font-size: clamp(44px, 5vh, 72px); }
+  .result-card span { font-size: 13px; }
+  .insight-list { gap: 10px; margin-top: 4%; }
+  .insight-item { gap: 10px; padding: 12px; font-size: 14px; }
+  .insights-disclaimer { max-width: 62%; font-size: 13px; }
+  .insights-mascot { position: absolute; right: 2%; bottom: 11%; display: grid; width: 34%; height: 23%; place-items: center; }
+  .reaction-mascot { position: absolute; right: 2%; bottom: 10%; display: grid; width: 28%; height: 18%; place-items: center; }
+  .qr-layout { gap: 7%; margin-top: 7%; }
+  .qr-image { width: 42%; flex-basis: 42%; }
+  .qr-caption { font-size: 16px; }
+  .qr-caption a { font-size: 11px; }
+  .qr-create-prompt, .result-card-note p, .result-slide .audience-disclaimer { font-size: 15px; }
+  .qr-create-button { min-height: 60px; padding: 0 20px; font-size: 16px !important; }
+  .audience-step-nav { right: 6%; bottom: 2.4%; left: 6%; grid-template-columns: 76px minmax(0, 1fr); gap: 14px; }
+  .step-back { width: 76px; height: 76px; }
+  .step-back svg { width: 25px; height: 25px; }
+  .step-next { min-height: 76px; padding: 0 24px; font-size: 20px !important; }
+  .step-next svg { width: 24px; height: 24px; }
   .audience-progress { height: 3px; }
 }
 
