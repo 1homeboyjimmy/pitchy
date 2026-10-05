@@ -842,6 +842,8 @@ export default function AudienceSimulationOperatorPage() {
     setDemoProgress(0);
     const total = run?.responses.length || 100;
     let current = 0;
+    let answersInBatch = 0;
+    let batchSize = 1 + Math.floor(Math.random() * 7);
     let timer = 0;
     const answerNext = () => {
       current = Math.min(total, current + 1);
@@ -850,8 +852,14 @@ export default function AudienceSimulationOperatorPage() {
         timer = window.setTimeout(() => setActiveSlide(6), 900);
         return;
       }
-      // Brief pauses make the response sequence readable instead of racing to 100%.
-      timer = window.setTimeout(answerNext, current % 12 === 0 ? 720 : 125);
+      answersInBatch += 1;
+      if (answersInBatch >= batchSize) {
+        answersInBatch = 0;
+        batchSize = 1 + Math.floor(Math.random() * 7);
+        timer = window.setTimeout(answerNext, 1000 + Math.floor(Math.random() * 4001));
+      } else {
+        timer = window.setTimeout(answerNext, 125);
+      }
     };
     timer = window.setTimeout(answerNext, 500);
     return () => window.clearTimeout(timer);
