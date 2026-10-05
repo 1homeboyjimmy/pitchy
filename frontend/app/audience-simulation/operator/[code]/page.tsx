@@ -1146,7 +1146,6 @@ export default function AudienceSimulationOperatorPage() {
             <div className="interview-network">
               <PersonaNetwork members={personas} responses={[]} mode="crowd" litIds={new Set((run?.responses || []).slice(0, progress).map((response) => response.persona_id))} activeIds={progress ? new Set([(run?.responses || [])[Math.min(progress, (run?.responses.length || 1)) - 1]?.persona_id || ""]) : undefined} />
             </div>
-            <div className="stage-mascot interview-mascot" aria-hidden="true"><Image src="/images/audience-simulation/mascot-running.png" alt="" width={340} height={340} /></div>
             <div className="people-count"><strong>{progress}</strong><span>/ {personas.length || audienceSize} ответов</span></div>
             <div className="audience-meter"><i style={{ width: (personas.length ? Math.min(100, (progress / personas.length) * 100) : 0) + "%" }} /></div>
             <p className="audience-helper center">Ответы появляются по одному</p>
