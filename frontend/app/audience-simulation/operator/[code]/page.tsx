@@ -969,7 +969,7 @@ export default function AudienceSimulationOperatorPage() {
           <section className={"audience-slide hero-slide" + (activeSlide === 0 ? " is-active" : "")} inert={activeSlide !== 0}>
             <div className="hero-art-frame" aria-hidden="true">
               <Image
-                src="/images/audience-simulation/hero-network.svg"
+                src="/images/audience-simulation/hero-scene.png"
                 alt=""
                 fill
                 preload
