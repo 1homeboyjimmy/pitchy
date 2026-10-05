@@ -145,26 +145,17 @@ function PersonaNetwork({
     const canvas = canvasRef.current;
     const context = canvas?.getContext("2d");
     if (!canvas || !context) return;
-    let frame = 0;
-    let lastPaint = 0;
     let width = 0;
     let height = 0;
     let pixelRatio = 1;
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const validResponses = responses;
     const excludedResponses = responses.filter((item) => item.included === false
       || typeof item.problem_relevance !== "number"
       || typeof item.interest !== "number"
       || typeof item.willingness_to_try !== "number");
 
-    const render = (time = 0, force = false) => {
+    const render = () => {
       if (!context) return;
-      const frameDelay = mode === "crowd" ? 80 : 100;
-      if (!force && !reducedMotion && time - lastPaint < frameDelay) {
-        frame = window.requestAnimationFrame(render);
-        return;
-      }
-      lastPaint = force ? performance.now() : time;
       context.setTransform(1, 0, 0, 1, 0, 0);
       context.clearRect(0, 0, canvas.width, canvas.height);
       context.save();
@@ -298,7 +289,6 @@ function PersonaNetwork({
         }
       }
 
-      const pulse = reducedMotion ? 0 : Math.sin(time / 950) * 0.18;
       for (const point of mapped) {
         const selected = Boolean(point.id && activeIdsRef.current?.has(point.id));
         if (mode === "map") {
@@ -339,7 +329,7 @@ function PersonaNetwork({
           context.shadowColor = pointColor;
           context.shadowBlur = lit ? glow : 0;
           context.globalAlpha = lit ? 0.95 : 0.38;
-          context.arc(point.x, point.y, Math.max(1.4, point.radius + pulse), 0, Math.PI * 2);
+          context.arc(point.x, point.y, Math.max(1.4, point.radius), 0, Math.PI * 2);
           context.fill();
         }
         if (selected) {
@@ -352,9 +342,8 @@ function PersonaNetwork({
         }
       }
       context.restore();
-      if (!reducedMotion) frame = window.requestAnimationFrame(render);
     };
-    redrawRef.current = () => render(0, true);
+    redrawRef.current = render;
 
     const resize = () => {
       const bounds = canvas.getBoundingClientRect();
@@ -370,7 +359,6 @@ function PersonaNetwork({
     resize();
     return () => {
       observer.disconnect();
-      window.cancelAnimationFrame(frame);
     };
   }, [dataKey, members, mode, responses]);
 
@@ -614,18 +602,39 @@ export default function AudienceSimulationOperatorPage() {
 
   const confirmAudience = async () => {
     if (!run) return;
-    const included = personas.filter((person) => selectedGroups.includes(person.group));
-    const safeSize = Math.min(audienceSize, included.length);
-    if (safeSize < (config?.limits.min_audience || 5)) {
-      setError("Выберите группы, в которых останется не меньше пяти профилей.");
-      return;
-    }
     setBusy(true);
     setError("");
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    // Show the next stage immediately; request latency should not leave the button spinning on this screen.
+    setActiveSlide(5);
     try {
+      // Audience confirmation is not polled while the user is reviewing it. Refresh the run
+      // first so a stale selection version cannot trigger a 409 on the start request.
+      let latest = await request<SimRun>("/api/audience-simulations/runs/" + run.id, {}, runToken);
+      setRun(latest);
+      if (latest.status === "interviewing") {
+        lastAutoStatusRef.current = latest.status;
+        return;
+      }
+      if (["completed", "partial"].includes(latest.status)) {
+        setActiveSlide(6);
+        return;
+      }
+      if (latest.status !== "awaiting_audience_confirmation") {
+        throw new Error("Состав аудитории уже изменился. Вернитесь к его просмотру и запустите исследование ещё раз.");
+      }
+      const latestMembers = latest.selection.members || [];
+      const currentGroups = selectedGroups.filter((group) => latestMembers.some((person) => person.group === group));
+      const included = latestMembers.filter((person) => currentGroups.includes(person.group));
+      const safeSize = Math.min(audienceSize, included.length);
+      if (safeSize < (config?.limits.min_audience || 5)) {
+        setActiveSlide(4);
+        setSelectedGroups(Array.from(new Set(latestMembers.map((person) => person.group))));
+        throw new Error("Состав аудитории обновился. Проверьте выбранные группы и запустите исследование ещё раз.");
+      }
       if (selectedScenarioId) {
         const completed = await request<SimRun>(
-          "/api/audience-simulations/runs/" + run.id + "/start?selection_version=" + run.selection.version,
+          "/api/audience-simulations/runs/" + latest.id + "/start?selection_version=" + latest.selection.version,
           { method: "POST" },
           runToken,
         );
@@ -633,26 +642,38 @@ export default function AudienceSimulationOperatorPage() {
         setDemoProgress(0);
         lastAutoStatusRef.current = completed.status;
       } else {
-        const selection = await request<SimRun["selection"]>("/api/audience-simulations/runs/" + run.id + "/selection", {
+        const selection = await request<SimRun["selection"]>("/api/audience-simulations/runs/" + latest.id + "/selection", {
           method: "PATCH",
           body: JSON.stringify({
-            selection_version: run.selection.version,
+            selection_version: latest.selection.version,
             size: safeSize,
-            include_groups: selectedGroups,
+            include_groups: currentGroups,
             constraints: constraints.trim() || null,
           }),
         }, runToken);
         const response = await request<{ status: string }>(
-          "/api/audience-simulations/runs/" + run.id + "/start?selection_version=" + selection.version,
+          "/api/audience-simulations/runs/" + latest.id + "/start?selection_version=" + selection.version,
           { method: "POST" },
           runToken,
         );
-        setRun({ ...run, selection, status: response.status });
+        setRun({ ...latest, selection, status: response.status });
         lastAutoStatusRef.current = response.status;
       }
       setAudienceSize(safeSize);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Не удалось подтвердить аудиторию");
+      const message = reason instanceof Error ? reason.message : "Не удалось подтвердить аудиторию";
+      setError(message);
+      try {
+        const latest = await request<SimRun>("/api/audience-simulations/runs/" + run.id, {}, runToken);
+        setRun(latest);
+        if (latest.status === "awaiting_audience_confirmation") {
+          setSelectedGroups(Array.from(new Set((latest.selection.members || []).map((person) => person.group))));
+          setActiveSlide(4);
+        } else if (["completed", "partial"].includes(latest.status)) setActiveSlide(6);
+        else if (latest.status === "interviewing") setActiveSlide(5);
+      } catch {
+        setActiveSlide(4);
+      }
     } finally {
       setBusy(false);
     }
@@ -1068,9 +1089,6 @@ export default function AudienceSimulationOperatorPage() {
             <div className="persona-cloud">
               <PersonaNetwork members={personas} responses={[]} mode="crowd" litIds={new Set(personas.slice(0, audienceReveal).map((person) => person.id))} />
             </div>
-            <div className="audience-mascot-stage" aria-hidden="true">
-              <Image src="/images/audience-simulation/mascot-pointing.png" alt="" width={720} height={720} priority />
-            </div>
           </section>
 
           <section className={"audience-slide preview-slide" + (activeSlide === 4 ? " is-active" : "")} inert={activeSlide !== 4}>
@@ -1078,7 +1096,6 @@ export default function AudienceSimulationOperatorPage() {
             <h2 className="audience-title">Кто будет<br />отвечать</h2>
             <div className="candidate-label"><span>Состав аудитории</span><span>{chosenCount || personas.length} персон · {selectedGroups.length} групп</span></div>
             <div className="preview-map"><PersonaNetwork members={personas} responses={[]} mode="crowd" /></div>
-            <div className="stage-mascot preview-mascot" aria-hidden="true"><Image src="/images/audience-simulation/mascot-welcome.png" alt="" width={320} height={320} /></div>
             <div className="profile-strip">
               <span>Профили<b>{chosenCount || personas.length}</b></span>
               <span>Группы<b>{groups.length}</b></span>
