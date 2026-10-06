@@ -44,9 +44,10 @@ export default function AudienceCampaignResultPage() {
       <p className="mt-5 rounded-2xl border border-white/10 bg-white/[.025] p-5 text-sm leading-6 text-white/65">{result.idea}</p>
       {participant && <div className="mt-5 grid gap-3 sm:grid-cols-2"><div className="rounded-2xl border border-white/10 p-5"><p className="text-xs text-white/35">Балл конкурса</p><p className="mt-2 text-4xl">{!participant.competition_enabled ? "Без конкурса" : participant.event_score == null ? "Не допущен" : `${participant.event_score} / 100`}</p>{participant.score_version && <p className="mt-2 text-xs text-white/30">Формула {participant.score_version}</p>}{participant.competition_enabled && participant.score_status === "insufficient_answers" && <p className="mt-2 text-xs text-white/45">Нужно не менее {participant.min_valid_responses} валидных ответов</p>}</div><div className="rounded-2xl border border-white/10 p-5"><p className="text-xs text-white/35">Подарочная подписка</p><p className="mt-2 text-lg">{participant.reward_status === "issued" ? "Выдана" : participant.reward_status === "selected" ? "Ожидает подтверждения" : "Решение организаторов ещё не принято"}</p></div></div>}
       {result.summary?.headline && <h2 className="mt-8 text-2xl">{result.summary.headline}</h2>}
-      <p className="mt-3 text-sm text-white/35">Валидных ответов: {result.aggregate?.valid_responses ?? 0}. Это синтетическая проверка, не прогноз продаж и не статистически репрезентативный результат.</p>
+      <p className="mt-3 text-sm text-white/35">Валидных ответов: {result.aggregate?.valid_responses ?? 0}.</p>
       <div className="mt-6 space-y-3">{(result.summary?.observations || []).map((item) => <p key={item} className="border-l-2 border-sky-200/50 px-4 py-2 text-sm leading-6 text-white/65">{item}</p>)}</div>
       <AudienceSimulationReport report={result.summary?.extended_report} />
+      <p className="mt-8 text-xs leading-5 text-white/30">Отчёт и аналитика созданы с помощью искусственного интеллекта, носят информационный характер и не являются инвестиционной рекомендацией или призывом к действию.</p>
     </>}
   </div></main>;
 }

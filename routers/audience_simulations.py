@@ -1841,13 +1841,8 @@ def _prebuilt_extended_report(scenario: dict, members: list[dict], responses: li
     market_signals = [str(text) for text, _source_ids in scenario.get("findings", [])]
     next_checks = list(scenario.get("next_checks") or [])
     valid_count = int(aggregate.get("valid_responses") or 0)
-    averages = aggregate.get("averages") or {}
     return {
-        "overall_readout": (
-            f"В прогоне учтено {valid_count} синтетических ответов. Средние оценки: актуальность проблемы "
-            f"{averages.get('problem_relevance', '—')}/10, интерес {averages.get('interest', '—')}/10, "
-            f"готовность попробовать {averages.get('willingness_to_try', '—')}/10. Эти значения описывают только этот сценарный прогон."
-        ),
+        "overall_readout": f"В прогоне учтено {valid_count} синтетических ответов.",
         "idea_analysis": {
             "problem_fit": scenario.get("short") or scenario.get("idea") or "",
             "value_proposition": scenario.get("idea") or "",
@@ -1917,7 +1912,8 @@ async def _generate_extended_report(snapshot: dict, aggregate: dict, members: li
         "Верни JSON: overall_readout (строка); idea_analysis с полями problem_fit, value_proposition, differentiation (строки), "
         "strengths, risks, assumptions_to_test (массивы строк); audience_analysis с what_resonates, barriers, segment_differences (массивы строк); "
         "market_analysis с supported_signals, alternatives_and_competition, evidence_gaps (массивы строк); recommendations и limitations (массивы строк). "
-        "Будь конкретным и полезным; общий текст — несколько абзацев, списки — до пяти пунктов каждый."
+        "Будь конкретным и полезным; общий текст — несколько абзацев, списки — до пяти пунктов каждый. "
+        "Не повторяй в overall_readout средние числовые оценки и не используй фразу «Эти значения описывают только этот сценарный прогон»."
     )
     try:
         report, _ = await generate_json(

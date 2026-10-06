@@ -122,6 +122,13 @@ export default function AudienceSimulationReport({ report }: { report?: Audience
   if (!report) return null;
   const narrative = report.narrative_sections || [];
   const analytics = report.analytics;
+  const referenceScores = report.reference_scores && Object.keys(report.reference_scores).length > 0 ? report.reference_scores : undefined;
+  const referenceRates = report.reference_percent_at_least_7 && Object.keys(report.reference_percent_at_least_7).length > 0 ? report.reference_percent_at_least_7 : undefined;
+  const reportScores = referenceScores || analytics?.averages;
+  const reportPositiveRates = referenceRates || analytics?.percent_at_least_7;
+  const overallReadout = (report.overall_readout || "")
+    .replace(/Эти значения описывают только этот сценарный прогон\.?/gi, "")
+    .trim();
   const segmentData = analytics?.segments?.length ? analytics.segments : report.audience_analysis?.segment_differences?.filter((item): item is AudienceReportSegment => typeof item !== "string");
   const motivators = analytics?.themes?.motivators?.length ? analytics.themes.motivators : report.audience_analysis?.what_resonates;
   const barriers = analytics?.themes?.barriers?.length ? analytics.themes.barriers : report.audience_analysis?.barriers;
@@ -129,7 +136,7 @@ export default function AudienceSimulationReport({ report }: { report?: Audience
   return <section className="mt-9 rounded-3xl border border-white/10 bg-white/[.025] p-5 sm:p-7">
     <p className="text-xs font-semibold uppercase tracking-[.18em] text-sky-200/55">Подробный разбор</p>
     <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Идея и результаты прогона</h2>
-    {report.overall_readout && <p className="mt-4 text-sm leading-6 text-white/65">{report.overall_readout}</p>}
+    {overallReadout && <p className="mt-4 text-sm leading-6 text-white/65">{overallReadout}</p>}
 
     <div className="mt-5 grid grid-cols-3 gap-2 text-center">
       <div className="rounded-xl border border-white/10 p-3"><p className="text-xl font-semibold">{analytics?.response_count ?? "—"}</p><p className="mt-1 text-[10px] text-white/40">учтено</p></div>
@@ -137,9 +144,8 @@ export default function AudienceSimulationReport({ report }: { report?: Audience
       <div className="rounded-xl border border-white/10 p-3"><p className="text-xl font-semibold">{analytics?.requested_count ?? "—"}</p><p className="mt-1 text-[10px] text-white/40">всего в прогоне</p></div>
     </div>
 
-    <ScoreGrid scores={analytics?.averages} positiveRates={report.reference_percent_at_least_7 ? undefined : analytics?.percent_at_least_7} title="Средние оценки этого прогона" />
-    <ScoreGrid scores={report.reference_scores} title="Ориентиры готовой идеи · аналитическая оценка" />
-    <RateGrid rates={report.reference_percent_at_least_7} title="Заданные ориентиры доли оценок 7+" />
+    <ScoreGrid scores={reportScores} positiveRates={referenceRates ? undefined : reportPositiveRates} title="Средние оценки этого прогона" />
+    <RateGrid rates={referenceRates} title="Заданные ориентиры доли оценок 7+" />
 
     {narrative.length > 0 ? <div className="mt-8 space-y-3">{narrative.map((section, index) => <article key={`${section.title || "section"}-${index}`} className="rounded-2xl border border-white/10 bg-[#0c0c10] p-4 sm:p-5">
       <h3 className="text-base font-semibold text-white/90">{section.title}</h3>
@@ -157,7 +163,7 @@ export default function AudienceSimulationReport({ report }: { report?: Audience
       </div>}
     </>}
 
-    <SegmentCards segments={segmentData} showPositiveRates={!report.reference_percent_at_least_7} />
+    <SegmentCards segments={segmentData} showPositiveRates={!referenceRates} />
     {(motivators?.length || barriers?.length) ? <div className="mt-7 grid gap-4 sm:grid-cols-2">
       {motivators?.length ? <div className="rounded-2xl border border-sky-200/15 bg-sky-200/[.035] p-4"><h3 className="text-sm font-semibold text-sky-100/80">Что привлекало</h3><ul className="mt-3 space-y-2">{motivators.map((item, index) => <li key={index} className="text-sm leading-5 text-white/65">{lineText(item as string | { theme?: string; mentions?: number })}</li>)}</ul></div> : null}
       {barriers?.length ? <div className="rounded-2xl border border-violet-200/15 bg-violet-200/[.035] p-4"><h3 className="text-sm font-semibold text-violet-100/80">Что настораживало</h3><ul className="mt-3 space-y-2">{barriers.map((item, index) => <li key={index} className="text-sm leading-5 text-white/65">{lineText(item as string | { theme?: string; mentions?: number })}</li>)}</ul></div> : null}
