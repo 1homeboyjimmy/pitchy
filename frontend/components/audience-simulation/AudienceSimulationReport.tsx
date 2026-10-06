@@ -88,18 +88,7 @@ function ScoreGrid({ scores, positiveRates, title }: { scores?: AudienceReportSc
     <h3 className="text-xs font-semibold uppercase tracking-[.14em] text-white/45">{title}</h3>
     <div className="mt-3 grid gap-2 sm:grid-cols-3">{entries.map(([key, label]) => <div key={key} className="rounded-xl border border-white/10 bg-white/[.025] p-3">
       <p className="text-xs text-white/40">{label}</p><p className="mt-1 text-2xl font-semibold">{score(scores?.[key])}<span className="ml-1 text-xs font-normal text-white/35">/ 10</span></p>
-      {typeof positiveRates?.[key] === "number" && <p className="mt-1 text-[10px] text-white/35">оценка 7+ · {positiveRates[key]}%</p>}
-    </div>)}</div>
-  </section>;
-}
-
-function RateGrid({ rates, title }: { rates?: AudienceReportScoreMap; title: string }) {
-  const entries = Object.entries(scoreLabels).filter(([key]) => typeof rates?.[key] === "number");
-  if (!entries.length) return null;
-  return <section className="mt-6">
-    <h3 className="text-xs font-semibold uppercase tracking-[.14em] text-white/45">{title}</h3>
-    <div className="mt-3 grid gap-2 sm:grid-cols-3">{entries.map(([key, label]) => <div key={key} className="rounded-xl border border-white/10 bg-white/[.025] p-3">
-      <p className="text-xs text-white/40">{label} · оценка 7+</p><p className="mt-1 text-2xl font-semibold">{rates?.[key]}%</p>
+      {typeof positiveRates?.[key] === "number" && <div className="mt-2 flex items-baseline justify-between border-t border-white/10 pt-2"><span className="text-[10px] text-white/40">Оценка 7+</span><span className="text-sm font-semibold text-white/80">{positiveRates[key]}%</span></div>}
     </div>)}</div>
   </section>;
 }
@@ -144,8 +133,7 @@ export default function AudienceSimulationReport({ report }: { report?: Audience
       <div className="rounded-xl border border-white/10 p-3"><p className="text-xl font-semibold">{analytics?.requested_count ?? "—"}</p><p className="mt-1 text-[10px] text-white/40">всего в прогоне</p></div>
     </div>
 
-    <ScoreGrid scores={reportScores} positiveRates={referenceRates ? undefined : reportPositiveRates} title="Средние оценки этого прогона" />
-    <RateGrid rates={referenceRates} title="Заданные ориентиры доли оценок 7+" />
+    <ScoreGrid scores={reportScores} positiveRates={reportPositiveRates} title="Средние оценки" />
 
     {narrative.length > 0 ? <div className="mt-8 space-y-3">{narrative.map((section, index) => <article key={`${section.title || "section"}-${index}`} className="rounded-2xl border border-white/10 bg-[#0c0c10] p-4 sm:p-5">
       <h3 className="text-base font-semibold text-white/90">{section.title}</h3>
@@ -183,6 +171,5 @@ export default function AudienceSimulationReport({ report }: { report?: Audience
       <BulletList title="Что пока неизвестно" items={report.market_analysis.evidence_gaps} />
     </div>}
     <BulletList title="Рекомендации" items={report.recommendations} />
-    <BulletList title="Ограничения результата" items={report.limitations} />
   </section>;
 }
