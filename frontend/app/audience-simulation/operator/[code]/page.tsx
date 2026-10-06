@@ -131,6 +131,7 @@ const exclusionReasonLabels: Record<string, string> = {
   response_generation_failed: "ответ не сформирован",
   response_not_received: "ответ не получен",
   persona_mismatch: "профиль ответа не совпал",
+  unsupported_assumption_language: "в ответе было неподтверждённое предположение",
 };
 
 function getPersonaDetails(persona: Persona) {
@@ -1259,14 +1260,14 @@ export default function AudienceSimulationOperatorPage() {
           <section className={"audience-slide result-slide" + (activeSlide === 7 ? " is-active" : "")} inert={activeSlide !== 7}>
             <p className="audience-eyebrow">Результат готов</p>
             <h2 className="audience-title">Продолжите<br />изучать свою<br /><span className="audience-shine">идею</span></h2>
-            <p className="audience-lead">Отсканируйте код, чтобы открыть краткий итог и сохранить проверку.</p>
+            <p className="audience-lead">Отсканируйте код, чтобы открыть подробный отчёт и сохранить проверку.</p>
             {claimToken ? (
               <div className="qr-layout">
                 <Image className="qr-image" src={"/api/audience-simulations/claims/" + encodeURIComponent(claimToken) + "/qr"} width={144} height={144} unoptimized alt="QR-код результата исследования" />
                 <div className="qr-caption"><strong>Откройте результат<br />на телефоне</strong><a href={"/audience-simulation/claim/" + encodeURIComponent(claimToken)}>{typeof window !== "undefined" ? window.location.host : "pitchy.pro"}/audience-simulation/claim/…</a></div>
               </div>
             ) : (
-              <div className="qr-create-prompt">Создайте QR-код, чтобы открыть и сохранить краткий итог проверки.</div>
+              <div className="qr-create-prompt">Создайте QR-код, чтобы открыть и сохранить подробный отчёт проверки.</div>
             )}
             <div className="audience-glowline result-glowline" />
             {claimToken && <button type="button" onClick={reset} className="reset-run"><RotateCcw size={14} /> Новая проверка</button>}

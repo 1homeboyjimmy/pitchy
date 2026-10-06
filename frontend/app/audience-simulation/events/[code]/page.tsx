@@ -5,9 +5,10 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { LoaderCircle } from "lucide-react";
 import { useAuth } from "@/lib/hooks/useAuth";
+import AudienceSimulationReport, { type AudienceReport } from "@/components/audience-simulation/AudienceSimulationReport";
 
 type Participant = { campaign_name: string; campaign_badge: string; run_id: number; event_score: number | null; score_version: string | null; reward_status: string; competition_enabled: boolean; score_status: "not_in_competition" | "eligible" | "insufficient_answers"; min_valid_responses: number };
-type OwnResult = { idea: string; aggregate: { valid_responses?: number; averages?: Record<string, number | null> } | null; summary: { headline?: string; observations?: string[]; next_checks?: string[] } | null; evidence: Array<{ url: string; title: string; domain: string }> };
+type OwnResult = { idea: string; aggregate: { valid_responses?: number; averages?: Record<string, number | null> } | null; summary: { headline?: string; observations?: string[]; next_checks?: string[]; extended_report?: AudienceReport } | null; evidence: Array<{ url: string; title: string; domain: string }> };
 
 export default function AudienceCampaignResultPage() {
   const { code } = useParams<{ code: string }>();
@@ -45,7 +46,7 @@ export default function AudienceCampaignResultPage() {
       {result.summary?.headline && <h2 className="mt-8 text-2xl">{result.summary.headline}</h2>}
       <p className="mt-3 text-sm text-white/35">Валидных ответов: {result.aggregate?.valid_responses ?? 0}. Это синтетическая проверка, не прогноз продаж и не статистически репрезентативный результат.</p>
       <div className="mt-6 space-y-3">{(result.summary?.observations || []).map((item) => <p key={item} className="border-l-2 border-sky-200/50 px-4 py-2 text-sm leading-6 text-white/65">{item}</p>)}</div>
-      <div className="mt-7 space-y-2">{result.evidence.map((item) => <a key={item.url} href={item.url} target="_blank" rel="noreferrer" className="block rounded-xl border border-white/8 p-3 text-sm text-sky-100/75">{item.title}<span className="mt-1 block text-xs text-white/35">{item.domain}</span></a>)}</div>
+      <AudienceSimulationReport report={result.summary?.extended_report} />
     </>}
   </div></main>;
 }

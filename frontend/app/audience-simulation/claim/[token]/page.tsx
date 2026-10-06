@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowRight, Check, LoaderCircle } from "lucide-react";
 import { useAuth } from "@/lib/hooks/useAuth";
+import AudienceSimulationReport, { type AudienceReport } from "@/components/audience-simulation/AudienceSimulationReport";
 
 type ClaimPreview = {
   campaign_name: string;
@@ -17,7 +18,7 @@ type ClaimPreview = {
   idea: string;
   status: string;
   aggregate: { valid_responses?: number; averages?: Record<string, number | null> } | null;
-  summary: { headline?: string; observations?: string[]; next_checks?: string[] } | null;
+  summary: { headline?: string; observations?: string[]; next_checks?: string[]; extended_report?: AudienceReport } | null;
   evidence: Array<{ url: string; title: string; domain: string }>;
 };
 
@@ -72,7 +73,7 @@ export default function AudienceSimulationClaimPage() {
         ["Готовность попробовать", preview.aggregate.averages?.willingness_to_try],
       ].map(([name, value]) => <div key={String(name)} className="rounded-2xl border border-white/10 p-4"><p className="text-xs text-white/35">{name}</p><p className="mt-2 text-3xl">{typeof value === "number" ? `${value.toFixed(1)} / 10` : "—"}</p></div>)}</div>}
       <div className="mt-6 space-y-2">{(preview.summary?.observations || []).map((item) => <p key={item} className="border-l-2 border-sky-200/50 px-4 py-2 text-sm leading-6 text-white/65">{item}</p>)}</div>
-      {preview.evidence.length > 0 && <section className="mt-7"><h2 className="text-xs uppercase tracking-[.16em] text-white/35">Реальные открытые источники</h2><div className="mt-3 space-y-2">{preview.evidence.slice(0, 5).map((source) => <a key={source.url} href={source.url} rel="noreferrer" target="_blank" className="block rounded-xl border border-white/8 p-3 text-sm text-sky-100/75 hover:border-sky-200/25">{source.title}<span className="mt-1 block text-xs text-white/35">{source.domain}</span></a>)}</div></section>}
+      <AudienceSimulationReport report={preview.summary?.extended_report} />
       <div className="mt-8 rounded-2xl border border-white/10 p-5"><label className="flex cursor-pointer items-start gap-3 text-sm leading-6 text-white/65"><input type="checkbox" checked={consented} onChange={(event) => setConsented(event.target.checked)} className="mt-1 accent-sky-200" /><span>Согласен(на) сохранить этот прогон в аккаунте и связать его с кампанией форума{preview.competition_enabled ? ` для участия в конкурсе по формуле ${preview.score_formula?.version || "40/35/25"}; для допуска требуется не менее ${preview.min_valid_responses} валидных ответов` : ""}. Понимаю, что ответы синтетические.</span></label>
         {auth.isLoaded && auth.isAuthenticated ? <button disabled={!consented || busy} onClick={() => void accept()} className="mt-5 inline-flex w-full items-center justify-center gap-3 rounded-full bg-white px-6 py-4 text-sm font-medium text-black disabled:opacity-40">{busy ? <LoaderCircle size={16} className="animate-spin" /> : <Check size={16} />} Сохранить в аккаунте</button> : <Link href={`/login?next=${encodeURIComponent(next)}`} className="mt-5 inline-flex w-full items-center justify-center gap-3 rounded-full bg-white px-6 py-4 text-sm font-medium text-black">Войти или зарегистрироваться <ArrowRight size={16} /></Link>}
       </div>

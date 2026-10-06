@@ -191,9 +191,9 @@
 .idea-mode-card strong { font-size: clamp(18px, 2.1vh, 24px); font-weight: 750; }
 .idea-mode-card span { color: #aaa; font-size: clamp(11px, 1.2vh, 14px); }
 .idea-mode-card svg { position: absolute; top: 50%; right: 16px; transform: translateY(-50%); color: #aaa; }
-.prebuilt-picker { display: flex; min-height: 0; flex: 1; flex-direction: column; margin-top: 1%; }
+.prebuilt-picker { display: flex; min-height: 0; flex: 0 0 auto; flex-direction: column; margin-top: 1%; }
 .prebuilt-back, .custom-back { align-self: flex-start; margin-bottom: 3%; }
-.prebuilt-list { display: grid; min-height: 0; flex: 1; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.prebuilt-list { display: grid; min-height: 0; flex: 0 0 auto; align-content: start; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, auto); gap: 5px; }
 .prebuilt-option { position: relative; display: flex; min-height: 0; aspect-ratio: 1; flex-direction: column; justify-content: flex-end; gap: 10px; overflow: hidden; padding: 18px; border: 1px solid #2d2d2d; border-radius: 13px; background: #0c0c0c; text-align: left; }
 .prebuilt-option::after { position: absolute; z-index: 0; inset: 0; background: linear-gradient(180deg, #08090b00 12%, #08090b22 38%, #08090be8 72%, #08090bf5 100%); content: ""; }
 .prebuilt-option-image { z-index: 0; object-fit: cover; transition: transform .3s ease; }
@@ -499,7 +499,7 @@
   .idea-mode-card strong { font-size: 2.8cqw; font-weight: 800; }
   .idea-mode-card span { font-size: 1.7cqw; }
   .prebuilt-picker { margin-top: 1%; }
-  .prebuilt-list { gap: 1.3cqw; }
+  .prebuilt-list { column-gap: 1.15cqw; row-gap: .45cqw; }
   .prebuilt-option { min-height: 0; padding: 2.4cqw; border-radius: 1.48cqw; }
   .prebuilt-option strong { font-size: 2.6cqw; font-weight: 750; }
   .prebuilt-option span { font-size: 1.72cqw; font-weight: 550; }
