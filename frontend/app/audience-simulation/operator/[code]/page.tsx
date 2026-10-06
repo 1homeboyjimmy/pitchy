@@ -18,7 +18,22 @@ type CampaignConfig = {
   limits: { min_audience: number; max_audience: number; default_audience: number };
   disclaimer: string;
 };
-type Persona = { id: string; market?: string; group: string; profile: string; selection_reason: string };
+type PersonaTraits = {
+  profile_label?: string;
+  age_band?: string;
+  city?: string;
+  city_size?: string;
+  region?: string;
+  occupation?: string;
+  business_role?: string | null;
+  income_band?: string;
+  household_context?: string;
+  current_behaviors?: string[];
+  decision_style?: string[];
+  domain_familiarity?: Record<string, string>;
+  behavior?: Record<string, number>;
+};
+type Persona = { id: string; market?: string; group: string; profile: string; traits?: PersonaTraits };
 type Finding = {
   text: string;
   source_ids: string[];
@@ -40,10 +55,10 @@ type ResponsePoint = {
 };
 
 const prebuiltScenarios = [
-  { id: "calorie-photo", title: "ИИ-трекер калорий", note: "Распознаёт блюдо по фото, оценивает состав и порцию, помогает вести дневник питания и замечать изменения в рационе." },
-  { id: "english-coach", title: "Тренер разговорного английского", note: "Проводит короткие диалоги голосом, подстраивает сложность и лексику под работу, учёбу и поездки." },
-  { id: "family-budget", title: "Помощник по личному бюджету", note: "Распределяет доходы и регулярные расходы, показывает остаток до следующей зарплаты и помогает планировать покупки." },
-  { id: "weekend-trip", title: "Планировщик поездки", note: "Собирает маршрут выходного дня с учётом бюджета, интересов, времени в пути и предпочтений компании." },
+  { id: "calorie-photo", title: "ИИ-трекер калорий", note: "Распознаёт блюдо по фото, оценивает состав и порцию, помогает вести дневник питания и замечать изменения в рационе.", image: "/images/audience-simulation/scenarios/calorie-tracker.png" },
+  { id: "english-coach", title: "Тренер разговорного английского", note: "Проводит короткие диалоги голосом, подстраивает сложность и лексику под работу, учёбу и поездки.", image: "/images/audience-simulation/scenarios/english-coach.png" },
+  { id: "family-budget", title: "Помощник по личному бюджету", note: "Распределяет доходы и регулярные расходы, показывает остаток до следующей зарплаты и помогает планировать покупки.", image: "/images/audience-simulation/scenarios/personal-budget.png" },
+  { id: "weekend-trip", title: "Планировщик поездки", note: "Собирает маршрут выходного дня с учётом бюджета, интересов, времени в пути и предпочтений компании.", image: "/images/audience-simulation/scenarios/trip-planner.png" },
 ];
 type SimRun = {
   id: number;
@@ -95,6 +110,21 @@ const statusText: Record<string, string> = {
 };
 
 const palette = ["#7ce6ff", "#b48cff", "#f0bd69", "#9be5ca"];
+const behaviorScoreLabels: Record<string, string> = {
+  price_sensitivity: "Чувствительность к цене",
+  digital_skill: "Цифровая уверенность",
+  trust_in_new_services: "Доверие новым сервисам",
+  readiness_to_try: "Готовность пробовать новое",
+  complexity_tolerance: "Готовность разбираться в сложном",
+  information_search_intensity: "Тщательность выбора",
+};
+const domainLabels: Record<string, string> = {
+  ecommerce: "Онлайн-покупки",
+  education: "Образование",
+  food_delivery: "Доставка еды",
+  finance: "Финансы",
+  travel: "Путешествия",
+};
 const exclusionReasonLabels: Record<string, string> = {
   missing_required_score: "нет обязательной оценки",
   invalid_score: "оценка не целая или вне диапазона 0–10",
@@ -102,6 +132,27 @@ const exclusionReasonLabels: Record<string, string> = {
   response_not_received: "ответ не получен",
   persona_mismatch: "профиль ответа не совпал",
 };
+
+function getPersonaDetails(persona: Persona) {
+  const parts = (persona.profile || "").split(" · ").map((part) => part.trim()).filter(Boolean);
+  const traits = persona.traits || {};
+  const profileBehavior = parts.find((part) => part.startsWith("поведение:"))?.replace(/^поведение:\s*/, "").split(";").map((part) => part.trim()).filter(Boolean) || [];
+  const behaviorSummary = traits.current_behaviors?.length ? traits.current_behaviors : profileBehavior.length ? profileBehavior : traits.decision_style || [];
+  return {
+    traits,
+    name: traits.profile_label || parts[0] || "Синтетическая персона",
+    age: traits.age_band || parts[1],
+    city: traits.city || parts[2],
+    citySize: traits.city_size,
+    region: traits.region,
+    occupation: traits.occupation || parts[3],
+    businessRole: traits.business_role,
+    income: traits.income_band || parts[4],
+    household: traits.household_context,
+    behaviors: behaviorSummary,
+    decisionStyle: traits.decision_style || [],
+  };
+}
 
 function hashSeed(value: string) {
   let hash = 2166136261;
@@ -434,6 +485,7 @@ export default function AudienceSimulationOperatorPage() {
   const [claimToken, setClaimToken] = useState("");
   const [selectedResponseId, setSelectedResponseId] = useState("");
   const [hoveredResponseId, setHoveredResponseId] = useState("");
+  const [expandedPersona, setExpandedPersona] = useState<Persona | null>(null);
   const [activeSlide, setActiveSlide] = useState(0);
   const [slideEntranceDone, setSlideEntranceDone] = useState(false);
   const [showAudienceField, setShowAudienceField] = useState(false);
@@ -748,6 +800,7 @@ export default function AudienceSimulationOperatorPage() {
     setClaimToken("");
     setSelectedResponseId("");
     setSelectedGroups([]);
+    setExpandedPersona(null);
     setShowAudienceControls(false);
     setIdea("");
     setAudience("");
@@ -802,6 +855,7 @@ export default function AudienceSimulationOperatorPage() {
 
   const goToSlide = useCallback((index: number) => {
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    setExpandedPersona(null);
     setActiveSlide(Math.max(0, Math.min(maxSlide, index)));
     setError("");
   }, [maxSlide]);
@@ -811,6 +865,15 @@ export default function AudienceSimulationOperatorPage() {
     const timer = window.setTimeout(() => setSlideEntranceDone(true), 600);
     return () => window.clearTimeout(timer);
   }, [activeSlide]);
+
+  useEffect(() => {
+    if (!expandedPersona) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setExpandedPersona(null);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [expandedPersona]);
 
   useEffect(() => {
     if (activeSlide === 7 && isFinished && !claimToken && !busy) void makeClaimLink();
@@ -988,6 +1051,7 @@ export default function AudienceSimulationOperatorPage() {
             {ideaMode === "prebuilt" && <div className="prebuilt-picker">
               <div className="prebuilt-list">
                 {prebuiltScenarios.map((scenario) => <button type="button" key={scenario.id} className={"prebuilt-option" + (selectedScenarioId === scenario.id ? " is-selected" : "")} onClick={() => setSelectedScenarioId(scenario.id)} aria-pressed={selectedScenarioId === scenario.id}>
+                  <Image src={scenario.image} alt="" fill sizes="(max-width: 600px) 42vw, 250px" className="prebuilt-option-image" />
                   <strong>{scenario.title}</strong><span>{scenario.note}</span>
                 </button>)}
               </div>
@@ -1088,19 +1152,27 @@ export default function AudienceSimulationOperatorPage() {
             <p className="audience-lead">Генерируем состав аудитории с учётом вашей идеи и найденных сигналов.</p>
             <div className="candidate-label"><span>{audienceReveal >= personas.length ? statusText[run?.status || "preparing"] : "Формируем профили"}</span><span>{audienceReveal} / {personas.length} · {chosenCount} выбрано</span></div>
             <div className="persona-card-list" aria-live="polite">
-              {personas.slice(0, Math.min(audienceReveal, 4)).map((person, index) => (
-                <article className="persona-card" key={person.id} style={{ animationDelay: `${index * 110}ms` }}>
+              {personas.slice(0, audienceReveal).map((person, index) => {
+                const details = getPersonaDetails(person);
+                const facts = [
+                  ["Возраст", details.age],
+                  ["Город", details.city],
+                  ["Занятость", details.occupation],
+                  ["Доход", details.income],
+                ].filter((fact): fact is [string, string] => Boolean(fact[1]));
+                return <button type="button" className="persona-card" key={person.id} onClick={() => setExpandedPersona(person)} aria-label={`Открыть подробный профиль: ${details.name}`} style={{ animationDelay: `${Math.min(index * 25, 400)}ms` }}>
                   <div className="persona-avatar" aria-hidden="true"><i /></div>
                   <div className="persona-card-copy">
                     <div className="persona-card-meta"><span>ID {person.id.slice(-6).toUpperCase()}</span><b style={{ color: palette[Math.max(0, groups.indexOf(person.group)) % palette.length] }}>{person.group}</b></div>
-                    <strong>{person.profile}</strong>
-                    {person.selection_reason && <p>{person.selection_reason}</p>}
+                    <strong>{details.name}</strong>
+                    <div className="persona-facts">{facts.map(([label, value]) => <span key={label}><b>{label}</b>{value}</span>)}</div>
+                    {details.behaviors.length > 0 && <p className="persona-behavior"><b>Привычки</b>{details.behaviors.slice(0, 2).join(" · ")}</p>}
                   </div>
-                </article>
-              ))}
+                </button>;
+              })}
               {!audienceReveal && <p className="persona-card-empty">Сопоставляем аудиторию с сигналами рынка…</p>}
             </div>
-            <p className="audience-helper"><button type="button" className="audience-edit-link" onClick={() => setShowAudienceControls((value) => !value)} aria-expanded={showAudienceControls}>Настроить состав и ограничения</button></p>
+            <p className="audience-helper"><span>Нажмите на карточку, чтобы открыть подробный профиль.</span> <button type="button" className="audience-edit-link" onClick={() => setShowAudienceControls((value) => !value)} aria-expanded={showAudienceControls}>Настроить состав и ограничения</button></p>
             <div className={"audience-editor" + (showAudienceControls ? " is-open" : "")} inert={!showAudienceControls}>
               <div className="editor-heading"><strong>Состав аудитории</strong><button type="button" onClick={(event) => { event.currentTarget.blur(); setShowAudienceControls(false); }}>Готово</button></div>
               <div className="group-picker">
@@ -1179,7 +1251,7 @@ export default function AudienceSimulationOperatorPage() {
               <div className="audience-card result-card"><strong>{typeof tryRate === "number" ? tryRate + "%" : "—"}</strong><span>готовы попробовать · 7+</span></div>
             </div>
             <div className="insight-list">
-              {(run?.summary?.observations || []).filter((item) => !/фото не гарантирует точный размер порции/i.test(item)).slice(0, 2).map((item, index) => <div className="insight-item" key={item}><i style={{ backgroundColor: palette[index % palette.length] }} /><span>{item}</span></div>)}
+              {(run?.summary?.observations || []).filter((item) => !/фото не гарантирует точный размер порции/i.test(item)).slice(0, 2).map((item, index) => <div className="insight-item" key={item}><i style={{ backgroundColor: palette[index % palette.length], color: palette[index % palette.length] }} /><span>{item}</span></div>)}
               {!(run?.summary?.observations || []).some((item) => !/фото не гарантирует точный размер порции/i.test(item)) && <div className="insight-item"><i /><span>Собрано ответов: {progress}</span></div>}
             </div>
           </section>
@@ -1200,6 +1272,35 @@ export default function AudienceSimulationOperatorPage() {
             {claimToken && <button type="button" onClick={reset} className="reset-run"><RotateCcw size={14} /> Новая проверка</button>}
           </section>
         </div>}
+
+        {expandedPersona && activeSlide === 3 && (() => {
+          const details = getPersonaDetails(expandedPersona);
+          const location = [details.city, details.region].filter(Boolean).join(", ");
+          const facts = [
+            ["Возраст", details.age],
+            ["Город и регион", [location, details.citySize].filter(Boolean).join(" · ")],
+            ["Занятость", details.occupation],
+            ["Профессиональная роль", details.businessRole || undefined],
+            ["Доход", details.income],
+            ["Домашняя ситуация", details.household],
+          ].filter((fact): fact is [string, string] => Boolean(fact[1]));
+          const familiarityLabels: Record<string, string> = { high: "Уверенно", medium: "Знакомо", low: "Начальный опыт" };
+          const familiarity = Object.entries(details.traits.domain_familiarity || {});
+          const scores = Object.entries(details.traits.behavior || {}).filter(([key]) => behaviorScoreLabels[key]);
+          return <div className="persona-modal-backdrop">
+            <section className="persona-modal" role="dialog" aria-modal="true" aria-labelledby="persona-modal-title" tabIndex={-1}>
+              <header className="persona-modal-header">
+                <div><span>ID {expandedPersona.id.slice(-6).toUpperCase()} · ПОДРОБНЫЙ ПРОФИЛЬ</span><h2 id="persona-modal-title">{details.name}</h2><p>{expandedPersona.group}</p></div>
+                <button type="button" className="persona-modal-close" autoFocus onClick={() => setExpandedPersona(null)} aria-label="Закрыть профиль">×</button>
+              </header>
+              {facts.length > 0 && <div className="persona-modal-facts">{facts.map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>}
+              {details.behaviors.length > 0 && <section className="persona-modal-section"><h3>Повседневные привычки</h3><ul>{details.behaviors.map((behavior) => <li key={behavior}>{behavior}</li>)}</ul></section>}
+              {details.decisionStyle.length > 0 && <section className="persona-modal-section"><h3>Как принимает решения</h3><ul>{details.decisionStyle.map((item) => <li key={item}>{item}</li>)}</ul></section>}
+              {familiarity.length > 0 && <section className="persona-modal-section"><h3>Знакомство с цифровыми сферами</h3><div className="persona-modal-tags">{familiarity.map(([domain, value]) => <span key={domain}><b>{domainLabels[domain] || domain.replaceAll("_", " ")}</b>{familiarityLabels[value] || value}</span>)}</div></section>}
+              {scores.length > 0 && <section className="persona-modal-section"><h3>Стиль выбора</h3><div className="persona-score-list">{scores.map(([key, value]) => <div key={key}><span>{behaviorScoreLabels[key]}</span><b>{value} из 5</b></div>)}</div></section>}
+            </section>
+          </div>;
+        })()}
 
         {activeSlide > 0 && <nav className="audience-step-nav" aria-label="Переход между этапами">
           <button type="button" className="step-back" onClick={handleBack} aria-label="Назад"><ArrowLeft size={18} /></button>
