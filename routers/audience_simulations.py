@@ -1875,6 +1875,7 @@ def _prebuilt_extended_report(scenario: dict, members: list[dict], responses: li
         ],
         "analytics": analytics,
         "reference_scores": scenario.get("reference_scores") or {},
+        "reference_percent_at_least_7": scenario.get("reference_percent_at_least_7") or {},
         "narrative_sections": report_sections,
     }
 

@@ -95,7 +95,12 @@ type SimRun = {
     averages?: Record<string, number | null>;
     percent_at_least_7?: Record<string, number | null>;
   } | null;
-  summary: { headline?: string; observations?: string[]; next_checks?: string[] } | null;
+  summary: {
+    headline?: string;
+    observations?: string[];
+    next_checks?: string[];
+    extended_report?: { reference_percent_at_least_7?: Record<string, number> };
+  } | null;
   events: Array<{ sequence: number; type: string; payload?: Record<string, unknown> }>;
 };
 
@@ -832,9 +837,10 @@ export default function AudienceSimulationOperatorPage() {
         : isFinished
           ? 7
           : 2;
-  const validRate = run?.aggregate?.percent_at_least_7?.problem_relevance;
-  const interestRate = run?.aggregate?.percent_at_least_7?.interest;
-  const tryRate = run?.aggregate?.percent_at_least_7?.willingness_to_try;
+  const referenceRates = run?.scenario_id ? run.summary?.extended_report?.reference_percent_at_least_7 : undefined;
+  const validRate = referenceRates?.problem_relevance ?? run?.aggregate?.percent_at_least_7?.problem_relevance;
+  const interestRate = referenceRates?.interest ?? run?.aggregate?.percent_at_least_7?.interest;
+  const tryRate = referenceRates?.willingness_to_try ?? run?.aggregate?.percent_at_least_7?.willingness_to_try;
   const activeResponse = run?.responses.find((response) => response.persona_id === (hoveredResponseId || selectedResponseId));
   const reactionActiveIds = useMemo(() => activeResponse ? new Set([activeResponse.persona_id]) : undefined, [activeResponse?.persona_id]);
   const plottedResponseCount = run?.responses.filter((response) => response.included !== false && typeof response.interest === "number" && typeof response.problem_relevance === "number" && typeof response.willingness_to_try === "number").length || 0;

@@ -51,6 +51,7 @@ export type AudienceReport = {
     context_variation_note?: string;
   };
   reference_scores?: AudienceReportScoreMap;
+  reference_percent_at_least_7?: AudienceReportScoreMap;
   narrative_sections?: Array<{ title?: string; paragraphs?: string[]; items?: string[] }>;
 };
 
@@ -92,7 +93,18 @@ function ScoreGrid({ scores, positiveRates, title }: { scores?: AudienceReportSc
   </section>;
 }
 
-function SegmentCards({ segments }: { segments?: AudienceReportSegment[] }) {
+function RateGrid({ rates, title }: { rates?: AudienceReportScoreMap; title: string }) {
+  const entries = Object.entries(scoreLabels).filter(([key]) => typeof rates?.[key] === "number");
+  if (!entries.length) return null;
+  return <section className="mt-6">
+    <h3 className="text-xs font-semibold uppercase tracking-[.14em] text-white/45">{title}</h3>
+    <div className="mt-3 grid gap-2 sm:grid-cols-3">{entries.map(([key, label]) => <div key={key} className="rounded-xl border border-white/10 bg-white/[.025] p-3">
+      <p className="text-xs text-white/40">{label} · оценка 7+</p><p className="mt-1 text-2xl font-semibold">{rates?.[key]}%</p>
+    </div>)}</div>
+  </section>;
+}
+
+function SegmentCards({ segments, showPositiveRates = true }: { segments?: AudienceReportSegment[]; showPositiveRates?: boolean }) {
   if (!segments?.length) return null;
   return <section className="mt-6">
     <h3 className="text-xs font-semibold uppercase tracking-[.14em] text-white/45">Оценки по сегментам</h3>
@@ -100,7 +112,7 @@ function SegmentCards({ segments }: { segments?: AudienceReportSegment[] }) {
       <div className="flex items-start justify-between gap-3"><h4 className="text-sm font-semibold leading-5 text-white/85">{segment.segment || "Сегмент"}</h4><span className="shrink-0 text-xs text-white/35">{segment.response_count ?? 0} ответов</span></div>
       <div className="mt-4 grid grid-cols-3 gap-2">{Object.entries(scoreLabels).map(([key, label]) => <div key={key}>
         <p className="text-[10px] leading-4 text-white/35">{label}</p><p className="mt-1 text-sm font-medium text-white/75">{score(segment.averages?.[key])}</p>
-        {typeof segment.percent_at_least_7?.[key] === "number" && <p className="mt-0.5 text-[10px] text-white/35">7+ · {segment.percent_at_least_7[key]}%</p>}
+        {showPositiveRates && typeof segment.percent_at_least_7?.[key] === "number" && <p className="mt-0.5 text-[10px] text-white/35">7+ · {segment.percent_at_least_7[key]}%</p>}
       </div>)}</div>
     </article>)}</div>
   </section>;
@@ -125,8 +137,9 @@ export default function AudienceSimulationReport({ report }: { report?: Audience
       <div className="rounded-xl border border-white/10 p-3"><p className="text-xl font-semibold">{analytics?.requested_count ?? "—"}</p><p className="mt-1 text-[10px] text-white/40">всего в прогоне</p></div>
     </div>
 
-    <ScoreGrid scores={analytics?.averages} positiveRates={analytics?.percent_at_least_7} title="Средние оценки этого прогона" />
+    <ScoreGrid scores={analytics?.averages} positiveRates={report.reference_percent_at_least_7 ? undefined : analytics?.percent_at_least_7} title="Средние оценки этого прогона" />
     <ScoreGrid scores={report.reference_scores} title="Ориентиры готовой идеи · аналитическая оценка" />
+    <RateGrid rates={report.reference_percent_at_least_7} title="Заданные ориентиры доли оценок 7+" />
 
     {narrative.length > 0 ? <div className="mt-8 space-y-3">{narrative.map((section, index) => <article key={`${section.title || "section"}-${index}`} className="rounded-2xl border border-white/10 bg-[#0c0c10] p-4 sm:p-5">
       <h3 className="text-base font-semibold text-white/90">{section.title}</h3>
@@ -144,7 +157,7 @@ export default function AudienceSimulationReport({ report }: { report?: Audience
       </div>}
     </>}
 
-    <SegmentCards segments={segmentData} />
+    <SegmentCards segments={segmentData} showPositiveRates={!report.reference_percent_at_least_7} />
     {(motivators?.length || barriers?.length) ? <div className="mt-7 grid gap-4 sm:grid-cols-2">
       {motivators?.length ? <div className="rounded-2xl border border-sky-200/15 bg-sky-200/[.035] p-4"><h3 className="text-sm font-semibold text-sky-100/80">Что привлекало</h3><ul className="mt-3 space-y-2">{motivators.map((item, index) => <li key={index} className="text-sm leading-5 text-white/65">{lineText(item as string | { theme?: string; mentions?: number })}</li>)}</ul></div> : null}
       {barriers?.length ? <div className="rounded-2xl border border-violet-200/15 bg-violet-200/[.035] p-4"><h3 className="text-sm font-semibold text-violet-100/80">Что настораживало</h3><ul className="mt-3 space-y-2">{barriers.map((item, index) => <li key={index} className="text-sm leading-5 text-white/65">{lineText(item as string | { theme?: string; mentions?: number })}</li>)}</ul></div> : null}
