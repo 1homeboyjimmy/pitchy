@@ -7,7 +7,6 @@ import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent
 import {
   ArrowLeft,
   ArrowRight,
-  Check,
   Loader,
   RotateCcw,
 } from "react-feather";
@@ -477,9 +476,6 @@ export default function AudienceSimulationOperatorPage() {
   const params = useParams<{ code: string }>();
   const code = params.code;
   const [config, setConfig] = useState<CampaignConfig | null>(null);
-  const [idea, setIdea] = useState("");
-  const [audience, setAudience] = useState("");
-  const [price, setPrice] = useState("");
   const [run, setRun] = useState<SimRun | null>(null);
   const [runToken, setRunToken] = useState("");
   const [busy, setBusy] = useState(false);
@@ -494,9 +490,6 @@ export default function AudienceSimulationOperatorPage() {
   const [expandedPersona, setExpandedPersona] = useState<Persona | null>(null);
   const [activeSlide, setActiveSlide] = useState(0);
   const [slideEntranceDone, setSlideEntranceDone] = useState(false);
-  const [showAudienceField, setShowAudienceField] = useState(false);
-  const [showPriceField, setShowPriceField] = useState(false);
-  const [ideaMode, setIdeaMode] = useState<"choose" | "custom" | "prebuilt">("choose");
   const [selectedScenarioId, setSelectedScenarioId] = useState("");
   const [demoProgress, setDemoProgress] = useState(0);
   const [audienceReveal, setAudienceReveal] = useState(0);
@@ -591,45 +584,6 @@ export default function AudienceSimulationOperatorPage() {
     return () => { stopped = true; window.clearInterval(timer); };
   }, [request, run?.id, run?.status, runToken]);
 
-  const start = async () => {
-    if (idea.trim().length < 20) {
-      setError("Опишите идею подробнее: нужно не меньше 20 символов.");
-      return;
-    }
-    setBusy(true);
-    setError("");
-    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-    try {
-      const created = await request<{ run_id: number; access_token: string; status: string }>(
-        "/api/audience-simulations/campaigns/" + encodeURIComponent(code) + "/runs",
-        { method: "POST", body: JSON.stringify({ idea: idea.trim(), audience: audience.trim() || null, price: price.trim() || null }) },
-      );
-      sessionStorage.setItem("audience-simulation:" + code, JSON.stringify({ runId: created.run_id, token: created.access_token }));
-      lastAutoStatusRef.current = created.status;
-      setRunToken(created.access_token);
-      setRun({
-        id: created.run_id,
-        status: created.status,
-        revision: 1,
-        idea: idea.trim(),
-        audience: audience.trim() || null,
-        price: price.trim() || null,
-        evidence: [],
-        findings: [],
-        selection: {},
-        responses: [],
-        aggregate: null,
-        summary: null,
-        events: [],
-      });
-      setActiveSlide(2);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Не удалось запустить проверку");
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const startPrebuilt = async () => {
     if (!selectedScenarioId) return;
     setBusy(true);
@@ -645,8 +599,6 @@ export default function AudienceSimulationOperatorPage() {
       setRunToken(created.access_token);
       setSelectedGroups(Array.from(new Set((ready.selection.members || []).map((person) => person.group))));
       setAudienceSize(ready.selection.members?.length || 100);
-      setIdea(ready.idea);
-      setAudience(ready.audience || "");
       setActiveSlide(2);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось открыть готовый сценарий");
@@ -808,14 +760,10 @@ export default function AudienceSimulationOperatorPage() {
     setSelectedGroups([]);
     setExpandedPersona(null);
     setShowAudienceControls(false);
-    setIdea("");
-    setAudience("");
-    setPrice("");
     setConstraints("");
     setAudienceSize(100);
     setError("");
     setActiveSlide(0);
-    setIdeaMode("choose");
     setSelectedScenarioId("");
     setDemoProgress(0);
     setAudienceReveal(0);
@@ -971,14 +919,14 @@ export default function AudienceSimulationOperatorPage() {
   const sourceStageReady = Boolean(run?.status === "awaiting_audience_confirmation" && slideEntranceDone && (!selectedScenarioId || sourceCounterProgress >= 1));
   const audienceStageReady = Boolean(slideEntranceDone && audienceReveal >= personas.length);
   const nextEnabled = activeSlide === 1
-    ? (run ? !busy : ideaMode === "custom" ? idea.trim().length >= 20 && !busy : ideaMode === "prebuilt" ? Boolean(selectedScenarioId) && !busy : false)
+    ? (run ? !busy : Boolean(selectedScenarioId) && !busy)
     : activeSlide === 2 ? sourceStageReady || (run?.status === "awaiting_search_fallback" && slideEntranceDone && !busy)
       : activeSlide === 3 ? audienceStageReady && !busy && chosenCount >= 5
         : activeSlide === 4 ? Boolean(isFinished && slideEntranceDone && (selectedScenarioId ? progress >= (run?.responses.length || 0) : true))
           : activeSlide === 5 || activeSlide === 6 ? slideEntranceDone
             : activeSlide === 7 ? !claimToken && !busy : false;
   const nextLabel = activeSlide === 1
-    ? (ideaMode === "prebuilt" ? "Запустить сценарий" : run ? "К источникам" : "Начать проверку")
+    ? (run ? "К источникам" : "Запустить сценарий")
     : activeSlide === 2 ? (run?.status === "awaiting_search_fallback" ? "Продолжить без источников" : "К аудитории")
       : activeSlide === 3 ? (busy ? "Готовим исследование" : "Запустить исследование")
         : activeSlide === 4 ? (isFinished && (selectedScenarioId ? progress >= (run?.responses.length || 0) : true) ? "К карте реакций" : "Собираем ответы")
@@ -989,8 +937,7 @@ export default function AudienceSimulationOperatorPage() {
     if (!nextEnabled) return;
     if (activeSlide === 1) {
       if (run) goToSlide(2);
-      else if (ideaMode === "prebuilt") void startPrebuilt();
-      else void start();
+      else void startPrebuilt();
     } else if (activeSlide === 2) {
       if (run?.status === "awaiting_search_fallback") void continueWithoutSearch();
       else goToSlide(3);
@@ -1000,14 +947,7 @@ export default function AudienceSimulationOperatorPage() {
     else if (activeSlide === 6) goToSlide(7);
     else if (activeSlide === 7) void makeClaimLink();
   };
-  const handleBack = () => {
-    if (activeSlide === 1 && !run && ideaMode !== "choose") {
-      setIdeaMode("choose");
-      setSelectedScenarioId("");
-      return;
-    }
-    goToSlide(activeSlide - 1);
-  };
+  const handleBack = () => goToSlide(activeSlide - 1);
 
   return (
     <main className="audience-stage">
@@ -1051,39 +991,14 @@ export default function AudienceSimulationOperatorPage() {
           <section className={"audience-slide idea-slide" + (activeSlide === 1 ? " is-active" : "")} inert={activeSlide !== 1}>
             <p className="audience-eyebrow">01 / Начало проверки</p>
             <h2 className="audience-title">Что<br />проверяем?</h2>
-            {ideaMode === "choose" && <div className="idea-mode-picker">
-              <button type="button" className="idea-mode-card" onClick={() => setIdeaMode("custom")}><strong>Своя идея</strong><span>Запустить поиск и текущую проверку</span><ArrowRight size={16} /></button>
-              <button type="button" className="idea-mode-card" onClick={() => setIdeaMode("prebuilt")}><strong>Готовая идея</strong><span>Выбрать исследованный сценарий</span><ArrowRight size={16} /></button>
-            </div>}
-            {ideaMode === "prebuilt" && <div className="prebuilt-picker">
+            <div className="prebuilt-picker">
               <div className="prebuilt-list">
                 {prebuiltScenarios.map((scenario) => <button type="button" key={scenario.id} className={"prebuilt-option" + (selectedScenarioId === scenario.id ? " is-selected" : "")} onClick={() => setSelectedScenarioId(scenario.id)} aria-pressed={selectedScenarioId === scenario.id}>
                   <Image src={scenario.image} alt="" fill sizes="(max-width: 600px) 42vw, 250px" className="prebuilt-option-image" />
                   <strong>{scenario.title}</strong><span>{scenario.note}</span>
                 </button>)}
               </div>
-            </div>}
-            {ideaMode === "custom" && <>
-            <label className="idea-box">
-              <span className="sr-only">Опишите идею продукта или услуги</span>
-              <textarea value={idea} onChange={(event) => setIdea(event.target.value)} rows={4} maxLength={6000} placeholder="Опишите идею продукта или услуги..." />
-            </label>
-            <div className="input-options">
-              <button type="button" className="input-option" onClick={() => setShowAudienceField((value) => !value)} aria-expanded={showAudienceField}>
-                <span>Аудитория</span><i>{showAudienceField ? "скрыть" : "добавить, если уже определили"}</i>
-              </button>
-              {showAudienceField && <input className="audience-compact-input" value={audience} onChange={(event) => setAudience(event.target.value)} maxLength={1200} placeholder="Например: небольшие интернет-магазины" />}
-              <button type="button" className="input-option" onClick={() => setShowPriceField((value) => !value)} aria-expanded={showPriceField}>
-                <span>Цена</span><i>{showPriceField ? "скрыть" : "необязательно"}</i>
-              </button>
-              {showPriceField && <input className="audience-compact-input" value={price} onChange={(event) => setPrice(event.target.value)} maxLength={300} placeholder="Например: 990 ₽ в месяц" />}
             </div>
-            <div className="idea-action">
-              <p className={idea.trim().length >= 20 ? "field-hint is-ready" : "field-hint"}>
-                {idea.trim().length >= 20 ? <><Check size={13} /> Достаточно деталей для проверки</> : <>Добавьте ещё деталей · минимум 20 символов</>}
-              </p>
-            </div>
-            </>}
           </section>
 
           <section className={"audience-slide sources-slide" + (activeSlide === 2 ? " is-active" : "")} inert={activeSlide !== 2}>
@@ -1135,8 +1050,8 @@ export default function AudienceSimulationOperatorPage() {
             )}
             {run?.status === "awaiting_search_fallback" && (
               <div className="fallback-actions">
-                <p>Sonar не вернул проверяемые ссылки. Можно продолжить без открытых сигналов или уточнить идею.</p>
-                <button type="button" className="text-action" disabled={busy} onClick={() => void reviseIdea()}>Изменить идею</button>
+                <p>Sonar не вернул проверяемые ссылки. Можно продолжить без открытых сигналов или выбрать другой готовый сценарий.</p>
+                <button type="button" className="text-action" disabled={busy} onClick={() => void reviseIdea()}>Выбрать другой сценарий</button>
               </div>
             )}
             {run?.status === "failed" && (
