@@ -8,6 +8,8 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
+from audience_demo_scenarios_en import GROUP_LABELS_EN, REPORT_COPY_EN, SCENARIOS_EN, SOURCE_TITLES_EN
+
 
 SCENARIOS: dict[str, dict[str, Any]] = {
     "calorie-photo": {
@@ -314,11 +316,26 @@ def _stable_spread(seed: int, channel: str, scale: float) -> float:
     return centered * scale
 
 
-def get_prebuilt_scenario(scenario_id: str) -> dict[str, Any] | None:
+def get_prebuilt_scenario(scenario_id: str, language: str = "ru") -> dict[str, Any] | None:
     scenario = SCENARIOS.get(scenario_id)
     if not scenario:
         return None
-    return {**scenario, **PREBUILT_REPORT_COPY.get(scenario_id, {})}
+    report_copy = PREBUILT_REPORT_COPY.get(scenario_id, {})
+    if language == "en":
+        scenario = {**scenario, **SCENARIOS_EN.get(scenario_id, {})}
+        report_copy = {**report_copy, **REPORT_COPY_EN.get(scenario_id, {})}
+        sources = [
+            (source_id, domain, SOURCE_TITLES_EN.get(source_id, title), url)
+            for source_id, domain, title, url in scenario["sources"]
+        ]
+        return {
+            **scenario,
+            **report_copy,
+            "sources": sources,
+            "group_labels_en": GROUP_LABELS_EN,
+            "language": "en",
+        }
+    return {**scenario, **report_copy}
 
 
 def get_demo_search_stats(scenario_id: str, run_id: int | None = None) -> dict[str, Any] | None:
@@ -344,9 +361,9 @@ def get_demo_search_stats(scenario_id: str, run_id: int | None = None) -> dict[s
     }
 
 
-def build_prebuilt_responses(scenario_id: str, members: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def build_prebuilt_responses(scenario_id: str, members: list[dict[str, Any]], language: str = "ru") -> list[dict[str, Any]]:
     """Create stable profile-specific scenario reactions without external model calls."""
-    scenario = SCENARIOS[scenario_id]
+    scenario = get_prebuilt_scenario(scenario_id, language) or SCENARIOS[scenario_id]
     responses: list[dict[str, Any]] = []
     for member in members:
         persona_id = str(member.get("id") or "")
@@ -372,14 +389,16 @@ def build_prebuilt_responses(scenario_id: str, members: list[dict[str, Any]]) ->
         # panel lands near 10–15% willingness 7+ without changing other scenario scores.
         scenario_trial_adjustment = 1.4 if scenario_id == "calorie-photo" else 0.0
         try_score = round(max(1, min(10, willingness - 1.05 + scenario_trial_adjustment + _stable_spread(index, "trial", 2.0) - (0.65 if price_sensitivity >= 4 else 0))), 1)
-        context = str(current[index % len(current)]) if current else "" 
+        context = str(current[index % len(current)]) if current and language != "en" else ""
         reaction_text = reaction
         if context:
             reaction_text += f" В моём профиле также отмечено: {context}."
         if price_sensitivity >= 4:
-            reaction_text += " При регулярной оплате сначала сравню цену с привычными альтернативами."
+            reaction_text += " Before paying regularly, I would compare the price with familiar alternatives." if language == "en" else " При регулярной оплате сначала сравню цену с привычными альтернативами."
         if digital_skill <= 2:
-            reaction_text += " Мне нужен простой первый запуск без сложных настроек."
+            reaction_text += " I would need a simple first-use experience without complicated setup." if language == "en" else " Мне нужен простой первый запуск без сложных настроек."
+        motivators = ["A clear benefit for this everyday need"] if language == "en" else [reaction.split(".")[0][:150]]
+        barriers = ["Trust in the accuracy and quality of the result", "Comparison with familiar free alternatives"] if language == "en" else ["Доверие к точности и качеству результата", "Сравнение с привычными бесплатными альтернативами"]
         responses.append({
             "persona_id": persona_id,
             "group": group,
@@ -389,8 +408,8 @@ def build_prebuilt_responses(scenario_id: str, members: list[dict[str, Any]]) ->
             "interest": interest_score,
             "willingness_to_try": try_score,
             "reaction": reaction_text[:700],
-            "motivators": [reaction.split(".")[0][:150]],
-            "barriers": ["Доверие к точности и качеству результата", "Сравнение с привычными бесплатными альтернативами"],
+            "motivators": motivators,
+            "barriers": barriers,
         })
     return responses
 

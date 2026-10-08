@@ -1,3 +1,5 @@
+import type { AudienceLanguage } from "@/app/audience-simulation/operator/audience-operator-copy";
+
 export type AudienceReportScoreMap = Record<string, number | null | undefined>;
 
 export type AudienceReport = {
@@ -57,20 +59,19 @@ export type AudienceReport = {
 
 type AudienceReportSegment = NonNullable<NonNullable<AudienceReport["analytics"]>["segments"]>[number];
 
-const scoreLabels: Record<string, string> = {
-  problem_relevance: "Актуальность проблемы",
-  interest: "Интерес к идее",
-  willingness_to_try: "Готовность попробовать",
+const scoreLabels: Record<AudienceLanguage, Record<string, string>> = {
+  ru: { problem_relevance: "Актуальность проблемы", interest: "Интерес к идее", willingness_to_try: "Готовность попробовать" },
+  en: { problem_relevance: "Problem relevance", interest: "Interest in the idea", willingness_to_try: "Willingness to try" },
 };
 
 function score(value: unknown) {
   return typeof value === "number" ? value.toFixed(1) : "—";
 }
 
-function lineText(item: string | { theme?: string; statement?: string; mentions?: number }) {
+function lineText(item: string | { theme?: string; statement?: string; mentions?: number }, language: AudienceLanguage = "ru") {
   if (typeof item === "string") return item;
   const label = item.theme || item.statement || "";
-  return item.mentions ? `${label} · упоминаний: ${item.mentions}` : label;
+  return item.mentions ? `${label} · ${language === "en" ? "mentions" : "упоминаний"}: ${item.mentions}` : label;
 }
 
 function BulletList({ title, items }: { title: string; items?: string[] }) {
@@ -81,25 +82,25 @@ function BulletList({ title, items }: { title: string; items?: string[] }) {
   </section>;
 }
 
-function ScoreGrid({ scores, positiveRates, title }: { scores?: AudienceReportScoreMap; positiveRates?: AudienceReportScoreMap; title: string }) {
-  const entries = Object.entries(scoreLabels).filter(([key]) => typeof scores?.[key] === "number");
+function ScoreGrid({ scores, positiveRates, title, language }: { scores?: AudienceReportScoreMap; positiveRates?: AudienceReportScoreMap; title: string; language: AudienceLanguage }) {
+  const entries = Object.entries(scoreLabels[language]).filter(([key]) => typeof scores?.[key] === "number");
   if (!entries.length) return null;
   return <section className="mt-6">
     <h3 className="text-xs font-semibold uppercase tracking-[.14em] text-white/45">{title}</h3>
     <div className="mt-3 grid gap-2 sm:grid-cols-3">{entries.map(([key, label]) => <div key={key} className="rounded-xl border border-white/10 bg-white/[.025] p-3">
       <p className="text-xs text-white/40">{label}</p><p className="mt-1 text-2xl font-semibold">{score(scores?.[key])}<span className="ml-1 text-xs font-normal text-white/35">/ 10</span></p>
-      {typeof positiveRates?.[key] === "number" && <div className="mt-2 flex items-baseline justify-between border-t border-white/10 pt-2"><span className="text-[10px] text-white/40">Оценка 7+</span><span className="text-sm font-semibold text-white/80">{positiveRates[key]}%</span></div>}
+      {typeof positiveRates?.[key] === "number" && <div className="mt-2 flex items-baseline justify-between border-t border-white/10 pt-2"><span className="text-[10px] text-white/40">{language === "en" ? "Rated 7+" : "Оценка 7+"}</span><span className="text-sm font-semibold text-white/80">{positiveRates[key]}%</span></div>}
     </div>)}</div>
   </section>;
 }
 
-function SegmentCards({ segments, showPositiveRates = true }: { segments?: AudienceReportSegment[]; showPositiveRates?: boolean }) {
+function SegmentCards({ segments, showPositiveRates = true, language }: { segments?: AudienceReportSegment[]; showPositiveRates?: boolean; language: AudienceLanguage }) {
   if (!segments?.length) return null;
   return <section className="mt-6">
-    <h3 className="text-xs font-semibold uppercase tracking-[.14em] text-white/45">Оценки по сегментам</h3>
+    <h3 className="text-xs font-semibold uppercase tracking-[.14em] text-white/45">{language === "en" ? "Scores by audience group" : "Оценки по сегментам"}</h3>
     <div className="mt-3 grid gap-3 sm:grid-cols-2">{segments.map((segment, index) => <article key={`${segment.segment || "segment"}-${index}`} className="rounded-xl border border-white/10 bg-white/[.025] p-4">
-      <div className="flex items-start justify-between gap-3"><h4 className="text-sm font-semibold leading-5 text-white/85">{segment.segment || "Сегмент"}</h4><span className="shrink-0 text-xs text-white/35">{segment.response_count ?? 0} ответов</span></div>
-      <div className="mt-4 grid grid-cols-3 gap-2">{Object.entries(scoreLabels).map(([key, label]) => <div key={key}>
+      <div className="flex items-start justify-between gap-3"><h4 className="text-sm font-semibold leading-5 text-white/85">{segment.segment || (language === "en" ? "Group" : "Сегмент")}</h4><span className="shrink-0 text-xs text-white/35">{segment.response_count ?? 0} {language === "en" ? "responses" : "ответов"}</span></div>
+      <div className="mt-4 grid grid-cols-3 gap-2">{Object.entries(scoreLabels[language]).map(([key, label]) => <div key={key}>
         <p className="text-[10px] leading-4 text-white/35">{label}</p><p className="mt-1 text-sm font-medium text-white/75">{score(segment.averages?.[key])}</p>
         {showPositiveRates && typeof segment.percent_at_least_7?.[key] === "number" && <p className="mt-0.5 text-[10px] text-white/35">7+ · {segment.percent_at_least_7[key]}%</p>}
       </div>)}</div>
@@ -107,7 +108,7 @@ function SegmentCards({ segments, showPositiveRates = true }: { segments?: Audie
   </section>;
 }
 
-export default function AudienceSimulationReport({ report }: { report?: AudienceReport | null }) {
+export default function AudienceSimulationReport({ report, language = "ru" }: { report?: AudienceReport | null; language?: AudienceLanguage }) {
   if (!report) return null;
   const narrative = report.narrative_sections || [];
   const analytics = report.analytics;
@@ -123,17 +124,17 @@ export default function AudienceSimulationReport({ report }: { report?: Audience
   const barriers = analytics?.themes?.barriers?.length ? analytics.themes.barriers : report.audience_analysis?.barriers;
 
   return <section className="mt-9 rounded-3xl border border-white/10 bg-white/[.025] p-5 sm:p-7">
-    <p className="text-xs font-semibold uppercase tracking-[.18em] text-sky-200/55">Подробный разбор</p>
-    <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Идея и результаты прогона</h2>
+    <p className="text-xs font-semibold uppercase tracking-[.18em] text-sky-200/55">{language === "en" ? "Full analysis" : "Подробный разбор"}</p>
+    <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">{language === "en" ? "Idea and run results" : "Идея и результаты прогона"}</h2>
     {overallReadout && <p className="mt-4 text-sm leading-6 text-white/65">{overallReadout}</p>}
 
     <div className="mt-5 grid grid-cols-3 gap-2 text-center">
-      <div className="rounded-xl border border-white/10 p-3"><p className="text-xl font-semibold">{analytics?.response_count ?? "—"}</p><p className="mt-1 text-[10px] text-white/40">учтено</p></div>
-      <div className="rounded-xl border border-white/10 p-3"><p className="text-xl font-semibold">{analytics?.excluded_count ?? "—"}</p><p className="mt-1 text-[10px] text-white/40">исключено</p></div>
-      <div className="rounded-xl border border-white/10 p-3"><p className="text-xl font-semibold">{analytics?.requested_count ?? "—"}</p><p className="mt-1 text-[10px] text-white/40">всего в прогоне</p></div>
+      <div className="rounded-xl border border-white/10 p-3"><p className="text-xl font-semibold">{analytics?.response_count ?? "—"}</p><p className="mt-1 text-[10px] text-white/40">{language === "en" ? "included" : "учтено"}</p></div>
+      <div className="rounded-xl border border-white/10 p-3"><p className="text-xl font-semibold">{analytics?.excluded_count ?? "—"}</p><p className="mt-1 text-[10px] text-white/40">{language === "en" ? "excluded" : "исключено"}</p></div>
+      <div className="rounded-xl border border-white/10 p-3"><p className="text-xl font-semibold">{analytics?.requested_count ?? "—"}</p><p className="mt-1 text-[10px] text-white/40">{language === "en" ? "requested" : "всего в прогоне"}</p></div>
     </div>
 
-    <ScoreGrid scores={reportScores} positiveRates={reportPositiveRates} title="Средние оценки" />
+    <ScoreGrid scores={reportScores} positiveRates={reportPositiveRates} title={language === "en" ? "Average ratings" : "Средние оценки"} language={language} />
 
     {narrative.length > 0 ? <div className="mt-8 space-y-3">{narrative.map((section, index) => <article key={`${section.title || "section"}-${index}`} className="rounded-2xl border border-white/10 bg-[#0c0c10] p-4 sm:p-5">
       <h3 className="text-base font-semibold text-white/90">{section.title}</h3>
@@ -141,35 +142,35 @@ export default function AudienceSimulationReport({ report }: { report?: Audience
       <ul className="mt-3 space-y-2">{section.items?.map((item, itemIndex) => <li key={itemIndex} className="flex gap-3 text-sm leading-6 text-white/65"><span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-violet-300/70" />{item}</li>)}</ul>
     </article>)}</div> : <>
       {report.idea_analysis && <div className="mt-7 rounded-2xl border border-white/10 bg-[#0c0c10] p-4 sm:p-5">
-        <h3 className="text-base font-semibold">Разбор идеи</h3>
-        {report.idea_analysis.problem_fit && <p className="mt-3 text-sm leading-6 text-white/65"><b className="text-white/85">Соответствие проблемы:</b> {report.idea_analysis.problem_fit}</p>}
-        {report.idea_analysis.value_proposition && <p className="mt-3 text-sm leading-6 text-white/65"><b className="text-white/85">Ценность:</b> {report.idea_analysis.value_proposition}</p>}
-        {report.idea_analysis.differentiation && <p className="mt-3 text-sm leading-6 text-white/65"><b className="text-white/85">Отличие:</b> {report.idea_analysis.differentiation}</p>}
-        <BulletList title="Сильные стороны" items={report.idea_analysis.strengths} />
-        <BulletList title="Риски" items={report.idea_analysis.risks} />
-        <BulletList title="Что проверить дальше" items={report.idea_analysis.assumptions_to_test} />
+        <h3 className="text-base font-semibold">{language === "en" ? "Idea analysis" : "Разбор идеи"}</h3>
+        {report.idea_analysis.problem_fit && <p className="mt-3 text-sm leading-6 text-white/65"><b className="text-white/85">{language === "en" ? "Problem fit:" : "Соответствие проблемы:"}</b> {report.idea_analysis.problem_fit}</p>}
+        {report.idea_analysis.value_proposition && <p className="mt-3 text-sm leading-6 text-white/65"><b className="text-white/85">{language === "en" ? "Value:" : "Ценность:"}</b> {report.idea_analysis.value_proposition}</p>}
+        {report.idea_analysis.differentiation && <p className="mt-3 text-sm leading-6 text-white/65"><b className="text-white/85">{language === "en" ? "Differentiation:" : "Отличие:"}</b> {report.idea_analysis.differentiation}</p>}
+        <BulletList title={language === "en" ? "Strengths" : "Сильные стороны"} items={report.idea_analysis.strengths} />
+        <BulletList title={language === "en" ? "Risks" : "Риски"} items={report.idea_analysis.risks} />
+        <BulletList title={language === "en" ? "What to test next" : "Что проверить дальше"} items={report.idea_analysis.assumptions_to_test} />
       </div>}
     </>}
 
-    <SegmentCards segments={segmentData} showPositiveRates={!referenceRates} />
+    <SegmentCards segments={segmentData} showPositiveRates={!referenceRates} language={language} />
     {(motivators?.length || barriers?.length) ? <div className="mt-7 grid gap-4 sm:grid-cols-2">
-      {motivators?.length ? <div className="rounded-2xl border border-sky-200/15 bg-sky-200/[.035] p-4"><h3 className="text-sm font-semibold text-sky-100/80">Что привлекало</h3><ul className="mt-3 space-y-2">{motivators.map((item, index) => <li key={index} className="text-sm leading-5 text-white/65">{lineText(item as string | { theme?: string; mentions?: number })}</li>)}</ul></div> : null}
-      {barriers?.length ? <div className="rounded-2xl border border-violet-200/15 bg-violet-200/[.035] p-4"><h3 className="text-sm font-semibold text-violet-100/80">Что настораживало</h3><ul className="mt-3 space-y-2">{barriers.map((item, index) => <li key={index} className="text-sm leading-5 text-white/65">{lineText(item as string | { theme?: string; mentions?: number })}</li>)}</ul></div> : null}
+      {motivators?.length ? <div className="rounded-2xl border border-sky-200/15 bg-sky-200/[.035] p-4"><h3 className="text-sm font-semibold text-sky-100/80">{language === "en" ? "What resonated" : "Что привлекало"}</h3><ul className="mt-3 space-y-2">{motivators.map((item, index) => <li key={index} className="text-sm leading-5 text-white/65">{lineText(item as string | { theme?: string; mentions?: number }, language)}</li>)}</ul></div> : null}
+      {barriers?.length ? <div className="rounded-2xl border border-violet-200/15 bg-violet-200/[.035] p-4"><h3 className="text-sm font-semibold text-violet-100/80">{language === "en" ? "Main concerns" : "Что настораживало"}</h3><ul className="mt-3 space-y-2">{barriers.map((item, index) => <li key={index} className="text-sm leading-5 text-white/65">{lineText(item as string | { theme?: string; mentions?: number }, language)}</li>)}</ul></div> : null}
     </div> : null}
 
     {analytics?.context_variations?.length ? <section className="mt-7 rounded-2xl border border-white/10 bg-[#0c0c10] p-4 sm:p-5">
-      <h3 className="text-base font-semibold">Разные условия сценария</h3>
-      <p className="mt-2 text-xs leading-5 text-white/45">Для неизвестных личных обстоятельств были смоделированы разные варианты. Их доли заданы для сравнения реакций и не показывают распространённость в реальной аудитории.</p>
+      <h3 className="text-base font-semibold">{language === "en" ? "Different scenario conditions" : "Разные условия сценария"}</h3>
+      <p className="mt-2 text-xs leading-5 text-white/45">{language === "en" ? "Different versions were simulated for unknown personal circumstances. Their proportions help compare responses and do not represent how common they are in a real audience." : "Для неизвестных личных обстоятельств были смоделированы разные варианты. Их доли заданы для сравнения реакций и не показывают распространённость в реальной аудитории."}</p>
       <div className="mt-4 space-y-3">{analytics.context_variations.map((factor, index) => <div key={`${factor.label || "factor"}-${index}`}><p className="text-sm font-medium text-white/75">{factor.label}</p><div className="mt-2 flex flex-wrap gap-2">{factor.distribution?.map((entry, entryIndex) => <span key={entryIndex} className="rounded-full border border-white/10 px-3 py-1.5 text-xs text-white/55">{entry.value}: {entry.count}</span>)}</div></div>)}</div>
       {analytics.context_variation_note && <p className="mt-3 text-xs leading-5 text-white/40">{analytics.context_variation_note}</p>}
     </section> : null}
 
     {report.market_analysis && <div className="mt-7 rounded-2xl border border-white/10 bg-[#0c0c10] p-4 sm:p-5">
-      <h3 className="text-base font-semibold">Рынок и альтернативы</h3>
-      <BulletList title="Рыночные сигналы" items={report.market_analysis.supported_signals?.map((item) => lineText(item as string | { statement?: string }))} />
-      <BulletList title="Альтернативы" items={report.market_analysis.alternatives_and_competition} />
-      <BulletList title="Что пока неизвестно" items={report.market_analysis.evidence_gaps} />
+      <h3 className="text-base font-semibold">{language === "en" ? "Market and alternatives" : "Рынок и альтернативы"}</h3>
+      <BulletList title={language === "en" ? "Market signals" : "Рыночные сигналы"} items={report.market_analysis.supported_signals?.map((item) => lineText(item as string | { statement?: string }, language))} />
+      <BulletList title={language === "en" ? "Alternatives" : "Альтернативы"} items={report.market_analysis.alternatives_and_competition} />
+      <BulletList title={language === "en" ? "Open questions" : "Что пока неизвестно"} items={report.market_analysis.evidence_gaps} />
     </div>}
-    <BulletList title="Рекомендации" items={report.recommendations} />
+    <BulletList title={language === "en" ? "Recommendations" : "Рекомендации"} items={report.recommendations} />
   </section>;
 }

@@ -315,6 +315,7 @@ class RunCreate(BaseModel):
 
 class PrebuiltRunCreate(BaseModel):
     scenario_id: str = Field(min_length=1, max_length=80)
+    language: str = Field(default="ru", pattern=r"^(ru|en)$")
 
 
 class SelectionUpdate(BaseModel):
@@ -594,7 +595,7 @@ async def create_prebuilt_run(
 ):
     """Start a curated scenario from the existing persona catalog without model calls."""
     campaign = await _get_campaign(db, code)
-    scenario = get_prebuilt_scenario(payload.scenario_id)
+    scenario = get_prebuilt_scenario(payload.scenario_id, payload.language)
     if not scenario:
         raise HTTPException(status_code=404, detail="Готовый сценарий не найден")
 
@@ -669,6 +670,7 @@ async def create_prebuilt_run(
         input_data={
             "operator_id": operator.id,
             "prebuilt_scenario_id": payload.scenario_id,
+            "language": payload.language,
             "price_was_provided": False,
         },
         evidence=evidence,
@@ -854,10 +856,11 @@ async def start_interviews(
     if run.status != "awaiting_audience_confirmation" or selection_version != selection.get("version"):
         raise HTTPException(status_code=409, detail="Подтвердите актуальный состав аудитории")
     scenario_id = str((run.input_data or {}).get("prebuilt_scenario_id") or "")
-    scenario = get_prebuilt_scenario(scenario_id) if scenario_id else None
+    language = str((run.input_data or {}).get("language") or "ru")
+    scenario = get_prebuilt_scenario(scenario_id, language) if scenario_id else None
     if scenario:
         members = list(selection.get("members") or [])
-        valid_responses = build_prebuilt_responses(scenario_id, members)
+        valid_responses = build_prebuilt_responses(scenario_id, members, language)
         valid_ids = {str(response.get("persona_id") or "") for response in valid_responses}
         responses = list(valid_responses)
         for member in members:
@@ -991,7 +994,7 @@ async def claim_preview(raw_token: str, db: AsyncSession = Depends(get_async_db)
 
 
 @router.get("/claims/{raw_token}/qr")
-async def claim_qr(raw_token: str, db: AsyncSession = Depends(get_async_db)):
+async def claim_qr(raw_token: str, lang: str = "ru", db: AsyncSession = Depends(get_async_db)):
     await _claim_token(db, raw_token)
     try:
         import qrcode
@@ -999,7 +1002,8 @@ async def claim_qr(raw_token: str, db: AsyncSession = Depends(get_async_db)):
         from io import BytesIO
 
         base = os.getenv("PUBLIC_SITE_URL", "https://pitchy.pro").rstrip("/")
-        claim_url = f"{base}/audience-simulation/claim/{raw_token}"
+        language_query = "?lang=en" if lang == "en" else ""
+        claim_url = f"{base}/audience-simulation/claim/{raw_token}{language_query}"
         image = qrcode.make(claim_url, image_factory=qrcode.image.svg.SvgPathImage, border=2)
         output = BytesIO()
         image.save(output)
@@ -1837,12 +1841,21 @@ def _build_report_analytics(members: list[dict], responses: list[dict], context_
 
 def _prebuilt_extended_report(scenario: dict, members: list[dict], responses: list[dict], aggregate: dict) -> dict:
     analytics = _build_report_analytics(members, responses)
+    group_labels = scenario.get("group_labels_en") or {}
+    for segment in analytics.get("segments") or []:
+        segment_name = str(segment.get("segment") or "")
+        if segment_name in group_labels:
+            segment["segment"] = group_labels[segment_name]
     report_sections = scenario.get("report_sections") or []
     market_signals = [str(text) for text, _source_ids in scenario.get("findings", [])]
     next_checks = list(scenario.get("next_checks") or [])
     valid_count = int(aggregate.get("valid_responses") or 0)
+    is_english = scenario.get("language") == "en"
     return {
-        "overall_readout": f"В прогоне учтено {valid_count} синтетических ответов.",
+        "overall_readout": (
+            f"This run includes {valid_count} simulated responses."
+            if is_english else f"В прогоне учтено {valid_count} синтетических ответов."
+        ),
         "idea_analysis": {
             "problem_fit": scenario.get("short") or scenario.get("idea") or "",
             "value_proposition": scenario.get("idea") or "",
@@ -1859,14 +1872,24 @@ def _prebuilt_extended_report(scenario: dict, members: list[dict], responses: li
         "market_analysis": {
             "supported_signals": market_signals,
             "alternatives_and_competition": [],
-            "evidence_gaps": ["Текстовый обзор рынка не заменяет проверку актуальных цен, функций конкурентов и готовности пользователей платить."],
+            "evidence_gaps": [
+                "A written market overview does not replace checking current prices, competitor features, and users’ willingness to pay."
+                if is_english else "Текстовый обзор рынка не заменяет проверку актуальных цен, функций конкурентов и готовности пользователей платить."
+            ],
         },
         "recommendations": next_checks,
         "limitations": [
-            "Ответы синтетические и не являются опросом реальных людей, оценкой долей рынка или прогнозом продаж.",
-            "Показатели сегментов и тем описывают только состав и ответы этого прогона.",
-            "Оценки готового сценария ниже — аналитические ориентиры, а не результат опроса.",
-            "Текстовые оценки рынка и конкурентов требуют отдельной проверки по актуальным первичным данным.",
+            *([
+                "Responses are simulated; they are not a survey of real people, a market-share estimate, or a sales forecast.",
+                "Group and theme metrics describe only the profiles and responses in this run.",
+                "The ready-made scenario ratings are analytical reference points, not survey results.",
+                "Market and competitor statements need separate verification against current primary sources.",
+            ] if is_english else [
+                "Ответы синтетические и не являются опросом реальных людей, оценкой долей рынка или прогнозом продаж.",
+                "Показатели сегментов и тем описывают только состав и ответы этого прогона.",
+                "Оценки готового сценария ниже — аналитические ориентиры, а не результат опроса.",
+                "Текстовые оценки рынка и конкурентов требуют отдельной проверки по актуальным первичным данным.",
+            ]),
         ],
         "analytics": analytics,
         "reference_scores": scenario.get("reference_scores") or {},

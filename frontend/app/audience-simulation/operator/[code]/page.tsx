@@ -10,6 +10,16 @@ import {
   Loader,
   RotateCcw,
 } from "react-feather";
+import {
+  behaviorLabelsEn,
+  domainLabelsEn,
+  exclusionLabelsEn,
+  groupLabelsEn,
+  operatorText,
+  personaValueLabelsEn,
+  scenarioCardsEn,
+  type AudienceLanguage,
+} from "../audience-operator-copy";
 import "../audience-operator.css";
 
 type CampaignConfig = {
@@ -112,6 +122,15 @@ const statusText: Record<string, string> = {
   partial: "Готов частичный результат",
   failed: "Не удалось подготовить запуск",
 };
+const statusTextEn: Record<string, string> = {
+  preparing: "Finding market signals and building the audience",
+  awaiting_search_fallback: "Not enough verifiable sources were found",
+  awaiting_audience_confirmation: "Audience is ready",
+  interviewing: "Personas are responding",
+  completed: "Results are ready",
+  partial: "Partial results are ready",
+  failed: "Could not prepare the run",
+};
 
 const palette = ["#7ce6ff", "#b48cff", "#f0bd69", "#9be5ca"];
 const behaviorScoreLabels: Record<string, string> = {
@@ -138,24 +157,35 @@ const exclusionReasonLabels: Record<string, string> = {
   unsupported_assumption_language: "в ответе было неподтверждённое предположение",
 };
 
-function getPersonaDetails(persona: Persona) {
+function getPersonaDetails(persona: Persona, language: AudienceLanguage) {
   const parts = (persona.profile || "").split(" · ").map((part) => part.trim()).filter(Boolean);
   const traits = persona.traits || {};
   const profileBehavior = parts.find((part) => part.startsWith("поведение:"))?.replace(/^поведение:\s*/, "").split(";").map((part) => part.trim()).filter(Boolean) || [];
   const behaviorSummary = traits.current_behaviors?.length ? traits.current_behaviors : profileBehavior.length ? profileBehavior : traits.decision_style || [];
+  const localize = (kind: keyof typeof personaValueLabelsEn, value?: string | null) => {
+    if (!value) return undefined;
+    return language === "en" ? personaValueLabelsEn[kind][value] || value : value;
+  };
+  const behavior = traits.behavior || {};
+  const englishBehaviorSummary = Object.entries(behavior)
+    .filter(([key, value]) => behaviorLabelsEn[key] && typeof value === "number")
+    .slice(0, 3)
+    .map(([key, value]) => `${behaviorLabelsEn[key]}: ${value}/5`);
   return {
     traits,
-    name: traits.profile_label || parts[0] || "Синтетическая персона",
+    name: language === "en"
+      ? groupLabelsEn[persona.group] || operatorText.en.profile
+      : traits.profile_label || parts[0] || "Синтетическая персона",
     age: traits.age_band || parts[1],
-    city: traits.city || parts[2],
-    citySize: traits.city_size,
-    region: traits.region,
-    occupation: traits.occupation || parts[3],
+    city: localize("city", traits.city || parts[2]),
+    citySize: localize("citySize", traits.city_size),
+    region: localize("region", traits.region),
+    occupation: localize("occupation", traits.occupation || parts[3]),
     businessRole: traits.business_role,
-    income: traits.income_band || parts[4],
-    household: traits.household_context,
-    behaviors: behaviorSummary,
-    decisionStyle: traits.decision_style || [],
+    income: localize("income", traits.income_band || parts[4]),
+    household: localize("household", traits.household_context),
+    behaviors: language === "en" ? englishBehaviorSummary : behaviorSummary,
+    decisionStyle: language === "en" ? [] : traits.decision_style || [],
   };
 }
 
@@ -168,6 +198,11 @@ function hashSeed(value: string) {
   return hash >>> 0;
 }
 
+function localizedError(reason: unknown, fallback: string, lostConnection: string) {
+  if (reason instanceof TypeError) return lostConnection;
+  return reason instanceof Error ? reason.message : fallback;
+}
+
 function PersonaNetwork({
   members,
   responses,
@@ -176,6 +211,7 @@ function PersonaNetwork({
   litIds,
   onPick,
   onHover,
+  language = "ru",
 }: {
   members: Persona[];
   responses: ResponsePoint[];
@@ -184,6 +220,7 @@ function PersonaNetwork({
   litIds?: Set<string>;
   onPick?: (id: string) => void;
   onHover?: (id: string | null) => void;
+  language?: AudienceLanguage;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pointsRef = useRef<Array<{ x: number; y: number; id: string; color: string; excluded?: boolean }>>([]);
@@ -467,7 +504,9 @@ function PersonaNetwork({
       onKeyDown={onPick ? pickWithKeyboard : undefined}
       role={onPick ? "application" : "img"}
       tabIndex={onPick ? 0 : undefined}
-      aria-label={onPick ? "Интерактивная карта ответов. Выбирайте персоны клавишами со стрелками." : mode === "map" ? "Карта ответов: каждая точка — синтетическая персона" : "Облако синтетических персон"}
+      aria-label={language === "en"
+        ? onPick ? "Interactive response map. Use the arrow keys to select a persona." : mode === "map" ? "Response map: each dot represents a simulated persona" : "Simulated audience personas"
+        : onPick ? "Интерактивная карта ответов. Выбирайте персоны клавишами со стрелками." : mode === "map" ? "Карта ответов: каждая точка — синтетическая персона" : "Облако синтетических персон"}
     />
   );
 }
@@ -476,6 +515,8 @@ export default function AudienceSimulationOperatorPage() {
   const params = useParams<{ code: string }>();
   const code = params.code;
   const [config, setConfig] = useState<CampaignConfig | null>(null);
+  const [language, setLanguage] = useState<AudienceLanguage>("ru");
+  const ui = operatorText[language];
   const [run, setRun] = useState<SimRun | null>(null);
   const [runToken, setRunToken] = useState("");
   const [busy, setBusy] = useState(false);
@@ -495,6 +536,32 @@ export default function AudienceSimulationOperatorPage() {
   const [audienceReveal, setAudienceReveal] = useState(0);
   const lastAutoStatusRef = useRef("");
 
+  useEffect(() => {
+    const queryLanguage = new URLSearchParams(window.location.search).get("lang");
+    const savedLanguage = localStorage.getItem("audience-simulation-language");
+    const nextLanguage = queryLanguage === "en" || queryLanguage === "ru"
+      ? queryLanguage
+      : savedLanguage === "en" || savedLanguage === "ru"
+        ? savedLanguage
+        : null;
+    if (nextLanguage) {
+      setLanguage(nextLanguage);
+      localStorage.setItem("audience-simulation-language", nextLanguage);
+    }
+  }, []);
+
+  useEffect(() => {
+    const previousLanguage = document.documentElement.lang || "ru";
+    document.documentElement.lang = language;
+    return () => { document.documentElement.lang = previousLanguage; };
+  }, [language]);
+
+  const switchLanguage = (next: AudienceLanguage) => {
+    setLanguage(next);
+    localStorage.setItem("audience-simulation-language", next);
+    setError("");
+  };
+
   const request = useCallback(async <T,>(path: string, init: RequestInit = {}, token?: string): Promise<T> => {
     const response = await fetch(path, {
       ...init,
@@ -502,9 +569,19 @@ export default function AudienceSimulationOperatorPage() {
       headers: { "Content-Type": "application/json", ...(token ? { "X-Audience-Token": token } : {}), ...init.headers },
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Не удалось выполнить запрос");
+    if (!response.ok) {
+      const detail = typeof data.detail === "string" ? data.detail : "";
+      const translatedErrors: Record<string, string> = {
+        "Готовый сценарий не найден": "The selected idea could not be found.",
+        "Кампания сейчас недоступна": "This campaign is currently unavailable.",
+        "Кампания недоступна": "This campaign is currently unavailable.",
+        "В каталоге недостаточно профилей для готового сценария": "There are not enough audience profiles for this idea.",
+        "Не удалось выполнить запрос": "Something went wrong. Please try again.",
+      };
+      throw new Error(language === "en" ? translatedErrors[detail] || "Something went wrong. Please try again." : detail || "Не удалось выполнить запрос");
+    }
     return data as T;
-  }, []);
+  }, [language]);
 
   useEffect(() => {
     const section = document.querySelectorAll<HTMLElement>(".audience-slide")[activeSlide];
@@ -518,14 +595,19 @@ export default function AudienceSimulationOperatorPage() {
 
   useEffect(() => {
     let active = true;
+    const openStandHome = new URLSearchParams(window.location.search).get("home") === "1";
     void request<CampaignConfig>("/api/audience-simulations/campaigns/" + encodeURIComponent(code) + "/config")
       .then((data) => {
         if (!active) return;
         setConfig(data);
         const saved = sessionStorage.getItem("audience-simulation:" + code);
-        if (!saved) return;
+        if (!saved || openStandHome) return;
         try {
-          const session = JSON.parse(saved) as { runId: number; token: string };
+          const session = JSON.parse(saved) as { runId: number; token: string; language?: AudienceLanguage };
+          if ((session.language || "ru") !== language) {
+            sessionStorage.removeItem("audience-simulation:" + code);
+            return;
+          }
           if (!Number.isInteger(session.runId) || !session.token) throw new Error("bad session");
           void request<SimRun>("/api/audience-simulations/runs/" + session.runId, {}, session.token)
             .then((savedRun) => {
@@ -547,10 +629,10 @@ export default function AudienceSimulationOperatorPage() {
         }
       })
       .catch((reason: unknown) => {
-        if (active) setError(reason instanceof Error ? reason.message : "Кампания недоступна");
+        if (active) setError(localizedError(reason, ui.unavailableCampaign, ui.lostConnection));
       });
     return () => { active = false; };
-  }, [code, request]);
+  }, [code, language, request, ui.lostConnection, ui.unavailableCampaign]);
 
   useEffect(() => {
     const runId = run?.id;
@@ -572,17 +654,17 @@ export default function AudienceSimulationOperatorPage() {
         }
         if (next.status === "failed") {
           setError(next.evidence.length
-            ? "Источники найдены, но не удалось обработать результат. Их можно обработать повторно."
-            : "Не удалось подготовить запуск. Можно повторить попытку.");
+            ? (language === "en" ? "Sources were found, but the result could not be processed. You can retry." : "Источники найдены, но не удалось обработать результат. Их можно обработать повторно.")
+            : (language === "en" ? "The run could not be prepared. You can try again." : "Не удалось подготовить запуск. Можно повторить попытку."));
         }
       } catch (reason) {
-        if (!stopped) setError(reason instanceof Error ? reason.message : "Потеряно соединение");
+        if (!stopped) setError(localizedError(reason, ui.lostConnection, ui.lostConnection));
       }
     };
     void poll();
     const timer = window.setInterval(() => { void poll(); }, 1500);
     return () => { stopped = true; window.clearInterval(timer); };
-  }, [request, run?.id, run?.status, runToken]);
+  }, [language, request, run?.id, run?.status, runToken, ui.lostConnection]);
 
   const startPrebuilt = async () => {
     if (!selectedScenarioId) return;
@@ -591,9 +673,9 @@ export default function AudienceSimulationOperatorPage() {
     try {
       const created = await request<{ run_id: number; access_token: string }>(
         "/api/audience-simulations/campaigns/" + encodeURIComponent(code) + "/prebuilt-runs",
-        { method: "POST", body: JSON.stringify({ scenario_id: selectedScenarioId }) },
+        { method: "POST", body: JSON.stringify({ scenario_id: selectedScenarioId, language }) },
       );
-      sessionStorage.setItem("audience-simulation:" + code, JSON.stringify({ runId: created.run_id, token: created.access_token }));
+      sessionStorage.setItem("audience-simulation:" + code, JSON.stringify({ runId: created.run_id, token: created.access_token, language }));
       const ready = await request<SimRun>("/api/audience-simulations/runs/" + created.run_id, {}, created.access_token);
       setRun(ready);
       setRunToken(created.access_token);
@@ -601,7 +683,7 @@ export default function AudienceSimulationOperatorPage() {
       setAudienceSize(ready.selection.members?.length || 100);
       setActiveSlide(2);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Не удалось открыть готовый сценарий");
+      setError(localizedError(reason, ui.openReadyScenarioError, ui.lostConnection));
     } finally {
       setBusy(false);
     }
@@ -628,7 +710,7 @@ export default function AudienceSimulationOperatorPage() {
         return;
       }
       if (latest.status !== "awaiting_audience_confirmation") {
-        throw new Error("Состав аудитории уже изменился. Вернитесь к его просмотру и запустите исследование ещё раз.");
+        throw new Error(language === "en" ? ui.audienceChanged : "Состав аудитории уже изменился. Вернитесь к его просмотру и запустите исследование ещё раз.");
       }
       const latestMembers = latest.selection.members || [];
       const currentGroups = selectedGroups.filter((group) => latestMembers.some((person) => person.group === group));
@@ -637,7 +719,7 @@ export default function AudienceSimulationOperatorPage() {
       if (safeSize < (config?.limits.min_audience || 5)) {
         setActiveSlide(3);
         setSelectedGroups(Array.from(new Set(latestMembers.map((person) => person.group))));
-        throw new Error("Состав аудитории обновился. Проверьте выбранные группы и запустите исследование ещё раз.");
+        throw new Error(language === "en" ? ui.audienceUpdated : "Состав аудитории обновился. Проверьте выбранные группы и запустите исследование ещё раз.");
       }
       if (selectedScenarioId) {
         const completed = await request<SimRun>(
@@ -668,7 +750,7 @@ export default function AudienceSimulationOperatorPage() {
       }
       setAudienceSize(safeSize);
     } catch (reason) {
-      const message = reason instanceof Error ? reason.message : "Не удалось подтвердить аудиторию";
+      const message = localizedError(reason, ui.confirmAudienceError, ui.lostConnection);
       setError(message);
       try {
         const latest = await request<SimRun>("/api/audience-simulations/runs/" + run.id, {}, runToken);
@@ -695,7 +777,7 @@ export default function AudienceSimulationOperatorPage() {
       lastAutoStatusRef.current = "preparing";
       setRun({ ...run, status: "preparing" });
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Не удалось продолжить запуск");
+      setError(localizedError(reason, ui.continueError, ui.lostConnection));
     } finally {
       setBusy(false);
     }
@@ -714,7 +796,7 @@ export default function AudienceSimulationOperatorPage() {
       lastAutoStatusRef.current = response.status;
       setRun({ ...run, status: response.status, aggregate: null });
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Не удалось повторить подготовку");
+      setError(localizedError(reason, ui.retryError, ui.lostConnection));
     } finally {
       setBusy(false);
     }
@@ -731,7 +813,7 @@ export default function AudienceSimulationOperatorPage() {
       setRunToken("");
       setActiveSlide(1);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Не удалось остановить проверку");
+      setError(localizedError(reason, ui.cancelError, ui.lostConnection));
     } finally {
       setBusy(false);
     }
@@ -745,11 +827,11 @@ export default function AudienceSimulationOperatorPage() {
       const result = await request<{ token: string }>("/api/audience-simulations/runs/" + run.id + "/claim-links", { method: "POST" }, runToken);
       setClaimToken(result.token);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Не удалось подготовить ссылку");
+      setError(localizedError(reason, ui.qrError, ui.lostConnection));
     } finally {
       setBusy(false);
     }
-  }, [request, run, runToken]);
+  }, [language, request, run, runToken, ui.qrError]);
 
   const reset = () => {
     sessionStorage.removeItem("audience-simulation:" + code);
@@ -794,19 +876,19 @@ export default function AudienceSimulationOperatorPage() {
   const plottedResponseCount = run?.responses.filter((response) => response.included !== false && typeof response.interest === "number" && typeof response.problem_relevance === "number" && typeof response.willingness_to_try === "number").length || 0;
   const excludedResponseCount = run?.responses.filter((response) => response.included === false || typeof response.interest !== "number" || typeof response.problem_relevance !== "number" || typeof response.willingness_to_try !== "number").length || 0;
   const selectedMarkets = new Set((run?.selection.members || []).map((person) => person.market).filter(Boolean));
-  const consumerIdeaWithBusinessPanel = Boolean(run && /калор|питан|похуд|рацион|фитнес|трениров|сон|здоров/i.test(run.idea) && selectedMarkets.has("business") && !selectedMarkets.has("consumer"));
+  const consumerIdeaWithBusinessPanel = Boolean(run && (run.scenario_id === "calorie-photo" || /калор|питан|похуд|рацион|фитнес|трениров|сон|здоров/i.test(run.idea)) && selectedMarkets.has("business") && !selectedMarkets.has("consumer"));
   const sourcedCount = run?.findings.filter((finding) => finding.source_ids.length > 0).length || 0;
   const searchingLabel = run?.status === "awaiting_search_fallback"
-    ? "Источники не найдены"
+    ? ui.searchNotFound
     : run?.status === "awaiting_audience_confirmation"
-      ? "Источники изучены"
+      ? ui.searchReady
       : run?.status === "failed"
-        ? "Поиск остановился"
+        ? ui.searchStopped
         : run?.evidence.length
           ? (run.evidence.some((source) => source.fetch_status === "opened") && !selectedScenarioId
-              ? `Открыто страниц: ${run.evidence.filter((source) => source.fetch_status === "opened").length} · проверяем цитаты`
-              : "Связываем сигналы с источниками")
-          : "Подключаем источники поиска";
+              ? `${language === "en" ? "Pages opened" : "Открыто страниц"}: ${run.evidence.filter((source) => source.fetch_status === "opened").length} · ${ui.checkingQuotes}`
+              : ui.linkingSignals)
+          : ui.connectingSearch;
 
   const goToSlide = useCallback((index: number) => {
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
@@ -883,10 +965,10 @@ export default function AudienceSimulationOperatorPage() {
   const openedSourceCount = run?.evidence.filter((source) => source.fetch_status === "opened").length || 0;
   const demoSearchStats = selectedScenarioId ? run?.demo_search_stats : null;
   const sourceCategories = [
-    { title: "Отзывы покупателей", note: demoSearchStats ? "источники в сценарии" : "найденные страницы", color: "cyan", count: demoSearchStats?.categories.reviews ?? run?.evidence.filter((source) => /market|ozon|wildberries|otzovik/i.test(source.domain)).length ?? 0 },
-    { title: "Профессиональные сообщества", note: demoSearchStats ? "источники в сценарии" : "найденные страницы", color: "violet", count: demoSearchStats?.categories.communities ?? run?.evidence.filter((source) => /habr|vc\.ru|reddit|forum|community/i.test(source.domain)).length ?? 0 },
-    { title: "Поисковые материалы", note: demoSearchStats ? "источники в сценарии" : "найденные страницы", color: "gold", count: demoSearchStats?.categories.search_materials ?? run?.evidence.filter((source) => !/market|ozon|wildberries|otzovik|habr|vc\.ru|reddit|forum|community/i.test(source.domain)).length ?? 0 },
-    { title: "Повторяющиеся сигналы", note: demoSearchStats ? "выводы в сценарии" : "связаны с источниками", color: "mint", count: demoSearchStats?.linked_findings ?? sourcedCount },
+    { title: ui.reviews, note: demoSearchStats ? ui.reviewsScenario : ui.reviewsFound, color: "cyan", count: demoSearchStats?.categories.reviews ?? run?.evidence.filter((source) => /market|ozon|wildberries|otzovik/i.test(source.domain)).length ?? 0 },
+    { title: ui.communities, note: demoSearchStats ? ui.reviewsScenario : ui.reviewsFound, color: "violet", count: demoSearchStats?.categories.communities ?? run?.evidence.filter((source) => /habr|vc\.ru|reddit|forum|community/i.test(source.domain)).length ?? 0 },
+    { title: ui.searchMaterials, note: demoSearchStats ? ui.reviewsScenario : ui.reviewsFound, color: "gold", count: demoSearchStats?.categories.search_materials ?? run?.evidence.filter((source) => !/market|ozon|wildberries|otzovik|habr|vc\.ru|reddit|forum|community/i.test(source.domain)).length ?? 0 },
+    { title: ui.recurringSignals, note: demoSearchStats ? ui.linkedFindings : ui.linkedToSources, color: "mint", count: demoSearchStats?.linked_findings ?? sourcedCount },
   ];
   const [sourceCounterProgress, setSourceCounterProgress] = useState(0);
   const sourceCountsKey = sourceCategories.map((category) => category.count).join(":");
@@ -926,13 +1008,13 @@ export default function AudienceSimulationOperatorPage() {
           : activeSlide === 5 || activeSlide === 6 ? slideEntranceDone
             : activeSlide === 7 ? !claimToken && !busy : false;
   const nextLabel = activeSlide === 1
-    ? (run ? "К источникам" : "Запустить сценарий")
-    : activeSlide === 2 ? (run?.status === "awaiting_search_fallback" ? "Продолжить без источников" : "К аудитории")
-      : activeSlide === 3 ? (busy ? "Готовим исследование" : "Запустить исследование")
-        : activeSlide === 4 ? (isFinished && (selectedScenarioId ? progress >= (run?.responses.length || 0) : true) ? "К карте реакций" : "Собираем ответы")
-          : activeSlide === 5 ? "К выводам"
-            : activeSlide === 6 ? "Открыть результат"
-                : "Создать QR-код";
+    ? (run ? ui.toSources : ui.startScenario)
+    : activeSlide === 2 ? (run?.status === "awaiting_search_fallback" ? ui.continueWithoutSources : ui.toAudience)
+      : activeSlide === 3 ? (busy ? ui.prepareResearch : ui.launchResearch)
+        : activeSlide === 4 ? (isFinished && (selectedScenarioId ? progress >= (run?.responses.length || 0) : true) ? ui.toResponseMap : ui.collectingResponses)
+          : activeSlide === 5 ? ui.toInsights
+            : activeSlide === 6 ? ui.openResult
+                : ui.createQr;
   const handleNext = () => {
     if (!nextEnabled) return;
     if (activeSlide === 1) {
@@ -955,18 +1037,18 @@ export default function AudienceSimulationOperatorPage() {
         <div className="audience-scene" aria-hidden="true" />
         <header className="audience-topbar">
           <div className="audience-brand">Pitchy<i>.pro</i></div>
-          <div className="audience-topnote">Симуляция аудитории</div>
+          <div className="audience-topnote">{ui.topNote}</div>
         </header>
 
         {error && (
           <div className="audience-alert" role="alert">
             <span>{error}</span>
-            <button type="button" onClick={() => setError("")} aria-label="Закрыть сообщение">×</button>
+            <button type="button" onClick={() => setError("")} aria-label={ui.closeError}>×</button>
           </div>
         )}
 
         {!config && !error && (
-          <div className="audience-loading" aria-label="Загружаем кампанию"><Loader size={18} className="audience-spin" /></div>
+          <div className="audience-loading" aria-label={ui.loadingCampaign}><Loader size={18} className="audience-spin" /></div>
         )}
 
         {config && <div className="audience-slides">
@@ -982,33 +1064,34 @@ export default function AudienceSimulationOperatorPage() {
               />
             </div>
             <div className="hero-art-shade" aria-hidden="true" />
-            <h1 className="audience-title hero-title">Как люди<br />отреагируют<br />на <span className="audience-shine">вашу идею?</span></h1>
-            <p className="audience-lead hero-lead">Поймите, кому может быть полезна идея и что в ней важно.</p>
+            <h1 className="audience-title hero-title">{language === "en" ? <>{ui.heroLineOne}<br />{ui.heroLineTwo}<br /><span className="audience-shine">{ui.heroLineThree}</span></> : <>Как люди<br />отреагируют<br />на <span className="audience-shine">вашу идею?</span></>}</h1>
+            <p className="audience-lead hero-lead">{ui.heroLead}</p>
             <div className="audience-glowline" />
-            <button type="button" className="slide-hit-target" onClick={() => goToSlide(1)} aria-label="Начать проверку идеи" />
+            <button type="button" className="language-toggle" onClick={() => switchLanguage(language === "ru" ? "en" : "ru")} aria-label={ui.languageButtonLabel}>{ui.languageButton}</button>
+            <button type="button" className="slide-hit-target" onClick={() => goToSlide(1)} aria-label={ui.beginLabel} />
           </section>
 
           <section className={"audience-slide idea-slide" + (activeSlide === 1 ? " is-active" : "")} inert={activeSlide !== 1}>
-            <p className="audience-eyebrow">01 / Начало проверки</p>
-            <h2 className="audience-title">Что<br />проверяем?</h2>
+            <p className="audience-eyebrow">{ui.ideaEyebrow}</p>
+            <h2 className="audience-title">{language === "ru" ? <>Что<br />проверяем?</> : ui.ideaTitle}</h2>
             <div className="prebuilt-picker">
               <div className="prebuilt-list">
                 {prebuiltScenarios.map((scenario) => <button type="button" key={scenario.id} className={"prebuilt-option" + (selectedScenarioId === scenario.id ? " is-selected" : "")} onClick={() => setSelectedScenarioId(scenario.id)} aria-pressed={selectedScenarioId === scenario.id}>
                   <Image src={scenario.image} alt="" fill sizes="(max-width: 600px) 42vw, 250px" className="prebuilt-option-image" />
-                  <strong>{scenario.title}</strong><span>{scenario.note}</span>
+                  <strong>{language === "en" ? scenarioCardsEn[scenario.id]?.title || scenario.title : scenario.title}</strong><span>{language === "en" ? scenarioCardsEn[scenario.id]?.note || scenario.note : scenario.note}</span>
                 </button>)}
               </div>
             </div>
           </section>
 
           <section className={"audience-slide sources-slide" + (activeSlide === 2 ? " is-active" : "")} inert={activeSlide !== 2}>
-            <p className="audience-eyebrow">02 / Открытые источники</p>
-            <h2 className="audience-title">Сначала слушаем<br /><span className="audience-shine">рынок</span></h2>
-            <p className="audience-lead">Ищем, кто и как уже говорит об этой проблеме.</p>
+            <p className="audience-eyebrow">{ui.sourceEyebrow}</p>
+            <h2 className="audience-title">{language === "en" ? <>{ui.sourceTitleOne}<br /><span className="audience-shine">{ui.sourceTitleTwo}</span></> : <>Сначала слушаем<br /><span className="audience-shine">рынок</span></>}</h2>
+            <p className="audience-lead">{ui.sourceLead}</p>
             <div className="source-stats">
-              <div className="audience-card"><strong>{displayCount(demoSearchStats?.mentions ?? run?.evidence.length ?? 0)}</strong><span>{demoSearchStats ? "найденных источников · сценарий" : "ссылок найдено"}</span></div>
-              <div className="audience-card"><strong>{displayCount(demoSearchStats?.bundle_links ?? (selectedScenarioId ? run?.evidence.length || 0 : openedSourceCount))}</strong><span>{selectedScenarioId ? "ссылок в сценарной подборке" : "страниц открыто"}</span></div>
-              <div className="audience-card"><strong>{displayCount(demoSearchStats?.linked_findings ?? sourcedCount)}</strong><span>{selectedScenarioId ? "выводов со ссылками · сценарий" : "сигналов подтверждено"}</span></div>
+              <div className="audience-card"><strong>{displayCount(demoSearchStats?.mentions ?? run?.evidence.length ?? 0)}</strong><span>{demoSearchStats ? ui.scenarioSources : ui.sourcesFound}</span></div>
+              <div className="audience-card"><strong>{displayCount(demoSearchStats?.bundle_links ?? (selectedScenarioId ? run?.evidence.length || 0 : openedSourceCount))}</strong><span>{selectedScenarioId ? ui.bundleLinks : ui.pagesOpened}</span></div>
+              <div className="audience-card"><strong>{displayCount(demoSearchStats?.linked_findings ?? sourcedCount)}</strong><span>{selectedScenarioId ? ui.linkedSignals : ui.signalsConfirmed}</span></div>
             </div>
             <div className="source-grid">
               {sourceCategories.map((category) => (
@@ -1022,11 +1105,11 @@ export default function AudienceSimulationOperatorPage() {
             <div className={"signal-sweep" + (sourceStageReady ? " is-complete" : "")}><i /></div>
             {run?.evidence.length ? (
               <details className="source-disclosure">
-                <summary>Ссылки и статус страниц · {run.evidence.length}</summary>
+                <summary>{ui.sourceList} · {run.evidence.length}</summary>
                 <div className="source-links">
                   {run.evidence.slice(0, 20).map((source) => (
                     <a key={source.id} href={source.url} target="_blank" rel="noreferrer" className="source-link">
-                      <span>{source.domain} · {source.fetch_status === "opened" ? "страница открыта" : source.fetch_status === "blocked" ? "адрес заблокирован" : source.fetch_status === "referenced" ? "источник аналитического обзора" : source.fetch_status || "не проверена"}</span>{source.page_title || source.title || source.url}
+                      <span>{source.domain} · {source.fetch_status === "opened" ? ui.pageOpened : source.fetch_status === "blocked" ? ui.addressBlocked : source.fetch_status === "referenced" ? ui.sourceReference : source.fetch_status || ui.notChecked}</span>{source.page_title || source.title || source.url}
                     </a>
                   ))}
                 </div>
@@ -1034,7 +1117,7 @@ export default function AudienceSimulationOperatorPage() {
             ) : null}
             {run?.findings.some((finding) => finding.evidence?.length) && (
               <details className="source-disclosure verified-disclosures">
-                <summary>Подтверждённые цитаты · {sourcedCount}</summary>
+                <summary>{ui.verifiedQuotes} · {sourcedCount}</summary>
                 <div className="source-links">
                   {run.findings.filter((finding) => finding.evidence?.length).slice(0, 8).map((finding, index) => (
                     <div className="verified-quote" key={`${finding.source_ids.join(",")}-${index}`}>
@@ -1050,8 +1133,8 @@ export default function AudienceSimulationOperatorPage() {
             )}
             {run?.status === "awaiting_search_fallback" && (
               <div className="fallback-actions">
-                <p>Sonar не вернул проверяемые ссылки. Можно продолжить без открытых сигналов или выбрать другой готовый сценарий.</p>
-                <button type="button" className="text-action" disabled={busy} onClick={() => void reviseIdea()}>Выбрать другой сценарий</button>
+                <p>{ui.fallbackText}</p>
+                <button type="button" className="text-action" disabled={busy} onClick={() => void reviseIdea()}>{ui.chooseAnotherScenario}</button>
               </div>
             )}
             {run?.status === "failed" && (
@@ -1059,44 +1142,45 @@ export default function AudienceSimulationOperatorPage() {
                 {run.aggregate?.retryable && (
                   <button type="button" className="audience-cta" disabled={busy} onClick={() => void retryPreparation()}>
                     {busy ? <Loader size={14} className="audience-spin" /> : <RotateCcw size={14} />}
-                    {run.evidence.length ? "Повторить обработку источников" : "Повторить подготовку"}
+                    {run.evidence.length ? ui.retrySourceProcessing : ui.retryPreparation}
                   </button>
                 )}
-                <button type="button" className="text-action" onClick={reset}>Начать заново</button>
+                <button type="button" className="text-action" onClick={reset}>{ui.restart}</button>
               </div>
             )}
-            <p className="source-foot">{demoSearchStats ? "Счётчики объёма и выводов заданы для демо-сценария; ниже показаны ссылки из реальной аналитической подборки." : "Найденные упоминания связываем с источниками и повторяющимися темами."}</p>
+            <p className="source-foot">{demoSearchStats ? ui.demoSourceFoot : ui.sourceFoot}</p>
           </section>
 
           <section className={"audience-slide audience-build-slide" + (activeSlide === 3 ? " is-active" : "")} inert={activeSlide !== 3}>
-            <p className="audience-eyebrow">03 / Формируем аудиторию</p>
-            <h2 className="audience-title">Персоны<br /><span className="audience-shine">под вашу идею</span></h2>
-            <p className="audience-lead">Генерируем состав аудитории с учётом вашей идеи и найденных сигналов.</p>
-            <div className="candidate-label"><span>{audienceReveal >= personas.length ? statusText[run?.status || "preparing"] : "Формируем профили"}</span><span>{audienceReveal} / {personas.length} · {chosenCount} выбрано</span></div>
+            <p className="audience-eyebrow">{ui.audienceEyebrow}</p>
+            <h2 className="audience-title">{language === "en" ? <>{ui.audienceTitleOne}<br /><span className="audience-shine">{ui.audienceTitleTwo}</span></> : <>Персоны<br /><span className="audience-shine">под вашу идею</span></>}</h2>
+            <p className="audience-lead">{ui.audienceLead}</p>
+            <div className="candidate-label"><span>{audienceReveal >= personas.length ? (language === "en" ? statusTextEn : statusText)[run?.status || "preparing"] : ui.buildingProfiles}</span><span>{audienceReveal} / {personas.length} · {chosenCount} {ui.selected}</span></div>
             <div className="persona-card-list" aria-live="polite">
               {personas.slice(0, audienceReveal).map((person, index) => {
-                const details = getPersonaDetails(person);
+                const details = getPersonaDetails(person, language);
                 const facts = [
-                  ["Возраст", details.age],
-                  ["Город", details.city],
-                  ["Занятость", details.occupation],
-                  ["Доход", details.income],
+                  [ui.age, details.age],
+                  [ui.city, details.city],
+                  [ui.occupation, details.occupation],
+                  [ui.income, details.income],
                 ].filter((fact): fact is [string, string] => Boolean(fact[1]));
-                return <button type="button" className="persona-card" key={person.id} onClick={() => setExpandedPersona(person)} aria-label={`Открыть подробный профиль: ${details.name}`} style={{ animationDelay: `${Math.min(index * 25, 400)}ms` }}>
+                const groupLabel = language === "en" ? groupLabelsEn[person.group] || ui.profile : person.group;
+                return <button type="button" className="persona-card" key={person.id} onClick={() => setExpandedPersona(person)} aria-label={`${ui.personaAria}: ${details.name}`} style={{ animationDelay: `${Math.min(index * 25, 400)}ms` }}>
                   <div className="persona-avatar" aria-hidden="true"><i /></div>
                   <div className="persona-card-copy">
-                    <div className="persona-card-meta"><span>ID {person.id.slice(-6).toUpperCase()}</span><b style={{ color: palette[Math.max(0, groups.indexOf(person.group)) % palette.length] }}>{person.group}</b></div>
+                    <div className="persona-card-meta"><span>ID {person.id.slice(-6).toUpperCase()}</span><b style={{ color: palette[Math.max(0, groups.indexOf(person.group)) % palette.length] }}>{groupLabel}</b></div>
                     <strong>{details.name}</strong>
                     <div className="persona-facts">{facts.map(([label, value]) => <span key={label}><b>{label}</b>{value}</span>)}</div>
-                    {details.behaviors.length > 0 && <p className="persona-behavior"><b>Привычки</b>{details.behaviors.slice(0, 2).join(" · ")}</p>}
+                    {details.behaviors.length > 0 && <p className="persona-behavior"><b>{ui.habits}</b>{details.behaviors.slice(0, 2).join(" · ")}</p>}
                   </div>
                 </button>;
               })}
-              {!audienceReveal && <p className="persona-card-empty">Сопоставляем аудиторию с сигналами рынка…</p>}
+              {!audienceReveal && <p className="persona-card-empty">{ui.matchingAudience}</p>}
             </div>
-            <p className="audience-helper"><span>Нажмите на карточку, чтобы открыть подробный профиль.</span> <button type="button" className="audience-edit-link" onClick={() => setShowAudienceControls((value) => !value)} aria-expanded={showAudienceControls}>Настроить состав и ограничения</button></p>
+            <p className="audience-helper"><span>{ui.clickForProfile}</span> <button type="button" className="audience-edit-link" onClick={() => setShowAudienceControls((value) => !value)} aria-expanded={showAudienceControls}>{ui.configureAudience}</button></p>
             <div className={"audience-editor" + (showAudienceControls ? " is-open" : "")} inert={!showAudienceControls}>
-              <div className="editor-heading"><strong>Состав аудитории</strong><button type="button" onClick={(event) => { event.currentTarget.blur(); setShowAudienceControls(false); }}>Готово</button></div>
+              <div className="editor-heading"><strong>{ui.audienceComposition}</strong><button type="button" onClick={(event) => { event.currentTarget.blur(); setShowAudienceControls(false); }}>{ui.done}</button></div>
               <div className="group-picker">
               {groups.map((group, index) => {
                 const count = personas.filter((person) => person.group === group).length;
@@ -1105,127 +1189,130 @@ export default function AudienceSimulationOperatorPage() {
                   <button type="button" disabled={Boolean(selectedScenarioId)} className={"group-toggle " + (active ? "selected" : "")} key={group} onClick={() => {
                     const next = active ? selectedGroups.filter((item) => item !== group) : [...selectedGroups, group];
                     if (!next.length || personas.filter((person) => next.includes(person.group)).length < (config?.limits.min_audience || 5)) {
-                      setError("Оставьте в аудитории не меньше пяти профилей.");
+                      setError(ui.minimumProfiles);
                       return;
                     }
                     setSelectedGroups(next);
                     setAudienceSize((current) => Math.min(current, personas.filter((person) => next.includes(person.group)).length));
                     setError("");
                   }}>
-                    <i style={{ backgroundColor: palette[index % palette.length] }} />{group}<small>{count}</small>
+                    <i style={{ backgroundColor: palette[index % palette.length] }} />{language === "en" ? groupLabelsEn[group] || ui.profile : group}<small>{count}</small>
                   </button>
                 );
               })}
               </div>
               <div className="preview-controls">
                 {selectedScenarioId
-                  ? <p className="fixed-panel-note">Готовый сценарий · {personas.length} персон · состав подобран из каталога 1 500 профилей</p>
-                  : <label>Размер панели
+                  ? <p className="fixed-panel-note">{ui.readyScenarioNote.replace("{count}", String(personas.length))}</p>
+                  : <label>{ui.panelSize}
                     <select value={Math.min(audienceSize, Math.max(chosenCount, 5))} onChange={(event) => setAudienceSize(Number(event.target.value))}>
-                      {[5, 8, 12, 25, 50, 75, 100].filter((value) => value <= chosenCount).map((value) => <option key={value} value={value}>{value} персон</option>)}
+                      {[5, 8, 12, 25, 50, 75, 100].filter((value) => value <= chosenCount).map((value) => <option key={value} value={value}>{value} {ui.people}</option>)}
                     </select>
                   </label>}
-                {!selectedScenarioId && <label className="constraints-field">Ограничения
-                  <input value={constraints} onChange={(event) => setConstraints(event.target.value)} maxLength={1200} placeholder="Необязательно" />
+                {!selectedScenarioId && <label className="constraints-field">{ui.constraints}
+                  <input value={constraints} onChange={(event) => setConstraints(event.target.value)} maxLength={1200} placeholder={ui.optional} />
                 </label>}
               </div>
             </div>
           </section>
 
           <section className={"audience-slide interview-slide" + (activeSlide === 4 ? " is-active" : "")} inert={activeSlide !== 4}>
-            <p className="audience-eyebrow">05 / Синтетическое исследование</p>
-            <h2 className="audience-title">Собираем<br /><span className="audience-shine">реакции аудитории</span></h2>
-            <div className="candidate-label"><span>{busy ? "Запускаем исследование" : progress ? "Персоны отвечают в группах" : "Подключаем персоны"}</span><span>{progress} / {personas.length || audienceSize}</span></div>
+            <p className="audience-eyebrow">{ui.interviewEyebrow}</p>
+            <h2 className="audience-title">{language === "en" ? <>{ui.interviewTitleOne}<br /><span className="audience-shine">{ui.interviewTitleTwo}</span></> : <>Собираем<br /><span className="audience-shine">реакции аудитории</span></>}</h2>
+            <div className="candidate-label"><span>{busy ? ui.startingResearch : progress ? ui.respondingInGroups : ui.connectingPersonas}</span><span>{progress} / {personas.length || audienceSize}</span></div>
             <div className="interview-network">
-              <PersonaNetwork members={personas} responses={[]} mode="crowd" litIds={new Set((run?.responses || []).slice(0, progress).map((response) => response.persona_id))} activeIds={progress ? new Set([(run?.responses || [])[Math.min(progress, (run?.responses.length || 1)) - 1]?.persona_id || ""]) : undefined} />
+              <PersonaNetwork members={personas} responses={[]} mode="crowd" language={language} litIds={new Set((run?.responses || []).slice(0, progress).map((response) => response.persona_id))} activeIds={progress ? new Set([(run?.responses || [])[Math.min(progress, (run?.responses.length || 1)) - 1]?.persona_id || ""]) : undefined} />
             </div>
-            <div className="people-count"><strong>{progress}</strong><span>/ {personas.length || audienceSize} ответов</span></div>
+            <div className="people-count"><strong>{progress}</strong><span>/ {personas.length || audienceSize} {ui.answers}</span></div>
             <div className="audience-meter"><i style={{ width: (personas.length ? Math.min(100, (progress / personas.length) * 100) : 0) + "%" }} /></div>
           </section>
 
           <section className={"audience-slide reaction-slide" + (activeSlide === 5 ? " is-active" : "")} inert={activeSlide !== 5}>
-            <p className="audience-eyebrow">06 / Карта реакции</p>
-            <h2 className="audience-title">Реакция<br /><span className="audience-shine">аудитории</span></h2>
+            <p className="audience-eyebrow">{ui.mapEyebrow}</p>
+            <h2 className="audience-title">{language === "en" ? <>{ui.mapTitleOne}<br /><span className="audience-shine">{ui.mapTitleTwo}</span></> : <>Реакция<br /><span className="audience-shine">аудитории</span></>}</h2>
             <div className="reaction-map">
-              <PersonaNetwork members={personas} responses={run?.responses || []} mode="map" activeIds={reactionActiveIds} onPick={(id) => setSelectedResponseId(id)} onHover={(id) => setHoveredResponseId(id || "")} />
-              <span className="map-axis-y">АКТУАЛЬНОСТЬ ПРОБЛЕМЫ</span>
-              <span className="map-axis-x">ГОТОВНОСТЬ ПОПРОБОВАТЬ →</span>
-              {excludedResponseCount > 0 && <span className="map-excluded-key">× НЕ УЧТЁН · {excludedResponseCount}</span>}
-              <div className="reaction-hover-card" aria-live="polite">{activeResponse && <><span>{activeResponse.group || "Персона"} · {activeResponse.included === false ? "исключена" : "учтена"}</span><div className="reaction-scores"><b>Проблема {activeResponse.problem_relevance ?? "—"}</b><b>Интерес {activeResponse.interest ?? "—"}</b><b>Попробовать {activeResponse.willingness_to_try ?? "—"}</b></div><p>{activeResponse.reaction || (activeResponse.exclusion_reason ? exclusionReasonLabels[activeResponse.exclusion_reason] || activeResponse.exclusion_reason : "Ответ без короткой реплики")}</p></>}</div>
+              <PersonaNetwork members={personas} responses={run?.responses || []} mode="map" language={language} activeIds={reactionActiveIds} onPick={(id) => setSelectedResponseId(id)} onHover={(id) => setHoveredResponseId(id || "")} />
+              <span className="map-axis-y">{ui.problemAxis}</span>
+              <span className="map-axis-x">{ui.tryAxis}</span>
+              {excludedResponseCount > 0 && <span className="map-excluded-key">× {ui.excluded} · {excludedResponseCount}</span>}
+              <div className="reaction-hover-card" aria-live="polite">{activeResponse && <><span>{language === "en" ? groupLabelsEn[activeResponse.group || ""] || ui.profile : activeResponse.group || "Персона"} · {activeResponse.included === false ? ui.excludedShort : ui.included}</span><div className="reaction-scores"><b>{ui.problem} {activeResponse.problem_relevance ?? "—"}</b><b>{ui.interest} {activeResponse.interest ?? "—"}</b><b>{ui.tryIt} {activeResponse.willingness_to_try ?? "—"}</b></div><p>{activeResponse.reaction || (activeResponse.exclusion_reason ? (language === "en" ? exclusionLabelsEn[activeResponse.exclusion_reason] : exclusionReasonLabels[activeResponse.exclusion_reason]) || activeResponse.exclusion_reason : ui.noShortAnswer)}</p></>}</div>
             </div>
-            <p className="reaction-validity">Учтено {plottedResponseCount} · исключено {excludedResponseCount}</p>
+            <p className="reaction-validity">{ui.accounted} {plottedResponseCount} · {ui.excludedCount} {excludedResponseCount}</p>
             <div className="group-counts">
-              {groups.map((group, index) => <span key={group}><b style={{ color: palette[index % palette.length] }}>{run?.responses.filter((response) => response.group === group).length || 0}</b>{group}</span>)}
-              {!groups.length && <span><b>{run?.responses.length || 0}</b>ответов</span>}
+              {groups.map((group, index) => <span key={group}><b style={{ color: palette[index % palette.length] }}>{run?.responses.filter((response) => response.group === group).length || 0}</b>{language === "en" ? groupLabelsEn[group] || ui.profile : group}</span>)}
+              {!groups.length && <span><b>{run?.responses.length || 0}</b>{ui.answers}</span>}
             </div>
           </section>
 
           <section className={"audience-slide insights-slide" + (activeSlide === 6 ? " is-active" : "")} inert={activeSlide !== 6}>
-            <p className="audience-eyebrow">07 / Выводы</p>
-            <h2 className="audience-title">Что говорит<br /><span className="audience-shine">аудитория</span></h2>
+            <p className="audience-eyebrow">{ui.insightsEyebrow}</p>
+            <h2 className="audience-title">{language === "en" ? <>{ui.insightsTitleOne}<br /><span className="audience-shine">{ui.insightsTitleTwo}</span></> : <>Что говорит<br /><span className="audience-shine">аудитория</span></>}</h2>
             <div className="primary-result">{typeof validRate === "number" ? validRate + "%" : "—"}</div>
-            <div className="result-label">оценили актуальность проблемы на 7/10 или выше</div>
-            <p className="result-validity">Учтено {run?.aggregate?.valid_responses ?? progress} · исключено {run?.aggregate?.excluded_responses ?? excludedResponseCount}</p>
-            {consumerIdeaWithBusinessPanel && <div className="audience-mismatch-note">Выбраны бизнес-профили, а идея рассчитана на потребителей.</div>}
+            <div className="result-label">{ui.problemThreshold}</div>
+            <p className="result-validity">{ui.accounted} {run?.aggregate?.valid_responses ?? progress} · {ui.excludedCount} {run?.aggregate?.excluded_responses ?? excludedResponseCount}</p>
+            {consumerIdeaWithBusinessPanel && <div className="audience-mismatch-note">{ui.businessMismatch}</div>}
             <div className="audience-meter"><i style={{ width: (typeof validRate === "number" ? validRate : 0) + "%" }} /></div>
             <div className="result-row">
-              <div className="audience-card result-card"><strong>{typeof interestRate === "number" ? interestRate + "%" : "—"}</strong><span>интерес · оценка 7+</span></div>
-              <div className="audience-card result-card"><strong>{typeof tryRate === "number" ? tryRate + "%" : "—"}</strong><span>готовы попробовать · 7+</span></div>
+              <div className="audience-card result-card"><strong>{typeof interestRate === "number" ? interestRate + "%" : "—"}</strong><span>{ui.interestSeven}</span></div>
+              <div className="audience-card result-card"><strong>{typeof tryRate === "number" ? tryRate + "%" : "—"}</strong><span>{ui.trySeven}</span></div>
             </div>
             <div className="insight-list">
               {(run?.summary?.observations || []).filter((item) => !/фото не гарантирует точный размер порции/i.test(item)).slice(0, 2).map((item, index) => <div className="insight-item" key={item}><i style={{ backgroundColor: palette[index % palette.length], color: palette[index % palette.length] }} /><span>{item}</span></div>)}
-              {!(run?.summary?.observations || []).some((item) => !/фото не гарантирует точный размер порции/i.test(item)) && <div className="insight-item"><i /><span>Собрано ответов: {progress}</span></div>}
+              {!(run?.summary?.observations || []).some((item) => !/фото не гарантирует точный размер порции/i.test(item)) && <div className="insight-item"><i /><span>{ui.responseCount.replace("{count}", String(progress))}</span></div>}
             </div>
           </section>
 
           <section className={"audience-slide result-slide" + (activeSlide === 7 ? " is-active" : "")} inert={activeSlide !== 7}>
-            <p className="audience-eyebrow">Результат готов</p>
-            <h2 className="audience-title">Продолжите<br />изучать свою<br /><span className="audience-shine">идею</span></h2>
-            <p className="audience-lead">Отсканируйте код, чтобы открыть подробный отчёт и сохранить проверку.</p>
+            <p className="audience-eyebrow">{ui.resultReady}</p>
+            <h2 className="audience-title">{language === "en" ? <>{ui.continueStudying}<br /><span className="audience-shine">{ui.yourIdea}</span></> : <>Продолжите<br />изучать свою<br /><span className="audience-shine">идею</span></>}</h2>
+            <p className="audience-lead">{ui.scanQr}</p>
             {claimToken ? (
               <div className="qr-layout">
-                <Image className="qr-image" src={"/api/audience-simulations/claims/" + encodeURIComponent(claimToken) + "/qr"} width={144} height={144} unoptimized alt="QR-код результата исследования" />
-                <div className="qr-caption"><strong>Откройте результат<br />на телефоне</strong><a href={"/audience-simulation/claim/" + encodeURIComponent(claimToken)}>{typeof window !== "undefined" ? window.location.host : "pitchy.pro"}/audience-simulation/claim/…</a></div>
+                <Image className="qr-image" src={"/api/audience-simulations/claims/" + encodeURIComponent(claimToken) + "/qr" + (language === "en" ? "?lang=en" : "")} width={144} height={144} unoptimized alt={ui.qrAlt} />
+                <div className="qr-caption"><strong>{language === "en" ? <>Open your result<br />on your phone</> : <>Откройте результат<br />на телефоне</>}</strong><a href={"/audience-simulation/claim/" + encodeURIComponent(claimToken) + (language === "en" ? "?lang=en" : "")}>{typeof window !== "undefined" ? window.location.host : "pitchy.pro"}/audience-simulation/claim/…</a></div>
               </div>
             ) : (
-              <div className="qr-create-prompt">Создайте QR-код, чтобы открыть и сохранить подробный отчёт проверки.</div>
+              <div className="qr-create-prompt">{ui.createQrPrompt}</div>
             )}
             <div className="audience-glowline result-glowline" />
-            {claimToken && <button type="button" onClick={reset} className="reset-run"><RotateCcw size={14} /> Новая проверка</button>}
+            {claimToken && <button type="button" onClick={reset} className="reset-run"><RotateCcw size={14} /> {ui.newRun}</button>}
           </section>
         </div>}
 
         {expandedPersona && activeSlide === 3 && (() => {
-          const details = getPersonaDetails(expandedPersona);
+          const details = getPersonaDetails(expandedPersona, language);
           const location = [details.city, details.region].filter(Boolean).join(", ");
           const facts = [
-            ["Возраст", details.age],
-            ["Город и регион", [location, details.citySize].filter(Boolean).join(" · ")],
-            ["Занятость", details.occupation],
-            ["Профессиональная роль", details.businessRole || undefined],
-            ["Доход", details.income],
-            ["Домашняя ситуация", details.household],
+            [ui.age, details.age],
+            [ui.cityAndRegion, [location, details.citySize].filter(Boolean).join(" · ")],
+            [ui.occupation, details.occupation],
+            [ui.professionalRole, details.businessRole || undefined],
+            [ui.income, details.income],
+            [ui.household, details.household],
           ].filter((fact): fact is [string, string] => Boolean(fact[1]));
-          const familiarityLabels: Record<string, string> = { high: "Уверенно", medium: "Знакомо", low: "Начальный опыт" };
+          const familiarityLabels: Record<string, string> = { high: ui.confidently, medium: ui.familiar, low: ui.beginner };
           const familiarity = Object.entries(details.traits.domain_familiarity || {});
-          const scores = Object.entries(details.traits.behavior || {}).filter(([key]) => behaviorScoreLabels[key]);
+          const scoreLabels = language === "en" ? behaviorLabelsEn : behaviorScoreLabels;
+          const domains = language === "en" ? domainLabelsEn : domainLabels;
+          const scores = Object.entries(details.traits.behavior || {}).filter(([key]) => scoreLabels[key]);
+          const groupLabel = language === "en" ? groupLabelsEn[expandedPersona.group] || ui.profile : expandedPersona.group;
           return <div className="persona-modal-backdrop">
             <section className="persona-modal" role="dialog" aria-modal="true" aria-labelledby="persona-modal-title" tabIndex={-1}>
               <header className="persona-modal-header">
-                <div><span>ID {expandedPersona.id.slice(-6).toUpperCase()} · ПОДРОБНЫЙ ПРОФИЛЬ</span><h2 id="persona-modal-title">{details.name}</h2><p>{expandedPersona.group}</p></div>
-                <button type="button" className="persona-modal-close" autoFocus onClick={() => setExpandedPersona(null)} aria-label="Закрыть профиль">×</button>
+                <div><span>ID {expandedPersona.id.slice(-6).toUpperCase()} · {ui.profileDetails}</span><h2 id="persona-modal-title">{details.name}</h2><p>{groupLabel}</p></div>
+                <button type="button" className="persona-modal-close" autoFocus onClick={() => setExpandedPersona(null)} aria-label={ui.closeError}>×</button>
               </header>
               {facts.length > 0 && <div className="persona-modal-facts">{facts.map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>}
-              {details.behaviors.length > 0 && <section className="persona-modal-section"><h3>Повседневные привычки</h3><ul>{details.behaviors.map((behavior) => <li key={behavior}>{behavior}</li>)}</ul></section>}
-              {details.decisionStyle.length > 0 && <section className="persona-modal-section"><h3>Как принимает решения</h3><ul>{details.decisionStyle.map((item) => <li key={item}>{item}</li>)}</ul></section>}
-              {familiarity.length > 0 && <section className="persona-modal-section"><h3>Знакомство с цифровыми сферами</h3><div className="persona-modal-tags">{familiarity.map(([domain, value]) => <span key={domain}><b>{domainLabels[domain] || domain.replaceAll("_", " ")}</b>{familiarityLabels[value] || value}</span>)}</div></section>}
-              {scores.length > 0 && <section className="persona-modal-section"><h3>Стиль выбора</h3><div className="persona-score-list">{scores.map(([key, value]) => <div key={key}><span>{behaviorScoreLabels[key]}</span><b>{value} из 5</b></div>)}</div></section>}
+              {details.behaviors.length > 0 && <section className="persona-modal-section"><h3>{ui.everydayHabits}</h3><ul>{details.behaviors.map((behavior) => <li key={behavior}>{behavior}</li>)}</ul></section>}
+              {details.decisionStyle.length > 0 && <section className="persona-modal-section"><h3>{ui.decisionStyle}</h3><ul>{details.decisionStyle.map((item) => <li key={item}>{item}</li>)}</ul></section>}
+              {familiarity.length > 0 && <section className="persona-modal-section"><h3>{ui.digitalFamiliarity}</h3><div className="persona-modal-tags">{familiarity.map(([domain, value]) => <span key={domain}><b>{domains[domain] || domain.replaceAll("_", " ")}</b>{familiarityLabels[value] || value}</span>)}</div></section>}
+              {scores.length > 0 && <section className="persona-modal-section"><h3>{ui.choiceStyle}</h3><div className="persona-score-list">{scores.map(([key, value]) => <div key={key}><span>{scoreLabels[key]}</span><b>{value} {ui.outOfFive}</b></div>)}</div></section>}
             </section>
           </div>;
         })()}
 
-        {activeSlide > 0 && <nav className="audience-step-nav" aria-label="Переход между этапами">
-          <button type="button" className="step-back" onClick={handleBack} aria-label="Назад"><ArrowLeft size={18} /></button>
+        {activeSlide > 0 && <nav className="audience-step-nav" aria-label={ui.stages}>
+          <button type="button" className="step-back" onClick={handleBack} aria-label={ui.back}><ArrowLeft size={18} /></button>
           {activeSlide < 7 || !claimToken ? <button type="button" className="step-next" disabled={!nextEnabled} onClick={handleNext}>
             {busy && [1, 3, 7].includes(activeSlide) ? <Loader size={15} className="audience-spin" /> : null}{nextLabel}<ArrowRight size={17} />
           </button> : null}
