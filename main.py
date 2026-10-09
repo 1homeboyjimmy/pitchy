@@ -160,7 +160,7 @@ from schemas import (
 )
 from import_parser import ImportParser
 from email_utils import get_dev_emails, send_email
-from sso import yandex_sso, github_sso, google_sso
+from sso import yandex_sso, google_sso
 
 # Admin Visualization Imports
 try:
