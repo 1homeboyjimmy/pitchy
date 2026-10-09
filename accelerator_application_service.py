@@ -14,6 +14,7 @@ from sqlalchemy.orm.attributes import flag_modified
 import passport as passport_lib
 from accelerator_notification_service import enqueue_notification
 from auth import hash_password
+from email_templates import accelerator_application_approved
 from models import (
     Accelerator,
     AcceleratorApplication,
@@ -264,25 +265,20 @@ async def approve_application(
     application.reviewed_at = now
 
     frontend_url = os.getenv("FRONTEND_URL", "https://pitchy.pro").rstrip("/")
-    if created_user or not user.password_hash:
+    needs_account_setup = created_user or not user.password_hash
+    if needs_account_setup:
         _, raw_token = await create_application_invitation(db, application, user)
         action_url = f"{frontend_url}/accelerator-invite?token={raw_token}"
-        subject = f"Вас приняли в акселератор «{accelerator.name}»"
-        body = (
-            f"Здравствуйте, {user.name}!\n\n"
-            f"Ваша заявка в поток «{cohort.name}» принята. "
-            f"Установите пароль и активируйте единый аккаунт Pitchy по ссылке:\n\n{action_url}\n\n"
-            "Ссылка действует 72 часа и может быть использована один раз. "
-            "После входа подтвердите начало участия в кабинете акселератора."
-        )
     else:
         action_url = f"{frontend_url}/login?next=/accelerator"
-        subject = f"Вас приняли в акселератор «{accelerator.name}»"
-        body = (
-            f"Здравствуйте, {user.name}!\n\n"
-            f"Ваша заявка в поток «{cohort.name}» принята. "
-            f"Войдите в существующий аккаунт Pitchy и подтвердите начало участия:\n\n{action_url}"
-        )
+    subject, body = accelerator_application_approved(
+        application.applicant_name or user.name,
+        accelerator.name,
+        cohort.name,
+        action_url,
+        needs_account_setup=needs_account_setup,
+        project_name=(application.form_payload or {}).get("project_name"),
+    )
     notification = await enqueue_notification(
         db,
         accelerator_id=accelerator.id,
@@ -292,6 +288,8 @@ async def approve_application(
         subject=subject,
         body=body,
         idempotency_key=f"application-approved:{application.id}",
+        action_url=action_url,
+        membership_id=membership.id,
     )
     return {
         "membership": membership,

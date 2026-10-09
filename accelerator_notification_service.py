@@ -29,6 +29,11 @@ from models import (
 
 logger = logging.getLogger(__name__)
 
+_REGISTRATION_SENDER_EVENTS = {
+    "application_approved",
+    "application_invitation_resent",
+}
+
 
 def _insert_do_nothing(db: AsyncSession, model, values: dict, conflict_column: str):
     """Build a portable idempotent insert for supported production/test DBs."""
@@ -205,13 +210,14 @@ async def process_notification_event(event_id: int) -> bool:
                 await db.commit()
                 return True
         try:
-            await asyncio.to_thread(
-                send_email,
+            email_args = (
                 event.recipient_email,
                 event.subject,
                 event.body,
-                "noreply",
             )
+            if event.event_type not in _REGISTRATION_SENDER_EVENTS:
+                email_args += ("noreply",)
+            await asyncio.to_thread(send_email, *email_args)
         except Exception as exc:
             event.attempts += 1
             event.status = "pending" if event.attempts < 8 else "failed"

@@ -143,6 +143,83 @@ def password_reset_code(code: str) -> tuple[str, str]:
 
 
 # ===================================================================
+# Accelerator admissions
+# ===================================================================
+
+def accelerator_application_approved(
+    name: str | None,
+    accelerator_name: str,
+    cohort_name: str,
+    action_url: str,
+    *,
+    needs_account_setup: bool,
+    project_name: str | None = None,
+) -> tuple[str, str]:
+    """Tell an applicant their place was approved, with their next step."""
+    full_name = name.strip() if name and name.strip() else None
+    greeting = f"Здравствуйте, {full_name}!" if full_name else "Здравствуйте!"
+    project = project_name.strip() if project_name and project_name.strip() else None
+    project_line = f"Проект: «{project}»\n" if project else ""
+
+    subj = (
+        f"Pitchy: вы приняты в акселератор «{accelerator_name}» — "
+        f"поток «{cohort_name}»"
+    )
+    if needs_account_setup:
+        next_step = (
+            "Чтобы начать участие, установите пароль и активируйте единый "
+            "аккаунт Pitchy по персональной ссылке:"
+        )
+        access_note = (
+            "Ссылка действует 72 часа и может быть использована один раз. "
+            "После входа подтвердите начало участия в кабинете акселератора."
+        )
+    else:
+        next_step = (
+            "Чтобы начать участие, войдите в свой аккаунт Pitchy и "
+            "подтвердите его начало в кабинете акселератора:"
+        )
+        access_note = ""
+
+    body = (
+        f"{greeting}\n\n"
+        f"Рады сообщить: ваша заявка принята.\n\n"
+        f"Акселератор: «{accelerator_name}»\n"
+        f"Поток: «{cohort_name}»\n"
+        f"{project_line}\n"
+        f"{next_step}\n\n"
+        f"{action_url}"
+        + (f"\n\n{access_note}" if access_note else "")
+        + SIGNATURE
+    )
+    return subj, body
+
+
+def accelerator_invitation_reminder(
+    name: str | None,
+    accelerator_name: str,
+    cohort_name: str,
+    instruction: str,
+    action_url: str,
+) -> tuple[str, str]:
+    """Remind an accepted applicant how to activate their participation."""
+    full_name = name.strip() if name and name.strip() else None
+    greeting = f"Здравствуйте, {full_name}!" if full_name else "Здравствуйте!"
+    subj = (
+        f"Pitchy: подтвердите участие в акселераторе «{accelerator_name}» — "
+        f"поток «{cohort_name}»"
+    )
+    body = (
+        f"{greeting}\n\n"
+        f"Ваша заявка в акселератор «{accelerator_name}», поток «{cohort_name}», принята.\n\n"
+        f"{instruction}:\n\n"
+        f"{action_url}"
+        f"{SIGNATURE}"
+    )
+    return subj, body
+
+
+# ===================================================================
 # Payments / subscriptions
 # ===================================================================
 

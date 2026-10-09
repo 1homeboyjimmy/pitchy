@@ -46,6 +46,47 @@ def test_password_reset_code_renders():
     _check(t.password_reset_code("777777"))
 
 
+def test_accelerator_approval_email_is_personalized():
+    first = t.accelerator_application_approved(
+        "Иван Петров",
+        "Акселератор Север",
+        "Поток Осень",
+        "https://pitchy.pro/accelerator-invite?token=token-ivan",
+        needs_account_setup=True,
+        project_name="Умный сад",
+    )
+    second = t.accelerator_application_approved(
+        "Анна Смирнова",
+        "Акселератор Юг",
+        "Поток Весна",
+        "https://pitchy.pro/accelerator-invite?token=token-anna",
+        needs_account_setup=False,
+        project_name="Чистый город",
+    )
+
+    _check(first)
+    _check(second)
+    assert first != second
+    for expected in ("Иван Петров", "Акселератор Север", "Поток Осень", "Умный сад", "token-ivan"):
+        assert expected in "\n".join(first)
+    for expected in ("Анна Смирнова", "Акселератор Юг", "Поток Весна", "Чистый город", "token-anna"):
+        assert expected in "\n".join(second)
+
+
+def test_accelerator_invitation_reminder_is_personalized():
+    subject, body = t.accelerator_invitation_reminder(
+        "Иван Петров",
+        "Акселератор Север",
+        "Поток Осень",
+        "Установите пароль и подтвердите участие",
+        "https://pitchy.pro/accelerator-invite?token=token-ivan",
+    )
+
+    _check((subject, body))
+    for expected in ("Иван Петров", "Акселератор Север", "Поток Осень", "token-ivan"):
+        assert expected in "\n".join((subject, body))
+
+
 def test_payment_succeeded_renders():
     _check(t.payment_succeeded("Иван", "pro", 1490, False,
                                datetime(2026, 6, 18), "pay_abcdefgh"))

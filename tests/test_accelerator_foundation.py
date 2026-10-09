@@ -2024,6 +2024,15 @@ async def test_public_application_approval_creates_account_project_profile_and_i
                 AcceleratorNotificationOutbox.recipient_email == candidate_email,
             )
         )).scalar_one()
+        assert accelerator["name"] in outbox.subject
+        assert cohort["name"] in outbox.subject
+        for personalized_value in (
+            "Иван Кандидат",
+            accelerator["name"],
+            cohort["name"],
+            "Новый проект",
+        ):
+            assert personalized_value in outbox.body
         events = (await db.execute(
             select(AcceleratorApplicationEvent).where(
                 AcceleratorApplicationEvent.application_id == application.id

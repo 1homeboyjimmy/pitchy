@@ -361,3 +361,42 @@ async def test_notification_center_is_private_paginated_and_honors_preferences(
         )).scalars().all()
         assert len(preference_rows) == 1
         assert preference_rows[0].email_enabled is False
+
+
+@pytest.mark.asyncio
+async def test_application_admission_email_uses_registration_sender(monkeypatch):
+    suffix = uuid.uuid4().hex[:10]
+    email = f"admission-{suffix}@example.test"
+    calls: list[tuple] = []
+    monkeypatch.setattr(
+        notification_service,
+        "send_email",
+        lambda *args: calls.append(args),
+    )
+
+    async with AsyncSessionLocal() as db:
+        recipient = User(email=email, name="Admission recipient")
+        db.add(recipient)
+        await db.flush()
+        accelerator = Accelerator(
+            name="Admission accelerator",
+            created_by_user_id=recipient.id,
+        )
+        db.add(accelerator)
+        await db.flush()
+        event = await enqueue_notification(
+            db,
+            accelerator_id=accelerator.id,
+            cohort_id=None,
+            recipient_user_id=recipient.id,
+            recipient_email=email,
+            event_type="application_approved",
+            subject="Вы приняты",
+            body="Иван, вас приняли.",
+            idempotency_key=f"admission-sender:{suffix}",
+        )
+        await db.commit()
+        event_id = event.id
+
+    assert await process_notification_event(event_id) is True
+    assert calls == [(email, "Вы приняты", "Иван, вас приняли.")]

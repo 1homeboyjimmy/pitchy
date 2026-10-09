@@ -53,6 +53,7 @@ from accelerator_notification_service import enqueue_notification, process_notif
 from accelerator_team_service import handle_membership_lifecycle_transition
 from auth import get_async_current_user, require_async_admin
 from db_async import get_async_db
+from email_templates import accelerator_invitation_reminder
 from llm_client import get_instructor_client
 from models import (
     Accelerator,
@@ -5109,6 +5110,7 @@ async def resend_application_invitation(
     cohort = await get_cohort_or_404(db, application.cohort_id)
     await require_cohort_manager(db, user, cohort)
     require_mutable_cohort(cohort)
+    accelerator = await get_accelerator_or_404(db, cohort.accelerator_id)
     membership = (await db.execute(select(AcceleratorMembership).where(
         AcceleratorMembership.application_id == application.id
     ))).scalar_one_or_none()
@@ -5136,14 +5138,21 @@ async def resend_application_invitation(
         action_url = f"{frontend_url}/accelerator-invite?token={raw_token}"
         instruction = "Установите пароль, затем подтвердите начало участия"
         invitation_version = invitation.expires_at.isoformat()
+    subject, body = accelerator_invitation_reminder(
+        resident.name,
+        accelerator.name,
+        cohort.name,
+        instruction,
+        action_url,
+    )
     notification = await enqueue_notification(
         db,
         accelerator_id=cohort.accelerator_id,
         cohort_id=cohort.id,
         recipient_email=resident.email,
         event_type="application_invitation_resent",
-        subject=f"Напоминание об участии в потоке «{cohort.name}»",
-        body=f"Здравствуйте, {resident.name}!\n\n{instruction}:\n\n{action_url}",
+        subject=subject,
+        body=body,
         idempotency_key=f"application-invitation-resent:{application.id}:{invitation_version}",
     )
     add_audit(
