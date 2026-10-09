@@ -303,9 +303,8 @@ export function SubscriptionConfigurator({ account = false }: { account?: boolea
           </span>
         ) : (
           <span className="leading-relaxed">
-            Согласен на ежемесячное автопродление и сохранение способа оплаты, принимаю{" "}
-            <a href="/offer" target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="underline underline-offset-2 hover:text-white">Оферту</a>{" "}и{" "}
-            <a href="/privacy" target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="underline underline-offset-2 hover:text-white">Политику конфиденциальности</a>
+            Подтверждаю согласие на ежемесячное автопродление и сохранение способа оплаты; принимаю{" "}
+            <a href="/offer" target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="underline underline-offset-2 hover:text-white">Оферту</a>.
           </span>
         )}
       </label>
