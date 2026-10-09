@@ -3,7 +3,6 @@ import os
 from dotenv import load_dotenv
 from fastapi_sso.sso.base import SSOBase, OpenID
 from fastapi_sso.sso.google import GoogleSSO
-from fastapi_sso.sso.github import GithubSSO
 from fastapi_sso.sso.gitlab import GitlabSSO
 
 load_dotenv()
@@ -70,13 +69,6 @@ google_sso = GoogleSSO(
     client_id=os.getenv("GOOGLE_CLIENT_ID"),
     client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
     redirect_uri=f"{os.getenv('APP_PUBLIC_URL')}/auth/google/callback",
-    allow_insecure_http=_ALLOW_INSECURE_HTTP,
-)
-
-github_sso = GithubSSO(
-    client_id=os.getenv("GITHUB_CLIENT_ID"),
-    client_secret=os.getenv("GITHUB_CLIENT_SECRET"),
-    redirect_uri=f"{os.getenv('APP_PUBLIC_URL')}/auth/github/callback",
     allow_insecure_http=_ALLOW_INSECURE_HTTP,
 )
 

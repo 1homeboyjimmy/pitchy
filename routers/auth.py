@@ -1,7 +1,7 @@
 """Auth router — registration, login, logout, password reset/change, SSO.
 
 Carved out of main.py to shrink the monolith. SSO providers (yandex_sso /
-github_sso / google_sso) and rate-limit helpers stay in main.py for now;
+google_sso) and rate-limit helpers stay in main.py for now;
 this module pulls them via late imports inside endpoint bodies, which
 avoids a circular at module load time (main imports this module to call
 include_router; this module imports main only when handlers run).
@@ -633,7 +633,7 @@ async def reset_password(
 
 
 # ===================================================================
-# Social login (yandex / github / google)
+# Social login (yandex / google)
 # ===================================================================
 
 @router.get("/auth/{provider}/login")
@@ -641,12 +641,10 @@ async def sso_login(
     provider: str,
     next_path: str | None = Query(None, alias="next"),
 ):
-    from main import yandex_sso, github_sso, google_sso
+    from main import yandex_sso, google_sso
 
     if provider == "yandex":
         sso = yandex_sso
-    elif provider == "github":
-        sso = github_sso
     elif provider == "google":
         sso = google_sso
     else:
@@ -679,13 +677,11 @@ async def sso_callback(
     response: Response,
     db: AsyncSession = Depends(get_async_db),
 ):
-    from main import yandex_sso, github_sso, google_sso
+    from main import yandex_sso, google_sso
     from models import SocialAccount
 
     if provider == "yandex":
         sso = yandex_sso
-    elif provider == "github":
-        sso = github_sso
     elif provider == "google":
         sso = google_sso
     else:
