@@ -35,17 +35,17 @@ export default function PricingPage() {
 
         <div className="mt-6 text-center text-xs text-white/30 max-w-2xl mx-auto space-y-2">
           <p>
-            Оформляя подписку, вы соглашаетесь на <span className="text-white/45">ежемесячное автопродление</span> и сохранение способа оплаты.
-            Списание происходит раз в месяц по выбранной конфигурации. Отменить автопродление и отвязать карту можно в любой момент в профиле.
+            Ежемесячное автопродление включается только при выборе соответствующего пункта при оформлении подписки.
+            Если оно включено, списание происходит раз в месяц по выбранной конфигурации. Отключить автопродление и отвязать карту можно в любой момент в профиле.
           </p>
           <p>
-            Нажимая «Оформить подписку», вы принимаете{" "}
-            <a href="/offer" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-white/70">Оферту</a>{" "}и{" "}
-            <a href="/privacy" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-white/70">Политику конфиденциальности</a>.
+            Нажимая «Оформить подписку», вы акцептуете{" "}
+            <a href="/offer" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-white/70">Оферту</a>. Ознакомьтесь с{" "}
+            <a href="/privacy" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-white/70">Политикой конфиденциальности</a>.
             Условия возврата — в Оферте. Использование cookie описано в{" "}
             <a href="/cookies" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-white/70">Политике cookie</a>.
           </p>
-          <p className="text-white/25">Самозанятый Фигурняк Егор Сергеевич, ИНН 400700088347.</p>
+          <p className="text-white/25">ООО «ПИТЧИ ПРО», ИНН 9724245298, ОГРН 1267700264820.</p>
         </div>
       </main>
       <SiteFooter />

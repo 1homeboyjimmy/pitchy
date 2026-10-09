@@ -50,7 +50,9 @@ export function LandingFooter() {
               </span>
             </div>
             <p className="text-white/50 text-xs font-medium font-sans tracking-widest uppercase">
-              НПД Фигурняк Егор Сергеевич, ИНН 400700088347
+              ООО «ПИТЧИ ПРО» · ИНН 9724245298 · ОГРН 1267700264820<br />
+              115580, г. Москва, внут. тер. г. муниципальный округ Зябликово,<br />
+              б-р Ореховый, д. 24, к. 4, кв. 256
             </p>
             <a
               href="https://productradar.ru/product/pitchy-pro?utm_source=badge"
