@@ -52,9 +52,11 @@ export function SiteFooter() {
                 © 2026 Все права защищены
               </span>
             </div>
-            <p className="text-white/50 text-xs font-medium font-sans tracking-widest uppercase">
-              НПД Фигурняк Егор Сергеевич, ИНН 400700088347
-            </p>
+            <div className="text-white/50 text-xs font-medium font-sans tracking-tight leading-relaxed">
+              <p>ООО «ПИТЧИ ПРО»</p>
+              <p>ИНН 9724245298 · ОГРН 1267700264820</p>
+              <p>115580, г. Москва, внут. тер. г. муниципальный округ Зябликово, б-р Ореховый, д. 24, к. 4, кв. 256</p>
+            </div>
           </div>
         </div>
       </div>
