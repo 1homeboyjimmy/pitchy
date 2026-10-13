@@ -116,6 +116,7 @@ from models import (
     AdminAuditLog, AcceleratorArtifact, Project, ResearchJob,
 )
 import passport as passport_lib
+from project_access import project_access_condition
 from sqlalchemy import select, func as sa_func
 from sqlalchemy.exc import IntegrityError
 from schemas import (
@@ -1494,6 +1495,7 @@ async def me(user: User = Depends(get_async_current_user)) -> UserResponse:
     return UserResponse(
         id=user.id,
         email=user.email,
+        username=user.username,
         name=user.name,
         is_admin=user.is_admin,
         is_active=user.is_active,
@@ -1769,6 +1771,7 @@ async def update_me(
     return UserResponse(
         id=user.id,
         email=user.email,
+        username=user.username,
         name=user.name,
         is_admin=user.is_admin,
         is_active=user.is_active,
@@ -2013,7 +2016,7 @@ async def rag_list_projects(
     """
     res = await db.execute(
         select(Project)
-        .where(Project.user_id == user_id, Project.status != "archived")
+        .where(project_access_condition(user_id), Project.status != "archived")
         .order_by(Project.created_at.desc())
     )
     projects = res.scalars().all()
@@ -2039,7 +2042,7 @@ async def rag_get_project_passport(
 ):
     """Cross-service: паспорт конкретного проекта пользователя (для CustDev)."""
     res = await db.execute(
-        select(Project).where(Project.id == project_id, Project.user_id == user_id)
+        select(Project).where(Project.id == project_id, project_access_condition(user_id))
     )
     project = res.scalar_one_or_none()
     if not project:

@@ -1,0 +1,111 @@
+name: Import accelerator residents
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Inspect, preview, import or verify residents
+        type: choice
+        options: [inspect, preview, apply, verify]
+        default: inspect
+      cohort_id:
+        description: Exact cohort ID
+        default: '0'
+      actor_id:
+        description: Authorized organizer ID
+        default: '0'
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  residents:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Run on the production backend
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+          IMPORT_PAYLOAD: ${{ secrets.MTUSI_RESIDENT_IMPORT_PAYLOAD }}
+          MODE: ${{ inputs.mode }}
+          COHORT_ID: ${{ inputs.cohort_id }}
+          ACTOR_ID: ${{ inputs.actor_id }}
+        run: |
+          set -euo pipefail
+          [[ "$MODE" =~ ^(inspect|preview|apply|verify)$ ]]
+          [[ "$COHORT_ID" =~ ^[0-9]+$ && "$ACTOR_ID" =~ ^[0-9]+$ ]]
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$VPS_SSH_PRIVATE_KEY" > ~/.ssh/resident_import_key
+          chmod 600 ~/.ssh/resident_import_key
+          trap 'rm -f ~/.ssh/resident_import_key payload.json' EXIT
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          printf '%s' "$IMPORT_PAYLOAD" > payload.json
+          chmod 600 payload.json
+          ssh -i ~/.ssh/resident_import_key -o StrictHostKeyChecking=yes "$VPS_USER@$VPS_HOST" 'umask 077; mkdir -p /opt/ai-startup/private_imports/mtusi-2026'
+          if [ "$MODE" != inspect ]; then
+            test -s payload.json
+            scp -i ~/.ssh/resident_import_key -o StrictHostKeyChecking=yes payload.json "$VPS_USER@$VPS_HOST:/opt/ai-startup/private_imports/mtusi-2026/payload.json"
+          fi
+          remote_status=0
+          ssh -i ~/.ssh/resident_import_key -o StrictHostKeyChecking=yes "$VPS_USER@$VPS_HOST" \
+            "MODE=$MODE COHORT_ID=$COHORT_ID ACTOR_ID=$ACTOR_ID bash -s" <<'REMOTE' || remote_status=$?
+          set -euo pipefail
+          cd /opt/ai-startup
+          umask 077
+          if [ "$MODE" = inspect ]; then
+            docker compose exec -T backend python scripts/inspect_accelerator_import.py
+            exit 0
+          fi
+          docker compose cp private_imports/mtusi-2026/payload.json backend:/tmp/resident-payload.json
+          docker compose exec -T backend python - <<'PY'
+          import base64, gzip, json, os
+          from pathlib import Path
+          payload = json.loads(Path('/tmp/resident-payload.json').read_text())
+          directory = Path('/tmp/pitchy-resident-import')
+          directory.mkdir(mode=0o700, exist_ok=True)
+          (directory / 'manifest.json').write_bytes(gzip.decompress(base64.b64decode(payload['manifest_gzip_base64'])))
+          (directory / 'export-public.pem').write_text(payload['export_public_key'])
+          os.chmod(directory / 'manifest.json', 0o600)
+          Path('/tmp/resident-payload.json').unlink()
+          PY
+          if [ "$MODE" = preview ]; then
+            docker compose exec -T backend python scripts/import_accelerator_residents.py --manifest /tmp/pitchy-resident-import/manifest.json --cohort-id "$COHORT_ID" --actor-id "$ACTOR_ID"
+          elif [ "$MODE" = apply ]; then
+            # Fail closed if the pre-import backup cannot be produced or read.
+            backup="backups/before_mtusi_residents_$(date -u +%Y%m%d_%H%M%S).sql.gz"
+            mkdir -p backups
+            docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB"' | gzip > "$backup"
+            gzip -t "$backup"
+            docker compose exec -T backend python scripts/import_accelerator_residents.py --manifest /tmp/pitchy-resident-import/manifest.json --cohort-id "$COHORT_ID" --actor-id "$ACTOR_ID" --apply --credentials /tmp/pitchy-resident-import/credentials.enc.json --export-public-key /tmp/pitchy-resident-import/export-public.pem
+            if docker compose exec -T backend test -f /tmp/pitchy-resident-import/credentials.enc.json; then
+              docker compose cp backend:/tmp/pitchy-resident-import/credentials.enc.json private_imports/mtusi-2026/credentials.enc.json
+            else
+              test -s private_imports/mtusi-2026/credentials.enc.json
+            fi
+            chmod 600 private_imports/mtusi-2026/credentials.enc.json
+          fi
+          if [ "$MODE" = apply ] || [ "$MODE" = verify ]; then
+            docker compose exec -T backend python scripts/verify_accelerator_resident_import.py --manifest /tmp/pitchy-resident-import/manifest.json --cohort-id "$COHORT_ID"
+          fi
+          REMOTE
+          if [ "$MODE" = apply ]; then
+            scp -i ~/.ssh/resident_import_key -o StrictHostKeyChecking=yes "$VPS_USER@$VPS_HOST:/opt/ai-startup/private_imports/mtusi-2026/credentials.enc.json" credentials.enc.json
+          fi
+          exit "$remote_status"
+      - name: Export encrypted credentials
+        if: inputs.mode == 'apply' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mtusi-resident-credentials-encrypted
+          path: credentials.enc.json
+          retention-days: 1
+          if-no-files-found: ignore

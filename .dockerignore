@@ -1,4 +1,5 @@
 __pycache__/
+private_imports/
 .pytest_cache/
 .env
 .venv/

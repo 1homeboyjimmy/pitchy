@@ -17,6 +17,8 @@ from fastapi.responses import FileResponse, Response
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from project_breakdown import accelerator_project_description
+from accelerator_project_selection import ResidentProjectSelection, project_options, select_project
 
 from accelerator_service import (
     add_audit,
@@ -1332,6 +1334,7 @@ async def list_my_accelerator_memberships(
                 "id": project.id,
                 "name": project.name,
                 "readiness_index": project.readiness_index,
+                **accelerator_project_description(project),
                 "status": project.status,
             } if project else None),
             # Program contents become available only after explicit enrollment.
@@ -3218,7 +3221,7 @@ async def publish_homework_assignment(
             db,
             accelerator_id=accelerator.id,
             cohort_id=cohort.id,
-            recipient_email=resident.email,
+            recipient_email=resident.email, recipient_user_id=resident.id,
             event_type="homework_published",
             subject=f"Новое задание: {assignment.title}",
             body=(
@@ -3299,7 +3302,7 @@ async def remind_homework_assignment(
             db,
             accelerator_id=accelerator.id,
             cohort_id=cohort.id,
-            recipient_email=resident.email,
+            recipient_email=resident.email, recipient_user_id=resident.id,
             event_type="homework_reminder",
             subject=f"Напоминание о задании: {assignment.title}",
             body=f"Здравствуйте, {resident.name}!\n\nЗадание «{assignment.title}» ожидает выполнения или доработки.\n\nОткрыть: {frontend_url}/accelerator",
@@ -3601,7 +3604,7 @@ async def submit_homework(
             db,
             accelerator_id=accelerator.id,
             cohort_id=cohort.id,
-            recipient_email=recipient.email,
+            recipient_email=recipient.email, recipient_user_id=recipient.id,
             event_type="homework_submitted",
             subject=f"Получен ответ: {assignment.title}",
             body=f"Резидент {user.name} отправил ответ на задание «{assignment.title}».\n\nОткрыть проверку: {os.getenv('FRONTEND_URL', 'https://pitchy.pro').rstrip('/')}/accelerator",
@@ -3727,7 +3730,7 @@ async def review_homework_submission(
             db,
             accelerator_id=accelerator.id,
             cohort_id=cohort.id,
-            recipient_email=resident.email,
+            recipient_email=resident.email, recipient_user_id=resident.id,
             event_type=f"homework_{payload.status}",
             subject=f"Ответ {decision}: {assignment.title}",
             body=(
@@ -3960,7 +3963,7 @@ async def enqueue_event_change_notifications(
             db,
             accelerator_id=accelerator.id,
             cohort_id=cohort.id,
-            recipient_email=recipient.email,
+            recipient_email=recipient.email, recipient_user_id=recipient.id,
             event_type=event_type,
             subject=subject,
             body=body,
@@ -4693,6 +4696,8 @@ async def submit_application(
         ))).scalar_one_or_none()
         if project is None:
             raise HTTPException(status_code=404, detail="Проект не найден")
+    if not user.email:
+        raise HTTPException(status_code=422, detail="Для подачи новой заявки добавьте почту в профиле")
     existing = (await db.execute(select(AcceleratorApplication).where(
         AcceleratorApplication.cohort_id == cohort.id,
         or_(
@@ -5149,7 +5154,7 @@ async def resend_application_invitation(
         db,
         accelerator_id=cohort.accelerator_id,
         cohort_id=cohort.id,
-        recipient_email=resident.email,
+        recipient_email=resident.email, recipient_user_id=resident.id,
         event_type="application_invitation_resent",
         subject=subject,
         body=body,
@@ -6284,7 +6289,7 @@ async def upsert_progress_checkin(
     for tracker in tracker_rows:
         notification = await enqueue_notification(
             db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
-            recipient_email=tracker.email, event_type="progress_checkin_submitted",
+            recipient_email=tracker.email, recipient_user_id=tracker.id, event_type="progress_checkin_submitted",
             subject=f"Новый чек-ин: {user.name}",
             body=f"{user.name} заполнил чек-ин за неделю {period_start.isoformat()}.\n\nОткрыть: {os.getenv('FRONTEND_URL', 'https://pitchy.pro').rstrip('/')}/accelerator",
             idempotency_key=f"progress-checkin:{checkin.id}:{checkin.updated_at.isoformat()}",
@@ -6324,7 +6329,7 @@ async def create_tracking_feedback(
     resident = await db.get(User, membership.user_id)
     notification = await enqueue_notification(
         db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
-        recipient_email=resident.email, event_type="tracking_feedback_created",
+        recipient_email=resident.email, recipient_user_id=resident.id, event_type="tracking_feedback_created",
         subject="Новая обратная связь от трекера",
         body=f"Здравствуйте, {resident.name}!\n\n{payload.body}\n\nОткрыть: {os.getenv('FRONTEND_URL', 'https://pitchy.pro').rstrip('/')}/accelerator",
         idempotency_key=f"tracking-feedback:{feedback.id}",
@@ -6366,7 +6371,7 @@ async def create_tracking_task(
     resident = await db.get(User, membership.user_id)
     notification = await enqueue_notification(
         db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
-        recipient_email=resident.email, event_type="tracking_task_created",
+        recipient_email=resident.email, recipient_user_id=resident.id, event_type="tracking_task_created",
         subject=f"Новая задача: {task.title}",
         body=f"Здравствуйте, {resident.name}!\n\nВам назначена задача «{task.title}».\n\nОткрыть: {os.getenv('FRONTEND_URL', 'https://pitchy.pro').rstrip('/')}/accelerator",
         idempotency_key=f"tracking-task-created:{task.id}",
@@ -6426,7 +6431,7 @@ async def create_tracking_tasks_bulk(
         if resident:
             notification = await enqueue_notification(
                 db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
-                recipient_email=resident.email, event_type="tracking_task_created",
+                recipient_email=resident.email, recipient_user_id=resident.id, event_type="tracking_task_created",
                 subject=f"Новая задача: {task.title}",
                 body=f"Здравствуйте, {resident.name}!\n\nВам назначена задача «{task.title}».\n\nОткрыть: {os.getenv('FRONTEND_URL', 'https://pitchy.pro').rstrip('/')}/accelerator",
                 idempotency_key=f"tracking-task-created:{task.id}",
@@ -6497,7 +6502,7 @@ async def update_tracking_task(
     for recipient in recipients.values():
         notification = await enqueue_notification(
             db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
-            recipient_email=recipient.email, event_type="tracking_task_status_changed",
+            recipient_email=recipient.email, recipient_user_id=recipient.id, event_type="tracking_task_status_changed",
             subject=f"Задача {status_label}: {task.title}",
             body=(
                 f"Пользователь {user.name} изменил статус задачи «{task.title}»: {status_label}."
@@ -6710,6 +6715,18 @@ async def list_cohort_project_audits(
     }
 
 
+@router.get("/memberships/{membership_id}/project-options")
+async def resident_project_options(membership_id: int, user: User = Depends(get_async_current_user), db: AsyncSession = Depends(get_async_db)):
+    return await project_options(db, membership_id, user)
+
+
+@router.put("/memberships/{membership_id}/project")
+async def select_resident_project(membership_id: int, payload: ResidentProjectSelection, user: User = Depends(get_async_current_user), db: AsyncSession = Depends(get_async_db)):
+    result = await select_project(db, membership_id, user, payload.project_id)
+    await db.commit()
+    return result
+
+
 @router.get("/memberships/{membership_id}/project-audits")
 async def list_membership_project_audits(
     membership_id: int,
@@ -6877,7 +6894,7 @@ async def create_project_audit(
     for recipient in recipients.values():
         notification = await enqueue_notification(
             db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
-            recipient_email=recipient.email, event_type="project_audit_completed",
+            recipient_email=recipient.email, recipient_user_id=recipient.id, event_type="project_audit_completed",
             subject=f"Готов аудит проекта «{project.name}»",
             body=(
                 f"Аудит «{PROJECT_AUDIT_TYPE_LABELS[row.audit_type]}» завершён. "
@@ -6970,7 +6987,7 @@ async def create_project_audit_task(
     resident = await db.get(User, membership.user_id)
     notification = await enqueue_notification(
         db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
-        recipient_email=resident.email, event_type="project_audit_task_created",
+        recipient_email=resident.email, recipient_user_id=resident.id, event_type="project_audit_task_created",
         subject=f"Новая задача по аудиту: {task.title}",
         body=(
             f"По результатам аудита проекта создана задача «{task.title}».\n\n"
@@ -7329,7 +7346,7 @@ async def assign_demo_day_expert(
     await db.flush()
     notification = await enqueue_notification(
         db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
-        recipient_email=expert.email, event_type="demo_day_expert_invited",
+        recipient_email=expert.email, recipient_user_id=expert.id, event_type="demo_day_expert_invited",
         subject=f"Приглашение оценивать «{demo_day.title}»",
         body=f"Вы приглашены экспертом демо-дня.\n\nОткрыть: {os.getenv('FRONTEND_URL', 'https://pitchy.pro').rstrip('/')}/accelerator",
         idempotency_key=f"demo-day-expert:{demo_day.id}:{expert.id}",
@@ -7431,7 +7448,7 @@ async def select_demo_day_project(
     resident = await db.get(User, membership.user_id)
     notification = await enqueue_notification(
         db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
-        recipient_email=resident.email, event_type="demo_day_project_selected",
+        recipient_email=resident.email, recipient_user_id=resident.id, event_type="demo_day_project_selected",
         subject=f"Проект отобран на «{demo_day.title}»",
         body=f"Подготовьте презентацию и материалы проекта.\n\nОткрыть: {os.getenv('FRONTEND_URL', 'https://pitchy.pro').rstrip('/')}/accelerator",
         idempotency_key=f"demo-day-project:{demo_day.id}:{membership.id}",
@@ -7519,7 +7536,7 @@ async def update_demo_day_materials(
         for organizer in organizers:
             notification = await enqueue_notification(
                 db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
-                recipient_email=organizer.email, event_type="demo_day_materials_submitted",
+                recipient_email=organizer.email, recipient_user_id=organizer.id, event_type="demo_day_materials_submitted",
                 subject=f"Материалы готовы: {row.pitch_title}",
                 body=f"Резидент отправил презентацию для демо-дня «{demo_day.title}».",
                 idempotency_key=f"demo-day-materials:{row.id}:{row.submitted_at.isoformat()}:{organizer.id}",
@@ -7695,7 +7712,7 @@ async def update_demo_day_status(
     for recipient in recipients.values():
         notification = await enqueue_notification(
             db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
-            recipient_email=recipient.email,
+            recipient_email=recipient.email, recipient_user_id=recipient.id,
             event_type=f"demo_day_{payload.status}",
             subject=(
                 f"Открыто оценивание «{demo_day.title}»"
@@ -8320,7 +8337,7 @@ async def create_accelerator_match(
     for recipient, other_name in ((resident, counterpart.name), (counterpart, resident.name)):
         notification = await enqueue_notification(
             db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
-            recipient_email=recipient.email, event_type="matchmaking_match_created",
+            recipient_email=recipient.email, recipient_user_id=recipient.id, event_type="matchmaking_match_created",
             subject="Новая связка в акселераторе",
             body=(f"Для вас подтверждена связка с {other_name}."
                   f"\n\nОткрыть: {os.getenv('FRONTEND_URL', 'https://pitchy.pro').rstrip('/')}/accelerator"),
@@ -8446,7 +8463,7 @@ async def update_accelerator_match(
     for recipient in (resident, counterpart):
         notification = await enqueue_notification(
             db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
-            recipient_email=recipient.email, event_type="matchmaking_match_status_changed",
+            recipient_email=recipient.email, recipient_user_id=recipient.id, event_type="matchmaking_match_status_changed",
             subject="Связка матчмейкинга изменена",
             body=(f"Статус вашей связки изменён: {'активна' if match.status == 'active' else 'завершена'}."
                   f"\n\nОткрыть: {os.getenv('FRONTEND_URL', 'https://pitchy.pro').rstrip('/')}/accelerator"),
@@ -8925,7 +8942,7 @@ async def membership_organizer_card(
         "membership": {"status": membership.status, "status_reason": membership.status_reason, "accepted_at": membership.accepted_at, "enrolled_at": membership.enrolled_at},
         "application": ({"id": application.id, "type": application.application_type, "status": application.status, "form_version": application.form_version, "answers": application.form_payload, "submitted_at": application.submitted_at} if application else None),
         "profile": participant_profile,
-        "project": ({"id": project.id, "name": project.name, "readiness": project.readiness_index, "status": project.status} if project else None),
+        "project": ({"id": project.id, "name": project.name, "readiness": project.readiness_index, "status": project.status, **accelerator_project_description(project)} if project else None),
         "team": ({"id": team_row[1].id, "name": team_row[1].name, "role": team_row[0].role} if team_row else None),
         "trackers": [{"user_id": row.id, "name": row.name, "email": row.email} for row in trackers],
         "tracker_options": [{"user_id": row.id, "name": row.name, "email": row.email} for row in tracker_options],

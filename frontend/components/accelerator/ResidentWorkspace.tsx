@@ -16,6 +16,8 @@ import { ResidentToday } from "@/components/accelerator/ResidentToday";
 import { ResidentProjectRecommendations } from "@/components/accelerator/ResidentProjectRecommendations";
 import { ResidentProgramWorkspace } from "@/components/accelerator/ResidentProgramWorkspace";
 import { ResidentArtifacts } from "@/components/accelerator/ResidentArtifacts";
+import { ProjectSummary, type ProjectDescription } from "./ProjectSummary";
+import { ProjectSelection } from "./ProjectSelection";
 
 export type ResidentQuota = {
   membership_id: number;
@@ -29,14 +31,14 @@ export type ResidentQuota = {
 
 export type ResidentMembership = {
   membership_id: number;
-  application_id: number;
+  application_id: number | null;
   status: string;
   accepted_at: string;
   enrolled_at?: string | null;
   ended_at?: string | null;
   accelerator: { id: number; name: string; description?: string | null; status: string };
   cohort: { id: number; name: string; status: string; timezone: string; starts_at?: string | null; ends_at?: string | null };
-  project?: { id: number; name: string; readiness_index: number; status: string } | null;
+  project?: ({ id: number; name: string; readiness_index: number; status: string } & ProjectDescription) | null;
   modules: Record<string, boolean>;
 };
 
@@ -151,7 +153,7 @@ export function ResidentMembershipView({ membership, quotas, onChanged }: { memb
 
       {enrolled && section === "today" && <ResidentToday membership={membership} onNavigate={navigate} />}
 
-      {enrolled && section === "tools" && membership.project && <section className="workspace-card"><div className="flex flex-wrap items-center justify-between gap-5"><div className="min-w-0"><p className="mb-2 text-xs uppercase tracking-[.18em] text-white/35">Проект резидента</p><h2 className="truncate text-2xl">{membership.project.name}</h2><div className="mt-4 h-2 w-full max-w-sm overflow-hidden rounded-full bg-white/8"><div className="h-full rounded-full bg-emerald-400" style={{ width: `${Math.max(0, Math.min(100, membership.project.readiness_index))}%` }} /></div><p className="mt-2 text-xs text-white/40">Паспорт заполнен на {membership.project.readiness_index}%</p></div><Link href={`/passport/${membership.project.id}`} className="workspace-button"><FileText size={16} /> Открыть паспорт</Link></div></section>}
+      {enrolled && section === "tools" && membership.project && <section className="workspace-card"><div className="flex flex-wrap items-center justify-between gap-5"><div className="min-w-0"><p className="mb-2 text-xs uppercase tracking-[.18em] text-white/35">Проект резидента</p><h2 className="truncate text-2xl">{membership.project.name}</h2><div className="mt-4 h-2 w-full max-w-sm overflow-hidden rounded-full bg-white/8"><div className="h-full rounded-full bg-emerald-400" style={{ width: `${Math.max(0, Math.min(100, membership.project.readiness_index))}%` }} /></div><p className="mt-2 text-xs text-white/40">Паспорт заполнен на {membership.project.readiness_index}%</p><ProjectSummary project={membership.project} /></div><Link href={`/passport/${membership.project.id}`} className="workspace-button"><FileText size={16} /> Открыть паспорт</Link></div><ProjectSelection membershipId={membership.membership_id} onChanged={onChanged} /></section>}
 
       {enrolled && section === "tools" && <section className="workspace-card"><h2 className="mb-5 text-xl">Лимиты Pitchy</h2><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{Object.entries(QUOTA_META).map(([resource, meta]) => { const quota = quotas[resource]; const Icon = meta.icon; const appliesHere = quota?.membership_id === membership.membership_id; return <article key={resource} className="rounded-2xl border border-white/8 bg-white/[0.02] p-4"><Icon size={18} className="mb-4 text-white/40" /><p className="text-sm text-white/45">{meta.label}</p><p className="mt-1 text-2xl">{appliesHere ? quota.limit === -1 ? "∞" : quota.remaining : "—"}</p><p className="mt-1 text-xs text-white/30">{appliesHere ? quota.limit === -1 ? "Без ограничений" : `из ${quota.limit}, использовано ${quota.used}` : "Не назначено этому потоку"}</p></article>; })}</div></section>}
 

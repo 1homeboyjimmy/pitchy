@@ -158,6 +158,13 @@ CHECKPOINTS: list[dict[str, Any]] = [
             _field("legal.entity_type", "Юр. форма (ООО/ИП/физлицо)", hint="ООО, ИП, физлицо или пока не оформлено"),
         ],
     },
+    {
+        "id": "additional",
+        "title": "Дополнительная информация",
+        "subtitle": "Технологии, планы и прочие сведения проекта",
+        "reward": "Сохраняем существенные детали исходного описания",
+        "fields": [_field("custom.Дополнительная информация", "Дополнительная информация", "textarea")],
+    },
 ]
 
 
@@ -197,6 +204,8 @@ def active_checkpoint_definitions(passport: dict | None) -> list[dict[str, Any]]
     return [
         {**checkpoint, "fields": [field for field in checkpoint["fields"] if _field_is_active(field, stage_id)]}
         for checkpoint in CHECKPOINTS
+        if checkpoint["id"] != "additional" or (passport or {}).get("_import", {}).get("uniform_categories")
+        or plib._is_filled(plib._get_path(passport or {}, "custom.Дополнительная информация"))
     ]
 
 

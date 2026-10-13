@@ -299,10 +299,10 @@ test('participant card opens and closes from the keyboard with restored focus', 
   } }));
   await page.route('**/api/accelerators/memberships/101/organizer-card', async (route) => route.fulfill({ json: {
     membership_id: 101, access_role: 'global_admin', can_manage: true, available_statuses: ['suspended'],
-    person: { name: 'Резидент А', email: 'resident@example.test' },
+    person: { name: 'Резидент А', email: null },
     membership: { status: 'enrolled', enrolled_at: new Date().toISOString() },
-    application: { id: 44, type: 'project', status: 'approved', form_version: 1, answers: { project_name: 'Проект А' }, submitted_at: new Date().toISOString() },
-    profile: { telegram: '@resident', competencies: ['продукт'], application_data: { duplicate: 'не показывать' } }, project: { id: 5, name: 'Проект А', readiness: 72, status: 'active' }, team: null,
+    application: null,
+    profile: { telegram: '@resident', preferred_role: 'Разработка', import_batch: 'internal-hidden', competencies: ['продукт'], application_data: { duplicate: 'не показывать' } }, project: { id: 5, name: 'Проект А', readiness: 72, status: 'active', description: 'Описание проекта участника.', problem: 'Проблема участника.', solution: 'Решение участника.', target_audience: 'Аудитория участника.' }, team: null,
     trackers: [], tracker_options: [],
     homework: { published: 2, accepted: 1, pending: 0, overdue: 0, submissions: [] },
     program: { completed: 1, total: 2, percent: 50, stages: [] },
@@ -320,6 +320,13 @@ test('participant card opens and closes from the keyboard with restored focus', 
   await expect(page.getByRole('button', { name: 'Закрыть карточку' })).toBeFocused();
   await expect(dialog.getByText('application_data', { exact: true })).toHaveCount(0);
   await expect(dialog.getByText('не показывать', { exact: true })).toHaveCount(0);
+  await expect(dialog.getByText('Описание проекта участника.', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('Проблема участника.', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('Решение участника.', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('Аудитория участника.', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('Профиль участника', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('internal-hidden', { exact: true })).toHaveCount(0);
+  await expect(dialog.getByRole('link', { name: 'Открыть паспорт проекта' })).toHaveAttribute('href', '/passport/5');
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
   await expect(trigger).toBeFocused();

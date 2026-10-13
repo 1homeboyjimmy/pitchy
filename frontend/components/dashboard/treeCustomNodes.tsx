@@ -109,7 +109,7 @@ export const CategoryNode = memo(function CategoryNode({ data }: NodeProps) {
         </div>
 
         {/* AI Summary Table */}
-        {isCompleted && hasSummary && (
+        {hasSummary && (
         <div className="pt-4 mt-2 border-t border-white/5">
             <motion.div 
             initial={{ height: 0, opacity: 0 }}

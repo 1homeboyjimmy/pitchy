@@ -11,7 +11,9 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    email: Mapped[str | None] = mapped_column(String(255), unique=True, index=True, nullable=True)
+    username: Mapped[str | None] = mapped_column(String(32), unique=True, index=True, nullable=True)
+    local_login_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     name: Mapped[str] = mapped_column(String(120))
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -365,7 +367,7 @@ class AcceleratorMembership(Base):
     cohort_id: Mapped[int] = mapped_column(ForeignKey("accelerator_cohorts.id", ondelete="CASCADE"), index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True)
-    application_id: Mapped[int] = mapped_column(ForeignKey("accelerator_applications.id", ondelete="RESTRICT"), unique=True)
+    application_id: Mapped[int | None] = mapped_column(ForeignKey("accelerator_applications.id", ondelete="RESTRICT"), unique=True, nullable=True)
     role: Mapped[str] = mapped_column(String(30), default="resident", server_default="resident")
     status: Mapped[str] = mapped_column(String(30), default="accepted", server_default="accepted", index=True)
     accepted_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
@@ -379,6 +381,17 @@ class AcceleratorMembership(Base):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AcceleratorResidentImport(Base):
+    __tablename__ = "accelerator_resident_imports"
+    __table_args__ = (UniqueConstraint("cohort_id", "batch_key", name="uq_resident_import_batch"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    cohort_id: Mapped[int] = mapped_column(ForeignKey("accelerator_cohorts.id", ondelete="CASCADE"))
+    batch_key: Mapped[str] = mapped_column(String(100))
+    digest: Mapped[str] = mapped_column(String(64))
+    result: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
 class AcceleratorTrackerAssignment(Base):
@@ -1904,6 +1917,7 @@ class ProjectTree(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, unique=True, index=True)
     title: Mapped[str] = mapped_column(String(200), default="Новое древо")
     source_type: Mapped[str] = mapped_column(String(50), default="text")  # text, pdf, chat
     source_text: Mapped[str | None] = mapped_column(Text, nullable=True)

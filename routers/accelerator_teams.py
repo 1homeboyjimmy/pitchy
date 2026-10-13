@@ -497,7 +497,7 @@ def _application_contact(
     return {
         "name": person.name,
         "email": person.email,
-        "telegram": payload.get("telegram"),
+        "telegram": payload.get("telegram") or ("@" + person.username if person.username else None),
         "profile_id": profile.id if profile else None,
         "bio": profile.bio if profile else None,
         "competencies": profile.expertise if profile and profile.expertise else competencies,
@@ -751,6 +751,15 @@ async def transfer_team_captain(
     old_member.role = "cofounder"
     target.role = "owner"
     team.owner_membership_id = target.membership_id
+    # Imported team projects follow the captain so a former member cannot
+    # retain owner access after leaving the team.
+    from models import ProjectTree
+    tree = (await db.execute(select(ProjectTree).where(ProjectTree.project_id == team.project_id))).scalar_one_or_none() if team.project_id else None
+    if tree:
+        project = await db.get(Project, team.project_id)
+        target_membership = await db.get(AcceleratorMembership, target.membership_id)
+        project.user_id = target_membership.user_id
+        tree.user_id = target_membership.user_id
     add_audit(db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id, actor_user_id=user.id,
               action="team.captain_transferred", target_type="team", target_id=team.id,
               details={"from_membership_id": old_owner.id, "to_membership_id": target.membership_id})

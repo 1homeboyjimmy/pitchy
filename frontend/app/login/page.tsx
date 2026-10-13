@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, Suspense } from "react";
+import { useMounted } from "@mantine/hooks";
 import { Mail, KeyRound, ArrowRight, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -10,6 +11,7 @@ import { setToken } from "@/lib/auth";
 import { YandexIcon } from "@/components/shared/icons/YandexIcon";
 
 function LoginContent() {
+  const mounted = useMounted();
   const searchParams = useSearchParams();
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -78,11 +80,11 @@ function LoginContent() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-8 relative z-10">
+          <form method="post" onSubmit={handleSubmit} className="space-y-8 relative z-10">
             {/* Email Field */}
             <div className="space-y-3">
               <label className="block font-mono-label text-[11px] text-white/40 uppercase tracking-[0.2em] ml-1" htmlFor="email">
-                Идентификатор (Email)
+                Логин
               </label>
               <div className="relative">
                 <Mail className="absolute left-5 top-1/2 -translate-y-1/2 text-white/20" size={18} />
@@ -90,9 +92,11 @@ function LoginContent() {
                   className="w-full bg-white/5 border border-white/10 text-white rounded-2xl pl-14 pr-6 py-4 font-body-sm text-[16px] focus:outline-none focus:border-white/30 transition-all placeholder:text-white/10"
                   id="email"
                   name="email"
-                  placeholder="user@pitchy.pro"
+                  placeholder="Логин или email"
                   required
-                  type="email"
+                  type="text"
+                  disabled={!mounted || loading}
+                  autoComplete="username"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
@@ -103,7 +107,7 @@ function LoginContent() {
             <div className="space-y-3">
               <div className="flex justify-between items-center ml-1">
                 <label className="block font-mono-label text-[11px] text-white/40 uppercase tracking-[0.2em]" htmlFor="password">
-                  Ключ доступа
+                  Пароль
                 </label>
                 <Link className="font-mono-label text-[10px] text-white/40 hover:text-white transition-colors uppercase tracking-widest" href="/forgot-password">
                   Забыли?
@@ -114,6 +118,7 @@ function LoginContent() {
                 <input
                   className="w-full bg-white/5 border border-white/10 text-white rounded-2xl pl-14 pr-6 py-4 font-body-sm text-[16px] focus:outline-none focus:border-white/30 transition-all placeholder:text-white/10"
                   id="password"
+                  disabled={!mounted || loading}
                   name="password"
                   placeholder="••••••••"
                   required
@@ -128,7 +133,7 @@ function LoginContent() {
             <button
               className="w-full bg-white text-black font-bold text-sm uppercase tracking-tighter py-5 rounded-full hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-3 shadow-[0_0_40px_rgba(255,255,255,0.1)]"
               type="submit"
-              disabled={loading}
+              disabled={!mounted || loading}
             >
               {loading ? (
                 <span className="flex items-center justify-center gap-3">

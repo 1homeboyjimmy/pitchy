@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from models import (
     AcceleratorMembership,
@@ -68,7 +69,9 @@ async def validate_artifact_source(
 
     if source_type == "roadmap":
         project = await db.get(Project, numeric_id)
-        if not project or project.id != membership.project_id or project.user_id != membership.user_id:
+        from project_access import project_access_condition
+        accessible = (await db.execute(select(Project.id).where(Project.id == numeric_id, project_access_condition(membership.user_id)))).scalar_one_or_none()
+        if not project or project.id != membership.project_id or accessible is None:
             raise HTTPException(status_code=404, detail="Дорожная карта проекта не найдена")
         import roadmap_service
 

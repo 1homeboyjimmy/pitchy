@@ -56,13 +56,8 @@ router = APIRouter(prefix="/projects", tags=["Project Passport"])
 
 
 async def _get_owned_project(project_id: int, user: User, db: AsyncSession) -> Project:
-    res = await db.execute(
-        select(Project).where(Project.id == project_id, Project.user_id == user.id)
-    )
-    project = res.scalar_one_or_none()
-    if not project:
-        raise HTTPException(status_code=404, detail="Папка проекта не найдена")
-    return project
+    from project_access import get_accessible_project
+    return await get_accessible_project(db, project_id, user)
 
 
 async def _validate_accelerator_roadmap_context(
@@ -225,7 +220,8 @@ async def list_projects(
     user: User = Depends(get_async_current_user),
     db: AsyncSession = Depends(get_async_db),
 ) -> list[ProjectListItemResponse]:
-    q = select(Project).where(Project.user_id == user.id)
+    from project_access import project_access_condition
+    q = select(Project).where(project_access_condition(user.id))
     if not include_archived:
         q = q.where(Project.status == "active")
     q = q.order_by(Project.updated_at.desc()).limit(100)
@@ -259,7 +255,8 @@ async def get_project(
     user: User = Depends(get_async_current_user),
     db: AsyncSession = Depends(get_async_db),
 ) -> ProjectResponse:
-    project = await _get_owned_project(project_id, user, db)
+    from project_access import get_accessible_project
+    project = await get_accessible_project(db, project_id, user, staff_read=True)
     return _project_response(project)
 
 
@@ -270,7 +267,8 @@ async def update_project(
     user: User = Depends(get_async_current_user),
     db: AsyncSession = Depends(get_async_db),
 ) -> ProjectResponse:
-    project = await _get_owned_project(project_id, user, db)
+    from project_access import get_accessible_project
+    project = await get_accessible_project(db, project_id, user, owner_only=True)
     if payload.name is not None:
         project.name = payload.name
     if payload.status is not None:
@@ -288,7 +286,8 @@ async def delete_project(
     user: User = Depends(get_async_current_user),
     db: AsyncSession = Depends(get_async_db),
 ) -> dict:
-    project = await _get_owned_project(project_id, user, db)
+    from project_access import get_accessible_project
+    project = await get_accessible_project(db, project_id, user, owner_only=True)
     active_team = (await db.execute(
         select(AcceleratorTeam.id).where(
             AcceleratorTeam.project_id == project.id,
@@ -334,7 +333,8 @@ async def get_passport(
     user: User = Depends(get_async_current_user),
     db: AsyncSession = Depends(get_async_db),
 ) -> PassportResponse:
-    project = await _get_owned_project(project_id, user, db)
+    from project_access import get_accessible_project
+    project = await get_accessible_project(db, project_id, user, staff_read=True)
     passport = project.passport or {}
     return PassportResponse(
         passport=passport,
@@ -367,6 +367,8 @@ async def patch_passport(
     project.readiness_index = passport_lib.compute_readiness(merged)
     project.passport_updated_at = datetime.utcnow()
     flag_modified(project, "passport")
+    from project_breakdown import sync_project_breakdown
+    await sync_project_breakdown(db, project)
     await db.commit()
     await db.refresh(project)
     return PassportResponse(

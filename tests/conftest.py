@@ -9,7 +9,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-TEST_DATABASE_URL = "sqlite:///./test.db"
+TEST_DATABASE_URL = os.getenv("PITCHY_TEST_DATABASE_URL", "sqlite:///./test.db")
+if TEST_DATABASE_URL != "sqlite:///./test.db":
+    from sqlalchemy.engine import make_url
+    if not (make_url(TEST_DATABASE_URL).database or "").endswith("_test"):
+        raise RuntimeError("An external test database must have a dedicated *_test name")
 TEST_DB_PATH = PROJECT_ROOT / "test.db"
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 os.environ.setdefault("APP_SECRET_KEY", "test_secret_key_1234567890")
@@ -22,11 +26,11 @@ def _alembic_config() -> Config:
 
 
 def pytest_sessionstart(session):
-    if TEST_DB_PATH.exists():
+    if TEST_DATABASE_URL == "sqlite:///./test.db" and TEST_DB_PATH.exists():
         TEST_DB_PATH.unlink()
     command.upgrade(_alembic_config(), "head")
 
 
 def pytest_sessionfinish(session, exitstatus):
-    if TEST_DB_PATH.exists():
+    if TEST_DATABASE_URL == "sqlite:///./test.db" and TEST_DB_PATH.exists():
         TEST_DB_PATH.unlink()

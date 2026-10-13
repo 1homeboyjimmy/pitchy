@@ -51,7 +51,8 @@ export type PresentationSlide = {
 
 export type UserProfile = {
   id: number;
-  email: string;
+  email: string | null;
+  username?: string | null;
   name: string;
   is_admin: boolean;
   is_active: boolean;
@@ -165,7 +166,7 @@ export function describeApiError(error: unknown, fallback: string): string {
 // входа/регистрации. Неизвестные строки отдаём как есть.
 function translateAuthDetail(msg: string): string {
   const map: Record<string, string> = {
-    "Invalid credentials": "Неверный email или пароль",
+    "Invalid credentials": "Неверный логин или пароль",
     "Invalid token": "Сессия истекла, войдите снова",
     "User is blocked": "Аккаунт заблокирован",
     "User is temporarily locked": "Слишком много попыток входа. Попробуйте через 15 минут.",
@@ -623,7 +624,8 @@ export async function validatePromoCode(code: string, originalAmount?: number): 
 
 export type UserResponse = {
   id: number;
-  email: string;
+  email: string | null;
+  username?: string | null;
   name: string;
   is_admin: boolean;
   is_active: boolean;

@@ -52,19 +52,22 @@ def _insert_do_nothing(db: AsyncSession, model, values: dict, conflict_column: s
 async def _active_recipient(
     db: AsyncSession,
     *,
-    recipient_email: str,
+    recipient_email: str | None,
     recipient_user_id: int | None,
 ) -> User | None:
     filters = [
         User.is_active.is_(True),
         User.deleted_at.is_(None),
-        func.lower(User.email) == recipient_email,
     ]
     if recipient_user_id is not None:
+        if recipient_email:
+            filters.append(func.lower(User.email) == recipient_email)
         return (await db.execute(
             select(User).where(User.id == recipient_user_id, *filters)
         )).scalar_one_or_none()
-    return (await db.execute(select(User).where(*filters))).scalar_one_or_none()
+    if not recipient_email:
+        return None
+    return (await db.execute(select(User).where(*filters, func.lower(User.email) == recipient_email))).scalar_one_or_none()
 
 
 async def enqueue_notification(
@@ -72,7 +75,7 @@ async def enqueue_notification(
     *,
     accelerator_id: int,
     cohort_id: int | None,
-    recipient_email: str,
+    recipient_email: str | None,
     event_type: str,
     subject: str,
     body: str,
@@ -82,7 +85,11 @@ async def enqueue_notification(
     membership_id: int | None = None,
     event_metadata: dict | None = None,
 ) -> AcceleratorNotificationOutbox:
-    normalized_email = recipient_email.strip().lower()
+    normalized_email = (recipient_email or "").strip().lower()
+    if not normalized_email and recipient_user_id is None and membership_id is not None:
+        from models import AcceleratorMembership
+        membership = await db.get(AcceleratorMembership, membership_id)
+        recipient_user_id = membership.user_id if membership else None
     recipient = await _active_recipient(
         db,
         recipient_email=normalized_email,
@@ -104,7 +111,7 @@ async def enqueue_notification(
             "event_type": event_type,
             "subject": subject,
             "body": body,
-            "status": "pending",
+            "status": "pending" if normalized_email else "suppressed",
             "attempts": 0,
             "idempotency_key": idempotency_key,
             "available_at": now,
@@ -339,7 +346,7 @@ async def enqueue_due_homework_reminders(
                             db,
                             accelerator_id=cohort.accelerator_id,
                             cohort_id=cohort.id,
-                            recipient_email=resident.email,
+                            recipient_email=resident.email, recipient_user_id=resident.id,
                             event_type="homework_deadline_reminder",
                             subject=f"Скоро дедлайн: {assignment.title}",
                             body=(

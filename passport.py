@@ -172,7 +172,7 @@ def field_source(passport: dict | None, path: str) -> str:
 
 def can_ai_overwrite(passport: dict | None, path: str) -> bool:
     """ИИ может молча перезаписать поле, только если оно НЕ manual."""
-    return field_source(passport, path) != "manual"
+    return field_source(passport, path) not in {"manual", "import"}
 
 
 def build_passport_prompt(passport: dict | None, max_chars: int = 1500) -> str:

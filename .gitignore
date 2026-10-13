@@ -41,6 +41,7 @@ frontend/app kimi/
 Thumbs.db
 
 # Logs
+private_imports/
 *.log
 npm-debug.log*
 

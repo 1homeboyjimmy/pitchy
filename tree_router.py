@@ -22,7 +22,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from sqlalchemy.exc import IntegrityError
 
 from auth import get_async_current_user
@@ -52,6 +52,11 @@ def get_span(name: str):
 logger = logging.getLogger("app")
 
 router = APIRouter(prefix="/tree", tags=["Smart Roadmap"])
+
+
+def tree_access_condition(user_id):
+    from project_access import shared_project_ids
+    return or_(ProjectTree.user_id == user_id, ProjectTree.project_id.in_(shared_project_ids(user_id)))
 
 
 # ——— REST Endpoints ———
@@ -199,7 +204,7 @@ async def list_trees(
     """List all trees for the authenticated user."""
     res = await db.execute(
         select(ProjectTree)
-        .where(ProjectTree.user_id == user.id)
+        .where(tree_access_condition(user.id))
         .order_by(ProjectTree.created_at.desc())
         .limit(50)
     )
@@ -216,7 +221,7 @@ async def get_tree(
     """Get a single tree by ID."""
     res = await db.execute(
         select(ProjectTree)
-        .where(ProjectTree.id == tree_id, ProjectTree.user_id == user.id)
+        .where(ProjectTree.id == tree_id, tree_access_condition(user.id))
     )
     tree = res.scalar_one_or_none()
     if not tree:
@@ -235,11 +240,18 @@ async def update_tree_node(
     """Update a specific node in the tree."""
     res = await db.execute(
         select(ProjectTree)
-        .where(ProjectTree.id == tree_id, ProjectTree.user_id == user.id)
+        .where(ProjectTree.id == tree_id, tree_access_condition(user.id))
     )
     tree = res.scalar_one_or_none()
     if not tree:
         raise HTTPException(status_code=404, detail="Древо не найдено")
+
+    from project_breakdown import TEMPLATE_VERSION, save_breakdown_fields
+    if tree.project_id and (tree.tree_data or {}).get("template_version") == TEMPLATE_VERSION:
+        if payload.data and payload.data.form_data:
+            await save_breakdown_fields(db, tree, node_id, payload.data.form_data)
+            await db.commit()
+        return {"status": "ok", "readiness_index": tree.readiness_index}
 
     tree_data = tree.tree_data or {}
     nodes = tree_data.get("nodes", [])
@@ -286,7 +298,7 @@ async def tree_chat(
     from fastapi.responses import StreamingResponse
 
     tree_result = await db.execute(
-        select(ProjectTree).where(ProjectTree.id == tree_id, ProjectTree.user_id == user.id)
+        select(ProjectTree).where(ProjectTree.id == tree_id, tree_access_condition(user.id))
     )
     if tree_result.scalar_one_or_none() is None:
         raise HTTPException(status_code=404, detail="Roadmap not found")
@@ -399,10 +411,16 @@ async def evaluate_node(
     from polza_client import call_polza
     import copy
 
-    res = await db.execute(select(ProjectTree).where(ProjectTree.id == tree_id, ProjectTree.user_id == user.id))
+    res = await db.execute(select(ProjectTree).where(ProjectTree.id == tree_id, tree_access_condition(user.id)))
     tree = res.scalar_one_or_none()
     if not tree:
         raise HTTPException(status_code=404, detail="Tree not found")
+
+    from project_breakdown import TEMPLATE_VERSION, save_breakdown_fields
+    if tree.project_id and (tree.tree_data or {}).get("template_version") == TEMPLATE_VERSION:
+        await save_breakdown_fields(db, tree, payload.node_id, payload.form_data)
+        await db.commit()
+        return {"tree_data": tree.tree_data, "readiness_index": tree.readiness_index}
 
     tree_data = copy.deepcopy(tree.tree_data)
     nodes = tree_data.get("nodes", [])
@@ -544,10 +562,10 @@ async def tree_websocket(
     await websocket.accept()
 
     try:
-        # Verify access
-        # In production, authenticate via token in query params
+        # Cookie-only authentication and the same team boundaries as HTTP.
         async with AsyncSessionLocal() as db:
-            res = await db.execute(select(ProjectTree).where(ProjectTree.id == tree_id))
+            user = await get_async_current_user(websocket, db)
+            res = await db.execute(select(ProjectTree).where(ProjectTree.id == tree_id, tree_access_condition(user.id)))
             tree = res.scalar_one_or_none()
             if not tree:
                 await websocket.send_json({"type": "error", "data": {"message": "Tree not found"}})
@@ -574,7 +592,8 @@ async def tree_websocket(
                     await websocket.send_json({"type": "pong"})
                 elif data.get("type") == "refresh":
                     async with AsyncSessionLocal() as db:
-                        res = await db.execute(select(ProjectTree).where(ProjectTree.id == tree_id))
+                        user = await get_async_current_user(websocket, db)
+                        res = await db.execute(select(ProjectTree).where(ProjectTree.id == tree_id, tree_access_condition(user.id)))
                         tree = res.scalar_one_or_none()
                         if tree:
                             await websocket.send_json({

@@ -29,7 +29,11 @@ if "postgresql+asyncpg://" not in DATABASE_URL:
 
 # Async engine setup with connection pooling for PostgreSQL
 engine_kwargs = {"pool_pre_ping": True}
-if not DATABASE_URL.startswith("sqlite"):
+if os.getenv("PITCHY_TEST_DATABASE_URL"):
+    # Pytest gives async tests independent event loops; pooled asyncpg
+    # connections cannot be reused across those loops.
+    engine_kwargs["poolclass"] = NullPool
+elif not DATABASE_URL.startswith("sqlite"):
     engine_kwargs["pool_size"] = 20
     engine_kwargs["max_overflow"] = 40
 else:

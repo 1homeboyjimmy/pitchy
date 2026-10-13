@@ -52,6 +52,7 @@ from auth import (
 )
 from db_async import get_async_db
 from email_utils import send_email
+from schemas.base import LocalPasswordChangeRequest
 from models import User
 from custdev_sso import (
     ExchangeRequest,
@@ -440,9 +441,18 @@ async def login(
     ip = get_client_ip(request)
     _check_rate_limit(ip)
 
-    result = await db.execute(
-        select(User).where(User.email == payload.email, User.deleted_at.is_(None))
-    )
+    identifier = payload.email.strip().lower()
+    if "@" in identifier and not identifier.startswith("@"):
+        from sqlalchemy import func
+        condition = func.lower(User.email) == identifier
+    else:
+        from login_identity import normalize_username
+        try:
+            identifier = normalize_username(identifier)
+        except ValueError:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        condition = User.username == identifier
+    result = await db.execute(select(User).where(condition, User.deleted_at.is_(None)))
     user = result.scalar_one_or_none()
 
     if not user:
@@ -451,7 +461,7 @@ async def login(
         raise HTTPException(status_code=403, detail="User is blocked")
     if user.locked_until and user.locked_until > datetime.utcnow():
         raise HTTPException(status_code=403, detail="User is temporarily locked")
-    if not user.email_verified:
+    if not user.email_verified and not user.local_login_enabled:
         raise HTTPException(status_code=403, detail="Email is not verified")
     if not verify_password(payload.password, user.password_hash):
         user.failed_login_attempts += 1
@@ -524,6 +534,19 @@ async def initiate_change_password(
         raise HTTPException(status_code=500, detail="Failed to send verification code")
 
     return {"status": "ok", "message": "Verification code sent"}
+
+
+@router.post("/auth/change-password/local")
+async def change_local_password(payload: LocalPasswordChangeRequest, user: User = Depends(get_async_current_user), db: AsyncSession = Depends(get_async_db)):
+    if user.email or not user.username or not user.local_login_enabled:
+        raise HTTPException(status_code=409, detail="Используйте подтверждение смены пароля по почте")
+    if not verify_password(payload.current_password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    user.password_hash = hash_password(payload.new_password)
+    user.password_reset_token_hash = None
+    user.password_reset_expires_at = None
+    await db.commit()
+    return {"status": "ok"}
 
 
 @router.post("/auth/change-password/confirm")

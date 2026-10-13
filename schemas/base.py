@@ -36,7 +36,7 @@ class RegisterRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    email: str = Field(min_length=1, max_length=255)
     password: str = Field(..., min_length=8, max_length=72)
 
 
@@ -47,7 +47,8 @@ class TokenResponse(BaseModel):
 
 class UserResponse(BaseModel):
     id: int
-    email: EmailStr
+    email: EmailStr | None = None
+    username: str | None = None
     name: str
     is_admin: bool
     is_active: bool
@@ -68,6 +69,16 @@ class UserResponse(BaseModel):
 
 class PasswordChangeInitRequest(BaseModel):
     current_password: str
+
+
+class LocalPasswordChangeRequest(BaseModel):
+    current_password: str = Field(min_length=8, max_length=72)
+    new_password: str = Field(min_length=8, max_length=72)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, value):
+        return RegisterRequest.validate_password(value)
 
 
 class PasswordChangeConfirmRequest(BaseModel):
@@ -568,7 +579,7 @@ class PromoCodesGenerateRequest(BaseModel):
 class PaymentResponse(BaseModel):
     id: int
     user_id: int
-    user_email: str
+    user_email: str | None = None
     user_name: str
     yookassa_payment_id: str
     amount: float
@@ -583,7 +594,7 @@ class PaymentResponse(BaseModel):
 
 class SubscriptionResponse(BaseModel):
     user_id: int
-    email: str
+    email: str | None = None
     name: str
     subscription_tier: str
     subscription_expires_at: datetime | None
@@ -631,6 +642,7 @@ class TreeNextActionSchema(BaseModel):
     reason: str | None = None
 
 class TreeNodeDataSchema(BaseModel):
+    form_data: dict[str, str] = Field(default_factory=dict)
     description: str | None = None
     completion_criteria: dict[str, str] = {}
     inputs: list[TreeInputSchema] = []

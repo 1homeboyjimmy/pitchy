@@ -114,7 +114,7 @@ def _merge_application_passport(project: Project, form_payload: dict) -> None:
     safe_fields = {
         path: value
         for path, value in fields.items()
-        if passport_lib.field_source(project.passport or {}, path) != "manual"
+        if passport_lib.field_source(project.passport or {}, path) not in {"manual", "import"}
     }
     merged = passport_lib.merge_patch(project.passport or {}, safe_fields, source="application")
     project.passport = merged

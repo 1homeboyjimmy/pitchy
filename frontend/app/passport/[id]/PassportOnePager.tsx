@@ -150,6 +150,9 @@ export function PassportOnePager() {
   const market = (p.market as Record<string, unknown>) || {};
   const metrics = (p.metrics as Record<string, unknown>) || {};
   const legal = (p.legal as Record<string, unknown>) || {};
+  const custom = (p.custom as Record<string, unknown>) || {};
+  const validation = (p.validation as Record<string, unknown>) || {};
+  const customRows = Object.entries(custom).map(([label, value]) => ({ label, value: txt(value) })).filter(row => row.value);
   const team = listOf(p.team);
   const competitors = listOf(market.competitors);
 
@@ -164,11 +167,11 @@ export function PassportOnePager() {
   ].filter((r) => r.value);
 
   const hasCore = !!(txt(core.problem) || txt(core.solution) || txt(core.target_audience) || txt(core.stage) || txt(core.business_model) || txt(core.geo));
-  const hasMarket = !!(txt(market.size) || competitors.length);
+  const hasMarket = !!(txt(market.segment) || txt(market.size) || competitors.length);
   const hasMetrics = metricRows.length > 0;
   const hasTeam = team.length > 0;
   const hasLegal = !!(txt(legal.entity_type) || txt(legal.requisites));
-  const anything = hasCore || hasMarket || hasMetrics || hasTeam || hasLegal;
+  const anything = hasCore || hasMarket || hasMetrics || hasTeam || hasLegal || customRows.length > 0;
 
   return (
     <div className="op-screen min-h-screen bg-neutral-200 py-6 px-4 flex flex-col items-center">
@@ -224,6 +227,7 @@ export function PassportOnePager() {
 
           {hasMarket && (
             <Section title="Рынок">
+              <Block label="Основной сегмент" value={txt(market.segment)} />
               <Inline label="Объём рынка" value={txt(market.size)} />
               {competitors.length > 0 && (
                 <div className="op-row">
@@ -260,6 +264,18 @@ export function PassportOnePager() {
               </ul>
             </Section>
           )}
+
+          {(txt(validation.prototype) || txt(validation.evidence) || txt(validation.next_experiment)) && (
+            <Section title="Проверка и развитие продукта">
+              <Block label="Подтверждение проблемы" value={txt(validation.evidence)} />
+              <Block label="Прототип / MVP" value={txt(validation.prototype)} />
+              <Block label="Следующая проверка" value={txt(validation.next_experiment)} />
+            </Section>
+          )}
+
+          {customRows.length > 0 && <Section title="Дополнительные сведения">
+            {customRows.map(row => <Block key={row.label} label={row.label} value={row.value} />)}
+          </Section>}
 
           {hasLegal && (
             <Section title="Юридические данные">

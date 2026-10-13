@@ -136,6 +136,16 @@ export function AccountPageClient() {
     try {
       const token = getToken();
       if (token) {
+        if (user?.username && !user.email) {
+          await postAuthJson("/auth/change-password/local", {
+            current_password: passwordForm.current,
+            new_password: passwordForm.new,
+          }, token);
+          notifySuccess("Пароль успешно изменён.");
+          setIsChangePasswordOpen(false);
+          setPasswordForm({ current: "", new: "", code: "" });
+          return;
+        }
         await postAuthJson("/auth/change-password/initiate", {
           current_password: passwordForm.current,
         }, token);

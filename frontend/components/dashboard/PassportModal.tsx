@@ -349,9 +349,10 @@ export function PassportModal({ projectId, projectName, onClose, onSaved }: Prop
                         <label className="flex items-center gap-2 text-white/50 text-xs mb-1.5">
                           {ck} {sourceBadge(path)}
                         </label>
-                        <input
+                        <textarea
                           value={valueFor(path)}
                           onChange={(e) => setValue(path, e.target.value)}
+                          rows={4}
                           className="w-full bg-white/[0.03] rounded-xl px-3 py-2.5 text-white text-sm border border-white/10 focus:border-white/30 outline-none"
                         />
                       </div>
