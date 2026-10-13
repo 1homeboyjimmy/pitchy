@@ -62,10 +62,10 @@ jobs:
           cd /opt/ai-startup
           umask 077
           if [ "$MODE" = inspect ]; then
-            docker compose exec -T backend python scripts/inspect_accelerator_import.py
+            docker compose exec -T backend python scripts/inspect_accelerator_import.py < /dev/null
             exit 0
           fi
-          docker compose cp private_imports/mtusi-2026/payload.json backend:/tmp/resident-payload.json
+          docker compose cp private_imports/mtusi-2026/payload.json backend:/tmp/resident-payload.json < /dev/null
           docker compose exec -T backend python - <<'PY'
           import base64, gzip, json, os
           from pathlib import Path
@@ -78,23 +78,23 @@ jobs:
           Path('/tmp/resident-payload.json').unlink()
           PY
           if [ "$MODE" = preview ]; then
-            docker compose exec -T backend python scripts/import_accelerator_residents.py --manifest /tmp/pitchy-resident-import/manifest.json --cohort-id "$COHORT_ID" --actor-id "$ACTOR_ID"
+            docker compose exec -T backend python scripts/import_accelerator_residents.py --manifest /tmp/pitchy-resident-import/manifest.json --cohort-id "$COHORT_ID" --actor-id "$ACTOR_ID" < /dev/null
           elif [ "$MODE" = apply ]; then
             # Fail closed if the pre-import backup cannot be produced or read.
             backup="backups/before_mtusi_residents_$(date -u +%Y%m%d_%H%M%S).sql.gz"
             mkdir -p backups
-            docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB"' | gzip > "$backup"
+            docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < /dev/null | gzip > "$backup"
             gzip -t "$backup"
-            docker compose exec -T backend python scripts/import_accelerator_residents.py --manifest /tmp/pitchy-resident-import/manifest.json --cohort-id "$COHORT_ID" --actor-id "$ACTOR_ID" --apply --credentials /tmp/pitchy-resident-import/credentials.enc.json --export-public-key /tmp/pitchy-resident-import/export-public.pem
-            if docker compose exec -T backend test -f /tmp/pitchy-resident-import/credentials.enc.json; then
-              docker compose cp backend:/tmp/pitchy-resident-import/credentials.enc.json private_imports/mtusi-2026/credentials.enc.json
+            docker compose exec -T backend python scripts/import_accelerator_residents.py --manifest /tmp/pitchy-resident-import/manifest.json --cohort-id "$COHORT_ID" --actor-id "$ACTOR_ID" --apply --credentials /tmp/pitchy-resident-import/credentials.enc.json --export-public-key /tmp/pitchy-resident-import/export-public.pem < /dev/null
+            if docker compose exec -T backend test -f /tmp/pitchy-resident-import/credentials.enc.json < /dev/null; then
+              docker compose cp backend:/tmp/pitchy-resident-import/credentials.enc.json private_imports/mtusi-2026/credentials.enc.json < /dev/null
             else
               test -s private_imports/mtusi-2026/credentials.enc.json
             fi
             chmod 600 private_imports/mtusi-2026/credentials.enc.json
           fi
           if [ "$MODE" = apply ] || [ "$MODE" = verify ]; then
-            docker compose exec -T backend python scripts/verify_accelerator_resident_import.py --manifest /tmp/pitchy-resident-import/manifest.json --cohort-id "$COHORT_ID"
+            docker compose exec -T backend python scripts/verify_accelerator_resident_import.py --manifest /tmp/pitchy-resident-import/manifest.json --cohort-id "$COHORT_ID" < /dev/null
           fi
           REMOTE
           if [ "$MODE" = apply ]; then
