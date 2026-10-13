@@ -21,6 +21,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 import passport as passport_lib
 from models import Project, ProjectMemory
+from project_access import project_access_condition
 
 logger = logging.getLogger("app")
 
@@ -36,6 +37,8 @@ async def load_project_context(
     project_id: int,
     query: str = "",
     max_facts: int = 8,
+    *,
+    user_id: int,
 ) -> str:
     """Собирает пассивный контекст папки для подмешивания в промпт чата.
 
@@ -43,7 +46,7 @@ async def load_project_context(
     max_facts релевантных/свежих фактов. Релевантность — лёгкая: факты,
     делящие слова с запросом, идут первыми; остальное добивается свежими.
     """
-    res = await db.execute(select(Project).where(Project.id == project_id))
+    res = await db.execute(select(Project).where(Project.id == project_id, project_access_condition(user_id)))
     project = res.scalar_one_or_none()
     if not project:
         return ""
@@ -79,7 +82,7 @@ async def load_project_context(
     return "\n\n".join(parts)
 
 
-async def load_project_brief(db: AsyncSession, project_id: int) -> str:
+async def load_project_brief(db: AsyncSession, project_id: int, *, user_id: int) -> str:
     """Одна строка о проекте — для справочных ответов (режим fact).
 
     Полный дамп паспорта в справочном вопросе вреден: модель начинает
@@ -87,7 +90,7 @@ async def load_project_brief(db: AsyncSession, project_id: int) -> str:
     пользователя полезно — можно привязать ответ к его рынку, если он
     сформулировал вопрос неточно. Поэтому здесь только сфера и аудитория.
     """
-    res = await db.execute(select(Project).where(Project.id == project_id))
+    res = await db.execute(select(Project).where(Project.id == project_id, project_access_condition(user_id)))
     project = res.scalar_one_or_none()
     if not project:
         return ""
@@ -121,12 +124,18 @@ async def extract_and_store_facts(
     user_text: str,
     assistant_text: str,
     source_session_id: int | None = None,
+    user_id: int | None = None,
 ) -> None:
     """Фоновая задача: извлечь факты из обмена репликами и сохранить их +
     дозаполнить паспорт. Открывает собственную сессию БД, т.к. запросная к
     моменту вызова уже закрыта."""
-    if not user_text or not assistant_text:
+    if not user_text or not assistant_text or user_id is None:
         return
+    from db_async import AsyncSessionLocal
+    async with AsyncSessionLocal() as permission_db:
+        allowed = (await permission_db.execute(select(Project.id).where(Project.id == project_id, project_access_condition(user_id)))).scalar_one_or_none()
+        if allowed is None:
+            return
     try:
         from slm_dispatcher import slm_dispatcher
         extracted = await slm_dispatcher.extract_project_facts(user_text, assistant_text)
@@ -143,7 +152,8 @@ async def extract_and_store_facts(
 
     try:
         async with AsyncSessionLocal() as db:
-            res = await db.execute(select(Project).where(Project.id == project_id))
+            # Recheck after extraction: a member can leave while the model runs.
+            res = await db.execute(select(Project).where(Project.id == project_id, project_access_condition(user_id)))
             project = res.scalar_one_or_none()
             if not project:
                 return
@@ -170,6 +180,8 @@ async def extract_and_store_facts(
                 project.passport = merged
                 project.readiness_index = passport_lib.compute_readiness(merged)
                 flag_modified(project, "passport")
+                from project_breakdown import sync_project_breakdown
+                await sync_project_breakdown(db, project)
 
             await db.commit()
             logger.info(

@@ -228,12 +228,16 @@ async def test_shared_passport_access_sync_and_excluded_members():
             with pytest.raises(HTTPException): await get_accessible_project(db, project.id, outsider)
             with pytest.raises(HTTPException): await get_accessible_project(db, project.id, member, owner_only=True)
             tree = (await db.execute(select(ProjectTree).where(ProjectTree.project_id == project.id))).scalar_one()
+            from project_memory_service import load_project_context, load_project_brief
+            assert await load_project_context(db, project.id, user_id=member.id)
             await save_breakdown_fields(db, tree, "problem", {"core.problem": "Новая проблема"})
             assert project.passport["core"]["problem"] == "Новая проблема"
             assert tree.tree_data["nodes"][1]["data"]["form_data"]["core.problem"] == "Новая проблема"
             membership = await db.get(AcceleratorMembership, result["memberships"][member.username])
             membership.status = "suspended"; await db.flush()
             with pytest.raises(HTTPException): await get_accessible_project(db, project.id, member)
+            assert not await load_project_context(db, project.id, user_id=member.id)
+            assert not await load_project_brief(db, project.id, user_id=member.id)
             membership.status = "enrolled"
             team_member = (await db.execute(select(AcceleratorTeamMember).where(AcceleratorTeamMember.membership_id == membership.id))).scalar_one()
             team_member.status = "left"; await db.flush()

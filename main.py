@@ -5219,11 +5219,11 @@ async def send_chat_message(
                 try:
                     if chat_mode == "fact":
                         from project_memory_service import load_project_brief
-                        project_ctx = await load_project_brief(db, session.project_id)
+                        project_ctx = await load_project_brief(db, session.project_id, user_id=user.id)
                     else:
                         from project_memory_service import load_project_context
                         project_ctx = await load_project_context(
-                            db, session.project_id, query=query_text
+                            db, session.project_id, query=query_text, user_id=user.id
                         )
                 except Exception as e:
                     logger.warning(f"load project context failed: {e}")
@@ -5615,6 +5615,7 @@ Never print raw URLs, scraped navigation, long date sequences, or a
                         user_text=stored_content,
                         assistant_text=full_response,
                         source_session_id=session.id,
+                        user_id=user.id,
                     ))
                 except Exception as e:
                     logger.warning(f"schedule project memory extraction failed: {e}")
