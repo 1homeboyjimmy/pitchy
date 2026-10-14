@@ -11,9 +11,11 @@ async def run(args):
     from sqlalchemy import select, func, or_
     from db_async import AsyncSessionLocal
     from models import User, Project, AcceleratorMembership, AcceleratorParticipantProfile, AcceleratorTeam, AcceleratorTeamMember
-    from login_identity import normalize_username
+    from login_identity import normalize_username, normalize_import_identity
     from credential_export import encrypt_export
-    names = sorted({normalize_username(value) for value in json.loads(Path(args.usernames).read_text())})
+    identities = sorted({normalize_import_identity(value) for value in json.loads(Path(args.usernames).read_text())})
+    names = [value for value in identities if '@' not in value]
+    emails = [value for value in identities if '@' in value]
     aliases = names + ['@' + value for value in names]
     async with AsyncSessionLocal() as db:
         profiles = (await db.execute(select(AcceleratorParticipantProfile, AcceleratorMembership).join(
@@ -23,11 +25,13 @@ async def run(args):
         for profile, membership in profiles:
             name = normalize_username(profile.profile['telegram'])
             profile_names.setdefault(membership.user_id, set()).add(name)
-        users = (await db.execute(select(User).where(or_(User.username.in_(names),
+        users = (await db.execute(select(User).where(or_(User.username.in_(names), func.lower(User.email).in_(emails),
             func.lower(func.trim(User.name)).in_(['@' + name for name in names]), User.id.in_(profile_names))))).scalars().all()
         output = []
         for user in users:
             matches = []
+            if (user.email or '').lower() in emails:
+                matches.append({'username':user.email.lower(),'source':'email'})
             if user.username in names:
                 matches.append({'username': user.username, 'source': 'username'})
             for name in sorted(profile_names.get(user.id, set())):
@@ -47,9 +51,9 @@ async def run(args):
                 'email_present': bool(user.email), 'local_login_enabled': user.local_login_enabled,
                 'memberships': [{'id': row.id, 'cohort_id': row.cohort_id, 'role': row.role, 'status': row.status, 'project_id': row.project_id} for row in memberships],
                 'projects': [{'id': row.id, 'owner_id': row.user_id, 'name': row.name, 'status': row.status, 'passport': row.passport} for row in projects]})
-        encrypted = encrypt_export({'requested_usernames': names, 'accounts': output}, Path(args.public_key).read_text())
+        encrypted = encrypt_export({'requested_usernames': identities, 'accounts': output}, Path(args.public_key).read_text())
         Path(args.output).write_text(json.dumps(encrypted), encoding='utf-8')
-        print(json.dumps({'requested': len(names), 'matching_accounts': len(output), 'encrypted_export': True}))
+        print(json.dumps({'requested': len(identities), 'matching_accounts': len(output), 'encrypted_export': True}))
 
 
 if __name__ == '__main__':

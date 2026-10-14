@@ -458,3 +458,57 @@ async def test_captain_transfer_moves_all_passports_shared_with_the_whole_team()
         old_member.status='left';await db.flush()
         for project_id in result['projects_by_key'].values():
             with pytest.raises(HTTPException): await get_accessible_project(db,project_id,owner)
+
+
+@pytest.mark.asyncio
+async def test_explicit_email_resident_login_and_profile_without_fake_telegram():
+    from models import AcceleratorParticipantProfile
+    from routers.auth import login
+    from schemas.base import LoginRequest
+    from starlette.requests import Request
+    from fastapi import Response
+    data=manifest_data(False)
+    email='resident.'+uuid.uuid4().hex[:12]+'@example.com'
+    data['participants'][0]['username']=email.upper()
+    data['projects'][0].update(owner=email,members=[email])
+    data['projects'][0].update(name='Будущий проект',fields={},field_sources={},source_descriptions=[],placeholder=True)
+    manifest=ResidentImportManifest.model_validate(data)
+    request=Request({'type':'http','headers':[],'client':('127.0.0.1',1000)})
+    mock_main=SimpleNamespace(_check_rate_limit=lambda ip:None,get_client_ip=lambda request:'127.0.0.1')
+    async with AsyncSessionLocal() as db:
+        actor,cohort=await seed(db)
+        result,credentials=await import_residents(db,cohort_id=cohort.id,actor=actor,manifest=manifest,dry_run=False)
+        await db.commit()
+        user=await db.get(User,result['users'][email])
+        assert user.email==email and user.username is None and not user.email_verified and user.local_login_enabled
+        assert credentials[0]['username']==email and verify_password(credentials[0]['password'],user.password_hash)
+        profile=(await db.execute(select(AcceleratorParticipantProfile).where(
+            AcceleratorParticipantProfile.membership_id==result['memberships'][email]))).scalar_one()
+        assert profile.profile['email']==email and 'telegram' not in profile.profile
+        with patch.dict(sys.modules,{'main':mock_main}):
+            assert (await login(LoginRequest(email=email.upper(),password=credentials[0]['password']),request,Response(),db)).access_token
+
+
+@pytest.mark.asyncio
+async def test_existing_email_account_keeps_telegram_alias_and_password():
+    data=manifest_data(False)
+    email='existing.'+uuid.uuid4().hex[:12]+'@example.com'
+    alias='u'+uuid.uuid4().hex[:12]
+    data['participants'][0]['username']=email
+    data['projects'][0].update(owner=email,members=[email])
+    async with AsyncSessionLocal() as db:
+        actor,cohort=await seed(db)
+        existing=User(email=email.upper(),username=alias,name='Existing',password_hash=hash_password('Existing123!'),is_active=True,email_verified=True)
+        db.add(existing);await db.flush()
+        before=existing.password_hash
+        result,credentials=await import_residents(db,cohort_id=cohort.id,actor=actor,manifest=ResidentImportManifest.model_validate(data),dry_run=False)
+        assert not credentials and result['users'][email]==existing.id
+        assert existing.username==alias and existing.password_hash==before and existing.email==email.upper()
+
+
+def test_email_import_does_not_accept_invalid_telegram_or_email():
+    from login_identity import normalize_import_identity
+    assert normalize_import_identity(' Resident@Example.COM ')=='resident@example.com'
+    assert normalize_import_identity(' @Mixed_User ')=='mixed_user'
+    for value in ['@invalid.nick','123456789','bad@','user@example']:
+        with pytest.raises(ValueError): normalize_import_identity(value)

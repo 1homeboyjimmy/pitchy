@@ -9,11 +9,11 @@ import string
 
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from accelerator_service import add_audit, assign_quota_override, require_cohort_manager, normalize_resident_limits
 from auth import hash_password
-from login_identity import normalize_username
+from login_identity import normalize_import_identity
 from models import (AcceleratorCohort, AcceleratorMembership, AcceleratorMembershipEvent,
                     AcceleratorParticipantProfile, AcceleratorProgramConfig, AcceleratorResidentImport,
                     AcceleratorTeam, AcceleratorTeamMember, AcceleratorProjectMember, Project, ProjectTree, User)
@@ -57,7 +57,7 @@ class ResidentImportManifest(BaseModel):
 
     @model_validator(mode="after")
     def validate_topology(self):
-        usernames = [normalize_username(row.username) for row in self.participants]
+        usernames = [normalize_import_identity(row.username) for row in self.participants]
         if len(set(usernames)) != len(usernames):
             raise ValueError("Повторный Telegram-ник в пакете")
         participant_map = dict(zip(usernames, self.participants))
@@ -72,13 +72,13 @@ class ResidentImportManifest(BaseModel):
         allowed |= {field["path"] for field in roadmap_service.all_field_definitions()}
         list_paths = {field["path"] for field in passport_lib.PASSPORT_FIELDS if field.get("list")}
         for project in self.projects:
-            project.owner = normalize_username(project.owner)
-            project.members = [normalize_username(name) for name in project.members]
+            project.owner = normalize_import_identity(project.owner)
+            project.members = [normalize_import_identity(name) for name in project.members]
             if len(set(project.members)) != len(project.members) or project.owner not in project.members:
                 raise ValueError("Некорректный состав или капитан проекта")
             if not set(project.members).issubset(participant_map):
                 raise ValueError("Участник проекта отсутствует в пакете")
-            project.append_team_members = [normalize_username(name) for name in project.append_team_members]
+            project.append_team_members = [normalize_import_identity(name) for name in project.append_team_members]
             if not set(project.append_team_members).issubset(project.members) or (project.append_team_members and project.existing_project_id is None):
                 raise ValueError("Дополнение состава допустимо только для проверенного существующего проекта")
             if not project.reviewed or not set(project.fields).issubset(allowed):
@@ -155,10 +155,13 @@ async def import_residents(db, *, cohort_id: int, actor: User, manifest: Residen
     users = {}
     reused_memberships = {}
     for row in manifest.participants:
-        user = (await db.execute(select(User).where(User.username == row.username).with_for_update())).scalar_one_or_none()
+        email_login = '@' in row.username
+        identity_condition = func.lower(User.email) == row.username if email_login else User.username == row.username
+        user = (await db.execute(select(User).where(identity_condition).with_for_update())).scalar_one_or_none()
         if row.existing_user_id is not None:
             mapped_user = await db.get(User, row.existing_user_id)
-            if not mapped_user or (user and mapped_user.id != user.id) or mapped_user.username not in (None, row.username):
+            mapped_identity_matches = mapped_user and ((mapped_user.email or '').lower() == row.username if email_login else mapped_user.username in (None, row.username))
+            if not mapped_identity_matches or (user and mapped_user.id != user.id):
                 raise HTTPException(409, "Конфликт существующего аккаунта и логина")
             user = mapped_user
         if user:
@@ -240,14 +243,17 @@ async def import_residents(db, *, cohort_id: int, actor: User, manifest: Residen
             while password in passwords:
                 password = generate_password()
             passwords.add(password)
-            user = User(email=None, username=row.username, name="@" + row.username, password_hash=hash_password(password),
+            email_login = '@' in row.username
+            user = User(email=row.username if email_login else None, username=None if email_login else row.username,
+                        name=row.username if email_login else "@" + row.username, password_hash=hash_password(password),
                         email_verified=False, local_login_enabled=True, is_active=True)
             db.add(user)
             await db.flush()
             users[row.username] = user
             credentials.append({"username": row.username, "password": password})
         else:
-            user.username = row.username
+            if '@' not in row.username:
+                user.username = row.username
             user.local_login_enabled = True
     projects = {}
     for spec in manifest.projects:
@@ -281,8 +287,9 @@ async def import_residents(db, *, cohort_id: int, actor: User, manifest: Residen
         memberships[row.username] = membership
         db.add(AcceleratorMembershipEvent(membership_id=membership.id, from_status=None, to_status="enrolled",
                                          actor_user_id=actor.id, reason=membership.status_reason))
+        contact = {'email':row.username} if '@' in row.username else {'telegram':'@' + row.username}
         db.add(AcceleratorParticipantProfile(membership_id=membership.id,
-            profile={"telegram": "@" + row.username, "preferred_role": row.preferred_role, "source_rows": row.source_rows,
+            profile={**contact, "preferred_role": row.preferred_role, "source_rows": row.source_rows,
                      "import_batch": manifest.batch_key}, visibility={"organizer": True, "mentor": False, "public": False}))
         if cohort.default_quota_config:
             await assign_quota_override(db, membership=membership, source="cohort", limits=cohort.default_quota_config,

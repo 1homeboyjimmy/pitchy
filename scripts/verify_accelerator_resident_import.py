@@ -22,7 +22,8 @@ async def run(args):
         result = batch.result
         for row in manifest.participants:
             user = await db.get(User, result["users"][row.username])
-            assert user.username == row.username and user.password_hash and user.is_active and user.local_login_enabled
+            assert ((user.email or '').lower() == row.username if '@' in row.username else user.username == row.username)
+            assert user.password_hash and user.is_active and user.local_login_enabled
             membership = await db.get(AcceleratorMembership, result["memberships"][row.username])
             assert membership.user_id == user.id and membership.cohort_id == args.cohort_id
             assert membership.status == "enrolled" and membership.application_id is None
