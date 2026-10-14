@@ -753,13 +753,25 @@ async def transfer_team_captain(
     team.owner_membership_id = target.membership_id
     # Imported team projects follow the captain so a former member cannot
     # retain owner access after leaving the team.
-    from models import ProjectTree
-    tree = (await db.execute(select(ProjectTree).where(ProjectTree.project_id == team.project_id))).scalar_one_or_none() if team.project_id else None
-    if tree:
-        project = await db.get(Project, team.project_id)
-        target_membership = await db.get(AcceleratorMembership, target.membership_id)
-        project.user_id = target_membership.user_id
-        tree.user_id = target_membership.user_id
+    from models import ProjectTree, AcceleratorProjectMember
+    related_ids = set((await db.execute(select(AcceleratorProjectMember.project_id).where(
+        AcceleratorProjectMember.team_id == team.id, AcceleratorProjectMember.status == 'active'))).scalars().all())
+    if team.project_id:
+        related_ids.add(team.project_id)
+    target_membership = await db.get(AcceleratorMembership, target.membership_id)
+    for project_id in related_ids:
+        # A secondary passport may be shared with only a subset of the team.
+        if project_id != team.project_id:
+            target_grant = (await db.execute(select(AcceleratorProjectMember.id).where(
+                AcceleratorProjectMember.project_id == project_id, AcceleratorProjectMember.membership_id == target.membership_id,
+                AcceleratorProjectMember.team_id == team.id, AcceleratorProjectMember.status == 'active'))).scalar_one_or_none()
+            if target_grant is None:
+                raise HTTPException(409, 'Новый капитан должен иметь доступ ко всем связанным паспортам; сначала уточните состав проектов')
+        tree = (await db.execute(select(ProjectTree).where(ProjectTree.project_id == project_id))).scalar_one_or_none()
+        project = await db.get(Project, project_id)
+        if tree and project and project.user_id == old_owner.user_id:
+            project.user_id = target_membership.user_id
+            tree.user_id = target_membership.user_id
     add_audit(db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id, actor_user_id=user.id,
               action="team.captain_transferred", target_type="team", target_id=team.id,
               details={"from_membership_id": old_owner.id, "to_membership_id": target.membership_id})

@@ -38,6 +38,9 @@ jobs:
           VPS_USER: ${{ secrets.VPS_USER }}
           VPS_SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
           IMPORT_PAYLOAD: ${{ secrets.MTUSI_RESIDENT_IMPORT_PAYLOAD }}
+          IMPORT_PAYLOAD_2: ${{ secrets.MTUSI_RESIDENT_IMPORT_PAYLOAD_2 }}
+          IMPORT_PAYLOAD_3: ${{ secrets.MTUSI_RESIDENT_IMPORT_PAYLOAD_3 }}
+          IMPORT_PAYLOAD_4: ${{ secrets.MTUSI_RESIDENT_IMPORT_PAYLOAD_4 }}
           MODE: ${{ inputs.mode }}
           COHORT_ID: ${{ inputs.cohort_id }}
           ACTOR_ID: ${{ inputs.actor_id }}
@@ -53,7 +56,7 @@ jobs:
           chmod 600 ~/.ssh/resident_import_key
           trap 'rm -f ~/.ssh/resident_import_key payload.json' EXIT
           ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
-          printf '%s' "$IMPORT_PAYLOAD" > payload.json
+          printf '%s%s%s%s' "$IMPORT_PAYLOAD" "$IMPORT_PAYLOAD_2" "$IMPORT_PAYLOAD_3" "$IMPORT_PAYLOAD_4" > payload.json
           chmod 600 payload.json
           ssh -i ~/.ssh/resident_import_key -o StrictHostKeyChecking=yes "$VPS_USER@$VPS_HOST" "umask 077; mkdir -p /opt/ai-startup/private_imports/$BATCH_KEY"
           if [ "$MODE" != inspect ]; then

@@ -1,11 +1,11 @@
 """Project contents are shared only with active, enrolled team members."""
 from fastapi import HTTPException
-from sqlalchemy import or_, select
-from models import AcceleratorCohort, AcceleratorMembership, AcceleratorTeam, AcceleratorTeamMember, Project
+from sqlalchemy import and_, or_, select
+from models import AcceleratorCohort, AcceleratorMembership, AcceleratorTeam, AcceleratorTeamMember, AcceleratorProjectMember, Project
 
 
-def shared_project_ids(user_id):
-    return (
+def shared_project_ids(user_id, cohort_id=None):
+    primary = (
         select(AcceleratorTeam.project_id)
         .join(AcceleratorTeamMember, AcceleratorTeamMember.team_id == AcceleratorTeam.id)
         .join(AcceleratorMembership, AcceleratorMembership.id == AcceleratorTeamMember.membership_id)
@@ -21,6 +21,22 @@ def shared_project_ids(user_id):
             AcceleratorCohort.status.not_in(["completed", "archived"]),
         )
     )
+    if cohort_id is not None:
+        primary = primary.where(AcceleratorCohort.id == cohort_id)
+    explicit = (select(AcceleratorProjectMember.project_id)
+        .join(AcceleratorMembership, AcceleratorMembership.id == AcceleratorProjectMember.membership_id)
+        .join(AcceleratorCohort, AcceleratorCohort.id == AcceleratorMembership.cohort_id)
+        .outerjoin(AcceleratorTeam, AcceleratorTeam.id == AcceleratorProjectMember.team_id)
+        .outerjoin(AcceleratorTeamMember, and_(AcceleratorTeamMember.team_id == AcceleratorProjectMember.team_id,
+            AcceleratorTeamMember.membership_id == AcceleratorMembership.id, AcceleratorTeamMember.status == 'active'))
+        .where(AcceleratorProjectMember.status == 'active', AcceleratorMembership.user_id == user_id,
+            AcceleratorMembership.role == 'resident', AcceleratorMembership.status == 'enrolled',
+            AcceleratorCohort.status.not_in(['completed','archived']),
+            or_(AcceleratorProjectMember.team_id.is_(None), and_(AcceleratorTeam.status == 'active',
+                AcceleratorTeam.cohort_id == AcceleratorCohort.id, AcceleratorTeamMember.id.is_not(None)))))
+    if cohort_id is not None:
+        explicit = explicit.where(AcceleratorCohort.id == cohort_id)
+    return primary.union(explicit)
 
 
 def project_access_condition(user_id):

@@ -844,6 +844,19 @@ class AcceleratorTeam(Base):
     )
 
 
+class AcceleratorProjectMember(Base):
+    """Explicit access to an imported shared passport, including secondary ideas."""
+    __tablename__ = "accelerator_project_members"
+    __table_args__ = (UniqueConstraint("membership_id", "project_id", name="uq_accelerator_project_member"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    membership_id: Mapped[int] = mapped_column(ForeignKey("accelerator_memberships.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    team_id: Mapped[int | None] = mapped_column(ForeignKey("accelerator_teams.id", ondelete="CASCADE"), nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(20), default="active", server_default="active")
+    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class AcceleratorTeamTrackerAssignment(Base):
     """One tracker responsible for the whole active team."""
 

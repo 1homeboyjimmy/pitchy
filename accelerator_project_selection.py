@@ -1,9 +1,8 @@
 """Residents can choose among their personal projects without altering history."""
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from pydantic import BaseModel
 from accelerator_service import add_audit
-from accelerator_team_service import active_team_member
 from models import AcceleratorCohort, AcceleratorMembership, Project
 
 
@@ -25,18 +24,18 @@ async def selection_context(db, membership_id, user):
 
 
 async def project_options(db, membership_id, user):
-    membership, _ = await selection_context(db, membership_id, user)
-    if await active_team_member(db, membership.id):
-        return {"project_id": membership.project_id, "projects": []}
-    projects = (await db.execute(select(Project).where(Project.user_id == user.id, Project.status == "active").order_by(Project.id))).scalars().all()
+    membership, cohort = await selection_context(db, membership_id, user)
+    from project_access import shared_project_ids
+    projects = (await db.execute(select(Project).where(or_(Project.user_id == user.id,
+        Project.id.in_(shared_project_ids(user.id, cohort.id))), Project.status == "active").order_by(Project.id))).scalars().all()
     return {"project_id": membership.project_id, "projects": [{"id": project.id, "name": project.name} for project in projects]}
 
 
 async def select_project(db, membership_id, user, project_id):
     membership, cohort = await selection_context(db, membership_id, user)
-    if await active_team_member(db, membership.id, lock=True):
-        raise HTTPException(409, "Общий проект меняется через управление командой")
-    project = (await db.execute(select(Project).where(Project.id == project_id, Project.user_id == user.id, Project.status == "active"))).scalar_one_or_none()
+    from project_access import shared_project_ids
+    project = (await db.execute(select(Project).where(Project.id == project_id,
+        or_(Project.user_id == user.id, Project.id.in_(shared_project_ids(user.id, cohort.id))), Project.status == "active"))).scalar_one_or_none()
     if not project:
         raise HTTPException(404, "Проект не найден")
     previous = membership.project_id

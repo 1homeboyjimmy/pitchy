@@ -345,3 +345,116 @@ async def test_personal_project_selection_and_team_boundary():
             assert (await select_project(db, membership_id, user, extra.id))["project_id"] == extra.id
             with pytest.raises(HTTPException): await select_project(db, membership_id, user, foreign.id)
             assert await db.get(Project, result["projects_by_key"]["first"])
+
+
+@pytest.mark.asyncio
+async def test_expanded_import_reuses_accounts_passports_and_memberships_with_scoped_secondary_access():
+    from copy import deepcopy
+    from models import AcceleratorProjectMember, AcceleratorResidentQuotaOverride
+    from project_access import get_accessible_project
+    from project_breakdown import sync_project_breakdown
+    original_data = manifest_data()
+    first_name, peer_name = [row['username'] for row in original_data['participants']]
+    secondary = deepcopy(original_data['projects'][0])
+    secondary.update(key='second', name='Вторая идея', owner=first_name, members=[first_name])
+    secondary['fields']['core.name'] = 'Вторая идея'
+    original_data['projects'].append(secondary)
+    async with AsyncSessionLocal() as db:
+        actor, cohort = await seed(db)
+        original, credentials = await import_residents(db, cohort_id=cohort.id, actor=actor,
+            manifest=ResidentImportManifest.model_validate(original_data), dry_run=False)
+        await db.commit()
+        owner = await db.get(User, original['users'][first_name])
+        peer = await db.get(User, original['users'][peer_name])
+        old_hash = owner.password_hash
+        first = await db.get(Project, original['projects_by_key']['first'])
+        import passport as plib
+        first.passport = plib.merge_patch(first.passport, {'core.problem':'Ручная правка'}, source='manual')
+        await sync_project_breakdown(db, first)
+        await db.commit()
+        expanded = deepcopy(original_data)
+        expanded['batch_key'] = uuid.uuid4().hex
+        extra_name = 'u' + uuid.uuid4().hex[:14]
+        expanded['participants'].append({'username':extra_name,'source_rows':[4],'primary_project':'third'})
+        for row in expanded['participants'][:2]:
+            row.update(existing_user_id=original['users'][row['username']],existing_membership_id=original['memberships'][row['username']])
+        expanded['projects'][0].update(existing_project_id=first.id)
+        expanded['projects'][0]['fields']['core.problem']='Ручная правка'
+        expanded['projects'][1].update(existing_project_id=original['projects_by_key']['second'],members=[first_name,peer_name],secondary_shared=True)
+        third = deepcopy(original_data['projects'][0])
+        third.update(key='third',name='Общий дополнительный',owner=extra_name,members=[first_name,extra_name],secondary_shared=True)
+        third['fields']['core.name']='Общий дополнительный'
+        third['source_descriptions']=[{'row':4,'text':'Общий дополнительный проект'}]
+        third['field_sources']={path:[4] for path in third['fields']}
+        expanded['projects'].append(third)
+        manifest = ResidentImportManifest.model_validate(expanded)
+        preview, empty = await import_residents(db,cohort_id=cohort.id,actor=actor,manifest=manifest)
+        assert not empty and preview['new_accounts']==1 and preview['reused_projects']==2
+        result, new_credentials = await import_residents(db,cohort_id=cohort.id,actor=actor,manifest=manifest,dry_run=False)
+        await db.commit()
+        assert len(new_credentials)==1 and owner.password_hash==old_hash
+        assert first.passport['core']['problem']=='Ручная правка'
+        assert result['memberships'][first_name]==original['memberships'][first_name]
+        quota_count = (await db.execute(select(func.count()).select_from(AcceleratorResidentQuotaOverride).where(
+            AcceleratorResidentQuotaOverride.membership_id==original['memberships'][first_name]))).scalar_one()
+        assert quota_count==1
+        second_id=result['projects_by_key']['second']; third_id=result['projects_by_key']['third']
+        assert await get_accessible_project(db,second_id,peer)
+        with pytest.raises(HTTPException): await get_accessible_project(db,third_id,peer)
+        assert len((await project_options(db,original['memberships'][peer_name],peer))['projects'])==2
+        await select_project(db,original['memberships'][peer_name],peer,second_id)
+        assert await get_accessible_project(db,first.id,peer)
+        assert await get_accessible_project(db,second_id,peer)
+        membership=await db.get(AcceleratorMembership,original['memberships'][peer_name])
+        membership.status='suspended'; await db.flush()
+        with pytest.raises(HTTPException): await get_accessible_project(db,second_id,peer)
+        membership.status='enrolled'
+        team_member=(await db.execute(select(AcceleratorTeamMember).where(
+            AcceleratorTeamMember.membership_id==membership.id,AcceleratorTeamMember.status=='active'))).scalar_one()
+        team_member.status='left'; await db.flush()
+        with pytest.raises(HTTPException): await get_accessible_project(db,second_id,peer)
+
+
+@pytest.mark.asyncio
+async def test_reused_passport_preflight_rejects_changed_snapshot_without_new_accounts():
+    from copy import deepcopy
+    data = manifest_data(False)
+    async with AsyncSessionLocal() as db:
+        actor, cohort = await seed(db)
+        original, _ = await import_residents(db,cohort_id=cohort.id,actor=actor,manifest=ResidentImportManifest.model_validate(data),dry_run=False)
+        await db.commit()
+        name=data['participants'][0]['username']
+        expanded=deepcopy(data); expanded['batch_key']=uuid.uuid4().hex
+        expanded['participants'][0].update(existing_user_id=original['users'][name],existing_membership_id=original['memberships'][name])
+        expanded['projects'][0]['existing_project_id']=original['projects_by_key']['first']
+        expanded['projects'][0]['fields']['core.problem']='Другие данные после сверки'
+        with pytest.raises(HTTPException) as error:
+            await import_residents(db,cohort_id=cohort.id,actor=actor,manifest=ResidentImportManifest.model_validate(expanded),dry_run=False)
+        assert error.value.status_code==409
+
+
+@pytest.mark.asyncio
+async def test_captain_transfer_moves_all_passports_shared_with_the_whole_team():
+    from routers.accelerator_teams import transfer_team_captain
+    from schemas.accelerator_teams import AcceleratorTeamCaptainTransfer
+    from copy import deepcopy
+    data=manifest_data()
+    secondary=deepcopy(data['projects'][0])
+    secondary.update(key='second',name='Общий второй паспорт',secondary_shared=True)
+    secondary['fields']['core.name']='Общий второй паспорт'
+    data['projects'].append(secondary)
+    async with AsyncSessionLocal() as db:
+        actor,cohort=await seed(db)
+        result,_=await import_residents(db,cohort_id=cohort.id,actor=actor,manifest=ResidentImportManifest.model_validate(data),dry_run=False)
+        await db.commit()
+        owner_name,peer_name=[p['username'] for p in data['participants']]
+        owner=await db.get(User,result['users'][owner_name]);peer=await db.get(User,result['users'][peer_name])
+        await transfer_team_captain(result['team_ids'][0],AcceleratorTeamCaptainTransfer(membership_id=result['memberships'][peer_name]),owner,db)
+        for project_id in result['projects_by_key'].values():
+            project=await db.get(Project,project_id)
+            tree=(await db.execute(select(ProjectTree).where(ProjectTree.project_id==project_id))).scalar_one()
+            assert project.user_id==peer.id and tree.user_id==peer.id
+        old_member=(await db.execute(select(AcceleratorTeamMember).where(AcceleratorTeamMember.membership_id==result['memberships'][owner_name]))).scalar_one()
+        old_member.status='left';await db.flush()
+        for project_id in result['projects_by_key'].values():
+            with pytest.raises(HTTPException): await get_accessible_project(db,project_id,owner)

@@ -40,8 +40,9 @@ async def run(args):
             assert tree.tree_data == build_breakdown(project.passport)
             import passport as passport_lib
             for path, value in spec.fields.items():
-                assert passport_lib._get_path(project.passport, path) == value
-            if len(spec.members) > 1:
+                expected = value + ['@' + name + ' — участник проекта' for name in spec.append_team_members] if path == 'team' and spec.append_team_members else value
+                assert passport_lib._get_path(project.passport, path) == expected
+            if len(spec.members) > 1 and not spec.secondary_shared:
                 team = (await db.execute(select(AcceleratorTeam).where(AcceleratorTeam.project_id == project.id,
                     AcceleratorTeam.cohort_id == args.cohort_id, AcceleratorTeam.status == "active"))).scalar_one()
                 members = (await db.execute(select(AcceleratorTeamMember).where(AcceleratorTeamMember.team_id == team.id,
