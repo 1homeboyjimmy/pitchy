@@ -40,7 +40,7 @@ async def run(args):
             shared = (await db.execute(select(AcceleratorTeam.project_id).join(AcceleratorTeamMember,
                 AcceleratorTeamMember.team_id == AcceleratorTeam.id).join(AcceleratorMembership,
                 AcceleratorMembership.id == AcceleratorTeamMember.membership_id).where(AcceleratorMembership.user_id == user.id,
-                    AcceleratorTeam.status == 'active', AcceleratorTeamMember.status == 'active')))).scalars().all()
+                    AcceleratorTeam.status == 'active', AcceleratorTeamMember.status == 'active'))).scalars().all()
             projects = (await db.execute(select(Project).where(or_(Project.user_id == user.id, Project.id.in_(shared))))).scalars().all()
             output.append({'id': user.id, 'username': user.username, 'matches': matches,
                 'active': user.is_active, 'deleted': user.deleted_at is not None, 'has_password': bool(user.password_hash),
