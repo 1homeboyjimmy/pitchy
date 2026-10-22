@@ -1,0 +1,85 @@
+name: Provision standalone accounts
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Preview or create platform accounts without accelerator enrollment
+        type: choice
+        options: [preview, apply]
+        default: preview
+      batch_key:
+        description: Private operation directory
+        required: true
+      actor_id:
+        description: Active platform administrator ID
+        required: true
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  accounts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Provision platform users only
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+          ACCOUNT_PAYLOAD: ${{ secrets.STANDALONE_ACCOUNT_PAYLOAD }}
+          MODE: ${{ inputs.mode }}
+          BATCH_KEY: ${{ inputs.batch_key }}
+          ACTOR_ID: ${{ inputs.actor_id }}
+        run: |
+          set -euo pipefail
+          [[ "$MODE" =~ ^(preview|apply)$ ]]
+          [[ "$BATCH_KEY" =~ ^[a-z0-9][a-z0-9-]{0,99}$ ]]
+          [[ "$ACTOR_ID" =~ ^[0-9]+$ ]]
+          umask 077
+          mkdir -p ~/.ssh
+          printf '%s\n' "$VPS_SSH_PRIVATE_KEY" > ~/.ssh/standalone_key
+          trap 'rm -f ~/.ssh/standalone_key payload.json' EXIT
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          printf '%s' "$ACCOUNT_PAYLOAD" > payload.json
+          test -s payload.json
+          ssh -i ~/.ssh/standalone_key -o StrictHostKeyChecking=yes "$VPS_USER@$VPS_HOST" "umask 077; mkdir -p /opt/ai-startup/private_imports/$BATCH_KEY"
+          scp -i ~/.ssh/standalone_key -o StrictHostKeyChecking=yes payload.json scripts/provision_standalone_accounts.py "$VPS_USER@$VPS_HOST:/opt/ai-startup/private_imports/$BATCH_KEY/"
+          remote_status=0
+          ssh -i ~/.ssh/standalone_key -o StrictHostKeyChecking=yes "$VPS_USER@$VPS_HOST" "MODE=$MODE BATCH_KEY=$BATCH_KEY ACTOR_ID=$ACTOR_ID bash -s" <<'REMOTE' || remote_status=$?
+          set -euo pipefail
+          cd /opt/ai-startup
+          umask 077
+          directory="/tmp/pitchy-standalone-$BATCH_KEY"
+          docker compose exec -T backend mkdir -p "$directory" < /dev/null
+          docker compose cp "private_imports/$BATCH_KEY/payload.json" "backend:$directory/payload.json" < /dev/null
+          docker compose cp "private_imports/$BATCH_KEY/provision_standalone_accounts.py" backend:/app/scripts/provision_standalone_accounts.py < /dev/null
+          if [ "$MODE" = apply ]; then
+            backup="backups/before_standalone_accounts_$(date -u +%Y%m%d_%H%M%S).sql.gz"
+            mkdir -p backups
+            docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < /dev/null | gzip > "$backup"
+            gzip -t "$backup"
+            docker compose exec -T backend python scripts/provision_standalone_accounts.py --payload "$directory/payload.json" --actor-id "$ACTOR_ID" --output "$directory/credentials.enc.json" --apply < /dev/null
+            docker compose cp "backend:$directory/credentials.enc.json" "private_imports/$BATCH_KEY/credentials.enc.json" < /dev/null
+          else
+            docker compose exec -T backend python scripts/provision_standalone_accounts.py --payload "$directory/payload.json" --actor-id "$ACTOR_ID" --output "$directory/credentials.enc.json" < /dev/null
+          fi
+          REMOTE
+          if [ "$MODE" = apply ]; then
+            scp -i ~/.ssh/standalone_key -o StrictHostKeyChecking=yes "$VPS_USER@$VPS_HOST:/opt/ai-startup/private_imports/$BATCH_KEY/credentials.enc.json" credentials.enc.json
+          fi
+          exit "$remote_status"
+      - name: Export encrypted account credentials
+        if: inputs.mode == 'apply' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: standalone-account-credentials-encrypted
+          path: credentials.enc.json
+          retention-days: 1
+          if-no-files-found: ignore
