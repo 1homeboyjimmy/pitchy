@@ -604,6 +604,13 @@ async def test_archived_team_does_not_block_new_team_for_same_owner_and_project(
             db,
         )
 
+        with pytest.raises(HTTPException) as error:
+            await patch_team(
+                first["id"], AcceleratorTeamUpdate(status="archived"),
+                BackgroundTasks(), owner_user, db,
+            )
+        assert error.value.status_code == 403
+
         await patch_team(
             first["id"],
             AcceleratorTeamUpdate(status="archived", reason="Start over"),

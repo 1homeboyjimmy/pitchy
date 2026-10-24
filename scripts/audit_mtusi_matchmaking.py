@@ -273,8 +273,13 @@ class Audit:
         b_view = await self.call('member_reads_joined_team', teams.get_membership_team, as_user='e', membership_id=self.memberships['e'])
         e_member = next(x for x in b_view['team']['members'] if x['membership_id'] == self.memberships['e'])
         await self.call('member_leaves_team', teams.delete_team_member, as_user='e', member_id=e_member['id'], background_tasks=BackgroundTasks())
-        await self.call('captain_archives_team', teams.patch_team, as_user='b', team_id=b['id'], payload=AcceleratorTeamUpdate(status='archived', reason='ТЕСТ жизненного цикла команды'), background_tasks=BackgroundTasks())
+        await self.call('captain_cannot_archive_team', teams.patch_team, as_user='b', team_id=b['id'], payload=AcceleratorTeamUpdate(status='archived'), background_tasks=BackgroundTasks(), expected=403)
+        archived = await self.call('manager_archives_team', teams.patch_team, team_id=b['id'], payload=AcceleratorTeamUpdate(status='archived', reason='ТЕСТ жизненного цикла команды'), background_tasks=BackgroundTasks())
+        if not archived or archived['status'] != 'archived':
+            raise RuntimeError('Manager could not archive the fixture team')
         replacement = await self.call('new_team_after_archive', teams.create_membership_team, as_user='b', membership_id=self.memberships['b'], payload=AcceleratorTeamCreate(name=self.prefix + ' Бета новая'))
+        if not replacement:
+            raise RuntimeError('Cannot create a new team after archival')
         self.created['teams'].append(replacement['id'])
         await self.call('leave_pending_application_for_review', teams.create_team_application, as_user='f', team_id=replacement['id'], payload=AcceleratorTeamApplicationCreate(message='ТЕСТ: сохранённая заявка для просмотра', desired_role='Маркетинг'))
         await self.call('leave_pending_invitation_for_review', teams.invite_team_member, as_user='b', team_id=replacement['id'], payload=AcceleratorTeamInvitationCreate(membership_id=self.memberships['d'], message='ТЕСТ: сохранённое приглашение для просмотра'), background_tasks=BackgroundTasks())
