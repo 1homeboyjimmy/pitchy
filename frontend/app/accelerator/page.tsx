@@ -137,6 +137,9 @@ export default function AcceleratorWorkspacePage() {
 
   useEffect(() => {
     let active = true;
+    // URL context and staff access hydrate asynchronously. Clearing the cohort
+    // before that finishes discards an explicit deep link and selects rows[0].
+    if (!urlReady || !isLoaded || loading) return () => { active = false; };
     if (!token || !acceleratorId || isResident) { setCohorts([]); setCohortId(null); return () => { active = false; }; }
     setCohorts([]);
     getAuthJson<Cohort[]>(`/api/accelerators/${acceleratorId}/cohorts`, token).then((rows) => {
@@ -144,7 +147,7 @@ export default function AcceleratorWorkspacePage() {
       setCohorts(rows); setCohortId((current) => current && rows.some((row) => row.id === current) ? current : rows[0]?.id || null);
     }).catch((reason) => { if (active) setError(describeApiError(reason, "Не удалось загрузить потоки")); });
     return () => { active = false; };
-  }, [acceleratorId, isResident, token]);
+  }, [acceleratorId, isResident, token, urlReady, isLoaded, loading]);
 
   const loadCohortDetails = useCallback(async () => {
     const request = ++detailRequest.current;
@@ -184,7 +187,10 @@ export default function AcceleratorWorkspacePage() {
     rows.push({ key: "reports", label: "Отчётность" });
     rows.push({ key: "settings", label: "Настройки" }); return rows;
   }, [config, isExpert, isTracker]);
-  useEffect(() => { if (!tabs.some((item) => item.key === tab)) setTab(tabs[0]?.key || "overview"); }, [tab, tabs]);
+  useEffect(() => {
+    if (!urlReady || loading || !selectedCohort || !config) return;
+    if (!tabs.some((item) => item.key === tab)) setTab(tabs[0]?.key || "overview");
+  }, [tab, tabs, urlReady, loading, selectedCohort, config]);
 
   const copyApplicationLink = async () => { if (!cohortId) return; try { await navigator.clipboard.writeText(`${window.location.origin}/accelerators/apply/${cohortId}`); setCopied(true); window.setTimeout(() => setCopied(false), 1600); } catch { setError("Не удалось скопировать ссылку. Откройте её в разделе «Анкета»."); } };
 

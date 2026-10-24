@@ -6,7 +6,7 @@ on:
       mode:
         description: Preview or create platform accounts without accelerator enrollment
         type: choice
-        options: [preview, apply]
+        options: [preview, apply, audit_mtusi_test]
         default: preview
       batch_key:
         description: Private operation directory
@@ -29,6 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Provision platform users only
+        if: inputs.mode != 'audit_mtusi_test'
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
@@ -75,6 +76,49 @@ jobs:
             scp -i ~/.ssh/standalone_key -o StrictHostKeyChecking=yes "$VPS_USER@$VPS_HOST:/opt/ai-startup/private_imports/$BATCH_KEY/credentials.enc.json" credentials.enc.json
           fi
           exit "$remote_status"
+      - name: Audit existing MTUSI test cohort only
+        if: inputs.mode == 'audit_mtusi_test'
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+          BATCH_KEY: ${{ inputs.batch_key }}
+          ACTOR_ID: ${{ inputs.actor_id }}
+        run: |
+          set -euo pipefail
+          [[ "$BATCH_KEY" =~ ^[a-z0-9][a-z0-9-]{0,39}$ ]]
+          [[ "$ACTOR_ID" =~ ^[0-9]+$ ]]
+          umask 077
+          mkdir -p ~/.ssh
+          printf '%s\n' "$VPS_SSH_PRIVATE_KEY" > ~/.ssh/mtusi_audit_key
+          trap 'rm -f ~/.ssh/mtusi_audit_key' EXIT
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          scp -i ~/.ssh/mtusi_audit_key -o StrictHostKeyChecking=yes scripts/audit_mtusi_matchmaking.py "$VPS_USER@$VPS_HOST:/tmp/pitchy-mtusi-matchmaking-audit.py"
+          remote_status=0
+          ssh -i ~/.ssh/mtusi_audit_key -o StrictHostKeyChecking=yes "$VPS_USER@$VPS_HOST" "BATCH_KEY=$BATCH_KEY ACTOR_ID=$ACTOR_ID bash -s" <<'REMOTE' || remote_status=$?
+          set -euo pipefail
+          cd /opt/ai-startup
+          umask 077
+          backup="backups/before_mtusi_test_audit_$(date -u +%Y%m%d_%H%M%S).sql.gz"
+          mkdir -p backups
+          docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < /dev/null | gzip > "$backup"
+          gzip -t "$backup"
+          docker compose cp /tmp/pitchy-mtusi-matchmaking-audit.py backend:/app/scripts/audit_mtusi_matchmaking.py < /dev/null
+          audit_status=0
+          docker compose exec -T backend python scripts/audit_mtusi_matchmaking.py --batch-key "$BATCH_KEY" --actor-id "$ACTOR_ID" --output /tmp/mtusi-matchmaking-audit.json < /dev/null || audit_status=$?
+          docker compose cp backend:/tmp/mtusi-matchmaking-audit.json "/tmp/mtusi-audit-$BATCH_KEY.json" < /dev/null
+          exit "$audit_status"
+          REMOTE
+          scp -i ~/.ssh/mtusi_audit_key -o StrictHostKeyChecking=yes "$VPS_USER@$VPS_HOST:/tmp/mtusi-audit-$BATCH_KEY.json" mtusi-audit-report.json
+          exit "$remote_status"
+      - name: Save synthetic test audit report
+        if: inputs.mode == 'audit_mtusi_test' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mtusi-test-matchmaking-audit
+          path: mtusi-audit-report.json
+          retention-days: 7
+          if-no-files-found: ignore
       - name: Export encrypted account credentials
         if: inputs.mode == 'apply' && always()
         uses: actions/upload-artifact@v4

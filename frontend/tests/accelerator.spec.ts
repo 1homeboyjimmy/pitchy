@@ -27,9 +27,8 @@ async function mockDashboardAccess(page: Page, state: DashboardAccessState) {
 }
 
 async function mockManagerWorkspace(page: Page, isAdmin = true) {
-  await page.addInitScript(() => {
-    localStorage.setItem('vi_auth_state', 'cookie-session');
-    localStorage.setItem('pitchy_cookie_consent_v2', JSON.stringify({ choice: 'necessary', updatedAt: new Date().toISOString() }));
+  await mockDashboardAccess(page, {
+    isAdmin, accelerators: [{ id: 7, access_role: isAdmin ? 'global_admin' : 'organizer' }], memberships: [],
   });
   await page.route('**/me', async (route) => route.fulfill({ json: { id: 1, email: 'admin@example.test', name: 'Admin', is_admin: isAdmin, is_active: true, email_verified: true, created_at: new Date().toISOString() } }));
   await page.route('**/api/accelerators', async (route) => route.fulfill({ json: [{ id: 7, name: 'Тестовый акселератор', description: 'Программа для команд', status: 'draft', access_role: isAdmin ? 'global_admin' : 'organizer' }] }));
@@ -40,6 +39,7 @@ async function mockManagerWorkspace(page: Page, isAdmin = true) {
   await page.route('**/api/accelerators/cohorts/12/residents', async (route) => route.fulfill({ json: [] }));
   await page.route('**/api/accelerators/cohorts/12/trackers', async (route) => route.fulfill({ json: [] }));
   await page.route('**/api/accelerators/cohorts/12/homework', async (route) => route.fulfill({ json: [] }));
+  await page.route('**/api/accelerators/cohorts/12/homework-review-queue', async (route) => route.fulfill({ json: { items: [] } }));
   await page.route('**/api/accelerators/cohorts/12/tracking-dashboard', async (route) => route.fulfill({ json: { summary: {}, rows: [] } }));
   await page.route('**/api/accelerators/cohorts/12/program-stages', async (route) => route.fulfill({ json: [] }));
   await page.route('**/api/accelerators/cohorts/12/events', async (route) => route.fulfill({ json: [] }));
@@ -142,6 +142,24 @@ test('manager workspace is split into focused sections', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Разделы платформы' })).toBeVisible();
   await expect(page.getByRole('switch', { name: 'Матчмейкинг: включён' })).toBeVisible();
   await expect(page.getByRole('switch', { name: 'Демо-день и экспорт: включён' })).toBeVisible();
+});
+
+test('manager preserves the requested cohort and homework section through reload', async ({ page }) => {
+  await mockManagerWorkspace(page);
+  await page.route('**/api/accelerators/7/cohorts', async (route) => route.fulfill({ json: [
+    { id: 13, accelerator_id: 7, name: '[ТЕСТ] Другой поток', status: 'draft', timezone: 'Europe/Moscow', application_form_schema: {} },
+    { id: 12, accelerator_id: 7, name: 'Основной поток', status: 'draft', timezone: 'Europe/Moscow', application_form_schema: {} },
+  ] }));
+  await page.goto('/accelerator?context=staff&section=homework&accelerator=7&cohort=12');
+  await expect(page.getByRole('combobox', { name: 'Поток', exact: true })).toHaveValue('12');
+  await expect(page.getByRole('heading', { name: 'Домашние задания', exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/cohort=12/);
+  await expect(page).toHaveURL(/section=homework/);
+  await page.reload();
+  await expect(page.getByRole('combobox', { name: 'Поток', exact: true })).toHaveValue('12');
+  await expect(page.getByRole('heading', { name: 'Домашние задания', exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/cohort=12/);
+  await expect(page).toHaveURL(/section=homework/);
 });
 
 test('accelerator draft workflows expose the complete organizer windows', async ({ page }) => {
