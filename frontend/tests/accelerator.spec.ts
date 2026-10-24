@@ -830,7 +830,6 @@ test('captain manages a team, incoming applications and own membership', async (
   let applicationPayload: Record<string, unknown> | null = null;
   let contactPayload: Record<string, unknown> | null = null;
   let memberPayload: Record<string, unknown> | null = null;
-  let archivePayload: Record<string, unknown> | null = null;
   const currentTeam = () => teamCreated ? { id: 900, name: 'Команда Проект А', status: teamStatus, max_members: 5, project: { id: 5, name: 'Проект А' }, owner_membership_id: teamCanManage ? 101 : 103, can_manage: teamCanManage, members: [{ id: 801, membership_id: 101, role: teamCanManage ? 'owner' : 'member', title: teamCanManage ? 'Основатель' : 'Продукт', status: viewerLeft ? 'left' : 'active', share_contact: shareContact, person: { id: 8, name: 'Резидент А', ...(shareContact ? { email: 'resident@example.test' } : {}) } }, { id: 802, membership_id: 103, role: teamCanManage ? 'member' : 'owner', title: 'Технологии', status: 'active', share_contact: false, person: { id: 11, name: 'Резидент Д' } }], pending_invitations: pendingInvitations } : null;
   await page.route('**/api/accelerators/memberships/101/team', async (route) => {
     if (route.request().method() === 'POST') { createPayload = route.request().postDataJSON(); teamCreated = true; }
@@ -859,11 +858,6 @@ test('captain manages a team, incoming applications and own membership', async (
     if (route.request().method() === 'DELETE') viewerLeft = true;
     await route.fulfill({ json: { ok: true } });
   });
-  await page.route('**/api/accelerators/teams/900', async (route) => {
-    archivePayload = route.request().postDataJSON();
-    if (archivePayload?.status === 'archived') teamStatus = 'archived';
-    await route.fulfill({ json: currentTeam() });
-  });
 
   await page.goto('/accelerator');
   await page.getByRole('button', { name: 'Команда и поддержка', exact: true }).click();
@@ -887,9 +881,11 @@ test('captain manages a team, incoming applications and own membership', async (
   await page.getByRole('button', { name: 'Сохранить роль' }).click();
   await expect.poll(() => memberPayload).toMatchObject({ role: 'cofounder', title: 'Технологии' });
   await expect(page.getByLabel('Максимум участников команды')).toHaveAttribute('min', '2');
-  page.once('dialog', (dialog) => dialog.accept());
-  await page.getByRole('button', { name: 'Архивировать команду' }).click();
-  await expect.poll(() => archivePayload).toMatchObject({ status: 'archived' });
+  await expect(page.getByRole('button', { name: 'Архивировать команду' })).toHaveCount(0);
+  await expect(page.getByText('Для архивирования команды обратитесь к организатору.', { exact: false })).toBeVisible();
+  teamStatus = 'archived';
+  await page.reload();
+  await page.getByRole('button', { name: 'Команда и поддержка', exact: true }).click();
   await expect(page.getByText('В архиве', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Скрыть контакт Резидент А' })).toHaveCount(0);
   teamStatus = 'active'; teamCanManage = false;
