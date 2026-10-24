@@ -641,6 +641,14 @@ async def create_team_application(
         raise HTTPException(status_code=403, detail="Заявку может подать резидент потока")
     if await active_team_member(db, membership.id, lock=True):
         raise HTTPException(status_code=409, detail="Вы уже состоите в команде")
+    if membership.project_id is not None:
+        raise HTTPException(status_code=409, detail="Участник уже связан с собственным проектом")
+    pending = (await db.execute(select(AcceleratorTeamApplication.id).where(
+        AcceleratorTeamApplication.membership_id == membership.id,
+        AcceleratorTeamApplication.status == "pending",
+    ))).scalar_one_or_none()
+    if pending is not None:
+        raise HTTPException(status_code=409, detail="У вас уже есть заявка, ожидающая решения. Сначала отзовите её.")
     if await active_member_count(db, team.id) >= team.max_members:
         raise HTTPException(status_code=409, detail="В команде нет свободных мест")
     row = AcceleratorTeamApplication(
@@ -652,7 +660,11 @@ async def create_team_application(
     db.add(row)
     add_audit(db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id, actor_user_id=user.id,
               action="team.application_created", target_type="team_application", details={"team_id": team.id})
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Заявка уже отправлена. Обновите страницу.") from exc
     await db.refresh(row)
     return {"id": row.id, "status": row.status}
 
@@ -688,14 +700,20 @@ async def respond_team_application(
     if row.status != "pending":
         raise HTTPException(status_code=409, detail="Решение по заявке уже принято")
     if payload.status == "accepted":
+        if applicant.role != "resident" or applicant.status != "enrolled":
+            raise HTTPException(status_code=409, detail="Участие кандидата не активно")
+        if applicant.project_id is not None:
+            raise HTTPException(status_code=409, detail="Участник уже связан с собственным проектом")
         if await active_team_member(db, applicant.id, lock=True):
             raise HTTPException(status_code=409, detail="Участник уже вступил в другую команду")
         if await active_member_count(db, team.id) >= team.max_members:
             raise HTTPException(status_code=409, detail="В команде нет свободных мест")
         db.add(AcceleratorTeamMember(
             team_id=team.id, membership_id=applicant.id, role="member",
-            title=row.desired_role, share_contact=True,
+            title=row.desired_role, share_contact=False,
         ))
+        if team.project_id is not None:
+            applicant.project_id = team.project_id
         team_tracker = (await db.execute(select(AcceleratorTeamTrackerAssignment.id).where(
             AcceleratorTeamTrackerAssignment.team_id == team.id
         ))).scalar_one_or_none()
@@ -769,9 +787,10 @@ async def transfer_team_captain(
                 raise HTTPException(409, 'Новый капитан должен иметь доступ ко всем связанным паспортам; сначала уточните состав проектов')
         tree = (await db.execute(select(ProjectTree).where(ProjectTree.project_id == project_id))).scalar_one_or_none()
         project = await db.get(Project, project_id)
-        if tree and project and project.user_id == old_owner.user_id:
+        if project and project.user_id == old_owner.user_id:
             project.user_id = target_membership.user_id
-            tree.user_id = target_membership.user_id
+            if tree:
+                tree.user_id = target_membership.user_id
     add_audit(db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id, actor_user_id=user.id,
               action="team.captain_transferred", target_type="team", target_id=team.id,
               details={"from_membership_id": old_owner.id, "to_membership_id": target.membership_id})

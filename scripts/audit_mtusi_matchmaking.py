@@ -27,7 +27,7 @@ from db_async import AsyncSessionLocal
 from models import (
     Accelerator, AcceleratorApplication, AcceleratorAuditLog, AcceleratorCohort,
     AcceleratorHomeworkAssignment, AcceleratorMatchProfile, AcceleratorMembership,
-    AcceleratorProgramConfig, AcceleratorProgramStage, AcceleratorTeam, User,
+    AcceleratorProgramConfig, AcceleratorProgramStage, AcceleratorTeam, Project, User,
 )
 from routers import accelerators as program
 from routers import accelerator_teams as teams
@@ -265,8 +265,19 @@ class Audit:
         await self.call('end_match', program.update_accelerator_match, match_id=match['id'], payload=MatchStatusUpdate(status='ended'))
         await self.call('reopen_match', program.update_accelerator_match, match_id=match['id'], payload=MatchStatusUpdate(status='active'))
         await self.call('transfer_captain', teams.transfer_team_captain, as_user='a', team_id=a['id'], payload=AcceleratorTeamCaptainTransfer(membership_id=self.memberships['c']))
+        async with AsyncSessionLocal() as db:
+            project = await db.get(Project, a['project']['id'])
+            self.verify('new_captain_owns_project_even_without_tree', project.user_id == self.users['c'])
         await self.call('old_captain_loses_management', teams.patch_team, as_user='a', team_id=a['id'], payload=AcceleratorTeamUpdate(name=self.prefix + ' Запрещённая правка'), background_tasks=BackgroundTasks(), expected=403)
         await self.call('new_captain_can_rename', teams.patch_team, as_user='c', team_id=a['id'], payload=AcceleratorTeamUpdate(name=self.prefix + ' Альфа после смены капитана'), background_tasks=BackgroundTasks())
+        b_view = await self.call('member_reads_joined_team', teams.get_membership_team, as_user='e', membership_id=self.memberships['e'])
+        e_member = next(x for x in b_view['team']['members'] if x['membership_id'] == self.memberships['e'])
+        await self.call('member_leaves_team', teams.delete_team_member, as_user='e', member_id=e_member['id'], background_tasks=BackgroundTasks())
+        await self.call('captain_archives_team', teams.patch_team, as_user='b', team_id=b['id'], payload=AcceleratorTeamUpdate(status='archived', reason='ТЕСТ жизненного цикла команды'), background_tasks=BackgroundTasks())
+        replacement = await self.call('new_team_after_archive', teams.create_membership_team, as_user='b', membership_id=self.memberships['b'], payload=AcceleratorTeamCreate(name=self.prefix + ' Бета новая'))
+        self.created['teams'].append(replacement['id'])
+        await self.call('leave_pending_application_for_review', teams.create_team_application, as_user='f', team_id=replacement['id'], payload=AcceleratorTeamApplicationCreate(message='ТЕСТ: сохранённая заявка для просмотра', desired_role='Маркетинг'))
+        await self.call('leave_pending_invitation_for_review', teams.invite_team_member, as_user='b', team_id=replacement['id'], payload=AcceleratorTeamInvitationCreate(membership_id=self.memberships['d'], message='ТЕСТ: сохранённое приглашение для просмотра'), background_tasks=BackgroundTasks())
         await self.call('history_available_to_manager', teams.matchmaking_history, cohort_id=COHORT_ID)
         await self.check_homework()
 

@@ -41,6 +41,7 @@ from routers.accelerator_teams import (
     delete_team_member,
     tracker_work_queue,
     transfer_team_captain,
+    respond_team_application,
 )
 from routers.accelerators import (
     accept_application,
@@ -65,6 +66,7 @@ from schemas.accelerator_teams import (
     AcceleratorTeamCreate,
     AcceleratorTeamProjectAttach,
     AcceleratorTeamApplicationCreate,
+    AcceleratorTeamApplicationUpdate,
     AcceleratorTeamCaptainTransfer,
     AcceleratorTeamInvitationCreate,
     AcceleratorTeamInvitationUpdate,
@@ -87,6 +89,66 @@ from schemas.accelerators import (
     HomeworkSubmissionUpsert,
     HomeworkReview,
 )
+
+
+@pytest.mark.asyncio
+async def test_team_join_application_conflicts_and_acceptance_preserve_project_and_privacy():
+    suffix = uuid.uuid4().hex[:10]
+    async with AsyncSessionLocal() as db:
+        _, organizer, _, cohort = await _create_cohort_context(db, suffix)
+        people = [User(email=f'application-{key}-{suffix}@example.test', name=key)
+                  for key in ('owner', 'other-owner', 'applicant')]
+        db.add_all(people)
+        await db.commit()
+        owner, other, applicant = [await _enroll_resident(
+            db, cohort_id=cohort['id'], manager=organizer, resident=person,
+            with_project=index == 0,
+        ) for index, person in enumerate(people)]
+        first = await create_membership_team(owner.membership_id, AcceleratorTeamCreate(name='First'), owner.user, db)
+        second = await create_membership_team(other.membership_id, AcceleratorTeamCreate(name='Second'), other.user, db)
+        application = await create_team_application(first['id'], AcceleratorTeamApplicationCreate(desired_role='Sales'), applicant.user, db)
+        for team_id in (first['id'], second['id']):
+            with pytest.raises(HTTPException) as error:
+                await create_team_application(team_id, AcceleratorTeamApplicationCreate(), applicant.user, db)
+            assert error.value.status_code == 409
+        await respond_team_application(application['id'], AcceleratorTeamApplicationUpdate(status='accepted'), owner.user, db)
+        membership = await db.get(AcceleratorMembership, applicant.membership_id)
+        assert membership.project_id == owner.project_id
+        view = await get_membership_team(owner.membership_id, owner.user, db)
+        member = next(row for row in view['team']['members'] if row['membership_id'] == applicant.membership_id)
+        assert member['share_contact'] is False
+        assert member['person'].get('email') is None
+        await patch_team_member_contact(member['id'], AcceleratorTeamContactUpdate(share_contact=True), applicant.user, db)
+        view = await get_membership_team(owner.membership_id, owner.user, db)
+        assert next(row for row in view['team']['members'] if row['membership_id'] == applicant.membership_id)['person']['email'] == applicant.user.email
+        # Projects accepted from a normal application do not necessarily have a tree.
+        await transfer_team_captain(first['id'], AcceleratorTeamCaptainTransfer(membership_id=applicant.membership_id), owner.user, db)
+        project = await db.get(Project, owner.project_id)
+        assert project.user_id == applicant.user.id
+
+
+@pytest.mark.asyncio
+async def test_team_join_application_rejects_own_project_and_inactive_applicant():
+    suffix = uuid.uuid4().hex[:10]
+    async with AsyncSessionLocal() as db:
+        _, organizer, _, cohort = await _create_cohort_context(db, suffix)
+        people = [User(email=f'eligibility-{key}-{suffix}@example.test', name=key)
+                  for key in ('owner', 'project-owner', 'applicant')]
+        db.add_all(people)
+        await db.commit()
+        owner, project_owner, applicant = [await _enroll_resident(
+            db, cohort_id=cohort['id'], manager=organizer, resident=person,
+            with_project=index == 1,
+        ) for index, person in enumerate(people)]
+        team = await create_membership_team(owner.membership_id, AcceleratorTeamCreate(name='Recruiting'), owner.user, db)
+        with pytest.raises(HTTPException) as error:
+            await create_team_application(team['id'], AcceleratorTeamApplicationCreate(), project_owner.user, db)
+        assert error.value.status_code == 409
+        application = await create_team_application(team['id'], AcceleratorTeamApplicationCreate(), applicant.user, db)
+        await update_membership_status(applicant.membership_id, MembershipStatusUpdate(status='suspended', reason='Test suspension'), organizer, db)
+        with pytest.raises(HTTPException) as error:
+            await respond_team_application(application['id'], AcceleratorTeamApplicationUpdate(status='accepted'), owner.user, db)
+        assert error.value.status_code == 409
 
 
 @dataclass
