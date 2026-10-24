@@ -129,8 +129,19 @@ class Audit:
             ))).scalar_one_or_none()
             if not config or not (config.modules or {}).get('matchmaking'):
                 raise ValueError('Test cohort matchmaking must already be enabled')
-            if (await db.execute(select(User.id).where(User.username.like(self.batch_key.replace('-', '_') + '_%')))).first():
-                raise ValueError('Batch already exists; use a new batch key, never overwrite accounts')
+            existing = list((await db.execute(select(User).where(
+                User.username.like(self.batch_key.replace('-', '_') + '_%')
+            ))).scalars().all())
+            if existing:
+                existing_ids = [row.id for row in existing]
+                linked = (await db.execute(select(AcceleratorApplication.id).where(
+                    AcceleratorApplication.user_id.in_(existing_ids)
+                ))).first() or (await db.execute(select(AcceleratorMembership.id).where(
+                    AcceleratorMembership.user_id.in_(existing_ids)
+                ))).first()
+                if linked or len(existing) != 9:
+                    raise ValueError('Batch already used; use a new batch key')
+            existing_by_username = {row.username: row for row in existing}
             self.initial_status = cohort.status
             self.before = await main_fingerprint(db)
             self.source_homework = list((await db.execute(select(AcceleratorHomeworkAssignment).where(
@@ -143,15 +154,20 @@ class Audit:
             for key, label in [('a', 'Капитан Альфа'), ('b', 'Капитан Бета'), ('c', 'Продажи'),
                                ('d', 'Дизайн'), ('e', 'Разработка'), ('f', 'Маркетинг'),
                                ('tracker', 'Трекер'), ('expert', 'Эксперт'), ('outsider', 'Внешний пользователь')]:
-                user = User(
-                    name=f'{self.prefix} {label}',
-                    username=self.batch_key.replace('-', '_') + '_' + key,
-                    email=f'{self.batch_key}.{key}@example.test',
-                    password_hash=hash_password(secrets.token_urlsafe(24)),
-                    local_login_enabled=True, is_admin=False, is_active=True,
-                )
-                db.add(user)
-                await db.flush()
+                username = self.batch_key.replace('-', '_') + '_' + key
+                user = existing_by_username.get(username)
+                if user:
+                    if user.name != f'{self.prefix} {label}' or user.email != f'{self.batch_key}.{key}@example.test' or user.is_admin or not user.is_active or user.deleted_at:
+                        raise ValueError('Existing account does not match the unused synthetic batch')
+                else:
+                    user = User(
+                        name=f'{self.prefix} {label}', username=username,
+                        email=f'{self.batch_key}.{key}@example.test',
+                        password_hash=hash_password(secrets.token_urlsafe(24)),
+                        local_login_enabled=True, is_admin=False, is_active=True,
+                    )
+                    db.add(user)
+                    await db.flush()
                 self.users[key] = user.id
                 self.created['users'].append({'id': user.id, 'label': label})
             db.add(AcceleratorAuditLog(
@@ -168,6 +184,7 @@ class Audit:
             payload = ApplicationCreate(
                 application_type='project' if key == 'a' else 'participant',
                 form_payload={'project_name': self.prefix + ' Проект Альфа', 'motivation': 'ТЕСТ аудита',
+                              'problem': 'ТЕСТ: проверка заявок, подбора участников и работы с командой',
                               'competencies': ['продукт' if key == 'a' else 'продажи'],
                               'telegram': '@' + self.batch_key.replace('-', '_') + '_' + key},
                 accept_privacy=True, accept_program_rules=True,
