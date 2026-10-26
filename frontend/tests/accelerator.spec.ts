@@ -820,6 +820,8 @@ test('captain manages a team, incoming applications and own membership', async (
 
   let teamCreated = false;
   let teamStatus = 'active';
+  let teamName = 'Команда Проект А';
+  let settingsPayload: Record<string, unknown> | null = null;
   let teamCanManage = true;
   let viewerLeft = false;
   let shareContact = false;
@@ -830,10 +832,15 @@ test('captain manages a team, incoming applications and own membership', async (
   let applicationPayload: Record<string, unknown> | null = null;
   let contactPayload: Record<string, unknown> | null = null;
   let memberPayload: Record<string, unknown> | null = null;
-  const currentTeam = () => teamCreated ? { id: 900, name: 'Команда Проект А', status: teamStatus, max_members: 5, project: { id: 5, name: 'Проект А' }, owner_membership_id: teamCanManage ? 101 : 103, can_manage: teamCanManage, members: [{ id: 801, membership_id: 101, role: teamCanManage ? 'owner' : 'member', title: teamCanManage ? 'Основатель' : 'Продукт', status: viewerLeft ? 'left' : 'active', share_contact: shareContact, person: { id: 8, name: 'Резидент А', ...(shareContact ? { email: 'resident@example.test' } : {}) } }, { id: 802, membership_id: 103, role: teamCanManage ? 'member' : 'owner', title: 'Технологии', status: 'active', share_contact: false, person: { id: 11, name: 'Резидент Д' } }], pending_invitations: pendingInvitations } : null;
+  const currentTeam = () => teamCreated ? { id: 900, name: teamName, status: teamStatus, max_members: 5, project: null, owner_membership_id: teamCanManage ? 101 : 103, can_manage: teamCanManage, members: [{ id: 801, membership_id: 101, role: teamCanManage ? 'owner' : 'member', title: teamCanManage ? 'Основатель' : 'Продукт', status: viewerLeft ? 'left' : 'active', share_contact: shareContact, person: { id: 8, name: 'Резидент А', ...(shareContact ? { email: 'resident@example.test' } : {}) } }, { id: 802, membership_id: 103, role: teamCanManage ? 'member' : 'owner', title: 'Технологии', status: 'active', share_contact: false, person: { id: 11, name: 'Резидент Д' } }], pending_invitations: pendingInvitations } : null;
   await page.route('**/api/accelerators/memberships/101/team', async (route) => {
     if (route.request().method() === 'POST') { createPayload = route.request().postDataJSON(); teamCreated = true; }
     await route.fulfill({ json: route.request().method() === 'GET' ? { team: currentTeam(), invitations: incomingInvitations } : currentTeam() });
+  });
+  await page.route('**/api/accelerators/teams/900', async (route) => {
+    settingsPayload = route.request().postDataJSON();
+    teamName = String(settingsPayload?.name);
+    await route.fulfill({ json: currentTeam() });
   });
   await page.route('**/api/accelerators/team-invitations/701', async (route) => {
     answerPayload = route.request().postDataJSON(); incomingInvitations = [];
@@ -869,6 +876,12 @@ test('captain manages a team, incoming applications and own membership', async (
   await page.getByRole('button', { name: 'Создать', exact: true }).click();
   await expect.poll(() => createPayload).toMatchObject({ name: 'Команда Проект А', max_members: 5 });
   await expect(page.getByRole('heading', { name: 'Команда Проект А' })).toBeVisible();
+  await expect(page.getByText('Проект формируется', { exact: true })).toBeVisible();
+  await page.getByLabel('Название команды', { exact: true }).fill('Команда в Акселераторе');
+  await page.getByRole('button', { name: 'Сохранить команду', exact: true }).click();
+  await expect.poll(() => settingsPayload).toMatchObject({ name: 'Команда в Акселераторе', max_members: 5 });
+  await expect(page.getByRole('heading', { name: 'Команда в Акселераторе' })).toBeVisible();
+
   await expect(page.getByText('Резидент Б', { exact: true })).toBeVisible();
   await expect(page.getByText('продажи', { exact: true })).toBeVisible();
   await expect(page.getByText('resident-b@example.test @resident_b')).toBeVisible();
