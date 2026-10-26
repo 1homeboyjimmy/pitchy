@@ -31,6 +31,7 @@ from routers.accelerator_teams import (
     answer_team_invitation,
     create_membership_team,
     create_team_application,
+    get_team_pool,
     get_membership_team,
     invite_team_member,
     list_cohort_teams,
@@ -128,7 +129,7 @@ async def test_team_join_application_conflicts_and_acceptance_preserve_project_a
 
 
 @pytest.mark.asyncio
-async def test_team_join_application_rejects_own_project_and_inactive_applicant():
+async def test_team_join_application_preserves_personal_project_and_rejects_inactive_applicant():
     suffix = uuid.uuid4().hex[:10]
     async with AsyncSessionLocal() as db:
         _, organizer, _, cohort = await _create_cohort_context(db, suffix)
@@ -141,9 +142,15 @@ async def test_team_join_application_rejects_own_project_and_inactive_applicant(
             with_project=index == 1,
         ) for index, person in enumerate(people)]
         team = await create_membership_team(owner.membership_id, AcceleratorTeamCreate(name='Recruiting'), owner.user, db)
-        with pytest.raises(HTTPException) as error:
-            await create_team_application(team['id'], AcceleratorTeamApplicationCreate(), project_owner.user, db)
-        assert error.value.status_code == 409
+        personal = await db.get(Project, project_owner.project_id)
+        personal.passport = {'core': {'problem': 'Keep this personal project'}}
+        await db.commit()
+        own_application = await create_team_application(team['id'], AcceleratorTeamApplicationCreate(), project_owner.user, db)
+        await respond_team_application(own_application['id'], AcceleratorTeamApplicationUpdate(status='accepted'), owner.user, db)
+        assert (await db.get(AcceleratorMembership, project_owner.membership_id)).project_id is None
+        await db.refresh(personal)
+        assert personal.user_id == project_owner.user.id
+        assert personal.passport == {'core': {'problem': 'Keep this personal project'}}
         application = await create_team_application(team['id'], AcceleratorTeamApplicationCreate(), applicant.user, db)
         await update_membership_status(applicant.membership_id, MembershipStatusUpdate(status='suspended', reason='Test suspension'), organizer, db)
         with pytest.raises(HTTPException) as error:
@@ -157,6 +164,67 @@ class ResidentContext:
     membership_id: int
     project_id: int | None
     profile_id: int | None = None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('with_team_project', [False, True])
+async def test_direct_residents_can_be_found_and_join_by_invitation_without_losing_projects(with_team_project):
+    suffix = uuid.uuid4().hex[:10]
+    async with AsyncSessionLocal() as db:
+        _, organizer, _, cohort = await _create_cohort_context(db, suffix)
+        people = [User(username=f'{key}_{suffix}', name=key, is_active=True)
+                  for key in ('captain', 'personal', 'placeholder', 'no_project', 'blocked')]
+        db.add_all(people)
+        await db.flush()
+        residents = []
+        for person in people:
+            membership = AcceleratorMembership(cohort_id=cohort['id'], user_id=person.id,
+                                              application_id=None, role='resident', status='enrolled',
+                                              accepted_by_user_id=organizer.id)
+            db.add(membership)
+            residents.append(membership)
+        captain, personal, placeholder, no_project, blocked = residents
+        personal_project = Project(user_id=people[1].id, name='Private idea',
+                                   passport={'core': {'solution': 'Personal research'}})
+        placeholder_project = Project(user_id=people[2].id, name='Будущий проект',
+                                      passport={'_meta': {}, '_import': {'batch_key': 'test'}})
+        db.add_all([personal_project, placeholder_project])
+        await db.flush()
+        personal.project_id = personal_project.id
+        placeholder.project_id = placeholder_project.id
+        people[4].is_active = False
+        if with_team_project:
+            team_project = Project(user_id=people[0].id, name='Team idea', passport={})
+            db.add(team_project)
+            await db.flush()
+            captain.project_id = team_project.id
+        await db.commit()
+        team = await create_membership_team(captain.id, AcceleratorTeamCreate(name='Forming team'), people[0], db)
+        pool = await get_team_pool(captain.id, people[0], db)
+        assert {r['membership_id'] for r in pool['candidates']} == {personal.id, placeholder.id, no_project.id}
+        assert next(r for r in pool['candidates'] if r['membership_id'] == personal.id)['telegram'] == '@' + people[1].username
+        invitation = await invite_team_member(team['id'], AcceleratorTeamInvitationCreate(membership_id=personal.id),
+                                             BackgroundTasks(), people[0], db)
+        await answer_team_invitation(invitation['id'], AcceleratorTeamInvitationUpdate(status='accepted'),
+                                     BackgroundTasks(), people[1], db)
+        await db.refresh(personal)
+        assert personal.project_id == (team['project']['id'] if with_team_project else None)
+        await db.refresh(personal_project)
+        assert personal_project.user_id == people[1].id
+        assert personal_project.passport == {'core': {'solution': 'Personal research'}}
+        pool = await get_team_pool(captain.id, people[0], db)
+        assert personal.id not in {r['membership_id'] for r in pool['candidates']}
+        with pytest.raises(HTTPException) as already_joined:
+            await create_team_application(team['id'], AcceleratorTeamApplicationCreate(), people[1], db)
+        assert already_joined.value.status_code == 409
+
+        renamed = await patch_team(team['id'], AcceleratorTeamUpdate(name='Renamed forming team'),
+                                   BackgroundTasks(), people[0], db)
+        assert renamed['name'] == 'Renamed forming team'
+        with pytest.raises(HTTPException) as not_captain:
+            await patch_team(team['id'], AcceleratorTeamUpdate(name='Not allowed'),
+                             BackgroundTasks(), people[1], db)
+        assert not_captain.value.status_code == 403
 
 
 async def _enroll_resident(
@@ -475,15 +543,16 @@ async def test_team_candidate_boundaries_capacity_decline_and_expiration():
             users[0],
             db,
         )
-        with pytest.raises(HTTPException) as has_project:
-            await invite_team_member(
-                team["id"],
-                AcceleratorTeamInvitationCreate(
-                    counterpart_profile_id=project_candidate.profile_id
-                ),
-                BackgroundTasks(), users[0], db,
-            )
-        assert _status(has_project) == 409
+        # A personal project does not prevent an invitation or reserve a second
+        # active team. Declining it keeps this capacity scenario independent.
+        own_project_invitation = await invite_team_member(
+            team["id"], AcceleratorTeamInvitationCreate(counterpart_profile_id=project_candidate.profile_id),
+            BackgroundTasks(), users[0], db,
+        )
+        await answer_team_invitation(
+            own_project_invitation["id"], AcceleratorTeamInvitationUpdate(status="declined"),
+            BackgroundTasks(), users[3], db,
+        )
         first = await invite_team_member(
             team["id"],
             AcceleratorTeamInvitationCreate(counterpart_profile_id=candidate_a.profile_id),

@@ -703,11 +703,6 @@ async def create_team_invitation(
         raise HTTPException(status_code=422, detail="Кандидат не зачислен в этот поток")
     if candidate.id == owner.id:
         raise HTTPException(status_code=409, detail="Нельзя пригласить самого себя")
-    if candidate.project_id is not None:
-        raise HTTPException(
-            status_code=409,
-            detail="В команду можно пригласить только участника без собственного проекта",
-        )
     if await active_team_member(db, candidate.id, lock=True):
         raise HTTPException(status_code=409, detail="Кандидат уже состоит в активной команде")
     duplicate = (await db.execute(select(AcceleratorTeamInvitation.id).where(
@@ -852,12 +847,8 @@ async def respond_team_invitation(
         raise HTTPException(status_code=422, detail="Недопустимый ответ на приглашение")
     now = datetime.utcnow()
     notification_ids: list[int] = []
+    previous_project_id = candidate.project_id
     if status == "accepted":
-        if candidate.project_id is not None:
-            raise HTTPException(
-                status_code=409,
-                detail="Участник уже связан с собственным проектом",
-            )
         if invitation.source_match_profile_id is not None:
             profile = await db.get(
                 AcceleratorMatchProfile, invitation.source_match_profile_id
@@ -894,8 +885,9 @@ async def respond_team_invitation(
             created_at=now,
             updated_at=now,
         ))
-        if team.project_id is not None:
-            candidate.project_id = team.project_id
+        # Only the accelerator participation follows the team. Personal projects
+        # remain owned by the candidate, with their passports and history intact.
+        candidate.project_id = team.project_id
         team_tracker = (await db.execute(select(AcceleratorTeamTrackerAssignment.id).where(
             AcceleratorTeamTrackerAssignment.team_id == team.id
         ))).scalar_one_or_none()
@@ -944,7 +936,9 @@ async def respond_team_invitation(
         action="team.invitation_responded",
         target_type="team_invitation",
         target_id=invitation.id,
-        details={"team_id": team.id, "status": status},
+        details={"team_id": team.id, "status": status,
+                 "previous_project_id": previous_project_id,
+                 "project_id": candidate.project_id},
     )
     return invitation, notification_ids
 
