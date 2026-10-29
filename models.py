@@ -981,6 +981,7 @@ class AcceleratorTeamApplication(Base):
     )
     message: Mapped[str | None] = mapped_column(Text, nullable=True)
     desired_role: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    transfer_context: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     status: Mapped[str] = mapped_column(
         String(20), default="pending", server_default="pending", index=True
     )

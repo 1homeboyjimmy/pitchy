@@ -405,7 +405,8 @@ async def answer_team_invitation(
     invitation, notification_ids = await _commit_or_conflict(
         db,
         respond_team_invitation(
-            db, invitation_id=invitation_id, status=payload.status, user=user
+            db, invitation_id=invitation_id, status=payload.status, user=user,
+            leave_current_team=payload.leave_current_team, expected_current_team_id=payload.expected_current_team_id
         ),
     )
     _schedule_notifications(background_tasks, notification_ids)
@@ -536,9 +537,14 @@ async def get_team_pool(
     cohort = await get_cohort(db, membership.cohort_id)
     await require_teams_module(db, cohort)
     own_team_member = await active_team_member(db, membership.id)
-    active_memberships = select(AcceleratorTeamMember.membership_id).join(
-        AcceleratorTeam, AcceleratorTeam.id == AcceleratorTeamMember.team_id
-    ).where(AcceleratorTeamMember.status == "active", AcceleratorTeam.status == "active")
+    active_rows = (await db.execute(select(AcceleratorTeamMember, AcceleratorTeam)
+        .join(AcceleratorTeam, AcceleratorTeam.id == AcceleratorTeamMember.team_id)
+        .where(AcceleratorTeamMember.status == "active", AcceleratorTeam.status == "active",
+               AcceleratorTeam.cohort_id == cohort.id))).all()
+    current_teams = {member.membership_id: (member, team) for member, team in active_rows}
+    team_counts = {}
+    for member, team in active_rows:
+        team_counts[team.id] = team_counts.get(team.id, 0) + 1
     teams = list((await db.execute(select(AcceleratorTeam).where(
         AcceleratorTeam.cohort_id == cohort.id,
         AcceleratorTeam.status == "active",
@@ -556,7 +562,7 @@ async def get_team_pool(
             "id": team.id,
             "name": team.name,
             "max_members": team.max_members,
-            "member_count": await active_member_count(db, team.id),
+            "member_count": team_counts.get(team.id, 0),
             "recruiting_open": bool(team.recruiting_open),
             "captain": _application_contact(owner_application, owner_user, owner_profile),
             **_project_public_description(project),
@@ -567,28 +573,37 @@ async def get_team_pool(
         for team in teams
     ):
         candidate_rows = (await db.execute(
-            select(AcceleratorMembership, User, AcceleratorApplication)
+            select(AcceleratorMembership, User, AcceleratorApplication, AcceleratorMatchProfile)
             .join(User, User.id == AcceleratorMembership.user_id)
             .outerjoin(AcceleratorApplication, AcceleratorApplication.id == AcceleratorMembership.application_id)
+            .outerjoin(AcceleratorMatchProfile, (AcceleratorMatchProfile.membership_id == AcceleratorMembership.id)
+                       & AcceleratorMatchProfile.active.is_(True))
             .where(
                 AcceleratorMembership.cohort_id == cohort.id,
                 AcceleratorMembership.role == "resident",
                 AcceleratorMembership.status == "enrolled",
-                AcceleratorMembership.id.not_in(active_memberships),
+                AcceleratorMembership.id != membership.id,
                 User.is_active.is_(True),
                 User.deleted_at.is_(None),
             )
             .order_by(User.name)
         )).all()
-        for row, person, application in candidate_rows:
-            profile = (await db.execute(select(AcceleratorMatchProfile).where(
-                AcceleratorMatchProfile.membership_id == row.id,
-                AcceleratorMatchProfile.active.is_(True),
-            ))).scalar_one_or_none()
-            candidates.append({
-                "membership_id": row.id,
-                **_application_contact(application, person, profile),
-            })
+        for row, person, application, profile in candidate_rows:
+            current = current_teams.get(row.id)
+            current_team = None
+            if current:
+                member, source = current
+                if source.id == own_team_member.team_id:
+                    continue
+                owner = source.owner_membership_id == row.id
+                if owner and team_counts[source.id] > 1:
+                    continue
+                current_team = {"id":source.id,"name":source.name,"action":"archive" if owner else "leave"}
+            contact = _application_contact(application, person, profile)
+            if current:
+                # Contact consent inside an existing team does not publish it to other captains.
+                contact.update(email=None, telegram=None)
+            candidates.append({"membership_id":row.id,"current_team":current_team,**contact})
     applications = list((await db.execute(select(AcceleratorTeamApplication).where(
         (AcceleratorTeamApplication.membership_id == membership.id)
         | (AcceleratorTeamApplication.team_id.in_([team.id for team in teams if team.owner_membership_id == membership.id]))
@@ -607,6 +622,7 @@ async def get_team_pool(
             "applicant": _application_contact(application, person) if person else None,
             "message": row.message,
             "desired_role": row.desired_role,
+            "transfer_context": row.transfer_context,
             "status": row.status,
             "created_at": row.created_at,
             "can_respond": bool(team and team.owner_membership_id == membership.id and row.status == "pending"),
@@ -640,25 +656,26 @@ async def create_team_application(
     ).with_for_update())).scalar_one_or_none()
     if not membership:
         raise HTTPException(status_code=403, detail="Заявку может подать резидент потока")
-    if await active_team_member(db, membership.id, lock=True):
-        raise HTTPException(status_code=409, detail="Вы уже состоите в команде")
+    from accelerator_team_transfer import capture_transfer_consent, ensure_join_capacity
+    transfer_context = await capture_transfer_consent(db, membership.id, team.id,
+        payload.leave_current_team, payload.expected_current_team_id)
     pending = (await db.execute(select(AcceleratorTeamApplication.id).where(
         AcceleratorTeamApplication.membership_id == membership.id,
         AcceleratorTeamApplication.status == "pending",
     ))).scalar_one_or_none()
     if pending is not None:
         raise HTTPException(status_code=409, detail="У вас уже есть заявка, ожидающая решения. Сначала отзовите её.")
-    if await active_member_count(db, team.id) >= team.max_members:
-        raise HTTPException(status_code=409, detail="В команде нет свободных мест")
+    await ensure_join_capacity(db, team, membership.id)
     row = AcceleratorTeamApplication(
         team_id=team.id,
         membership_id=membership.id,
         message=(payload.message or "").strip() or None,
         desired_role=(payload.desired_role or "").strip() or None,
+        transfer_context=transfer_context,
     )
     db.add(row)
     add_audit(db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id, actor_user_id=user.id,
-              action="team.application_created", target_type="team_application", details={"team_id": team.id})
+              action="team.application_created", target_type="team_application", details={"team_id": team.id, "transfer_context": transfer_context})
     try:
         await db.commit()
     except IntegrityError as exc:
@@ -674,67 +691,51 @@ async def respond_team_application(
     payload: AcceleratorTeamApplicationUpdate,
     user: User = Depends(get_async_current_user),
     db: AsyncSession = Depends(get_async_db),
+    background_tasks: BackgroundTasks = None,
 ):
-    row = (await db.execute(select(AcceleratorTeamApplication).where(
-        AcceleratorTeamApplication.id == application_id
-    ).with_for_update())).scalar_one_or_none()
-    if not row:
-        raise HTTPException(status_code=404, detail="Заявка не найдена")
-    team = (await db.execute(select(AcceleratorTeam).where(
-        AcceleratorTeam.id == row.team_id
-    ).with_for_update())).scalar_one()
-    cohort = await get_cohort(db, team.cohort_id)
-    await require_teams_module(db, cohort)
-    ensure_team_mutable(team, cohort)
-    applicant = (await db.execute(select(AcceleratorMembership).where(
-        AcceleratorMembership.id == row.membership_id
-    ).with_for_update())).scalar_one()
-    owner = await owner_membership(db, team, lock=True)
-    is_applicant = applicant.user_id == user.id
-    is_captain = owner.user_id == user.id
-    if payload.status == "cancelled" and not is_applicant:
-        raise HTTPException(status_code=403, detail="Отозвать заявку может только её автор")
-    if payload.status in {"accepted", "declined"} and not is_captain:
-        raise HTTPException(status_code=403, detail="Решение принимает капитан команды")
-    if row.status != "pending":
-        raise HTTPException(status_code=409, detail="Решение по заявке уже принято")
-    previous_project_id = applicant.project_id
-    if payload.status == "accepted":
-        if applicant.role != "resident" or applicant.status != "enrolled":
-            raise HTTPException(status_code=409, detail="Участие кандидата не активно")
-        if await active_team_member(db, applicant.id, lock=True):
-            raise HTTPException(status_code=409, detail="Участник уже вступил в другую команду")
-        if await active_member_count(db, team.id) >= team.max_members:
-            raise HTTPException(status_code=409, detail="В команде нет свободных мест")
-        db.add(AcceleratorTeamMember(
-            team_id=team.id, membership_id=applicant.id, role="member",
-            title=row.desired_role, share_contact=False,
-        ))
-        applicant.project_id = team.project_id
-        team_tracker = (await db.execute(select(AcceleratorTeamTrackerAssignment.id).where(
-            AcceleratorTeamTrackerAssignment.team_id == team.id
-        ))).scalar_one_or_none()
-        if team_tracker is not None:
-            await db.execute(delete(AcceleratorTrackerAssignment).where(
-                AcceleratorTrackerAssignment.membership_id == applicant.id
-            ))
-        other_rows = list((await db.execute(select(AcceleratorTeamApplication).where(
-            AcceleratorTeamApplication.membership_id == applicant.id,
-            AcceleratorTeamApplication.status == "pending",
-            AcceleratorTeamApplication.id != row.id,
-        ).with_for_update())).scalars().all())
-        for other in other_rows:
-            other.status = "cancelled"
-            other.responded_at = datetime.utcnow()
-    row.status = payload.status
-    row.responded_by_user_id = user.id
-    row.responded_at = datetime.utcnow()
-    add_audit(db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id, actor_user_id=user.id,
-              action=f"team.application_{payload.status}", target_type="team_application", target_id=row.id,
-              details={"team_id": team.id, "membership_id": applicant.id,
-                       "previous_project_id": previous_project_id, "project_id": applicant.project_id})
-    await db.commit()
-    return {"id": row.id, "status": row.status}
+    from accelerator_team_transfer import lock_join_context, complete_team_join
+
+    async def operation():
+        row = await db.get(AcceleratorTeamApplication, application_id)
+        if not row:
+            raise HTTPException(404, "Заявка не найдена")
+        applicant, team = await lock_join_context(db, row.membership_id, row.team_id)
+        row = (await db.execute(select(AcceleratorTeamApplication).where(
+            AcceleratorTeamApplication.id == application_id).with_for_update()
+            .execution_options(populate_existing=True))).scalar_one()
+        cohort = await get_cohort(db, team.cohort_id)
+        await require_teams_module(db, cohort)
+        ensure_team_mutable(team, cohort)
+        owner = await owner_membership(db, team, lock=True)
+        if payload.status == "cancelled" and applicant.user_id != user.id:
+            raise HTTPException(403, "Отозвать заявку может только её автор")
+        if payload.status in {"accepted", "declined"} and owner.user_id != user.id:
+            raise HTTPException(403, "Решение принимает капитан команды")
+        if row.status != "pending":
+            raise HTTPException(409, "Решение по заявке уже принято")
+        previous_project_id = applicant.project_id
+        notifications = []
+        if payload.status == "accepted":
+            if owner.status != "enrolled":
+                raise HTTPException(409, "Участие капитана не активно")
+            notifications = await complete_team_join(db, candidate=applicant, target=team, cohort=cohort,
+                actor_user_id=user.id, transfer_context=row.transfer_context,
+                application_id=row.id, title=row.desired_role)
+        row.status = payload.status
+        row.responded_by_user_id = user.id
+        row.responded_at = datetime.utcnow()
+        add_audit(db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id, actor_user_id=user.id,
+            action=f"team.application_{payload.status}", target_type="team_application", target_id=row.id,
+            details={"team_id":team.id,"membership_id":applicant.id,
+                     "previous_project_id":previous_project_id,"project_id":applicant.project_id,
+                     "transfer_context":row.transfer_context})
+        await db.flush()
+        return {"id":row.id,"status":row.status}, notifications
+
+    result, notifications = await _commit_or_conflict(db, operation())
+    if background_tasks is not None:
+        _schedule_notifications(background_tasks, notifications)
+    return result
 
 
 @router.patch("/teams/{team_id}/captain")
