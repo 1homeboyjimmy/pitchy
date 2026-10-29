@@ -27,6 +27,7 @@ from models import (
 )
 from projects_router import delete_project
 from accelerator_project_selection import project_options, select_project
+from accelerator_team_service import active_team_member
 from routers.accelerator_teams import (
     assign_team_tracker,
     answer_team_invitation,
@@ -954,3 +955,243 @@ async def test_captain_must_transfer_and_owner_cannot_leave_team():
         assert _status(owner_cannot_leave) == 409
         stored_application = await db.get(AcceleratorTeamApplication, application["id"])
         assert stored_application.status == "pending"
+
+
+async def _transfer_fixture(db, *, member=False):
+    suffix = uuid.uuid4().hex[:10]
+    _, organizer, _, cohort = await _create_cohort_context(db, suffix)
+    people = [User(email=f'transfer-{i}-{suffix}@example.test', name=f'Transfer {i}') for i in range(4)]
+    db.add_all(people)
+    await db.commit()
+    residents = [await _enroll_resident(db, cohort_id=cohort['id'], manager=organizer,
+        resident=u, with_project=i < 3) for i,u in enumerate(people)]
+    old = await create_membership_team(residents[0].membership_id, AcceleratorTeamCreate(name='Source', max_members=5), people[0], db)
+    target = await create_membership_team(residents[1].membership_id, AcceleratorTeamCreate(name='Destination', max_members=5), people[1], db)
+    if member:
+        app = await create_team_application(old['id'], AcceleratorTeamApplicationCreate(), people[2], db)
+        await respond_team_application(app['id'], AcceleratorTeamApplicationUpdate(status='accepted'), people[0], db)
+    return residents, old, target
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('method', ['application', 'invitation'])
+@pytest.mark.parametrize('member', [False, True])
+async def test_team_transfer_is_deferred_consented_and_preserves_personal_projects(method, member):
+    from project_access import get_accessible_project
+    async with AsyncSessionLocal() as db:
+        residents, old, target = await _transfer_fixture(db, member=member)
+        candidate = residents[2] if member else residents[0]
+        user = candidate.user
+        source_project = (await db.get(AcceleratorMembership, candidate.membership_id)).project_id
+        personal = await db.get(Project, candidate.project_id)
+        personal.passport = {'core': {'problem': 'Preserve my research'}}
+        await db.commit()
+        incoming = await create_team_application(old['id'], AcceleratorTeamApplicationCreate(), residents[3].user, db)
+        invitation = await invite_team_member(old['id'], AcceleratorTeamInvitationCreate(membership_id=residents[3].membership_id),
+                                              BackgroundTasks(), residents[0].user, db)
+        before = await get_membership_team(candidate.membership_id, user, db)
+        assert before['transfer']['allowed']
+        assert before['transfer']['action'] == ('leave' if member else 'archive')
+        if method == 'application':
+            with pytest.raises(HTTPException) as consent_missing:
+                await create_team_application(target['id'], AcceleratorTeamApplicationCreate(), user, db)
+            assert consent_missing.value.status_code == 409
+            pending = await create_team_application(target['id'], AcceleratorTeamApplicationCreate(
+                leave_current_team=True, expected_current_team_id=old['id']), user, db)
+            stored = await db.get(AcceleratorTeamApplication, pending['id'])
+            assert stored.transfer_context['team_id'] == old['id']
+        else:
+            pending = await invite_team_member(target['id'], AcceleratorTeamInvitationCreate(membership_id=candidate.membership_id),
+                                              BackgroundTasks(), residents[1].user, db)
+            with pytest.raises(HTTPException) as consent_missing:
+                await answer_team_invitation(pending['id'], AcceleratorTeamInvitationUpdate(status='accepted'), BackgroundTasks(), user, db)
+            assert consent_missing.value.status_code == 409
+        assert (await db.get(AcceleratorTeam, old['id'])).status == 'active'
+        assert (await active_team_member(db, candidate.membership_id)).team_id == old['id']
+        assert (await db.get(AcceleratorMembership, candidate.membership_id)).project_id == source_project
+        if method == 'application':
+            await respond_team_application(pending['id'], AcceleratorTeamApplicationUpdate(status='accepted'), residents[1].user, db)
+        else:
+            await answer_team_invitation(pending['id'], AcceleratorTeamInvitationUpdate(status='accepted',
+                leave_current_team=True, expected_current_team_id=old['id']), BackgroundTasks(), user, db)
+        assert (await active_team_member(db, candidate.membership_id)).team_id == target['id']
+        assert (await db.get(AcceleratorMembership, candidate.membership_id)).project_id == target['project']['id']
+        assert (await db.get(AcceleratorTeam, old['id'])).status == ('active' if member else 'archived')
+        assert (await db.get(AcceleratorTeamApplication, incoming['id'])).status == ('pending' if member else 'cancelled')
+        assert (await db.get(AcceleratorTeamInvitation, invitation['id'])).status == ('pending' if member else 'cancelled')
+        await db.refresh(personal)
+        assert personal.user_id == user.id and personal.passport == {'core': {'problem': 'Preserve my research'}}
+        assert await get_accessible_project(db, target['project']['id'], user)
+        assert await get_accessible_project(db, personal.id, user)
+        assert (await db.execute(select(func.count(AcceleratorTeamMember.id)).where(
+            AcceleratorTeamMember.membership_id == candidate.membership_id, AcceleratorTeamMember.status == 'active'))).scalar_one() == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('status', ['declined', 'cancelled'])
+async def test_declined_or_cancelled_transfer_keeps_source_active(status):
+    async with AsyncSessionLocal() as db:
+        residents, old, target = await _transfer_fixture(db)
+        candidate = residents[0]
+        pending = await create_team_application(target['id'], AcceleratorTeamApplicationCreate(
+            leave_current_team=True, expected_current_team_id=old['id']), candidate.user, db)
+        actor = candidate.user if status == 'cancelled' else residents[1].user
+        await respond_team_application(pending['id'], AcceleratorTeamApplicationUpdate(status=status), actor, db)
+        assert (await db.get(AcceleratorTeam, old['id'])).status == 'active'
+        assert (await active_team_member(db, candidate.membership_id)).team_id == old['id']
+        assert (await db.get(AcceleratorMembership, candidate.membership_id)).project_id == candidate.project_id
+
+
+@pytest.mark.asyncio
+async def test_transfer_rechecks_source_composition_and_requires_captain_delegation():
+    async with AsyncSessionLocal() as db:
+        residents, old, target = await _transfer_fixture(db)
+        pending = await create_team_application(target['id'], AcceleratorTeamApplicationCreate(
+            leave_current_team=True, expected_current_team_id=old['id']), residents[0].user, db)
+        invitation = await invite_team_member(old['id'], AcceleratorTeamInvitationCreate(membership_id=residents[3].membership_id),
+                                              BackgroundTasks(), residents[0].user, db)
+        await answer_team_invitation(invitation['id'], AcceleratorTeamInvitationUpdate(status='accepted'),
+                                     BackgroundTasks(), residents[3].user, db)
+        with pytest.raises(HTTPException) as changed:
+            await respond_team_application(pending['id'], AcceleratorTeamApplicationUpdate(status='accepted'), residents[1].user, db)
+        assert changed.value.status_code == 409
+        assert (await db.get(AcceleratorTeam, old['id'])).status == 'active'
+        assert (await db.get(AcceleratorTeamApplication, pending['id'])).status == 'pending'
+        await respond_team_application(pending['id'], AcceleratorTeamApplicationUpdate(status='cancelled'), residents[0].user, db)
+        with pytest.raises(HTTPException) as cannot_abandon_others:
+            await create_team_application(target['id'], AcceleratorTeamApplicationCreate(
+                leave_current_team=True, expected_current_team_id=old['id']), residents[0].user, db)
+        assert cannot_abandon_others.value.status_code == 409
+        await transfer_team_captain(old['id'], AcceleratorTeamCaptainTransfer(membership_id=residents[3].membership_id), residents[0].user, db)
+        pending = await create_team_application(target['id'], AcceleratorTeamApplicationCreate(
+            leave_current_team=True, expected_current_team_id=old['id']), residents[0].user, db)
+        await respond_team_application(pending['id'], AcceleratorTeamApplicationUpdate(status='accepted'), residents[1].user, db)
+        assert (await db.get(AcceleratorTeam, old['id'])).status == 'active'
+        assert (await active_team_member(db, residents[0].membership_id)).team_id == target['id']
+        assert (await active_team_member(db, residents[3].membership_id)).team_id == old['id']
+
+
+@pytest.mark.asyncio
+async def test_full_destination_and_mid_transfer_failure_preserve_source(monkeypatch):
+    import accelerator_team_service
+    async with AsyncSessionLocal() as db:
+        residents, old, target = await _transfer_fixture(db)
+        candidate = residents[0]
+        pending = await create_team_application(target['id'], AcceleratorTeamApplicationCreate(
+            leave_current_team=True, expected_current_team_id=old['id']), candidate.user, db)
+        team = await db.get(AcceleratorTeam, target['id'])
+        team.max_members = 2
+        await db.commit()
+        await invite_team_member(target['id'], AcceleratorTeamInvitationCreate(membership_id=residents[3].membership_id),
+                                 BackgroundTasks(), residents[1].user, db)
+        with pytest.raises(HTTPException):
+            await respond_team_application(pending['id'], AcceleratorTeamApplicationUpdate(status='accepted'), residents[1].user, db)
+        assert (await db.get(AcceleratorTeam, old['id'])).status == 'active'
+        team.max_members = 5
+        await db.commit()
+        async def fail_after_exit(*args, **kwargs):
+            raise RuntimeError('Injected failure after leaving source')
+        monkeypatch.setattr(accelerator_team_service, '_cancel_other_pending_invitations', fail_after_exit)
+        with pytest.raises(RuntimeError, match='Injected failure'):
+            await respond_team_application(pending['id'], AcceleratorTeamApplicationUpdate(status='accepted'), residents[1].user, db)
+        await db.refresh(candidate.user)
+        assert (await db.get(AcceleratorTeam, old['id'])).status == 'active'
+        assert (await active_team_member(db, candidate.membership_id)).team_id == old['id']
+        assert (await db.get(AcceleratorMembership, candidate.membership_id)).project_id == candidate.project_id
+        assert (await db.get(AcceleratorTeamApplication, pending['id'])).status == 'pending'
+
+
+@pytest.mark.asyncio
+async def test_old_transfer_consent_cannot_leave_a_different_new_source_team():
+    async with AsyncSessionLocal() as db:
+        residents, old, target = await _transfer_fixture(db, member=True)
+        candidate = residents[2]
+        pending = await create_team_application(target['id'], AcceleratorTeamApplicationCreate(
+            leave_current_team=True, expected_current_team_id=old['id']), candidate.user, db)
+        active = await active_team_member(db, candidate.membership_id)
+        await delete_team_member(active.id, BackgroundTasks(), candidate.user, db)
+        replacement = await create_membership_team(candidate.membership_id, AcceleratorTeamCreate(name='Different source'), candidate.user, db)
+        with pytest.raises(HTTPException) as stale:
+            await respond_team_application(pending['id'], AcceleratorTeamApplicationUpdate(status='accepted'), residents[1].user, db)
+        assert stale.value.status_code == 409
+        assert (await active_team_member(db, candidate.membership_id)).team_id == replacement['id']
+        assert (await db.get(AcceleratorTeam, replacement['id'])).status == 'active'
+        assert (await db.get(AcceleratorTeamApplication, pending['id'])).status == 'pending'
+
+
+@pytest.mark.asyncio
+async def test_transfer_candidates_include_other_teams_without_publishing_contacts():
+    async with AsyncSessionLocal() as db:
+        residents, old, target = await _transfer_fixture(db)
+        pool = await get_team_pool(residents[1].membership_id,residents[1].user,db)
+        candidate = next(r for r in pool['candidates'] if r['membership_id']==residents[0].membership_id)
+        assert candidate['current_team']['id']==old['id'] and candidate['current_team']['action']=='archive'
+        assert candidate['email'] is None and candidate['telegram'] is None
+        invitation=await invite_team_member(old['id'],AcceleratorTeamInvitationCreate(membership_id=residents[3].membership_id),
+                                           BackgroundTasks(),residents[0].user,db)
+        await answer_team_invitation(invitation['id'],AcceleratorTeamInvitationUpdate(status='accepted'),
+                                     BackgroundTasks(),residents[3].user,db)
+        pool=await get_team_pool(residents[1].membership_id,residents[1].user,db)
+        assert residents[0].membership_id not in {r['membership_id'] for r in pool['candidates']}
+        member=next(r for r in pool['candidates'] if r['membership_id']==residents[3].membership_id)
+        assert member['current_team']['action']=='leave' and member['email'] is None
+
+
+@pytest.mark.asyncio
+async def test_postgres_simultaneous_transfers_to_two_teams_have_one_winner():
+    async with AsyncSessionLocal() as db:
+        if db.get_bind().dialect.name != 'postgresql':
+            pytest.skip('Requires PostgreSQL row locks')
+        residents, old, target = await _transfer_fixture(db)
+        other = await create_membership_team(residents[2].membership_id, AcceleratorTeamCreate(name='Other destination'), residents[2].user, db)
+        invitations = [await invite_team_member(t['id'], AcceleratorTeamInvitationCreate(membership_id=residents[0].membership_id),
+                        BackgroundTasks(), owner.user, db) for t,owner in [(target,residents[1]),(other,residents[2])]]
+        user_id = residents[0].user.id
+        membership_id = residents[0].membership_id
+    async def accept(invitation):
+        async with AsyncSessionLocal() as session:
+            person = await session.get(User,user_id)
+            try:
+                await answer_team_invitation(invitation['id'], AcceleratorTeamInvitationUpdate(status='accepted',
+                    leave_current_team=True,expected_current_team_id=old['id']), BackgroundTasks(),person,session)
+                return 200
+            except HTTPException as exc:
+                await session.rollback()
+                return exc.status_code
+    outcomes = await asyncio.wait_for(asyncio.gather(*(accept(i) for i in invitations)),timeout=20)
+    assert sorted(outcomes) == [200,409]
+    async with AsyncSessionLocal() as db:
+        active = await active_team_member(db,membership_id)
+        assert active.team_id in {target['id'],other['id']}
+        assert (await db.get(AcceleratorTeam,old['id'])).status == 'archived'
+        assert (await db.execute(select(func.count(AcceleratorTeamMember.id)).where(
+            AcceleratorTeamMember.membership_id==membership_id,AcceleratorTeamMember.status=='active'))).scalar_one()==1
+
+
+@pytest.mark.asyncio
+async def test_postgres_opposite_member_transfers_finish_without_deadlock():
+    async with AsyncSessionLocal() as db:
+        if db.get_bind().dialect.name != 'postgresql':
+            pytest.skip('Requires PostgreSQL row locks')
+        residents, old, target = await _transfer_fixture(db,member=True)
+        invitation=await invite_team_member(target['id'],AcceleratorTeamInvitationCreate(membership_id=residents[3].membership_id),
+                                           BackgroundTasks(),residents[1].user,db)
+        await answer_team_invitation(invitation['id'],AcceleratorTeamInvitationUpdate(status='accepted'),
+                                     BackgroundTasks(),residents[3].user,db)
+        moves=[]
+        for candidate,source,destination,owner in [(residents[2],old,target,residents[1]),(residents[3],target,old,residents[0])]:
+            invitation=await invite_team_member(destination['id'],AcceleratorTeamInvitationCreate(membership_id=candidate.membership_id),
+                                               BackgroundTasks(),owner.user,db)
+            moves.append((candidate.user.id,candidate.membership_id,source['id'],destination['id'],invitation['id']))
+    async def accept(move):
+        uid,mid,source,target_id,iid=move
+        async with AsyncSessionLocal() as session:
+            person=await session.get(User,uid)
+            await answer_team_invitation(iid,AcceleratorTeamInvitationUpdate(status='accepted',leave_current_team=True,
+                expected_current_team_id=source),BackgroundTasks(),person,session)
+    await asyncio.wait_for(asyncio.gather(*(accept(move) for move in moves)),timeout=20)
+    async with AsyncSessionLocal() as db:
+        for uid,mid,source,destination,iid in moves:
+            assert (await active_team_member(db,mid)).team_id==destination
+        assert (await db.get(AcceleratorTeam,old['id'])).status=='active'
+        assert (await db.get(AcceleratorTeam,target['id'])).status=='active'

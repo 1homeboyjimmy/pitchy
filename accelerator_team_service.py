@@ -445,7 +445,9 @@ async def membership_team_payload(
             await invitation_dict(db, row, viewer=user, access_role=access_role)
             for row in rows
         ]
+    from accelerator_team_transfer import transfer_state
     return {
+        "transfer": await transfer_state(db, membership.id) if access_role == "resident" else None,
         "team": (
             await team_dict(db, team, viewer=user, access_role=access_role)
             if team else None
@@ -538,7 +540,7 @@ async def create_team(
     project = await db.get(Project, membership.project_id) if membership.project_id else None
     if membership.project_id and (not project or project.user_id != membership.user_id):
         raise HTTPException(status_code=409, detail="Канонический проект резидента недоступен")
-    if await active_team_member(db, membership.id, lock=True):
+    if await active_team_member(db, membership.id):
         raise HTTPException(status_code=409, detail="Резидент уже состоит в активной команде")
     duplicate_conditions = [
         (AcceleratorTeam.owner_membership_id == membership.id)
@@ -703,8 +705,10 @@ async def create_team_invitation(
         raise HTTPException(status_code=422, detail="Кандидат не зачислен в этот поток")
     if candidate.id == owner.id:
         raise HTTPException(status_code=409, detail="Нельзя пригласить самого себя")
-    if await active_team_member(db, candidate.id, lock=True):
-        raise HTTPException(status_code=409, detail="Кандидат уже состоит в активной команде")
+    from accelerator_team_transfer import transfer_state
+    current = await transfer_state(db, candidate.id)
+    if current and (current['team_id'] == team.id or not current['allowed']):
+        raise HTTPException(status_code=409, detail=current['reason'] or "Кандидат уже состоит в этой команде")
     duplicate = (await db.execute(select(AcceleratorTeamInvitation.id).where(
         AcceleratorTeamInvitation.team_id == team.id,
         AcceleratorTeamInvitation.invitee_membership_id == candidate.id,
@@ -766,7 +770,8 @@ async def create_team_invitation(
 async def _cancel_other_pending_invitations(
     db: AsyncSession,
     *,
-    accepted: AcceleratorTeamInvitation,
+    accepted_invitation_id: int | None,
+    accepted_application_id: int | None = None,
     candidate: AcceleratorMembership,
     cohort: AcceleratorCohort,
     actor_user_id: int,
@@ -775,7 +780,7 @@ async def _cancel_other_pending_invitations(
     rows = list((await db.execute(select(AcceleratorTeamInvitation).where(
         AcceleratorTeamInvitation.invitee_membership_id == candidate.id,
         AcceleratorTeamInvitation.status == "pending",
-        AcceleratorTeamInvitation.id != accepted.id,
+        AcceleratorTeamInvitation.id != accepted_invitation_id if accepted_invitation_id else True,
     ).with_for_update())).scalars().all())
     notification_ids: list[int] = []
     candidate_user = await db.get(User, candidate.user_id)
@@ -795,7 +800,7 @@ async def _cancel_other_pending_invitations(
             event_type="team_invitation_responded",
             subject="Приглашение в команду закрыто",
             body=(
-                f"{candidate_user.name} присоединился к другой команде; "
+                f"{candidate_user.name} присоединился к команде; "
                 f"приглашение в «{other_team.name}» отменено."
             ),
             idempotency_key=f"team-invitation-auto-cancelled:{row.id}",
@@ -809,7 +814,7 @@ async def _cancel_other_pending_invitations(
             action="team.invitation_auto_cancelled",
             target_type="team_invitation",
             target_id=row.id,
-            details={"accepted_invitation_id": accepted.id},
+            details={"accepted_invitation_id": accepted_invitation_id, "accepted_application_id": accepted_application_id},
         )
     return notification_ids
 
@@ -820,20 +825,18 @@ async def respond_team_invitation(
     invitation_id: int,
     status: str,
     user: User,
+    leave_current_team: bool = False,
+    expected_current_team_id: int | None = None,
 ) -> tuple[AcceleratorTeamInvitation, list[int]]:
+    from accelerator_team_transfer import lock_join_context, capture_transfer_consent, complete_team_join
+    invitation = await db.get(AcceleratorTeamInvitation, invitation_id)
+    candidate = await db.get(AcceleratorMembership, invitation.invitee_membership_id) if invitation else None
+    if not invitation or not candidate or candidate.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Приглашение не найдено")
+    candidate, team = await lock_join_context(db, candidate.id, invitation.team_id)
     invitation = (await db.execute(select(AcceleratorTeamInvitation).where(
-        AcceleratorTeamInvitation.id == invitation_id
-    ).with_for_update())).scalar_one_or_none()
-    if not invitation:
-        raise HTTPException(status_code=404, detail="Приглашение не найдено")
-    team = (await db.execute(select(AcceleratorTeam).where(
-        AcceleratorTeam.id == invitation.team_id
-    ).with_for_update())).scalar_one_or_none()
-    candidate = (await db.execute(select(AcceleratorMembership).where(
-        AcceleratorMembership.id == invitation.invitee_membership_id
-    ).with_for_update())).scalar_one_or_none()
-    if not team or not candidate or candidate.user_id != user.id:
-        raise HTTPException(status_code=404, detail="Приглашение не найдено")
+        AcceleratorTeamInvitation.id == invitation_id).with_for_update()
+        .execution_options(populate_existing=True))).scalar_one()
     cohort = await get_cohort(db, team.cohort_id)
     await require_teams_module(db, cohort)
     ensure_team_mutable(team, cohort)
@@ -864,46 +867,11 @@ async def respond_team_invitation(
                     status_code=409,
                     detail="Профиль кандидата больше не активен",
                 )
-        if await active_team_member(db, candidate.id, lock=True):
-            raise HTTPException(status_code=409, detail="Участник уже состоит в другой команде")
-        await expire_pending_invitations(
-            db,
-            cohort=cohort,
-            actor_user_id=user.id,
-            team_id=team.id,
-        )
-        active_count = await active_member_count(db, team.id)
-        pending_count = await pending_invitation_count(db, team.id)
-        if active_count >= team.max_members or active_count + pending_count > team.max_members:
-            raise HTTPException(status_code=409, detail="В команде больше нет свободного места")
-        db.add(AcceleratorTeamMember(
-            team_id=team.id,
-            membership_id=candidate.id,
-            role="member",
-            status="active",
-            joined_at=now,
-            created_at=now,
-            updated_at=now,
-        ))
-        # Only the accelerator participation follows the team. Personal projects
-        # remain owned by the candidate, with their passports and history intact.
-        candidate.project_id = team.project_id
-        team_tracker = (await db.execute(select(AcceleratorTeamTrackerAssignment.id).where(
-            AcceleratorTeamTrackerAssignment.team_id == team.id
-        ))).scalar_one_or_none()
-        if team_tracker is not None:
-            await db.execute(delete(AcceleratorTrackerAssignment).where(
-                AcceleratorTrackerAssignment.membership_id == candidate.id
-            ))
+        consent = await capture_transfer_consent(db, candidate.id, team.id, leave_current_team, expected_current_team_id)
+        notification_ids.extend(await complete_team_join(db, candidate=candidate, target=team, cohort=cohort,
+            actor_user_id=user.id, transfer_context=consent, invitation_id=invitation.id))
         invitation.status = "accepted"
         invitation.responded_at = now
-        notification_ids.extend(await _cancel_other_pending_invitations(
-            db,
-            accepted=invitation,
-            candidate=candidate,
-            cohort=cohort,
-            actor_user_id=user.id,
-        ))
     else:
         invitation.status = "declined"
         invitation.responded_at = now
@@ -951,7 +919,7 @@ async def cancel_team_invitation(
 ) -> tuple[AcceleratorTeamInvitation, list[int]]:
     invitation = (await db.execute(select(AcceleratorTeamInvitation).where(
         AcceleratorTeamInvitation.id == invitation_id
-    ).with_for_update())).scalar_one_or_none()
+    ))).scalar_one_or_none()
     if not invitation:
         raise HTTPException(status_code=404, detail="Приглашение не найдено")
     team = (await db.execute(select(AcceleratorTeam).where(
@@ -1162,6 +1130,18 @@ async def update_team(
     return team, notification_ids
 
 
+async def lock_team_member_row(db, member_id):
+    member = await db.get(AcceleratorTeamMember, member_id)
+    if not member:
+        raise HTTPException(status_code=404, detail="Участник команды не найден")
+    team = (await db.execute(select(AcceleratorTeam).where(
+        AcceleratorTeam.id == member.team_id).with_for_update())).scalar_one()
+    member = (await db.execute(select(AcceleratorTeamMember).where(
+        AcceleratorTeamMember.id == member_id).with_for_update()
+        .execution_options(populate_existing=True))).scalar_one()
+    return member, team
+
+
 async def update_team_member(
     db: AsyncSession,
     *,
@@ -1169,14 +1149,7 @@ async def update_team_member(
     payload: AcceleratorTeamMemberUpdate,
     user: User,
 ) -> AcceleratorTeam:
-    member = (await db.execute(select(AcceleratorTeamMember).where(
-        AcceleratorTeamMember.id == member_id
-    ).with_for_update())).scalar_one_or_none()
-    if not member:
-        raise HTTPException(status_code=404, detail="Участник команды не найден")
-    team = (await db.execute(select(AcceleratorTeam).where(
-        AcceleratorTeam.id == member.team_id
-    ).with_for_update())).scalar_one_or_none()
+    member, team = await lock_team_member_row(db, member_id)
     cohort = await get_cohort(db, team.cohort_id)
     await require_teams_module(db, cohort)
     await require_owner(db, team=team, user=user, cohort=cohort)
@@ -1210,19 +1183,12 @@ async def update_team_member_contact(
     payload: AcceleratorTeamContactUpdate,
     user: User,
 ) -> AcceleratorTeam:
-    member = (await db.execute(select(AcceleratorTeamMember).where(
-        AcceleratorTeamMember.id == member_id
-    ).with_for_update())).scalar_one_or_none()
-    if not member:
-        raise HTTPException(status_code=404, detail="Участник команды не найден")
+    member, team = await lock_team_member_row(db, member_id)
     membership = (await db.execute(select(AcceleratorMembership).where(
         AcceleratorMembership.id == member.membership_id
     ).with_for_update())).scalar_one_or_none()
     if not membership or membership.user_id != user.id:
         raise HTTPException(status_code=404, detail="Участник команды не найден")
-    team = (await db.execute(select(AcceleratorTeam).where(
-        AcceleratorTeam.id == member.team_id
-    ).with_for_update())).scalar_one_or_none()
     cohort = await get_cohort(db, team.cohort_id)
     await require_teams_module(db, cohort)
     ensure_team_mutable(team, cohort)
@@ -1249,14 +1215,7 @@ async def remove_team_member(
     member_id: int,
     user: User,
 ) -> tuple[AcceleratorTeam, list[int]]:
-    member = (await db.execute(select(AcceleratorTeamMember).where(
-        AcceleratorTeamMember.id == member_id
-    ).with_for_update())).scalar_one_or_none()
-    if not member:
-        raise HTTPException(status_code=404, detail="Участник команды не найден")
-    team = (await db.execute(select(AcceleratorTeam).where(
-        AcceleratorTeam.id == member.team_id
-    ).with_for_update())).scalar_one_or_none()
+    member, team = await lock_team_member_row(db, member_id)
     cohort = await get_cohort(db, team.cohort_id)
     await require_teams_module(db, cohort)
     ensure_team_mutable(team, cohort)

@@ -41,11 +41,22 @@ class AcceleratorTeamInvitationCreate(BaseModel):
         return self
 
 
-class AcceleratorTeamInvitationUpdate(BaseModel):
+class TeamTransferConsent(BaseModel):
+    leave_current_team: bool = False
+    expected_current_team_id: int | None = Field(default=None, gt=0)
+
+    @model_validator(mode="after")
+    def require_source_team(self):
+        if self.leave_current_team and self.expected_current_team_id is None:
+            raise ValueError("Укажите текущую команду для подтверждения перехода")
+        return self
+
+
+class AcceleratorTeamInvitationUpdate(TeamTransferConsent):
     status: Literal["accepted", "declined"]
 
 
-class AcceleratorTeamApplicationCreate(BaseModel):
+class AcceleratorTeamApplicationCreate(TeamTransferConsent):
     message: str | None = Field(default=None, max_length=1000)
     desired_role: str | None = Field(default=None, max_length=120)
 
@@ -146,6 +157,7 @@ class AcceleratorMembershipTeamResponse(BaseModel):
     team: AcceleratorTeamResponse | None = None
     invitations: list[AcceleratorTeamInvitationResponse]
     can_create: bool = False
+    transfer: dict | None = None
 
 
 class AcceleratorTeamListResponse(BaseModel):

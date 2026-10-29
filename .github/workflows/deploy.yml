@@ -130,12 +130,12 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Verify resident import against isolated PostgreSQL
+      - name: Verify resident import and team transfers against isolated PostgreSQL
         run: |
           docker run --rm --network host --entrypoint python \
             -e PYTHON_DOTENV_DISABLED=1 -e OPENAI_API_KEY=local-test-only -e POLZA_API_KEY=local-test-only \
             -e PITCHY_TEST_DATABASE_URL=postgresql+psycopg2://resident_test:resident_local_test@127.0.0.1:55432/resident_import_test \
-            "$BACKEND_IMAGE:${{ github.sha }}" -m pytest tests/test_accelerator_resident_import.py -o addopts="-ra --tb=short" -q
+            "$BACKEND_IMAGE:${{ github.sha }}" -m pytest tests/test_accelerator_resident_import.py tests/test_accelerator_teams.py -o addopts="-ra --tb=short" -q
 
   deploy:
     runs-on: ubuntu-latest
