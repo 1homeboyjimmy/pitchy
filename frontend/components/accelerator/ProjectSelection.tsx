@@ -8,16 +8,22 @@ export function ProjectSelection({ membershipId, onChanged }: { membershipId: nu
   const [projects, setProjects] = useState<Array<{ id: number; name: string }>>([]);
   const [selected, setSelected] = useState("");
   const [saved, setSaved] = useState("");
+  const [team, setTeam] = useState<{ name: string; project_id: number | null } | null>(null);
+  const [locked, setLocked] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   useEffect(() => {
     let cancelled = false;
     if (!token) return;
-    getAuthJson<{ project_id: number | null; projects: Array<{ id: number; name: string }> }>(`/api/accelerators/memberships/${membershipId}/project-options`, token)
-      .then(data => { if (!cancelled) { setProjects(data.projects); setSelected(String(data.project_id ?? data.projects[0]?.id ?? "")); setSaved(String(data.project_id)); } })
+    getAuthJson<{ project_id: number | null; projects: Array<{ id: number; name: string }>; selection_locked?: boolean; team?: { name: string; project_id: number | null } | null }>(`/api/accelerators/memberships/${membershipId}/project-options`, token)
+      .then(data => { if (!cancelled) { setProjects(data.projects); setSelected(String(data.project_id ?? data.projects[0]?.id ?? "")); setSaved(String(data.project_id)); setTeam(data.team || null); setLocked(Boolean(data.selection_locked)); } })
       .catch(() => { if (!cancelled) setProjects([]); });
     return () => { cancelled = true; };
   }, [membershipId, token]);
+  if (locked && team) return <div className="mt-5 border-t border-white/10 pt-4">
+    <p className="text-sm text-white/65">Основной проект — проект команды «{team.name}».</p>
+    <p className="mt-2 text-xs text-white/40">Личные проекты и их история сохранены и доступны отдельно на дашборде Pitchy.</p>
+  </div>;
   if (projects.length < 2) return null;
   const save = async () => {
     if (!token) return;

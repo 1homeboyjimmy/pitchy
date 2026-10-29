@@ -164,7 +164,7 @@ export function ResidentMembershipView({ membership, quotas, onChanged }: { memb
 
       {enrolled && section === "tracking" && membership.modules.progress_tracking && <ResidentTracking membershipId={membership.membership_id} focusTaskId={focusTarget} />}
 
-      {enrolled && section === "matching" && membership.modules.matchmaking && <MatchmakingWorkspace cohortId={membership.cohort.id} membershipId={membership.membership_id} project={membership.project} />}
+      {enrolled && section === "matching" && membership.modules.matchmaking && <MatchmakingWorkspace cohortId={membership.cohort.id} membershipId={membership.membership_id} project={membership.project} onChanged={onChanged} />}
 
       {enrolled && section === "project_audit" && membership.modules.project_audit && <ProjectAuditWorkspace cohortId={membership.cohort.id} membershipId={membership.membership_id} />}
 

@@ -68,7 +68,7 @@ type PoolTeam = { id: number; name: string; max_members: number; member_count: n
 type TeamApplication = { id: number; team_id: number; team_name: string; membership_id: number; applicant?: PoolContact | null; message?: string | null; desired_role?: string | null; status: string; can_respond: boolean; can_cancel: boolean };
 type TeamPool = { teams: PoolTeam[]; candidates: Array<PoolContact & { membership_id: number }>; applications: TeamApplication[] };
 
-export function TeamWorkspace({ membershipId, project }: { membershipId: number; project?: { id: number; name: string } | null }) {
+export function TeamWorkspace({ membershipId, project, onChanged }: { membershipId: number; project?: { id: number; name: string } | null; onChanged?: () => Promise<void> }) {
   const { token } = useAuth();
   const [team, setTeam] = useState<ResidentTeam | null>(null);
   const [invitations, setInvitations] = useState<TeamInvitation[]>([]);
@@ -109,13 +109,18 @@ export function TeamWorkspace({ membershipId, project }: { membershipId: number;
 
   useEffect(() => { void load(); }, [load]);
 
+  const refresh = async () => {
+    await load();
+    await onChanged?.();
+  };
+
   const createTeam = async (event: FormEvent) => {
     event.preventDefault();
     if (!token) return;
     setBusy("create"); setError("");
     try {
       await postAuthJson(`/api/accelerators/memberships/${membershipId}/team`, { name: createForm.name.trim(), max_members: createForm.maxMembers }, token);
-      await load();
+      await refresh();
     } catch (reason) { setError(teamError(reason, "Не удалось создать команду")); }
     finally { setBusy(""); }
   };
@@ -136,7 +141,8 @@ export function TeamWorkspace({ membershipId, project }: { membershipId: number;
     setBusy(`invitation-${invitationId}`); setError("");
     try {
       await patchAuthJson(`/api/accelerators/team-invitations/${invitationId}`, { status }, token);
-      await load();
+      if (status === "accepted") await refresh();
+      else await load();
     } catch (reason) { setError(teamError(reason, status === "accepted" ? "Не удалось принять приглашение" : "Не удалось отклонить приглашение")); }
     finally { setBusy(""); }
   };
@@ -153,7 +159,7 @@ export function TeamWorkspace({ membershipId, project }: { membershipId: number;
     setBusy("project"); setError("");
     try {
       await putAuthJson(`/api/accelerators/teams/${team.id}/project`, { project_id: projectId }, token);
-      await load();
+      await refresh();
     } catch (reason) { setError(teamError(reason, "Не удалось привязать проект")); }
     finally { setBusy(""); }
   };
@@ -166,7 +172,7 @@ export function TeamWorkspace({ membershipId, project }: { membershipId: number;
       const created = await createProject({ name: newProjectName.trim() }, token);
       await putAuthJson(`/api/accelerators/teams/${team.id}/project`, { project_id: created.id }, token);
       setNewProjectName("");
-      await load();
+      await refresh();
     } catch (reason) { setError(teamError(reason, "Не удалось создать и привязать проект")); }
     finally { setBusy(""); }
   };
@@ -234,7 +240,7 @@ export function TeamWorkspace({ membershipId, project }: { membershipId: number;
     const ownMember = team?.members.find((member) => member.membership_id === membershipId);
     if (!token || !team || team.can_manage || team.status !== "active" || ownMember?.status !== "active" || !window.confirm(`Покинуть команду «${team.name}»?`)) return;
     setBusy("leave"); setError("");
-    try { await deleteAuth(`/api/accelerators/team-members/${ownMember.id}`, token); await load(); }
+    try { await deleteAuth(`/api/accelerators/team-members/${ownMember.id}`, token); await refresh(); }
     catch (reason) { setError(teamError(reason, "Не удалось покинуть команду")); }
     finally { setBusy(""); }
   };
@@ -253,7 +259,7 @@ export function TeamWorkspace({ membershipId, project }: { membershipId: number;
 
   return <div className="space-y-5">
     <section>
-      <div className="flex flex-wrap items-start justify-between gap-4"><div><h1 className="text-2xl font-semibold sm:text-3xl">{team?.name || "Команда"}</h1><p className="mt-1 text-sm text-white/45">{team ? "Участники, роли и поддержка проекта" : "Найдите подходящую команду или соберите свою"}</p></div><div className="flex items-center gap-3">{!team && <span className="rounded-full border border-white/10 px-4 py-2 text-sm text-white/65">Без команды</span>}<button type="button" onClick={() => void load()} disabled={Boolean(busy)} className="rounded-full border border-white/10 p-3 text-white/45" aria-label="Обновить команду"><RefreshCw size={16} /></button></div></div>
+      <div className="flex flex-wrap items-start justify-between gap-4"><div><h1 className="text-2xl font-semibold sm:text-3xl">{team?.name || "Команда"}</h1><p className="mt-1 text-sm text-white/45">{team ? "Участники, роли и поддержка проекта" : "Найдите подходящую команду или соберите свою"}</p></div><div className="flex items-center gap-3">{!team && <span className="rounded-full border border-white/10 px-4 py-2 text-sm text-white/65">Без команды</span>}<button type="button" onClick={() => void refresh()} disabled={Boolean(busy)} className="rounded-full border border-white/10 p-3 text-white/45" aria-label="Обновить команду"><RefreshCw size={16} /></button></div></div>
 
       {team && !team.can_manage && !viewerActive && <p className="mt-4 rounded-2xl border border-white/8 bg-white/[.025] p-4 text-sm text-white/50">Вы больше не состоите в этой команде. История состава доступна только для просмотра.</p>}
 

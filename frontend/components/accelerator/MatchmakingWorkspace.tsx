@@ -23,7 +23,7 @@ type MeData = { access_role: string; profiles: MatchProfile[]; matches: MatchRow
 function joinTags(values: string[]) { return values.join(", "); }
 function parseTags(value: string) { return Array.from(new Set(value.split(",").map((item) => item.trim()).filter(Boolean))); }
 
-export function MatchmakingWorkspace({ cohortId, membershipId, project }: { cohortId: number; membershipId?: number; project?: { id: number; name: string } | null }) {
+export function MatchmakingWorkspace({ cohortId, membershipId, project, onChanged }: { cohortId: number; membershipId?: number; project?: { id: number; name: string } | null; onChanged?: () => Promise<void> }) {
   const { token } = useAuth();
   const [me, setMe] = useState<MeData | null>(null);
   const [profile, setProfile] = useState<MatchProfile | null>(null);
@@ -76,7 +76,7 @@ export function MatchmakingWorkspace({ cohortId, membershipId, project }: { coho
   if (busy === "load" && !me) return <section className="workspace-card grid place-items-center py-14"><Loader2 className="animate-spin text-white/35" /></section>;
 
   return <div className="space-y-5">
-    {membershipId && <TeamWorkspace membershipId={membershipId} project={project} />}
+    {membershipId && <TeamWorkspace membershipId={membershipId} project={project} onChanged={onChanged} />}
     {!membershipId && <section className="workspace-card">
       <div className="flex flex-wrap items-start justify-between gap-4"><div><h2 className="text-xl">Профиль для подбора</h2><p className="mt-1 text-sm text-white/40">Теги можно вводить через запятую. Чем точнее запросы и опыт, тем полезнее рекомендации.</p></div><button type="button" onClick={() => void load()} className="rounded-full border border-white/10 p-3 text-white/40" aria-label="Обновить"><RefreshCw size={16} /></button></div>
       {!profile && !membershipId ? <p className="mt-5 text-sm text-white/40">Организатор ещё не добавил ваш профиль в пул потока.</p> : <form onSubmit={save} className="mt-6 grid gap-4 sm:grid-cols-2">

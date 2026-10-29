@@ -402,7 +402,12 @@ async def test_expanded_import_reuses_accounts_passports_and_memberships_with_sc
         assert await get_accessible_project(db,second_id,peer)
         with pytest.raises(HTTPException): await get_accessible_project(db,third_id,peer)
         assert len((await project_options(db,original['memberships'][peer_name],peer))['projects'])==2
-        await select_project(db,original['memberships'][peer_name],peer,second_id)
+        options = await project_options(db,original['memberships'][peer_name],peer)
+        assert options['selection_locked'] is True
+        with pytest.raises(HTTPException) as selection_error:
+            await select_project(db,original['memberships'][peer_name],peer,second_id)
+        assert selection_error.value.status_code == 409
+        assert (await db.get(AcceleratorMembership, original['memberships'][peer_name])).project_id == first.id
         assert await get_accessible_project(db,first.id,peer)
         assert await get_accessible_project(db,second_id,peer)
         membership=await db.get(AcceleratorMembership,original['memberships'][peer_name])
