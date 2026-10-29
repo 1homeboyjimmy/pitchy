@@ -26,6 +26,7 @@ from models import (
     User,
 )
 from projects_router import delete_project
+from accelerator_project_selection import project_options, select_project
 from routers.accelerator_teams import (
     assign_team_tracker,
     answer_team_invitation,
@@ -129,7 +130,8 @@ async def test_team_join_application_conflicts_and_acceptance_preserve_project_a
 
 
 @pytest.mark.asyncio
-async def test_team_join_application_preserves_personal_project_and_rejects_inactive_applicant():
+@pytest.mark.parametrize('with_team_project', [False, True])
+async def test_team_join_application_preserves_personal_project_and_rejects_inactive_applicant(with_team_project):
     suffix = uuid.uuid4().hex[:10]
     async with AsyncSessionLocal() as db:
         _, organizer, _, cohort = await _create_cohort_context(db, suffix)
@@ -139,7 +141,7 @@ async def test_team_join_application_preserves_personal_project_and_rejects_inac
         await db.commit()
         owner, project_owner, applicant = [await _enroll_resident(
             db, cohort_id=cohort['id'], manager=organizer, resident=person,
-            with_project=index == 1,
+            with_project=index == 1 or (index == 0 and with_team_project),
         ) for index, person in enumerate(people)]
         team = await create_membership_team(owner.membership_id, AcceleratorTeamCreate(name='Recruiting'), owner.user, db)
         personal = await db.get(Project, project_owner.project_id)
@@ -147,7 +149,14 @@ async def test_team_join_application_preserves_personal_project_and_rejects_inac
         await db.commit()
         own_application = await create_team_application(team['id'], AcceleratorTeamApplicationCreate(), project_owner.user, db)
         await respond_team_application(own_application['id'], AcceleratorTeamApplicationUpdate(status='accepted'), owner.user, db)
-        assert (await db.get(AcceleratorMembership, project_owner.membership_id)).project_id is None
+        assert (await db.get(AcceleratorMembership, project_owner.membership_id)).project_id == owner.project_id
+        options = await project_options(db, project_owner.membership_id, project_owner.user)
+        assert options['selection_locked'] and options['team']['id'] == team['id']
+        with pytest.raises(HTTPException) as cannot_replace_team_project:
+            await select_project(db, project_owner.membership_id, project_owner.user, personal.id)
+        assert cannot_replace_team_project.value.status_code == 409
+        if owner.project_id:
+            assert (await select_project(db, project_owner.membership_id, project_owner.user, owner.project_id))['project_id'] == owner.project_id
         await db.refresh(personal)
         assert personal.user_id == project_owner.user.id
         assert personal.passport == {'core': {'problem': 'Keep this personal project'}}
@@ -212,6 +221,12 @@ async def test_direct_residents_can_be_found_and_join_by_invitation_without_losi
         await db.refresh(personal_project)
         assert personal_project.user_id == people[1].id
         assert personal_project.passport == {'core': {'solution': 'Personal research'}}
+        options = await project_options(db, personal.id, people[1])
+        assert options['selection_locked'] is True
+        assert options['team']['project_id'] == personal.project_id
+        with pytest.raises(HTTPException) as cannot_select_personal:
+            await select_project(db, personal.id, people[1], personal_project.id)
+        assert cannot_select_personal.value.status_code == 409
         pool = await get_team_pool(captain.id, people[0], db)
         assert personal.id not in {r['membership_id'] for r in pool['candidates']}
         with pytest.raises(HTTPException) as already_joined:
@@ -225,6 +240,11 @@ async def test_direct_residents_can_be_found_and_join_by_invitation_without_losi
             await patch_team(team['id'], AcceleratorTeamUpdate(name='Not allowed'),
                              BackgroundTasks(), people[1], db)
         assert not_captain.value.status_code == 403
+        own_view = await get_membership_team(personal.id, people[1], db)
+        own_member = next(r for r in own_view['team']['members'] if r['membership_id'] == personal.id)
+        await delete_team_member(own_member['id'], BackgroundTasks(), people[1], db)
+        assert (await project_options(db, personal.id, people[1]))['selection_locked'] is False
+        assert (await select_project(db, personal.id, people[1], personal_project.id))['project_id'] == personal_project.id
 
 
 async def _enroll_resident(
