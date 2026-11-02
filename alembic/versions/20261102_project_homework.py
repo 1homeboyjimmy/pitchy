@@ -115,10 +115,21 @@ def upgrade():
             "team_members",
             "teams",
             "memberships",
+            "audit_logs",
         ]
     }
     users = sa.Table("users", meta, autoload_with=db)
     sub, att = tables["homework_submissions"], tables["homework_attempts"]
+    audit_rows = db.execute(
+        sa.select(tables["audit_logs"])
+        .where(tables["audit_logs"].c.action == "homework.submitted")
+        .order_by(tables["audit_logs"].c.id)
+    ).mappings()
+    senders = {
+        (r["target_id"], (r["details"] or {}).get("attempt")): r["actor_user_id"]
+        for r in audit_rows
+    }
+
     for submission in db.execute(sa.select(sub)).mappings().all():
         versions = (
             db.execute(
@@ -169,7 +180,27 @@ def upgrade():
         )
         for version in versions:
             when = version["created_at"] or submission["submitted_at"]
-            ids = {submission["membership_id"]}
+            m = tables["memberships"]
+            original = (
+                db.execute(sa.select(m).where(m.c.id == submission["membership_id"]))
+                .mappings()
+                .one()
+            )
+            sender_user_id = senders.get((submission["id"], version["attempt_number"]))
+            sender = (
+                db.execute(
+                    sa.select(m).where(
+                        m.c.user_id == sender_user_id,
+                        m.c.cohort_id == assignment["cohort_id"],
+                        m.c.role == "resident",
+                    )
+                )
+                .mappings()
+                .first()
+                if sender_user_id
+                else None
+            )
+            ids = set() if submission["team_id"] else {submission["membership_id"]}
             if submission["team_id"]:
                 tm = tables["team_members"]
                 ids.update(
@@ -181,6 +212,10 @@ def upgrade():
                         )
                     ).scalars()
                 )
+            if sender:
+                ids.add(sender["id"])
+            if not ids:
+                ids.add(submission["membership_id"])
             if assignment["audience"] == "selected":
                 target = tables["homework_targets"]
                 ids &= set(
@@ -190,7 +225,10 @@ def upgrade():
                         )
                     ).scalars()
                 )
-                ids.add(submission["membership_id"])
+                if sender:
+                    ids.add(sender["id"])
+                if not ids:
+                    ids.add(submission["membership_id"])
             m = tables["memberships"]
             people = (
                 db.execute(
@@ -212,16 +250,13 @@ def upgrade():
                 if submission["team_id"]
                 else None
             )
-            owner = (
-                db.execute(sa.select(m).where(m.c.id == submission["membership_id"]))
-                .mappings()
-                .one()
-            )
+            owner = original
             context = {
                 "team_id": submission["team_id"],
                 "team_name": team["name"] if team else None,
-                "project_id": team["project_id"] if team else owner["project_id"],
-                "submitted_by_user_id": owner["user_id"],
+                "project_id": team["project_id"] if team else None,
+                "submitted_by_user_id": sender_user_id
+                or (owner["user_id"] if owner["id"] in ids else None),
                 "members": [
                     {
                         "membership_id": p["id"],

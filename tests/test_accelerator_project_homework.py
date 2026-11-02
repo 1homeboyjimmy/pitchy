@@ -573,6 +573,7 @@ def test_migration_preserves_existing_answers_scores_and_dated_membership_attrib
     import sqlalchemy as sa
     from models import (
         User,
+        AcceleratorAuditLog,
         Accelerator,
         AcceleratorCohort,
         AcceleratorMembership,
@@ -692,17 +693,72 @@ def test_migration_preserves_existing_answers_scores_and_dated_membership_attrib
             created_at=now,
             review_status=None,
         )
+        # The original sender left the team before this later version. Audit identifies the actual sender.
+        later = after + timedelta(days=1)
+        insert(
+            db,
+            AcceleratorHomeworkAssignment,
+            id=2,
+            cohort_id=1,
+            title="Later legacy work",
+            description="Keep",
+            submission_mode="team",
+            created_by_user_id=1,
+            updated_by_user_id=1,
+        )
+        insert(
+            db,
+            AcceleratorHomeworkSubmission,
+            id=2,
+            assignment_id=2,
+            membership_id=2,
+            team_id=1,
+            status="accepted",
+            answer_text="Later answer",
+            attachments=[],
+            attempt_count=1,
+            submitted_at=later,
+        )
+        insert(
+            db,
+            AcceleratorHomeworkAttempt,
+            id=2,
+            submission_id=2,
+            attempt_number=1,
+            answer_text="Later answer",
+            attachments=[],
+            created_at=later,
+        )
+        insert(
+            db,
+            AcceleratorAuditLog,
+            accelerator_id=1,
+            cohort_id=1,
+            actor_user_id=1,
+            action="homework.submitted",
+            target_type="homework_submission",
+            target_id=2,
+            details={"assignment_id": 2, "attempt": 1},
+        )
     command.upgrade(cfg, "head")
     meta = sa.MetaData()
     meta.reflect(engine)
     with engine.connect() as db:
         sub = (
-            db.execute(sa.select(meta.tables["accelerator_homework_submissions"]))
+            db.execute(
+                sa.select(meta.tables["accelerator_homework_submissions"]).where(
+                    meta.tables["accelerator_homework_submissions"].c.id == 1
+                )
+            )
             .mappings()
             .one()
         )
         attempt = (
-            db.execute(sa.select(meta.tables["accelerator_homework_attempts"]))
+            db.execute(
+                sa.select(meta.tables["accelerator_homework_attempts"]).where(
+                    meta.tables["accelerator_homework_attempts"].c.id == 1
+                )
+            )
             .mappings()
             .one()
         )
@@ -710,6 +766,8 @@ def test_migration_preserves_existing_answers_scores_and_dated_membership_attrib
             db.execute(
                 sa.select(
                     meta.tables["accelerator_homework_participants"].c.membership_id
+                ).where(
+                    meta.tables["accelerator_homework_participants"].c.attempt_id == 1
                 )
             ).scalars()
         )
@@ -720,6 +778,17 @@ def test_migration_preserves_existing_answers_scores_and_dated_membership_attrib
         )
         assert members == {1, 2} and attempt["review_status"] is None
         assert {p["membership_id"] for p in attempt["context"]["members"]} == {1, 2}
+        later = (
+            db.execute(
+                sa.select(meta.tables["accelerator_homework_attempts"]).where(
+                    meta.tables["accelerator_homework_attempts"].c.id == 2
+                )
+            )
+            .mappings()
+            .one()
+        )
+        assert {p["membership_id"] for p in later["context"]["members"]} == {1, 3}
+        assert later["context"]["submitted_by_user_id"] == 1
     engine.dispose()
 
 
