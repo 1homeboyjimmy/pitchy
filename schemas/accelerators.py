@@ -655,6 +655,8 @@ class HomeworkAssignmentCreate(BaseModel):
     stage_id: int | None = Field(default=None, gt=0)
     assignment_type: Literal["text_files", "quiz"] = "text_files"
     submission_mode: Literal["individual", "team"] = "individual"
+    min_participants: int = Field(default=1, ge=1, le=20)
+    require_project: bool = False
     quiz_questions: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
     passing_score: int | None = Field(default=None, ge=0, le=100)
     max_attempts: int = Field(default=1, ge=1, le=20)
@@ -682,6 +684,8 @@ class HomeworkAssignmentCreate(BaseModel):
             raise ValueError("Выберите хотя бы одного резидента")
         if self.audience == "cohort":
             self.target_membership_ids = []
+        if self.submission_mode == "individual" and self.min_participants != 1:
+            raise ValueError("Минимум исполнителей применим только к ответу по проекту")
         if self.assignment_type == "quiz":
             if not self.quiz_questions:
                 raise ValueError("Добавьте хотя бы один вопрос теста")
@@ -716,7 +720,25 @@ class HomeworkAssignmentCreate(BaseModel):
         return self
 
 
+class HomeworkExceptionUpsert(BaseModel):
+    allow_individual: bool = False
+    due_at: datetime | None = None
+    reason: str = Field(min_length=3, max_length=2000)
+
+    @field_validator("due_at")
+    @classmethod
+    def normalize_due_at(cls, value):
+        return value.astimezone(timezone.utc).replace(tzinfo=None) if value and value.tzinfo else value
+
+
+class HomeworkCreditGrant(BaseModel):
+    attempt_id: int = Field(gt=0)
+    reason: str = Field(min_length=3, max_length=2000)
+
+
 class HomeworkSubmissionUpsert(BaseModel):
+    expected_revision: int | None = Field(default=None, ge=0)
+    expected_context: dict | None = None
     answer_text: str | None = Field(default=None, max_length=30000)
     attachments: list[str] = Field(default_factory=list, max_length=10)
     quiz_answers: dict[str, str] = Field(default_factory=dict)
