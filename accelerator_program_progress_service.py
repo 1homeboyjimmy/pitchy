@@ -97,19 +97,9 @@ class ProgramProgressService:
                 row for row in assignments
                 if row.audience == "cohort" or row.id in targeted_ids
             ]
-            team_ids = await self._active_team_ids(membership.id)
-            assignment_ids = [row.id for row in assignments]
-            submission_filter = AcceleratorHomeworkSubmission.membership_id == membership.id
-            if team_ids:
-                submission_filter = or_(
-                    submission_filter,
-                    AcceleratorHomeworkSubmission.team_id.in_(team_ids),
-                )
-            submission_rows = list((await self.db.execute(select(AcceleratorHomeworkSubmission).where(
-                AcceleratorHomeworkSubmission.assignment_id.in_(assignment_ids),
-                submission_filter,
-            ))).scalars().all()) if assignment_ids else []
-            submissions = {row.assignment_id: row for row in submission_rows}
+            from accelerator_homework_service import participant_results, effective_due_at
+            results = await participant_results(self.db, [membership.id], [row.id for row in assignments])
+            submissions = {aid: row for (aid, mid), row in results.items()}
             now = datetime.utcnow()
             for assignment in assignments:
                 submission = submissions.get(assignment.id)
@@ -124,7 +114,7 @@ class ProgramProgressService:
                     reason = "Ожидается проверка трекера"
                 elif submission and submission.status == "needs_revision":
                     reason = "Работа возвращена на доработку"
-                elif assignment.due_at and assignment.due_at < now:
+                elif (await effective_due_at(self.db, assignment, membership.id)) and (await effective_due_at(self.db, assignment, membership.id)) < now:
                     reason = "Домашнее задание просрочено"
                 else:
                     reason = "Домашнее задание ещё не сдано"

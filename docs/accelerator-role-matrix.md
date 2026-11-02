@@ -198,3 +198,16 @@
   ограничения для существующих резидентов не создаётся.
 - Миграции создают конфигурацию вместе с потоком, а деплой проверяет, что Alembic
   дошёл до единственной головной ревизии до запуска новой версии API.
+
+
+## Project homework and attributed versions
+
+`submission_mode=team` means one answer per current team, with a personal answer for residents without a team. A one-person team is supported (`max_members=1`). No team or project is created as a side effect of homework submission. A selected passport is required only when `require_project` is enabled. The default minimum number of performers is 1. Higher values require collaboration; an organizer may approve an individual alternative.
+
+Each submitted attempt records the project, team, actual sender, and assigned enrolled performers. Per-resident completion, stage progress, reminders, risks and reports use that attribution, rather than the current team roster. Accepted earlier versions remain credited after transfers and later revisions. New members are included in new submissions, and receive no automatic credit for earlier versions. Organizers can grant credit for a specific accepted attempt, with an audit reason. Original attribution is not rewritten.
+
+Current enrolled team members can access the shared workspace; former members can access only versions attributed to them, including their attachments. They cannot read later versions or their new files. Organizers may create individual exceptions with a personal deadline and alternative instructions. These residents are excluded from subsequent shared submissions for that assignment.
+
+The resident interface sends the displayed revision and performer/project context when submitting. Team, membership, assignment and submission locks serialize edits and roster transitions. A stale revision/context returns HTTP 409 and retains the unsent form contents.
+
+The migration reconstructs historical performers from dated team membership records, excluding residents who joined after each attempt. Existing texts, files, timestamps, reviews and statuses remain unchanged.

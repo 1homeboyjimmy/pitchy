@@ -1360,6 +1360,8 @@ class AcceleratorHomeworkAssignment(Base):
     assignment_type: Mapped[str] = mapped_column(
         String(30), default="text_files", server_default="text_files", index=True
     )
+    min_participants: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    require_project: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     submission_mode: Mapped[str] = mapped_column(
         String(20), default="individual", server_default="individual", index=True
     )
@@ -1399,7 +1401,8 @@ class AcceleratorHomeworkTarget(Base):
 class AcceleratorHomeworkSubmission(Base):
     __tablename__ = "accelerator_homework_submissions"
     __table_args__ = (
-        UniqueConstraint("assignment_id", "membership_id", name="uq_accelerator_homework_submission_membership"),
+        Index("uq_accelerator_homework_solo", "assignment_id", "membership_id", unique=True,
+              postgresql_where=text("team_id IS NULL"), sqlite_where=text("team_id IS NULL")),
         Index(
             "uq_accelerator_homework_submission_team",
             "assignment_id",
@@ -1416,6 +1419,7 @@ class AcceleratorHomeworkSubmission(Base):
     team_id: Mapped[int | None] = mapped_column(
         ForeignKey("accelerator_teams.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    context: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     answer_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     attachments: Mapped[list] = mapped_column(JSON, default=list)
     quiz_answers: Mapped[dict | None] = mapped_column(JSON, nullable=True)
@@ -1471,6 +1475,7 @@ class AcceleratorHomeworkAttempt(Base):
         ForeignKey("accelerator_homework_submissions.id", ondelete="CASCADE"), index=True
     )
     attempt_number: Mapped[int] = mapped_column(Integer)
+    context: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     answer_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     attachments: Mapped[list] = mapped_column(JSON, default=list)
     quiz_answers: Mapped[dict | None] = mapped_column(JSON, nullable=True)
@@ -1485,6 +1490,28 @@ class AcceleratorHomeworkAttempt(Base):
     )
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class AcceleratorHomeworkParticipant(Base):
+    """An immutable attribution of one submitted version to a resident."""
+    __tablename__ = "accelerator_homework_participants"
+    __table_args__ = (UniqueConstraint("attempt_id", "membership_id", name="uq_homework_attempt_participant"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    attempt_id: Mapped[int] = mapped_column(ForeignKey("accelerator_homework_attempts.id", ondelete="CASCADE"), index=True)
+    membership_id: Mapped[int] = mapped_column(ForeignKey("accelerator_memberships.id", ondelete="CASCADE"), index=True)
+    granted_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+
+class AcceleratorHomeworkException(Base):
+    __tablename__ = "accelerator_homework_exceptions"
+    __table_args__ = (UniqueConstraint("assignment_id", "membership_id", name="uq_homework_exception"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    assignment_id: Mapped[int] = mapped_column(ForeignKey("accelerator_homework_assignments.id", ondelete="CASCADE"), index=True)
+    membership_id: Mapped[int] = mapped_column(ForeignKey("accelerator_memberships.id", ondelete="CASCADE"), index=True)
+    allow_individual: Mapped[bool] = mapped_column(Boolean, default=False)
+    due_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    reason: Mapped[str] = mapped_column(Text)
+    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
 
 
 class AcceleratorEvent(Base):

@@ -4,6 +4,11 @@ on:
   pull_request:
     paths:
       - 'accelerator_team_*.py'
+      - 'accelerator_homework_service.py'
+      - 'accelerator_program_progress_service.py'
+      - 'routers/accelerators.py'
+      - 'schemas/accelerators.py'
+      - 'tests/test_accelerator_project_homework.py'
       - 'routers/accelerator_teams.py'
       - 'schemas/accelerator_teams.py'
       - 'models.py'
@@ -49,4 +54,4 @@ jobs:
           docker run --rm --network host --entrypoint python \
             -e PYTHON_DOTENV_DISABLED=1 -e OPENAI_API_KEY=local-test-only -e POLZA_API_KEY=local-test-only \
             -e PITCHY_TEST_DATABASE_URL=postgresql+psycopg2://resident_test:resident_local_test@127.0.0.1:55432/team_transfer_test \
-            pitchy-team-checks:local -m pytest tests/test_accelerator_teams.py tests/test_accelerator_resident_import.py -o addopts="-ra --tb=short" -q
+            pitchy-team-checks:local -m pytest tests/test_accelerator_teams.py tests/test_accelerator_resident_import.py tests/test_accelerator_project_homework.py -o addopts="-ra --tb=short" -q
