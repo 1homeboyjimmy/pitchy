@@ -1,22 +1,61 @@
-name: Renew configurable subscriptions
-
+name: Diagnose existing German proxy reachability
 on:
-  schedule:
-    - cron: "17 * * * *"
   workflow_dispatch:
-
+permissions:
+  contents: read
 jobs:
-  renew:
+  diagnose:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - name: Trigger due renewals
+      - name: Check proxy from the main Pitchy host
         env:
-          BILLING_CRON_SECRET: ${{ secrets.BILLING_CRON_SECRET }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
         run: |
-          if [ -z "$BILLING_CRON_SECRET" ]; then
-            echo "BILLING_CRON_SECRET is not set in GitHub Secrets; skipping. Server cron can run renewals instead."
-            exit 0
-          fi
-          curl --fail-with-body --retry 2 --max-time 60 \
-            -X POST https://pitchy.pro/billing/renewals/run \
-            -H "X-Cron-Secret: $BILLING_CRON_SECRET"
+          set -euo pipefail
+          deploy_key=$(mktemp)
+          trap 'rm -f "$deploy_key"' EXIT
+          printf '%s\n' "$VPS_SSH_PRIVATE_KEY" > "$deploy_key"
+          chmod 600 "$deploy_key"
+          ssh -i "$deploy_key" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 \
+            "$VPS_USER@$VPS_HOST" 'python3 -' <<'PY'
+          from pathlib import Path
+          import json
+          import socket
+          import subprocess
+          import time
+          import urllib.request
+          from urllib.parse import urlsplit
+          values = {}
+          for filename in ('/opt/ai-startup/.env', '/opt/ai-startup/.env.runtime'):
+              path = Path(filename)
+              if path.exists():
+                  values.update(dict(line.split('=', 1) for line in path.read_text().splitlines()
+                                     if '=' in line and not line.lstrip().startswith('#')))
+          proxy = next((values.get(name, '').strip().strip('"').strip("'") for name in ('EXA_HTTPS_PROXY', 'SEARCH_HTTPS_PROXY') if values.get(name)), '')
+          if not proxy:
+              raise SystemExit('No existing proxy setting')
+          parsed = urlsplit(proxy)
+          try:
+              with socket.create_connection((parsed.hostname, parsed.port or 80), timeout=8):
+                  print(json.dumps({'main_host_proxy_tcp': True}), flush=True)
+          except Exception as exc:
+              print(json.dumps({'main_host_proxy_tcp': False, 'error_type': type(exc).__name__}), flush=True)
+          try:
+              opener = urllib.request.build_opener(urllib.request.ProxyHandler({'http': proxy, 'https': proxy}))
+              with opener.open('https://www.cloudflare.com/cdn-cgi/trace', timeout=12) as response:
+                  fields = dict(line.split('=', 1) for line in response.read().decode().splitlines() if '=' in line)
+                  print(json.dumps({'main_proxy_country': fields.get('loc'), 'http_status': response.status}), flush=True)
+          except Exception as exc:
+              print(json.dumps({'main_proxy_error_type': type(exc).__name__}), flush=True)
+          ssh_dir = Path.home() / '.ssh'
+          print(json.dumps({'ssh_files': [p.name for p in ssh_dir.iterdir() if p.is_file()]}), flush=True)
+          config = ssh_dir / 'config'
+          if config.exists():
+              print(json.dumps({'ssh_aliases': [line.strip() for line in config.read_text().splitlines() if line.strip().lower().startswith('host ')]}), flush=True)
+          check = subprocess.run(['ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new', '-o', 'ConnectTimeout=8',
+                                  'root@' + parsed.hostname, 'systemctl is-active tinyproxy 2>/dev/null || true'], capture_output=True, text=True, timeout=15)
+          print(json.dumps({'german_ssh_returncode': check.returncode, 'proxy_service': check.stdout.strip()[:80]}), flush=True)
+          PY
