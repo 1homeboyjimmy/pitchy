@@ -8,7 +8,9 @@ import { CheckCircle2, Loader2, LogIn, XCircle } from "lucide-react";
 import { describeApiError, postAuthJson } from "@/lib/api";
 import { useAuth } from "@/lib/hooks/useAuth";
 
-type CheckInResult = { checked_in: boolean; event: { title: string; starts_at: string; location?: string | null } };
+import { eventDateText } from "@/lib/acceleratorDates";
+
+type CheckInResult = { checked_in: boolean; event: { timezone?: string; title: string; starts_at: string; location?: string | null } };
 
 export default function AcceleratorCheckInPage() {
   const { code } = useParams<{ code: string }>();
@@ -25,7 +27,7 @@ export default function AcceleratorCheckInPage() {
   if (!token) return <State icon={LogIn} title="Сначала войдите в Pitchy" text="После входа эта ссылка отметит ваше посещение."><Link href={`/login?next=${encodeURIComponent(`/accelerator/check-in/${code}`)}`} className="rounded-full bg-white px-6 py-3 font-semibold text-black">Войти</Link></State>;
   if (loading) return <main className="min-h-[100dvh] grid place-items-center bg-black text-white"><Loader2 className="animate-spin text-white/50" /></main>;
   if (error) return <State icon={XCircle} title="Отметка не сохранена" text={error}><Link href="/accelerator" className="text-white underline">Вернуться в акселератор</Link></State>;
-  return <State icon={CheckCircle2} title="Посещение отмечено" text={`${result?.event.title || "Мероприятие"} · ${result ? new Date(result.event.starts_at).toLocaleString("ru-RU") : ""}`}><Link href="/accelerator" className="rounded-full bg-white px-6 py-3 font-semibold text-black">Открыть акселератор</Link></State>;
+  return <State icon={CheckCircle2} title="Посещение отмечено" text={`${result?.event.title || "Мероприятие"} · ${result ? eventDateText(result.event.starts_at, result.event.timezone || "Europe/Moscow") : ""}`}><Link href="/accelerator" className="rounded-full bg-white px-6 py-3 font-semibold text-black">Открыть акселератор</Link></State>;
 }
 
 function State({ icon: Icon, title, text, children }: { icon: typeof CheckCircle2; title: string; text: string; children: React.ReactNode }) {

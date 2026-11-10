@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import io
 import json
 import uuid
@@ -1699,9 +1699,7 @@ async def test_program_attendance_and_candidate_revision_flow(monkeypatch):
             ), admin, db,
         )
         await publish_event(event["id"], admin, db)
-        code = (await db.execute(select(AcceleratorEvent.checkin_code).where(
-            AcceleratorEvent.id == event["id"]
-        ))).scalar_one()
+        code = event["checkin_url"].rsplit("/", 1)[-1]
         checked = await check_in_to_event(code, resident, db)
         assert checked["checked_in"] is True
         resident_events = await list_resident_events(membership_id, resident, db)
@@ -1861,7 +1859,7 @@ async def test_event_reschedule_cancel_completion_history_and_program_timeline()
             admin,
             db,
         )
-        assert moved["starts_at"] == moved_start
+        assert moved["starts_at"] == moved_start.replace(tzinfo=timezone.utc)
         assert moved["timezone"] == "Europe/Moscow"
         assert len(moved["homework_links"]) == 2
 
