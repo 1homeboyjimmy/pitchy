@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
 from email_validator import EmailNotValidError, validate_email
 from dateutil.parser import parse as parse_date
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -4206,8 +4206,27 @@ async def enqueue_event_change_notifications(
     return ids
 
 
-def event_dict(row: AcceleratorEvent, *, attendance_count: int = 0, attendance: AcceleratorAttendanceRecord | None = None, homework_links: list[dict] | None = None, timezone: str | None = None) -> dict:
-    frontend_url = os.getenv("FRONTEND_URL", "https://pitchy.pro").rstrip("/")
+from accelerator_attendance_service import checkin_session, token_event_id, validate_checkin_token, utc_datetime
+
+
+async def attendance_write_context(db, event_id):
+    event = await db.get(AcceleratorEvent, event_id)
+    if not event:
+        raise HTTPException(404, "Мероприятие не найдено")
+    # Shared lifecycle locks allow different students to check in concurrently,
+    # while archive/cancel/reschedule wait for the attendance transaction.
+    cohort = (await db.execute(select(AcceleratorCohort).where(
+        AcceleratorCohort.id == event.cohort_id
+    ).with_for_update(read=True).execution_options(populate_existing=True))).scalar_one()
+    require_mutable_cohort(cohort)
+    event = (await db.execute(select(AcceleratorEvent).where(
+        AcceleratorEvent.id == event_id
+    ).with_for_update(read=True).execution_options(populate_existing=True))).scalar_one()
+    await require_attendance_module(db, cohort)
+    return event, cohort
+
+
+def event_dict(row: AcceleratorEvent, *, attendance_count: int = 0, attendance: AcceleratorAttendanceRecord | None = None, homework_links: list[dict] | None = None, timezone: str | None = None, include_checkin: bool = False) -> dict:
     return {
         "id": row.id,
         "cohort_id": row.cohort_id,
@@ -4217,8 +4236,8 @@ def event_dict(row: AcceleratorEvent, *, attendance_count: int = 0, attendance: 
         "preview_url": row.preview_url,
         "event_type": row.event_type,
         "host_name": row.host_name,
-        "starts_at": row.starts_at,
-        "ends_at": row.ends_at,
+        "starts_at": utc_datetime(row.starts_at),
+        "ends_at": utc_datetime(row.ends_at),
         "event_format": row.event_format,
         "location": row.location,
         "meeting_url": row.meeting_url,
@@ -4230,18 +4249,18 @@ def event_dict(row: AcceleratorEvent, *, attendance_count: int = 0, attendance: 
         "next_step": row.next_step,
         "post_materials": row.post_materials or [],
         "cancellation_reason": row.cancellation_reason,
-        "cancelled_at": row.cancelled_at,
-        "completed_at": row.completed_at,
+        "cancelled_at": utc_datetime(row.cancelled_at),
+        "completed_at": utc_datetime(row.completed_at),
         "homework_links": homework_links or [],
         "status": row.status,
         "timezone": timezone,
         "checkin_opens_minutes": row.checkin_opens_minutes,
         "checkin_closes_minutes": row.checkin_closes_minutes,
-        "checkin_url": f"{frontend_url}/accelerator/check-in/{row.checkin_code}",
+        **({"checkin_url": checkin_session(row)["checkin_url"]} if include_checkin else {}),
         "attendance_count": attendance_count,
         "attendance": ({
             "status": attendance.status,
-            "checked_in_at": attendance.checked_in_at,
+            "checked_in_at": utc_datetime(attendance.checked_in_at),
             "checkin_method": attendance.checkin_method,
             "comment": attendance.comment,
         } if attendance else None),
@@ -4281,6 +4300,7 @@ async def list_events(
     return [event_dict(
         row,
         attendance_count=counts.get(row.id, 0),
+        include_checkin=access_role in ("global_admin", "organizer"),
         homework_links=await event_homework_links(db, row.id),
         timezone=cohort.timezone,
     ) for row in rows]
@@ -4325,7 +4345,7 @@ async def create_event(
     add_audit(db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
               actor_user_id=user.id, action="event.created", target_type="event", target_id=event.id)
     await db.commit()
-    return event_dict(event, homework_links=await event_homework_links(db, event.id), timezone=cohort.timezone)
+    return event_dict(event, homework_links=await event_homework_links(db, event.id), timezone=cohort.timezone, include_checkin=True)
 
 
 @router.put("/events/{event_id}")
@@ -4381,7 +4401,7 @@ async def update_event(
         target_id=event.id,
     )
     await db.commit()
-    return event_dict(event, homework_links=await event_homework_links(db, event.id), timezone=cohort.timezone)
+    return event_dict(event, homework_links=await event_homework_links(db, event.id), timezone=cohort.timezone, include_checkin=True)
 
 
 @router.post("/events/{event_id}/publish")
@@ -4406,7 +4426,7 @@ async def publish_event(
     add_audit(db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
               actor_user_id=user.id, action="event.published", target_type="event", target_id=event.id)
     await db.commit()
-    return event_dict(event, homework_links=await event_homework_links(db, event.id), timezone=cohort.timezone)
+    return event_dict(event, homework_links=await event_homework_links(db, event.id), timezone=cohort.timezone, include_checkin=True)
 
 
 @router.post("/events/{event_id}/reschedule")
@@ -4468,7 +4488,7 @@ async def reschedule_event(
     for notification_id in notification_ids:
         background_tasks.add_task(process_notification_event, notification_id)
     return event_dict(
-        event,
+        event, include_checkin=True,
         homework_links=await event_homework_links(db, event.id),
         timezone=cohort.timezone,
     )
@@ -4531,7 +4551,7 @@ async def cancel_event(
     for notification_id in notification_ids:
         background_tasks.add_task(process_notification_event, notification_id)
     return event_dict(
-        event,
+        event, include_checkin=True,
         homework_links=await event_homework_links(db, event.id),
         timezone=cohort.timezone,
     )
@@ -4574,7 +4594,7 @@ async def update_event_followup(
     )
     await db.commit()
     return event_dict(
-        event,
+        event, include_checkin=True,
         homework_links=await event_homework_links(db, event.id),
         timezone=cohort.timezone,
     )
@@ -4603,7 +4623,7 @@ async def list_event_history(
         "reason": change.reason,
         "before": change.before,
         "after": change.after,
-        "created_at": change.created_at,
+        "created_at": utc_datetime(change.created_at),
         "actor": {"id": actor.id, "name": actor.name} if actor else None,
     } for change, actor in rows]
 
@@ -4621,10 +4641,36 @@ async def event_checkin_qr(
     await require_cohort_manager(db, user, cohort)
     import qrcode
     import qrcode.image.svg
-    url = event_dict(event)["checkin_url"]
+    require_mutable_cohort(cohort)
+    await require_attendance_module(db, cohort)
+    url = checkin_session(event)["checkin_url"]
     image = qrcode.make(url, image_factory=qrcode.image.svg.SvgPathImage)
     return Response(content=image.to_string(), media_type="image/svg+xml",
                     headers={"Cache-Control": "no-store"})
+
+
+@router.get("/events/{event_id}/check-in-session")
+async def event_checkin_session(
+    event_id: int, user: User = Depends(get_async_current_user), db: AsyncSession = Depends(get_async_db),
+):
+    event = await db.get(AcceleratorEvent, event_id)
+    if not event:
+        raise HTTPException(404, "Мероприятие не найдено")
+    cohort = await get_cohort_or_404(db, event.cohort_id)
+    await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
+    await require_attendance_module(db, cohort)
+    if event.status not in ("published", "completed"):
+        raise HTTPException(409, "Сначала опубликуйте мероприятие")
+    import qrcode
+    import qrcode.image.svg
+    from fastapi.encoders import jsonable_encoder
+    session = checkin_session(event)
+    image = qrcode.make(session["checkin_url"], image_factory=qrcode.image.svg.SvgPathImage)
+    return JSONResponse(content=jsonable_encoder({
+        "checkin_url": session["checkin_url"], "expires_at": session["expires_at"],
+        "qr_svg": image.to_string().decode(),
+    }), headers={"Cache-Control": "no-store"})
 
 
 @router.post("/events/{event_id}/duplicate")
@@ -4665,7 +4711,7 @@ async def duplicate_event(
               actor_user_id=user.id, action="event.duplicated", target_type="event",
               target_id=duplicate.id, details={"source_id": source.id})
     await db.commit()
-    return event_dict(duplicate, homework_links=await event_homework_links(db, duplicate.id))
+    return event_dict(duplicate, homework_links=await event_homework_links(db, duplicate.id), timezone=cohort.timezone, include_checkin=True)
 
 
 @router.post("/events/{event_id}/archive")
@@ -4688,7 +4734,7 @@ async def archive_event(
     add_audit(db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
               actor_user_id=user.id, action="event.archived", target_type="event", target_id=event.id)
     await db.commit()
-    return event_dict(event)
+    return event_dict(event, timezone=cohort.timezone, include_checkin=True)
 
 
 @router.get("/events/{event_id}/attendance")
@@ -4722,7 +4768,7 @@ async def list_event_attendance(
     return [{
         "membership_id": membership.id, "name": resident.name, "email": resident.email,
         "status": attendance.status if attendance else "not_marked",
-        "checked_in_at": attendance.checked_in_at if attendance else None,
+        "checked_in_at": utc_datetime(attendance.checked_in_at) if attendance else None,
         "comment": attendance.comment if attendance else None,
     } for membership, resident, attendance in rows]
 
@@ -4767,16 +4813,16 @@ async def mark_event_attendance(
     user: User = Depends(get_async_current_user),
     db: AsyncSession = Depends(get_async_db),
 ):
-    event = await db.get(AcceleratorEvent, event_id)
-    if not event:
-        raise HTTPException(status_code=404, detail="Мероприятие не найдено")
-    cohort = await get_cohort_or_404(db, event.cohort_id)
-    await require_attendance_module(db, cohort)
-    membership = await db.get(AcceleratorMembership, payload.membership_id)
-    if not membership or membership.cohort_id != cohort.id or membership.status != "enrolled":
+    event, cohort = await attendance_write_context(db, event_id)
+    membership = (await db.execute(select(AcceleratorMembership).where(
+        AcceleratorMembership.id == payload.membership_id,
+        AcceleratorMembership.cohort_id == cohort.id,
+        AcceleratorMembership.role == "resident",
+        AcceleratorMembership.status == "enrolled",
+    ).with_for_update().execution_options(populate_existing=True))).scalar_one_or_none()
+    if not membership:
         raise HTTPException(status_code=422, detail="Резидент не зачислен в этот поток")
     await require_tracker_membership_access(db, user, membership)
-    require_mutable_cohort(cohort)
     record = (await db.execute(select(AcceleratorAttendanceRecord).where(
         AcceleratorAttendanceRecord.event_id == event.id,
         AcceleratorAttendanceRecord.membership_id == membership.id,
@@ -4842,20 +4888,21 @@ async def check_in_to_event(
     user: User = Depends(get_async_current_user),
     db: AsyncSession = Depends(get_async_db),
 ):
-    event = (await db.execute(select(AcceleratorEvent).where(
-        AcceleratorEvent.checkin_code == code,
-        AcceleratorEvent.status.in_(("published", "completed")),
-    ))).scalar_one_or_none()
-    if not event:
-        raise HTTPException(status_code=404, detail="Ссылка отметки недействительна")
-    cohort = await get_cohort_or_404(db, event.cohort_id)
-    await require_attendance_module(db, cohort)
+    event_id = token_event_id(code)
+    candidate = await db.get(AcceleratorEvent, event_id)
+    if not candidate:
+        raise HTTPException(404, "Ссылка отметки недействительна")
+    validate_checkin_token(code, candidate)
+    event, cohort = await attendance_write_context(db, event_id)
+    if event.status not in ("published", "completed"):
+        raise HTTPException(404, "Ссылка отметки недействительна")
+    validate_checkin_token(code, event)
     membership = (await db.execute(select(AcceleratorMembership).where(
         AcceleratorMembership.cohort_id == cohort.id,
         AcceleratorMembership.user_id == user.id,
         AcceleratorMembership.role == "resident",
         AcceleratorMembership.status == "enrolled",
-    ))).scalar_one_or_none()
+    ).with_for_update().execution_options(populate_existing=True))).scalar_one_or_none()
     if not membership:
         raise HTTPException(status_code=403, detail="Вы не зачислены в этот поток")
     now = datetime.utcnow()
@@ -4869,19 +4916,17 @@ async def check_in_to_event(
         AcceleratorAttendanceRecord.event_id == event.id,
         AcceleratorAttendanceRecord.membership_id == membership.id,
     ))).scalar_one_or_none()
-    changed = not record or record.status != "present" or record.checkin_method != "qr"
+    if record and record.checkin_method == "manual":
+        if record.status != "present":
+            raise HTTPException(409, "Посещаемость уже отмечена преподавателем. Для изменения обратитесь к преподавателю.")
+        return {"event": event_dict(event, attendance=record, timezone=cohort.timezone), "checked_in": True}
+    changed = record is None
     if not record:
         record = AcceleratorAttendanceRecord(
             event_id=event.id, membership_id=membership.id, status="present",
             checkin_method="qr", checked_in_at=now,
         )
         db.add(record)
-    elif changed:
-        record.status = "present"
-        record.checkin_method = "qr"
-        record.checked_in_at = now
-        record.marked_by_user_id = None
-        record.comment = None
     if changed:
         add_audit(
             db,
@@ -4906,7 +4951,7 @@ async def check_in_to_event(
                     details={"membership_id": membership.id, "source": "auto"},
                 )
         await db.commit()
-    return {"event": event_dict(event, attendance=record), "checked_in": True}
+    return {"event": event_dict(event, attendance=record, timezone=cohort.timezone), "checked_in": True}
 
 
 @router.post("/cohorts/{cohort_id}/applications")
@@ -9048,7 +9093,7 @@ async def cohort_work_summary(
         "teams_without_tracker": [{"id": row.id, "name": row.name} for row in active_teams if row.id not in assigned_team_ids],
         "participants_without_tracker": [{"membership_id": row.id, "name": people.get(row.user_id).name if people.get(row.user_id) else "Резидент"} for row in untracked_members],
         "risks": sorted(risks, key=lambda row: (row["level"] != "red", -(row["inactive_days"] or 0)))[:10],
-        "today_events": [{"id": row.id, "title": row.title, "starts_at": row.starts_at, "ends_at": row.ends_at, "format": row.event_format} for row in events],
+        "today_events": [{"id": row.id, "title": row.title, "starts_at": utc_datetime(row.starts_at), "ends_at": utc_datetime(row.ends_at), "format": row.event_format} for row in events],
     }
 
 
@@ -9510,22 +9555,22 @@ async def membership_today(
         "section": "events", "target_id": row["id"],
         "meeting_url": row.get("meeting_url"), "location": row.get("location"),
         "event_format": row.get("event_format"),
-    } for row in events if row.get("status") == "published" and row["starts_at"] >= now]
+    } for row in events if row.get("status") == "published" and utc_datetime(row["starts_at"]) >= utc_datetime(now)]
     upcoming.extend({
         "key": f"deadline:{row['id']}", "kind": "deadline", "title": row["title"],
-        "starts_at": row["due_at"], "description": "Срок домашнего задания",
+        "starts_at": utc_datetime(row["due_at"]), "description": "Срок домашнего задания",
         "section": "homework", "target_id": row["id"],
     } for row in homework if row.get("due_at") and row["due_at"] >= now
     and row.get("display_status") == "not_started"
     and not any(action["key"] == f"homework:{row['id']}" for action in required_actions))
-    upcoming = sorted(upcoming, key=lambda row: row["starts_at"])[:2]
+    upcoming = sorted(upcoming, key=lambda row: utc_datetime(row["starts_at"]))[:2]
 
     feedback = [row for row in tracking.get("feedback", []) if not row.get("read_at")]
     completed_stages = sum(row.get("state") == "completed" for row in stages)
     past_events = [
         row for row in events
         if row.get("status") in {"published", "completed"}
-        and row.get("ends_at") and row["ends_at"] <= now
+        and row.get("ends_at") and utc_datetime(row["ends_at"]) <= utc_datetime(now)
     ]
     present_events = sum((row.get("attendance") or {}).get("status") == "present" for row in past_events)
     unmarked_events = sum((row.get("attendance") or {}).get("status", "not_marked") == "not_marked" for row in past_events)
