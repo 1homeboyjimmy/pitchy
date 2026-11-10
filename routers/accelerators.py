@@ -7226,6 +7226,16 @@ async def create_project_audit_task(
     }
 
 
+async def resident_demo_project_ids(db, demo_day, viewer_id):
+    return set((await db.execute(select(AcceleratorMembership.project_id).where(
+        AcceleratorMembership.cohort_id == demo_day.cohort_id,
+        AcceleratorMembership.user_id == viewer_id,
+        AcceleratorMembership.role == "resident",
+        AcceleratorMembership.status != "withdrawn",
+        AcceleratorMembership.project_id.is_not(None),
+    ))).scalars())
+
+
 async def demo_day_access(
     db: AsyncSession, demo_day: AcceleratorDemoDay, user: User
 ) -> tuple[AcceleratorCohort, str]:
@@ -7254,6 +7264,13 @@ async def demo_day_access(
         )
     )).scalar_one_or_none()
     if resident is not None:
+        return cohort, "resident"
+    own_projects = await resident_demo_project_ids(db, demo_day, user.id)
+    shared = (await db.execute(select(AcceleratorDemoDayProject.id).where(
+        AcceleratorDemoDayProject.demo_day_id == demo_day.id,
+        AcceleratorDemoDayProject.project_id.in_(own_projects),
+    ).limit(1))).first() if own_projects else None
+    if shared:
         return cohort, "resident"
     raise HTTPException(status_code=403, detail="Нет доступа к этому демо-дню")
 
@@ -7316,9 +7333,10 @@ async def demo_day_dict(
     for score, expert in score_rows:
         scores_by_project.setdefault(score.demo_project_id, []).append((score, expert))
     projects = []
+    own_projects = await resident_demo_project_ids(db, demo_day, viewer_id) if access_role == "resident" else set()
     from accelerator_demo_scoring import criteria_for_project, project_track, uses_raw_sum
     for row, membership, resident, project in project_rows:
-        if access_role == "resident" and resident.id != viewer_id:
+        if access_role == "resident" and resident.id != viewer_id and project.id not in own_projects:
             continue
         evaluations = scores_by_project.get(row.id, [])
         average = (
@@ -7352,6 +7370,7 @@ async def demo_day_dict(
                 "name": project.name,
                 "readiness_index": project.readiness_index,
             },
+            "can_edit_materials": access_role in ("global_admin", "organizer") or resident.id == viewer_id,
             "track": project_track(project),
             "criteria": criteria_for_project(demo_day, project),
             "max_score": sum(c["max_score"] for c in criteria_for_project(demo_day, project)) if uses_raw_sum(demo_day) else 100,
@@ -7454,7 +7473,10 @@ async def list_membership_demo_days(
             AcceleratorDemoDayProject,
             AcceleratorDemoDayProject.demo_day_id == AcceleratorDemoDay.id,
         )
-        .where(AcceleratorDemoDayProject.membership_id == membership.id)
+        .where(AcceleratorDemoDay.cohort_id == membership.cohort_id,
+               or_(AcceleratorDemoDayProject.membership_id == membership.id,
+                   AcceleratorDemoDayProject.project_id == membership.project_id)
+               if membership.project_id else AcceleratorDemoDayProject.membership_id == membership.id)
         .order_by(AcceleratorDemoDay.created_at.desc())
     )).scalars().all()
     return {

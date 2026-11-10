@@ -40,7 +40,7 @@ async def test_profile_permissions_and_single_expert_total():
         actor, cohort = await seed(db)
         config = (await db.execute(select(__import__('models').AcceleratorProgramConfig).where(__import__('models').AcceleratorProgramConfig.cohort_id == cohort.id))).scalar_one()
         config.modules = {**config.modules, "demo_day": True}
-        result, _ = await import_residents(db, cohort_id=cohort.id, actor=actor, manifest=ResidentImportManifest.model_validate(manifest_data(False)), dry_run=False)
+        result, _ = await import_residents(db, cohort_id=cohort.id, actor=actor, manifest=ResidentImportManifest.model_validate(manifest_data(True)), dry_run=False)
         mid = next(iter(result["memberships"].values()))
         person = await db.get(User, next(iter(result["users"].values())))
         row = (await db.execute(select(AcceleratorParticipantProfile).where(AcceleratorParticipantProfile.membership_id == mid))).scalar_one()
@@ -65,6 +65,9 @@ async def test_profile_permissions_and_single_expert_total():
         db.add(dp)
         db.add_all([AcceleratorDemoDayExpert(demo_day_id=demo.id, user_id=u.id, invited_by_user_id=actor.id) for u in [person, outsider]])
         await db.commit()
+        teammate = await db.get(User, list(result["users"].values())[1])
+        assert len((await demo_day_dict(db, demo, "resident", teammate.id))["projects"]) == 1
+        assert (await demo_day_dict(db, demo, "resident", outsider.id))["projects"] == []
         assert criteria_for_project(demo, project) == criteria
         payload = DemoDayScoreUpsert(scores={c['key']:5 for c in criteria}, recommendation="consider")
         data = await upsert_demo_day_score(dp.id, payload, person, db)
