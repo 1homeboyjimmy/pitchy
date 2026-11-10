@@ -53,6 +53,7 @@ from auth import (
 from db_async import get_async_db
 from email_utils import send_email
 from schemas.base import LocalPasswordChangeRequest
+from schemas.base import InvitationPasswordSet
 from models import User
 from custdev_sso import (
     ExchangeRequest,
@@ -611,6 +612,26 @@ async def request_password_reset(
     except Exception:
         # SMTP may be unavailable on dev — code is still readable from /dev/emails.
         pass
+    return {"status": "ok"}
+
+
+@router.post("/auth/set-invitation-password")
+async def set_invitation_password(payload: InvitationPasswordSet, request: Request,
+                                  db: AsyncSession = Depends(get_async_db)):
+    from main import _check_rate_limit, get_client_ip
+    _check_rate_limit(get_client_ip(request))
+    user = (await db.execute(select(User).where(
+        User.email == str(payload.email), User.deleted_at.is_(None),
+        User.is_active.is_(True), User.local_login_enabled.is_(True),
+    ).with_for_update())).scalar_one_or_none()
+    if (not user or not user.password_reset_token_hash or not user.password_reset_expires_at
+        or user.password_reset_expires_at < datetime.utcnow()
+        or not secrets.compare_digest(hash_token(payload.token), user.password_reset_token_hash)):
+        raise HTTPException(400, "Ссылка недействительна или истекла. Используйте восстановление пароля.")
+    user.password_hash = hash_password(payload.new_password)
+    user.password_reset_token_hash = None
+    user.password_reset_expires_at = None
+    await db.commit()
     return {"status": "ok"}
 
 

@@ -19,6 +19,8 @@ import { ResidentArtifacts } from "@/components/accelerator/ResidentArtifacts";
 import { ProjectSummary, type ProjectDescription } from "./ProjectSummary";
 import { ProjectSelection } from "./ProjectSelection";
 
+import { ParticipantProfileForm, type ParticipantFields } from "./ParticipantProfile";
+
 export type ResidentQuota = {
   membership_id: number;
   limit: number;
@@ -30,6 +32,8 @@ export type ResidentQuota = {
 };
 
 export type ResidentMembership = {
+  participant_profile?: ParticipantFields;
+  registration_required?: boolean;
   membership_id: number;
   application_id: number | null;
   status: string;
@@ -151,6 +155,7 @@ export function ResidentMembershipView({ membership, quotas, onChanged }: { memb
         {membership.status === "withdrawn" && <section className="workspace-card"><h2>Участие завершено</h2><p className="mt-2 text-sm text-white/60">Рабочие разделы этого потока больше недоступны.</p></section>}
         {completed && <section className="workspace-card"><h2>Программа завершена</h2><p className="mt-2 text-sm text-white/60">Итоговый снимок результатов сохранён.</p></section>}
 
+      {enrolled && section === "tools" && token && <ParticipantProfileForm key={JSON.stringify(membership.participant_profile)} membershipId={membership.membership_id} token={token} profile={membership.participant_profile || {}} onSaved={onChanged} />}
       {enrolled && section === "today" && <ResidentToday membership={membership} onNavigate={navigate} />}
 
       {enrolled && section === "tools" && membership.project && <section className="workspace-card"><div className="flex flex-wrap items-center justify-between gap-5"><div className="min-w-0"><p className="mb-2 text-xs uppercase tracking-[.18em] text-white/35">Проект резидента</p><h2 className="truncate text-2xl">{membership.project.name}</h2><div className="mt-4 h-2 w-full max-w-sm overflow-hidden rounded-full bg-white/8"><div className="h-full rounded-full bg-emerald-400" style={{ width: `${Math.max(0, Math.min(100, membership.project.readiness_index))}%` }} /></div><p className="mt-2 text-xs text-white/40">Паспорт заполнен на {membership.project.readiness_index}%</p><ProjectSummary project={membership.project} /></div><Link href={`/passport/${membership.project.id}`} className="workspace-button"><FileText size={16} /> Открыть паспорт</Link></div><ProjectSelection membershipId={membership.membership_id} onChanged={onChanged} /></section>}

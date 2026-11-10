@@ -34,7 +34,7 @@ class ImportParticipant(BaseModel):
 class ImportProject(BaseModel):
     model_config = ConfigDict(extra="forbid")
     key: str = Field(min_length=1, max_length=100)
-    name: str = Field(min_length=2, max_length=200)
+    name: str = Field(min_length=2, max_length=500)
     owner: str
     members: list[str] = Field(min_length=1)
     fields: dict = Field(default_factory=dict)
