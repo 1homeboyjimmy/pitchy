@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 import pytest
@@ -57,6 +58,33 @@ async def test_verify_degrades_missing_verdicts_without_failing_job(monkeypatch)
     assert all(claim["status"] == "partial" for claim in result)
     assert all(claim["confidence"] == 0.35 for claim in result)
     assert all("исходным фрагментом" in claim["verification_reason"] for claim in result)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["empty", "timeout", "exception"])
+async def test_verify_switches_provider_model_when_primary_cannot_answer(monkeypatch, failure):
+    models = []
+
+    async def fake_call(_system, _prompt, **kwargs):
+        models.append(kwargs["model"])
+        if kwargs["model"] == research_service.VERIFIER_MODEL:
+            if failure == "timeout":
+                await asyncio.sleep(10)
+            if failure == "exception":
+                raise RuntimeError("Provider unavailable")
+            return "", None, {"completion_tokens_details": {"reasoning_tokens": 5000}}
+        return json.dumps({"verdicts": [{
+            "claim_index": 0, "status": "supported", "confidence": 0.9,
+            "reason": "Matches evidence",
+        }]}), None, {}
+
+    monkeypatch.setattr(research_service, "call_polza", fake_call)
+    monkeypatch.setattr(research_service, "VERIFIER_TIMEOUT_SECONDS", 0.05)
+    result = await research_service._verify("query", _claims(1), [])
+
+    assert models == [research_service.VERIFIER_MODEL, research_service.VERIFIER_FALLBACK_MODEL]
+    assert result[0]["status"] == "supported"
+    assert result[0]["confidence"] == 0.9
 
 
 @pytest.mark.asyncio

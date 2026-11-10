@@ -21,7 +21,9 @@ PLANNER_MODEL = os.getenv("RESEARCH_PLANNER_MODEL", "qwen/qwen3-32b")
 WRITER_MODEL = os.getenv("RESEARCH_WRITER_MODEL", "openai/gpt-6-luna-pro")
 EXTRACTOR_MODEL = os.getenv("RESEARCH_EXTRACTOR_MODEL", "qwen/qwen3-32b")
 EXTRACTOR_FALLBACK_MODEL = os.getenv("RESEARCH_EXTRACTOR_FALLBACK_MODEL", "openai/gpt-6-luna-pro")
-VERIFIER_MODEL = os.getenv("RESEARCH_VERIFIER_MODEL", "moonshotai/kimi-k2.6")
+VERIFIER_MODEL = os.getenv("RESEARCH_VERIFIER_MODEL", "deepseek/deepseek-v4.1-flash-1017")
+VERIFIER_FALLBACK_MODEL = os.getenv("RESEARCH_VERIFIER_FALLBACK_MODEL", "qwen/qwen3-32b")
+VERIFIER_TIMEOUT_SECONDS = float(os.getenv("RESEARCH_VERIFIER_TIMEOUT_SECONDS", "90"))
 CRITIC_MODEL = os.getenv("RESEARCH_CRITIC_MODEL", "openai/gpt-6-luna-pro")
 RERANK_MODEL = os.getenv("RESEARCH_RERANK_MODEL", os.getenv("ROUTERAI_RERANK_MODEL", "cohere/rerank-v3.5"))
 RERANK_MIN_SCORE = float(os.getenv("RESEARCH_RERANK_MIN_SCORE", "0.03"))
@@ -184,19 +186,30 @@ async def _verify(query: str, claims: list[dict], docs: list[dict]) -> list[dict
 
     async def verify_batch(batch_number: int, batch: list[dict]) -> list[dict]:
         prompt = f"Исходный запрос: {query}\n\nУтверждения:\n{json.dumps(batch, ensure_ascii=False)}"
-        for attempt, max_tokens in enumerate((3000, 5000), 1):
+        verifier_models = tuple(dict.fromkeys((VERIFIER_MODEL, VERIFIER_FALLBACK_MODEL)))
+        for attempt, verifier_model in enumerate(verifier_models, 1):
             async with semaphore:
-                content, _, usage = await call_polza(
-                    system, prompt, model=VERIFIER_MODEL, max_tokens=max_tokens,
-                    response_format={"type": "json_object"},
-                )
+                try:
+                    content, _, usage = await asyncio.wait_for(
+                        call_polza(
+                            system, prompt, model=verifier_model, max_tokens=5000,
+                            response_format={"type": "json_object"},
+                        ),
+                        timeout=VERIFIER_TIMEOUT_SECONDS,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Verification batch %s attempt %s (%s) failed: %s: %s",
+                        batch_number, attempt, verifier_model, type(exc).__name__, exc,
+                    )
+                    continue
             data = _json_object(content, {"verdicts": []})
             verdicts = data.get("verdicts", []) if isinstance(data, dict) else []
             if verdicts:
                 return [verdict for verdict in verdicts if isinstance(verdict, dict)]
             logger.warning(
-                "Verification batch %s attempt %s returned no parseable verdicts: response_chars=%s usage=%s",
-                batch_number, attempt, len(content or ""), usage,
+                "Verification batch %s attempt %s (%s) returned no parseable verdicts: response_chars=%s usage=%s",
+                batch_number, attempt, verifier_model, len(content or ""), usage,
             )
         return []
 

@@ -26,7 +26,7 @@ The older chat entry points and `ChatOrchestrator` use the same provider split: 
 | Search each direction in parallel | Exa Search API (`research_search_documents`) |
 | Rank source documents | Cohere Rerank v3.5 on RouterAI's dedicated endpoint |
 | Extract claims | Qwen3-32B on Polza; GPT-6 Luna Pro fallback |
-| Independently verify claims | Kimi K2.6 on Polza |
+| Independently verify claims | DeepSeek V4.1 Flash 1017 on Polza; Qwen3-32B fallback; 90-second timeout per call |
 | Build brief, write sections, critique final report | GPT-6 Luna Pro on Polza |
 
 ## Smart Roadmap analysis
