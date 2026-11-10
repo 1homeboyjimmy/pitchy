@@ -1742,20 +1742,13 @@ async def test_program_attendance_and_candidate_revision_flow(monkeypatch):
 
 def test_event_formats_and_change_payloads_are_validated():
     now = datetime.utcnow()
+    for event_format in ("online", "offline", "hybrid"):
+        row = EventCreate(title="Плановая встреча", starts_at=now,
+                          ends_at=now + timedelta(hours=1), event_format=event_format)
+        assert row.meeting_url is None and row.location is None
     with pytest.raises(ValidationError):
-        EventCreate(
-            title="Очная встреча",
-            starts_at=now,
-            ends_at=now + timedelta(hours=1),
-            event_format="offline",
-        )
-    with pytest.raises(ValidationError):
-        EventCreate(
-            title="Онлайн-встреча",
-            starts_at=now,
-            ends_at=now + timedelta(hours=1),
-            event_format="online",
-        )
+        EventCreate(title="Некорректная ссылка", starts_at=now,
+                    ends_at=now + timedelta(hours=1), meeting_url="javascript:alert(1)")
     with pytest.raises(ValidationError):
         EventReschedule(
             starts_at=now + timedelta(hours=2),

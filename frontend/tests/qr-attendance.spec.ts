@@ -83,3 +83,28 @@ test('reschedule uses cohort timezone when the browser is in Los Angeles', async
   await page.getByRole('button', { name: 'Сохранить перенос', exact: true }).click();
   await expect.poll(() => saved).toBe(true);
 });
+
+test('organizer fills published event logistics without changing its schedule', async ({ page }) => {
+  await manager(page);
+  let meetingUrl: string | null = null;
+  await page.route('**/api/accelerators/cohorts/12/events', r => r.fulfill({ json: [{ id: 51, title: 'QR class', status: 'published', timezone: 'Europe/Moscow', starts_at: '2030-11-10T15:30:00Z', ends_at: '2030-11-10T16:30:00Z', event_format: 'online', meeting_url: meetingUrl, homework_links: [], post_materials: [], attendance_count: 0 }] }));
+  await page.route('**/api/accelerators/events/51/details', async r => {
+    const body = r.request().postDataJSON();
+    expect(r.request().method()).toBe('PATCH');
+    expect(body).not.toHaveProperty('starts_at');
+    expect(body).not.toHaveProperty('ends_at');
+    expect(body.host_name).toBe('Леонид Чернигов');
+    meetingUrl = body.meeting_url;
+    await r.fulfill({ json: { id: 51 } });
+  });
+  await page.goto('/accelerator?context=staff&section=attendance&accelerator=7&cohort=12');
+  await page.getByRole('heading', { name: 'QR class', exact: true }).click();
+  await expect(page.getByText('Ссылка на подключение появится позже.')).toBeVisible();
+  await page.getByRole('button', { name: 'Уточнить данные', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Уточнить данные мероприятия', exact: true });
+  await dialog.getByLabel('Спикер', { exact: true }).fill('Леонид Чернигов');
+  await dialog.getByLabel('Ссылка на подключение', { exact: true }).fill('https://example.com/session');
+  await dialog.getByRole('button', { name: 'Сохранить данные', exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect(page.getByRole('link', { name: 'Открыть подключение', exact: true })).toHaveAttribute('href', 'https://example.com/session');
+});

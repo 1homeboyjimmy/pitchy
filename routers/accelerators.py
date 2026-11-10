@@ -139,6 +139,7 @@ from schemas.accelerators import (
     HomeworkSubmissionUpsert,
     AttendanceMark,
     EventCreate,
+    EventDetailsUpdate,
     EventCancel,
     EventFollowupUpdate,
     EventReschedule,
@@ -4209,7 +4210,7 @@ async def enqueue_event_change_notifications(
 from accelerator_attendance_service import checkin_session, token_event_id, validate_checkin_token, utc_datetime
 
 
-async def attendance_write_context(db, event_id):
+async def attendance_write_context(db, event_id, *, edit_event=False):
     event = await db.get(AcceleratorEvent, event_id)
     if not event:
         raise HTTPException(404, "Мероприятие не найдено")
@@ -4221,7 +4222,7 @@ async def attendance_write_context(db, event_id):
     require_mutable_cohort(cohort)
     event = (await db.execute(select(AcceleratorEvent).where(
         AcceleratorEvent.id == event_id
-    ).with_for_update(read=True).execution_options(populate_existing=True))).scalar_one()
+    ).with_for_update(read=not edit_event).execution_options(populate_existing=True))).scalar_one()
     await require_attendance_module(db, cohort)
     return event, cohort
 
@@ -4402,6 +4403,34 @@ async def update_event(
     )
     await db.commit()
     return event_dict(event, homework_links=await event_homework_links(db, event.id), timezone=cohort.timezone, include_checkin=True)
+
+
+@router.patch("/events/{event_id}/details")
+async def update_event_details(
+    event_id: int,
+    payload: EventDetailsUpdate,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    event, cohort = await attendance_write_context(db, event_id, edit_event=True)
+    await require_cohort_manager(db, user, cohort)
+    if event.status not in ("published", "completed"):
+        raise HTTPException(409, "Уточнить данные можно у опубликованного или завершённого мероприятия")
+    fields = payload.model_dump(exclude_unset=True)
+    before = {key: getattr(event, key) for key in fields}
+    for key, value in fields.items():
+        setattr(event, key, (value or "").strip() or None)
+    event.updated_by_user_id = user.id
+    db.add(AcceleratorEventChange(
+        event_id=event.id, actor_user_id=user.id, action="details_updated",
+        before=before, after={key: getattr(event, key) for key in fields},
+    ))
+    add_audit(db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+              actor_user_id=user.id, action="event.details_updated",
+              target_type="event", target_id=event.id)
+    await db.commit()
+    return event_dict(event, homework_links=await event_homework_links(db, event.id),
+                      timezone=cohort.timezone, include_checkin=True)
 
 
 @router.post("/events/{event_id}/publish")
