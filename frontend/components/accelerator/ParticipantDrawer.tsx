@@ -7,6 +7,8 @@ import { describeApiError, getAuthJson, patchAuthJson, postAuthJson, putAuthJson
 import { notifySuccess } from "@/lib/ui";
 import { ProjectSummary, type ProjectDescription } from "./ProjectSummary";
 
+import { ParticipantProfileForm, type ParticipantFields } from "./ParticipantProfile";
+
 type Card = {
   membership_id: number;
   access_role: string;
@@ -112,6 +114,7 @@ export function ParticipantDrawer({ membershipId, token, onClose, onChanged }: {
       {!card && !error && <div className="grid min-h-64 place-items-center"><Loader2 className="animate-spin text-white/35" /></div>}
       {error && <p role="alert" className="mt-5 rounded-2xl border border-red-400/20 bg-red-400/10 p-4 text-sm text-red-200">{error}</p>}
       {card && <div className="mt-6 space-y-4">
+        {card.can_manage && <ParticipantProfileForm key={`${membershipId}:${JSON.stringify(card.profile)}`} membershipId={membershipId} token={token} profile={card.profile as ParticipantFields} manager onSaved={async () => { await load(); await onChanged?.(); }} />}
         <section className="rounded-2xl border border-white/10 p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs text-white/35">Статус и последнее действие</p><p className="mt-1">{STATUS[card.membership.status] || card.membership.status}</p><p className="mt-2 text-sm text-white/45">{card.last_action.title} · {formatDate(card.last_action.at)}</p></div>{card.can_manage && <div className="flex flex-wrap gap-2">{card.available_statuses.map((status) => <button type="button" key={status} disabled={Boolean(busy)} onClick={() => void changeStatus(status)} className="rounded-full border border-white/15 px-3 py-2 text-xs">{STATUS[status] || status}</button>)}</div>}</div></section>
         <div className="grid gap-4 sm:grid-cols-2"><Info title="Проект">{card.project ? <><p>{card.project.name}</p><p className="text-sm text-white/40">Паспорт заполнен на {card.project.readiness}%</p><ProjectSummary project={card.project} detailed /></> : <p className="text-sm text-white/35">Проект не привязан</p>}</Info><Info title="Команда">{card.team ? <><p>{card.team.name}</p><p className="text-sm text-white/40">Роль: {card.team.role}</p></> : <p className="text-sm text-white/35">Без команды</p>}</Info></div>
         <section className="rounded-2xl border border-white/10 p-4"><p className="text-xs uppercase tracking-wide text-white/35">Трекер</p><p className="mt-2 text-sm">{card.trackers.map((row) => row.name).join(", ") || "Не назначен"}</p>{card.can_manage && !card.team && <select value={card.trackers[0]?.user_id || ""} onChange={(event) => void changeTracker(event.target.value)} disabled={busy === "tracker"} className="workspace-input mt-3"><option value="">Без трекера</option>{card.tracker_options.map((row) => <option key={row.user_id} value={row.user_id}>{row.name}</option>)}</select>}{card.team && <p className="mt-2 text-xs text-white/35">Назначение меняется один раз для всей команды в разделе «Матчмейкинг».</p>}</section>

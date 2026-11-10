@@ -183,6 +183,41 @@ from schemas.accelerators import (
 
 
 router = APIRouter(prefix="/api/accelerators", tags=["accelerators"])
+
+from accelerator_participant_service import ParticipantProfileUpdate
+
+
+@router.patch("/memberships/{membership_id}/participant-profile")
+async def update_participant_profile(
+    membership_id: int, payload: ParticipantProfileUpdate,
+    user: User = Depends(get_async_current_user), db: AsyncSession = Depends(get_async_db),
+):
+    membership = (await db.execute(select(AcceleratorMembership).where(
+        AcceleratorMembership.id == membership_id
+    ).with_for_update())).scalar_one_or_none()
+    if not membership:
+        raise HTTPException(404, "Участник не найден")
+    cohort = await get_cohort_or_404(db, membership.cohort_id)
+    manager = user.is_admin or await is_accelerator_organizer(db, user.id, cohort.accelerator_id)
+    if membership.user_id != user.id and not manager:
+        raise HTTPException(403, "Нет доступа к профилю")
+    updates = payload.model_dump(exclude_unset=True)
+    if "tags" in updates and not manager:
+        raise HTTPException(403, "Теги назначает организатор")
+    if "tags" in updates and updates["tags"] is None:
+        raise HTTPException(422, "Укажите список тегов")
+    row = (await db.execute(select(AcceleratorParticipantProfile).where(
+        AcceleratorParticipantProfile.membership_id == membership.id
+    ))).scalar_one_or_none()
+    if not row:
+        row = AcceleratorParticipantProfile(membership_id=membership.id, profile={}, visibility={"organizer": True, "mentor": False, "public": False})
+        db.add(row)
+    row.profile = {**(row.profile or {}), **updates}
+    add_audit(db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id, actor_user_id=user.id,
+              action="participant.profile_updated", target_type="membership", target_id=membership.id,
+              details={"fields": sorted(updates)})
+    await db.commit()
+    return {"profile": row.profile}
 logger = logging.getLogger("app.accelerator_project_audit")
 
 DEFAULT_MODULES = {
@@ -1317,7 +1352,12 @@ async def list_my_accelerator_memberships(
     )).all()
     memberships = []
     for membership, cohort, accelerator, program, project in rows:
+        from accelerator_participant_service import registration_required
+        profile_row = (await db.execute(select(AcceleratorParticipantProfile).where(AcceleratorParticipantProfile.membership_id == membership.id))).scalar_one_or_none()
+        profile_data = dict(profile_row.profile or {}) if profile_row else {}
         memberships.append({
+            "participant_profile": profile_data,
+            "registration_required": registration_required(profile_data),
             "membership_id": membership.id,
             "application_id": membership.application_id,
             "status": membership.status,
@@ -5793,6 +5833,8 @@ async def cohort_resident_report(
         )
     membership_rows = (await db.execute(membership_query)).all()
     membership_ids = [membership.id for membership, _ in membership_rows]
+    from accelerator_participant_service import PRIVATE_FIELDS
+    profile_map = {row.membership_id: {k: v for k, v in (row.profile or {}).items() if k in PRIVATE_FIELDS or k == "tags"} for row in (await db.execute(select(AcceleratorParticipantProfile).where(AcceleratorParticipantProfile.membership_id.in_(membership_ids)))).scalars()} if access_role in ("global_admin", "organizer") and membership_ids else {}
 
     stages = list((await db.execute(select(AcceleratorProgramStage).where(
         AcceleratorProgramStage.cohort_id == cohort.id,
@@ -5959,6 +6001,7 @@ async def cohort_resident_report(
             "name": resident.name,
             "email": resident.email,
             "status": membership.status,
+            **({"participant_profile": profile_map.get(membership.id, {})} if access_role in ("global_admin", "organizer") else {}),
             "status_reason": membership.status_reason,
             "trackers": trackers_by_membership.get(membership.id, []),
             "program": {
@@ -7273,6 +7316,7 @@ async def demo_day_dict(
     for score, expert in score_rows:
         scores_by_project.setdefault(score.demo_project_id, []).append((score, expert))
     projects = []
+    from accelerator_demo_scoring import criteria_for_project, project_track, uses_raw_sum
     for row, membership, resident, project in project_rows:
         if access_role == "resident" and resident.id != viewer_id:
             continue
@@ -7308,6 +7352,9 @@ async def demo_day_dict(
                 "name": project.name,
                 "readiness_index": project.readiness_index,
             },
+            "track": project_track(project),
+            "criteria": criteria_for_project(demo_day, project),
+            "max_score": sum(c["max_score"] for c in criteria_for_project(demo_day, project)) if uses_raw_sum(demo_day) else 100,
             "selection_reason": row.selection_reason,
             "pitch_title": row.pitch_title,
             "summary": row.summary,
@@ -7331,6 +7378,8 @@ async def demo_day_dict(
         "description": demo_day.description,
         "starts_at": demo_day.starts_at,
         "criteria": demo_day.criteria or [],
+        "criteria_by_track": (demo_day.evaluation_config or {}).get("criteria_by_track", {}),
+        "scoring_method": (demo_day.evaluation_config or {}).get("method", "normalized_average"),
         "status": demo_day.status,
         "access_role": access_role,
         "experts": [{
@@ -7733,6 +7782,9 @@ async def update_demo_day_project_decision(
     require_mutable_cohort(cohort)
     if demo_day.status == "finalized":
         raise HTTPException(status_code=409, detail="Результаты уже финализированы")
+    from accelerator_demo_scoring import uses_raw_sum
+    if uses_raw_sum(demo_day) and payload.score_adjustment != 0:
+        raise HTTPException(422, "Итог формируется только из пяти критериев эксперта")
     row.score_adjustment = payload.score_adjustment
     row.manager_note = (payload.manager_note or "").strip() or None
     row.outcome = payload.outcome
@@ -7760,14 +7812,27 @@ async def upsert_demo_day_score(
     project_row = await db.get(AcceleratorDemoDayProject, demo_project_id)
     if not project_row:
         raise HTTPException(status_code=404, detail="Проект демо-дня не найден")
-    demo_day = await db.get(AcceleratorDemoDay, project_row.demo_day_id)
+    demo_day = (await db.execute(select(AcceleratorDemoDay).where(AcceleratorDemoDay.id == project_row.demo_day_id).with_for_update())).scalar_one()
     cohort, access_role = await demo_day_access(db, demo_day, user)
     require_mutable_cohort(cohort)
     if access_role != "expert":
         raise HTTPException(status_code=403, detail="Проекты оценивают приглашённые эксперты")
     if demo_day.status != "scoring":
         raise HTTPException(status_code=409, detail="Оценивание сейчас закрыто")
-    normalized = demo_normalized_score(demo_day.criteria or [], payload.scores)
+    from accelerator_demo_scoring import criteria_for_project, uses_raw_sum, raw_score
+    project = await db.get(Project, project_row.project_id)
+    criteria = criteria_for_project(demo_day, project)
+    if uses_raw_sum(demo_day):
+        await db.execute(select(AcceleratorDemoDayProject).where(AcceleratorDemoDayProject.id == project_row.id).with_for_update())
+        other = (await db.execute(select(AcceleratorDemoDayScore.id).where(
+            AcceleratorDemoDayScore.demo_project_id == project_row.id,
+            AcceleratorDemoDayScore.expert_user_id != user.id,
+        ))).first()
+        if other:
+            raise HTTPException(409, "Проект уже оценён другим экспертом")
+        normalized = raw_score(criteria, payload.scores)
+    else:
+        normalized = demo_normalized_score(criteria, payload.scores)
     score = (await db.execute(select(AcceleratorDemoDayScore).where(
         AcceleratorDemoDayScore.demo_project_id == project_row.id,
         AcceleratorDemoDayScore.expert_user_id == user.id,
@@ -7849,8 +7914,14 @@ async def update_demo_day_status(
         for score in scores:
             by_project.setdefault(score.demo_project_id, []).append(float(score.normalized_score))
         for row in projects:
-            average = sum(by_project[row.id]) / len(by_project[row.id])
-            row.final_score = round(max(0, min(100, average + float(row.score_adjustment or 0))), 2)
+            from accelerator_demo_scoring import uses_raw_sum
+            if uses_raw_sum(demo_day):
+                if len(by_project[row.id]) != 1:
+                    raise HTTPException(409, "Для проекта требуется ровно одна оценка эксперта")
+                row.final_score = by_project[row.id][0]
+            else:
+                average = sum(by_project[row.id]) / len(by_project[row.id])
+                row.final_score = round(max(0, min(100, average + float(row.score_adjustment or 0))), 2)
         ranked = sorted(projects, key=lambda row: (-float(row.final_score), row.id))
         for rank, row in enumerate(ranked, start=1):
             row.rank = rank
@@ -7925,7 +7996,7 @@ async def export_demo_day(
             "participant": "Участник",
         }
         csv_rows = [[
-            "Место", "Проект", "Резидент", "Итоговая оценка", "Средняя оценка экспертов",
+            "Место", "Проект", "Резидент", "Итоговая оценка", "Оценка эксперта" if (demo_day.evaluation_config or {}).get("method") == "raw_sum" else "Средняя оценка экспертов",
             "Корректировка организатора", "Результат", "Презентация", "Видео",
         ]]
         for project in data["projects"]:
@@ -9094,6 +9165,8 @@ async def membership_organizer_card(
     last_at, last_title = max((row for row in last_candidates if row[0]), key=lambda row: row[0])
     participant_profile = dict(profile.profile or {}) if profile else {}
     participant_profile.pop("application_data", None)
+    from accelerator_participant_service import visible_profile
+    participant_profile = visible_profile(participant_profile, private=can_manage)
     return {
         "membership_id": membership.id,
         "access_role": access_role,

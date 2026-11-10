@@ -97,6 +97,16 @@ class PasswordResetRequest(BaseModel):
     email: EmailStr
 
 
+class InvitationPasswordSet(PasswordResetRequest):
+    token: str = Field(min_length=32, max_length=128)
+    new_password: str = Field(min_length=8, max_length=72)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, value: str) -> str:
+        return RegisterRequest.validate_password(value)
+
+
 class PasswordResetConfirm(BaseModel):
     # New flow: identify user by email + numeric code (sent by /auth/request-password-reset).
     # The legacy long-token form is gone — kept the field name "code" for clarity.
@@ -237,7 +247,7 @@ class ImportContextResponse(BaseModel):
 # ——— Project Passport (Паспорт проекта) Schemas ———
 
 class ProjectCreateRequest(BaseModel):
-    name: str = Field(default="Новый проект", min_length=2, max_length=200)
+    name: str = Field(default="Новый проект", min_length=2, max_length=500)
     # Опциональный стартовый паспорт (например, из импорта контекста).
     passport: dict[str, Any] | None = None
     # Если задан — привязываем существующий чат к новой папке.
@@ -245,7 +255,7 @@ class ProjectCreateRequest(BaseModel):
 
 
 class ProjectUpdateRequest(BaseModel):
-    name: str | None = Field(None, min_length=2, max_length=200)
+    name: str | None = Field(None, min_length=2, max_length=500)
     status: str | None = None  # active, archived
 
 

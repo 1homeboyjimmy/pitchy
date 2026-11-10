@@ -64,7 +64,7 @@ class Project(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    name: Mapped[str] = mapped_column(String(200), default="Новый проект")
+    name: Mapped[str] = mapped_column(String(500), default="Новый проект")
     # Структурированный паспорт. Схема секций (core/market/metrics/team/
     # legal/assets/custom) описана в schemas.base.PassportData.
     # Каждое поле может нести метаданные источника (manual|ai|grant) —
@@ -626,6 +626,7 @@ class AcceleratorDemoDay(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     starts_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
     criteria: Mapped[list] = mapped_column(JSON, default=list)
+    evaluation_config: Mapped[dict] = mapped_column(JSON, default=dict, server_default=text("'{}'"))
     status: Mapped[str] = mapped_column(
         String(20), default="draft", server_default="draft", index=True
     )
@@ -827,7 +828,7 @@ class AcceleratorTeam(Base):
     owner_membership_id: Mapped[int] = mapped_column(
         ForeignKey("accelerator_memberships.id", ondelete="RESTRICT"), index=True
     )
-    name: Mapped[str] = mapped_column(String(200))
+    name: Mapped[str] = mapped_column(String(500))
     max_members: Mapped[int] = mapped_column(Integer, default=5, server_default="5")
     recruiting_open: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default=text("true")
@@ -1959,7 +1960,7 @@ class ProjectTree(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, unique=True, index=True)
-    title: Mapped[str] = mapped_column(String(200), default="Новое древо")
+    title: Mapped[str] = mapped_column(String(500), default="Новое древо")
     source_type: Mapped[str] = mapped_column(String(50), default="text")  # text, pdf, chat
     source_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     tree_data: Mapped[dict] = mapped_column(JSON, default=dict)
