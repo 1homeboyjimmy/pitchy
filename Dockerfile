@@ -68,6 +68,7 @@ CMD ["sh", "-c", "python -m alembic upgrade head && exec uvicorn main:app --host
 FROM runtime AS accelerator-tests
 RUN python -m pytest \
     tests/test_accelerator_*.py \
+    tests/test_admin_users.py \
     tests/test_grant_accelerator_context.py \
     tests/test_roadmap_analysis_model.py \
     tests/test_roadmap_service.py

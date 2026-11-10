@@ -17,6 +17,7 @@ import { notifyError, notifySuccess, confirmAction } from "@/lib/ui";
 import { adminDate } from "@/lib/utils";
 import { PromoCampaignsPanel } from "./PromoCampaignsPanel";
 import {
+    getAuthJson, describeApiError,
     getGrants, extractGrantFromUrl, createGrant, type Grant, type GrantDraft,
     getGrantSources, createGrantSource, updateGrantSource, deleteGrantSource,
     crawlGrantSource, reparseAllUnicornroadEvents, getGrantModerationQueue,
@@ -27,7 +28,8 @@ import {
 type User = {
     id: number;
     name: string;
-    email: string;
+    email: string | null;
+    username?: string | null;
     is_admin: boolean;
     is_active: boolean;
     email_verified: boolean;
@@ -233,6 +235,8 @@ export function AdminView() {
     const [loading, setLoading] = useState(true);
     const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
     const [users, setUsers] = useState<User[]>([]);
+    const [loadError, setLoadError] = useState("");
+    const [reloadKey, setReloadKey] = useState(0);
     const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
     const [analyticsTimeFilter, setAnalyticsTimeFilter] = useState<"24h" | "3d" | "1w" | "1m" | "6m" | "1y">("1w");
 
@@ -265,6 +269,7 @@ export function AdminView() {
     useEffect(() => {
         const fetchData = async () => {
             setLoading(true);
+            setLoadError("");
             try {
                 const token = getToken();
                 if (!token) return;
@@ -297,15 +302,7 @@ export function AdminView() {
                     }
                     if (res.ok) setAnalytics(await res.json());
                 } else if (activeTab === "users") {
-                    const res = await fetch(`${API_BASE}/admin/users`, {
-                        headers: { "Authorization": `Bearer ${token}` }
-                    });
-                    if (res.status === 401) {
-                        window.localStorage.removeItem("vi_auth_state");
-                        window.location.href = "/login?expired=1";
-                        return;
-                    }
-                    if (res.ok) setUsers(await res.json());
+                    setUsers(await getAuthJson<User[]>("/admin/users", token));
                 } else if (activeTab === "subscriptions") {
                     const res = await fetch(`${API_BASE}/admin/subscriptions`, {
                         headers: { "Authorization": `Bearer ${token}` }
@@ -341,12 +338,13 @@ export function AdminView() {
                 }
             } catch (e) {
                 console.error("Admin fetch error", e);
+                setLoadError(describeApiError(e, "Не удалось загрузить данные админки."));
             } finally {
                 setLoading(false);
             }
         };
         fetchData();
-    }, [activeTab, API_BASE, analyticsTimeFilter]);
+    }, [activeTab, API_BASE, analyticsTimeFilter, reloadKey]);
 
     useEffect(() => {
         let interval: NodeJS.Timeout;
@@ -669,6 +667,7 @@ export function AdminView() {
                 </button>
             </div>
 
+            {loadError && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 border border-red-400/25 bg-red-400/10 px-4 py-3 text-sm text-red-200"><span>{loadError}</span><button type="button" onClick={() => setReloadKey(value => value + 1)} className="border border-white/20 px-3 py-2 text-white">Повторить загрузку</button></div>}
             {loading ? (
                 <div className="py-12 flex justify-center">
                     <Loader className="w-8 h-8 text-white animate-spin" />
@@ -806,7 +805,7 @@ export function AdminView() {
                                             <tr key={u.id} className={`border-b border-white/5 hover:bg-white/5 transition-colors ${!u.is_active ? 'opacity-50' : ''} ${u.deleted_at ? 'opacity-40' : ''}`}>
                                                 <td className="min-w-0 px-3 py-4 xl:px-4">
                                                     <div className="truncate font-bold tracking-tight" title={u.name || "Без имени"}>{u.name || "Без имени"}</div>
-                                                    <div className="mt-1 truncate text-[11px] font-mono text-white/50" title={u.email}>{u.email}</div>
+                                                    <div className="mt-1 truncate text-[11px] font-mono text-white/50" title={u.email || u.username || undefined}>{u.email || u.username || "Без почты"}</div>
                                                 </td>
                                                 <td className="px-3 py-4 xl:px-4">
                                                     <div className="flex flex-col items-start gap-1">
@@ -861,9 +860,9 @@ export function AdminView() {
                                                 </td>
                                             </tr>
                                         ))}
-                                        {users.length === 0 && (
+                                        {users.length === 0 && !loadError && (
                                             <tr>
-                                                <td colSpan={6} className="px-6 py-8 text-center text-white/30 font-code">Нет пользователей</td>
+                                                <td colSpan={7} className="px-6 py-8 text-center text-white/30 font-code">Нет пользователей</td>
                                             </tr>
                                         )}
                                     </tbody>

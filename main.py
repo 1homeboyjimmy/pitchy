@@ -556,6 +556,9 @@ app.include_router(contact_router.router)
 from routers import auth as auth_router
 app.include_router(auth_router.router)
 
+from routers.admin_users import router as admin_users_router
+app.include_router(admin_users_router)
+
 from routers import research as research_router
 app.include_router(research_router.router)
 
@@ -3188,30 +3191,6 @@ async def api_import_context(
     except Exception as e:
         logger.error(f"Import failed: {e}")
         return ImportContextResponse(success=False, message=str(e))
-
-
-@app.get("/admin/users", response_model=list[UserResponse])
-async def admin_users(
-    _: User = Depends(require_async_admin),
-    db: AsyncSession = Depends(get_async_db),
-) -> list[UserResponse]:
-    res = await db.execute(select(User).order_by(User.created_at.desc()))
-    users = res.scalars().all()
-    return [
-        UserResponse(
-            id=u.id,
-            email=u.email,
-            name=u.name,
-            is_admin=u.is_admin,
-            is_active=u.is_active,
-            email_verified=u.email_verified,
-            created_at=u.created_at,
-            subscription_tier=u.subscription_tier,
-            subscription_expires_at=u.subscription_expires_at,
-            onboarding_completed_at=u.onboarding_completed_at,
-        )
-        for u in users
-    ]
 
 
 def _stage_audit_entry(

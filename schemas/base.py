@@ -67,6 +67,13 @@ class UserResponse(BaseModel):
         from_attributes = True
 
 
+class AdminUserResponse(UserResponse):
+    # An admin must be able to inspect every persisted account, including
+    # imported/legacy addresses that would not pass new-registration validation.
+    email: str | None = None
+    username: str | None = None
+
+
 class PasswordChangeInitRequest(BaseModel):
     current_password: str
 
