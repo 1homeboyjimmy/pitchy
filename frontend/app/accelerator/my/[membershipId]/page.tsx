@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { BriefcaseBusiness, Loader2 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 
 import { describeApiError, getAuthJson } from "@/lib/api";
 import { useAuth } from "@/lib/hooks/useAuth";
+import { takeAcceleratorEntry } from "@/lib/acceleratorEntryHandoff";
 import { NotificationCenter } from "@/components/accelerator/NotificationCenter";
 import { PitchyLogo } from "@/components/shared/PitchyLogo";
 import { ResidentMembershipView, type ResidentWorkspaceData } from "@/components/accelerator/ResidentWorkspace";
@@ -22,23 +23,35 @@ export default function ResidentAcceleratorPage() {
   const [error, setError] = useState("");
   const numericMembershipId = Number(membershipId);
   const hasValidMembershipId = Number.isInteger(numericMembershipId) && numericMembershipId > 0;
+  const initialLoad = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     if (!token || !hasValidMembershipId) return;
     try {
-      const [workspace, access] = await Promise.all([
-        getAuthJson<ResidentWorkspaceData>("/api/accelerators/me/memberships", token),
-        getAuthJson<AcceleratorAccess[]>("/api/accelerators", token),
-      ]);
+      const entry = takeAcceleratorEntry(token);
+      if (entry) {
+        setData(entry.workspace);
+        setAccelerators(entry.access);
+        setError("");
+        return;
+      }
+      // Staff navigation is optional and must not hold up the participant's first screen.
+      void getAuthJson<AcceleratorAccess[]>("/api/accelerators", token).then(setAccelerators).catch(() => {});
+      const workspace = await getAuthJson<ResidentWorkspaceData>("/api/accelerators/me/memberships", token);
       setData(workspace);
-      setAccelerators(access);
       setError("");
     }
     catch (reason) { setError(describeApiError(reason, "Не удалось загрузить кабинет участника")); }
     finally { setLoading(false); }
   }, [hasValidMembershipId, token]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (!token) { initialLoad.current = null; return; }
+    const key = `${token}:${numericMembershipId}`;
+    if (initialLoad.current === key) return;
+    initialLoad.current = key;
+    void load();
+  }, [load, numericMembershipId, token]);
   const membership = data?.memberships.find((row) => row.membership_id === numericMembershipId) || null;
   const memberships = participantMemberships(data?.memberships || []);
   const serviceAccelerator = staffAccelerators(accelerators).find((row) => row.id === membership?.accelerator.id) || staffAccelerators(accelerators)[0] || null;

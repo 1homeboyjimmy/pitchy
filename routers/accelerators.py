@@ -29,6 +29,8 @@ from accelerator_service import (
     has_active_personal_override,
     is_accelerator_organizer,
     membership_tracker_user_ids,
+    membership_trackers_batch,
+    accelerator_membership_quotas_batch,
     normalize_resident_limits,
     require_cohort_manager,
     require_cohort_reader,
@@ -49,6 +51,7 @@ from accelerator_program_progress_service import (
     stage_completion_policy,
 )
 from accelerator_tracking_signals_service import TrackingSignalsService
+from accelerator_tracking_facts import load_tracking_facts
 from accelerator_application_service import (
     MANAGER_TRANSITIONS,
     accept_invitation,
@@ -5641,14 +5644,9 @@ async def list_residents(
         assigned_ids = await tracker_membership_ids(db, user.id, cohort.id)
         query = query.where(AcceleratorMembership.id.in_(assigned_ids))
     rows = (await db.execute(query)).all()
+    trackers_by_membership = await membership_trackers_batch(db, [membership.id for membership, _ in rows])
     result = []
     for membership, resident in rows:
-        effective_tracker_ids = await membership_tracker_user_ids(db, membership.id)
-        trackers = (await db.execute(
-            select(User.id, User.name)
-            .where(User.id.in_(effective_tracker_ids))
-            .order_by(User.name)
-        )).all() if effective_tracker_ids else []
         result.append({
             "membership_id": membership.id,
             "user_id": resident.id,
@@ -5660,7 +5658,7 @@ async def list_residents(
             "enrolled_at": membership.enrolled_at,
             "suspended_at": membership.suspended_at,
             "ended_at": membership.ended_at,
-            "trackers": [{"user_id": tracker_id, "name": name} for tracker_id, name in trackers],
+            "trackers": trackers_by_membership.get(membership.id, []),
         })
     return result
 
@@ -5775,6 +5773,12 @@ async def cohort_resident_report(
     format: str = Query(default="json", pattern="^(json|csv)$"),
     user: User = Depends(get_async_current_user),
     db: AsyncSession = Depends(get_async_db),
+):
+    return await _cohort_resident_report(cohort_id, format, user, db)
+
+
+async def _cohort_resident_report(
+    cohort_id: int, format: str, user: User, db: AsyncSession, *, progress_context: dict | None = None,
 ):
     cohort = await get_cohort_or_404(db, cohort_id)
     access_role = await require_cohort_reader(db, user, cohort)
@@ -5905,6 +5909,22 @@ async def cohort_resident_report(
         })
 
     now = datetime.utcnow()
+    members = [member for member, _ in membership_rows]
+    program_by_member = await ProgramProgressService(db).get_memberships_progress(members)
+    if progress_context is not None:
+        progress_context.update(program_by_member)
+    quota_by_member = await accelerator_membership_quotas_batch(db, membership_ids)
+    risk_facts = await load_tracking_facts(db, members, now=now)
+    open_tasks_by_member = dict((await db.execute(select(
+        AcceleratorTrackingTask.membership_id, func.count(),
+    ).where(AcceleratorTrackingTask.membership_id.in_(membership_ids), AcceleratorTrackingTask.status == "open")
+        .group_by(AcceleratorTrackingTask.membership_id))).all()) if membership_ids else {}
+    from models import AcceleratorHomeworkException
+    deadline_rows = (await db.execute(select(AcceleratorHomeworkException).where(
+        AcceleratorHomeworkException.membership_id.in_(membership_ids),
+        AcceleratorHomeworkException.assignment_id.in_(assignment_ids),
+    ))).scalars().all() if membership_ids and assignment_ids else []
+    deadlines = {(row.assignment_id, row.membership_id): row.due_at for row in deadline_rows}
     rows = []
     for membership, resident in membership_rows:
         applicable = [
@@ -5923,7 +5943,7 @@ async def cohort_resident_report(
                     accepted_homework += 1
                 elif submission.status == "submitted":
                     waiting_homework += 1
-            due_at = await effective_due_at(db, assignment, membership.id)
+            due_at = deadlines.get((assignment.id, membership.id)) or assignment.due_at
             if due_at and due_at < now and (
                 not submission or submission.status == "needs_revision"
             ):
@@ -5936,23 +5956,11 @@ async def cohort_resident_report(
                 marked += 1
                 activity_dates.append(record.checked_in_at or record.updated_at)
                 present += int(record.status == "present")
-        program_progress = await ProgramProgressService(db).get_membership_progress(
-            membership.id
-        )
-        quota = {}
-        for resource in ("messages", "roadmaps", "custdev", "grants"):
-            snapshot = await accelerator_membership_quota_snapshot(db, membership.id, resource)
-            if snapshot:
-                quota[resource] = {
-                    "limit": snapshot["limit"], "used": snapshot["used"],
-                    "remaining": snapshot["remaining"], "source": snapshot["override"].source,
-                }
+        program_progress = program_by_member[membership.id]
+        quota = quota_by_member.get(membership.id, {})
         activity_dates = [value for value in activity_dates if value is not None]
-        risk = await membership_tracking_risk(db, membership)
-        open_tasks = (await db.execute(select(func.count(AcceleratorTrackingTask.id)).where(
-            AcceleratorTrackingTask.membership_id == membership.id,
-            AcceleratorTrackingTask.status == "open",
-        ))).scalar_one()
+        risk = tracking_risk_from_facts(membership, risk_facts[membership.id], now=now)
+        open_tasks = open_tasks_by_member.get(membership.id, 0)
         rows.append({
             "membership_id": membership.id,
             "user_id": resident.id,
@@ -6231,6 +6239,110 @@ async def membership_tracking_risk(
     }
 
 
+def tracking_risk_from_facts(
+    membership: AcceleratorMembership, facts: dict, *, now: datetime, audience: str = "staff",
+) -> dict:
+    current_week = date.today() - timedelta(days=date.today().weekday())
+    latest_checkin = facts["latest_checkin"]
+    overdue_homework = facts["overdue_homework"]
+    overdue_tasks = facts["overdue_tasks"]
+    attendance_total = facts["attendance_total"]
+    present_count = facts["present_count"]
+    last_activity_at = facts["last_activity_at"]
+    inactive_days = (now - last_activity_at).days if last_activity_at else 999
+    attendance_percent = round(present_count * 100 / attendance_total) if attendance_total else 100
+
+    red_reasons: list[dict] = []
+    yellow_reasons: list[dict] = []
+    if inactive_days >= 14:
+        red_reasons.append(tracking_risk_reason("no_activity", "high", audience, value=inactive_days))
+    elif inactive_days >= 7:
+        yellow_reasons.append(tracking_risk_reason("no_activity", "medium", audience, value=inactive_days))
+    if overdue_tasks:
+        red_reasons.append(tracking_risk_reason("tasks_overdue", "high", audience, value=int(overdue_tasks)))
+    if overdue_homework >= 2:
+        red_reasons.append(tracking_risk_reason("homework_overdue_many", "high", audience, value=overdue_homework))
+    elif overdue_homework == 1:
+        yellow_reasons.append(tracking_risk_reason("homework_overdue", "medium", audience))
+    if attendance_total >= 2 and attendance_percent < 50:
+        red_reasons.append(tracking_risk_reason("low_attendance", "high", audience, value=attendance_percent))
+    elif attendance_total and present_count < attendance_total:
+        yellow_reasons.append(tracking_risk_reason("low_attendance", "medium", audience, value=attendance_percent))
+    if latest_checkin and latest_checkin.health == "red":
+        red_reasons.append(tracking_risk_reason(
+            "checkin_health_red", "high", audience, actor="resident"
+        ))
+    elif latest_checkin and latest_checkin.health == "yellow":
+        yellow_reasons.append(tracking_risk_reason(
+            "checkin_health_yellow", "medium", audience, actor="resident"
+        ))
+    if latest_checkin and latest_checkin.period_start < current_week:
+        yellow_reasons.append(tracking_risk_reason(
+            "checkin_missing", "medium", audience, actor="resident"
+        ))
+    elif not latest_checkin and membership.enrolled_at and (now - membership.enrolled_at).days >= 7:
+        yellow_reasons.append(tracking_risk_reason(
+            "first_checkin_missing", "medium", audience, actor="resident"
+        ))
+    if not facts["has_tracker"]:
+        yellow_reasons.append(tracking_risk_reason(
+            "tracker_not_assigned", "medium", audience
+        ))
+    level = "red" if red_reasons else "yellow" if yellow_reasons else "green"
+    reason_items = red_reasons + yellow_reasons
+    return {
+        "level": level,
+        "reasons": [row["text"] for row in reason_items],
+        "reason_items": reason_items,
+        "last_activity_at": last_activity_at,
+        "inactive_days": inactive_days,
+        "overdue_homework": overdue_homework,
+        "overdue_tasks": int(overdue_tasks or 0),
+        "attendance_percent": attendance_percent,
+        "last_checkin_at": latest_checkin.created_at if latest_checkin else None,
+        "last_checkin_health": latest_checkin.health if latest_checkin else None,
+    }
+
+
+@router.get("/cohorts/{cohort_id}/overview-summary")
+async def cohort_overview_summary(
+    cohort_id: int,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Small organizer projection; never builds resident reports or quota snapshots."""
+    cohort = await get_cohort_or_404(db, cohort_id)
+    await require_cohort_manager(db, user, cohort)
+    members = list((await db.execute(select(AcceleratorMembership).where(
+        AcceleratorMembership.cohort_id == cohort.id,
+        AcceleratorMembership.role == "resident",
+        AcceleratorMembership.status.in_(("enrolled", "completed")),
+    ))).scalars().all())
+    applications = dict((await db.execute(select(
+        AcceleratorApplication.status, func.count(),
+    ).where(AcceleratorApplication.cohort_id == cohort.id)
+        .group_by(AcceleratorApplication.status))).all())
+    enrolled = [row for row in members if row.status == "enrolled"]
+    config = (await db.execute(select(AcceleratorProgramConfig).where(
+        AcceleratorProgramConfig.cohort_id == cohort.id,
+    ))).scalar_one_or_none()
+    from accelerator_operations_service import runtime_disabled_modules
+    disabled = await runtime_disabled_modules(db, cohort=cohort)
+    tracking_enabled = bool(config and (config.modules or {}).get("progress_tracking") and "progress_tracking" not in disabled)
+    now = datetime.utcnow()
+    facts = await load_tracking_facts(db, enrolled, now=now) if tracking_enabled else {}
+    unassigned = [row.id for row in enrolled if row.id in facts and not facts[row.id]["has_tracker"]]
+    return {
+        "participants": len(members),
+        "applications_to_review": sum(applications.get(key, 0) for key in ("submitted", "under_review")),
+        "applications_to_enroll": applications.get("approved", 0),
+        "applications_in_progress": sum(applications.get(key, 0) for key in ("submitted", "under_review", "needs_info", "waitlisted")),
+        "without_tracker": len(unassigned),
+        "first_without_tracker": unassigned[0] if unassigned else None,
+        "at_risk": sum(tracking_risk_from_facts(row, facts[row.id], now=now)["level"] in ("yellow", "red") for row in enrolled) if tracking_enabled else None,
+    }
+
+
 @router.get("/cohorts/{cohort_id}/tracking-dashboard")
 async def tracking_dashboard(
     cohort_id: int,
@@ -6239,20 +6351,19 @@ async def tracking_dashboard(
 ):
     cohort = await get_cohort_or_404(db, cohort_id)
     await require_progress_tracking_module(db, cohort)
-    report = await cohort_resident_report(cohort_id, "json", user, db)
-    rows = []
-    all_signals = []
-    for report_row in report["rows"]:
-        membership = await db.get(AcceleratorMembership, report_row["membership_id"])
-        risk = report_row["risk"]
-        signals = await TrackingSignalsService(db).get_membership_signals(
-            membership, risk
-        )
-        all_signals.extend(signals)
-        rows.append({
-            **report_row,
-            "signals": signals,
-        })
+    progresses = {}
+    report = await _cohort_resident_report(cohort_id, "json", user, db, progress_context=progresses)
+    ids = [row["membership_id"] for row in report["rows"]]
+    members_by_id = {row.id: row for row in (await db.execute(select(AcceleratorMembership).where(
+        AcceleratorMembership.id.in_(ids),
+    ))).scalars().all()} if ids else {}
+    members = [members_by_id[mid] for mid in ids]
+    risks = {row["membership_id"]: row["risk"] for row in report["rows"]}
+    all_signals = await TrackingSignalsService(db).get_cohort_signals(members, risks, progresses=progresses)
+    by_member = {}
+    for signal in all_signals:
+        by_member.setdefault(signal["membership_id"], []).append(signal)
+    rows = [{**row, "signals": by_member.get(row["membership_id"], [])} for row in report["rows"]]
     actionable_signals = [
         row for row in all_signals if row["state"] in ("open", "acknowledged")
     ]
@@ -6303,10 +6414,9 @@ async def list_tracking_signals(
     people = {row.id: row for row in (await db.execute(select(User).where(
         User.id.in_([membership.user_id for membership in memberships])
     ))).scalars().all()} if memberships else {}
-    risks = {
-        membership.id: await membership_tracking_risk(db, membership)
-        for membership in memberships
-    }
+    risk_now = datetime.utcnow()
+    facts = await load_tracking_facts(db, memberships, now=risk_now)
+    risks = {member.id: tracking_risk_from_facts(member, facts[member.id], now=risk_now) for member in memberships}
     rows = await TrackingSignalsService(db).get_cohort_signals(memberships, risks)
     if state:
         rows = [row for row in rows if row["state"] == state]
@@ -8918,8 +9028,10 @@ async def cohort_work_summary(
     ))).scalars().all()} if memberships else {}
     risks = []
     if modules.get("progress_tracking"):
+        risk_now = datetime.utcnow()
+        facts = await load_tracking_facts(db, memberships, now=risk_now)
         for membership in memberships:
-            risk = await membership_tracking_risk(db, membership)
+            risk = tracking_risk_from_facts(membership, facts[membership.id], now=risk_now)
             if risk["level"] != "green":
                 risks.append({
                     "membership_id": membership.id,

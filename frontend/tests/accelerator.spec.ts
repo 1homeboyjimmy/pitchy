@@ -39,8 +39,13 @@ async function mockManagerWorkspace(page: Page, isAdmin = true) {
   await page.route('**/api/accelerators/cohorts/12/residents', async (route) => route.fulfill({ json: [] }));
   await page.route('**/api/accelerators/cohorts/12/trackers', async (route) => route.fulfill({ json: [] }));
   await page.route('**/api/accelerators/cohorts/12/homework', async (route) => route.fulfill({ json: [] }));
-  await page.route('**/api/accelerators/cohorts/12/homework-review-queue', async (route) => route.fulfill({ json: { items: [] } }));
+  await page.route('**/api/accelerators/cohorts/12/homework-settings', route => route.fulfill({ json: { points_enabled: false } }));
+  await page.route('**/api/accelerators/cohorts/12/homework-review-queue', route => route.fulfill({ json: { access_role: isAdmin ? 'global_admin' : 'organizer', items: [] } }));
   await page.route('**/api/accelerators/cohorts/12/tracking-dashboard', async (route) => route.fulfill({ json: { summary: {}, rows: [] } }));
+  await page.route('**/api/accelerators/cohorts/12/overview-summary', async (route) => route.fulfill({ json: {
+    participants: 0, applications_to_review: 0, applications_to_enroll: 0,
+    applications_in_progress: 0, without_tracker: 0, first_without_tracker: null, at_risk: 0,
+  } }));
   await page.route('**/api/accelerators/cohorts/12/program-stages', async (route) => route.fulfill({ json: [] }));
   await page.route('**/api/accelerators/cohorts/12/events', async (route) => route.fulfill({ json: [] }));
   await page.route('**/api/accelerators/cohorts/12/matchmaking/profiles', async (route) => route.fulfill({ json: [{ id: 41, user_id: 8, membership_id: 101, role: 'resident', name: 'Резидент А', email: 'resident@example.test', expertise: ['продукт'], needs: ['продажи'], industries: ['SaaS'], goals: [], preferred_formats: ['онлайн'], max_matches: 3, active_matches: 0, active: true }] }));
@@ -81,6 +86,73 @@ async function mockManagerWorkspace(page: Page, isAdmin = true) {
   await page.route('**/api/accelerators/notifications/*/read', async (route) => route.fulfill({ json: { ok: true } }));
   await page.route('**/api/accelerators/notifications/read-all', async (route) => route.fulfill({ json: { ok: true } }));
 }
+
+test('overview renders useful cards without waiting for health or fetching full reports', async ({ page }) => {
+  await mockManagerWorkspace(page);
+  await page.route('**/api/accelerators/cohorts/12/overview-summary', route => route.fulfill({ json: {
+    participants: 1, applications_to_review: 1, applications_to_enroll: 0,
+    applications_in_progress: 1, without_tracker: 0, first_without_tracker: null, at_risk: 0,
+  } }));
+  let releaseHealth!: () => void;
+  const health = new Promise<void>(resolve => { releaseHealth = resolve; });
+  let healthFinished = false;
+  await page.route('**/api/accelerators/cohorts/12/operations-health', async route => {
+    await health;
+    healthFinished = true;
+    await route.fulfill({ json: { issues: [] } });
+  });
+  const expensive: string[] = [];
+  page.on('request', request => {
+    if (/\/cohorts\/12\/(applications|residents|tracking-dashboard)$/.test(request.url())) expensive.push(request.url());
+  });
+  try {
+    await page.goto('/accelerator');
+    await expect(page.getByRole('button', { name: 'Участники: 1', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Пройдено программы: 60%', exact: true })).toBeVisible();
+    expect(healthFinished).toBe(false);
+    expect(expensive).toEqual([]);
+    await page.getByRole('navigation', { name: 'Разделы акселератора' }).getByRole('button', { name: 'Заявки', exact: true }).click();
+    await expect.poll(() => expensive.some(url => url.endsWith('/applications'))).toBe(true);
+  } finally {
+    releaseHealth();
+  }
+});
+
+test('participant redirect reuses the entry data once', async ({ page }) => {
+  const membership = {
+    membership_id: 101, application_id: 201, status: 'enrolled',
+    accelerator: { id: 7, name: 'Акселератор', status: 'active' },
+    cohort: { id: 12, name: 'Поток', status: 'active', timezone: 'Europe/Moscow' },
+    project: null, modules: {},
+  };
+  await mockDashboardAccess(page, { isAdmin: false, accelerators: [{ id: 7, access_role: 'resident' }], memberships: [membership] });
+  let membershipRequests = 0;
+  let accessRequests = 0;
+  const entryRequests: string[] = [];
+  await page.route('**/api/accelerators/me/memberships', async route => {
+    membershipRequests++;
+    entryRequests.push(`${Date.now()}: ${new URL(page.url()).pathname}`);
+    await route.fulfill({ json: { memberships: [membership], effective_quotas: {} } });
+  });
+  await page.route('**/api/accelerators', async route => {
+    accessRequests++;
+    await route.fulfill({ json: [{ ...membership.accelerator, access_role: 'resident' }] });
+  });
+  await page.route('**/api/accelerators/notifications/unread-count', route => route.fulfill({ json: { count: 0 } }));
+  await page.route('**/api/accelerators/memberships/101/today', route => route.fulfill({ json: {
+    membership_id: 101, timezone: 'Europe/Moscow', required_actions: [], upcoming: [],
+    progress: { percent: 0, completed_stages: 0, total_stages: 0 }, unavailable_sections: [],
+  } }));
+  await page.goto('/accelerator');
+  await expect(page).toHaveURL(/\/accelerator\/my\/101$/);
+  await expect(page.getByRole('heading', { name: 'Сегодня', exact: true })).toBeVisible();
+  expect(membershipRequests, JSON.stringify(entryRequests)).toBe(1);
+  expect(accessRequests).toBe(1);
+  // A new page load must revalidate rather than reuse old membership/permission data.
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Сегодня', exact: true })).toBeVisible();
+  expect(membershipRequests).toBe(2);
+});
 
 test('manager workspace is split into focused sections', async ({ page }) => {
   await mockManagerWorkspace(page);

@@ -181,7 +181,8 @@ async function request<T>(
   path: string,
   body?: unknown,
   token?: string | null,
-  method: "GET" | "POST" | "DELETE" | "PATCH" | "PUT" = "POST"
+  method: "GET" | "POST" | "DELETE" | "PATCH" | "PUT" = "POST",
+  signal?: AbortSignal,
 ): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token && token !== COOKIE_SESSION_MARKER) {
@@ -203,6 +204,7 @@ async function request<T>(
       headers,
       body: body ? JSON.stringify(body) : undefined,
       credentials: "include",
+      signal,
     });
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") throw error;
@@ -273,8 +275,8 @@ export async function postAuthJson<T>(
   return request<T>(path, body, token);
 }
 
-export async function getAuthJson<T>(path: string, token: string): Promise<T> {
-  return request<T>(path, undefined, token, "GET");
+export async function getAuthJson<T>(path: string, token: string, signal?: AbortSignal): Promise<T> {
+  return request<T>(path, undefined, token, "GET", signal);
 }
 
 export async function patchAuthJson<T>(

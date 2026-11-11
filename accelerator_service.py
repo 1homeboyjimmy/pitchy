@@ -19,6 +19,7 @@ from models import (
     AcceleratorTeamMember,
     AcceleratorTeamTrackerAssignment,
     AcceleratorTrackerAssignment,
+    User,
 )
 
 ACCELERATOR_RESOURCES = ("messages", "roadmaps", "custdev", "grants")
@@ -364,6 +365,51 @@ async def accelerator_membership_quota_snapshot(
     }
 
 
+async def accelerator_membership_quotas_batch(db: AsyncSession, membership_ids: list[int]) -> dict[int, dict]:
+    """Read all report quota snapshots in two queries; quota debits remain unchanged."""
+    if not membership_ids:
+        return {}
+    now = datetime.utcnow()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    overrides = (await db.execute(select(AcceleratorResidentQuotaOverride).join(
+        AcceleratorMembership, AcceleratorMembership.id == AcceleratorResidentQuotaOverride.membership_id,
+    ).where(
+        AcceleratorMembership.id.in_(membership_ids), AcceleratorMembership.role == "resident",
+        AcceleratorMembership.status == "enrolled",
+        (AcceleratorResidentQuotaOverride.superseded_at.is_(None) | (AcceleratorResidentQuotaOverride.superseded_at > now)),
+        AcceleratorResidentQuotaOverride.starts_at <= now,
+        (AcceleratorResidentQuotaOverride.ends_at.is_(None) | (AcceleratorResidentQuotaOverride.ends_at > now)),
+    ))).scalars().all()
+    by_member: dict[int, list] = {}
+    for override in overrides:
+        try:
+            limits = normalize_resident_limits(override.limits)
+        except (TypeError, ValueError):
+            continue
+        by_member.setdefault(override.membership_id, []).append((override, limits))
+    selected = {}
+    for membership_id, rows in by_member.items():
+        individual = [row for row in rows if row[0].source == "individual"]
+        selected[membership_id] = max(individual or rows, key=lambda row: row[0].starts_at)
+    if not selected:
+        return {}
+    usage = (await db.execute(select(
+        AcceleratorQuotaUsageEvent.quota_override_id, AcceleratorQuotaUsageEvent.resource,
+        sa_func.sum(AcceleratorQuotaUsageEvent.quantity),
+    ).join(AcceleratorResidentQuotaOverride,
+           AcceleratorResidentQuotaOverride.id == AcceleratorQuotaUsageEvent.quota_override_id).where(
+        AcceleratorQuotaUsageEvent.quota_override_id.in_([row[0].id for row in selected.values()]),
+        AcceleratorQuotaUsageEvent.created_at >= month_start,
+        AcceleratorQuotaUsageEvent.created_at >= AcceleratorResidentQuotaOverride.starts_at,
+    ).group_by(AcceleratorQuotaUsageEvent.quota_override_id, AcceleratorQuotaUsageEvent.resource))).all()
+    used = {(override_id, resource): int(quantity) for override_id, resource, quantity in usage}
+    return {membership_id: {resource: {
+        "limit": limit, "used": used.get((override.id, resource), 0),
+        "remaining": None if limit == UNLIMITED else max(0, limit - used.get((override.id, resource), 0)),
+        "source": override.source,
+    } for resource, limit in limits.items()} for membership_id, (override, limits) in selected.items()}
+
+
 async def accelerator_quota_snapshot(
     db: AsyncSession, user_id: int, resource: str
 ) -> dict | None:
@@ -520,3 +566,34 @@ async def consume_accelerator_membership_quota(
     ))
     await db.flush()
     return True
+
+
+async def membership_trackers_batch(
+    db: AsyncSession, membership_ids: list[int]
+) -> dict[int, list[dict]]:
+    """Resolve personal and active-team trackers in two queries, for any cohort size."""
+    if not membership_ids:
+        return {}
+    personal = (await db.execute(
+        select(AcceleratorTrackerAssignment.membership_id, User.id, User.name)
+        .join(User, User.id == AcceleratorTrackerAssignment.tracker_user_id)
+        .where(AcceleratorTrackerAssignment.membership_id.in_(membership_ids))
+    )).all()
+    team = (await db.execute(
+        select(AcceleratorTeamMember.membership_id, User.id, User.name)
+        .join(AcceleratorTeam, AcceleratorTeam.id == AcceleratorTeamMember.team_id)
+        .join(AcceleratorTeamTrackerAssignment, AcceleratorTeamTrackerAssignment.team_id == AcceleratorTeam.id)
+        .join(User, User.id == AcceleratorTeamTrackerAssignment.tracker_user_id)
+        .where(
+            AcceleratorTeamMember.membership_id.in_(membership_ids),
+            AcceleratorTeamMember.status == "active",
+            AcceleratorTeam.status == "active",
+        )
+    )).all()
+    result: dict[int, dict[int, dict]] = {}
+    for membership_id, user_id, name in [*personal, *team]:
+        result.setdefault(membership_id, {})[user_id] = {"user_id": user_id, "name": name}
+    return {
+        membership_id: sorted(trackers.values(), key=lambda row: row["name"])
+        for membership_id, trackers in result.items()
+    }

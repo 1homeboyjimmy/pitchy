@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from datetime import datetime
+from collections import defaultdict
 import hashlib
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from accelerator_program_progress_service import ProgramProgressService
@@ -64,6 +65,9 @@ class TrackingSignalsService:
         self,
         membership: AcceleratorMembership,
         risk: dict,
+        *,
+        progress: dict | None = None,
+        context: dict | None = None,
     ) -> list[dict]:
         signals: dict[str, dict] = {}
         risk_kind = {
@@ -93,22 +97,21 @@ class TrackingSignalsService:
             )
             signals[row["fingerprint"]] = row
 
-        progress = await ProgramProgressService(self.db).get_membership_progress(
-            membership.id
-        )
+        if progress is None:
+            progress = await ProgramProgressService(self.db).get_membership_progress(membership.id)
         stage_ids = [row["stage_id"] for row in progress["stages"]]
-        stage_titles = dict((await self.db.execute(select(
+        stage_titles = context["stage_titles"] if context is not None else (dict((await self.db.execute(select(
             AcceleratorProgramStage.id, AcceleratorProgramStage.title
-        ).where(AcceleratorProgramStage.id.in_(stage_ids)))).all()) if stage_ids else {}
+        ).where(AcceleratorProgramStage.id.in_(stage_ids)))).all()) if stage_ids else {})
         assignment_ids = [
             blocker["id"]
             for stage in progress["stages"]
             for blocker in stage["blockers"]
             if blocker["kind"] == "homework"
         ]
-        assignment_due = dict((await self.db.execute(select(
+        assignment_due = context["assignment_due"] if context is not None else (dict((await self.db.execute(select(
             AcceleratorHomeworkAssignment.id, AcceleratorHomeworkAssignment.due_at
-        ).where(AcceleratorHomeworkAssignment.id.in_(assignment_ids)))).all()) if assignment_ids else {}
+        ).where(AcceleratorHomeworkAssignment.id.in_(assignment_ids)))).all()) if assignment_ids else {})
         for stage in progress["stages"]:
             if stage["state"] in {"completed", "waived", "locked"}:
                 continue
@@ -136,7 +139,7 @@ class TrackingSignalsService:
                 )
                 signals[row["fingerprint"]] = row
 
-        overdue_tasks = list((await self.db.execute(select(AcceleratorTrackingTask).where(
+        overdue_tasks = context["tasks"].get(membership.id, []) if context is not None else list((await self.db.execute(select(AcceleratorTrackingTask).where(
             AcceleratorTrackingTask.membership_id == membership.id,
             AcceleratorTrackingTask.status == "open",
             AcceleratorTrackingTask.due_at.is_not(None),
@@ -153,12 +156,12 @@ class TrackingSignalsService:
             )
             signals[row["fingerprint"]] = row
 
-        latest_audit = (await self.db.execute(select(AcceleratorProjectAudit).where(
+        latest_audit = context["audits"].get(membership.id) if context is not None else (await self.db.execute(select(AcceleratorProjectAudit).where(
             AcceleratorProjectAudit.membership_id == membership.id,
             AcceleratorProjectAudit.status == "completed",
         ).order_by(AcceleratorProjectAudit.created_at.desc()).limit(1))).scalar_one_or_none()
         if latest_audit:
-            linked_indexes = set((await self.db.execute(
+            linked_indexes = context["audit_links"].get(latest_audit.id, set()) if context is not None else set((await self.db.execute(
                 select(AcceleratorProjectAuditTaskLink.recommendation_index).where(
                     AcceleratorProjectAuditTaskLink.audit_id == latest_audit.id
                 )
@@ -179,10 +182,10 @@ class TrackingSignalsService:
                 )
                 signals[row["fingerprint"]] = row
 
-        overrides = list((await self.db.execute(select(AcceleratorTrackingSignalState).where(
+        overrides = context["overrides"].get(membership.id, []) if context is not None else (list((await self.db.execute(select(AcceleratorTrackingSignalState).where(
             AcceleratorTrackingSignalState.membership_id == membership.id,
             AcceleratorTrackingSignalState.fingerprint.in_(list(signals)),
-        ))).scalars().all()) if signals else []
+        ))).scalars().all()) if signals else [])
         now = datetime.utcnow()
         for override in overrides:
             row = signals.get(override.fingerprint)
@@ -203,14 +206,59 @@ class TrackingSignalsService:
             row["kind"],
         ))
 
+    async def _cohort_context(self, memberships: list[AcceleratorMembership], progresses: dict[int, dict]) -> dict:
+        ids = [row.id for row in memberships]
+        stage_ids = {stage["stage_id"] for progress in progresses.values() for stage in progress["stages"]}
+        assignment_ids = {blocker["id"] for progress in progresses.values() for stage in progress["stages"]
+                          for blocker in stage["blockers"] if blocker["kind"] == "homework"}
+        stage_titles = dict((await self.db.execute(select(AcceleratorProgramStage.id, AcceleratorProgramStage.title)
+            .where(AcceleratorProgramStage.id.in_(stage_ids)))).all()) if stage_ids else {}
+        assignment_due = dict((await self.db.execute(select(AcceleratorHomeworkAssignment.id, AcceleratorHomeworkAssignment.due_at)
+            .where(AcceleratorHomeworkAssignment.id.in_(assignment_ids)))).all()) if assignment_ids else {}
+        tasks = (await self.db.execute(select(AcceleratorTrackingTask).where(
+            AcceleratorTrackingTask.membership_id.in_(ids), AcceleratorTrackingTask.status == "open",
+            AcceleratorTrackingTask.due_at < datetime.utcnow(),
+        ))).scalars().all()
+        ranked = select(AcceleratorProjectAudit.id, func.row_number().over(
+            partition_by=AcceleratorProjectAudit.membership_id,
+            order_by=(AcceleratorProjectAudit.created_at.desc(), AcceleratorProjectAudit.id.desc()),
+        ).label("position")).where(AcceleratorProjectAudit.membership_id.in_(ids),
+                                  AcceleratorProjectAudit.status == "completed").subquery()
+        audits = (await self.db.execute(select(AcceleratorProjectAudit).join(
+            ranked, ranked.c.id == AcceleratorProjectAudit.id,
+        ).where(ranked.c.position == 1))).scalars().all()
+        links = (await self.db.execute(select(AcceleratorProjectAuditTaskLink).where(
+            AcceleratorProjectAuditTaskLink.audit_id.in_([row.id for row in audits]),
+        ))).scalars().all() if audits else []
+        overrides = (await self.db.execute(select(AcceleratorTrackingSignalState).where(
+            AcceleratorTrackingSignalState.membership_id.in_(ids),
+        ))).scalars().all()
+        by_member_tasks, by_audit_links, by_member_overrides = defaultdict(list), defaultdict(set), defaultdict(list)
+        for row in tasks:
+            by_member_tasks[row.membership_id].append(row)
+        for row in links:
+            by_audit_links[row.audit_id].add(row.recommendation_index)
+        for row in overrides:
+            by_member_overrides[row.membership_id].append(row)
+        return {"stage_titles": stage_titles, "assignment_due": assignment_due,
+                "tasks": by_member_tasks, "audits": {row.membership_id: row for row in audits},
+                "audit_links": by_audit_links, "overrides": by_member_overrides}
+
     async def get_cohort_signals(
         self,
         memberships: list[AcceleratorMembership],
         risks: dict[int, dict],
+        *,
+        progresses: dict[int, dict] | None = None,
     ) -> list[dict]:
+        if not memberships:
+            return []
+        if progresses is None:
+            progresses = await ProgramProgressService(self.db).get_memberships_progress(memberships)
+        context = await self._cohort_context(memberships, progresses)
         rows = []
         for membership in memberships:
             rows.extend(await self.get_membership_signals(
-                membership, risks[membership.id]
+                membership, risks[membership.id], progress=progresses[membership.id], context=context,
             ))
         return rows

@@ -13,61 +13,78 @@ type Analytics = {
 type Issue = { code: string; severity: "error" | "warning" | "info"; count: number; message: string; recommended_action: string };
 type Event = { id: number; title: string; starts_at: string; ends_at: string; status: string; event_format: string };
 type Assignment = { id: number; title: string; due_at?: string | null; status: string; submission_counts: Record<string, number> };
-type Tracking = { rows: Array<{ status: string; risk: { level: string } }> };
-type Resident = { membership_id: number; status: string; trackers?: Array<{ user_id: number }> };
-type OverviewData = { analytics?: Analytics; health?: { issues: Issue[] }; events?: Event[]; homework?: Assignment[]; tracking?: Tracking; trackers?: Array<{ user_id: number }> };
+type Summary = { participants: number; applications_to_review: number; applications_to_enroll: number; applications_in_progress: number; without_tracker: number; first_without_tracker: number | null; at_risk: number | null };
+type OverviewData = { analytics?: Analytics; health?: { issues: Issue[] }; events?: Event[]; homework?: Assignment[]; summary?: Summary; trackers?: Array<{ user_id: number }> };
 
-export function OrganizerOverview({ token, cohort, config, applications, residents, onNavigate, onCopy, copied, refreshKey, onOpenParticipant }: {
+export function OrganizerOverview({ token, cohort, config, onNavigate, onCopy, copied, refreshKey, onOpenParticipant }: {
   token: string; cohort: { id: number; name: string; status: string; timezone: string }; config: { modules: Record<string, boolean> };
-  onOpenParticipant: (id: number) => void; applications: Array<{ status: string }>; residents: Resident[]; onNavigate: (tab: OrganizerTab, targetId?: number) => void;
+  onOpenParticipant: (id: number) => void; onNavigate: (tab: OrganizerTab, targetId?: number) => void;
   onCopy: () => Promise<void>; copied: boolean; refreshKey: number;
 }) {
   const [data, setData] = useState<OverviewData>({});
-  const [loading, setLoading] = useState(true);
+  const [pending, setPending] = useState<Array<keyof OverviewData>>(["analytics", "summary", "health", "trackers"]);
+  const loading = pending.length > 0;
   const [failures, setFailures] = useState<string[]>([]);
   const [retry, setRetry] = useState(0);
   const [now, setNow] = useState(0);
   const modules = config.modules;
   useEffect(() => {
     let active = true;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- Reset the request state before loading a different cohort or retrying.
-    setLoading(true);
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 20_000);
+    const optional: Array<keyof OverviewData> = [
+      ...(modules.attendance ? ["events" as const] : []),
+      ...(modules.homework ? ["homework" as const] : []),
+    ];
+    setPending(["analytics", "summary", "health", "trackers", ...optional]);
     setData({});
     setFailures([]);
+    setNow(Date.now());
     const root = `/api/accelerators/cohorts/${cohort.id}`;
-    async function load() {
-      const next: OverviewData = {};
-      const failed: string[] = [];
-      async function request<K extends keyof OverviewData>(key: K, path: string, label: string) {
-        try { next[key] = await getAuthJson<OverviewData[K]>(`${root}/${path}`, token); }
-        catch { failed.push(label); }
+    async function request<K extends keyof OverviewData>(key: K, path: string, label: string) {
+      try {
+        const value = await getAuthJson<OverviewData[K]>(`${root}/${path}`, token, controller.signal);
+        if (active) setData(current => ({ ...current, [key]: value }));
+        return value;
+      } catch {
+        if (active) setFailures(current => [...current, label]);
+      } finally {
+        if (active) setPending(current => current.filter(item => item !== key));
       }
-      // Core telemetry also tells us which configured modules are temporarily unavailable.
-      await Promise.all([request("analytics", "analytics", "показатели"), request("health", "operations-health", "состояние потока"), request("trackers", "trackers", "трекеры")]);
-      const available = (key: string) => modules[key] && !next.analytics?.runtime_disabled_modules?.[key];
-      await Promise.all([
-        available("attendance") ? request("events", "events", "события") : Promise.resolve(),
-        available("homework") ? request("homework", "homework", "задания") : Promise.resolve(),
-        available("progress_tracking") ? request("tracking", "tracking-dashboard", "риски участников") : Promise.resolve(),
-      ]);
-      if (active) { setData(next); setFailures(failed); setNow(Date.now()); setLoading(false); }
     }
-    void load();
+    async function loadModules() {
+      const analytics = await request("analytics", "analytics", "показатели");
+      await Promise.all(optional.map(key => {
+        const moduleKey = key === "events" ? "attendance" : "homework";
+        if (analytics?.runtime_disabled_modules?.[moduleKey]) {
+          if (active) setPending(current => current.filter(item => item !== key));
+          return Promise.resolve();
+        }
+        return request(key, key, key === "events" ? "события" : "задания");
+      }));
+    }
+    void Promise.all([
+      loadModules(),
+      request("summary", "overview-summary", "сводка участников"),
+      request("health", "operations-health", "состояние потока"),
+      request("trackers", "trackers", "трекеры"),
+    ]).finally(() => window.clearTimeout(timeout));
     const timer = window.setInterval(() => setNow(Date.now()), 60_000);
-    return () => { active = false; window.clearInterval(timer); };
+    return () => { active = false; controller.abort(); window.clearTimeout(timeout); window.clearInterval(timer); };
   }, [cohort.id, token, modules, refreshKey, retry]);
 
-  const enrolled = residents.filter(row => row.status === "enrolled");
-  const participants = residents.filter(row => ["enrolled", "completed"].includes(row.status));
-  const applicationsToReview = applications.filter(row => ["submitted", "under_review"].includes(row.status)).length;
-  const applicationsToEnroll = applications.filter(row => row.status === "approved").length;
+  const participants = data.summary?.participants ?? data.analytics?.program.participating_residents ?? 0;
+  const applicationsToReview = data.summary?.applications_to_review ?? 0;
+  const applicationsToEnroll = data.summary?.applications_to_enroll ?? 0;
   const waiting = data.homework?.filter(row => row.status === "published").reduce((sum, row) => sum + (row.submission_counts?.review_pending ?? row.submission_counts?.submitted ?? 0), 0);
-  const riskCount = data.tracking?.rows.filter(row => row.status === "enrolled" && ["yellow", "red"].includes(row.risk.level)).length;
-  const withoutTracker = enrolled.filter(row => !row.trackers?.length).length;
+  const riskCount = data.summary?.at_risk;
+  const withoutTracker = data.summary?.without_tracker ?? 0;
+  const attentionLoading = pending.includes("summary") || pending.includes("homework");
+  const upcomingLoading = pending.includes("events") || pending.includes("homework");
   const available = (key: string) => Boolean(modules[key] && !data.analytics?.runtime_disabled_modules?.[key]);
   const stage = data.analytics?.program.current_stage;
-  const programPercent = data.analytics && participants.length && data.analytics.program.published_stages ? `${Math.round(data.analytics.program.completion_percent)}%` : "—";
-  const attendancePercent = data.analytics?.attendance.past_events && participants.length ? `${Math.round(data.analytics.attendance.attendance_percent)}%` : "—";
+  const programPercent = data.analytics && participants && data.analytics.program.published_stages ? `${Math.round(data.analytics.program.completion_percent)}%` : "—";
+  const attendancePercent = data.analytics?.attendance.past_events && participants ? `${Math.round(data.analytics.attendance.attendance_percent)}%` : "—";
   const upcoming = [
     ...(data.events || []).filter(row => row.status === "published" && utcDate(row.ends_at).getTime() >= now).map(row => ({ id: row.id, title: row.title, at: row.starts_at, tab: "attendance" as const, detail: row.event_format === "online" ? "Онлайн" : row.event_format === "hybrid" ? "Гибридный формат" : "Очно", action: "Открыть событие" })),
     ...(data.homework || []).filter(row => row.status === "published" && row.due_at && utcDate(row.due_at).getTime() >= now).map(row => ({ id: row.id, title: row.title, at: row.due_at!, tab: "homework" as const, detail: "Срок сдачи задания", action: "Открыть задание" })),
@@ -88,21 +105,21 @@ export function OrganizerOverview({ token, cohort, config, applications, residen
     </header>
     {failures.length > 0 && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300/20 bg-amber-300/5 px-4 py-3 text-sm text-amber-100"><span>Не удалось загрузить: {failures.join(", ")}. Остальные разделы доступны.</span><button onClick={() => setRetry(value => value + 1)} className="underline underline-offset-4">Повторить загрузку</button></div>}
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-      <Metric icon={Users} label="Участники" value={participants.length} onClick={() => onNavigate("reports")} />
-      <Metric icon={BookOpen} label="Пройдено программы" value={loading ? "…" : programPercent} onClick={() => onNavigate("program")} />
-      {modules.attendance ? <Metric icon={BarChart3} label="Посещаемость" value={loading ? "…" : attendancePercent} onClick={() => onNavigate("attendance")} disabled={!available("attendance")} /> : <Metric icon={FileText} label="Заявки в работе" value={applications.filter(row => ["submitted", "under_review", "needs_info", "waitlisted"].includes(row.status)).length} onClick={() => onNavigate("applications")} />}
-      <Metric icon={UserRoundCheck} label="Трекеры" value={loading ? "…" : data.trackers ? new Set(data.trackers.map(row => row.user_id)).size : "—"} onClick={() => onNavigate("matching")} />
+      <Metric icon={Users} label="Участники" value={pending.includes("summary") ? "…" : data.summary ? participants : "—"} onClick={() => onNavigate("reports")} />
+      <Metric icon={BookOpen} label="Пройдено программы" value={pending.includes("analytics") ? "…" : programPercent} onClick={() => onNavigate("program")} />
+      {modules.attendance ? <Metric icon={BarChart3} label="Посещаемость" value={pending.includes("analytics") ? "…" : attendancePercent} onClick={() => onNavigate("attendance")} disabled={!available("attendance")} /> : <Metric icon={FileText} label="Заявки в работе" value={pending.includes("summary") ? "…" : data.summary?.applications_in_progress ?? "—"} onClick={() => onNavigate("applications")} />}
+      <Metric icon={UserRoundCheck} label="Трекеры" value={pending.includes("trackers") ? "…" : data.trackers ? new Set(data.trackers.map(row => row.user_id)).size : "—"} onClick={() => onNavigate("matching")} />
     </div>
     <div className="grid gap-5 xl:grid-cols-[1.35fr_1fr]">
       <Panel title="Требует внимания">
-        {loading ? <Loading /> : actions.length ? <div className="divide-y divide-white/8">{actions.map(action => <div key={action.key} className="overview-action flex flex-wrap items-center gap-3 py-4 first:pt-1 last:pb-0"><span className={`grid h-11 w-11 shrink-0 place-items-center rounded-full ${action.warning ? "bg-amber-300/10 text-amber-300" : "bg-white/7 text-white/75"}`}><action.icon size={21} /></span><div className="min-w-0 flex-1 basis-40"><p className="text-sm font-medium"><strong className="mr-2 text-xl">{action.count}</strong>{action.title}</p><p className="mt-1 text-xs leading-relaxed text-white/50">{action.detail}</p></div><button className="workspace-button !rounded-xl !px-4 !py-2 !text-xs" onClick={() => { onNavigate(action.tab, action.targetId); if (action.key === "trackers") { const resident = enrolled.find(row => !row.trackers?.length); if (resident) onOpenParticipant(resident.membership_id); } }}>{action.button}</button></div>)}</div> : <div className="py-6"><CheckCircle2 size={28} className="mb-3 text-emerald-300" /><p className="font-medium">{failures.length ? "Задач в загруженных разделах нет" : "Срочных задач нет"}</p><p className="mt-2 text-sm text-white/50">{cohort.status === "draft" ? "Подготовьте анкету и программу, затем откройте набор." : "Проверьте программу или откройте список участников."}</p><div className="mt-4 flex flex-wrap gap-3"><TextAction onClick={() => onNavigate(cohort.status === "draft" ? "form" : "reports")}>{cohort.status === "draft" ? "Настроить анкету" : "Все участники"}</TextAction>{cohort.status === "draft" && <TextAction onClick={() => onNavigate("settings")}>Настроить поток</TextAction>}</div></div>}
+        {attentionLoading ? <Loading /> : actions.length ? <div className="divide-y divide-white/8">{actions.map(action => <div key={action.key} className="overview-action flex flex-wrap items-center gap-3 py-4 first:pt-1 last:pb-0"><span className={`grid h-11 w-11 shrink-0 place-items-center rounded-full ${action.warning ? "bg-amber-300/10 text-amber-300" : "bg-white/7 text-white/75"}`}><action.icon size={21} /></span><div className="min-w-0 flex-1 basis-40"><p className="text-sm font-medium"><strong className="mr-2 text-xl">{action.count}</strong>{action.title}</p><p className="mt-1 text-xs leading-relaxed text-white/50">{action.detail}</p></div><button className="workspace-button !rounded-xl !px-4 !py-2 !text-xs" onClick={() => { onNavigate(action.tab, action.targetId); if (action.key === "trackers") { const id = data.summary?.first_without_tracker; if (id) onOpenParticipant(id); } }}>{action.button}</button></div>)}</div> : <div className="py-6"><CheckCircle2 size={28} className="mb-3 text-emerald-300" /><p className="font-medium">{failures.length ? "Задач в загруженных разделах нет" : "Срочных задач нет"}</p><p className="mt-2 text-sm text-white/50">{cohort.status === "draft" ? "Подготовьте анкету и программу, затем откройте набор." : "Проверьте программу или откройте список участников."}</p><div className="mt-4 flex flex-wrap gap-3"><TextAction onClick={() => onNavigate(cohort.status === "draft" ? "form" : "reports")}>{cohort.status === "draft" ? "Настроить анкету" : "Все участники"}</TextAction>{cohort.status === "draft" && <TextAction onClick={() => onNavigate("settings")}>Настроить поток</TextAction>}</div></div>}
       </Panel>
       <Panel title="Ближайшее">
-        {loading ? <Loading /> : upcoming.length ? <div className="divide-y divide-white/8">{upcoming.map(item => <div key={`${item.tab}-${item.id}`} className="flex gap-4 py-4 first:pt-1 last:pb-0"><div className="w-24 shrink-0 border-r border-white/10 pr-3"><p className="text-xs text-white/50">{utcDate(item.at).toLocaleDateString("ru-RU", { day: "numeric", month: "short", timeZone: cohort.timezone })}</p><p className="mt-2 text-lg font-medium">{utcDate(item.at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", timeZone: cohort.timezone })}</p></div><div className="min-w-0"><p className="text-sm font-medium">{item.title}</p><p className="mt-1 text-xs text-white/50">{item.detail}</p><TextAction onClick={() => onNavigate(item.tab, item.id)}>{item.action}</TextAction></div></div>)}</div> : <div className="py-6"><CalendarDays size={28} className="mb-3 text-white/40" /><p className="text-sm text-white/55">Ближайших событий и сроков сдачи пока нет.</p>{modules.attendance && available("attendance") && <TextAction onClick={() => onNavigate("attendance")}>Открыть мероприятия</TextAction>}</div>}
+        {upcomingLoading ? <Loading /> : upcoming.length ? <div className="divide-y divide-white/8">{upcoming.map(item => <div key={`${item.tab}-${item.id}`} className="flex gap-4 py-4 first:pt-1 last:pb-0"><div className="w-24 shrink-0 border-r border-white/10 pr-3"><p className="text-xs text-white/50">{utcDate(item.at).toLocaleDateString("ru-RU", { day: "numeric", month: "short", timeZone: cohort.timezone })}</p><p className="mt-2 text-lg font-medium">{utcDate(item.at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", timeZone: cohort.timezone })}</p></div><div className="min-w-0"><p className="text-sm font-medium">{item.title}</p><p className="mt-1 text-xs text-white/50">{item.detail}</p><TextAction onClick={() => onNavigate(item.tab, item.id)}>{item.action}</TextAction></div></div>)}</div> : <div className="py-6"><CalendarDays size={28} className="mb-3 text-white/40" /><p className="text-sm text-white/55">Ближайших событий и сроков сдачи пока нет.</p>{modules.attendance && available("attendance") && <TextAction onClick={() => onNavigate("attendance")}>Открыть мероприятия</TextAction>}</div>}
         <p className="mt-5 text-xs text-white/35">Время потока: {cohort.timezone}</p>
       </Panel>
     </div>
-    <section className="overview-panel"><div className="flex flex-wrap items-center justify-between gap-5"><div className="min-w-0 flex-1"><h2 className="text-lg font-semibold">{stage ? `Текущий этап · ${stage.title}` : "Программа потока"}</h2><p className="mt-2 text-sm text-white/55">{loading ? "Загружаем прогресс…" : stage ? stage.total ? `${stage.completed} из ${stage.total} участников завершили этап` : "Пока нет зачисленных участников" : "Нет доступного опубликованного этапа"}</p>{stage && stage.total > 0 && <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/8" role="progressbar" aria-label="Прогресс текущего этапа" aria-valuemin={0} aria-valuemax={stage.total} aria-valuenow={stage.completed}><div className="h-full rounded-full bg-white/85" style={{ width: `${Math.min(100, stage.completed * 100 / stage.total)}%` }} /></div>}</div><TextAction onClick={() => onNavigate("program", stage?.id)}>{stage ? "Перейти к этапу" : "Открыть программу"}</TextAction></div></section>
+    <section className="overview-panel"><div className="flex flex-wrap items-center justify-between gap-5"><div className="min-w-0 flex-1"><h2 className="text-lg font-semibold">{stage ? `Текущий этап · ${stage.title}` : "Программа потока"}</h2><p className="mt-2 text-sm text-white/55">{pending.includes("analytics") ? "Загружаем прогресс…" : stage ? stage.total ? `${stage.completed} из ${stage.total} участников завершили этап` : "Пока нет зачисленных участников" : "Нет доступного опубликованного этапа"}</p>{stage && stage.total > 0 && <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/8" role="progressbar" aria-label="Прогресс текущего этапа" aria-valuemin={0} aria-valuemax={stage.total} aria-valuenow={stage.completed}><div className="h-full rounded-full bg-white/85" style={{ width: `${Math.min(100, stage.completed * 100 / stage.total)}%` }} /></div>}</div><TextAction onClick={() => onNavigate("program", stage?.id)}>{stage ? "Перейти к этапу" : "Открыть программу"}</TextAction></div></section>
     {systemIssues.map(issue => <div key={issue.code} className={`flex flex-wrap items-center gap-4 rounded-xl border px-5 py-4 ${issue.severity === "error" ? "border-red-300/20 bg-red-300/5 text-red-200" : "border-amber-300/20 bg-amber-300/5 text-amber-200"}`}><AlertTriangle size={22} className="shrink-0" /><div className="min-w-0 flex-1"><p className="text-sm font-medium">{issue.message} · {issue.count}</p><p className="mt-1 text-xs text-white/55">{issue.recommended_action}</p></div><TextAction onClick={() => onNavigate("operations")}>Подробнее</TextAction></div>)}
     <style jsx global>{`.overview-panel{border:1px solid rgba(255,255,255,.09);border-radius:16px;background:#1c1b1b;padding:24px}.overview-secondary{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:11px 14px;color:#e5e2e1;font-size:13px}.overview-secondary:hover{background:rgba(255,255,255,.06)}.overview-link{display:inline-flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;color:#e5e2e1}.overview-link:hover{text-decoration:underline;text-underline-offset:4px}@media(max-width:640px){.overview-panel{padding:18px}}@media(max-width:480px){.overview-action{display:grid;grid-template-columns:44px minmax(0,1fr)}.overview-action>button{grid-column:2;justify-self:start}}`}</style>
   </div>;

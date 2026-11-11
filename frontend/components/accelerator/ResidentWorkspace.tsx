@@ -2,22 +2,34 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import Image from "next/image";
 import { ArrowUpRight, Banknote, BookOpen, BriefcaseBusiness, CalendarDays, Clock3, ExternalLink, FileText, GitBranch, History, Home, Loader2, MapPin, MessageSquare, Paperclip, Rocket, Send, Sparkles, Trophy, Users, UsersRound, X, type LucideIcon } from "lucide-react";
 
 import { describeApiError, getAuthJson, postAuthJson } from "@/lib/api";
 import { useAuth } from "@/lib/hooks/useAuth";
-import { ResidentTracking } from "@/components/accelerator/ResidentTracking";
-import { MatchmakingWorkspace } from "@/components/accelerator/MatchmakingWorkspace";
-import { ProjectAuditWorkspace } from "@/components/accelerator/ProjectAuditWorkspace";
-import { DemoDayWorkspace } from "@/components/accelerator/DemoDayWorkspace";
-import { AlumniWorkspace } from "@/components/accelerator/AlumniWorkspace";
+
+
+
+
+
 import { ResidentToday } from "@/components/accelerator/ResidentToday";
-import { ResidentProjectRecommendations } from "@/components/accelerator/ResidentProjectRecommendations";
-import { ResidentProgramWorkspace } from "@/components/accelerator/ResidentProgramWorkspace";
-import { ResidentArtifacts } from "@/components/accelerator/ResidentArtifacts";
+
+
+
 import { ProjectSummary, type ProjectDescription } from "./ProjectSummary";
 import { ProjectSelection } from "./ProjectSelection";
+
+const ResidentTracking = dynamic(() => import("@/components/accelerator/ResidentTracking").then(component => component.ResidentTracking), { loading: ResidentSectionLoading });
+const MatchmakingWorkspace = dynamic(() => import("@/components/accelerator/MatchmakingWorkspace").then(component => component.MatchmakingWorkspace), { loading: ResidentSectionLoading });
+const ProjectAuditWorkspace = dynamic(() => import("@/components/accelerator/ProjectAuditWorkspace").then(component => component.ProjectAuditWorkspace), { loading: ResidentSectionLoading });
+const DemoDayWorkspace = dynamic(() => import("@/components/accelerator/DemoDayWorkspace").then(component => component.DemoDayWorkspace), { loading: ResidentSectionLoading });
+const AlumniWorkspace = dynamic(() => import("@/components/accelerator/AlumniWorkspace").then(component => component.AlumniWorkspace), { loading: ResidentSectionLoading });
+const ResidentProjectRecommendations = dynamic(() => import("@/components/accelerator/ResidentProjectRecommendations").then(component => component.ResidentProjectRecommendations), { loading: ResidentSectionLoading });
+const ResidentProgramWorkspace = dynamic(() => import("@/components/accelerator/ResidentProgramWorkspace").then(component => component.ResidentProgramWorkspace), { loading: ResidentSectionLoading });
+const ResidentArtifacts = dynamic(() => import("@/components/accelerator/ResidentArtifacts").then(component => component.ResidentArtifacts), { loading: ResidentSectionLoading });
+
+function ResidentSectionLoading() { return <div role="status" className="grid min-h-32 place-items-center"><Loader2 className="animate-spin text-white/40" /></div>; }
 
 export type ResidentQuota = {
   membership_id: number;

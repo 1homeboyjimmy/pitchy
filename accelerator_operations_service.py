@@ -92,16 +92,17 @@ async def ensure_module_runtime_enabled(
 async def runtime_disabled_modules(
     db: AsyncSession, *, cohort: AcceleratorCohort
 ) -> dict[str, dict]:
+    now = datetime.utcnow()
+    keys = ["global", f"accelerator:{cohort.accelerator_id}", f"cohort:{cohort.id}"]
+    rows = (await db.execute(select(AcceleratorModuleRuntimeOverride).where(
+        AcceleratorModuleRuntimeOverride.module_key.in_(RUNTIME_MODULES),
+        AcceleratorModuleRuntimeOverride.scope_key.in_(keys),
+        or_(AcceleratorModuleRuntimeOverride.expires_at.is_(None), AcceleratorModuleRuntimeOverride.expires_at > now),
+    ))).scalars().all()
+    priority = {key: index for index, key in enumerate(keys)}
     result: dict[str, dict] = {}
-    for module_key in sorted(RUNTIME_MODULES):
-        row = await active_runtime_override(
-            db, module_key=module_key, cohort=cohort
-        )
-        if row:
-            result[module_key] = {
-                "scope_type": row.scope_type,
-                "expires_at": row.expires_at,
-            }
+    for row in sorted(rows, key=lambda row: priority[row.scope_key]):
+        result.setdefault(row.module_key, {"scope_type": row.scope_type, "expires_at": row.expires_at})
     return result
 
 

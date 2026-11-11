@@ -5,11 +5,11 @@ import { CheckSquare, Loader2, Plus, X } from "lucide-react";
 import { describeApiError, getAuthJson, postAuthJson } from "@/lib/api";
 import { notifySuccess } from "@/lib/ui";
 
-type Resident = { membership_id: number; name: string; email: string; risk: { level: "green" | "yellow" | "red" } };
+type Resident = { membership_id: number; name: string; email: string; status: string };
 
 export function BulkTrackingTaskForm({ cohortId, token, onCreated }: { cohortId: number; token: string; onCreated?: () => void | Promise<void> }) {
   const [open, setOpen] = useState(false); const [rows, setRows] = useState<Resident[]>([]); const [selected, setSelected] = useState<Set<number>>(new Set()); const [query, setQuery] = useState(""); const [form, setForm] = useState({ title: "", description: "", dueAt: "" }); const [loading, setLoading] = useState(false); const [submitting, setSubmitting] = useState(false); const [error, setError] = useState("");
-  const load = useCallback(async () => { setLoading(true); try { const result = await getAuthJson<{ rows: Resident[] }>(`/api/accelerators/cohorts/${cohortId}/tracking-dashboard`, token); setRows(result.rows); } catch (reason) { setError(describeApiError(reason, "Не удалось загрузить участников")); } finally { setLoading(false); } }, [cohortId, token]);
+  const load = useCallback(async () => { setLoading(true); try { const result = await getAuthJson<Resident[]>(`/api/accelerators/cohorts/${cohortId}/residents`, token); setRows(result.filter(row => row.status === "enrolled")); } catch (reason) { setError(describeApiError(reason, "Не удалось загрузить участников")); } finally { setLoading(false); } }, [cohortId, token]);
   useEffect(() => { if (open && !rows.length) void load(); }, [load, open, rows.length]);
   useEffect(() => { const close = (event: KeyboardEvent) => { if (event.key === "Escape") setOpen(false); }; window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, []);
   const visible = useMemo(() => rows.filter((row) => `${row.name} ${row.email}`.toLowerCase().includes(query.trim().toLowerCase())), [query, rows]);

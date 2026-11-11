@@ -2,39 +2,49 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { ArrowRight, LayoutDashboard, Loader2, LogIn, Menu, X, RefreshCw, Rocket, Settings2 } from "lucide-react";
 
 import { describeApiError, getAuthJson, getMe, patchAuthJson, postAuthJson, type UserResponse } from "@/lib/api";
 import { useAuth } from "@/lib/hooks/useAuth";
-import { AcceleratorSetupWizard } from "@/components/accelerator/AcceleratorSetupWizard";
-import { ApplicationFormEditor, type ApplicationFormSchema } from "@/components/accelerator/ApplicationFormEditor";
-import { ApplicationManager, type AcceleratorApplication } from "@/components/accelerator/ApplicationManager";
-import { AttendanceManager } from "@/components/accelerator/AttendanceManager";
-import { AuditLog } from "@/components/accelerator/AuditLog";
-import { HomeworkWorkspace } from "@/components/accelerator/HomeworkWorkspace";
-import { OrganizerManager } from "@/components/accelerator/OrganizerManager";
-import { ProgramBuilder } from "@/components/accelerator/ProgramBuilder";
-import { QuotaManager, type Limits } from "@/components/accelerator/QuotaManager";
-import { ResidentWorkspace, type ResidentWorkspaceData } from "@/components/accelerator/ResidentWorkspace";
-import { ResidentReport } from "@/components/accelerator/ResidentReport";
-import { TrackerAttendance } from "@/components/accelerator/TrackerAttendance";
-import { MatchmakingManager } from "@/components/accelerator/MatchmakingManager";
-import { MatchmakingWorkspace } from "@/components/accelerator/MatchmakingWorkspace";
-import { ProjectAuditWorkspace } from "@/components/accelerator/ProjectAuditWorkspace";
-import { DemoDayWorkspace } from "@/components/accelerator/DemoDayWorkspace";
-import { ArtifactWorkspace } from "@/components/accelerator/ArtifactWorkspace";
+import { handoffAcceleratorEntry } from "@/lib/acceleratorEntryHandoff";
+
+import { type ApplicationFormSchema } from "@/components/accelerator/ApplicationFormEditor";
+import { type AcceleratorApplication } from "@/components/accelerator/ApplicationManager";
+import { type Limits } from "@/components/accelerator/QuotaManager";
+import { type ResidentWorkspaceData } from "@/components/accelerator/ResidentWorkspace";
 import { NotificationCenter } from "@/components/accelerator/NotificationCenter";
-import { CohortClosure } from "@/components/accelerator/CohortClosure";
-import { AcceleratorOperations } from "@/components/accelerator/AcceleratorOperations";
-import { ParticipantDrawer } from "@/components/accelerator/ParticipantDrawer";
-import { TrackingDashboard } from "@/components/accelerator/TrackingDashboard";
 import { BulkTrackingTaskForm } from "@/components/accelerator/BulkTrackingTaskForm";
 import { participantMemberships, preferredParticipantMembership, staffAccelerators } from "@/lib/acceleratorAccess";
 
 import { OrganizerOverview } from "@/components/accelerator/OrganizerOverview";
 import { OrganizerNavigation } from "@/components/accelerator/OrganizerNavigation";
 import { PitchyLogo } from "@/components/shared/PitchyLogo";
+
+const AcceleratorSetupWizard = dynamic(() => import("@/components/accelerator/AcceleratorSetupWizard").then(module => module.AcceleratorSetupWizard), { loading: WorkspaceLoading });
+const ApplicationFormEditor = dynamic(() => import("@/components/accelerator/ApplicationFormEditor").then(module => module.ApplicationFormEditor), { loading: WorkspaceLoading });
+const QuotaManager = dynamic(() => import("@/components/accelerator/QuotaManager").then(module => module.QuotaManager), { loading: WorkspaceLoading });
+const ResidentWorkspace = dynamic(() => import("@/components/accelerator/ResidentWorkspace").then(module => module.ResidentWorkspace), { loading: WorkspaceLoading });
+const ApplicationManager = dynamic(() => import("@/components/accelerator/ApplicationManager").then(module => module.ApplicationManager), { loading: WorkspaceLoading });
+const AttendanceManager = dynamic(() => import("@/components/accelerator/AttendanceManager").then(module => module.AttendanceManager), { loading: WorkspaceLoading });
+const AuditLog = dynamic(() => import("@/components/accelerator/AuditLog").then(module => module.AuditLog), { loading: WorkspaceLoading });
+const HomeworkWorkspace = dynamic(() => import("@/components/accelerator/HomeworkWorkspace").then(module => module.HomeworkWorkspace), { loading: WorkspaceLoading });
+const OrganizerManager = dynamic(() => import("@/components/accelerator/OrganizerManager").then(module => module.OrganizerManager), { loading: WorkspaceLoading });
+const ProgramBuilder = dynamic(() => import("@/components/accelerator/ProgramBuilder").then(module => module.ProgramBuilder), { loading: WorkspaceLoading });
+const ResidentReport = dynamic(() => import("@/components/accelerator/ResidentReport").then(module => module.ResidentReport), { loading: WorkspaceLoading });
+const TrackerAttendance = dynamic(() => import("@/components/accelerator/TrackerAttendance").then(module => module.TrackerAttendance), { loading: WorkspaceLoading });
+const MatchmakingManager = dynamic(() => import("@/components/accelerator/MatchmakingManager").then(module => module.MatchmakingManager), { loading: WorkspaceLoading });
+const MatchmakingWorkspace = dynamic(() => import("@/components/accelerator/MatchmakingWorkspace").then(module => module.MatchmakingWorkspace), { loading: WorkspaceLoading });
+const ProjectAuditWorkspace = dynamic(() => import("@/components/accelerator/ProjectAuditWorkspace").then(module => module.ProjectAuditWorkspace), { loading: WorkspaceLoading });
+const DemoDayWorkspace = dynamic(() => import("@/components/accelerator/DemoDayWorkspace").then(module => module.DemoDayWorkspace), { loading: WorkspaceLoading });
+const ArtifactWorkspace = dynamic(() => import("@/components/accelerator/ArtifactWorkspace").then(module => module.ArtifactWorkspace), { loading: WorkspaceLoading });
+const CohortClosure = dynamic(() => import("@/components/accelerator/CohortClosure").then(module => module.CohortClosure), { loading: WorkspaceLoading });
+const AcceleratorOperations = dynamic(() => import("@/components/accelerator/AcceleratorOperations").then(module => module.AcceleratorOperations), { loading: WorkspaceLoading });
+const ParticipantDrawer = dynamic(() => import("@/components/accelerator/ParticipantDrawer").then(module => module.ParticipantDrawer), { loading: WorkspaceLoading });
+const TrackingDashboard = dynamic(() => import("@/components/accelerator/TrackingDashboard").then(module => module.TrackingDashboard), { loading: WorkspaceLoading });
+
+function WorkspaceLoading() { return <div role="status" className="grid min-h-32 place-items-center"><Loader2 className="animate-spin text-white/40" /></div>; }
 
 type Accelerator = { id: number; name: string; description?: string | null; status: string; access_role: "global_admin" | "organizer" | "tracker" | "expert" | "resident" };
 type Cohort = { id: number; accelerator_id: number; name: string; status: string; timezone: string; starts_at?: string | null; ends_at?: string | null; default_quota_config?: Limits | null; application_form_schema: ApplicationFormSchema; homework_pitchy_enabled: boolean };
@@ -62,6 +72,8 @@ export default function AcceleratorWorkspacePage() {
   const [mobileMenu, setMobileMenu] = useState(false);
   const [targetId, setTargetId] = useState<number>();
   const detailRequest = useRef(0);
+  const initialAccessLoad = useRef<string | null>(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
   const navigate = (next: TabKey, target?: number) => {
     const legacyPanels: Partial<Record<TabKey, SettingsPanelKey>> = { operations: "system-health", quotas: "quotas", audit: "audit-log", closure: "cohort-status" };
     if (legacyPanels[next]) { setSettingsPanel(legacyPanels[next]!); setTab("settings"); }
@@ -120,6 +132,7 @@ export default function AcceleratorWorkspacePage() {
       const canOpenStaffContext = Boolean(user.is_admin || serviceRows.length);
       if (participantMembership && participantRows.length === 1 && (!requestedStaffContext || !canOpenStaffContext)) {
         redirecting = true;
+        handoffAcceleratorEntry(token, workspace, rows);
         router.replace(`/accelerator/my/${participantMembership.membership_id}`);
         return;
       }
@@ -133,7 +146,12 @@ export default function AcceleratorWorkspacePage() {
     } catch (reason) { setError(describeApiError(reason, "Не удалось загрузить акселераторы")); }
     finally { if (!redirecting) setLoading(false); }
   }, [router, token]);
-  useEffect(() => { void loadAccelerators(); }, [loadAccelerators]);
+  useEffect(() => {
+    if (!token) { initialAccessLoad.current = null; return; }
+    if (initialAccessLoad.current === token) return;
+    initialAccessLoad.current = token;
+    void loadAccelerators();
+  }, [loadAccelerators, token]);
 
   useEffect(() => {
     let active = true;
@@ -149,19 +167,23 @@ export default function AcceleratorWorkspacePage() {
     return () => { active = false; };
   }, [acceleratorId, isResident, token, urlReady, isLoaded, loading]);
 
+  const needsApplications = canManage && tab === "applications";
+  const needsResidents = !isExpert && ["homework", "matching", "project_audit", "demo_day", "settings"].includes(tab);
   const loadCohortDetails = useCallback(async () => {
     const request = ++detailRequest.current;
     if (!token || !cohortId || !canReadCohort) { setConfig(null); setApplications([]); setResidents([]); return; }
+    setDetailsLoading(true);
     try {
       const [program, applicationRows, residentRows] = await Promise.all([
-        getAuthJson<ProgramConfig>(`/api/accelerators/cohorts/${cohortId}/program-config`, token),
-        canManage ? getAuthJson<AcceleratorApplication[]>(`/api/accelerators/cohorts/${cohortId}/applications`, token) : Promise.resolve([]),
-        isExpert ? Promise.resolve([]) : getAuthJson<Resident[]>(`/api/accelerators/cohorts/${cohortId}/residents`, token),
+        getAuthJson<ProgramConfig>(`/api/accelerators/cohorts/${cohortId}/program-config`, token).then(program => { if (request === detailRequest.current) setConfig(program); return program; }),
+        needsApplications ? getAuthJson<AcceleratorApplication[]>(`/api/accelerators/cohorts/${cohortId}/applications`, token) : Promise.resolve([]),
+        needsResidents ? getAuthJson<Resident[]>(`/api/accelerators/cohorts/${cohortId}/residents`, token) : Promise.resolve([]),
       ]);
       if (request !== detailRequest.current) return;
       setConfig(program); setApplications(applicationRows); setResidents(residentRows); setError("");
     } catch (reason) { if (request === detailRequest.current) setError(describeApiError(reason, "Не удалось загрузить данные потока")); }
-  }, [canManage, canReadCohort, cohortId, isExpert, token]);
+    finally { if (request === detailRequest.current) setDetailsLoading(false); }
+  }, [canReadCohort, cohortId, needsApplications, needsResidents, token]);
   useEffect(() => { void loadCohortDetails(); }, [loadCohortDetails]);
 
   const tabs = useMemo(() => {
@@ -213,19 +235,20 @@ export default function AcceleratorWorkspacePage() {
       {!isResident && canReadCohort && selectedCohort && <>
         {!canManage && <nav className="mb-6 flex gap-2 overflow-x-auto pb-2" aria-label="Разделы акселератора">{tabs.map((item) => <button type="button" key={item.key} onClick={() => setTab(item.key)} className={`shrink-0 rounded-full border px-4 py-2 text-sm ${tab === item.key ? "border-white bg-white text-black" : "border-white/10 text-white/50 hover:text-white"}`}>{item.label}</button>)}</nav>}
         {canManage && tab !== "overview" && <div className="mb-5 flex flex-wrap items-center gap-3"><button type="button" onClick={() => navigate("overview")} className="text-xs text-white/50 hover:text-white">← Обзор потока</button><span className="text-white/20">/</span><span className="text-sm text-white/70">{tabs.find(item => item.key === tab)?.label}</span><span className="ml-auto text-xs text-white/35">{selectedCohort.name}</span></div>}
-        {tab === "overview" && canManage && (config ? <OrganizerOverview key={selectedCohort.id} token={token} cohort={selectedCohort} config={config} applications={applications} residents={residents} onCopy={copyApplicationLink} copied={copied} onNavigate={navigate} onOpenParticipant={setSelectedMembershipId} refreshKey={refreshKey} /> : <section className="workspace-card grid min-h-56 place-items-center"><Loader2 className="animate-spin text-white/40" /></section>)}
-        {tab === "applications" && <ApplicationManager token={token} applications={applications} schema={selectedCohort.application_form_schema || {}} cohortName={selectedCohort.name} publicUrl={"/accelerators/apply/" + selectedCohort.id} onChanged={loadCohortDetails} />}
+        {tab === "overview" && canManage && (config ? <OrganizerOverview key={selectedCohort.id} token={token} cohort={selectedCohort} config={config} onCopy={copyApplicationLink} copied={copied} onNavigate={navigate} onOpenParticipant={setSelectedMembershipId} refreshKey={refreshKey} /> : <section className="workspace-card grid min-h-56 place-items-center"><Loader2 className="animate-spin text-white/40" /></section>)}
+        {detailsLoading && (needsApplications || needsResidents) && <section className="workspace-card grid min-h-32 place-items-center" role="status"><Loader2 className="animate-spin text-white/40" /></section>}
+        {tab === "applications" && !detailsLoading && <ApplicationManager token={token} applications={applications} schema={selectedCohort.application_form_schema || {}} cohortName={selectedCohort.name} publicUrl={"/accelerators/apply/" + selectedCohort.id} onChanged={loadCohortDetails} />}
         {tab === "form" && <ApplicationFormEditor key={selectedCohort.id} schema={selectedCohort.application_form_schema || {}} cohortId={selectedCohort.id} token={token} publicUrl={`/accelerators/apply/${selectedCohort.id}`} cohortStatus={selectedCohort.status} onSettings={() => navigate("settings")} onApplications={() => navigate("applications")} onPublished={loadCohortDetails} />}
         {tab === "program" && <ProgramBuilder focusId={targetId} cohortId={selectedCohort.id} token={token} />}
-        {tab === "homework" && config?.modules.homework && <HomeworkWorkspace focusId={targetId} cohortId={selectedCohort.id} token={token} residents={residents} isAdmin={isAdmin} pitchyEnabled={selectedCohort.homework_pitchy_enabled} />}
+        {tab === "homework" && !detailsLoading && config?.modules.homework && <HomeworkWorkspace focusId={targetId} cohortId={selectedCohort.id} token={token} residents={residents} isAdmin={isAdmin} pitchyEnabled={selectedCohort.homework_pitchy_enabled} />}
         {tab === "attendance" && config?.modules.attendance && (canManage ? <AttendanceManager focusId={tab === "attendance" ? targetId : undefined} cohortId={selectedCohort.id} token={token} /> : <TrackerAttendance cohortId={selectedCohort.id} token={token} />)}
-        {tab === "matching" && config?.modules.matchmaking && (canManage ? <MatchmakingManager cohortId={selectedCohort.id} token={token} residents={residents} /> : <MatchmakingWorkspace cohortId={selectedCohort.id} />)}
-        {tab === "project_audit" && config?.modules.project_audit && <ProjectAuditWorkspace cohortId={selectedCohort.id} residents={residents} token={token} canCreateTasks taskIntegrationEnabled={Boolean(config.modules.progress_tracking)} />}
-        {tab === "demo_day" && config?.modules.demo_day && <DemoDayWorkspace cohortId={selectedCohort.id} residents={residents} token={token} canManage={canManage} />}
+        {tab === "matching" && !detailsLoading && config?.modules.matchmaking && (canManage ? <MatchmakingManager cohortId={selectedCohort.id} token={token} residents={residents} /> : <MatchmakingWorkspace cohortId={selectedCohort.id} />)}
+        {tab === "project_audit" && !detailsLoading && config?.modules.project_audit && <ProjectAuditWorkspace cohortId={selectedCohort.id} residents={residents} token={token} canCreateTasks taskIntegrationEnabled={Boolean(config.modules.progress_tracking)} />}
+        {tab === "demo_day" && !detailsLoading && config?.modules.demo_day && <DemoDayWorkspace cohortId={selectedCohort.id} residents={residents} token={token} canManage={canManage} />}
         {tab === "artifacts" && config?.modules.pitchy_artifacts && <ArtifactWorkspace cohortId={selectedCohort.id} token={token} />}
         {tab === "reports" && <ResidentReport token={token} cohortId={selectedCohort.id} canManage={canManage} onChanged={loadCohortDetails} onOpenParticipant={setSelectedMembershipId} initialQuery={reportQuery} initialStatus={reportStatus} onFiltersChange={(query, status) => { setReportQuery(query); setReportStatus(status); }} />}
         {tab === "tracking" && config?.modules.progress_tracking && <TrackingDashboard key={trackingVersion} cohortId={selectedCohort.id} token={token} onOpenParticipant={setSelectedMembershipId} headerAction={<BulkTrackingTaskForm cohortId={selectedCohort.id} token={token} onCreated={() => setTrackingVersion((value) => value + 1)} />} />}
-        {tab === "settings" && <SettingsPanel token={token} isAdmin={isAdmin} accelerator={selectedAccelerator} cohort={selectedCohort} cohorts={cohorts} residents={residents} config={config} panel={settingsPanel} onPanel={setSettingsPanel} onConfig={setConfig} onCohort={(updated) => setCohorts((rows) => rows.map((row) => row.id === updated.id ? updated : row))} onSelectCohort={(id) => setCohortId(id)} onAccelerator={(updated) => setAccelerators((rows) => rows.map((row) => row.id === updated.id ? { ...row, ...updated } : row))} onCohortCreated={async (created) => { const rows = await getAuthJson<Cohort[]>(`/api/accelerators/${selectedAccelerator.id}/cohorts`, token); setCohorts(rows); setCohortId(created.id); setSettingsPanel("cohort-general"); }} onCompleted={async () => { await loadAccelerators(); await loadCohortDetails(); }} />}
+        {tab === "settings" && !detailsLoading && <SettingsPanel token={token} isAdmin={isAdmin} accelerator={selectedAccelerator} cohort={selectedCohort} cohorts={cohorts} residents={residents} config={config} panel={settingsPanel} onPanel={setSettingsPanel} onConfig={setConfig} onCohort={(updated) => setCohorts((rows) => rows.map((row) => row.id === updated.id ? updated : row))} onSelectCohort={(id) => setCohortId(id)} onAccelerator={(updated) => setAccelerators((rows) => rows.map((row) => row.id === updated.id ? { ...row, ...updated } : row))} onCohortCreated={async (created) => { const rows = await getAuthJson<Cohort[]>(`/api/accelerators/${selectedAccelerator.id}/cohorts`, token); setCohorts(rows); setCohortId(created.id); setSettingsPanel("cohort-general"); }} onCompleted={async () => { await loadAccelerators(); await loadCohortDetails(); }} />}
         {selectedMembershipId && <ParticipantDrawer membershipId={selectedMembershipId} token={token} onClose={() => setSelectedMembershipId(null)} onChanged={loadCohortDetails} />}
       </>}
       {!isResident && canManage && !selectedCohort && selectedAccelerator && <FirstCohortSetup token={token} accelerator={selectedAccelerator} onCreated={async (created) => { const rows = await getAuthJson<Cohort[]>(`/api/accelerators/${selectedAccelerator.id}/cohorts`, token); setCohorts(rows); setCohortId(created.id); setTab("overview"); }} />}

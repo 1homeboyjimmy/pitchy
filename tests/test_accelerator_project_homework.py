@@ -553,6 +553,12 @@ async def test_snapshot_controls_program_completion_and_overdue_risk_after_leavi
         old = await service.get_stage_state(member.membership_id, stage["id"])
         entrant = await service.get_stage_state(new.membership_id, stage["id"])
         assert old["completed"] and not entrant["completed"]
+        scoped_members = [await db.get(AcceleratorMembership, person.membership_id) for person in (member, new)]
+        batched = await service.get_memberships_progress(scoped_members)
+        for person in scoped_members:
+            assert batched[person.id] == await service.get_membership_progress(person.id)
+        assert batched[member.membership_id]["stages"][0]["completed"]
+        assert not batched[new.membership_id]["stages"][0]["completed"]
         assert (
             await membership_tracking_risk(
                 db, await db.get(AcceleratorMembership, member.membership_id)
