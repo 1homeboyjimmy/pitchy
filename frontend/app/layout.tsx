@@ -64,6 +64,7 @@ export const viewport: Viewport = {
 import { ScrollToTop } from "@/components/shared/ScrollToTop";
 import { BreadcrumbsSchema } from "@/components/shared/BreadcrumbsSchema";
 import { YandexMetrika } from "@/components/analytics/YandexMetrika";
+import { ParticipantRegistrationGate } from "@/components/accelerator/ParticipantRegistrationGate";
 import { CookieConsentBanner } from "@/components/shared/CookieConsentBanner";
 
 
@@ -92,6 +93,7 @@ export default function RootLayout({
         <ScrollToTop />
         <BreadcrumbsSchema />
         {children}
+        <Suspense fallback={null}><ParticipantRegistrationGate /></Suspense>
         <CookieConsentBanner />
       </body>
     </html>

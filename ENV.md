@@ -38,6 +38,9 @@
 - `POLZA_API_KEY`: Polza key for chat, structured LLM calls, and embeddings.
 - `LOCKBOX_POLZA_API_KEY_SECRET_ID` / `LOCKBOX_POLZA_API_KEY_ENTRY_KEY`: optional Lockbox source for the Polza key.
 - `POLZA_API_BASE`: Polza OpenAI-compatible API base (defaults to `https://polza.ai/api/v1`).
+- `RESEARCH_VERIFIER_MODEL`: deep research fact checker (defaults to `deepseek/deepseek-v4.1-flash-1017`).
+- `RESEARCH_VERIFIER_FALLBACK_MODEL`: fallback fact checker on empty, invalid, or failed responses (defaults to `qwen/qwen3-32b`).
+- `RESEARCH_VERIFIER_TIMEOUT_SECONDS`: time limit per fact checker call, excluding the concurrency queue (defaults to `90`).
 - `AUDIENCE_PERSONA_MODEL`: model used for persona generation, interviews, and summaries (defaults to `openai/gpt-6-luna-pro`).
 - `AUDIENCE_SEARCH_MODEL`: web-grounded model used for audience evidence (defaults to `perplexity/sonar`).
 - `AUDIENCE_SEARCH_CONTEXT_SIZE`: Perplexity search depth (`low`, `medium`, or `high`; defaults to `low`).

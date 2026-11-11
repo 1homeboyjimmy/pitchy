@@ -914,10 +914,6 @@ class EventCreate(BaseModel):
     def validate_event(self):
         if self.ends_at <= self.starts_at:
             raise ValueError("Окончание мероприятия должно быть позже начала")
-        if self.event_format in ("offline", "hybrid") and not (self.location or "").strip():
-            raise ValueError("Для очного или гибридного мероприятия укажите место")
-        if self.event_format in ("online", "hybrid") and not (self.meeting_url or "").strip():
-            raise ValueError("Для онлайн- или гибридного мероприятия укажите ссылку на подключение")
         if self.meeting_url and not self.meeting_url.strip().lower().startswith(("https://", "http://")):
             raise ValueError("Ссылка на подключение должна начинаться с http:// или https://")
         if self.recording_url and not self.recording_url.strip().lower().startswith(("https://", "http://")):
@@ -945,6 +941,25 @@ class EventCreate(BaseModel):
                 raise ValueError("Одно задание нельзя прикрепить к мероприятию дважды")
             assignment_ids.add(assignment_id)
         return self
+
+
+class EventDetailsUpdate(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    host_name: str | None = Field(default=None, max_length=300)
+    location: str | None = Field(default=None, max_length=500)
+    meeting_url: str | None = Field(default=None, max_length=2000)
+    online_platform: str | None = Field(default=None, max_length=120)
+    venue_details: str | None = Field(default=None, max_length=2000)
+    map_url: str | None = Field(default=None, max_length=2000)
+
+    @field_validator("meeting_url", "map_url")
+    @classmethod
+    def validate_details_url(cls, value: str | None) -> str | None:
+        value = (value or "").strip() or None
+        if value and not value.lower().startswith(("https://", "http://")):
+            raise ValueError("Ссылка должна начинаться с http:// или https://")
+        return value
 
 
 class EventReschedule(BaseModel):

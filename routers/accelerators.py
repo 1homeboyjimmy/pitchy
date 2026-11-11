@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
 from email_validator import EmailNotValidError, validate_email
 from dateutil.parser import parse as parse_date
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -142,6 +142,7 @@ from schemas.accelerators import (
     HomeworkSubmissionUpsert,
     AttendanceMark,
     EventCreate,
+    EventDetailsUpdate,
     EventCancel,
     EventFollowupUpdate,
     EventReschedule,
@@ -186,6 +187,41 @@ from schemas.accelerators import (
 
 
 router = APIRouter(prefix="/api/accelerators", tags=["accelerators"])
+
+from accelerator_participant_service import ParticipantProfileUpdate
+
+
+@router.patch("/memberships/{membership_id}/participant-profile")
+async def update_participant_profile(
+    membership_id: int, payload: ParticipantProfileUpdate,
+    user: User = Depends(get_async_current_user), db: AsyncSession = Depends(get_async_db),
+):
+    membership = (await db.execute(select(AcceleratorMembership).where(
+        AcceleratorMembership.id == membership_id
+    ).with_for_update())).scalar_one_or_none()
+    if not membership:
+        raise HTTPException(404, "Участник не найден")
+    cohort = await get_cohort_or_404(db, membership.cohort_id)
+    manager = user.is_admin or await is_accelerator_organizer(db, user.id, cohort.accelerator_id)
+    if membership.user_id != user.id and not manager:
+        raise HTTPException(403, "Нет доступа к профилю")
+    updates = payload.model_dump(exclude_unset=True)
+    if "tags" in updates and not manager:
+        raise HTTPException(403, "Теги назначает организатор")
+    if "tags" in updates and updates["tags"] is None:
+        raise HTTPException(422, "Укажите список тегов")
+    row = (await db.execute(select(AcceleratorParticipantProfile).where(
+        AcceleratorParticipantProfile.membership_id == membership.id
+    ))).scalar_one_or_none()
+    if not row:
+        row = AcceleratorParticipantProfile(membership_id=membership.id, profile={}, visibility={"organizer": True, "mentor": False, "public": False})
+        db.add(row)
+    row.profile = {**(row.profile or {}), **updates}
+    add_audit(db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id, actor_user_id=user.id,
+              action="participant.profile_updated", target_type="membership", target_id=membership.id,
+              details={"fields": sorted(updates)})
+    await db.commit()
+    return {"profile": row.profile}
 logger = logging.getLogger("app.accelerator_project_audit")
 
 DEFAULT_MODULES = {
@@ -1320,7 +1356,12 @@ async def list_my_accelerator_memberships(
     )).all()
     memberships = []
     for membership, cohort, accelerator, program, project in rows:
+        from accelerator_participant_service import registration_required
+        profile_row = (await db.execute(select(AcceleratorParticipantProfile).where(AcceleratorParticipantProfile.membership_id == membership.id))).scalar_one_or_none()
+        profile_data = dict(profile_row.profile or {}) if profile_row else {}
         memberships.append({
+            "participant_profile": profile_data,
+            "registration_required": registration_required(profile_data),
             "membership_id": membership.id,
             "application_id": membership.application_id,
             "status": membership.status,
@@ -4169,8 +4210,27 @@ async def enqueue_event_change_notifications(
     return ids
 
 
-def event_dict(row: AcceleratorEvent, *, attendance_count: int = 0, attendance: AcceleratorAttendanceRecord | None = None, homework_links: list[dict] | None = None, timezone: str | None = None) -> dict:
-    frontend_url = os.getenv("FRONTEND_URL", "https://pitchy.pro").rstrip("/")
+from accelerator_attendance_service import checkin_session, token_event_id, validate_checkin_token, utc_datetime
+
+
+async def attendance_write_context(db, event_id, *, edit_event=False):
+    event = await db.get(AcceleratorEvent, event_id)
+    if not event:
+        raise HTTPException(404, "Мероприятие не найдено")
+    # Shared lifecycle locks allow different students to check in concurrently,
+    # while archive/cancel/reschedule wait for the attendance transaction.
+    cohort = (await db.execute(select(AcceleratorCohort).where(
+        AcceleratorCohort.id == event.cohort_id
+    ).with_for_update(read=True).execution_options(populate_existing=True))).scalar_one()
+    require_mutable_cohort(cohort)
+    event = (await db.execute(select(AcceleratorEvent).where(
+        AcceleratorEvent.id == event_id
+    ).with_for_update(read=not edit_event).execution_options(populate_existing=True))).scalar_one()
+    await require_attendance_module(db, cohort)
+    return event, cohort
+
+
+def event_dict(row: AcceleratorEvent, *, attendance_count: int = 0, attendance: AcceleratorAttendanceRecord | None = None, homework_links: list[dict] | None = None, timezone: str | None = None, include_checkin: bool = False) -> dict:
     return {
         "id": row.id,
         "cohort_id": row.cohort_id,
@@ -4180,8 +4240,8 @@ def event_dict(row: AcceleratorEvent, *, attendance_count: int = 0, attendance: 
         "preview_url": row.preview_url,
         "event_type": row.event_type,
         "host_name": row.host_name,
-        "starts_at": row.starts_at,
-        "ends_at": row.ends_at,
+        "starts_at": utc_datetime(row.starts_at),
+        "ends_at": utc_datetime(row.ends_at),
         "event_format": row.event_format,
         "location": row.location,
         "meeting_url": row.meeting_url,
@@ -4193,18 +4253,18 @@ def event_dict(row: AcceleratorEvent, *, attendance_count: int = 0, attendance: 
         "next_step": row.next_step,
         "post_materials": row.post_materials or [],
         "cancellation_reason": row.cancellation_reason,
-        "cancelled_at": row.cancelled_at,
-        "completed_at": row.completed_at,
+        "cancelled_at": utc_datetime(row.cancelled_at),
+        "completed_at": utc_datetime(row.completed_at),
         "homework_links": homework_links or [],
         "status": row.status,
         "timezone": timezone,
         "checkin_opens_minutes": row.checkin_opens_minutes,
         "checkin_closes_minutes": row.checkin_closes_minutes,
-        "checkin_url": f"{frontend_url}/accelerator/check-in/{row.checkin_code}",
+        **({"checkin_url": checkin_session(row)["checkin_url"]} if include_checkin else {}),
         "attendance_count": attendance_count,
         "attendance": ({
             "status": attendance.status,
-            "checked_in_at": attendance.checked_in_at,
+            "checked_in_at": utc_datetime(attendance.checked_in_at),
             "checkin_method": attendance.checkin_method,
             "comment": attendance.comment,
         } if attendance else None),
@@ -4244,6 +4304,7 @@ async def list_events(
     return [event_dict(
         row,
         attendance_count=counts.get(row.id, 0),
+        include_checkin=access_role in ("global_admin", "organizer"),
         homework_links=await event_homework_links(db, row.id),
         timezone=cohort.timezone,
     ) for row in rows]
@@ -4288,7 +4349,7 @@ async def create_event(
     add_audit(db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
               actor_user_id=user.id, action="event.created", target_type="event", target_id=event.id)
     await db.commit()
-    return event_dict(event, homework_links=await event_homework_links(db, event.id), timezone=cohort.timezone)
+    return event_dict(event, homework_links=await event_homework_links(db, event.id), timezone=cohort.timezone, include_checkin=True)
 
 
 @router.put("/events/{event_id}")
@@ -4344,7 +4405,35 @@ async def update_event(
         target_id=event.id,
     )
     await db.commit()
-    return event_dict(event, homework_links=await event_homework_links(db, event.id), timezone=cohort.timezone)
+    return event_dict(event, homework_links=await event_homework_links(db, event.id), timezone=cohort.timezone, include_checkin=True)
+
+
+@router.patch("/events/{event_id}/details")
+async def update_event_details(
+    event_id: int,
+    payload: EventDetailsUpdate,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    event, cohort = await attendance_write_context(db, event_id, edit_event=True)
+    await require_cohort_manager(db, user, cohort)
+    if event.status not in ("published", "completed"):
+        raise HTTPException(409, "Уточнить данные можно у опубликованного или завершённого мероприятия")
+    fields = payload.model_dump(exclude_unset=True)
+    before = {key: getattr(event, key) for key in fields}
+    for key, value in fields.items():
+        setattr(event, key, (value or "").strip() or None)
+    event.updated_by_user_id = user.id
+    db.add(AcceleratorEventChange(
+        event_id=event.id, actor_user_id=user.id, action="details_updated",
+        before=before, after={key: getattr(event, key) for key in fields},
+    ))
+    add_audit(db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+              actor_user_id=user.id, action="event.details_updated",
+              target_type="event", target_id=event.id)
+    await db.commit()
+    return event_dict(event, homework_links=await event_homework_links(db, event.id),
+                      timezone=cohort.timezone, include_checkin=True)
 
 
 @router.post("/events/{event_id}/publish")
@@ -4369,7 +4458,7 @@ async def publish_event(
     add_audit(db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
               actor_user_id=user.id, action="event.published", target_type="event", target_id=event.id)
     await db.commit()
-    return event_dict(event, homework_links=await event_homework_links(db, event.id), timezone=cohort.timezone)
+    return event_dict(event, homework_links=await event_homework_links(db, event.id), timezone=cohort.timezone, include_checkin=True)
 
 
 @router.post("/events/{event_id}/reschedule")
@@ -4431,7 +4520,7 @@ async def reschedule_event(
     for notification_id in notification_ids:
         background_tasks.add_task(process_notification_event, notification_id)
     return event_dict(
-        event,
+        event, include_checkin=True,
         homework_links=await event_homework_links(db, event.id),
         timezone=cohort.timezone,
     )
@@ -4494,7 +4583,7 @@ async def cancel_event(
     for notification_id in notification_ids:
         background_tasks.add_task(process_notification_event, notification_id)
     return event_dict(
-        event,
+        event, include_checkin=True,
         homework_links=await event_homework_links(db, event.id),
         timezone=cohort.timezone,
     )
@@ -4537,7 +4626,7 @@ async def update_event_followup(
     )
     await db.commit()
     return event_dict(
-        event,
+        event, include_checkin=True,
         homework_links=await event_homework_links(db, event.id),
         timezone=cohort.timezone,
     )
@@ -4566,7 +4655,7 @@ async def list_event_history(
         "reason": change.reason,
         "before": change.before,
         "after": change.after,
-        "created_at": change.created_at,
+        "created_at": utc_datetime(change.created_at),
         "actor": {"id": actor.id, "name": actor.name} if actor else None,
     } for change, actor in rows]
 
@@ -4584,10 +4673,36 @@ async def event_checkin_qr(
     await require_cohort_manager(db, user, cohort)
     import qrcode
     import qrcode.image.svg
-    url = event_dict(event)["checkin_url"]
+    require_mutable_cohort(cohort)
+    await require_attendance_module(db, cohort)
+    url = checkin_session(event)["checkin_url"]
     image = qrcode.make(url, image_factory=qrcode.image.svg.SvgPathImage)
     return Response(content=image.to_string(), media_type="image/svg+xml",
                     headers={"Cache-Control": "no-store"})
+
+
+@router.get("/events/{event_id}/check-in-session")
+async def event_checkin_session(
+    event_id: int, user: User = Depends(get_async_current_user), db: AsyncSession = Depends(get_async_db),
+):
+    event = await db.get(AcceleratorEvent, event_id)
+    if not event:
+        raise HTTPException(404, "Мероприятие не найдено")
+    cohort = await get_cohort_or_404(db, event.cohort_id)
+    await require_cohort_manager(db, user, cohort)
+    require_mutable_cohort(cohort)
+    await require_attendance_module(db, cohort)
+    if event.status not in ("published", "completed"):
+        raise HTTPException(409, "Сначала опубликуйте мероприятие")
+    import qrcode
+    import qrcode.image.svg
+    from fastapi.encoders import jsonable_encoder
+    session = checkin_session(event)
+    image = qrcode.make(session["checkin_url"], image_factory=qrcode.image.svg.SvgPathImage)
+    return JSONResponse(content=jsonable_encoder({
+        "checkin_url": session["checkin_url"], "expires_at": session["expires_at"],
+        "qr_svg": image.to_string().decode(),
+    }), headers={"Cache-Control": "no-store"})
 
 
 @router.post("/events/{event_id}/duplicate")
@@ -4628,7 +4743,7 @@ async def duplicate_event(
               actor_user_id=user.id, action="event.duplicated", target_type="event",
               target_id=duplicate.id, details={"source_id": source.id})
     await db.commit()
-    return event_dict(duplicate, homework_links=await event_homework_links(db, duplicate.id))
+    return event_dict(duplicate, homework_links=await event_homework_links(db, duplicate.id), timezone=cohort.timezone, include_checkin=True)
 
 
 @router.post("/events/{event_id}/archive")
@@ -4651,7 +4766,7 @@ async def archive_event(
     add_audit(db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
               actor_user_id=user.id, action="event.archived", target_type="event", target_id=event.id)
     await db.commit()
-    return event_dict(event)
+    return event_dict(event, timezone=cohort.timezone, include_checkin=True)
 
 
 @router.get("/events/{event_id}/attendance")
@@ -4685,7 +4800,7 @@ async def list_event_attendance(
     return [{
         "membership_id": membership.id, "name": resident.name, "email": resident.email,
         "status": attendance.status if attendance else "not_marked",
-        "checked_in_at": attendance.checked_in_at if attendance else None,
+        "checked_in_at": utc_datetime(attendance.checked_in_at) if attendance else None,
         "comment": attendance.comment if attendance else None,
     } for membership, resident, attendance in rows]
 
@@ -4730,16 +4845,16 @@ async def mark_event_attendance(
     user: User = Depends(get_async_current_user),
     db: AsyncSession = Depends(get_async_db),
 ):
-    event = await db.get(AcceleratorEvent, event_id)
-    if not event:
-        raise HTTPException(status_code=404, detail="Мероприятие не найдено")
-    cohort = await get_cohort_or_404(db, event.cohort_id)
-    await require_attendance_module(db, cohort)
-    membership = await db.get(AcceleratorMembership, payload.membership_id)
-    if not membership or membership.cohort_id != cohort.id or membership.status != "enrolled":
+    event, cohort = await attendance_write_context(db, event_id)
+    membership = (await db.execute(select(AcceleratorMembership).where(
+        AcceleratorMembership.id == payload.membership_id,
+        AcceleratorMembership.cohort_id == cohort.id,
+        AcceleratorMembership.role == "resident",
+        AcceleratorMembership.status == "enrolled",
+    ).with_for_update().execution_options(populate_existing=True))).scalar_one_or_none()
+    if not membership:
         raise HTTPException(status_code=422, detail="Резидент не зачислен в этот поток")
     await require_tracker_membership_access(db, user, membership)
-    require_mutable_cohort(cohort)
     record = (await db.execute(select(AcceleratorAttendanceRecord).where(
         AcceleratorAttendanceRecord.event_id == event.id,
         AcceleratorAttendanceRecord.membership_id == membership.id,
@@ -4805,20 +4920,21 @@ async def check_in_to_event(
     user: User = Depends(get_async_current_user),
     db: AsyncSession = Depends(get_async_db),
 ):
-    event = (await db.execute(select(AcceleratorEvent).where(
-        AcceleratorEvent.checkin_code == code,
-        AcceleratorEvent.status.in_(("published", "completed")),
-    ))).scalar_one_or_none()
-    if not event:
-        raise HTTPException(status_code=404, detail="Ссылка отметки недействительна")
-    cohort = await get_cohort_or_404(db, event.cohort_id)
-    await require_attendance_module(db, cohort)
+    event_id = token_event_id(code)
+    candidate = await db.get(AcceleratorEvent, event_id)
+    if not candidate:
+        raise HTTPException(404, "Ссылка отметки недействительна")
+    validate_checkin_token(code, candidate)
+    event, cohort = await attendance_write_context(db, event_id)
+    if event.status not in ("published", "completed"):
+        raise HTTPException(404, "Ссылка отметки недействительна")
+    validate_checkin_token(code, event)
     membership = (await db.execute(select(AcceleratorMembership).where(
         AcceleratorMembership.cohort_id == cohort.id,
         AcceleratorMembership.user_id == user.id,
         AcceleratorMembership.role == "resident",
         AcceleratorMembership.status == "enrolled",
-    ))).scalar_one_or_none()
+    ).with_for_update().execution_options(populate_existing=True))).scalar_one_or_none()
     if not membership:
         raise HTTPException(status_code=403, detail="Вы не зачислены в этот поток")
     now = datetime.utcnow()
@@ -4832,19 +4948,17 @@ async def check_in_to_event(
         AcceleratorAttendanceRecord.event_id == event.id,
         AcceleratorAttendanceRecord.membership_id == membership.id,
     ))).scalar_one_or_none()
-    changed = not record or record.status != "present" or record.checkin_method != "qr"
+    if record and record.checkin_method == "manual":
+        if record.status != "present":
+            raise HTTPException(409, "Посещаемость уже отмечена преподавателем. Для изменения обратитесь к преподавателю.")
+        return {"event": event_dict(event, attendance=record, timezone=cohort.timezone), "checked_in": True}
+    changed = record is None
     if not record:
         record = AcceleratorAttendanceRecord(
             event_id=event.id, membership_id=membership.id, status="present",
             checkin_method="qr", checked_in_at=now,
         )
         db.add(record)
-    elif changed:
-        record.status = "present"
-        record.checkin_method = "qr"
-        record.checked_in_at = now
-        record.marked_by_user_id = None
-        record.comment = None
     if changed:
         add_audit(
             db,
@@ -4869,7 +4983,7 @@ async def check_in_to_event(
                     details={"membership_id": membership.id, "source": "auto"},
                 )
         await db.commit()
-    return {"event": event_dict(event, attendance=record), "checked_in": True}
+    return {"event": event_dict(event, attendance=record, timezone=cohort.timezone), "checked_in": True}
 
 
 @router.post("/cohorts/{cohort_id}/applications")
@@ -5797,6 +5911,8 @@ async def _cohort_resident_report(
         )
     membership_rows = (await db.execute(membership_query)).all()
     membership_ids = [membership.id for membership, _ in membership_rows]
+    from accelerator_participant_service import PRIVATE_FIELDS
+    profile_map = {row.membership_id: {k: v for k, v in (row.profile or {}).items() if k in PRIVATE_FIELDS or k == "tags"} for row in (await db.execute(select(AcceleratorParticipantProfile).where(AcceleratorParticipantProfile.membership_id.in_(membership_ids)))).scalars()} if access_role in ("global_admin", "organizer") and membership_ids else {}
 
     stages = list((await db.execute(select(AcceleratorProgramStage).where(
         AcceleratorProgramStage.cohort_id == cohort.id,
@@ -5967,6 +6083,7 @@ async def _cohort_resident_report(
             "name": resident.name,
             "email": resident.email,
             "status": membership.status,
+            **({"participant_profile": profile_map.get(membership.id, {})} if access_role in ("global_admin", "organizer") else {}),
             "status_reason": membership.status_reason,
             "trackers": trackers_by_membership.get(membership.id, []),
             "program": {
@@ -7293,6 +7410,16 @@ async def create_project_audit_task(
     }
 
 
+async def resident_demo_project_ids(db, demo_day, viewer_id):
+    return set((await db.execute(select(AcceleratorMembership.project_id).where(
+        AcceleratorMembership.cohort_id == demo_day.cohort_id,
+        AcceleratorMembership.user_id == viewer_id,
+        AcceleratorMembership.role == "resident",
+        AcceleratorMembership.status != "withdrawn",
+        AcceleratorMembership.project_id.is_not(None),
+    ))).scalars())
+
+
 async def demo_day_access(
     db: AsyncSession, demo_day: AcceleratorDemoDay, user: User
 ) -> tuple[AcceleratorCohort, str]:
@@ -7321,6 +7448,13 @@ async def demo_day_access(
         )
     )).scalar_one_or_none()
     if resident is not None:
+        return cohort, "resident"
+    own_projects = await resident_demo_project_ids(db, demo_day, user.id)
+    shared = (await db.execute(select(AcceleratorDemoDayProject.id).where(
+        AcceleratorDemoDayProject.demo_day_id == demo_day.id,
+        AcceleratorDemoDayProject.project_id.in_(own_projects),
+    ).limit(1))).first() if own_projects else None
+    if shared:
         return cohort, "resident"
     raise HTTPException(status_code=403, detail="Нет доступа к этому демо-дню")
 
@@ -7383,8 +7517,10 @@ async def demo_day_dict(
     for score, expert in score_rows:
         scores_by_project.setdefault(score.demo_project_id, []).append((score, expert))
     projects = []
+    own_projects = await resident_demo_project_ids(db, demo_day, viewer_id) if access_role == "resident" else set()
+    from accelerator_demo_scoring import criteria_for_project, project_track, uses_raw_sum
     for row, membership, resident, project in project_rows:
-        if access_role == "resident" and resident.id != viewer_id:
+        if access_role == "resident" and resident.id != viewer_id and project.id not in own_projects:
             continue
         evaluations = scores_by_project.get(row.id, [])
         average = (
@@ -7418,6 +7554,10 @@ async def demo_day_dict(
                 "name": project.name,
                 "readiness_index": project.readiness_index,
             },
+            "can_edit_materials": access_role in ("global_admin", "organizer") or resident.id == viewer_id,
+            "track": project_track(project),
+            "criteria": criteria_for_project(demo_day, project),
+            "max_score": sum(c["max_score"] for c in criteria_for_project(demo_day, project)) if uses_raw_sum(demo_day) else 100,
             "selection_reason": row.selection_reason,
             "pitch_title": row.pitch_title,
             "summary": row.summary,
@@ -7441,6 +7581,8 @@ async def demo_day_dict(
         "description": demo_day.description,
         "starts_at": demo_day.starts_at,
         "criteria": demo_day.criteria or [],
+        "criteria_by_track": (demo_day.evaluation_config or {}).get("criteria_by_track", {}),
+        "scoring_method": (demo_day.evaluation_config or {}).get("method", "normalized_average"),
         "status": demo_day.status,
         "access_role": access_role,
         "experts": [{
@@ -7515,7 +7657,10 @@ async def list_membership_demo_days(
             AcceleratorDemoDayProject,
             AcceleratorDemoDayProject.demo_day_id == AcceleratorDemoDay.id,
         )
-        .where(AcceleratorDemoDayProject.membership_id == membership.id)
+        .where(AcceleratorDemoDay.cohort_id == membership.cohort_id,
+               or_(AcceleratorDemoDayProject.membership_id == membership.id,
+                   AcceleratorDemoDayProject.project_id == membership.project_id)
+               if membership.project_id else AcceleratorDemoDayProject.membership_id == membership.id)
         .order_by(AcceleratorDemoDay.created_at.desc())
     )).scalars().all()
     return {
@@ -7843,6 +7988,9 @@ async def update_demo_day_project_decision(
     require_mutable_cohort(cohort)
     if demo_day.status == "finalized":
         raise HTTPException(status_code=409, detail="Результаты уже финализированы")
+    from accelerator_demo_scoring import uses_raw_sum
+    if uses_raw_sum(demo_day) and payload.score_adjustment != 0:
+        raise HTTPException(422, "Итог формируется только из пяти критериев эксперта")
     row.score_adjustment = payload.score_adjustment
     row.manager_note = (payload.manager_note or "").strip() or None
     row.outcome = payload.outcome
@@ -7870,14 +8018,27 @@ async def upsert_demo_day_score(
     project_row = await db.get(AcceleratorDemoDayProject, demo_project_id)
     if not project_row:
         raise HTTPException(status_code=404, detail="Проект демо-дня не найден")
-    demo_day = await db.get(AcceleratorDemoDay, project_row.demo_day_id)
+    demo_day = (await db.execute(select(AcceleratorDemoDay).where(AcceleratorDemoDay.id == project_row.demo_day_id).with_for_update())).scalar_one()
     cohort, access_role = await demo_day_access(db, demo_day, user)
     require_mutable_cohort(cohort)
     if access_role != "expert":
         raise HTTPException(status_code=403, detail="Проекты оценивают приглашённые эксперты")
     if demo_day.status != "scoring":
         raise HTTPException(status_code=409, detail="Оценивание сейчас закрыто")
-    normalized = demo_normalized_score(demo_day.criteria or [], payload.scores)
+    from accelerator_demo_scoring import criteria_for_project, uses_raw_sum, raw_score
+    project = await db.get(Project, project_row.project_id)
+    criteria = criteria_for_project(demo_day, project)
+    if uses_raw_sum(demo_day):
+        await db.execute(select(AcceleratorDemoDayProject).where(AcceleratorDemoDayProject.id == project_row.id).with_for_update())
+        other = (await db.execute(select(AcceleratorDemoDayScore.id).where(
+            AcceleratorDemoDayScore.demo_project_id == project_row.id,
+            AcceleratorDemoDayScore.expert_user_id != user.id,
+        ))).first()
+        if other:
+            raise HTTPException(409, "Проект уже оценён другим экспертом")
+        normalized = raw_score(criteria, payload.scores)
+    else:
+        normalized = demo_normalized_score(criteria, payload.scores)
     score = (await db.execute(select(AcceleratorDemoDayScore).where(
         AcceleratorDemoDayScore.demo_project_id == project_row.id,
         AcceleratorDemoDayScore.expert_user_id == user.id,
@@ -7959,8 +8120,14 @@ async def update_demo_day_status(
         for score in scores:
             by_project.setdefault(score.demo_project_id, []).append(float(score.normalized_score))
         for row in projects:
-            average = sum(by_project[row.id]) / len(by_project[row.id])
-            row.final_score = round(max(0, min(100, average + float(row.score_adjustment or 0))), 2)
+            from accelerator_demo_scoring import uses_raw_sum
+            if uses_raw_sum(demo_day):
+                if len(by_project[row.id]) != 1:
+                    raise HTTPException(409, "Для проекта требуется ровно одна оценка эксперта")
+                row.final_score = by_project[row.id][0]
+            else:
+                average = sum(by_project[row.id]) / len(by_project[row.id])
+                row.final_score = round(max(0, min(100, average + float(row.score_adjustment or 0))), 2)
         ranked = sorted(projects, key=lambda row: (-float(row.final_score), row.id))
         for rank, row in enumerate(ranked, start=1):
             row.rank = rank
@@ -8035,7 +8202,7 @@ async def export_demo_day(
             "participant": "Участник",
         }
         csv_rows = [[
-            "Место", "Проект", "Резидент", "Итоговая оценка", "Средняя оценка экспертов",
+            "Место", "Проект", "Резидент", "Итоговая оценка", "Оценка эксперта" if (demo_day.evaluation_config or {}).get("method") == "raw_sum" else "Средняя оценка экспертов",
             "Корректировка организатора", "Результат", "Презентация", "Видео",
         ]]
         for project in data["projects"]:
@@ -9067,7 +9234,7 @@ async def cohort_work_summary(
         "teams_without_tracker": [{"id": row.id, "name": row.name} for row in active_teams if row.id not in assigned_team_ids],
         "participants_without_tracker": [{"membership_id": row.id, "name": people.get(row.user_id).name if people.get(row.user_id) else "Резидент"} for row in untracked_members],
         "risks": sorted(risks, key=lambda row: (row["level"] != "red", -(row["inactive_days"] or 0)))[:10],
-        "today_events": [{"id": row.id, "title": row.title, "starts_at": row.starts_at, "ends_at": row.ends_at, "format": row.event_format} for row in events],
+        "today_events": [{"id": row.id, "title": row.title, "starts_at": utc_datetime(row.starts_at), "ends_at": utc_datetime(row.ends_at), "format": row.event_format} for row in events],
     }
 
 
@@ -9206,6 +9373,8 @@ async def membership_organizer_card(
     last_at, last_title = max((row for row in last_candidates if row[0]), key=lambda row: row[0])
     participant_profile = dict(profile.profile or {}) if profile else {}
     participant_profile.pop("application_data", None)
+    from accelerator_participant_service import visible_profile
+    participant_profile = visible_profile(participant_profile, private=can_manage)
     return {
         "membership_id": membership.id,
         "access_role": access_role,
@@ -9527,22 +9696,22 @@ async def membership_today(
         "section": "events", "target_id": row["id"],
         "meeting_url": row.get("meeting_url"), "location": row.get("location"),
         "event_format": row.get("event_format"),
-    } for row in events if row.get("status") == "published" and row["starts_at"] >= now]
+    } for row in events if row.get("status") == "published" and utc_datetime(row["starts_at"]) >= utc_datetime(now)]
     upcoming.extend({
         "key": f"deadline:{row['id']}", "kind": "deadline", "title": row["title"],
-        "starts_at": row["due_at"], "description": "Срок домашнего задания",
+        "starts_at": utc_datetime(row["due_at"]), "description": "Срок домашнего задания",
         "section": "homework", "target_id": row["id"],
     } for row in homework if row.get("due_at") and row["due_at"] >= now
     and row.get("display_status") == "not_started"
     and not any(action["key"] == f"homework:{row['id']}" for action in required_actions))
-    upcoming = sorted(upcoming, key=lambda row: row["starts_at"])[:2]
+    upcoming = sorted(upcoming, key=lambda row: utc_datetime(row["starts_at"]))[:2]
 
     feedback = [row for row in tracking.get("feedback", []) if not row.get("read_at")]
     completed_stages = sum(row.get("state") == "completed" for row in stages)
     past_events = [
         row for row in events
         if row.get("status") in {"published", "completed"}
-        and row.get("ends_at") and row["ends_at"] <= now
+        and row.get("ends_at") and utc_datetime(row["ends_at"]) <= utc_datetime(now)
     ]
     present_events = sum((row.get("attendance") or {}).get("status") == "present" for row in past_events)
     unmarked_events = sum((row.get("attendance") or {}).get("status", "not_marked") == "not_marked" for row in past_events)

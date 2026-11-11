@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, model_validator
 
 
 class AcceleratorTeamCreate(BaseModel):
-    name: str = Field(min_length=2, max_length=200)
+    name: str = Field(min_length=2, max_length=500)
     max_members: int = Field(default=5, ge=1, le=20)
 
 
@@ -16,7 +16,7 @@ class AcceleratorTeamProjectAttach(BaseModel):
 
 
 class AcceleratorTeamUpdate(BaseModel):
-    name: str | None = Field(default=None, min_length=2, max_length=200)
+    name: str | None = Field(default=None, min_length=2, max_length=500)
     max_members: int | None = Field(default=None, ge=1, le=20)
     recruiting_open: bool | None = None
     status: Literal["archived"] | None = None
