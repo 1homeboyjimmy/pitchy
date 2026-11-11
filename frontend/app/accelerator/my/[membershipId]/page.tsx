@@ -7,6 +7,7 @@ import { useParams, useRouter } from "next/navigation";
 
 import { describeApiError, getAuthJson } from "@/lib/api";
 import { useAuth } from "@/lib/hooks/useAuth";
+import { getAcceleratorMemberships } from "@/lib/acceleratorMemberships";
 import { takeAcceleratorEntry } from "@/lib/acceleratorEntryHandoff";
 import { NotificationCenter } from "@/components/accelerator/NotificationCenter";
 import { PitchyLogo } from "@/components/shared/PitchyLogo";
@@ -37,7 +38,7 @@ export default function ResidentAcceleratorPage() {
       }
       // Staff navigation is optional and must not hold up the participant's first screen.
       void getAuthJson<AcceleratorAccess[]>("/api/accelerators", token).then(setAccelerators).catch(() => {});
-      const workspace = await getAuthJson<ResidentWorkspaceData>("/api/accelerators/me/memberships", token);
+      const workspace = await getAcceleratorMemberships(token);
       setData(workspace);
       setError("");
     }

@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/hooks/useAuth";
-import { getAuthJson } from "@/lib/api";
+import { getAcceleratorMemberships } from "@/lib/acceleratorMemberships";
 import { ParticipantProfileForm, type ParticipantFields } from "./ParticipantProfile";
 
 type Pending = { membership_id: number; registration_required?: boolean; participant_profile?: ParticipantFields; cohort: { name: string } };
@@ -12,13 +12,14 @@ export function ParticipantRegistrationGate() {
   const [pending, setPending] = useState<Pending | null>(null);
   const load = useCallback(async () => {
     if (!token) return;
-    try { const data = await getAuthJson<{ memberships: Pending[] }>("/api/accelerators/me/memberships", token); setPending(data.memberships.find(m => m.registration_required) || null); }
+    try { const data = await getAcceleratorMemberships(token); setPending(data.memberships.find(m => m.registration_required) || null); }
     catch { /* Auth errors are handled by the current page. */ }
   }, [token]);
+  const registrationContext = pathname === "/accelerator" || pathname.startsWith("/accelerator/my/") ? "/accelerator" : pathname;
   useEffect(() => {
     const timer = window.setTimeout(() => { void load(); }, 0);
     return () => window.clearTimeout(timer);
-  }, [load, pathname]);
+  }, [load, registrationContext]);
   const show = !!token && !!pending && pathname !== "/set-password";
   useEffect(() => {
     const dialog = dialogRef.current;

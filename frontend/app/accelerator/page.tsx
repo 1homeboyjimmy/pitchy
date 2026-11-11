@@ -8,6 +8,7 @@ import { ArrowRight, LayoutDashboard, Loader2, LogIn, Menu, X, RefreshCw, Rocket
 
 import { describeApiError, getAuthJson, getMe, patchAuthJson, postAuthJson, type UserResponse } from "@/lib/api";
 import { useAuth } from "@/lib/hooks/useAuth";
+import { getAcceleratorMemberships } from "@/lib/acceleratorMemberships";
 import { handoffAcceleratorEntry } from "@/lib/acceleratorEntryHandoff";
 
 import { type ApplicationFormSchema } from "@/components/accelerator/ApplicationFormEditor";
@@ -124,7 +125,7 @@ export default function AcceleratorWorkspacePage() {
     setLoading(true);
     let redirecting = false;
     try {
-      const [rows, user, workspace] = await Promise.all([getAuthJson<Accelerator[]>("/api/accelerators", token), getMe(token), getAuthJson<ResidentWorkspaceData>("/api/accelerators/me/memberships", token)]);
+      const [rows, user, workspace] = await Promise.all([getAuthJson<Accelerator[]>("/api/accelerators", token), getMe(token), getAcceleratorMemberships(token)]);
       const participantMembership = preferredParticipantMembership(workspace.memberships);
       const participantRows = participantMemberships(workspace.memberships);
       const requestedStaffContext = new URLSearchParams(window.location.search).get("context") === "staff";

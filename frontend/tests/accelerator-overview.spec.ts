@@ -27,6 +27,7 @@ async function mockOverview(page: Page) {
       'program-config': { cohort_id: 12, version: 1, modules, locked_modules: { applications: true, program: true } },
       applications: [{ id: 71, status: 'submitted', applicant_name: 'Кандидат', application_type: 'project', form_payload: {}, submitted_at: new Date().toISOString() }],
       residents,
+      'overview-summary': { participants: 3, applications_to_review: 1, applications_to_enroll: 0, applications_in_progress: 1, without_tracker: 2, first_without_tracker: 101, at_risk: 1 },
       analytics,
       'operations-health': { status: 'error', issues: [{ code: 'failed_notifications', severity: 'error', count: 27, message: 'Уведомления не доставлены', recommended_action: 'Проверьте состояние доставки' }] },
       homework: [homework], events: [event], trackers: [{ staff_id: 61, user_id: 9, name: 'Анна', email: 'tracker@example.test', membership_ids: [103], team_ids: [] }],
@@ -38,7 +39,7 @@ async function mockOverview(page: Page) {
   });
   await page.route('**/api/accelerators/cohorts/13/*', route => {
     const path = new URL(route.request().url()).pathname.split('/').pop();
-    const responses: Record<string, unknown> = { 'program-config': { cohort_id: 13, version: 1, modules: { applications: true, program: true }, locked_modules: {} }, analytics: { program: { published_stages: 0, completion_percent: 0, current_stage: null }, attendance: { past_events: 0, attendance_percent: 0 } }, 'operations-health': { issues: [] } };
+    const responses: Record<string, unknown> = { 'overview-summary': { participants: 0, applications_to_review: 0, applications_to_enroll: 0, applications_in_progress: 0, without_tracker: 0, first_without_tracker: null, at_risk: 0 }, 'program-config': { cohort_id: 13, version: 1, modules: { applications: true, program: true }, locked_modules: {} }, analytics: { program: { published_stages: 0, completion_percent: 0, current_stage: null }, attendance: { past_events: 0, attendance_percent: 0 } }, 'operations-health': { issues: [] } };
     return route.fulfill({ json: responses[path || ''] || [] });
   });
 }
@@ -71,7 +72,9 @@ test('overview shows real summary and connects actions and specific agenda entri
   await page.getByRole('button', { name: 'Назначить', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Участники' })).toBeVisible();
   await expect(page).toHaveURL(/resident=101/);
+  await expect(page.getByRole('dialog', { name: 'Карточка участника' })).toBeVisible();
   await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: 'Карточка участника' })).toHaveCount(0);
   await back();
   await page.getByRole('button', { name: 'Открыть', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Трекинг', exact: true })).toBeVisible();
