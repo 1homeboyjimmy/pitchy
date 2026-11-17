@@ -4859,18 +4859,26 @@ async def mark_event_attendance(
         AcceleratorAttendanceRecord.event_id == event.id,
         AcceleratorAttendanceRecord.membership_id == membership.id,
     ))).scalar_one_or_none()
-    now = datetime.utcnow()
-    if not record:
-        record = AcceleratorAttendanceRecord(event_id=event.id, membership_id=membership.id)
-        db.add(record)
-    record.status = payload.status
-    record.checkin_method = "manual"
-    record.checked_in_at = now if payload.status == "present" else None
-    record.marked_by_user_id = user.id
-    record.comment = (payload.comment or "").strip() or None
-    add_audit(db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
-              actor_user_id=user.id, action="attendance.marked", target_type="event", target_id=event.id,
-              details={"membership_id": membership.id, "status": payload.status})
+    if payload.status == "not_marked":
+        previous_status = record.status if record else "not_marked"
+        if record:
+            await db.delete(record)
+        add_audit(db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+                  actor_user_id=user.id, action="attendance.cleared", target_type="event", target_id=event.id,
+                  details={"membership_id": membership.id, "previous_status": previous_status})
+    else:
+        now = datetime.utcnow()
+        if not record:
+            record = AcceleratorAttendanceRecord(event_id=event.id, membership_id=membership.id)
+            db.add(record)
+        record.status = payload.status
+        record.checkin_method = "manual"
+        record.checked_in_at = now if payload.status == "present" else None
+        record.marked_by_user_id = user.id
+        record.comment = (payload.comment or "").strip() or None
+        add_audit(db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
+                  actor_user_id=user.id, action="attendance.marked", target_type="event", target_id=event.id,
+                  details={"membership_id": membership.id, "status": payload.status})
     if event.stage_id:
         await db.flush()
         stage_state = await ProgramProgressService(db).complete_or_reconcile_stage(
@@ -4884,7 +4892,7 @@ async def mark_event_attendance(
                 details={"membership_id": membership.id, "source": "auto"},
             )
     await db.commit()
-    return {"event_id": event.id, "membership_id": membership.id, "status": record.status}
+    return {"event_id": event.id, "membership_id": membership.id, "status": payload.status}
 
 
 @router.get("/memberships/{membership_id}/events")

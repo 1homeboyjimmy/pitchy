@@ -7,6 +7,7 @@ import { describeApiError, getAuthJson } from "@/lib/api";
 
 type AuditRow = { id: number; actor_user_id?: number | null; action: string; target_type?: string | null; target_id?: number | null; details?: Record<string, unknown> | null; created_at: string };
 const LABELS: Record<string, string> = {
+  "attendance.marked": "Отмечена посещаемость", "attendance.cleared": "Снята отметка посещаемости",
   "accelerator.created": "Создан акселератор", "accelerator.setup_completed": "Завершена первичная настройка", "accelerator.updated": "Изменены настройки акселератора",
   "cohort.created": "Создан поток", "cohort.updated": "Изменены настройки потока", "cohort.status_changed": "Изменён статус потока", "program_config.updated": "Изменён набор модулей",
   "organizer.assigned": "Назначен организатор", "organizer.removed": "Удалён организатор", "application.accepted": "Принята заявка", "application.enrolled": "Зачислен резидент", "resident.enrolled": "Участник подтвердил участие",

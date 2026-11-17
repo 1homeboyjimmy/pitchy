@@ -1039,7 +1039,7 @@ class HomeworkPitchyToolsUpdate(BaseModel):
 
 class AttendanceMark(BaseModel):
     membership_id: int = Field(gt=0)
-    status: Literal["present", "absent", "excused"]
+    status: Literal["present", "absent", "excused", "not_marked"]
     comment: str | None = Field(default=None, max_length=4000)
 
 

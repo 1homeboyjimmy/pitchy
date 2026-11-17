@@ -199,7 +199,8 @@ async def test_manual_present_is_idempotent_and_metadata_is_retained():
 
 
 @pytest.mark.asyncio
-async def test_qr_reconciles_stage_once_and_manual_absence_revokes_it():
+@pytest.mark.parametrize("new_status", ["absent", "not_marked"])
+async def test_qr_reconciles_stage_once_and_manual_absence_revokes_it(new_status):
     async with AsyncSessionLocal() as db:
         actor, cohort, user, member, event=await context(db)
         policy=ProgramStageCreate(title="Attendance",completion_policy={"attendance":"all_required"}).completion_policy
@@ -207,6 +208,62 @@ async def test_qr_reconciles_stage_once_and_manual_absence_revokes_it():
         db.add(stage);await db.flush();event.stage_id=stage.id;await db.commit()
         for _ in range(2):await routes.check_in_to_event(checkin_session(event)["token"],user,db)
         assert (await db.execute(select(func.count()).select_from(AcceleratorProgramStageProgress).where(AcceleratorProgramStageProgress.stage_id==stage.id))).scalar_one()==1
-        await routes.mark_event_attendance(event.id,AttendanceMark(membership_id=member.id,status="absent"),actor,db)
+        await routes.mark_event_attendance(event.id,AttendanceMark(membership_id=member.id,status=new_status),actor,db)
         assert (await db.execute(select(func.count()).select_from(AcceleratorProgramStageProgress).where(AcceleratorProgramStageProgress.stage_id==stage.id))).scalar_one()==0
-        with pytest.raises(HTTPException):await routes.check_in_to_event(checkin_session(event)["token"],user,db)
+        if new_status == "absent":
+            with pytest.raises(HTTPException):await routes.check_in_to_event(checkin_session(event)["token"],user,db)
+        else:
+            assert (await routes.check_in_to_event(checkin_session(event)["token"],user,db))["checked_in"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('status', ['present', 'absent', 'excused'])
+async def test_manager_can_clear_mark_and_export_returns_not_marked(status):
+    async with AsyncSessionLocal() as db:
+        actor, cohort, user, member, event = await context(db)
+        await routes.mark_event_attendance(event.id, AttendanceMark(membership_id=member.id, status=status), actor, db)
+        result = await routes.mark_event_attendance(event.id, AttendanceMark(membership_id=member.id, status='not_marked'), actor, db)
+        assert result['status'] == 'not_marked'
+        assert (await db.execute(select(AcceleratorAttendanceRecord).where(AcceleratorAttendanceRecord.event_id == event.id, AcceleratorAttendanceRecord.membership_id == member.id))).scalar_one_or_none() is None
+        rows = await routes.list_event_attendance(event.id, actor, db)
+        row = next(row for row in rows if row['membership_id'] == member.id)
+        assert row['status'] == 'not_marked' and row['checked_in_at'] is None
+        audit = (await db.execute(select(AcceleratorAuditLog).where(AcceleratorAuditLog.cohort_id == cohort.id, AcceleratorAuditLog.action == 'attendance.cleared'))).scalar_one()
+        assert audit.details['previous_status'] == status
+        # Clearing an already empty mark remains safe, and QR check-in works again.
+        await routes.mark_event_attendance(event.id, AttendanceMark(membership_id=member.id, status='not_marked'), actor, db)
+        assert (await routes.check_in_to_event(checkin_session(event)['token'], user, db))['checked_in']
+
+
+@pytest.mark.asyncio
+async def test_resident_cannot_clear_manual_mark():
+    async with AsyncSessionLocal() as db:
+        actor, _, user, member, event = await context(db)
+        await routes.mark_event_attendance(event.id, AttendanceMark(membership_id=member.id, status='present'), actor, db)
+        with pytest.raises(HTTPException) as error:
+            await routes.mark_event_attendance(event.id, AttendanceMark(membership_id=member.id, status='not_marked'), user, db)
+        assert error.value.status_code == 403
+        assert (await db.execute(select(AcceleratorAttendanceRecord).where(AcceleratorAttendanceRecord.event_id == event.id, AcceleratorAttendanceRecord.membership_id == member.id))).scalar_one().status == 'present'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('cohort_status', ['completed', 'archived'])
+async def test_clear_mark_rejects_closed_cohort(cohort_status):
+    async with AsyncSessionLocal() as db:
+        actor, cohort, _, member, event = await context(db)
+        await routes.mark_event_attendance(event.id, AttendanceMark(membership_id=member.id, status='present'), actor, db)
+        cohort.status = cohort_status
+        await db.commit()
+        with pytest.raises(HTTPException) as error:
+            await routes.mark_event_attendance(event.id, AttendanceMark(membership_id=member.id, status='not_marked'), actor, db)
+        assert error.value.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_clear_mark_rejects_resident_from_another_cohort():
+    async with AsyncSessionLocal() as db:
+        actor, _, _, _, event = await context(db)
+        _, _, _, foreign_member, _ = await context(db)
+        with pytest.raises(HTTPException) as error:
+            await routes.mark_event_attendance(event.id, AttendanceMark(membership_id=foreign_member.id, status='not_marked'), actor, db)
+        assert error.value.status_code == 422

@@ -139,3 +139,18 @@
 .accelerator-theme[data-theme="light"] .bg-emerald-300 { background:#166534 !important; }
 .accelerator-theme[data-theme="light"] .bg-red-500 { background:#b91c1c !important; color:white !important; }
 .accelerator-theme[data-theme="light"] dialog[aria-label="Завершение регистрации"] { background:#f6f7f9 !important; }
+
+/* Explicit states avoid reversing foreground and background independently. */
+.accelerator-theme .accelerator-queue[aria-pressed="true"] { background:#fff; color:#141313; border-color:#fff; }
+.accelerator-theme[data-theme="light"] .accelerator-queue[aria-pressed="true"] { background:#e2e8f0; color:#182230; border-color:#182230; }
+.accelerator-theme .overview-secondary { display:inline-flex; align-items:center; justify-content:center; gap:8px; border:1px solid rgba(255,255,255,.25); border-radius:12px; padding:11px 14px; font-size:13px; }
+.accelerator-theme .accelerator-danger { color:#fca5a5; }
+.accelerator-theme[data-theme="light"] .overview-secondary { border-color:#475569; }
+.accelerator-theme[data-theme="light"] .accelerator-danger { color:#b91c1c; border-color:#b91c1c; }
+.accelerator-theme .accelerator-qr-surface { background-color:#fff !important; }
+.accelerator-event-header { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:start; gap:16px; }
+.accelerator-event-header > div:last-child { max-width:600px; }
+@media(max-width:1279px) { .accelerator-event-header { grid-template-columns:minmax(0,1fr); } }
+.accelerator-theme[data-theme="light"] .accelerator-passport { background:#fff; color:#182230; }
+
+.accelerator-theme[data-theme="light"] .passport-source-badge { color:#075985; background:#e0f2fe; }
