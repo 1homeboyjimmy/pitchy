@@ -123,6 +123,10 @@ async def cohort_analytics(
     db: AsyncSession, *, cohort: AcceleratorCohort, user: User
 ) -> dict:
     await require_cohort_manager(db, user, cohort)
+    config = (await db.execute(select(AcceleratorProgramConfig).where(
+        AcceleratorProgramConfig.cohort_id == cohort.id
+    ))).scalar_one_or_none()
+    modules = (config.modules or {}) if config else {}
     now = datetime.utcnow()
     applications = await _group_counts(
         db, AcceleratorApplication, AcceleratorApplication.status,
@@ -246,6 +250,7 @@ async def cohort_analytics(
         "applications": applications,
         "residents": residents,
         "program": {
+            "enabled": modules.get("program_progress", True),
             "published_stages": published_stages,
             "completed_stage_records": program_completions,
             "completion_percent": round(program_completions * 100 / program_denominator, 1) if program_denominator else 0,
@@ -257,7 +262,7 @@ async def cohort_analytics(
                 "total": participating,
             } if current_stage else None,
         },
-        "homework": {"published": homework_published, "submissions": homework},
+        "homework": {"enabled": bool(modules.get("homework")), "published": homework_published, "submissions": homework},
         "attendance": {
             "published_events": event_count,
             "past_events": past_events,

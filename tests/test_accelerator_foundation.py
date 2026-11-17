@@ -663,6 +663,7 @@ async def test_role_boundaries_block_cross_accelerator_management_and_quota_chan
         assert compatible_config["modules"] == {
             "applications": True,
             "program": True,
+            "program_progress": True,
             "homework": True,
             "attendance": False,
             "progress_tracking": False,
@@ -2871,6 +2872,7 @@ async def test_resident_today_aggregate_feedback_and_persistent_recommendations(
         await complete_program_material(stage["materials"][0]["id"], resident, db)
         report = await cohort_resident_report(cohort["id"], "json", organizer, db)
         assert report["rows"][0]["program"] == {
+            "enabled": True,
             "completed": 1,
             "total": 1,
             "percent": 100,

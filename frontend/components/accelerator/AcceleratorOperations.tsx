@@ -8,8 +8,8 @@ import { describeApiError, getAuthJson, putAuthJson } from "@/lib/api";
 type Analytics = {
   applications: Record<string, number>;
   residents: Record<string, number>;
-  program: { published_stages: number; completion_percent: number };
-  homework: { published: number; submissions: Record<string, number> };
+  program: { enabled?: boolean; published_stages: number; completion_percent: number };
+  homework: { enabled?: boolean; published: number; submissions: Record<string, number> };
   attendance: { published_events: number; attendance_percent: number };
   quota_usage: Record<string, number>;
   artifacts: Record<string, number>;
@@ -128,7 +128,7 @@ export function AcceleratorOperations({ cohortId, acceleratorId, token, isAdmin 
   return <div className="space-y-6">
     <section className="workspace-card">
       <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs uppercase tracking-[.18em] text-white/30">Состояние потока</p><h2 className="mt-2 text-2xl">Операционный обзор</h2><p className="mt-2 max-w-2xl text-sm text-white/40">Только сводные показатели: персональные данные резидентов здесь не показываются.</p></div><button type="button" onClick={() => void load()} disabled={loading} className="rounded-full border border-white/10 p-3 text-white/45" aria-label="Обновить"><RefreshCw size={17} className={loading ? "animate-spin" : ""} /></button></div>
-      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><Stat label="Заявок" value={applications} /><Stat label="Участников" value={residents} /><Stat label="Пройдено программы" value={`${analytics?.program.completion_percent || 0}%`} /><Stat label="Посещаемость" value={`${analytics?.attendance.attendance_percent || 0}%`} /></div>
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><Stat label="Заявок" value={applications} /><Stat label="Участников" value={residents} />{analytics?.program.enabled !== false && <Stat label="Пройдено программы" value={`${analytics?.program.completion_percent || 0}%`} />}<Stat label="Посещаемость" value={`${analytics?.attendance.attendance_percent || 0}%`} /></div>
     </section>
 
     <section className="workspace-card">
@@ -138,7 +138,7 @@ export function AcceleratorOperations({ cohortId, acceleratorId, token, isAdmin 
 
     <section className="workspace-card">
       <h3 className="text-xl">Ключевые показатели</h3>
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><Stat label="Опубликовано этапов" value={analytics?.program.published_stages || 0} /><Stat label="Домашних заданий" value={analytics?.homework.published || 0} /><Stat label="Активных команд" value={analytics?.teams.active || 0} /><Stat label="Проектов демо-дня" value={analytics?.demo_day.projects || 0} /></div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><Stat label="Опубликовано этапов" value={analytics?.program.published_stages || 0} />{analytics?.homework.enabled !== false && <Stat label="Домашних заданий" value={analytics?.homework.published || 0} />}<Stat label="Активных команд" value={analytics?.teams.active || 0} /><Stat label="Проектов демо-дня" value={analytics?.demo_day.projects || 0} /></div>
       <div className="mt-3 grid gap-3 sm:grid-cols-2"><Summary title="Использование лимитов" rows={analytics?.quota_usage || {}} /><Summary title="Результаты Pitchy" rows={analytics?.artifacts || {}} /></div>
     </section>
 

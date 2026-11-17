@@ -108,7 +108,7 @@ export function ResidentMembershipView({ membership, quotas, onChanged }: { memb
   const navigationGroups: ResidentNavigationGroup[] = [
     { key: "today", label: "Сегодня", icon: Home, sections: [{ id: "today" as const, label: "Сегодня" }] },
     { key: "path", label: "Программа", icon: BookOpen, showChildren: true, sections: [
-      { id: "program" as const, label: "Мой путь" },
+      { id: "program" as const, label: membership.modules.program_progress === false ? "Расписание" : "Мой путь" },
       ...(membership.modules.homework ? [{ id: "homework" as const, label: "Домашние задания" }] : []),
       ...(membership.modules.attendance ? [{ id: "events" as const, label: "Мероприятия" }] : []),
     ] },
@@ -182,7 +182,7 @@ export function ResidentMembershipView({ membership, quotas, onChanged }: { memb
 
       {enrolled && section === "tools" && <section className="workspace-card"><h2 className="mb-5 text-xl">Лимиты Pitchy</h2><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{Object.entries(QUOTA_META).map(([resource, meta]) => { const quota = quotas[resource]; const Icon = meta.icon; const appliesHere = quota?.membership_id === membership.membership_id; return <article key={resource} className="rounded-2xl border border-white/8 bg-white/[0.02] p-4"><Icon size={18} className="mb-4 text-white/40" /><p className="text-sm text-white/45">{meta.label}</p><p className="mt-1 text-2xl">{appliesHere ? quota.limit === -1 ? "∞" : quota.remaining : "—"}</p><p className="mt-1 text-xs text-white/30">{appliesHere ? quota.limit === -1 ? "Без ограничений" : `из ${quota.limit}, использовано ${quota.used}` : "Не назначено этому потоку"}</p></article>; })}</div></section>}
 
-      {enrolled && section === "program" && <ResidentProgramWorkspace membershipId={membership.membership_id} onNavigate={navigate} />}
+      {enrolled && section === "program" && <ResidentProgramWorkspace membershipId={membership.membership_id} trackProgress={membership.modules.program_progress !== false} timezone={membership.cohort.timezone} onNavigate={navigate} />}
       {enrolled && section === "events" && membership.modules.attendance && <ResidentEvents membershipId={membership.membership_id} />}
 
       {enrolled && section === "homework" && membership.modules.homework && <ResidentHomework membershipId={membership.membership_id} />}

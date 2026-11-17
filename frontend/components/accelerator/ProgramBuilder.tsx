@@ -103,13 +103,14 @@ const makeEmptyForm = () => ({
 
 const localDate = (value: string) => new Date(new Date(value).getTime() - new Date(value).getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 
-export function ProgramBuilder({ cohortId, token, focusId }: { cohortId: number; token: string; focusId?: number }) {
+export function ProgramBuilder({ cohortId, token, focusId, trackProgress = true }: { cohortId: number; token: string; focusId?: number; trackProgress?: boolean }) {
   const [stages, setStages] = useState<ProgramStage[]>([]);
   useDashboardFocus("stage", focusId, stages.length);
   const [form, setForm] = useState(makeEmptyForm);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [showForm, setShowForm] = useAcceleratorNavigationState(`ProgramBuilder:showForm:${cohortId}`, false);
-  const [formTab, setFormTab] = useAcceleratorNavigationState<"main" | "content" | "completion">(`ProgramBuilder:formTab:${cohortId}`, "main");
+  const [savedFormTab, setFormTab] = useAcceleratorNavigationState<"main" | "content" | "completion">(`ProgramBuilder:formTab:${cohortId}`, "main");
+  const formTab = !trackProgress && savedFormTab === "completion" ? "main" : savedFormTab;
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
 
@@ -310,7 +311,7 @@ export function ProgramBuilder({ cohortId, token, focusId }: { cohortId: number;
 
     {showForm && <div className="fixed inset-0 z-[80] flex justify-end bg-black/65" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) reset(); }}><form onSubmit={save} role="dialog" aria-modal="true" aria-labelledby="stage-form-title" className="flex h-full w-full max-w-3xl flex-col border-l border-white/10 bg-[#1c1b1b] shadow-2xl">
       <div className="flex items-start justify-between px-5 pb-4 pt-5 sm:px-6"><div><div className="flex flex-wrap items-center gap-3"><h3 id="stage-form-title" className="text-2xl">{editingId ? "Редактирование этапа" : "Новый этап"}</h3><span className="rounded-full border border-violet-300/25 bg-violet-400/10 px-2.5 py-1 text-xs text-violet-200">Черновик</span></div><p className="mt-1 text-sm text-white/40">{form.title || "Настройте этап программы"}</p></div><button type="button" onClick={reset} aria-label="Закрыть" className="rounded-full p-2 text-white/45 hover:bg-white/5"><X /></button></div>
-      <div className="grid grid-cols-3 border-b border-white/10 px-5 sm:px-6">{([['main','Основное'],['content','Состав этапа'],['completion','Завершение']] as const).map(([key,label])=><button key={key} type="button" onClick={()=>setFormTab(key)} className={`border-b-2 px-2 py-4 text-sm ${formTab===key?'border-white text-white':'border-transparent text-white/45'}`}>{label}</button>)}</div>
+      <div className={`grid border-b border-white/10 px-5 sm:px-6 ${trackProgress ? "grid-cols-3" : "grid-cols-2"}`}>{([['main','Основное'],['content','Состав этапа'],['completion','Завершение']] as const).filter(([key])=>trackProgress || key!=='completion').map(([key,label])=><button key={key} type="button" onClick={()=>setFormTab(key)} className={`border-b-2 px-2 py-4 text-sm ${formTab===key?'border-white text-white':'border-transparent text-white/45'}`}>{label}</button>)}</div>
       <div className="flex-1 overflow-y-auto p-5 sm:p-6">{formTab === "main" && <div className="grid gap-4 sm:grid-cols-2">
         <label className="text-sm text-white/60">Название<input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} minLength={2} required className="workspace-input mt-2" /></label>
         <label className="text-sm text-white/60">Открыть не раньше<input type="datetime-local" value={form.unlockAt} onChange={(event) => setForm({ ...form, unlockAt: event.target.value })} className="workspace-input mt-2" /></label>
@@ -363,7 +364,7 @@ export function ProgramBuilder({ cohortId, token, focusId }: { cohortId: number;
       </div>)}</div></>}
 
       {formTab === "completion" && <div className="space-y-5"><div><h4 className="text-lg">Правила завершения</h4><p className="mt-1 text-sm text-white/40">Определите, когда участнику засчитывается этап.</p></div><label className="block text-sm text-white/60">Как завершается этап<select value={form.completionMode} onChange={(event) => setForm({ ...form, completionMode: event.target.value as "auto" | "manual" | "none" })} className="workspace-input mt-2"><option value="auto">Автоматически по требованиям</option><option value="manual">После подтверждения трекера</option><option value="none">Информационный, не влияет на процент</option></select></label><label className="flex items-center justify-between gap-4 rounded-xl border border-white/9 p-4 text-sm text-white/60"><span><b className="block font-medium text-white">Посещение мероприятий</b><small className="mt-1 block text-white/35">Все связанные мероприятия должны быть посещены.</small></span><input type="checkbox" checked={form.attendanceRequired} onChange={(event) => setForm({ ...form, attendanceRequired: event.target.checked })} /></label><div className="rounded-xl border border-white/8 p-4 text-sm text-white/45"><p>Материалы: {form.materials.filter(item=>item.required).length} обязательных</p><p className="mt-2">Действия Pitchy: {form.actions.filter(item=>item.required).length} обязательных</p><p className="mt-2">Домашние задания и мероприятия учитываются автоматически после привязки.</p></div></div>}</div>
-      <div className="flex items-center justify-between gap-2 border-t border-white/8 bg-[#1c1b1b] px-5 py-4 sm:px-6"><button type="button" onClick={()=>formTab==='main'?reset():acceleratorBack(()=>setFormTab(formTab==='completion'?'content':'main'))} className="overview-secondary">{formTab==='main'?'Отмена':'Назад'}</button><div className="flex gap-2"><button disabled={Boolean(busy)} className="overview-secondary">{busy === "save" && <Loader2 size={15} className="animate-spin" />} Сохранить черновик</button>{formTab!=='completion'&&<button type="button" onClick={()=>setFormTab(formTab==='main'?'content':'completion')} className="workspace-button">Продолжить</button>}</div></div>
+      <div className="flex items-center justify-between gap-2 border-t border-white/8 bg-[#1c1b1b] px-5 py-4 sm:px-6"><button type="button" onClick={()=>formTab==='main'?reset():acceleratorBack(()=>setFormTab(formTab==='completion'?'content':'main'))} className="overview-secondary">{formTab==='main'?'Отмена':'Назад'}</button><div className="flex gap-2"><button disabled={Boolean(busy)} className="overview-secondary">{busy === "save" && <Loader2 size={15} className="animate-spin" />} Сохранить черновик</button>{formTab!==(trackProgress?'completion':'content')&&<button type="button" onClick={()=>setFormTab(formTab==='main'?'content':'completion')} className="workspace-button">Продолжить</button>}</div></div>
     </form></div>}
 
     <div className="mt-6">
@@ -374,7 +375,7 @@ export function ProgramBuilder({ cohortId, token, focusId }: { cohortId: number;
             <div>
               <div className="flex flex-wrap items-center gap-2"><h3 className="text-lg">{stage.title}</h3><span className={`rounded-full px-2 py-1 text-xs ${stage.status === "published" ? "bg-emerald-400/10 text-emerald-300" : "bg-white/7 text-white/40"}`}>{stage.status === "published" ? "Опубликован" : "Черновик"}</span>{!stage.required && <span className="text-xs text-white/30">необязательный</span>}</div>
               {stage.description && <p className="mt-2 text-sm text-white/45">{stage.description}</p>}
-              <p className="mt-3 text-xs text-white/30">Действий: {(stage.actions || []).length} · материалов: {stage.materials.length} · домашних заданий: {stage.homework_assignment_ids.length} · {stage.completion_policy?.mode === "manual" ? "подтверждает трекер" : stage.completion_policy?.mode === "none" ? "информационный" : "автозавершение"}{stage.unlock_at ? ` · откроется ${new Date(stage.unlock_at).toLocaleString("ru-RU")}` : ""}{stage.due_at ? ` · срок ${new Date(stage.due_at).toLocaleString("ru-RU")}` : ""}</p>
+              <p className="mt-3 text-xs text-white/30">Действий: {(stage.actions || []).length} · материалов: {stage.materials.length}{trackProgress && <> · домашних заданий: {stage.homework_assignment_ids.length} · {stage.completion_policy?.mode === "manual" ? "подтверждает трекер" : stage.completion_policy?.mode === "none" ? "информационный" : "автозавершение"}</>}{stage.unlock_at ? ` · откроется ${new Date(stage.unlock_at).toLocaleString("ru-RU")}` : ""}{stage.due_at ? ` · срок ${new Date(stage.due_at).toLocaleString("ru-RU")}` : ""}</p>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
