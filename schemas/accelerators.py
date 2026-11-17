@@ -191,10 +191,24 @@ class AcceleratorSetupCreate(BaseModel):
         return self
 
 
+class AttendancePolicy(BaseModel):
+    planned_events: int = Field(gt=0)
+    event_ids: list[int] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_events(self):
+        if (any(event_id <= 0 for event_id in self.event_ids)
+                or len(set(self.event_ids)) != len(self.event_ids)
+                or len(self.event_ids) > self.planned_events):
+            raise ValueError("Укажите уникальные мероприятия в пределах общего плана посещений")
+        return self
+
+
 class CohortCreate(BaseModel):
     name: str = Field(min_length=2, max_length=200)
     timezone: str = Field(default="Europe/Moscow", min_length=1, max_length=80)
     attendance_scope: Literal["individual", "team"] = "individual"
+    attendance_policy: AttendancePolicy | None = None
     starts_at: datetime | None = None
     ends_at: datetime | None = None
     application_form_schema: dict[str, Any] = Field(default_factory=dict)
@@ -214,6 +228,7 @@ class CohortUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=200)
     timezone: str | None = Field(default=None, min_length=1, max_length=80)
     attendance_scope: Literal["individual", "team"] | None = None
+    attendance_policy: AttendancePolicy | None = None
     starts_at: datetime | None = None
     ends_at: datetime | None = None
     application_form_schema: dict[str, Any] | None = None
