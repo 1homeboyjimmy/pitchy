@@ -8,12 +8,12 @@ from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from accelerator_service import add_audit, require_cohort_manager
+from accelerator_attendance_reporting import attendance_summaries
 from models import (
     Accelerator,
     AcceleratorAlumniProfile,
     AcceleratorApplication,
     AcceleratorArtifact,
-    AcceleratorAttendanceRecord,
     AcceleratorCohort,
     AcceleratorCohortClosure,
     AcceleratorDemoDay,
@@ -175,26 +175,21 @@ async def cohort_analytics(
     event_count = await _count(
         db, AcceleratorEvent,
         AcceleratorEvent.cohort_id == cohort.id,
-        AcceleratorEvent.status == "published",
+        AcceleratorEvent.status.in_(("published", "completed")),
     )
     past_events = await _count(
         db, AcceleratorEvent,
         AcceleratorEvent.cohort_id == cohort.id,
-        AcceleratorEvent.status == "published",
+        AcceleratorEvent.status.in_(("published", "completed")),
         AcceleratorEvent.ends_at <= now,
+        AcceleratorEvent.id.in_(cohort.attendance_policy["event_ids"]) if cohort.attendance_policy else True,
     )
-    present = int((await db.execute(
-        select(func.count())
-        .select_from(AcceleratorAttendanceRecord)
-        .join(AcceleratorEvent, AcceleratorEvent.id == AcceleratorAttendanceRecord.event_id)
-        .where(
-            AcceleratorEvent.cohort_id == cohort.id,
-            AcceleratorEvent.status == "published",
-            AcceleratorEvent.ends_at <= now,
-            AcceleratorAttendanceRecord.membership_id.in_(participating_ids),
-            AcceleratorAttendanceRecord.status == "present",
-        )
-    )).scalar_one() or 0)
+    attendance_members = (await db.execute(select(AcceleratorMembership).where(
+        AcceleratorMembership.id.in_(participating_ids),
+    ))).scalars().all()
+    attendance = await attendance_summaries(db, attendance_members, now=now)
+    present = sum(summary["present"] for summary in attendance.values())
+    attendance_total = cohort.attendance_policy["planned_events"] if cohort.attendance_policy else past_events
     quota_rows = (await db.execute(
         select(
             AcceleratorQuotaUsageEvent.resource,
@@ -266,8 +261,9 @@ async def cohort_analytics(
         "attendance": {
             "published_events": event_count,
             "past_events": past_events,
+            "reporting_total": attendance_total,
             "present_records": present,
-            "attendance_percent": round(present * 100 / (past_events * participating), 1) if past_events and participating else 0,
+            "attendance_percent": round(present * 100 / (attendance_total * participating), 1) if attendance_total and participating else 0,
         },
         "quota_usage": {str(resource): int(quantity) for resource, quantity in quota_rows},
         "artifacts": artifacts,

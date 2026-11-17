@@ -14,7 +14,7 @@ type UpcomingItem = { key: string; kind: "event" | "deadline"; title: string; st
 type TodayData = {
   membership_id: number; timezone: string; required_actions: TodayAction[]; upcoming: UpcomingItem[];
   progress: { percent: number; completed_stages: number; total_stages: number; current_stage?: { id: number; title: string } | null };
-  attendance?: { percent: number | null; present: number; total: number; unmarked: number } | null;
+  attendance?: { percent: number | null; present: number; total: number; unmarked: number; basis?: "planned" } | null;
   unread_feedback?: Array<{ id: number }>;
   unavailable_sections: string[];
 };
@@ -93,7 +93,7 @@ export function ResidentToday({ membership, onNavigate }: { membership: TodayMem
 
     <div className="grid gap-5 border-y border-white/15 py-4 sm:grid-cols-2">
       <div className="flex flex-wrap items-center gap-4"><div><p className="text-sm text-white/55">Программа</p><p className="text-3xl font-semibold">{data.progress.total_stages ? data.progress.percent + "%" : "—"}</p></div><div className="min-w-32 flex-1"><div className="h-1.5 overflow-hidden rounded-full bg-white/15"><div className="h-full rounded-full bg-white/85" style={{ width: data.progress.percent + "%" }} /></div><p className="mt-2 text-xs text-white/55">{data.progress.total_stages ? data.progress.completed_stages + " из " + data.progress.total_stages + " этапов завершены" : "Нет опубликованных этапов"}</p></div></div>
-      {membership.modules.attendance && <div className="flex flex-wrap items-center gap-4 sm:border-l sm:border-white/15 sm:pl-6"><div><p className="text-sm text-white/55">Посещаемость</p><p className="text-3xl font-semibold">{attendance?.percent == null ? "—" : attendance.percent + "%"}</p></div><div className="min-w-32 flex-1"><div className="h-1.5 overflow-hidden rounded-full bg-white/15"><div className="h-full rounded-full bg-white/85" style={{ width: (attendance?.percent || 0) + "%" }} /></div><p className="mt-2 text-xs text-white/55">{attendance ? attendance.total ? "Посещено " + attendance.present + " из " + attendance.total + " прошедших мероприятий" : "Пока нет прошедших мероприятий" : "Данные уточняются"}{attendance && attendance.unmarked > 0 ? " · " + attendance.unmarked + " без отметки" : ""}</p></div></div>}
+      {membership.modules.attendance && <div className="flex flex-wrap items-center gap-4 sm:border-l sm:border-white/15 sm:pl-6"><div><p className="text-sm text-white/55">Посещаемость</p><p className="text-3xl font-semibold">{attendance?.percent == null ? "—" : attendance.percent + "%"}</p></div><div className="min-w-32 flex-1"><div className="h-1.5 overflow-hidden rounded-full bg-white/15"><div className="h-full rounded-full bg-white/85" style={{ width: (attendance?.percent || 0) + "%" }} /></div><p className="mt-2 text-xs text-white/55">{attendance ? attendance.total ? "Посещено " + attendance.present + " из " + attendance.total + (attendance.basis === "planned" ? " мероприятий программы" : " прошедших мероприятий") : "Пока нет прошедших мероприятий" : "Данные уточняются"}{attendance && attendance.unmarked > 0 ? " · " + attendance.unmarked + " без отметки" : ""}</p></div></div>}
     </div>
 
     <div className="grid gap-5 lg:grid-cols-2">
