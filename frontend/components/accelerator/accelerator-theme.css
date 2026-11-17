@@ -1,5 +1,5 @@
 /* Scoped compatibility palette for existing accelerator utilities. Keep dark styles intact. */
-.accelerator-theme { min-height:100dvh; }
+.accelerator-theme { min-height:100dvh; position:relative; }
 .accelerator-theme[data-theme="light"] { color-scheme:light; background:#f6f7f9; color:#182230; --color-background:#f6f7f9; --color-foreground:#182230; --color-on-background:#182230; --color-surface:#fff; --color-on-surface:#182230; --color-on-surface-variant:#475569; }
 .accelerator-theme[data-theme="dark"] { color-scheme:dark; background:#141313; color:#e5e2e1; }
 .accelerator-theme[data-theme="light"] .\!bg-\[\#1c1b1b\] { background-color:#ffffff !important; }
@@ -126,9 +126,13 @@
 .accelerator-theme[data-theme="light"] .organizer-subnav { border-color:#cbd2dc; }
 .accelerator-theme[data-theme="light"] :is(button,a,input,select,textarea):focus-visible { outline:2px solid #2563eb; outline-offset:3px; }
 .accelerator-theme[data-theme="light"] .dashboard-focus { outline-color:#2563eb; }
-.accelerator-theme .accelerator-theme-toggle { display:inline-flex; align-items:center; justify-content:center; gap:8px; border:1px solid #64748b; border-radius:12px; padding:9px 12px; font-size:13px; background:#fff; color:#182230; cursor:pointer; }
-.accelerator-theme[data-theme="dark"] .accelerator-theme-toggle { background:#1c1b1b; color:#e5e2e1; }
-.accelerator-theme .accelerator-theme-toolbar { display:flex; justify-content:flex-end; padding:10px 16px; border-bottom:1px solid #64748b40; }
+.accelerator-theme .accelerator-theme-toggle { display:inline-flex; flex-shrink:0; align-items:center; justify-content:center; width:44px; height:44px; border:1px solid rgb(255 255 255 / 10%); border-radius:50%; color:rgb(255 255 255 / 55%); cursor:pointer; background:transparent; }
+.accelerator-theme[data-theme="light"] .accelerator-theme-toggle { color:#475569; border-color:#cbd2dc; }
+.accelerator-theme .accelerator-theme-toggle:hover { background:rgb(127 127 127 / 10%); }
+.accelerator-theme .accelerator-theme-toggle:focus-visible { outline:2px solid #2563eb; outline-offset:3px; }
+/* Standalone invitations/forms keep a compact control without a separate toolbar. */
+.accelerator-theme-fallback { position:absolute; right:16px; top:16px; z-index:40; }
+.accelerator-theme:has(header .accelerator-theme-toggle) > .accelerator-theme-fallback { display:none; }
 .accelerator-theme[data-theme="light"] .theme-dark-icon,
 .accelerator-theme[data-theme="dark"] .theme-light-icon { display:none; }
 
