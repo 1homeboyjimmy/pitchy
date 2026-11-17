@@ -281,6 +281,7 @@ def cohort_dict(row: AcceleratorCohort) -> dict:
         "name": row.name,
         "status": row.status,
         "timezone": row.timezone,
+        "attendance_scope": row.attendance_scope,
         "starts_at": row.starts_at,
         "ends_at": row.ends_at,
         "application_form_schema": row.application_form_schema or {},
@@ -1866,6 +1867,7 @@ async def create_cohort(
         accelerator_id=accelerator.id,
         name=payload.name.strip(),
         timezone=payload.timezone,
+        attendance_scope=payload.attendance_scope,
         starts_at=payload.starts_at,
         ends_at=payload.ends_at,
         application_form_schema=payload.application_form_schema,
@@ -2019,6 +2021,8 @@ async def update_cohort(
     require_mutable_cohort(cohort)
     if payload.name is not None:
         cohort.name = payload.name.strip()
+    if payload.attendance_scope is not None:
+        cohort.attendance_scope = payload.attendance_scope
     if payload.timezone is not None:
         cohort.timezone = payload.timezone.strip()
     if "starts_at" in payload.model_fields_set:
@@ -4211,6 +4215,7 @@ async def enqueue_event_change_notifications(
 
 
 from accelerator_attendance_service import checkin_session, token_event_id, validate_checkin_token, utc_datetime
+from accelerator_team_attendance import team_attendance_members, record_team_attendance
 
 
 async def attendance_write_context(db, event_id, *, edit_event=False):
@@ -4225,7 +4230,7 @@ async def attendance_write_context(db, event_id, *, edit_event=False):
     require_mutable_cohort(cohort)
     event = (await db.execute(select(AcceleratorEvent).where(
         AcceleratorEvent.id == event_id
-    ).with_for_update(read=not edit_event).execution_options(populate_existing=True))).scalar_one()
+    ).with_for_update(read=not edit_event and cohort.attendance_scope != "team").execution_options(populate_existing=True))).scalar_one()
     await require_attendance_module(db, cohort)
     return event, cohort
 
@@ -4855,6 +4860,16 @@ async def mark_event_attendance(
     if not membership:
         raise HTTPException(status_code=422, detail="Резидент не зачислен в этот поток")
     await require_tracker_membership_access(db, user, membership)
+    if cohort.attendance_scope == "team":
+        members = await team_attendance_members(db, cohort, membership)
+        for member in members:
+            await require_tracker_membership_access(db, user, member)
+        records = await record_team_attendance(
+            db, cohort=cohort, event=event, members=members, actor=user,
+            status=payload.status, method="manual", comment=payload.comment,
+        )
+        await db.commit()
+        return {"event_id": event.id, "membership_id": membership.id, "status": records[membership.id].status}
     record = (await db.execute(select(AcceleratorAttendanceRecord).where(
         AcceleratorAttendanceRecord.event_id == event.id,
         AcceleratorAttendanceRecord.membership_id == membership.id,
@@ -4952,6 +4967,14 @@ async def check_in_to_event(
         raise HTTPException(status_code=409, detail="Отметка посещения ещё не открыта")
     if now > closes_at:
         raise HTTPException(status_code=409, detail="Время отметки посещения завершилось")
+    if cohort.attendance_scope == "team":
+        members = await team_attendance_members(db, cohort, membership)
+        records = await record_team_attendance(
+            db, cohort=cohort, event=event, members=members, actor=user,
+            status="present", method="qr",
+        )
+        await db.commit()
+        return {"event": event_dict(event, attendance=records[membership.id], timezone=cohort.timezone), "checked_in": True}
     record = (await db.execute(select(AcceleratorAttendanceRecord).where(
         AcceleratorAttendanceRecord.event_id == event.id,
         AcceleratorAttendanceRecord.membership_id == membership.id,
