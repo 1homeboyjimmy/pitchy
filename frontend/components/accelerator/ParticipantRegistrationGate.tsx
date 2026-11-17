@@ -6,7 +6,7 @@ import { getAcceleratorMemberships } from "@/lib/acceleratorMemberships";
 import { ParticipantProfileForm, type ParticipantFields } from "./ParticipantProfile";
 
 type Pending = { membership_id: number; registration_required?: boolean; participant_profile?: ParticipantFields; cohort: { name: string } };
-export function ParticipantRegistrationGate() {
+export function ParticipantRegistrationGate({ acceleratorScope = false }: { acceleratorScope?: boolean } = {}) {
   const { token } = useAuth(); const pathname = usePathname();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [pending, setPending] = useState<Pending | null>(null);
@@ -20,7 +20,8 @@ export function ParticipantRegistrationGate() {
     const timer = window.setTimeout(() => { void load(); }, 0);
     return () => window.clearTimeout(timer);
   }, [load, registrationContext]);
-  const show = !!token && !!pending && pathname !== "/set-password";
+  const acceleratorRoute = pathname === "/accelerator" || pathname.startsWith("/accelerator/") || pathname === "/accelerator-invite" || pathname.startsWith("/accelerators/apply/") || pathname.startsWith("/accelerators/application-revision/");
+  const show = acceleratorRoute === acceleratorScope && !!token && !!pending && pathname !== "/set-password";
   useEffect(() => {
     const dialog = dialogRef.current;
     if (show && dialog && !dialog.open) dialog.showModal();
