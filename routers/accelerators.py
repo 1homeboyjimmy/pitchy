@@ -6934,6 +6934,7 @@ async def update_tracking_task(
         notification = await enqueue_notification(
             db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
             recipient_email=recipient.email, recipient_user_id=recipient.id, event_type="tracking_task_status_changed",
+            audience="resident" if resident and recipient.id == resident.id else "staff",
             subject=f"Задача {status_label}: {task.title}",
             body=(
                 f"Пользователь {user.name} изменил статус задачи «{task.title}»: {status_label}."
@@ -7326,6 +7327,7 @@ async def create_project_audit(
         notification = await enqueue_notification(
             db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
             recipient_email=recipient.email, recipient_user_id=recipient.id, event_type="project_audit_completed",
+            audience="resident" if resident and recipient.id == resident.id else "staff",
             subject=f"Готов аудит проекта «{project.name}»",
             body=(
                 f"Аудит «{PROJECT_AUDIT_TYPE_LABELS[row.audit_type]}» завершён. "
@@ -8819,6 +8821,7 @@ async def create_accelerator_match(
         notification = await enqueue_notification(
             db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
             recipient_email=recipient.email, recipient_user_id=recipient.id, event_type="matchmaking_match_created",
+            audience="resident" if resident and recipient.id == resident.id else "staff",
             subject="Новая связка в акселераторе",
             body=(f"Для вас подтверждена связка с {other_name}."
                   f"\n\nОткрыть: {os.getenv('FRONTEND_URL', 'https://pitchy.pro').rstrip('/')}/accelerator"),
@@ -8945,6 +8948,7 @@ async def update_accelerator_match(
         notification = await enqueue_notification(
             db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
             recipient_email=recipient.email, recipient_user_id=recipient.id, event_type="matchmaking_match_status_changed",
+            audience="resident" if resident and recipient.id == resident.id else "staff",
             subject="Связка матчмейкинга изменена",
             body=(f"Статус вашей связки изменён: {'активна' if match.status == 'active' else 'завершена'}."
                   f"\n\nОткрыть: {os.getenv('FRONTEND_URL', 'https://pitchy.pro').rstrip('/')}/accelerator"),

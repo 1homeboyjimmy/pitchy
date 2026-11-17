@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
+from notification_scope import notification_filters
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select, update
@@ -52,10 +54,11 @@ async def list_notifications(
     cursor: int | None = Query(default=None, gt=0),
     user: User = Depends(get_async_current_user),
     db: AsyncSession = Depends(get_async_db),
+    cohort_id: int | None = None,
+    context: Literal["resident", "staff"] = "resident",
 ) -> AcceleratorNotificationPage:
-    query = select(AcceleratorNotification).where(
-        AcceleratorNotification.user_id == user.id
-    )
+    filters = await notification_filters(db, user, cohort_id, context)
+    query = select(AcceleratorNotification).where(*filters)
     if unread_only:
         query = query.where(AcceleratorNotification.read_at.is_(None))
     if cursor is not None:
@@ -78,10 +81,13 @@ async def list_notifications(
 async def unread_notification_count(
     user: User = Depends(get_async_current_user),
     db: AsyncSession = Depends(get_async_db),
+    cohort_id: int | None = None,
+    context: Literal["resident", "staff"] = "resident",
 ) -> AcceleratorNotificationUnreadCount:
+    filters = await notification_filters(db, user, cohort_id, context)
     count = (await db.execute(
         select(func.count(AcceleratorNotification.id)).where(
-            AcceleratorNotification.user_id == user.id,
+            *filters,
             AcceleratorNotification.read_at.is_(None),
         )
     )).scalar_one()
@@ -96,11 +102,14 @@ async def mark_notification_read(
     notification_id: int,
     user: User = Depends(get_async_current_user),
     db: AsyncSession = Depends(get_async_db),
+    cohort_id: int | None = None,
+    context: Literal["resident", "staff"] = "resident",
 ) -> AcceleratorNotificationResponse:
+    filters = await notification_filters(db, user, cohort_id, context)
     row = (await db.execute(
         select(AcceleratorNotification).where(
             AcceleratorNotification.id == notification_id,
-            AcceleratorNotification.user_id == user.id,
+            *filters,
         ).with_for_update()
     )).scalar_one_or_none()
     if not row:
@@ -121,12 +130,15 @@ async def mark_notification_read(
 async def mark_all_notifications_read(
     user: User = Depends(get_async_current_user),
     db: AsyncSession = Depends(get_async_db),
+    cohort_id: int | None = None,
+    context: Literal["resident", "staff"] = "resident",
 ) -> AcceleratorNotificationReadAllResponse:
+    filters = await notification_filters(db, user, cohort_id, context)
     now = datetime.utcnow()
     result = await db.execute(
         update(AcceleratorNotification)
         .where(
-            AcceleratorNotification.user_id == user.id,
+            *filters,
             AcceleratorNotification.read_at.is_(None),
         )
         .values(read_at=now, updated_at=now)
