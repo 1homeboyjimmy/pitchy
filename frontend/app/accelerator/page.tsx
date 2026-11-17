@@ -1,5 +1,7 @@
 "use client";
 
+import { useAcceleratorNavigationState, replaceAcceleratorNavigation, acceleratorBack } from "@/lib/hooks/useAcceleratorNavigation";
+
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -61,13 +63,15 @@ const STATUS_TRANSITIONS: Record<string, string[]> = { draft: ["accepting", "arc
 export default function AcceleratorWorkspacePage() {
   const router = useRouter();
   const { token, isLoaded } = useAuth();
-  const [accelerators, setAccelerators] = useState<Accelerator[]>([]); const [profile, setProfile] = useState<UserResponse | null>(null); const [acceleratorId, setAcceleratorId] = useState<number | null>(null);
-  const [cohorts, setCohorts] = useState<Cohort[]>([]); const [cohortId, setCohortId] = useState<number | null>(null); const [config, setConfig] = useState<ProgramConfig | null>(null);
+  const [accelerators, setAccelerators] = useState<Accelerator[]>([]); const [profile, setProfile] = useState<UserResponse | null>(null); const [acceleratorId, updateAcceleratorId] = useAcceleratorNavigationState<number | null>("page:accelerator", null);
+  const setAcceleratorId = useCallback((value: React.SetStateAction<number | null>) => updateAcceleratorId(value, { replace: true }), [updateAcceleratorId]);
+  const [cohorts, setCohorts] = useState<Cohort[]>([]); const [cohortId, updateCohortId] = useAcceleratorNavigationState<number | null>("page:cohort", null);
+  const setCohortId = useCallback((value: React.SetStateAction<number | null>) => updateCohortId(value, { replace: true }), [updateCohortId]); const [config, setConfig] = useState<ProgramConfig | null>(null);
   const [applications, setApplications] = useState<AcceleratorApplication[]>([]); const [residents, setResidents] = useState<Resident[]>([]); const [residentWorkspace, setResidentWorkspace] = useState<ResidentWorkspaceData | null>(null);
-  const [tab, setTab] = useState<TabKey>("overview"); const [showSetup, setShowSetup] = useState(false); const [loading, setLoading] = useState(true); const [error, setError] = useState(""); const [copied, setCopied] = useState(false);
-  const [selectedMembershipId, setSelectedMembershipId] = useState<number | null>(null); const [reportQuery, setReportQuery] = useState(""); const [reportStatus, setReportStatus] = useState("all"); const [urlReady, setUrlReady] = useState(false);
+  const [tab, setTab] = useAcceleratorNavigationState<TabKey>("page:tab", "overview"); const [showSetup, setShowSetup] = useState(false); const [loading, setLoading] = useState(true); const [error, setError] = useState(""); const [copied, setCopied] = useState(false);
+  const [selectedMembershipId, setSelectedMembershipId] = useAcceleratorNavigationState<number | null>("page:selectedMembershipId", null); const [reportQuery, setReportQuery] = useState(""); const [reportStatus, setReportStatus] = useState("all"); const [urlReady, setUrlReady] = useState(false);
   const [trackingVersion, setTrackingVersion] = useState(0);
-  const [settingsPanel, setSettingsPanel] = useState<SettingsPanelKey>("cohort-general");
+  const [settingsPanel, setSettingsPanel] = useAcceleratorNavigationState<SettingsPanelKey>("page:settingsPanel", "cohort-general");
 
   const [refreshKey, setRefreshKey] = useState(0);
   const [mobileMenu, setMobileMenu] = useState(false);
@@ -84,6 +88,7 @@ export default function AcceleratorWorkspacePage() {
 
 
   useEffect(() => {
+    replaceAcceleratorNavigation(() => {
     const params = new URLSearchParams(window.location.search);
     const savedTab = params.get("section") as TabKey | null;
     if (savedTab) {
@@ -97,7 +102,8 @@ export default function AcceleratorWorkspacePage() {
     const savedCohort = Number(params.get("cohort")); if (savedCohort > 0) setCohortId(savedCohort);
     const savedResident = Number(params.get("resident")); if (savedResident > 0) setSelectedMembershipId(savedResident);
     setReportQuery(params.get("q") || ""); setReportStatus(params.get("status") || "all"); setUrlReady(true);
-  }, []);
+    });
+  }, [setAcceleratorId, setCohortId, setSelectedMembershipId, setSettingsPanel, setTab]);
   useEffect(() => {
     if (!urlReady || loading) return;
     if (window.location.pathname !== "/accelerator") return;
@@ -146,7 +152,7 @@ export default function AcceleratorWorkspacePage() {
       });
     } catch (reason) { setError(describeApiError(reason, "Не удалось загрузить акселераторы")); }
     finally { if (!redirecting) setLoading(false); }
-  }, [router, token]);
+  }, [router, setAcceleratorId, token]);
   useEffect(() => {
     if (!token) { initialAccessLoad.current = null; return; }
     if (initialAccessLoad.current === token) return;
@@ -166,7 +172,7 @@ export default function AcceleratorWorkspacePage() {
       setCohorts(rows); setCohortId((current) => current && rows.some((row) => row.id === current) ? current : rows[0]?.id || null);
     }).catch((reason) => { if (active) setError(describeApiError(reason, "Не удалось загрузить потоки")); });
     return () => { active = false; };
-  }, [acceleratorId, isResident, token, urlReady, isLoaded, loading]);
+  }, [acceleratorId, isResident, token, urlReady, isLoaded, loading, setCohortId]);
 
   const needsApplications = canManage && tab === "applications";
   const needsResidents = !isExpert && ["homework", "matching", "project_audit", "demo_day", "settings"].includes(tab);
@@ -213,7 +219,7 @@ export default function AcceleratorWorkspacePage() {
   useEffect(() => {
     if (!urlReady || loading || !selectedCohort || !config) return;
     if (!tabs.some((item) => item.key === tab)) setTab(tabs[0]?.key || "overview");
-  }, [tab, tabs, urlReady, loading, selectedCohort, config]);
+  }, [tab, tabs, urlReady, loading, selectedCohort, config, setTab]);
 
   const copyApplicationLink = async () => { if (!cohortId) return; try { await navigator.clipboard.writeText(`${window.location.origin}/accelerators/apply/${cohortId}`); setCopied(true); window.setTimeout(() => setCopied(false), 1600); } catch { setError("Не удалось скопировать ссылку. Откройте её в разделе «Анкета»."); } };
 
@@ -223,10 +229,10 @@ export default function AcceleratorWorkspacePage() {
   return <main className={`min-h-[100dvh] text-white ${canManage ? "organizer-shell" : "bg-black px-4 py-7 sm:px-8 sm:py-10"}`}><div className={canManage ? "" : "mx-auto max-w-7xl"}>
     <header className={canManage ? "organizer-header" : "mb-7 flex flex-wrap items-center justify-between gap-4"}>
       <div className="flex items-center gap-3">{canManage && <button type="button" onClick={() => setMobileMenu(value => !value)} className="p-2 lg:hidden" aria-label={mobileMenu ? "Закрыть меню" : "Открыть меню"} aria-expanded={mobileMenu}>{mobileMenu ? <X size={20} /> : <Menu size={20} />}</button>}<Link href="/dashboard" aria-label="В дашборд Pitchy"><PitchyLogo size="2xl" /></Link><span className="hidden text-white/25 sm:inline">/</span><span className="hidden text-sm text-white/55 sm:inline">Акселератор</span></div>
-      {canManage && <div className="organizer-context"><label><span className="sr-only">Акселератор</span><select aria-label="Акселератор" value={acceleratorId || ""} onChange={event => { setAcceleratorId(Number(event.target.value)); setCohorts([]); setCohortId(null); setConfig(null); setApplications([]); setResidents([]); navigate("overview"); }} className="workspace-input">{accelerators.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}</select></label><label><span className="sr-only">Поток</span><select aria-label="Поток" value={cohortId || ""} onChange={event => { setCohortId(Number(event.target.value)); setConfig(null); setApplications([]); setResidents([]); navigate("overview"); }} disabled={!cohorts.length} className="workspace-input">{cohorts.length ? cohorts.map(row => <option key={row.id} value={row.id}>{row.name}</option>) : <option value="">Нет потоков</option>}</select></label></div>}
+      {canManage && <div className="organizer-context"><label><span className="sr-only">Акселератор</span><select aria-label="Акселератор" value={acceleratorId || ""} onChange={event => { updateAcceleratorId(Number(event.target.value)); setCohorts([]); setCohortId(null); setConfig(null); setApplications([]); setResidents([]); navigate("overview"); }} className="workspace-input">{accelerators.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}</select></label><label><span className="sr-only">Поток</span><select aria-label="Поток" value={cohortId || ""} onChange={event => { updateCohortId(Number(event.target.value)); setConfig(null); setApplications([]); setResidents([]); navigate("overview"); }} disabled={!cohorts.length} className="workspace-input">{cohorts.length ? cohorts.map(row => <option key={row.id} value={row.id}>{row.name}</option>) : <option value="">Нет потоков</option>}</select></label></div>}
       <div className="flex items-center gap-2">{canManage && <span className="hidden rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/65 xl:inline">{isAdmin ? "Главный администратор" : "Организатор"}</span>}{isAdmin && <button type="button" onClick={() => setShowSetup(value => !value)} className="overview-secondary !py-2">{showSetup ? "Закрыть мастер" : "Новый акселератор"}</button>}{selectedResidentMembership && <Link href={`/accelerator/my/${selectedResidentMembership.membership_id}`} className="overview-secondary">Моё участие</Link>}<NotificationCenter token={token} /><button type="button" onClick={() => { setRefreshKey(value => value + 1); void (isResident ? loadAccelerators() : loadCohortDetails()); }} className="rounded-full border border-white/10 p-3 text-white/55" aria-label="Обновить"><RefreshCw size={17} /></button></div>
     </header>
-    {canManage && <aside className={`organizer-sidebar ${mobileMenu ? "is-mobile-open" : ""}`}><OrganizerNavigation tabs={tabs} active={tab} onNavigate={navigate} />{isAdmin ? <button type="button" aria-label="Все акселераторы" onClick={() => { setAcceleratorId(null); setCohortId(null); setConfig(null); setApplications([]); setResidents([]); setMobileMenu(false); }} className="mt-6 block px-4 text-xs text-white/40 hover:text-white">← Все акселераторы</button> : <Link href="/dashboard" aria-label="Дашборд" className="mt-6 block px-4 text-xs text-white/40 hover:text-white">← Дашборд</Link>}</aside>}
+    {canManage && <aside className={`organizer-sidebar ${mobileMenu ? "is-mobile-open" : ""}`}><OrganizerNavigation tabs={tabs} active={tab} onNavigate={navigate} />{isAdmin ? <button type="button" aria-label="Все акселераторы" onClick={() => { setAcceleratorId(null); setCohortId(null); setConfig(null); setApplications([]); setResidents([]); setMobileMenu(false); }} className="mt-6 block px-4 text-xs text-white/40 hover:text-white">← Все акселераторы</button> : <button type="button" aria-label="Назад к предыдущему экрану" onClick={() => acceleratorBack(() => navigate("overview"))} className="mt-6 block px-4 text-xs text-white/40 hover:text-white">← Назад</button>}</aside>}
     <div className={canManage ? "organizer-content" : ""}>
     {error && <div role="alert" className="mb-6 rounded-2xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200">{error}</div>}
     {showSetup && isAdmin && <div className="mb-7"><AcceleratorSetupWizard token={token} onCancel={accelerators.length ? () => setShowSetup(false) : undefined} onCreated={async (result) => { await loadAccelerators(); setAcceleratorId(result.accelerator.id); setCohortId(result.cohort.id); setShowSetup(false); setTab("overview"); }} /></div>}
@@ -235,7 +241,7 @@ export default function AcceleratorWorkspacePage() {
       {isResident && acceleratorId && <ResidentWorkspace acceleratorId={acceleratorId} data={residentWorkspace} onChanged={loadAccelerators} />}
       {!isResident && canReadCohort && selectedCohort && <>
         {!canManage && <nav className="mb-6 flex gap-2 overflow-x-auto pb-2" aria-label="Разделы акселератора">{tabs.map((item) => <button type="button" key={item.key} onClick={() => setTab(item.key)} className={`shrink-0 rounded-full border px-4 py-2 text-sm ${tab === item.key ? "border-white bg-white text-black" : "border-white/10 text-white/50 hover:text-white"}`}>{item.label}</button>)}</nav>}
-        {canManage && tab !== "overview" && <div className="mb-5 flex flex-wrap items-center gap-3"><button type="button" onClick={() => navigate("overview")} className="text-xs text-white/50 hover:text-white">← Обзор потока</button><span className="text-white/20">/</span><span className="text-sm text-white/70">{tabs.find(item => item.key === tab)?.label}</span><span className="ml-auto text-xs text-white/35">{selectedCohort.name}</span></div>}
+        {canManage && tab !== "overview" && <div className="mb-5 flex flex-wrap items-center gap-3"><button type="button" onClick={() => acceleratorBack(() => navigate("overview"))} className="text-xs text-white/50 hover:text-white">← Назад</button><span className="text-white/20">/</span><span className="text-sm text-white/70">{tabs.find(item => item.key === tab)?.label}</span><span className="ml-auto text-xs text-white/35">{selectedCohort.name}</span></div>}
         {tab === "overview" && canManage && (config ? <OrganizerOverview key={selectedCohort.id} token={token} cohort={selectedCohort} config={config} onCopy={copyApplicationLink} copied={copied} onNavigate={navigate} onOpenParticipant={setSelectedMembershipId} refreshKey={refreshKey} /> : <section className="workspace-card grid min-h-56 place-items-center"><Loader2 className="animate-spin text-white/40" /></section>)}
         {detailsLoading && (needsApplications || needsResidents) && <section className="workspace-card grid min-h-32 place-items-center" role="status"><Loader2 className="animate-spin text-white/40" /></section>}
         {tab === "applications" && !detailsLoading && <ApplicationManager token={token} applications={applications} schema={selectedCohort.application_form_schema || {}} cohortName={selectedCohort.name} publicUrl={"/accelerators/apply/" + selectedCohort.id} onChanged={loadCohortDetails} />}

@@ -1,4 +1,5 @@
 "use client";
+import { useAcceleratorNavigationState } from "@/lib/hooks/useAcceleratorNavigation";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ChevronRight, Clock3, Loader2, MoreHorizontal, RefreshCw, Search } from "lucide-react";
@@ -15,7 +16,7 @@ const riskClass = { green: "text-emerald-300", yellow: "text-amber-200", red: "t
 
 export function TrackingDashboard({ cohortId, token, onOpenParticipant, headerAction }: { cohortId: number; token: string; onOpenParticipant?: (membershipId: number) => void; headerAction?: React.ReactNode }) {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
-  const [view, setView] = useState<"attention" | "participants">("attention");
+  const [view, setView] = useAcceleratorNavigationState<"attention" | "participants">("TrackingDashboard:view", "attention");
   const [signalFilter, setSignalFilter] = useState<SignalFilter>("today");
   const [riskFilter, setRiskFilter] = useState("all");
   const [query, setQuery] = useState("");

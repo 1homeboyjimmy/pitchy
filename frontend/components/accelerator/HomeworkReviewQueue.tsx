@@ -1,4 +1,5 @@
 "use client";
+import { useAcceleratorNavigationState } from "@/lib/hooks/useAcceleratorNavigation";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCircle2, ChevronRight, History, Loader2, RotateCcw, X } from "lucide-react";
@@ -10,7 +11,7 @@ type Filters={stage:string;assignment:string;participant:string;team:string;trac
 const STATUS:Record<string,string>={review_pending:"На проверке",needs_revision:"На доработке",accepted:"Принято"};
 
 export function HomeworkReviewQueue({cohortId,token,initialAssignmentId}:{cohortId:number;token:string;initialAssignmentId?:number}){
-  const [items,setItems]=useState<QueueItem[]>([]); const [filters,setFilters]=useState<Filters>({stage:"",assignment:initialAssignmentId?String(initialAssignmentId):"",participant:"",team:"",tracker:"",status:"review_pending"}); const [selected,setSelected]=useState<QueueItem|null>(null); const [comment,setComment]=useState(""); const [attempts,setAttempts]=useState<Attempt[]>([]); const [historyOpen,setHistoryOpen]=useState(false); const [busy,setBusy]=useState(""); const [error,setError]=useState("");
+  const [items,setItems]=useState<QueueItem[]>([]); const [filters,setFilters]=useState<Filters>({stage:"",assignment:initialAssignmentId?String(initialAssignmentId):"",participant:"",team:"",tracker:"",status:"review_pending"}); const [selected,setSelected]=useState<QueueItem|null>(null); const [comment,setComment]=useState(""); const [attempts,setAttempts]=useState<Attempt[]>([]); const [historyOpen,setHistoryOpen]=useAcceleratorNavigationState("HomeworkReviewQueue:historyOpen", false); const [busy,setBusy]=useState(""); const [error,setError]=useState("");
   const load=useCallback(async()=>{setError("");try{const data=await getAuthJson<{items:QueueItem[]}>(`/api/accelerators/cohorts/${cohortId}/homework-review-queue`,token);setItems(data.items);setSelected((current)=>current?data.items.find((row)=>row.id===current.id)||null:null);}catch(reason){setError(describeApiError(reason,"Не удалось загрузить очередь проверки"));}},[cohortId,token]);
   useEffect(()=>{void load();},[load]);
   useEffect(()=>{const close=(event:KeyboardEvent)=>{if(event.key==="Escape")setSelected(null);};window.addEventListener("keydown",close);return()=>window.removeEventListener("keydown",close);},[]);

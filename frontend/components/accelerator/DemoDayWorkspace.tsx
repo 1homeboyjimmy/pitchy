@@ -1,5 +1,7 @@
 "use client";
 
+import { useAcceleratorNavigationState } from "@/lib/hooks/useAcceleratorNavigation";
+
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Award, Download, Loader2, Plus, RefreshCw, Search, Star, Trash2, Upload } from "lucide-react";
 
@@ -35,7 +37,7 @@ export function DemoDayWorkspace({ cohortId, membershipId, residents = [], token
   const [busy, setBusy] = useState(""); const [error, setError] = useState("");
   const [createForm, setCreateForm] = useState({ title: "Демо-день", description: "", startsAt: "" });
   const [criteria, setCriteria] = useState<Criterion[]>(defaultCriteria);
-  const [managerTab, setManagerTab] = useState<"overview" | "projects" | "jury" | "criteria" | "results">("overview");
+  const [managerTab, setManagerTab] = useAcceleratorNavigationState<"overview" | "projects" | "jury" | "criteria" | "results">(`DemoDayWorkspace:managerTab:${cohortId}`, "overview");
   const [membershipToAdd, setMembershipToAdd] = useState(""); const [selectionReason, setSelectionReason] = useState("");
   const [expertQuery, setExpertQuery] = useState(""); const [candidates, setCandidates] = useState<Candidate[]>([]);
 

@@ -1,5 +1,7 @@
 "use client";
 
+import { useAcceleratorNavigationState, acceleratorBack } from "@/lib/hooks/useAcceleratorNavigation";
+
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { Archive, CalendarDays, Copy, Download, History, Loader2, MapPin, Paperclip, Pencil, Plus, QrCode, Send, Users, X } from "lucide-react";
@@ -43,7 +45,7 @@ export function AttendanceManager({ cohortId, token, focusId, timeZone = "Europe
   const [homework, setHomework] = useState<Option[]>([]);
   const [stages, setStages] = useState<Option[]>([]);
   const [form, setForm] = useState(empty);
-  const [showForm, setShowForm] = useState(false);
+  const [showForm, setShowForm] = useAcceleratorNavigationState(`AttendanceManager:showForm:${cohortId}`, false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [openId, setOpenId] = useState<number | null>(null);
   const [attendees, setAttendees] = useState<Record<number, Attendee[]>>({});
@@ -54,11 +56,11 @@ export function AttendanceManager({ cohortId, token, focusId, timeZone = "Europe
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [eventView, setEventView] = useState<"upcoming" | "past" | "draft" | "cancelled">("upcoming");
-  const [detailId, setDetailId] = useState<number | null>(null);
-  const [detailTab, setDetailTab] = useState<"overview" | "attendance" | "outcomes">("overview");
-  const [formStep, setFormStep] = useState<"main" | "place" | "links">("main");
+  const [detailId, setDetailId] = useAcceleratorNavigationState<number | null>(`AttendanceManager:detailId:${cohortId}`, null);
+  const [detailTab, setDetailTab] = useAcceleratorNavigationState<"overview" | "attendance" | "outcomes">(`AttendanceManager:detailTab:${cohortId}`, "overview");
+  const [formStep, setFormStep] = useAcceleratorNavigationState<"main" | "place" | "links">(`AttendanceManager:formStep:${cohortId}`, "main");
   const [detailsEdit, setDetailsEdit] = useState<EventRow | null>(null);
-  const [qrEventId, setQrEventId] = useState<number | null>(null);
+  const [qrEventId, setQrEventId] = useAcceleratorNavigationState<number | null>(`AttendanceManager:qrEventId:${cohortId}`, null);
 
   const load = useCallback(async () => {
     setError("");
@@ -72,19 +74,20 @@ export function AttendanceManager({ cohortId, token, focusId, timeZone = "Europe
     } catch (reason) { setError(describeApiError(reason, "Не удалось загрузить мероприятия")); }
   }, [cohortId, token]);
   useEffect(() => { void load(); }, [load]);
-  useEffect(() => { const close = (event: KeyboardEvent) => { if (event.key === "Escape") { setShowForm(false); setDetailId(null); setReschedule(null); setCancellation(null); } }; window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, []);
+  useEffect(() => { const close = (event: KeyboardEvent) => { if (event.key === "Escape") { setShowForm(false); setDetailId(null); setReschedule(null); setCancellation(null); } }; window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, [setDetailId, setShowForm]);
 
   const loadAttendance = useCallback(async (id: number) => {
     const rows = await getAuthJson<Attendee[]>(`/api/accelerators/events/${id}/attendance`, token);
     setAttendees((current) => ({ ...current, [id]: rows }));
   }, [token]);
   useEffect(() => {
-    if (!openId) return;
+    const pollingId = detailTab === "attendance" ? detailId : openId;
+    if (!pollingId) return;
     const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") void Promise.all([loadAttendance(openId), load()]).catch(() => undefined);
+      if (document.visibilityState === "visible") void Promise.all([loadAttendance(pollingId), load()]).catch(() => undefined);
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [load, loadAttendance, openId]);
+  }, [load, loadAttendance, openId, detailId, detailTab]);
 
   const save = async (event: FormEvent) => {
     event.preventDefault(); setBusy("save"); setError("");
@@ -151,6 +154,19 @@ export function AttendanceManager({ cohortId, token, focusId, timeZone = "Europe
   const submitFollowup = async (event: FormEvent) => { event.preventDefault(); if (!followup) return; setBusy(`followup-${followup.id}`); try { await putAuthJson(`/api/accelerators/events/${followup.id}/followup`, { recording_url: followup.recordingUrl || null, outcome: followup.outcome || null, next_step: followup.nextStep || null, post_materials: followup.materials.filter((item) => item.title.trim() && item.url.trim()) }, token); setFollowup(null); await load(); } catch (reason) { setError(describeApiError(reason, "Не удалось сохранить итоги")); } finally { setBusy(""); } };
   const toggleHistory = async (id: number) => { setDetailId(id); setDetailTab("outcomes"); if (!history[id]) try { const rows = await getAuthJson<EventHistory[]>(`/api/accelerators/events/${id}/history`, token); setHistory((current) => ({ ...current, [id]: rows })); } catch (reason) { setError(describeApiError(reason, "Не удалось загрузить историю")); } };
   const openAttendance = async (id: number) => { setDetailId(id); setDetailTab("attendance"); setOpenId(id); try { await loadAttendance(id); } catch (reason) { setError(describeApiError(reason, "Не удалось загрузить посещаемость")); } };
+  useEffect(() => {
+    if (!detailId) return;
+    if (detailTab === "attendance") {
+      void getAuthJson<Attendee[]>(`/api/accelerators/events/${detailId}/attendance`, token)
+        .then(rows => setAttendees(current => ({ ...current, [detailId]: rows })))
+        .catch(reason => setError(describeApiError(reason, "Не удалось загрузить посещаемость")));
+    }
+    if (detailTab === "outcomes") {
+      void getAuthJson<EventHistory[]>(`/api/accelerators/events/${detailId}/history`, token)
+        .then(rows => setHistory(current => ({ ...current, [detailId]: rows })))
+        .catch(reason => setError(describeApiError(reason, "Не удалось загрузить историю")));
+    }
+  }, [detailId, detailTab, token]);
   const mark = async (eventId: number, membershipId: number, status: "present" | "absent" | "excused" | "not_marked") => { setBusy(`attendance-${membershipId}`); setError(""); try { await patchAuthJson(`/api/accelerators/events/${eventId}/attendance`, { membership_id: membershipId, status }, token); await loadAttendance(eventId); await load(); } catch (reason) { setError(describeApiError(reason, "Не удалось сохранить посещаемость")); } finally { setBusy(""); } };
   const copyAttendanceLink = async (url: string) => {
     try {
@@ -208,7 +224,7 @@ export function AttendanceManager({ cohortId, token, focusId, timeZone = "Europe
       {formStep === "links" && <>
       <div className="rounded-2xl border border-dashed border-white/15 p-4 sm:col-span-2"><label className="inline-flex cursor-pointer items-center gap-2 text-sm text-white/65"><Paperclip size={15} />Прикрепить файлы<input type="file" multiple className="sr-only" onChange={(event) => void uploadEventFiles(event.target.files)} /></label>{form.materials.map((item) => <div key={item.url} className="mt-2 flex items-center justify-between rounded-xl bg-white/[0.04] px-3 py-2 text-xs text-white/55"><a href={item.url} target="_blank" rel="noreferrer">{item.title}</a><button type="button" onClick={() => setForm((current) => ({ ...current, materials: current.materials.filter((row) => row.url !== item.url) }))} aria-label={`Убрать ${item.title}`}><X size={13} /></button></div>)}</div>
       </>}
-    </div>{formStep === "links" && <HomeworkLinks homework={homework} links={form.homeworkLinks} onChange={(homeworkLinks) => setForm({ ...form, homeworkLinks })} />}</div><div className="flex items-center justify-between gap-2 border-t border-white/8 bg-[#1c1b1b] px-5 py-4 sm:px-6"><button type="button" onClick={() => formStep === "links" ? setFormStep("place") : formStep === "place" ? setFormStep("main") : setShowForm(false)} className="overview-secondary">{formStep === "main" ? "Отмена" : "Назад"}</button><div className="flex gap-2"><button disabled={busy === "save" || busy === "upload" || busy === "preview"} className="overview-secondary">Сохранить черновик</button>{formStep !== "links" && <button type="button" onClick={()=>setFormStep(formStep === "main" ? "place" : "links")} className="workspace-button">Продолжить</button>}</div></div></form></div>}
+    </div>{formStep === "links" && <HomeworkLinks homework={homework} links={form.homeworkLinks} onChange={(homeworkLinks) => setForm({ ...form, homeworkLinks })} />}</div><div className="flex items-center justify-between gap-2 border-t border-white/8 bg-[#1c1b1b] px-5 py-4 sm:px-6"><button type="button" onClick={() => formStep === "main" ? setShowForm(false) : acceleratorBack(() => setFormStep(formStep === "links" ? "place" : "main"))} className="overview-secondary">{formStep === "main" ? "Отмена" : "Назад"}</button><div className="flex gap-2"><button disabled={busy === "save" || busy === "upload" || busy === "preview"} className="overview-secondary">Сохранить черновик</button>{formStep !== "links" && <button type="button" onClick={()=>setFormStep(formStep === "main" ? "place" : "links")} className="workspace-button">Продолжить</button>}</div></div></form></div>}
     <div className="mt-6 space-y-3">{!visibleEvents.length ? <div className="grid min-h-64 place-items-center rounded-2xl border border-white/8"><div className="text-center"><CalendarDays className="mx-auto text-white/20" size={36} /><p className="mt-4">В этом разделе мероприятий нет</p><p className="mt-2 text-sm text-white/35">Выберите другой режим или создайте новое мероприятие.</p></div></div> : visibleEvents.map((row) => <article id={`dashboard-event-${row.id}`} key={row.id} className="rounded-2xl border border-white/9 bg-white/[0.02] p-4 sm:p-5"><EventHeader row={row} onOpen={() => { setDetailId(row.id); setDetailTab("overview"); }} onEdit={edit} onPublish={publish} onAttendance={openAttendance} onReschedule={() => setReschedule({ id: row.id, startsAt: eventLocalInput(row.starts_at, row.timezone || timeZone), endsAt: eventLocalInput(row.ends_at, row.timezone || timeZone), reason: "" })} onCancel={() => setCancellation({ id: row.id, reason: "" })} onFollowup={() => { void toggleHistory(row.id); setFollowup({ id: row.id, recordingUrl: row.recording_url || "", outcome: row.outcome || "", nextStep: row.next_step || "", materials: row.post_materials || [] }); }} onHistory={toggleHistory} onLifecycle={lifecycle} /></article>)}</div>
     {selectedEvent && <div className="fixed inset-0 z-[70] flex justify-end bg-black/65" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) { setDetailId(null); setOpenId(null); } }}><aside role="dialog" aria-modal="true" aria-labelledby="event-detail-title" className="h-full w-full max-w-2xl overflow-y-auto border-l border-white/10 bg-[#1c1b1b] p-6 shadow-2xl"><div className="flex items-start justify-between"><div><div className="flex flex-wrap items-center gap-3"><h2 id="event-detail-title" className="text-2xl">{selectedEvent.title}</h2><span className={`rounded-full border px-2.5 py-1 text-xs ${selectedEvent.status === 'published' ? 'border-emerald-300/30 text-emerald-300' : 'border-white/15 text-white/45'}`}>{statusLabel[selectedEvent.status]}</span></div><p className="mt-2 text-sm text-white/45">{eventDateText(selectedEvent.starts_at, selectedEvent.timezone || timeZone)} · {eventTimeText(selectedEvent.ends_at, selectedEvent.timezone || timeZone)}</p></div><button type="button" onClick={() => { setDetailId(null); setOpenId(null); }}><X className="text-white/45" /></button></div>{error && <p role="alert" className="mt-4 rounded-xl border border-red-400/20 p-3 text-red-200">{error}</p>}<div className="mt-5 flex border-b border-white/10"><DrawerTab active={detailTab === "overview"} onClick={() => setDetailTab("overview")}>Обзор</DrawerTab><DrawerTab active={detailTab === "attendance"} onClick={() => { setDetailTab("attendance"); void openAttendance(selectedEvent.id); }}>Посещаемость</DrawerTab><DrawerTab active={detailTab === "outcomes"} onClick={() => { setDetailTab("outcomes"); void toggleHistory(selectedEvent.id); }}>Итоги и история</DrawerTab></div>{detailTab === "overview" && <div className="mt-5"><EventDetails row={selectedEvent} />{(selectedEvent.status === "published" || selectedEvent.status === "completed") && <button type="button" onClick={() => setDetailsEdit(selectedEvent)} className="overview-secondary mt-5"><Pencil size={14} />Уточнить данные</button>}{selectedEvent.status === "published" && <button type="button" onClick={()=>setQrEventId(selectedEvent.id)} className="overview-secondary mt-5"><QrCode size={15}/>QR-код и ссылка для отметки</button>}<div className="mt-8 flex flex-wrap gap-2 border-t border-white/8 pt-5">{selectedEvent.status === 'published' && <><button type="button" onClick={()=>setReschedule({id:selectedEvent.id,startsAt:eventLocalInput(selectedEvent.starts_at, selectedEvent.timezone || timeZone),endsAt:eventLocalInput(selectedEvent.ends_at, selectedEvent.timezone || timeZone),reason:''})} className="overview-secondary">Перенести</button><button type="button" onClick={()=>setCancellation({id:selectedEvent.id,reason:''})} className="overview-secondary accelerator-danger">Отменить</button></>}<button type="button" onClick={()=>void openAttendance(selectedEvent.id)} className="workspace-button">Посещаемость</button></div></div>}{detailTab === "attendance" && <AttendancePanel attendees={attendees[selectedEvent.id] || []} eventId={selectedEvent.id} onMark={mark} busy={busy.startsWith("attendance-")} onExport={exportAttendance} onQr={()=>setQrEventId(selectedEvent.id)} exporting={busy === `export-${selectedEvent.id}`} />}{detailTab === "outcomes" && <div className="mt-5">{followup?.id === selectedEvent.id && <FollowupPanel value={followup} onChange={setFollowup} onSubmit={submitFollowup} onUpload={uploadFollowupFiles} uploading={busy === "followup-upload"} onClose={() => setFollowup(null)} />}<div className="mt-5 space-y-2">{(history[selectedEvent.id] || []).map((item) => <div key={item.id} className="rounded-xl bg-black/25 p-3 text-sm"><div className="flex justify-between gap-2"><span>{actionLabel[item.action] || item.action}</span><span className="text-xs text-white/30">{eventDateText(item.created_at, timeZone)}</span></div>{item.reason && <p className="mt-1 text-xs text-white/45">{item.reason}</p>}</div>)}</div></div>}</aside></div>}
     {detailsEdit && <EventDetailsDialog key={detailsEdit.id} event={detailsEdit} token={token} onClose={() => setDetailsEdit(null)} onSaved={load} />}

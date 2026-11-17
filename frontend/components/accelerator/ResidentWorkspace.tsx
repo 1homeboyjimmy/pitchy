@@ -1,5 +1,7 @@
 "use client";
 
+import { useAcceleratorNavigationState, acceleratorBack } from "@/lib/hooks/useAcceleratorNavigation";
+
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -95,8 +97,8 @@ export function ResidentMembershipView({ membership, quotas, onChanged }: { memb
   const { token } = useAuth();
   const enrolled = membership.status === "enrolled";
   const completed = membership.status === "completed";
-  const [passportContainer, setPassportContainer] = useState<HTMLElement | null>(null);
-  const [section, setSection] = useState<ResidentSection>("today");
+  const [passportOpen, setPassportOpen] = useAcceleratorNavigationState(`ResidentWorkspace:passport:${membership.membership_id}`, false);
+  const [section, setSection] = useAcceleratorNavigationState<ResidentSection>(`ResidentWorkspace:section:${membership.membership_id}`, "today");
   const [focusTarget, setFocusTarget] = useState<number | null>(null);
   const [mobileMenu, setMobileMenu] = useState(false);
   const [joining, setJoining] = useState(false);
@@ -159,7 +161,7 @@ export function ResidentMembershipView({ membership, quotas, onChanged }: { memb
             {group.showChildren && activeGroup.key === group.key && group.sections.length > 1 && <div className="ml-5 border-l border-white/15 pl-2">{group.sections.map((item) => <ResidentSubTab key={item.id} active={section === item.id} onClick={() => navigate(item.id)}>{item.label}</ResidentSubTab>)}</div>}
           </div>)}
         </nav>
-        <Link href="/dashboard" className="mt-10 block px-3 py-3 text-sm text-white/60">← Назад в Pitchy</Link>
+        <button type="button" onClick={() => acceleratorBack(() => navigate("today"))} className="mt-10 block px-3 py-3 text-sm text-white/60">← Назад</button>
       </aside>}
       <div className="min-w-0 space-y-6 px-4 py-5 sm:px-6 lg:px-10 lg:py-8">
         <section data-testid="resident-membership-header" className="flex flex-wrap items-center justify-between gap-2 text-sm text-white/55">
@@ -174,7 +176,7 @@ export function ResidentMembershipView({ membership, quotas, onChanged }: { memb
       {enrolled && section === "tools" && token && <ParticipantProfileForm key={JSON.stringify(membership.participant_profile)} membershipId={membership.membership_id} token={token} profile={membership.participant_profile || {}} onSaved={onChanged} />}
       {enrolled && section === "today" && <ResidentToday membership={membership} onNavigate={navigate} />}
 
-      {enrolled && section === "tools" && membership.project && <section className="workspace-card"><div className="flex flex-wrap items-center justify-between gap-5"><div className="min-w-0"><p className="mb-2 text-xs uppercase tracking-[.18em] text-white/35">Проект резидента</p><h2 className="truncate text-2xl">{membership.project.name}</h2><div className="mt-4 h-2 w-full max-w-sm overflow-hidden rounded-full bg-white/8"><div className="h-full rounded-full bg-emerald-400" style={{ width: `${Math.max(0, Math.min(100, membership.project.readiness_index))}%` }} /></div><p className="mt-2 text-xs text-white/40">Паспорт заполнен на {membership.project.readiness_index}%</p><ProjectSummary project={membership.project} /></div><div className="flex shrink-0 flex-wrap gap-2"><button type="button" className="workspace-button" onClick={event => setPassportContainer(event.currentTarget.closest(".accelerator-theme") as HTMLElement)}><FileText size={16} /> Заполнить паспорт</button><Link href={`/passport/${membership.project.id}`} className="overview-secondary">Открыть паспорт</Link></div></div><ProjectSelection membershipId={membership.membership_id} onChanged={onChanged} />{passportContainer && <PassportModal key={membership.project.id} projectId={membership.project.id} projectName={membership.project.name} portalContainer={passportContainer} onClose={() => setPassportContainer(null)} onSaved={() => { void onChanged(); }} />}</section>}
+      {enrolled && section === "tools" && membership.project && <section className="workspace-card"><div className="flex flex-wrap items-center justify-between gap-5"><div className="min-w-0"><p className="mb-2 text-xs uppercase tracking-[.18em] text-white/35">Проект резидента</p><h2 className="truncate text-2xl">{membership.project.name}</h2><div className="mt-4 h-2 w-full max-w-sm overflow-hidden rounded-full bg-white/8"><div className="h-full rounded-full bg-emerald-400" style={{ width: `${Math.max(0, Math.min(100, membership.project.readiness_index))}%` }} /></div><p className="mt-2 text-xs text-white/40">Паспорт заполнен на {membership.project.readiness_index}%</p><ProjectSummary project={membership.project} /></div><div className="flex shrink-0 flex-wrap gap-2"><button type="button" className="workspace-button" onClick={() => setPassportOpen(true)}><FileText size={16} /> Заполнить паспорт</button><Link href={`/passport/${membership.project.id}`} className="overview-secondary">Открыть паспорт</Link></div></div><ProjectSelection membershipId={membership.membership_id} onChanged={onChanged} />{passportOpen && <PassportModal key={membership.project.id} projectId={membership.project.id} projectName={membership.project.name} portalContainer={document.querySelector(".accelerator-theme") as HTMLElement} onClose={() => setPassportOpen(false)} onSaved={() => { void onChanged(); }} />}</section>}
 
       {enrolled && section === "tools" && <section className="workspace-card"><h2 className="mb-5 text-xl">Лимиты Pitchy</h2><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{Object.entries(QUOTA_META).map(([resource, meta]) => { const quota = quotas[resource]; const Icon = meta.icon; const appliesHere = quota?.membership_id === membership.membership_id; return <article key={resource} className="rounded-2xl border border-white/8 bg-white/[0.02] p-4"><Icon size={18} className="mb-4 text-white/40" /><p className="text-sm text-white/45">{meta.label}</p><p className="mt-1 text-2xl">{appliesHere ? quota.limit === -1 ? "∞" : quota.remaining : "—"}</p><p className="mt-1 text-xs text-white/30">{appliesHere ? quota.limit === -1 ? "Без ограничений" : `из ${quota.limit}, использовано ${quota.used}` : "Не назначено этому потоку"}</p></article>; })}</div></section>}
 
