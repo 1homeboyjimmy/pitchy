@@ -194,6 +194,7 @@ class AcceleratorSetupCreate(BaseModel):
 class CohortCreate(BaseModel):
     name: str = Field(min_length=2, max_length=200)
     timezone: str = Field(default="Europe/Moscow", min_length=1, max_length=80)
+    attendance_scope: Literal["individual", "team"] = "individual"
     starts_at: datetime | None = None
     ends_at: datetime | None = None
     application_form_schema: dict[str, Any] = Field(default_factory=dict)
@@ -212,6 +213,7 @@ class CohortCreate(BaseModel):
 class CohortUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=200)
     timezone: str | None = Field(default=None, min_length=1, max_length=80)
+    attendance_scope: Literal["individual", "team"] | None = None
     starts_at: datetime | None = None
     ends_at: datetime | None = None
     application_form_schema: dict[str, Any] | None = None

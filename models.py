@@ -241,6 +241,7 @@ class AcceleratorCohort(Base):
     name: Mapped[str] = mapped_column(String(200))
     status: Mapped[str] = mapped_column(String(30), default="draft", server_default="draft", index=True)
     timezone: Mapped[str] = mapped_column(String(80), default="Europe/Moscow", server_default="Europe/Moscow")
+    attendance_scope: Mapped[str] = mapped_column(String(20), default="individual", server_default="individual")
     starts_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     ends_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     expert_user_id: Mapped[int | None] = mapped_column(
