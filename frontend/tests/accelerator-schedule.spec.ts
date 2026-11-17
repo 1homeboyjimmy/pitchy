@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { mockOverview } from './fixtures/acceleratorOverview';
 
-const modules = { program: true, program_progress: false, homework: false, attendance: true };
+const modules = { program: true, program_progress: false, homework: false, attendance: true, progress_tracking: true };
 
 test('participant sees attendance and a timetable without completion or homework', async ({ page }) => {
   await mockOverview(page);
@@ -27,6 +27,7 @@ test('participant sees attendance and a timetable without completion or homework
   await expect(page.getByText('0%', { exact: true })).toHaveCount(0);
   await expect(page.getByText(/этапов завершены/)).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Все задания' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Нужно сделать' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Программа', exact: true }).click();
   await page.getByRole('button', { name: 'Расписание', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Расписание программы' })).toBeVisible();

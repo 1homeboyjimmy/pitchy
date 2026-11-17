@@ -200,7 +200,7 @@ export function ResidentMembershipView({ membership, quotas, onChanged }: { memb
       {enrolled && section === "tools" && <section className="workspace-card"><h2 className="mb-5 text-xl">Инструменты проекта</h2><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><Action href="/dashboard?tab=chat" label="Чат с аналитиком" icon={MessageSquare} /><Action href="/dashboard?tab=tree" label="Дорожная карта" icon={GitBranch} /><Action href="https://custdev.pitchy.pro/" label="Кастдев" icon={Users} external /><Action href="/grants" label="Гранты" icon={Banknote} /></div></section>}
       {enrolled && section === "tools" && <ResidentProjectRecommendations membershipId={membership.membership_id} onNavigate={(next) => navigate(next as ResidentSection)} />}
 
-      {completed && membership.modules.alumni && <AlumniWorkspace membershipId={membership.membership_id} cohortId={membership.cohort.id} />}
+      {completed && membership.modules.alumni && <AlumniWorkspace membershipId={membership.membership_id} cohortId={membership.cohort.id} trackProgress={membership.modules.program_progress !== false} />}
       </div>
     </div>
   );
