@@ -4,9 +4,9 @@ import { useState, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useMounted } from "@mantine/hooks";
 import { X, Loader, Plus, Save, Hand, Sparkles, Award, Gauge, Wand2, ChevronLeft, ChevronRight, Check, SkipForward, FileDown } from "lucide-react";
-import { getPassport, patchPassport, type PassportData, type PassportFieldDefinition, type PassportReadinessConfig } from "@/lib/api";
+import { describeApiError, getPassport, patchPassport, type PassportData, type PassportFieldDefinition, type PassportReadinessConfig } from "@/lib/api";
 import { getToken } from "@/lib/auth";
-import { notifyError, notifySuccess } from "@/lib/ui";
+import { notifySuccess } from "@/lib/ui";
 
 const SOURCE_BADGE: Record<string, { label: string; cls: string; icon: typeof Hand }> = {
   manual: { label: "вручную", cls: "text-sky-300/80 bg-sky-500/10", icon: Hand },
@@ -39,15 +39,17 @@ function asText(v: unknown): string {
 }
 
 interface Props {
+  portalContainer?: HTMLElement;
   projectId: number;
   projectName: string;
   onClose: () => void;
   onSaved?: (readiness: number) => void;
 }
 
-export function PassportModal({ projectId, projectName, onClose, onSaved }: Props) {
+export function PassportModal({ projectId, projectName, onClose, onSaved, portalContainer }: Props) {
   const mounted = useMounted();
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [passport, setPassport] = useState<PassportData>({});
   const [missing, setMissing] = useState<string[]>([]);
@@ -69,7 +71,7 @@ export function PassportModal({ projectId, projectName, onClose, onSaved }: Prop
         setMissing(v.missing_sections || []);
         setReadinessConfig(v.readiness_config);
       })
-      .catch((e) => { console.error(e); notifyError("Не удалось загрузить паспорт"); })
+      .catch((e) => { console.error(e); setError(describeApiError(e, "Не удалось загрузить паспорт")); })
       .finally(() => setLoading(false));
   }, [projectId]);
 
@@ -158,6 +160,7 @@ export function PassportModal({ projectId, projectName, onClose, onSaved }: Prop
       }
     }
     if (Object.keys(fields).length === 0) { onClose(); return; }
+    setError("");
     setSaving(true);
     try {
       const res = await patchPassport(projectId, fields, t);
@@ -169,7 +172,7 @@ export function PassportModal({ projectId, projectName, onClose, onSaved }: Prop
       onClose();
     } catch (e) {
       console.error(e);
-      notifyError("Не удалось сохранить паспорт");
+      setError(describeApiError(e, "Не удалось сохранить паспорт"));
     } finally {
       setSaving(false);
     }
@@ -190,7 +193,7 @@ export function PassportModal({ projectId, projectName, onClose, onSaved }: Prop
     const b = SOURCE_BADGE[src];
     const Icon = b.icon;
     return (
-      <span className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full ${b.cls}`}>
+      <span className={`passport-source-badge inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full ${b.cls}`}>
         <Icon size={10} /> {b.label}
       </span>
     );
@@ -209,7 +212,8 @@ export function PassportModal({ projectId, projectName, onClose, onSaved }: Prop
   return createPortal(
     <div className="fixed inset-0 z-[300] flex items-center justify-center overflow-y-auto overscroll-contain p-2 sm:p-4 bg-black/80 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="w-full max-w-2xl max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] bg-neutral-950 border border-white/10 rounded-2xl sm:rounded-3xl flex flex-col overflow-hidden"
+        role="dialog" aria-modal="true" aria-label={`Паспорт · ${projectName}`}
+        className="accelerator-passport w-full max-w-2xl max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] bg-neutral-950 border border-white/10 rounded-2xl sm:rounded-3xl flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -250,6 +254,7 @@ export function PassportModal({ projectId, projectName, onClose, onSaved }: Prop
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-8">
+          {error && <p role="alert" className="rounded-xl border border-red-400/20 p-3 text-red-200">{error}</p>}
           {loading ? (
             <div className="flex justify-center py-12"><Loader className="animate-spin text-white/30" size={24} /></div>
           ) : wizard ? (
@@ -314,11 +319,12 @@ export function PassportModal({ projectId, projectName, onClose, onSaved }: Prop
                       const path = f.path;
                       return (
                         <div key={path}>
-                          <label className="flex items-center gap-2 text-white/50 text-xs mb-1.5">
+                          <label htmlFor={`passport-${projectId}-${path}`} className="flex items-center gap-2 text-white/50 text-xs mb-1.5">
                             {f.label} {!f.required && <span className="text-white/25">необязательно</span>} {sourceBadge(path)}
                           </label>
                           {f.multiline || f.list ? (
                             <textarea
+                              id={`passport-${projectId}-${path}`}
                               value={valueFor(path)}
                               onChange={(e) => setValue(path, e.target.value)}
                               rows={f.list ? 3 : 2}
@@ -326,6 +332,7 @@ export function PassportModal({ projectId, projectName, onClose, onSaved }: Prop
                             />
                           ) : (
                             <input
+                              id={`passport-${projectId}-${path}`}
                               value={valueFor(path)}
                               onChange={(e) => setValue(path, e.target.value)}
                               className="w-full bg-white/[0.03] rounded-xl px-3 py-2.5 text-white text-sm border border-white/10 focus:border-white/30 outline-none placeholder:text-white/20"
@@ -346,11 +353,12 @@ export function PassportModal({ projectId, projectName, onClose, onSaved }: Prop
                     const path = `custom.${ck}`;
                     return (
                       <div key={path}>
-                        <label className="flex items-center gap-2 text-white/50 text-xs mb-1.5">
+                        <label htmlFor={`passport-${projectId}-${path}`} className="flex items-center gap-2 text-white/50 text-xs mb-1.5">
                           {ck} {sourceBadge(path)}
                         </label>
                         <textarea
-                          value={valueFor(path)}
+                          id={`passport-${projectId}-${path}`}
+                              value={valueFor(path)}
                           onChange={(e) => setValue(path, e.target.value)}
                           rows={4}
                           className="w-full bg-white/[0.03] rounded-xl px-3 py-2.5 text-white text-sm border border-white/10 focus:border-white/30 outline-none"
@@ -445,6 +453,6 @@ export function PassportModal({ projectId, projectName, onClose, onSaved }: Prop
         </div>
       </div>
     </div>,
-    document.body
+    portalContainer || document.body
   );
 }

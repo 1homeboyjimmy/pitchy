@@ -1,0 +1,131 @@
+{
+  "fields": [
+    {
+      "path": "core.name",
+      "section": "Основное",
+      "label": "Название",
+      "hint": "Как называется ваш стартап?",
+      "weight": 3,
+      "required": true
+    },
+    {
+      "path": "core.problem",
+      "section": "Основное",
+      "label": "Проблема",
+      "hint": "Какую боль клиента вы решаете? 1–2 предложения.",
+      "weight": 3,
+      "required": true,
+      "multiline": true
+    },
+    {
+      "path": "core.solution",
+      "section": "Основное",
+      "label": "Решение",
+      "hint": "Как ваш продукт закрывает эту боль?",
+      "weight": 3,
+      "required": true,
+      "multiline": true
+    },
+    {
+      "path": "core.target_audience",
+      "section": "Основное",
+      "label": "Целевая аудитория",
+      "hint": "Кто платит и пользуется? Сегмент, гео, размер.",
+      "weight": 2,
+      "required": true,
+      "multiline": true
+    },
+    {
+      "path": "core.stage",
+      "section": "Основное",
+      "label": "Стадия",
+      "hint": "Идея / прототип / первые продажи / рост.",
+      "weight": 1,
+      "required": true
+    },
+    {
+      "path": "core.business_model",
+      "section": "Основное",
+      "label": "Бизнес-модель",
+      "hint": "Как зарабатываете: подписка, комиссия, разовые продажи?",
+      "weight": 2,
+      "required": true
+    },
+    {
+      "path": "core.geo",
+      "section": "Основное",
+      "label": "География",
+      "hint": "Основной рынок: Россия, СНГ, конкретные регионы.",
+      "weight": 1,
+      "required": true
+    },
+    {
+      "path": "market.size",
+      "section": "Рынок",
+      "label": "Объём рынка",
+      "hint": "Оценка рынка (TAM/SAM) в деньгах или числе клиентов.",
+      "weight": 2,
+      "required": true
+    },
+    {
+      "path": "market.competitors",
+      "section": "Рынок",
+      "label": "Конкуренты",
+      "hint": "Перечислите по одному в строке.",
+      "weight": 1,
+      "required": true,
+      "list": true
+    },
+    {
+      "path": "metrics.mrr",
+      "section": "Метрики",
+      "label": "MRR",
+      "hint": "Ежемесячная выручка, если уже есть продажи.",
+      "weight": 1,
+      "required": true
+    },
+    {
+      "path": "metrics.users",
+      "section": "Метрики",
+      "label": "Пользователи",
+      "hint": "Сколько активных пользователей или клиентов.",
+      "weight": 1,
+      "required": true
+    },
+    {
+      "path": "metrics.cac",
+      "section": "Метрики",
+      "label": "CAC",
+      "hint": "Стоимость привлечения клиента.",
+      "weight": 0,
+      "required": false
+    },
+    {
+      "path": "metrics.growth",
+      "section": "Метрики",
+      "label": "Рост",
+      "hint": "Динамика роста выручки или базы пользователей.",
+      "weight": 0,
+      "required": false
+    },
+    {
+      "path": "team",
+      "section": "Команда",
+      "label": "Команда",
+      "hint": "Участники и роли — по одному в строке.",
+      "weight": 2,
+      "required": true,
+      "list": true
+    },
+    {
+      "path": "legal.entity_type",
+      "section": "Юр. данные",
+      "label": "Юр. форма",
+      "hint": "ООО, ИП, самозанятый — или пока не оформлено.",
+      "weight": 1,
+      "required": true
+    }
+  ],
+  "custom_field_bonus": 1,
+  "max_custom_fields_for_readiness": 5
+}

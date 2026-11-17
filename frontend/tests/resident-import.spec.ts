@@ -1,3 +1,4 @@
+import passportConfig from './fixtures/passport-fields.json';
 import { expect, test, type Page } from '@playwright/test';
 
 async function resident(page: Page, loggedIn = true) {
@@ -41,6 +42,7 @@ test('enrolled resident sees a project description and can select another idea',
   await page.goto('/accelerator/my/101');
   await page.getByRole('button', { name: 'Мой проект', exact: true }).click();
   await expect(page.getByText('Описание первой идеи.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Основной проект в акселераторе' })).toHaveCSS('background-color', 'rgb(255, 255, 255)');
   await expect(page.getByRole('link', { name: 'Открыть паспорт', exact: true })).toHaveAttribute('href', '/passport/501');
   await expect(page.getByText('Подтвердить участие', { exact: true })).toHaveCount(0);
   await page.getByRole('combobox', { name: 'Основной проект в акселераторе' }).selectOption('502');
@@ -52,4 +54,45 @@ test('enrolled resident sees a project description and can select another idea',
   await expect(page.getByText('Описание второй идеи.', { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: '../private_imports/mtusi-2026/resident-project-mobile.png', fullPage: true });
+});
+
+test('resident fills every passport field, saves and reopens persisted values', async ({ page }) => {
+  await resident(page);
+  const config = passportConfig;
+  let failSave = true;
+  let saved: Record<string, unknown> = {};
+  let passport: Record<string, unknown> = {};
+  await page.route('**/projects/501/passport', route => {
+    if (route.request().method() === 'PATCH') {
+      if (failSave) return route.fulfill({ status: 503, json: { detail: 'Unavailable' } });
+      saved = route.request().postDataJSON().fields;
+      passport = {};
+      for (const [path, value] of Object.entries(saved)) {
+        const [group, field] = path.split('.');
+        if (field) passport[group] ||= {};
+        if (field) (passport[group] as Record<string, unknown>)[field] = value;
+        else passport[group] = value;
+      }
+    }
+    return route.fulfill({ json: { passport, readiness_index: Object.keys(saved).length ? 100 : 0, missing_sections: [], readiness_config: config } });
+  });
+  await page.goto('/accelerator/my/101');
+  await page.getByRole('button', { name: 'Мой проект', exact: true }).click();
+  await page.getByRole('button', { name: 'Заполнить паспорт', exact: true }).click();
+  const editor = page.getByRole('dialog', { name: 'Паспорт · Первая идея' });
+  await expect(editor).toBeVisible();
+  await expect(editor).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+  for (const field of config.fields) {
+    await editor.locator(`[id="passport-501-${field.path}"]`).fill(field.list ? 'Первый пункт\nВторой пункт' : `Данные: ${field.label}`);
+  }
+  await page.screenshot({ path: '../output/fixes/passport.png', fullPage: true });
+  await editor.getByRole('button', { name: 'Сохранить', exact: true }).click();
+  await expect(editor.getByRole('alert')).toBeVisible();
+  failSave = false;
+  await editor.getByRole('button', { name: 'Сохранить', exact: true }).click();
+  await expect(editor).toHaveCount(0);
+  expect(Object.keys(saved).length).toBe(config.fields.length);
+  for (const field of config.fields) expect(saved[field.path]).toEqual(field.list ? ['Первый пункт', 'Второй пункт'] : `Данные: ${field.label}`);
+  await page.getByRole('button', { name: 'Заполнить паспорт', exact: true }).click();
+  for (const field of config.fields) await expect(editor.locator(`[id="passport-501-${field.path}"]`)).toHaveValue(field.list ? 'Первый пункт\nВторой пункт' : `Данные: ${field.label}`);
 });
