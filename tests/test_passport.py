@@ -32,12 +32,15 @@ def test_custdev_is_not_part_of_the_passport_schema_or_readiness():
     assert all(not field["path"].startswith("custdev.") for field in passport.PASSPORT_FIELDS)
 
 
-def test_team_is_a_required_field_and_present_in_the_shared_contract():
-    fields_by_path = {field["path"]: field for field in passport.PASSPORT_FIELDS}
-
-    assert fields_by_path["team"]["required"] is True
-    assert fields_by_path["team"]["list"] is True
-    assert ("team", 2) in passport.KEY_FIELDS
+def test_removed_fields_are_not_editable_or_required():
+    fields = {field["path"] for field in passport.PASSPORT_FIELDS}
+    assert fields.isdisjoint({"team", "metrics.mrr", "legal.entity_type"})
+    project = complete_required_passport()
+    project.pop("team")
+    project.pop("legal")
+    project["metrics"].pop("mrr")
+    assert passport.compute_readiness(project) == 100
+    assert passport.missing_sections(project) == []
 
 
 def test_custom_fields_raise_readiness_but_cannot_replace_required_fields():

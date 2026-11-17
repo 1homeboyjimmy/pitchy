@@ -968,6 +968,8 @@ export type ProjectListItem = {
 };
 
 export type PassportView = {
+  can_edit: boolean;
+  team_managed: boolean;
   passport: PassportData;
   readiness_index: number;
   missing_sections: string[];

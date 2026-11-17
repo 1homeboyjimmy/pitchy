@@ -169,11 +169,15 @@ async def extract_and_store_facts(
                 ))
 
             # 2. Дозаполняем паспорт — только поля, которые НЕ заданы вручную.
-            current = project.passport or {}
+            from project_passport_access import passport_context
+            from models import User
+            editor = await db.get(User, user_id)
+            current, can_edit, _ = await passport_context(db, project, editor)
             safe_updates = {
                 path: value
                 for path, value in passport_updates.items()
-                if passport_lib.can_ai_overwrite(current, path)
+                if can_edit and path != "team" and not path.startswith("team.")
+                and passport_lib.can_ai_overwrite(current, path)
             }
             if safe_updates:
                 merged = passport_lib.merge_patch(current, safe_updates, source="ai")

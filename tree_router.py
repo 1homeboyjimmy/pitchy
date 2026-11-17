@@ -226,7 +226,15 @@ async def get_tree(
     tree = res.scalar_one_or_none()
     if not tree:
         raise HTTPException(status_code=404, detail="Древо не найдено")
-    return TreeResponse.model_validate(tree)
+    response = TreeResponse.model_validate(tree)
+    from project_breakdown import TEMPLATE_VERSION, build_breakdown
+    if tree.project_id and (tree.tree_data or {}).get("template_version") == TEMPLATE_VERSION:
+        from models import Project
+        from project_passport_access import passport_context
+        project = await db.get(Project, tree.project_id)
+        passport, _, _ = await passport_context(db, project, user)
+        response.tree_data = build_breakdown(passport)
+    return response
 
 
 @router.patch("/{tree_id}/nodes/{node_id}")
@@ -249,7 +257,7 @@ async def update_tree_node(
     from project_breakdown import TEMPLATE_VERSION, save_breakdown_fields
     if tree.project_id and (tree.tree_data or {}).get("template_version") == TEMPLATE_VERSION:
         if payload.data and payload.data.form_data:
-            await save_breakdown_fields(db, tree, node_id, payload.data.form_data)
+            await save_breakdown_fields(db, tree, node_id, payload.data.form_data, user=user)
             await db.commit()
         return {"status": "ok", "readiness_index": tree.readiness_index}
 
@@ -418,7 +426,7 @@ async def evaluate_node(
 
     from project_breakdown import TEMPLATE_VERSION, save_breakdown_fields
     if tree.project_id and (tree.tree_data or {}).get("template_version") == TEMPLATE_VERSION:
-        await save_breakdown_fields(db, tree, payload.node_id, payload.form_data)
+        await save_breakdown_fields(db, tree, payload.node_id, payload.form_data, user=user)
         await db.commit()
         return {"tree_data": tree.tree_data, "readiness_index": tree.readiness_index}
 

@@ -263,7 +263,7 @@ class PassportPatchRequest(BaseModel):
     """Частичный апдейт паспорта.
 
     `fields` — плоская карта "section.field" -> value (например
-    {"core.problem": "...", "metrics.mrr": 200000}). Бэкенд мерджит в
+    {"core.problem": "...", "metrics.users": 2000}). Бэкенд мерджит в
     JSONB и проставляет source=manual для затронутых полей, чтобы ИИ
     не перезаписывал их молча.
     """
@@ -316,6 +316,8 @@ class PassportResponse(BaseModel):
     readiness_index: int = 0
     missing_sections: list[str] = Field(default_factory=list)
     readiness_config: dict[str, Any] = Field(default_factory=dict)
+    can_edit: bool = False
+    team_managed: bool = False
 
 
 class ProjectOnboardRequest(BaseModel):

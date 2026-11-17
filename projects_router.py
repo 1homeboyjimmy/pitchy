@@ -257,7 +257,12 @@ async def get_project(
 ) -> ProjectResponse:
     from project_access import get_accessible_project
     project = await get_accessible_project(db, project_id, user, staff_read=True)
-    return _project_response(project)
+    from project_passport_access import passport_context
+    passport, _, _ = await passport_context(db, project, user)
+    response = _project_response(project)
+    response.passport = passport
+    response.readiness_index = passport_lib.compute_readiness(passport)
+    return response
 
 
 @router.patch("/{project_id}", response_model=ProjectResponse)
@@ -335,9 +340,12 @@ async def get_passport(
 ) -> PassportResponse:
     from project_access import get_accessible_project
     project = await get_accessible_project(db, project_id, user, staff_read=True)
-    passport = project.passport or {}
+    from project_passport_access import passport_context
+    passport, can_edit, managed = await passport_context(db, project, user)
     return PassportResponse(
         passport=passport,
+        can_edit=can_edit,
+        team_managed=managed,
         readiness_index=passport_lib.compute_readiness(passport),
         missing_sections=passport_lib.missing_sections(passport),
         readiness_config=passport_lib.readiness_config(),
@@ -354,7 +362,11 @@ async def patch_passport(
     """Ручное редактирование паспорта из модалки. Все затронутые поля
     помечаются source=manual, поэтому ИИ их потом не перезапишет молча."""
     project = await _get_owned_project(project_id, user, db)
-    merged = passport_lib.merge_patch(project.passport or {}, payload.fields, source="manual")
+    from project_passport_access import require_passport_editor
+    current, managed = await require_passport_editor(db, project, user)
+    if any(path == "team" or path.startswith("team.") for path in payload.fields):
+        raise HTTPException(status_code=422, detail="Состав команды заполняется автоматически")
+    merged = passport_lib.merge_patch(current, payload.fields, source="manual")
 
     # A report generated from an older passport must never survive edits as if
     # it were current. Invalidate the overall report and only the step reports
@@ -373,6 +385,8 @@ async def patch_passport(
     await db.refresh(project)
     return PassportResponse(
         passport=merged,
+        can_edit=True,
+        team_managed=managed,
         readiness_index=project.readiness_index,
         missing_sections=passport_lib.missing_sections(merged),
         readiness_config=passport_lib.readiness_config(),

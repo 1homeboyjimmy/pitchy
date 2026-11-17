@@ -77,14 +77,6 @@
       "list": true
     },
     {
-      "path": "metrics.mrr",
-      "section": "Метрики",
-      "label": "MRR",
-      "hint": "Ежемесячная выручка, если уже есть продажи.",
-      "weight": 1,
-      "required": true
-    },
-    {
       "path": "metrics.users",
       "section": "Метрики",
       "label": "Пользователи",
@@ -107,23 +99,6 @@
       "hint": "Динамика роста выручки или базы пользователей.",
       "weight": 0,
       "required": false
-    },
-    {
-      "path": "team",
-      "section": "Команда",
-      "label": "Команда",
-      "hint": "Участники и роли — по одному в строке.",
-      "weight": 2,
-      "required": true,
-      "list": true
-    },
-    {
-      "path": "legal.entity_type",
-      "section": "Юр. данные",
-      "label": "Юр. форма",
-      "hint": "ООО, ИП, самозанятый — или пока не оформлено.",
-      "weight": 1,
-      "required": true
     }
   ],
   "custom_field_bonus": 1,

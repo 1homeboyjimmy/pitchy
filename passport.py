@@ -38,12 +38,9 @@ PASSPORT_FIELDS: list[dict[str, Any]] = [
     {"path": "core.geo", "section": "Основное", "label": "География", "hint": "Основной рынок: Россия, СНГ, конкретные регионы.", "weight": 1, "required": True},
     {"path": "market.size", "section": "Рынок", "label": "Объём рынка", "hint": "Оценка рынка (TAM/SAM) в деньгах или числе клиентов.", "weight": 2, "required": True},
     {"path": "market.competitors", "section": "Рынок", "label": "Конкуренты", "hint": "Перечислите по одному в строке.", "weight": 1, "required": True, "list": True},
-    {"path": "metrics.mrr", "section": "Метрики", "label": "MRR", "hint": "Ежемесячная выручка, если уже есть продажи.", "weight": 1, "required": True},
     {"path": "metrics.users", "section": "Метрики", "label": "Пользователи", "hint": "Сколько активных пользователей или клиентов.", "weight": 1, "required": True},
     {"path": "metrics.cac", "section": "Метрики", "label": "CAC", "hint": "Стоимость привлечения клиента.", "weight": 0, "required": False},
     {"path": "metrics.growth", "section": "Метрики", "label": "Рост", "hint": "Динамика роста выручки или базы пользователей.", "weight": 0, "required": False},
-    {"path": "team", "section": "Команда", "label": "Команда", "hint": "Участники и роли — по одному в строке.", "weight": 2, "required": True, "list": True},
-    {"path": "legal.entity_type", "section": "Юр. данные", "label": "Юр. форма", "hint": "ООО, ИП, самозанятый — или пока не оформлено.", "weight": 1, "required": True},
 ]
 
 # Свободные поля — дополнительный сигнал полноты, но не заменяют обязательные
