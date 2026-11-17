@@ -36,7 +36,7 @@ export function ProjectSelection({ membershipId, onChanged }: { membershipId: nu
   };
   return <div className="mt-5 border-t border-white/10 pt-4">
     <label className="text-sm text-white/60">Основной проект в акселераторе
-      <select className="workspace-input mt-2 !bg-[#1c1b1b] !text-white" style={{ colorScheme: "dark" }} value={selected} onChange={event => setSelected(event.target.value)} disabled={busy}>
+      <select className="workspace-input mt-2 !bg-[#1c1b1b] !text-white" value={selected} onChange={event => setSelected(event.target.value)} disabled={busy}>
         {projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}
       </select>
     </label>
