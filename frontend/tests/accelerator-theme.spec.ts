@@ -60,6 +60,16 @@ for (const mode of ['light', 'dark']) {
       await page.addInitScript(({ key, mode }) => localStorage.setItem(key, mode), { key, mode });
       await page.goto('/accelerator');
       await expect(page.getByRole('heading', { name: 'Обзор потока' })).toBeVisible();
+      const toggle = page.getByRole('button', { name: 'Переключить тему' });
+      await expect(toggle).toHaveCount(1);
+      await expect(toggle).toHaveCSS('width', '44px');
+      await expect(toggle).toHaveCSS('height', '44px');
+      await expect(toggle).toHaveCSS('border-radius', '50%');
+      await expect(page.locator('.accelerator-theme-toolbar')).toHaveCount(0);
+      const header = page.locator('.organizer-header');
+      await expect(header.getByRole('button', { name: 'Переключить тему' })).toBeVisible();
+      const order = await header.locator('button[aria-label="Обновить"] + button').getAttribute('aria-label');
+      expect(order).toBe('Переключить тему');
       await expect(page.locator('.overview-panel').first()).toHaveCSS('background-color', mode === 'light' ? 'rgb(255, 255, 255)' : 'rgb(28, 27, 27)');
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       await page.screenshot({ path: `../output/theme/${mode}-${width}.png`, fullPage: true });
