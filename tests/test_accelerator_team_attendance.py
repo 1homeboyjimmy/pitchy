@@ -62,6 +62,13 @@ async def test_team_manual_decision_applies_to_everyone_and_blocks_qr():
         await routes.mark_event_attendance(event.id, AttendanceMark(membership_id=peer_member.id, status="present"), actor, db)
         await db.refresh(records[0]); await db.refresh(records[1])
         assert all(r.status == "present" for r in records)
+        cleared = await routes.mark_event_attendance(event.id, AttendanceMark(membership_id=member.id, status="not_marked"), actor, db)
+        assert cleared["status"] == "not_marked"
+        remaining = list((await db.execute(select(AcceleratorAttendanceRecord).where(AcceleratorAttendanceRecord.event_id == event.id))).scalars())
+        assert remaining == []
+        await routes.check_in_to_event(checkin_session(event)["token"], peer, db)
+        restored = list((await db.execute(select(AcceleratorAttendanceRecord).where(AcceleratorAttendanceRecord.event_id == event.id))).scalars())
+        assert len(restored) == 2 and all(r.status == "present" for r in restored)
 
 
 @pytest.mark.asyncio

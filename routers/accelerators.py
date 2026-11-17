@@ -4864,12 +4864,12 @@ async def mark_event_attendance(
         members = await team_attendance_members(db, cohort, membership)
         for member in members:
             await require_tracker_membership_access(db, user, member)
-        records = await record_team_attendance(
+        await record_team_attendance(
             db, cohort=cohort, event=event, members=members, actor=user,
             status=payload.status, method="manual", comment=payload.comment,
         )
         await db.commit()
-        return {"event_id": event.id, "membership_id": membership.id, "status": records[membership.id].status}
+        return {"event_id": event.id, "membership_id": membership.id, "status": payload.status}
     record = (await db.execute(select(AcceleratorAttendanceRecord).where(
         AcceleratorAttendanceRecord.event_id == event.id,
         AcceleratorAttendanceRecord.membership_id == membership.id,
