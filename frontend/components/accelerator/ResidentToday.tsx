@@ -63,6 +63,7 @@ export function ResidentToday({ membership, onNavigate }: { membership: TodayMem
   const trackProgress = membership.modules.program_progress !== false;
   const stage = data.progress.current_stage;
   const attendance = data.attendance;
+  const showActions = trackProgress || membership.modules.homework || actions.length > 0 || Boolean(data.unread_feedback?.length);
   const openFeedback = async () => {
     if (token && data.unread_feedback?.length) {
       try {
@@ -97,12 +98,12 @@ export function ResidentToday({ membership, onNavigate }: { membership: TodayMem
       {membership.modules.attendance && <div className={`flex flex-wrap items-center gap-4 ${trackProgress ? "sm:border-l sm:border-white/15 sm:pl-6" : ""}`}><div><p className="text-sm text-white/55">Посещаемость</p><p className="text-3xl font-semibold">{attendance?.percent == null ? "—" : attendance.percent + "%"}</p></div><div className="min-w-32 flex-1"><div className="h-1.5 overflow-hidden rounded-full bg-white/15"><div className="h-full rounded-full bg-white/85" style={{ width: (attendance?.percent || 0) + "%" }} /></div><p className="mt-2 text-xs text-white/55">{attendance ? attendance.total ? "Посещено " + attendance.present + " из " + attendance.total + (attendance.basis === "planned" ? " мероприятий программы" : " прошедших мероприятий") : "Пока нет прошедших мероприятий" : "Данные уточняются"}{attendance && attendance.unmarked > 0 ? " · " + attendance.unmarked + " без отметки" : ""}</p></div></div>}
     </div>
 
-    <div className={`grid gap-5 ${trackProgress || membership.modules.homework || membership.modules.progress_tracking ? "lg:grid-cols-2" : ""}`}>
-      {(trackProgress || membership.modules.homework || membership.modules.progress_tracking) && <section className="rounded-xl border border-white/15 bg-[#1c1b1b] p-5 sm:p-6">
+    <div className={`grid gap-5 ${showActions ? "lg:grid-cols-2" : ""}`}>
+      {showActions && <section className="rounded-xl border border-white/15 bg-[#1c1b1b] p-5 sm:p-6">
         <h2 className="text-xl font-semibold">Нужно сделать {actions.length > 0 && <span className="ml-2 rounded-full bg-white/10 px-2 py-1 text-sm font-normal">{data.required_actions.length}</span>}</h2>
         {actions.length ? <div className="mt-5 divide-y divide-white/15">{actions.map((action) => <div key={action.key} className="flex flex-wrap items-center justify-between gap-3 py-4 first:pt-0 last:pb-0"><div><p className="font-medium">{action.title}</p><p className="mt-1 text-sm text-white/55">{action.overdue ? "Просрочено" : action.due_at ? "До " + dateText(action.due_at, timezone) : action.description || "Обязательное действие"}</p></div><button type="button" onClick={() => onNavigate(action.section, action.target_id)} className="rounded-lg border border-white/35 px-4 py-2 text-sm hover:bg-white/10">{action.kind === "homework" ? action.title.startsWith("Доработать:") ? "Исправить" : "Сдать работу" : action.kind === "task" ? "Открыть задачу" : "Продолжить"}</button></div>)}</div> : <p className="mt-5 flex items-center gap-2 text-sm text-white/60"><CheckCircle2 size={17} />На сегодня всё выполнено</p>}
         {data.unread_feedback && data.unread_feedback.length > 0 && <button type="button" onClick={() => void openFeedback()} className="mt-5 text-sm text-white/70 underline">Новая обратная связь · {data.unread_feedback.length}</button>}
-        <button type="button" onClick={() => onNavigate(membership.modules.homework ? "homework" : "program")} className="mt-5 flex items-center gap-2 text-sm text-white/80">Все задания <ArrowRight size={15} /></button>
+        <button type="button" onClick={() => onNavigate(membership.modules.homework ? "homework" : trackProgress ? "program" : "tracking")} className="mt-5 flex items-center gap-2 text-sm text-white/80">{trackProgress || membership.modules.homework ? "Все задания" : "Все задачи"} <ArrowRight size={15} /></button>
       </section>}
 
       <section className="rounded-xl border border-white/15 bg-[#1c1b1b] p-5 sm:p-6">
