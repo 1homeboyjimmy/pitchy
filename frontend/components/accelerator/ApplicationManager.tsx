@@ -1,5 +1,7 @@
 "use client";
 
+import { useAcceleratorNavigationState, replaceAcceleratorNavigation } from "@/lib/hooks/useAcceleratorNavigation";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Download, Link2, Loader2, Search, X } from "lucide-react";
 
@@ -45,13 +47,13 @@ function queueMatch(row: AcceleratorApplication, queue: Queue) {
 export function ApplicationManager({ token, applications, schema, cohortName, publicUrl, onChanged }: {
   token: string; applications: AcceleratorApplication[]; schema: ApplicationFormSchema; cohortName?: string; publicUrl?: string; onChanged: () => Promise<void>;
 }) {
-  const [queue, setQueue] = useState<Queue>("decision");
+  const [queue, setQueue] = useAcceleratorNavigationState<Queue>("ApplicationManager:queue", "decision");
   const [query, setQuery] = useState("");
   const [applicationType, setApplicationType] = useState("all");
   const [sort, setSort] = useState<"newest" | "oldest">("newest");
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedId, setSelectedId] = useAcceleratorNavigationState<number | null>("ApplicationManager:selectedId", null);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [detailTab, setDetailTab] = useState<DetailTab>("answers");
+  const [detailTab, setDetailTab] = useAcceleratorNavigationState<DetailTab>("ApplicationManager:detailTab", "answers");
   const [events, setEvents] = useState<EventRow[]>([]);
   const [eventsError, setEventsError] = useState("");
   const [loadingEvents, setLoadingEvents] = useState(false);
@@ -71,6 +73,7 @@ export function ApplicationManager({ token, applications, schema, cohortName, pu
   }).sort((a, b) => sort === "newest" ? new Date(b.submitted_at).getTime() - new Date(a.submitted_at).getTime() : new Date(a.submitted_at).getTime() - new Date(b.submitted_at).getTime()), [applications, queue, applicationType, query, sort]);
 
   useEffect(() => {
+    replaceAcceleratorNavigation(() => {
     const params = new URLSearchParams(window.location.search);
     const savedQueue = params.get("applicationsQueue") as Queue | null;
     if (savedQueue && QUEUES.some((item) => item.key === savedQueue)) setQueue(savedQueue);
@@ -80,7 +83,8 @@ export function ApplicationManager({ token, applications, schema, cohortName, pu
     const id = Number(params.get("application"));
     if (id > 0) setSelectedId(id);
     setUrlReady(true);
-  }, []);
+    });
+  }, [setQueue, setSelectedId]);
   useEffect(() => {
     if (!urlReady) return;
     const params = new URLSearchParams(window.location.search);
@@ -97,7 +101,7 @@ export function ApplicationManager({ token, applications, schema, cohortName, pu
     const escape = (event: KeyboardEvent) => { if (event.key === "Escape") setSelectedId(null); };
     window.addEventListener("keydown", escape);
     return () => { window.removeEventListener("keydown", escape); openButton.current?.focus(); };
-  }, [selectedId]);
+  }, [selectedId, setSelectedId]);
   const loadEvents = useCallback(async (id: number) => {
     const request = ++eventRequest.current;
     setLoadingEvents(true); setEventsError("");

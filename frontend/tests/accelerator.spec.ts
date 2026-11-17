@@ -280,7 +280,7 @@ test('organizer cannot see or change Pitchy modules and limits', async ({ page }
   await mockManagerWorkspace(page, false);
   await page.goto('/accelerator?section=settings');
   await expect(page.getByRole('heading', { name: 'Настройки', exact: true })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Дашборд', exact: true })).toHaveAttribute('href', '/dashboard');
+  await expect(page.getByRole('button', { name: 'Назад к предыдущему экрану', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Все акселераторы', exact: true })).toHaveCount(0);
   const settingsNavigation = page.getByRole('navigation', { name: 'Разделы настроек' });
   await expect(settingsNavigation.getByRole('button', { name: 'Разделы платформы' })).toHaveCount(0);
@@ -738,6 +738,8 @@ test('participant can choose and switch between several accelerator streams', as
   await expect(page).toHaveURL(/\/accelerator\/my\/101$/);
   await expect(page.getByRole('link', { name: 'Дашборд', exact: true })).toHaveAttribute('href', '/dashboard');
   await expect(page.getByRole('link', { name: 'Все акселераторы' })).toHaveCount(0);
+  await page.getByRole('button', { name: '← Назад', exact: true }).click();
+  await expect(page).toHaveURL(/\/accelerator\/my\/102$/);
 });
 
 test('participant query parameters cannot open staff context', async ({ page }) => {

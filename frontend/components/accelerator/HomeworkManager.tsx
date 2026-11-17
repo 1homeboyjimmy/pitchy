@@ -1,5 +1,7 @@
 "use client";
 
+import { useAcceleratorNavigationState } from "@/lib/hooks/useAcceleratorNavigation";
+
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Archive, Bell, Clock3, Copy, Loader2, Pencil, Plus, Send, Sparkles, Users, X } from "lucide-react";
 
@@ -63,7 +65,7 @@ export function HomeworkManager({ cohortId, token, residents, isAdmin, pitchyEna
   const [form, setForm] = useState(() => emptyForm(pitchyEnabled));
   const [exceptionsFor, setExceptionsFor] = useState<Assignment | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [showForm, setShowForm] = useState(false);
+  const [showForm, setShowForm] = useAcceleratorNavigationState(`HomeworkManager:showForm:${cohortId}`, false);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [featureEnabled, setFeatureEnabled] = useState(pitchyEnabled);
@@ -82,7 +84,7 @@ export function HomeworkManager({ cohortId, token, residents, isAdmin, pitchyEna
   }, [cohortId, token]);
 
   useEffect(() => { void loadAssignments(); }, [loadAssignments]);
-  useEffect(() => { const close = (event: KeyboardEvent) => { if (event.key === "Escape") { setEditingId(null); setShowForm(false); } }; window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, []);
+  useEffect(() => { const close = (event: KeyboardEvent) => { if (event.key === "Escape") { setEditingId(null); setShowForm(false); } }; window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, [setShowForm]);
   useEffect(() => { setFeatureEnabled(pitchyEnabled); }, [pitchyEnabled, cohortId]);
 
   const togglePitchy = async () => {

@@ -1,5 +1,7 @@
 "use client";
 
+import { useAcceleratorNavigationState, acceleratorBack } from "@/lib/hooks/useAcceleratorNavigation";
+
 import { useEffect, useState } from "react";
 import { ArrowLeft, ArrowRight, Check, Loader2, Rocket } from "lucide-react";
 
@@ -20,7 +22,7 @@ const MODULES = [
 ] as const;
 
 export function AcceleratorSetupWizard({ token, onCreated, onCancel }: { token: string; onCreated: (result: SetupResult) => Promise<void> | void; onCancel?: () => void }) {
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useAcceleratorNavigationState("AcceleratorSetupWizard:step", 1);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [organizationMode, setOrganizationMode] = useState<"new" | "existing">("new");
   const [organizationId, setOrganizationId] = useState("");
@@ -108,7 +110,7 @@ export function AcceleratorSetupWizard({ token, onCreated, onCancel }: { token: 
 
     {error && <p role="alert" className="mt-5 rounded-2xl border border-red-400/20 bg-red-400/10 p-4 text-sm text-red-200">{error}</p>}
     <div className="mt-8 flex items-center justify-between gap-3">
-      <button type="button" onClick={() => setStep((current) => Math.max(1, current - 1))} disabled={step === 1 || busy} className="workspace-button !bg-transparent !text-white"><ArrowLeft size={16} /> Назад</button>
+      <button type="button" onClick={() => acceleratorBack(() => setStep((current) => Math.max(1, current - 1)))} disabled={step === 1 || busy} className="workspace-button !bg-transparent !text-white"><ArrowLeft size={16} /> Назад</button>
       {step < 3 ? <button type="button" onClick={() => setStep((current) => current + 1)} disabled={!canContinue} className="workspace-button">Продолжить <ArrowRight size={16} /></button> : <button type="button" onClick={() => void submit()} disabled={busy} className="workspace-button">{busy ? <Loader2 size={16} className="animate-spin" /> : <Rocket size={16} />} Создать акселератор</button>}
     </div>
     <style jsx>{`.setup-choice{border:1px solid rgba(255,255,255,.1);border-radius:999px;padding:.55rem .9rem;font-size:.8rem;color:rgba(255,255,255,.5)}.setup-choice-active{background:white;color:black}`}</style>

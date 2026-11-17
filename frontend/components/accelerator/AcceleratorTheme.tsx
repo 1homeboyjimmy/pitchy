@@ -5,12 +5,14 @@ import { Suspense } from "react";
 import { ParticipantRegistrationGate } from "./ParticipantRegistrationGate";
 import { Moon, Sun } from "lucide-react";
 import "./accelerator-theme.css";
+import { useAcceleratorNavigationBoundary } from "@/lib/hooks/useAcceleratorNavigation";
 
 const STORAGE_KEY = "pitchy_accelerator_theme";
 const bootstrap = `(function(s){try{var t=localStorage.getItem('${STORAGE_KEY}');s.parentElement.dataset.theme=t==='dark'?'dark':'light'}catch(e){}})(document.currentScript)`;
 
 /** A separate preference keeps accelerator themes isolated from the public site. */
 export function AcceleratorTheme({ children }: { children: ReactNode }) {
+  useAcceleratorNavigationBoundary();
   const root = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const sync = () => {

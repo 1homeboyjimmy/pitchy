@@ -96,3 +96,19 @@ test('resident fills every passport field, saves and reopens persisted values', 
   await page.getByRole('button', { name: 'Заполнить паспорт', exact: true }).click();
   for (const field of config.fields) await expect(editor.locator(`[id="passport-501-${field.path}"]`)).toHaveValue(field.list ? 'Первый пункт\nВторой пункт' : `Данные: ${field.label}`);
 });
+
+test('resident browser and site Back restore the previous view and close passport', async ({ page }) => {
+  await resident(page);
+  await page.route('**/projects/501/passport', r => r.fulfill({ json: { passport: {}, readiness_index: 0, missing_sections: [], readiness_config: passportConfig } }));
+  await page.goto('/accelerator/my/101');
+  await page.getByRole('button', { name: 'Мой проект', exact: true }).click();
+  await page.getByRole('button', { name: 'Заполнить паспорт', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Паспорт · Первая идея' })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByText('Описание первой идеи.', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '← Назад', exact: true }).click();
+  await expect(page.getByText('Описание первой идеи.', { exact: true })).toHaveCount(0);
+  await page.goForward();
+  await expect(page.getByText('Описание первой идеи.', { exact: true })).toBeVisible();
+});

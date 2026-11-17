@@ -1,5 +1,7 @@
 "use client";
 
+import { useAcceleratorNavigationState, acceleratorBack } from "@/lib/hooks/useAcceleratorNavigation";
+
 import { useDashboardFocus } from "./useDashboardFocus";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
@@ -106,8 +108,8 @@ export function ProgramBuilder({ cohortId, token, focusId }: { cohortId: number;
   useDashboardFocus("stage", focusId, stages.length);
   const [form, setForm] = useState(makeEmptyForm);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [showForm, setShowForm] = useState(false);
-  const [formTab, setFormTab] = useState<"main" | "content" | "completion">("main");
+  const [showForm, setShowForm] = useAcceleratorNavigationState(`ProgramBuilder:showForm:${cohortId}`, false);
+  const [formTab, setFormTab] = useAcceleratorNavigationState<"main" | "content" | "completion">(`ProgramBuilder:formTab:${cohortId}`, "main");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
 
@@ -121,7 +123,7 @@ export function ProgramBuilder({ cohortId, token, focusId }: { cohortId: number;
   }, [cohortId, token]);
 
   useEffect(() => { void load(); }, [load]);
-  useEffect(() => { const close = (event: KeyboardEvent) => { if (event.key === "Escape") { setForm(makeEmptyForm()); setEditingId(null); setShowForm(false); } }; window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, []);
+  useEffect(() => { const close = (event: KeyboardEvent) => { if (event.key === "Escape") { setForm(makeEmptyForm()); setEditingId(null); setShowForm(false); } }; window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, [setShowForm]);
 
   const reset = () => {
     setForm(makeEmptyForm());
@@ -361,7 +363,7 @@ export function ProgramBuilder({ cohortId, token, focusId }: { cohortId: number;
       </div>)}</div></>}
 
       {formTab === "completion" && <div className="space-y-5"><div><h4 className="text-lg">Правила завершения</h4><p className="mt-1 text-sm text-white/40">Определите, когда участнику засчитывается этап.</p></div><label className="block text-sm text-white/60">Как завершается этап<select value={form.completionMode} onChange={(event) => setForm({ ...form, completionMode: event.target.value as "auto" | "manual" | "none" })} className="workspace-input mt-2"><option value="auto">Автоматически по требованиям</option><option value="manual">После подтверждения трекера</option><option value="none">Информационный, не влияет на процент</option></select></label><label className="flex items-center justify-between gap-4 rounded-xl border border-white/9 p-4 text-sm text-white/60"><span><b className="block font-medium text-white">Посещение мероприятий</b><small className="mt-1 block text-white/35">Все связанные мероприятия должны быть посещены.</small></span><input type="checkbox" checked={form.attendanceRequired} onChange={(event) => setForm({ ...form, attendanceRequired: event.target.checked })} /></label><div className="rounded-xl border border-white/8 p-4 text-sm text-white/45"><p>Материалы: {form.materials.filter(item=>item.required).length} обязательных</p><p className="mt-2">Действия Pitchy: {form.actions.filter(item=>item.required).length} обязательных</p><p className="mt-2">Домашние задания и мероприятия учитываются автоматически после привязки.</p></div></div>}</div>
-      <div className="flex items-center justify-between gap-2 border-t border-white/8 bg-[#1c1b1b] px-5 py-4 sm:px-6"><button type="button" onClick={()=>formTab==='main'?reset():setFormTab(formTab==='completion'?'content':'main')} className="overview-secondary">{formTab==='main'?'Отмена':'Назад'}</button><div className="flex gap-2"><button disabled={Boolean(busy)} className="overview-secondary">{busy === "save" && <Loader2 size={15} className="animate-spin" />} Сохранить черновик</button>{formTab!=='completion'&&<button type="button" onClick={()=>setFormTab(formTab==='main'?'content':'completion')} className="workspace-button">Продолжить</button>}</div></div>
+      <div className="flex items-center justify-between gap-2 border-t border-white/8 bg-[#1c1b1b] px-5 py-4 sm:px-6"><button type="button" onClick={()=>formTab==='main'?reset():acceleratorBack(()=>setFormTab(formTab==='completion'?'content':'main'))} className="overview-secondary">{formTab==='main'?'Отмена':'Назад'}</button><div className="flex gap-2"><button disabled={Boolean(busy)} className="overview-secondary">{busy === "save" && <Loader2 size={15} className="animate-spin" />} Сохранить черновик</button>{formTab!=='completion'&&<button type="button" onClick={()=>setFormTab(formTab==='main'?'content':'completion')} className="workspace-button">Продолжить</button>}</div></div>
     </form></div>}
 
     <div className="mt-6">
