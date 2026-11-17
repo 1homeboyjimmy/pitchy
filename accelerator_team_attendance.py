@@ -56,18 +56,28 @@ async def record_team_attendance(db, *, cohort, event, members, actor, status, m
         record = records.get(member.id)
         if method == "qr" and record and record.status == "present":
             continue
-        if record is None:
-            record = AcceleratorAttendanceRecord(event_id=event.id, membership_id=member.id)
-            db.add(record)
-            records[member.id] = record
-        record.status = status
-        record.checkin_method = method
-        record.checked_in_at = now if status == "present" else None
-        record.marked_by_user_id = actor.id if method == "manual" else None
-        record.comment = (comment or "").strip() or None
+        if status == "not_marked":
+            if record is not None:
+                await db.delete(record)
+                records.pop(member.id)
+        else:
+            if record is None:
+                record = AcceleratorAttendanceRecord(event_id=event.id, membership_id=member.id)
+                db.add(record)
+                records[member.id] = record
+            record.status = status
+            record.checkin_method = method
+            record.checked_in_at = now if status == "present" else None
+            record.marked_by_user_id = actor.id if method == "manual" else None
+            record.comment = (comment or "").strip() or None
+        action = "attendance.marked"
+        if status == "not_marked":
+            action = "attendance.cleared"
+        elif method == "qr":
+            action = "attendance.checked_in"
         db.add(AcceleratorAuditLog(
             accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
-            actor_user_id=actor.id, action="attendance.checked_in" if method == "qr" else "attendance.marked",
+            actor_user_id=actor.id, action=action,
             target_type="event", target_id=event.id,
             details={"membership_id": member.id, "status": status, "method": method, "scope": "team"},
         ))
