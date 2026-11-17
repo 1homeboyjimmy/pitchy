@@ -230,7 +230,11 @@ async def test_shared_passport_access_sync_and_excluded_members():
             tree = (await db.execute(select(ProjectTree).where(ProjectTree.project_id == project.id))).scalar_one()
             from project_memory_service import load_project_context, load_project_brief
             assert await load_project_context(db, project.id, user_id=member.id)
-            await save_breakdown_fields(db, tree, "problem", {"core.problem": "Новая проблема"})
+            owner = await db.get(User, project.user_id)
+            with pytest.raises(HTTPException) as denied:
+                await save_breakdown_fields(db, tree, "problem", {"core.problem": "Не разрешено"}, user=member)
+            assert denied.value.status_code == 403
+            await save_breakdown_fields(db, tree, "problem", {"core.problem": "Новая проблема"}, user=owner)
             assert project.passport["core"]["problem"] == "Новая проблема"
             assert tree.tree_data["nodes"][1]["data"]["form_data"]["core.problem"] == "Новая проблема"
             membership = await db.get(AcceleratorMembership, result["memberships"][member.username])
@@ -260,12 +264,22 @@ async def test_shared_project_passport_routes_and_captain_transfer():
         project_id = result["projects_by_key"]["first"]
         assert project_id in [project.id for project in await list_projects(False, new_owner, db)]
         assert (await get_passport(project_id, new_owner, db)).passport["core"]["problem"] == "Проблема"
-        await patch_passport(project_id, PassportPatchRequest(fields={"core.problem": "Командная правка"}), new_owner, db)
+        assert not (await get_passport(project_id, new_owner, db)).can_edit
+        with pytest.raises(HTTPException) as denied:
+            await patch_passport(project_id, PassportPatchRequest(fields={"core.problem": "Не разрешено"}), new_owner, db)
+        assert denied.value.status_code == 403
+        await patch_passport(project_id, PassportPatchRequest(fields={"core.problem": "Командная правка"}), old_owner, db)
         assert (await get_passport(project_id, old_owner, db)).passport["core"]["problem"] == "Командная правка"
         assert (await get_passport(project_id, actor, db)).passport["core"]["problem"] == "Командная правка"
         with pytest.raises(HTTPException):
             await patch_passport(project_id, PassportPatchRequest(fields={"core.problem": "Чужая правка"}), actor, db)
         await transfer_team_captain(result["team_ids"][0], AcceleratorTeamCaptainTransfer(membership_id=result["memberships"][new_owner.username]), old_owner, db)
+        assert (await get_passport(project_id, new_owner, db)).can_edit
+        assert not (await get_passport(project_id, old_owner, db)).can_edit
+        with pytest.raises(HTTPException) as denied:
+            await patch_passport(project_id, PassportPatchRequest(fields={"core.problem": "Старая роль"}), old_owner, db)
+        assert denied.value.status_code == 403
+        await patch_passport(project_id, PassportPatchRequest(fields={"core.problem": "Новый владелец"}), new_owner, db)
         project = await db.get(Project, project_id)
         tree = (await db.execute(select(ProjectTree).where(ProjectTree.project_id == project_id))).scalar_one()
         assert project.user_id == new_owner.id and tree.user_id == new_owner.id
@@ -459,6 +473,10 @@ async def test_captain_transfer_moves_all_passports_shared_with_the_whole_team()
             project=await db.get(Project,project_id)
             tree=(await db.execute(select(ProjectTree).where(ProjectTree.project_id==project_id))).scalar_one()
             assert project.user_id==peer.id and tree.user_id==peer.id
+            from projects_router import get_passport
+            assert (await get_passport(project_id, peer, db)).can_edit
+            assert not (await get_passport(project_id, owner, db)).can_edit
+            assert (await get_passport(project_id, peer, db)).team_managed
         old_member=(await db.execute(select(AcceleratorTeamMember).where(AcceleratorTeamMember.membership_id==result['memberships'][owner_name]))).scalar_one()
         old_member.status='left';await db.flush()
         for project_id in result['projects_by_key'].values():

@@ -1357,6 +1357,9 @@ async def list_my_accelerator_memberships(
     )).all()
     memberships = []
     for membership, cohort, accelerator, program, project in rows:
+        from project_passport_access import passport_context
+        can_edit_passport = (await passport_context(db, project, user))[1] if project else False
+        import passport as passport_lib
         from accelerator_participant_service import registration_required
         profile_row = (await db.execute(select(AcceleratorParticipantProfile).where(AcceleratorParticipantProfile.membership_id == membership.id))).scalar_one_or_none()
         profile_data = dict(profile_row.profile or {}) if profile_row else {}
@@ -1386,7 +1389,8 @@ async def list_my_accelerator_memberships(
             "project": ({
                 "id": project.id,
                 "name": project.name,
-                "readiness_index": project.readiness_index,
+                "readiness_index": passport_lib.compute_readiness(project.passport),
+                "can_edit_passport": can_edit_passport,
                 **accelerator_project_description(project),
                 "status": project.status,
             } if project else None),

@@ -11,7 +11,7 @@ async function resident(page: Page, loggedIn = true) {
     membership_id: 101, application_id: null, status: 'enrolled', accepted_at: '2026-10-13T10:00:00', enrolled_at: '2026-10-13T10:00:00',
     accelerator: { id: 7, name: 'МТУСИ 2026', status: 'active' },
     cohort: { id: 12, name: 'МТУСИ 2026', status: 'active', timezone: 'Europe/Moscow' },
-    project: { id: selected, name: selected === 501 ? 'Первая идея' : 'Вторая идея', readiness_index: 35, status: 'active',
+    project: { id: selected, name: selected === 501 ? 'Первая идея' : 'Вторая идея', readiness_index: 35, status: 'active', can_edit_passport: true,
       description: selected === 501 ? 'Описание первой идеи.' : 'Описание второй идеи.' },
     modules: {},
   });
@@ -74,7 +74,7 @@ test('resident fills every passport field, saves and reopens persisted values', 
         else passport[group] = value;
       }
     }
-    return route.fulfill({ json: { passport, readiness_index: Object.keys(saved).length ? 100 : 0, missing_sections: [], readiness_config: config } });
+    return route.fulfill({ json: { can_edit: true, team_managed: false, passport, readiness_index: Object.keys(saved).length ? 100 : 0, missing_sections: [], readiness_config: config } });
   });
   await page.goto('/accelerator/my/101');
   await page.getByRole('button', { name: 'Мой проект', exact: true }).click();
@@ -99,7 +99,7 @@ test('resident fills every passport field, saves and reopens persisted values', 
 
 test('resident browser and site Back restore the previous view and close passport', async ({ page }) => {
   await resident(page);
-  await page.route('**/projects/501/passport', r => r.fulfill({ json: { passport: {}, readiness_index: 0, missing_sections: [], readiness_config: passportConfig } }));
+  await page.route('**/projects/501/passport', r => r.fulfill({ json: { can_edit: true, team_managed: false, passport: {}, readiness_index: 0, missing_sections: [], readiness_config: passportConfig } }));
   await page.goto('/accelerator/my/101');
   await page.getByRole('button', { name: 'Мой проект', exact: true }).click();
   await page.getByRole('button', { name: 'Заполнить паспорт', exact: true }).click();
@@ -112,3 +112,49 @@ test('resident browser and site Back restore the previous view and close passpor
   await page.goForward();
   await expect(page.getByText('Описание первой идеи.', { exact: true })).toBeVisible();
 });
+
+for (const canEdit of [true, false]) {
+  for (const theme of ['light', 'dark']) {
+    test(`passport uses automatic roster with ${canEdit ? 'owner editing' : 'member viewing'} in ${theme}`, async ({ page }) => {
+      await resident(page);
+      await page.addInitScript(value => localStorage.setItem('pitchy_accelerator_theme', value), theme);
+      await page.route('**/api/accelerators/me/memberships', route => route.fulfill({ json: { memberships: [{
+        membership_id: 101, status: 'enrolled', accelerator: { id: 7, name: 'Тест', status: 'active' },
+        cohort: { id: 12, name: 'Тест', status: 'active' }, modules: {},
+        project: { id: 501, name: 'Первая идея', status: 'active', readiness_index: 35, can_edit_passport: canEdit },
+      }], effective_quotas: {} } }));
+      let patches = 0;
+      await page.route('**/projects/501/passport', route => {
+        if (route.request().method() === 'PATCH') patches++;
+        return route.fulfill({ json: { can_edit: canEdit, team_managed: true, passport: {
+          core: { name: 'Первая идея' }, team: ['Анна — Руководитель команды', 'Борис — Участник команды'],
+        }, readiness_index: 35, missing_sections: [], readiness_config: passportConfig } });
+      });
+      await page.goto('/accelerator/my/101');
+      await page.getByRole('button', { name: 'Мой проект', exact: true }).click();
+      await page.getByRole('button', { name: canEdit ? 'Заполнить паспорт' : 'Посмотреть паспорт', exact: true }).click();
+      const dialog = page.getByRole('dialog');
+      await expect(dialog.getByRole('region', { name: 'Состав команды' })).toContainText('Анна — Руководитель команды');
+      await expect(dialog.getByRole('region', { name: 'Состав команды' })).toContainText('Борис — Участник команды');
+      for (const path of ['team', 'metrics.mrr', 'legal.entity_type']) {
+        await expect(dialog.locator(`[id="passport-501-${path}"]`)).toHaveCount(0);
+      }
+      await page.screenshot({ path: `../output/passport-${canEdit ? 'owner' : 'member'}-${theme}.png`, fullPage: true });
+      const name = dialog.getByLabel('Название', { exact: true });
+      if (canEdit) {
+        await expect(name).toBeEnabled();
+        await name.fill('Новое название');
+        await dialog.getByRole('button', { name: 'Сохранить', exact: true }).click();
+        expect(patches).toBe(1);
+      } else {
+        await expect(name).toBeDisabled();
+        await expect(dialog.getByRole('button', { name: 'Сохранить', exact: true })).toHaveCount(0);
+        await expect(dialog.getByRole('button', { name: 'Мастер заполнения' })).toHaveCount(0);
+        expect(patches).toBe(0);
+        await page.setViewportSize({ width: 390, height: 844 });
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        await dialog.getByRole('button', { name: 'Закрыть', exact: true }).click();
+      }
+    });
+  }
+}

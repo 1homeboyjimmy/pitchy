@@ -16,12 +16,13 @@ CATEGORIES = [
     ("business_model", "Бизнес-модель", ["core.business_model"]),
     ("geo", "География", ["core.geo"]),
     ("market", "Рынок и конкуренты", ["market.size", "market.competitors"]),
-    ("metrics", "Метрики", ["metrics.mrr", "metrics.users", "metrics.cac", "metrics.growth"]),
+    ("metrics", "Метрики", ["metrics.users", "metrics.cac", "metrics.growth"]),
     ("team", "Команда", ["team"]),
     ("legal", "Юридические данные", ["legal.entity_type"]),
     ("additional", "Дополнительная информация", [ADDITIONAL_PATH]),
 ]
 FIELD_LABELS = {field["path"]: field["label"] for field in passport_lib.PASSPORT_FIELDS}
+FIELD_LABELS.update({"team": "Команда", "legal.entity_type": "Юр. форма"})
 FIELD_LABELS[ADDITIONAL_PATH] = "Дополнительная информация"
 LIST_PATHS = {field["path"] for field in passport_lib.PASSPORT_FIELDS if field.get("list")}
 
@@ -45,7 +46,7 @@ def build_breakdown(passport):
             "status": "completed" if filled == len(paths) else "partial" if filled else "empty",
             "data": {
                 "label": label, "form_data": values,
-                "form_schema": [{"id": path, "label": FIELD_LABELS[path], "type": "textarea"} for path in paths],
+                "form_schema": [{"id": path, "label": FIELD_LABELS[path], "type": "textarea"} for path in paths if path not in {"team", "legal.entity_type"}],
                 "summary": {FIELD_LABELS[path]: value for path, value in values.items() if value.strip()},
             },
         })
@@ -61,15 +62,17 @@ async def sync_project_breakdown(db, project):
         flag_modified(tree, "tree_data")
 
 
-async def save_breakdown_fields(db, tree, node_id, fields):
+async def save_breakdown_fields(db, tree, node_id, fields, *, user):
+    project = await db.get(Project, tree.project_id)
+    from project_passport_access import require_passport_editor
+    current, _ = await require_passport_editor(db, project, user)
     paths = next((paths for key, _, paths in CATEGORIES if key == node_id), None)
-    if paths is None or not set(fields).issubset(paths) or any(not isinstance(value, str) for value in fields.values()):
+    if set(fields) & {"team", "legal.entity_type"} or paths is None or not set(fields).issubset(paths) or any(not isinstance(value, str) for value in fields.values()):
         from fastapi import HTTPException
         raise HTTPException(status_code=422, detail="Неизвестное поле разбивки")
     values = {path: ([line.strip() for line in value.splitlines() if line.strip()] if path in LIST_PATHS else value)
               for path, value in fields.items()}
-    project = await db.get(Project, tree.project_id)
-    merged = passport_lib.merge_patch(project.passport, values, source="manual")
+    merged = passport_lib.merge_patch(current, values, source="manual")
     import roadmap_service
     project.passport = roadmap_service.invalidate_analyses(merged, set(values))
     project.readiness_index = passport_lib.compute_readiness(project.passport)
