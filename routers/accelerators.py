@@ -229,6 +229,7 @@ logger = logging.getLogger("app.accelerator_project_audit")
 DEFAULT_MODULES = {
     "applications": True,
     "program": True,
+    "program_progress": True,
     "homework": False,
     "attendance": False,
     "progress_tracking": False,
@@ -2365,10 +2366,11 @@ async def resident_program_rows(
         AcceleratorProgramConfig.cohort_id == membership.cohort_id
     ))).scalar_one_or_none()
     artifacts_enabled = bool(config and (config.modules or {}).get("pitchy_artifacts"))
+    track_progress = (config.modules or {}).get("program_progress", True) if config else True
     result = []
     for stage in stages:
         stage_progress = progress_by_stage[stage.id]
-        locked = stage_progress["state"] == "locked"
+        locked = track_progress and stage_progress["state"] == "locked"
         materials = await stage_materials(db, stage.id)
         actions = await stage_actions(db, stage.id) if artifacts_enabled else []
         result.append({
@@ -6142,6 +6144,7 @@ async def _cohort_resident_report(
             "status_reason": membership.status_reason,
             "trackers": trackers_by_membership.get(membership.id, []),
             "program": {
+                "enabled": (program_config.modules or {}).get("program_progress", True) if program_config else True,
                 "completed": program_progress["completed"],
                 "total": program_progress["total"],
                 "percent": program_progress["percent"],
@@ -6194,6 +6197,12 @@ async def _cohort_resident_report(
                 csv_datetime(row["last_activity_at"], cohort.timezone),
                 row["attendance"]["percent"],
             ])
+        hidden_columns = set()
+        if program_config and not (program_config.modules or {}).get("program_progress", True):
+            hidden_columns.update((4, 5, 6))
+            if not (program_config.modules or {}).get("homework"):
+                hidden_columns.update((7, 8, 9))
+        csv_rows = [[value for index, value in enumerate(row) if index not in hidden_columns] for row in csv_rows]
         return Response(
             content=csv_content(csv_rows),
             media_type="text/csv; charset=utf-8",
@@ -6202,6 +6211,7 @@ async def _cohort_resident_report(
     return {
         "cohort_id": cohort.id,
         "access_role": access_role,
+        "modules": {**DEFAULT_MODULES, **((program_config.modules or {}) if program_config else {})},
         "summary": {
             "residents": len(rows),
             "enrolled": sum(row["status"] == "enrolled" for row in rows),
@@ -9301,10 +9311,13 @@ async def membership_organizer_card(
     if not membership or membership.role != "resident":
         raise HTTPException(status_code=404, detail="Резидент не найден")
     cohort = await get_cohort_or_404(db, membership.cohort_id)
+    config = (await db.execute(select(AcceleratorProgramConfig).where(
+        AcceleratorProgramConfig.cohort_id == cohort.id
+    ))).scalar_one_or_none()
     access_role = await require_tracker_membership_access(db, user, membership)
     can_manage = access_role in ("global_admin", "organizer")
     person = await db.get(User, membership.user_id)
-    application = await db.get(AcceleratorApplication, membership.application_id)
+    application = await db.get(AcceleratorApplication, membership.application_id) if membership.application_id else None
     profile = (await db.execute(select(AcceleratorParticipantProfile).where(
         AcceleratorParticipantProfile.membership_id == membership.id
     ))).scalar_one_or_none()
@@ -9432,6 +9445,8 @@ async def membership_organizer_card(
         "membership_id": membership.id,
         "access_role": access_role,
         "can_manage": can_manage,
+        "modules": {**DEFAULT_MODULES, **((config.modules or {}) if config else {})},
+        "attendance": (await attendance_summaries(db, [membership]))[membership.id],
         "available_statuses": sorted(MEMBERSHIP_STATUS_TRANSITIONS.get(membership.status, set())),
         "person": {"id": person.id, "name": person.name, "email": person.email} if person else None,
         "membership": {"status": membership.status, "status_reason": membership.status_reason, "accepted_at": membership.accepted_at, "enrolled_at": membership.enrolled_at},
@@ -9443,6 +9458,7 @@ async def membership_organizer_card(
         "tracker_options": [{"user_id": row.id, "name": row.name, "email": row.email} for row in tracker_options],
         "homework": {"published": len(assignments), "accepted": sum(row.status == "accepted" for row in submissions), "pending": sum(row.status == "submitted" for row in submissions), "overdue": risk["overdue_homework"], "submissions": [{"id": row.id, "title": assignment_titles.get(row.assignment_id, "Задание"), "status": row.status, "submitted_at": row.submitted_at} for row in submissions[:8]]},
         "program": {
+            "enabled": (config.modules or {}).get("program_progress", True) if config else True,
             "completed": program["completed"],
             "total": program["total"],
             "percent": program["percent"],
@@ -9697,7 +9713,7 @@ async def membership_today(
             unavailable.append(name)
             return fallback
 
-    if modules.get("program", True):
+    if modules.get("program", True) and modules.get("program_progress", True):
         stages = await load_section("program", lambda: resident_program_rows(db, membership), [])
     if modules.get("homework"):
         homework = await load_section("homework", lambda: list_resident_homework(membership.id, user, db), [])
