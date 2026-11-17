@@ -1,6 +1,8 @@
 """Transactional cohort closure, immutable snapshots and opt-in alumni."""
 from __future__ import annotations
 
+from accelerator_attendance_reporting import attendance_summaries
+
 from datetime import date, datetime
 import hashlib
 import json
@@ -16,13 +18,11 @@ from models import (
     AcceleratorAlumniCheckin,
     AcceleratorAlumniProfile,
     AcceleratorArtifact,
-    AcceleratorAttendanceRecord,
     AcceleratorApplication,
     AcceleratorCohort,
     AcceleratorCohortClosure,
     AcceleratorClosureException,
     AcceleratorDemoDayProject,
-    AcceleratorEvent,
     AcceleratorHomeworkAssignment,
     AcceleratorHomeworkSubmission,
     AcceleratorMembership,
@@ -449,16 +449,7 @@ async def build_snapshot_payload(
         AcceleratorHomeworkSubmission.membership_id == membership.id,
         AcceleratorHomeworkSubmission.status == "accepted",
     )
-    published_events = await _count(
-        db, AcceleratorEvent,
-        AcceleratorEvent.cohort_id == cohort.id,
-        AcceleratorEvent.status == "published",
-    )
-    attended_events = await _count(
-        db, AcceleratorAttendanceRecord,
-        AcceleratorAttendanceRecord.membership_id == membership.id,
-        AcceleratorAttendanceRecord.status == "present",
-    )
+    attendance = (await attendance_summaries(db, [membership]))[membership.id]
     artifacts_total = await _count(
         db, AcceleratorArtifact,
         AcceleratorArtifact.membership_id == membership.id,
@@ -518,7 +509,7 @@ async def build_snapshot_payload(
         } if project else None),
         "program": {"published": published_stages, "completed": completed_stages},
         "homework": {"published": published_homework, "accepted": accepted_homework},
-        "attendance": {"published_events": published_events, "present": attended_events},
+        "attendance": {"published_events": attendance["total"], "present": attendance["present"]},
         "tracking": {"tasks": tracking_total, "done": tracking_done, "checkins": checkins},
         "artifacts": {"total": artifacts_total, "ready": artifacts_ready},
         "quota_usage": {resource: int(quantity) for resource, quantity in quota_rows},

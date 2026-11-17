@@ -7,7 +7,7 @@ import { getAuthJson } from "@/lib/api";
 export type OrganizerTab = "overview" | "operations" | "applications" | "form" | "program" | "homework" | "attendance" | "trackers" | "reports" | "tracking" | "matching" | "project_audit" | "demo_day" | "artifacts" | "closure" | "quotas" | "settings" | "audit";
 type Analytics = {
   program: { published_stages: number; completion_percent: number; participating_residents?: number; current_stage?: { id: number; title: string; completed: number; total: number } | null };
-  attendance: { past_events?: number; attendance_percent: number };
+  attendance: { past_events?: number; reporting_total?: number; attendance_percent: number };
   runtime_disabled_modules?: Record<string, unknown>;
 };
 type Issue = { code: string; severity: "error" | "warning" | "info"; count: number; message: string; recommended_action: string };
@@ -84,7 +84,7 @@ export function OrganizerOverview({ token, cohort, config, onNavigate, onCopy, c
   const available = (key: string) => Boolean(modules[key] && !data.analytics?.runtime_disabled_modules?.[key]);
   const stage = data.analytics?.program.current_stage;
   const programPercent = data.analytics && participants && data.analytics.program.published_stages ? `${Math.round(data.analytics.program.completion_percent)}%` : "—";
-  const attendancePercent = data.analytics?.attendance.past_events && participants ? `${Math.round(data.analytics.attendance.attendance_percent)}%` : "—";
+  const attendancePercent = (data.analytics?.attendance.reporting_total || data.analytics?.attendance.past_events) && participants ? `${Math.round(data.analytics!.attendance.attendance_percent)}%` : "—";
   const upcoming = [
     ...(data.events || []).filter(row => row.status === "published" && utcDate(row.ends_at).getTime() >= now).map(row => ({ id: row.id, title: row.title, at: row.starts_at, tab: "attendance" as const, detail: row.event_format === "online" ? "Онлайн" : row.event_format === "hybrid" ? "Гибридный формат" : "Очно", action: "Открыть событие" })),
     ...(data.homework || []).filter(row => row.status === "published" && row.due_at && utcDate(row.due_at).getTime() >= now).map(row => ({ id: row.id, title: row.title, at: row.due_at!, tab: "homework" as const, detail: "Срок сдачи задания", action: "Открыть задание" })),

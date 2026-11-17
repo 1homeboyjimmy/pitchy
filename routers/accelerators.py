@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from accelerator_attendance_reporting import attendance_summaries, effective_attendance_records, validate_attendance_policy
+
 from datetime import date, datetime, time, timedelta, timezone
 import hashlib
 import json
@@ -282,6 +284,7 @@ def cohort_dict(row: AcceleratorCohort) -> dict:
         "status": row.status,
         "timezone": row.timezone,
         "attendance_scope": row.attendance_scope,
+        "attendance_policy": row.attendance_policy,
         "starts_at": row.starts_at,
         "ends_at": row.ends_at,
         "application_form_schema": row.application_form_schema or {},
@@ -1872,6 +1875,7 @@ async def create_cohort(
         name=payload.name.strip(),
         timezone=payload.timezone,
         attendance_scope=payload.attendance_scope,
+        attendance_policy=payload.attendance_policy.model_dump() if payload.attendance_policy else None,
         starts_at=payload.starts_at,
         ends_at=payload.ends_at,
         application_form_schema=payload.application_form_schema,
@@ -1879,6 +1883,7 @@ async def create_cohort(
     )
     db.add(cohort)
     await db.flush()
+    await validate_attendance_policy(db, cohort.id, payload.attendance_policy)
     add_initial_form_version(db, cohort, publisher_user_id=user.id)
     db.add(AcceleratorProgramConfig(
         cohort_id=cohort.id,
@@ -2027,6 +2032,9 @@ async def update_cohort(
         cohort.name = payload.name.strip()
     if payload.attendance_scope is not None:
         cohort.attendance_scope = payload.attendance_scope
+    if "attendance_policy" in payload.model_fields_set:
+        await validate_attendance_policy(db, cohort.id, payload.attendance_policy)
+        cohort.attendance_policy = payload.attendance_policy.model_dump() if payload.attendance_policy else None
     if payload.timezone is not None:
         cohort.timezone = payload.timezone.strip()
     if "starts_at" in payload.model_fields_set:
@@ -4310,6 +4318,22 @@ async def list_events(
     counts = dict((await db.execute(
         count_query.group_by(AcceleratorAttendanceRecord.event_id)
     )).all())
+    if cohort.attendance_scope == "team":
+        members_query = select(AcceleratorMembership).where(
+            AcceleratorMembership.cohort_id == cohort.id,
+            AcceleratorMembership.role == "resident", AcceleratorMembership.status == "enrolled",
+        )
+        if access_role == "tracker":
+            members_query = members_query.where(AcceleratorMembership.id.in_(
+                await tracker_membership_ids(db,user.id,cohort.id)
+            ))
+        members = (await db.execute(members_query)).scalars().all()
+        shared = await effective_attendance_records(db,members,[row.id for row in rows],cohorts={cohort.id:cohort})
+        counts = {}
+        for records in shared.values():
+            for event_id, record in records.items():
+                if record.status == "present":
+                    counts[event_id] = counts.get(event_id,0) + 1
     return [event_dict(
         row,
         attendance_count=counts.get(row.id, 0),
@@ -4791,12 +4815,8 @@ async def list_event_attendance(
     access_role = await require_cohort_reader(db, user, cohort)
     await require_attendance_module(db, cohort)
     attendance_query = (
-        select(AcceleratorMembership, User, AcceleratorAttendanceRecord)
+        select(AcceleratorMembership, User)
         .join(User, User.id == AcceleratorMembership.user_id)
-        .outerjoin(AcceleratorAttendanceRecord, (
-            (AcceleratorAttendanceRecord.membership_id == AcceleratorMembership.id)
-            & (AcceleratorAttendanceRecord.event_id == event.id)
-        ))
         .where(AcceleratorMembership.cohort_id == cohort.id,
                AcceleratorMembership.role == "resident",
                AcceleratorMembership.status == "enrolled")
@@ -4806,12 +4826,17 @@ async def list_event_attendance(
             await tracker_membership_ids(db, user.id, cohort.id)
         ))
     rows = (await db.execute(attendance_query.order_by(User.name))).all()
-    return [{
-        "membership_id": membership.id, "name": resident.name, "email": resident.email,
-        "status": attendance.status if attendance else "not_marked",
-        "checked_in_at": utc_datetime(attendance.checked_in_at) if attendance else None,
-        "comment": attendance.comment if attendance else None,
-    } for membership, resident, attendance in rows]
+    records = await effective_attendance_records(db, [member for member, _ in rows], [event.id], cohorts={cohort.id:cohort})
+    result = []
+    for membership, resident in rows:
+        attendance = records.get(membership.id,{}).get(event.id)
+        result.append({
+            "membership_id": membership.id, "name": resident.name, "email": resident.email,
+            "status": attendance.status if attendance else "not_marked",
+            "checked_in_at": utc_datetime(attendance.checked_in_at) if attendance else None,
+            "comment": attendance.comment if attendance else None,
+        })
+    return result
 
 
 @router.get("/events/{event_id}/attendance/export.csv")
@@ -4928,11 +4953,8 @@ async def list_resident_events(
         AcceleratorEvent.cohort_id == cohort.id,
         AcceleratorEvent.status.in_(("published", "completed", "cancelled")),
     ).order_by(AcceleratorEvent.starts_at))).scalars().all()
-    records = (await db.execute(select(AcceleratorAttendanceRecord).where(
-        AcceleratorAttendanceRecord.membership_id == membership.id,
-        AcceleratorAttendanceRecord.event_id.in_([event.id for event in events]),
-    ))).scalars().all() if events else []
-    by_event = {row.event_id: row for row in records}
+    records = await effective_attendance_records(db, [membership], [event.id for event in events], cohorts={cohort.id:cohort})
+    by_event = records.get(membership.id,{})
     return [event_dict(
         event,
         attendance=by_event.get(event.id),
@@ -6023,8 +6045,9 @@ async def _cohort_resident_report(
 
     event_ids = list((await db.execute(select(AcceleratorEvent.id).where(
         AcceleratorEvent.cohort_id == cohort.id,
-        AcceleratorEvent.status == "published",
+        AcceleratorEvent.status.in_(("published", "completed")),
     ))).scalars().all())
+    attendance_stats = await attendance_summaries(db, [membership for membership, _ in membership_rows])
     attendance = {
         (row.event_id, row.membership_id): row
         for row in (await db.execute(select(AcceleratorAttendanceRecord).where(
@@ -6099,14 +6122,11 @@ async def _cohort_resident_report(
                 not submission or submission.status == "needs_revision"
             ):
                 overdue_homework += 1
-        present = 0
-        marked = 0
         for event_id in event_ids:
             record = attendance.get((event_id, membership.id))
             if record:
-                marked += 1
                 activity_dates.append(record.checked_in_at or record.updated_at)
-                present += int(record.status == "present")
+        attendance_summary = attendance_stats[membership.id]
         program_progress = program_by_member[membership.id]
         quota = quota_by_member.get(membership.id, {})
         activity_dates = [value for value in activity_dates if value is not None]
@@ -6132,7 +6152,7 @@ async def _cohort_resident_report(
                 "overdue": overdue_homework,
                 "total": len(applicable),
             },
-            "attendance": {"present": present, "marked": marked, "total": len(event_ids)},
+            "attendance": {key: attendance_summary[key] for key in ("present", "marked", "total", "percent")},
             "quota": quota,
             "last_activity_at": max(activity_dates) if activity_dates else None,
             "last_checkin_at": risk["last_checkin_at"],
@@ -6154,6 +6174,7 @@ async def _cohort_resident_report(
             "На проверке", "Просрочено", "Посещено", "Всего событий",
             "Уровень риска", "Причины внимания", "Открытые задачи",
             "Последний чек-ин", "Последняя активность",
+            "Посещаемость, %",
         ]]
         for row in rows:
             csv_rows.append([
@@ -6171,6 +6192,7 @@ async def _cohort_resident_report(
                 row["open_tasks"],
                 csv_datetime(row["last_checkin_at"], cohort.timezone),
                 csv_datetime(row["last_activity_at"], cohort.timezone),
+                row["attendance"]["percent"],
             ])
         return Response(
             content=csv_content(csv_rows),
@@ -6311,16 +6333,8 @@ async def membership_tracking_risk(
         AcceleratorTrackingTask.due_at.is_not(None),
         AcceleratorTrackingTask.due_at < now,
     ))).scalar_one()
-    past_event_ids = list((await db.execute(select(AcceleratorEvent.id).where(
-        AcceleratorEvent.cohort_id == membership.cohort_id,
-        AcceleratorEvent.status == "published",
-        AcceleratorEvent.ends_at < now,
-    ))).scalars().all()) if modules.get("attendance") else []
-    present_count = (await db.execute(select(func.count(AcceleratorAttendanceRecord.id)).where(
-        AcceleratorAttendanceRecord.membership_id == membership.id,
-        AcceleratorAttendanceRecord.event_id.in_(past_event_ids),
-        AcceleratorAttendanceRecord.status == "present",
-    ))).scalar_one() if past_event_ids else 0
+    attendance = (await attendance_summaries(db, [membership], now=now))[membership.id] if modules.get("attendance") else {}
+    present_count = attendance.get("present", 0)
 
     activity_values = [membership.updated_at, membership.enrolled_at, membership.accepted_at]
     for model, field in (
@@ -6336,7 +6350,7 @@ async def membership_tracking_risk(
     activity_values = [value for value in activity_values if value is not None]
     last_activity_at = max(activity_values) if activity_values else None
     inactive_days = (now - last_activity_at).days if last_activity_at else 999
-    attendance_total = len(past_event_ids)
+    attendance_total = attendance.get("total", 0)
     attendance_percent = round(present_count * 100 / attendance_total) if attendance_total else 100
 
     red_reasons: list[dict] = []
@@ -9747,13 +9761,7 @@ async def membership_today(
 
     feedback = [row for row in tracking.get("feedback", []) if not row.get("read_at")]
     completed_stages = sum(row.get("state") == "completed" for row in stages)
-    past_events = [
-        row for row in events
-        if row.get("status") in {"published", "completed"}
-        and row.get("ends_at") and utc_datetime(row["ends_at"]) <= utc_datetime(now)
-    ]
-    present_events = sum((row.get("attendance") or {}).get("status") == "present" for row in past_events)
-    unmarked_events = sum((row.get("attendance") or {}).get("status", "not_marked") == "not_marked" for row in past_events)
+    attendance = (await attendance_summaries(db, [membership], now=now))[membership.id] if modules.get("attendance") and "events" not in unavailable else None
     project = await db.get(Project, membership.project_id) if membership.project_id else None
     project_readiness = max(0, min(100, project.readiness_index or 0)) if project else None
     tracker_ids = await membership_tracker_user_ids(db, membership.id)
@@ -9792,11 +9800,9 @@ async def membership_today(
             "project_readiness": project_readiness,
         },
         "attendance": ({
-            "present": present_events,
-            "total": len(past_events),
-            "unmarked": unmarked_events,
-            "percent": round(present_events * 100 / len(past_events)) if past_events else None,
-        } if modules.get("attendance") and "events" not in unavailable else None),
+            **{key: attendance[key] for key in ("present", "total", "unmarked", "percent")},
+            **({"basis": "planned"} if attendance["basis"] == "planned" else {}),
+        } if attendance is not None else None),
         "support": {
             "enabled": bool(modules.get("progress_tracking")),
             "trackers": [{"id": row.id, "name": row.name, "email": row.email} for row in trackers],

@@ -7,9 +7,10 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from accelerator_service import membership_trackers_batch
+from accelerator_attendance_reporting import attendance_summaries
 from accelerator_homework_service import participant_results
 from models import (
-    AcceleratorAttendanceRecord, AcceleratorEvent, AcceleratorHomeworkAssignment,
+    AcceleratorAttendanceRecord, AcceleratorHomeworkAssignment,
     AcceleratorHomeworkSubmission, AcceleratorHomeworkTarget, AcceleratorMembership, AcceleratorHomeworkException,
     AcceleratorProgramConfig, AcceleratorProgramStageProgress, AcceleratorProgressCheckin,
     AcceleratorTrackingTask,
@@ -60,20 +61,9 @@ async def load_tracking_facts(
     ).where(AcceleratorTrackingTask.membership_id.in_(ids),
             AcceleratorTrackingTask.status == "open", AcceleratorTrackingTask.due_at < now)
         .group_by(AcceleratorTrackingTask.membership_id))).all())
-    attendance_cohorts = [key for key, value in modules.items() if value.get("attendance")]
-    events = (await db.execute(select(AcceleratorEvent.id, AcceleratorEvent.cohort_id).where(
-        AcceleratorEvent.cohort_id.in_(attendance_cohorts), AcceleratorEvent.status == "published",
-        AcceleratorEvent.ends_at < now,
-    ))).all() if attendance_cohorts else []
-    event_counts: dict[int, int] = {}
-    for _, cohort_id in events:
-        event_counts[cohort_id] = event_counts.get(cohort_id, 0) + 1
-    present = dict((await db.execute(select(
-        AcceleratorAttendanceRecord.membership_id, func.count(),
-    ).where(AcceleratorAttendanceRecord.membership_id.in_(ids),
-            AcceleratorAttendanceRecord.event_id.in_([row.id for row in events]),
-            AcceleratorAttendanceRecord.status == "present")
-        .group_by(AcceleratorAttendanceRecord.membership_id))).all()) if events else {}
+    attendance = await attendance_summaries(db, [
+        member for member in memberships if modules.get(member.cohort_id, {}).get("attendance")
+    ], now=now)
     activity = {row.id: [row.updated_at, row.enrolled_at, row.accepted_at] for row in memberships}
     for model, field in (
         (AcceleratorProgressCheckin, AcceleratorProgressCheckin.created_at),
@@ -96,7 +86,7 @@ async def load_tracking_facts(
                       if row.audience != "selected" or (row.id, member.id) in targets]
         dates = [value for value in activity[member.id] if value is not None]
         last_activity_at = max(dates) if dates else None
-        total = event_counts.get(member.cohort_id, 0)
+        summary = attendance.get(member.id, {})
         facts[member.id] = {
             "latest_checkin": latest_by_member.get(member.id),
             "overdue_homework": sum(
@@ -105,8 +95,8 @@ async def load_tracking_facts(
                 for row in applicable
             ),
             "overdue_tasks": int(overdue_tasks.get(member.id, 0)),
-            "attendance_total": total,
-            "present_count": int(present.get(member.id, 0)),
+            "attendance_total": summary.get("total", 0),
+            "present_count": summary.get("present", 0),
             "last_activity_at": last_activity_at,
             "has_tracker": bool(trackers.get(member.id)),
         }
