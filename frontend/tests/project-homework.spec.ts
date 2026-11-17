@@ -68,7 +68,7 @@ async function mockOverview(page: Page) {
   await page.route('**/api/accelerators', route => route.fulfill({ json: [{ id: 7, name: 'Pitchy Accelerator', access_role: 'organizer', status: 'active' }] }));
   await page.route('**/api/accelerators/me/memberships', route => route.fulfill({ json: { memberships: [], effective_quotas: {} } }));
   await page.route('**/api/accelerators/7/cohorts', route => route.fulfill({ json: [12, 13].map(id => ({ id, accelerator_id: 7, name: id === 12 ? 'Осень 2026' : 'Новый поток', status: id === 12 ? 'active' : 'draft', timezone: 'Europe/Moscow', application_form_schema: { fields: [] } })) }));
-  await page.route('**/api/accelerators/notifications/unread-count', route => route.fulfill({ json: { count: 0 } }));
+  await page.route('**/api/accelerators/notifications/unread-count?**', route => route.fulfill({ json: { count: 0 } }));
   await page.route('**/api/accelerators/cohorts/12/*', async route => {
     const path = new URL(route.request().url()).pathname.split('/').pop();
     const responses: Record<string, unknown> = {

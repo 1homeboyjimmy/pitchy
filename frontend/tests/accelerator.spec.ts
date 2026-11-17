@@ -74,7 +74,7 @@ async function mockManagerWorkspace(page: Page, isAdmin = true) {
   });
   await page.route('**/api/accelerators/7/organizers', async (route) => route.fulfill({ json: [] }));
   let emailEnabled = false;
-  await page.route('**/api/accelerators/notifications/unread-count', async (route) => route.fulfill({ json: { count: 2 } }));
+  await page.route('**/api/accelerators/notifications/unread-count?**', async (route) => route.fulfill({ json: { count: 2 } }));
   await page.route('**/api/accelerators/notifications?**', async (route) => route.fulfill({ json: { items: [
     { id: 501, event_type: 'homework.reviewed', title: 'Домашняя работа принята', body: 'Откройте программу и продолжайте следующий этап.', action_url: '/accelerator?from=notification', read_at: null, created_at: new Date().toISOString() },
     { id: 502, event_type: 'security.external', title: 'Внешняя ссылка заблокирована', body: 'Такой переход не должен открываться.', action_url: 'javascript:alert(1)', read_at: null, created_at: new Date().toISOString() },
@@ -83,8 +83,8 @@ async function mockManagerWorkspace(page: Page, isAdmin = true) {
     if (route.request().method() === 'PATCH') emailEnabled = Boolean(route.request().postDataJSON().email_enabled);
     await route.fulfill({ json: { email_enabled: emailEnabled } });
   });
-  await page.route('**/api/accelerators/notifications/*/read', async (route) => route.fulfill({ json: { ok: true } }));
-  await page.route('**/api/accelerators/notifications/read-all', async (route) => route.fulfill({ json: { ok: true } }));
+  await page.route('**/api/accelerators/notifications/*/read?**', async (route) => route.fulfill({ json: { ok: true } }));
+  await page.route('**/api/accelerators/notifications/read-all?**', async (route) => route.fulfill({ json: { ok: true } }));
 }
 
 test('overview renders useful cards without waiting for health or fetching full reports', async ({ page }) => {
@@ -138,7 +138,7 @@ test('participant redirect reuses entry data alongside the registration gate', a
     accessRequests++;
     await route.fulfill({ json: [{ ...membership.accelerator, access_role: 'resident' }] });
   });
-  await page.route('**/api/accelerators/notifications/unread-count', route => route.fulfill({ json: { count: 0 } }));
+  await page.route('**/api/accelerators/notifications/unread-count?**', route => route.fulfill({ json: { count: 0 } }));
   await page.route('**/api/accelerators/memberships/101/today', route => route.fulfill({ json: {
     membership_id: 101, timezone: 'Europe/Moscow', required_actions: [], upcoming: [],
     progress: { percent: 0, completed_stages: 0, total_stages: 0 }, unavailable_sections: [],
@@ -480,7 +480,7 @@ test('organizer can create the first cohort from the empty state', async ({ page
   await page.route('**/api/accelerators/cohorts/12/program-config', async (route) => route.fulfill({ json: { cohort_id: 12, version: 1, modules: { applications: true, program: true }, locked_modules: { applications: true, program: true } } }));
   await page.route('**/api/accelerators/cohorts/12/applications', async (route) => route.fulfill({ json: [] }));
   await page.route('**/api/accelerators/cohorts/12/residents', async (route) => route.fulfill({ json: [] }));
-  await page.route('**/api/accelerators/notifications/unread-count', async (route) => route.fulfill({ json: { count: 0 } }));
+  await page.route('**/api/accelerators/notifications/unread-count?**', async (route) => route.fulfill({ json: { count: 0 } }));
 
   await page.goto('/accelerator');
   await expect(page.getByRole('heading', { name: 'Создайте первый поток' })).toBeVisible();
@@ -523,7 +523,7 @@ test('accepted participant confirms joining without a second manager action', as
     confirmed = true;
     await route.fulfill({ json: { membership_id: 101, status: 'enrolled', enrolled_at: new Date().toISOString() } });
   });
-  await page.route('**/api/accelerators/notifications/unread-count', async (route) => route.fulfill({ json: { count: 0 } }));
+  await page.route('**/api/accelerators/notifications/unread-count?**', async (route) => route.fulfill({ json: { count: 0 } }));
 
   await page.goto('/accelerator');
   await expect(page).toHaveURL(/\/accelerator\/my\/101$/);
@@ -589,7 +589,7 @@ test('resident Today page prioritizes required work and keeps improvements optio
     ],
     dismissed_recommendations: [], unavailable_sections: [],
   } }));
-  await page.route('**/api/accelerators/notifications/unread-count', async (route) => route.fulfill({ json: { count: 0 } }));
+  await page.route('**/api/accelerators/notifications/unread-count?**', async (route) => route.fulfill({ json: { count: 0 } }));
   let readFeedback: Record<string, unknown> | null = null;
   await page.route('**/api/accelerators/memberships/101/feedback/read', async (route) => {
     readFeedback = route.request().postDataJSON();
@@ -655,7 +655,7 @@ test('combined role starts as participant and opens staff context explicitly', a
     membership_id: 101, generated_at: new Date().toISOString(), timezone: 'Europe/Moscow', required_actions: [], upcoming: [], unread_feedback: [],
     progress: { percent: 0, completed_stages: 0, total_stages: 0, project_readiness: 70 }, support: { enabled: false, trackers: [] }, recommendations: [], dismissed_recommendations: [], unavailable_sections: [],
   } }));
-  await page.route('**/api/accelerators/notifications/unread-count', async (route) => route.fulfill({ json: { count: 0 } }));
+  await page.route('**/api/accelerators/notifications/unread-count?**', async (route) => route.fulfill({ json: { count: 0 } }));
 
   await page.goto('/accelerator');
   await expect(page).toHaveURL(/\/accelerator\/my\/101$/);
@@ -690,7 +690,7 @@ test('staff participation button follows the currently selected cohort', async (
   await page.route('**/api/accelerators/7/cohorts', async (route) => route.fulfill({ json: cohorts }));
   await page.route(/\/api\/accelerators\/cohorts\/(12|13)\/program-config$/, async (route) => route.fulfill({ json: { version: 1, modules: { applications: true, program: true }, locked_modules: {} } }));
   await page.route(/\/api\/accelerators\/cohorts\/(12|13)\/(applications|residents)$/, async (route) => route.fulfill({ json: [] }));
-  await page.route('**/api/accelerators/notifications/unread-count', async (route) => route.fulfill({ json: { count: 0 } }));
+  await page.route('**/api/accelerators/notifications/unread-count?**', async (route) => route.fulfill({ json: { count: 0 } }));
 
   await page.goto('/accelerator?context=staff&accelerator=7&cohort=12');
   const participationLink = page.getByRole('link', { name: 'Моё участие' });
@@ -720,7 +720,7 @@ test('participant can choose and switch between several accelerator streams', as
   await page.route('**/me', async (route) => route.fulfill({ json: { id: 8, email: 'resident@example.test', name: 'Резидент', is_admin: false, is_active: true, email_verified: true, created_at: new Date().toISOString() } }));
   await page.route('**/api/accelerators', async (route) => route.fulfill({ json: memberships.map((row) => ({ ...row.accelerator, access_role: 'resident' })) }));
   await page.route('**/api/accelerators/me/memberships', async (route) => route.fulfill({ json: { memberships, effective_quotas: {} } }));
-  await page.route('**/api/accelerators/notifications/unread-count', async (route) => route.fulfill({ json: { count: 0 } }));
+  await page.route('**/api/accelerators/notifications/unread-count?**', async (route) => route.fulfill({ json: { count: 0 } }));
   await page.route('**/api/accelerators/memberships/*/today', async (route) => route.fulfill({ json: {
     membership_id: Number(route.request().url().match(/memberships\/(\d+)/)?.[1]), generated_at: new Date().toISOString(), timezone: 'Europe/Moscow', required_actions: [], upcoming: [], unread_feedback: [],
     progress: { percent: 0, completed_stages: 0, total_stages: 0, project_readiness: 0 }, support: { enabled: false, trackers: [] }, recommendations: [], dismissed_recommendations: [], unavailable_sections: [],
@@ -755,7 +755,7 @@ test('participant query parameters cannot open staff context', async ({ page }) 
     membership_id: 101, generated_at: new Date().toISOString(), timezone: 'Europe/Moscow', required_actions: [], upcoming: [], unread_feedback: [],
     progress: { percent: 0, completed_stages: 0, total_stages: 0, project_readiness: 0 }, support: { enabled: false, trackers: [] }, recommendations: [], dismissed_recommendations: [], unavailable_sections: [],
   } }));
-  await page.route('**/api/accelerators/notifications/unread-count', async (route) => route.fulfill({ json: { count: 0 } }));
+  await page.route('**/api/accelerators/notifications/unread-count?**', async (route) => route.fulfill({ json: { count: 0 } }));
 
   await page.goto('/accelerator?context=staff&section=applications&cohort=12&resident=99');
   await expect(page).toHaveURL(/\/accelerator\/my\/101$/);
@@ -771,7 +771,7 @@ test('direct accelerator route stays safe without any access', async ({ page }) 
   await page.route('**/me', async (route) => route.fulfill({ json: { id: 18, email: 'viewer@example.test', name: 'Без доступа', is_admin: false, is_active: true, email_verified: true, created_at: new Date().toISOString() } }));
   await page.route('**/api/accelerators', async (route) => route.fulfill({ json: [] }));
   await page.route('**/api/accelerators/me/memberships', async (route) => route.fulfill({ json: { memberships: [], effective_quotas: {} } }));
-  await page.route('**/api/accelerators/notifications/unread-count', async (route) => route.fulfill({ json: { count: 0 } }));
+  await page.route('**/api/accelerators/notifications/unread-count?**', async (route) => route.fulfill({ json: { count: 0 } }));
 
   await page.goto('/accelerator?context=staff&section=settings');
   await expect(page.getByRole('heading', { name: 'Нет доступных акселераторов' })).toBeVisible();
@@ -892,7 +892,7 @@ test('captain manages a team, incoming applications and own membership', async (
   await page.route('**/me', async (route) => route.fulfill({ json: { id: 8, email: 'resident@example.test', name: 'Резидент А', is_admin: false, is_active: true, email_verified: true, created_at: new Date().toISOString() } }));
   await page.route('**/api/accelerators', async (route) => route.fulfill({ json: [{ id: 7, name: 'Тестовый акселератор', status: 'active', access_role: 'resident' }] }));
   await page.route('**/api/accelerators/me/memberships', async (route) => route.fulfill({ json: { memberships: [{ membership_id: 101, application_id: 44, status: 'enrolled', accepted_at: new Date().toISOString(), enrolled_at: new Date().toISOString(), accelerator: { id: 7, name: 'Тестовый акселератор', status: 'active' }, cohort: { id: 12, name: 'Поток 2026', status: 'active', timezone: 'Europe/Moscow' }, project: { id: 5, name: 'Проект А', readiness_index: 70, status: 'active' }, modules: { applications: true, program: true, matchmaking: true } }], effective_quotas: {} } }));
-  await page.route('**/api/accelerators/notifications/unread-count', async (route) => route.fulfill({ json: { count: 0 } }));
+  await page.route('**/api/accelerators/notifications/unread-count?**', async (route) => route.fulfill({ json: { count: 0 } }));
   const residentProfile = { id: 41, user_id: 8, membership_id: 101, role: 'resident', name: 'Резидент А', bio: 'Основатель проекта', expertise: ['продукт'], needs: ['продажи'], industries: ['SaaS'], goals: [], preferred_formats: ['онлайн'], max_matches: 5, active_matches: 0, active: true };
   await page.route('**/api/accelerators/cohorts/12/matchmaking/me', async (route) => route.fulfill({ json: { access_role: 'resident', profiles: [residentProfile], matches: [] } }));
   await page.route('**/api/accelerators/memberships/101/match-profile', async (route) => route.fulfill({ json: residentProfile }));

@@ -15,6 +15,8 @@ from accelerator_notification_service import (
 from db_async import AsyncSessionLocal
 from models import (
     Accelerator,
+    AcceleratorCohort,
+    AcceleratorMembership,
     AcceleratorNotification,
     AcceleratorNotificationOutbox,
     AcceleratorNotificationPreference,
@@ -95,7 +97,7 @@ async def test_enqueue_notification_is_atomic_and_idempotent_under_race():
         assert outbox_rows[0].recipient_user_id == recipient_id
         assert in_app_rows[0].user_id == recipient_id
         assert in_app_rows[0].action_url == "/accelerator?tab=homework"
-        assert in_app_rows[0].event_metadata == {"source": "race-test"}
+        assert in_app_rows[0].event_metadata == {"source": "race-test", "audience": "staff"}
 
         await enqueue_notification(
             db,
@@ -166,6 +168,10 @@ async def test_notification_center_is_private_paginated_and_honors_preferences(
             created_by_user_id=alice.id,
         )
         db.add(accelerator)
+        await db.flush()
+        cohort = AcceleratorCohort(accelerator_id=accelerator.id, name="Поток", status="active", created_by_user_id=alice.id)
+        db.add(cohort); await db.flush()
+        db.add_all([AcceleratorMembership(cohort_id=cohort.id, user_id=person.id, role="resident", status="enrolled", accepted_by_user_id=alice.id) for person in [alice, bob]])
         await db.commit()
 
         async def enqueue_for(
@@ -175,10 +181,11 @@ async def test_notification_center_is_private_paginated_and_honors_preferences(
             return await enqueue_notification(
                 db,
                 accelerator_id=accelerator.id,
-                cohort_id=None,
+                cohort_id=cohort.id,
                 recipient_user_id=user.id,
                 recipient_email=user.email,
                 event_type="private_test",
+                audience="resident",
                 subject=f"Notification {sequence}",
                 body=f"Private body {sequence}",
                 idempotency_key=f"notification-private:{suffix}:{sequence}",
@@ -196,6 +203,7 @@ async def test_notification_center_is_private_paginated_and_honors_preferences(
             cursor=None,
             user=alice,
             db=db,
+            cohort_id=cohort.id,
         )
         assert len(first_page.items) == 2
         assert first_page.next_cursor is not None
@@ -211,6 +219,7 @@ async def test_notification_center_is_private_paginated_and_honors_preferences(
             cursor=first_page.next_cursor,
             user=alice,
             db=db,
+            cohort_id=cohort.id,
         )
         assert [item.title for item in second_page.items] == [
             "Notification alice-oldest"
@@ -227,12 +236,13 @@ async def test_notification_center_is_private_paginated_and_honors_preferences(
             cursor=first_page.next_cursor,
             user=bob,
             db=db,
+            cohort_id=cohort.id,
         )
         assert [item.title for item in bob_page.items] == ["Notification bob-only"]
         assert all(item.id not in alice_ids for item in bob_page.items)
 
-        alice_count = await unread_notification_count(user=alice, db=db)
-        bob_count = await unread_notification_count(user=bob, db=db)
+        alice_count = await unread_notification_count(user=alice, db=db, cohort_id=cohort.id)
+        bob_count = await unread_notification_count(user=bob, db=db, cohort_id=cohort.id)
         assert alice_count.count == 3
         assert bob_count.count == 1
 
@@ -242,6 +252,7 @@ async def test_notification_center_is_private_paginated_and_honors_preferences(
                 notification_id=alice_notification_id,
                 user=bob,
                 db=db,
+                cohort_id=cohort.id,
             )
         assert foreign_read.value.status_code == 404
         with pytest.raises(HTTPException) as missing_read:
@@ -249,6 +260,7 @@ async def test_notification_center_is_private_paginated_and_honors_preferences(
                 notification_id=alice_notification_id + 1_000_000,
                 user=bob,
                 db=db,
+                cohort_id=cohort.id,
             )
         assert missing_read.value.status_code == foreign_read.value.status_code
         assert missing_read.value.detail == foreign_read.value.detail
@@ -257,31 +269,34 @@ async def test_notification_center_is_private_paginated_and_honors_preferences(
             notification_id=alice_notification_id,
             user=alice,
             db=db,
+            cohort_id=cohort.id,
         )
         assert read.is_read is True
         assert read.read_at is not None
-        assert (await unread_notification_count(user=alice, db=db)).count == 2
-        assert (await unread_notification_count(user=bob, db=db)).count == 1
+        assert (await unread_notification_count(user=alice, db=db, cohort_id=cohort.id)).count == 2
+        assert (await unread_notification_count(user=bob, db=db, cohort_id=cohort.id)).count == 1
 
         # Reading the same row and read-all are both safe to retry.
         repeated_read = await mark_notification_read(
             notification_id=alice_notification_id,
             user=alice,
             db=db,
+            cohort_id=cohort.id,
         )
         assert repeated_read.read_at == read.read_at
-        read_all = await mark_all_notifications_read(user=alice, db=db)
+        read_all = await mark_all_notifications_read(user=alice, db=db, cohort_id=cohort.id)
         assert read_all.updated == 2
-        repeated_read_all = await mark_all_notifications_read(user=alice, db=db)
+        repeated_read_all = await mark_all_notifications_read(user=alice, db=db, cohort_id=cohort.id)
         assert repeated_read_all.updated == 0
-        assert (await unread_notification_count(user=alice, db=db)).count == 0
-        assert (await unread_notification_count(user=bob, db=db)).count == 1
+        assert (await unread_notification_count(user=alice, db=db, cohort_id=cohort.id)).count == 0
+        assert (await unread_notification_count(user=bob, db=db, cohort_id=cohort.id)).count == 1
         unread_page = await list_notifications(
             unread_only=True,
             limit=10,
             cursor=None,
             user=alice,
             db=db,
+            cohort_id=cohort.id,
         )
         assert unread_page.items == []
 

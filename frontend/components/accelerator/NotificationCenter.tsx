@@ -21,7 +21,15 @@ type NotificationPreferences = { email_enabled: boolean };
 
 const POLL_INTERVAL_MS = 45_000;
 
-export function NotificationCenter({ token }: { token: string }) {
+type NotificationCenterProps = { token: string; cohortId?: number | null; context: "resident" | "staff" };
+
+export function NotificationCenter({ token, cohortId, context }: NotificationCenterProps) {
+  if (!cohortId) return null;
+  return <ScopedNotificationCenter key={`${token}:${cohortId}:${context}`} token={token} cohortId={cohortId} context={context} />;
+}
+
+function ScopedNotificationCenter({ token, cohortId, context }: NotificationCenterProps & { cohortId: number }) {
+  const scope = `cohort_id=${cohortId}&context=${context}`;
   const router = useRouter();
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -39,6 +47,11 @@ export function NotificationCenter({ token }: { token: string }) {
   const [error, setError] = useState("");
 
   const handleError = useCallback((reason: unknown, fallback: string) => {
+    if (reason instanceof ApiError && (reason.status === 401 || reason.status === 403)) {
+      setItems([]);
+      setNextCursor(null);
+      setUnreadCount(0);
+    }
     if (reason instanceof ApiError && reason.status === 401) {
       authFailedRef.current = true;
       return;
@@ -50,14 +63,14 @@ export function NotificationCenter({ token }: { token: string }) {
     if (authFailedRef.current || countInFlightRef.current) return;
     countInFlightRef.current = true;
     try {
-      const response = await getAuthJson<{ count: number }>("/api/accelerators/notifications/unread-count", token);
+      const response = await getAuthJson<{ count: number }>(`/api/accelerators/notifications/unread-count?${scope}`, token);
       setUnreadCount(Math.max(0, response.count));
     } catch (reason) {
       handleError(reason, "Не удалось обновить счётчик уведомлений");
     } finally {
       countInFlightRef.current = false;
     }
-  }, [handleError, token]);
+  }, [handleError, scope, token]);
 
   const loadNotifications = useCallback(async (cursor?: number) => {
     if (authFailedRef.current) return;
@@ -66,7 +79,7 @@ export function NotificationCenter({ token }: { token: string }) {
     setError("");
     try {
       const suffix = cursor ? `&cursor=${encodeURIComponent(cursor)}` : "";
-      const response = await getAuthJson<NotificationPage>(`/api/accelerators/notifications?unread_only=false&limit=30${suffix}`, token);
+      const response = await getAuthJson<NotificationPage>(`/api/accelerators/notifications?unread_only=false&limit=30&${scope}${suffix}`, token);
       setItems((current) => cursor
         ? [...current, ...response.items.filter((item) => !current.some((currentItem) => currentItem.id === item.id))]
         : response.items);
@@ -77,7 +90,7 @@ export function NotificationCenter({ token }: { token: string }) {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [handleError, token]);
+  }, [handleError, scope, token]);
 
   const loadPreferences = useCallback(async () => {
     if (authFailedRef.current) return;
@@ -128,7 +141,7 @@ export function NotificationCenter({ token }: { token: string }) {
     setBusy(`read-${item.id}`);
     setError("");
     try {
-      await patchAuthJson(`/api/accelerators/notifications/${item.id}/read`, {}, token);
+      await patchAuthJson(`/api/accelerators/notifications/${item.id}/read?${scope}`, {}, token);
       const readAt = new Date().toISOString();
       setItems((current) => current.map((row) => row.id === item.id ? { ...row, read_at: readAt } : row));
       setUnreadCount((current) => Math.max(0, current - 1));
@@ -144,7 +157,7 @@ export function NotificationCenter({ token }: { token: string }) {
     setBusy("read-all");
     setError("");
     try {
-      await postAuthJson("/api/accelerators/notifications/read-all", {}, token);
+      await postAuthJson(`/api/accelerators/notifications/read-all?${scope}`, {}, token);
       const readAt = new Date().toISOString();
       setItems((current) => current.map((row) => row.read_at ? row : { ...row, read_at: readAt }));
       setUnreadCount(0);
@@ -198,7 +211,7 @@ export function NotificationCenter({ token }: { token: string }) {
 
       {open && <section ref={panelRef} id="accelerator-notifications" role="dialog" aria-modal="false" aria-labelledby="accelerator-notifications-title" tabIndex={-1} className="fixed inset-x-4 top-24 z-50 max-h-[calc(100dvh-7rem)] overflow-hidden rounded-3xl border border-white/12 bg-[#0b0b0b] shadow-2xl shadow-black/60 outline-none sm:absolute sm:inset-x-auto sm:right-0 sm:top-[calc(100%+0.75rem)] sm:w-[430px]">
         <div className="flex items-start justify-between gap-4 border-b border-white/8 p-4 sm:p-5">
-          <div><h2 id="accelerator-notifications-title" className="text-lg">Уведомления</h2><p className="mt-1 text-xs text-white/35">{unreadCount ? `${unreadCount} непрочитанных` : "Всё прочитано"}</p></div>
+          <div><h2 id="accelerator-notifications-title" className="text-lg">Уведомления</h2><p className="mt-1 text-xs text-white/50">Текущий поток · {context === "resident" ? "Участник" : "Служебный кабинет"}</p><p className="mt-1 text-xs text-white/35">{unreadCount ? `${unreadCount} непрочитанных` : "Всё прочитано"}</p></div>
           <div className="flex gap-1">
             <button type="button" onClick={() => void loadNotifications()} disabled={loading || Boolean(busy)} className="rounded-full p-2 text-white/35 hover:bg-white/[0.06] hover:text-white" aria-label="Обновить уведомления"><RefreshCw size={16} className={loading ? "animate-spin" : ""} /></button>
             <button type="button" onClick={() => { setOpen(false); triggerRef.current?.focus(); }} className="rounded-full p-2 text-white/35 hover:bg-white/[0.06] hover:text-white" aria-label="Закрыть уведомления"><X size={17} /></button>

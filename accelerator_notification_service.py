@@ -84,7 +84,12 @@ async def enqueue_notification(
     action_url: str | None = None,
     membership_id: int | None = None,
     event_metadata: dict | None = None,
+    audience: str | None = None,
 ) -> AcceleratorNotificationOutbox:
+    from notification_scope import default_audience
+    audience = audience or default_audience(event_type)
+    if audience not in {"resident", "staff"}:
+        raise ValueError("Invalid notification audience")
     normalized_email = (recipient_email or "").strip().lower()
     if not normalized_email and recipient_user_id is None and membership_id is not None:
         from models import AcceleratorMembership
@@ -158,7 +163,7 @@ async def enqueue_notification(
                 "title": existing.subject,
                 "body": existing.body,
                 "action_url": action_url,
-                "metadata": event_metadata or {},
+                "metadata": {**(event_metadata or {}), "audience": audience},
                 "read_at": None,
                 "idempotency_key": idempotency_key,
                 "created_at": now,
