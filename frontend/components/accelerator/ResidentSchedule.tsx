@@ -1,5 +1,5 @@
 import { CalendarDays } from "lucide-react";
-import { eventDateText, eventTimeText } from "@/lib/acceleratorDates";
+import { utcDate, eventTimeText } from "@/lib/acceleratorDates";
 
 type ScheduleStage = {
   id: number;
@@ -23,7 +23,7 @@ export function ResidentSchedule({ stages, timezone, error, onOpenEvent }: {
       const events = stage.timeline.filter((item) => item.kind === "event");
       const startsAt = events[0]?.sort_at || stage.unlock_at;
       return <article key={stage.id} className="rounded-xl border border-white/15 p-5">
-        {startsAt && <p className="mb-2 flex items-center gap-2 text-sm text-white/55"><CalendarDays size={16} />{eventDateText(startsAt, timezone)} · {eventTimeText(startsAt, timezone)}</p>}
+        {startsAt && <p className="mb-2 flex items-center gap-2 text-sm text-white/55"><CalendarDays size={16} />{utcDate(startsAt).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric", timeZone: timezone })} · {eventTimeText(startsAt, timezone)}</p>}
         <h2 className="text-xl font-medium">{stage.title}</h2>
         {stage.description && <p className="mt-3 whitespace-pre-wrap text-sm text-white/65">{stage.description}</p>}
         {stage.materials.map((material) => <div key={material.id} className="mt-3 text-sm">
