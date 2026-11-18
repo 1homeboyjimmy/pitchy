@@ -367,6 +367,9 @@ async def verify_email_code(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    if user.email_verified:
+        raise HTTPException(status_code=400, detail="Email already verified. Sign in to continue.")
+
     if not user.email_verified:
         if not user.email_verify_code_hash or not user.email_verify_expires_at:
             raise HTTPException(status_code=400, detail="No pending verification")
