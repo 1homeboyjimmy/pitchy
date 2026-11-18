@@ -221,6 +221,53 @@ test('manager workspace is split into focused sections', async ({ page }) => {
   await expect(page.getByRole('switch', { name: 'Демо-день и экспорт: включён' })).toBeVisible();
 });
 
+test('project audit shows launch errors and opens the completed report', async ({ page }) => {
+  await mockManagerWorkspace(page);
+  await page.addInitScript(() => {
+    Object.defineProperty(window.crypto, 'randomUUID', { value: undefined });
+  });
+  await page.route('**/api/accelerators/cohorts/12/residents', route => route.fulfill({
+    json: [{ membership_id: 101, name: 'Резидент А', status: 'enrolled' }],
+  }));
+
+  let attempts = 0;
+  await page.route('**/api/accelerators/memberships/101/project-audits', async route => {
+    const payload = route.request().postDataJSON();
+    expect(payload).toMatchObject({
+      audit_type: 'product',
+      focus: null,
+      client_request_id: expect.stringMatching(/^[A-Za-z0-9][A-Za-z0-9._:-]{7,63}$/),
+    });
+    attempts += 1;
+    if (attempts === 1) {
+      await route.fulfill({
+        status: 409,
+        json: { detail: 'Для аудита резиденту необходимо привязать паспорт проекта' },
+      });
+      return;
+    }
+    await route.fulfill({
+      json: {
+        id: 82, membership_id: 101, audit_type: 'product', audit_type_label: 'Продукт',
+        status: 'completed', overall_score: 80, linked_tasks: [],
+        project: { id: 5, name: 'Проект А' },
+        result: { summary: 'Результат нового аудита', overall_score: 80, strengths: [], findings: [], recommendations: [], data_gaps: [] },
+      },
+    });
+  });
+
+  await page.goto('/accelerator?context=staff&section=project_audit&accelerator=7&cohort=12');
+  await page.getByRole('button', { name: 'Запустить аудит', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Резидент').selectOption('101');
+  const submit = dialog.getByRole('button', { name: 'Запустить аудит', exact: true });
+  await submit.click();
+  await expect(dialog.getByRole('alert')).toHaveText('Для аудита резиденту необходимо привязать паспорт проекта');
+  await submit.click();
+  await expect(dialog.getByText('Результат нового аудита')).toBeVisible();
+  expect(attempts).toBe(2);
+});
+
 test('manager preserves the requested cohort and homework section through reload', async ({ page }) => {
   await mockManagerWorkspace(page);
   await page.route('**/api/accelerators/7/cohorts', async (route) => route.fulfill({ json: [

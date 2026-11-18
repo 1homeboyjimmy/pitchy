@@ -16,7 +16,7 @@ export function ProjectSelection({ membershipId, onChanged }: { membershipId: nu
     let cancelled = false;
     if (!token) return;
     getAuthJson<{ project_id: number | null; projects: Array<{ id: number; name: string }>; selection_locked?: boolean; team?: { name: string; project_id: number | null } | null }>(`/api/accelerators/memberships/${membershipId}/project-options`, token)
-      .then(data => { if (!cancelled) { setProjects(data.projects); setSelected(String(data.project_id ?? data.projects[0]?.id ?? "")); setSaved(String(data.project_id)); setTeam(data.team || null); setLocked(Boolean(data.selection_locked)); } })
+      .then(data => { if (!cancelled) { setProjects(data.projects); setSelected(String(data.project_id ?? data.projects[0]?.id ?? "")); setSaved(String(data.project_id ?? "")); setTeam(data.team || null); setLocked(Boolean(data.selection_locked)); } })
       .catch(() => { if (!cancelled) setProjects([]); });
     return () => { cancelled = true; };
   }, [membershipId, token]);
@@ -24,7 +24,7 @@ export function ProjectSelection({ membershipId, onChanged }: { membershipId: nu
     <p className="text-sm text-white/65">Основной проект — проект команды «{team.name}».</p>
     <p className="mt-2 text-xs text-white/40">Личные проекты и их история сохранены и доступны отдельно на дашборде Pitchy.</p>
   </div>;
-  if (projects.length < 2) return null;
+  if (!projects.length || (projects.length === 1 && saved === String(projects[0].id))) return null;
   const save = async () => {
     if (!token) return;
     setBusy(true); setError("");

@@ -1,24 +1,25 @@
 import passportConfig from './fixtures/passport-fields.json';
 import { expect, test, type Page } from '@playwright/test';
 
-async function resident(page: Page, loggedIn = true) {
+async function resident(page: Page, loggedIn = true, hasLinkedProject = true) {
   await page.addInitScript((hasSession) => {
     if (hasSession) localStorage.setItem('vi_auth_state', 'cookie-session');
     localStorage.setItem('pitchy_cookie_consent_v2', JSON.stringify({ choice: 'necessary', updatedAt: new Date().toISOString() }));
   }, loggedIn);
-  let selected = 501;
+  let selected: number | null = hasLinkedProject ? 501 : null;
+  const projects = [{ id: 501, name: 'Первая идея' }, ...(hasLinkedProject ? [{ id: 502, name: 'Вторая идея' }] : [])];
   const membership = () => ({
     membership_id: 101, application_id: null, status: 'enrolled', accepted_at: '2026-10-13T10:00:00', enrolled_at: '2026-10-13T10:00:00',
     accelerator: { id: 7, name: 'МТУСИ 2026', status: 'active' },
     cohort: { id: 12, name: 'МТУСИ 2026', status: 'active', timezone: 'Europe/Moscow' },
-    project: { id: selected, name: selected === 501 ? 'Первая идея' : 'Вторая идея', readiness_index: 35, status: 'active', can_edit_passport: true,
+    project: selected === null ? null : { id: selected, name: selected === 501 ? 'Первая идея' : 'Вторая идея', readiness_index: 35, status: 'active', can_edit_passport: true,
       description: selected === 501 ? 'Описание первой идеи.' : 'Описание второй идеи.' },
     modules: {},
   });
   await page.route('**/api/accelerators', route => route.fulfill({ json: [{ id: 7, name: 'МТУСИ 2026', status: 'active', access_role: 'resident' }] }));
   await page.route('**/me', route => route.fulfill({ json: { id: 18, email: null, username: 'sample_user', name: '@sample_user', is_admin: false, is_active: true, email_verified: false, created_at: '2026-10-13T10:00:00' } }));
   await page.route('**/api/accelerators/me/memberships', route => route.fulfill({ json: { memberships: [membership()], effective_quotas: {} } }));
-  await page.route('**/api/accelerators/memberships/101/project-options', route => route.fulfill({ json: { project_id: selected, projects: [{ id: 501, name: 'Первая идея' }, { id: 502, name: 'Вторая идея' }] } }));
+  await page.route('**/api/accelerators/memberships/101/project-options', route => route.fulfill({ json: { project_id: selected, projects } }));
   await page.route('**/api/accelerators/memberships/101/project', route => { selected = route.request().postDataJSON().project_id; return route.fulfill({ json: { membership_id: 101, project_id: selected } }); });
   await page.route('**/api/accelerators/notifications**', route => route.fulfill({ json: { items: [], unread_count: 0, next_cursor: null } }));
   await page.route('**/api/accelerators/memberships/101/today', route => route.fulfill({ status: 503, json: { detail: 'Нет событий' } }));
@@ -54,6 +55,15 @@ test('enrolled resident sees a project description and can select another idea',
   await expect(page.getByText('Описание второй идеи.', { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: '../private_imports/mtusi-2026/resident-project-mobile.png', fullPage: true });
+});
+
+test('resident can link their only Pitchy project to an existing enrollment', async ({ page }) => {
+  await resident(page, true, false);
+  await page.goto('/accelerator/my/101');
+  await page.getByRole('button', { name: 'Мой профиль', exact: true }).click();
+  await expect(page.getByRole('combobox', { name: 'Основной проект в акселераторе' })).toHaveValue('501');
+  await page.getByRole('button', { name: 'Выбрать проект', exact: true }).click();
+  await expect(page.getByRole('link', { name: 'Открыть паспорт', exact: true })).toHaveAttribute('href', '/passport/501');
 });
 
 test('resident fills every passport field, saves and reopens persisted values', async ({ page }) => {

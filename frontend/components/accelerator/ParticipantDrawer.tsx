@@ -41,6 +41,7 @@ export function ParticipantDrawer({ membershipId, token, onClose, onChanged }: {
   const [card, setCard] = useState<Card | null>(null);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const [auditError, setAuditError] = useState("");
   const [task, setTask] = useState({ title: "", description: "", dueAt: "" });
   const [recommendation, setRecommendation] = useState({ title: "", description: "" });
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -85,9 +86,9 @@ export function ParticipantDrawer({ membershipId, token, onClose, onChanged }: {
     finally { setBusy(""); }
   };
   const launchAudit = async () => {
-    setBusy("audit"); setError("");
+    setBusy("audit"); setAuditError("");
     try { await postAuthJson(`/api/accelerators/memberships/${membershipId}/project-audits`, { audit_type: "product", focus: null, client_request_id: `participant-card:${membershipId}:${Date.now()}` }, token); await load(); }
-    catch (reason) { setError(describeApiError(reason, "Не удалось запустить аудит")); }
+    catch (reason) { setAuditError(describeApiError(reason, "Не удалось запустить аудит")); }
     finally { setBusy(""); }
   };
   const changeProgramStage = async (stageId: number, action: "complete-manually" | "waive") => {
@@ -126,7 +127,9 @@ export function ParticipantDrawer({ membershipId, token, onClose, onChanged }: {
         <Info title="Риск"><p className={card.risk.level === "red" ? "text-red-200" : card.risk.level === "yellow" ? "text-amber-200" : "text-emerald-200"}>{card.risk.level === "red" ? "Высокий" : card.risk.level === "yellow" ? "Требует внимания" : "Стабильно"}</p>{card.risk.reasons.map((reason) => <p key={reason} className="mt-1 text-sm text-white/45">• {reason}</p>)}</Info>
         <Info title={card.application ? "Заявка и профиль" : "Профиль участника"}>{card.application && <p className="text-sm text-white/55">Анкета: версия {card.application.form_version}</p>}<KeyValues values={card.application?.answers || {}} /><KeyValues values={card.profile} excludedKeys={["application_data", "import_batch", "source_rows"]} /></Info>
         <Info title="Чек-ины и обратная связь"><div className="space-y-3">{card.checkins.map((row) => <div key={`c-${row.id}`}><p className="text-sm">{row.period_start} · {row.health}</p><p className="text-sm text-white/45">{row.summary}</p></div>)}{card.feedback.map((row) => <div key={`f-${row.id}`}><p className="text-sm text-white/35">Обратная связь · {formatDate(row.created_at)}</p><p className="text-sm text-white/60">{row.body}</p></div>)}{!card.checkins.length && !card.feedback.length && <p className="text-sm text-white/35">Записей пока нет.</p>}</div></Info>
-        <Info title="Аудит проекта"><p className="text-sm text-white/50">{card.audit ? `${card.audit.type} · ${card.audit.status}${card.audit.score != null ? ` · ${card.audit.score}/100` : ""}` : "Аудит ещё не запускался"}</p>{card.project && <button type="button" onClick={() => void launchAudit()} disabled={Boolean(busy)} className="workspace-button mt-3"><Activity size={15} /> Запустить аудит</button>}</Info>
+        <Info title="Аудит проекта"><p className="text-sm text-white/50">{card.audit ? `${card.audit.type} · ${card.audit.status}${card.audit.score != null ? ` · ${card.audit.score}/100` : ""}` : "Аудит ещё не запускался"}</p>{card.project && <button type="button" onClick={() => void launchAudit()} disabled={Boolean(busy)} className="workspace-button mt-3">{busy === "audit" ? <Loader2 size={15} className="animate-spin" /> : <Activity size={15} />}
+          {busy === "audit" ? "Аудит выполняется…" : "Запустить аудит"}
+        </button>}{auditError && <p role="alert" className="mt-3 text-sm text-red-200">{auditError}</p>}</Info>
         <form onSubmit={addTask} className="rounded-2xl border border-white/10 p-4"><h3>Создать обязательную задачу</h3><div className="mt-3 grid gap-3"><input required minLength={2} value={task.title} onChange={(event) => setTask({ ...task, title: event.target.value })} placeholder="Название" className="workspace-input" /><textarea value={task.description} onChange={(event) => setTask({ ...task, description: event.target.value })} placeholder="Описание" className="workspace-input resize-y" /><input type="datetime-local" value={task.dueAt} onChange={(event) => setTask({ ...task, dueAt: event.target.value })} className="workspace-input" /><button disabled={Boolean(busy)} className="workspace-button"><ClipboardCheck size={15} /> Назначить</button></div></form>
         <form onSubmit={addRecommendation} className="rounded-2xl border border-white/10 p-4"><h3>Добавить добровольную рекомендацию</h3><div className="mt-3 grid gap-3"><input required minLength={2} value={recommendation.title} onChange={(event) => setRecommendation({ ...recommendation, title: event.target.value })} placeholder="Заголовок" className="workspace-input" /><textarea required minLength={2} value={recommendation.description} onChange={(event) => setRecommendation({ ...recommendation, description: event.target.value })} placeholder="Почему это полезно" className="workspace-input resize-y" /><button disabled={Boolean(busy)} className="workspace-button"><UserRound size={15} /> Добавить рекомендацию</button></div></form>
         <Info title="История активности">{activityRows.map((row) => <div key={row.key} className="mb-3 border-l border-white/10 pl-3"><p className="text-sm text-white/65">{row.kind === "status" ? row.title.replace(/: (accepted|enrolled|suspended|completed|withdrawn)$/, (_, status: string) => `: ${STATUS[status] || status}`) : row.title}</p><p className="mt-1 text-xs text-white/30">{formatDate(row.at)}{row.detail ? ` · ${row.detail}` : ""}</p></div>)}{!activityRows.length && <p className="text-sm text-white/35">Событий пока нет.</p>}</Info>
