@@ -731,7 +731,7 @@ test('resident Today page prioritizes required work and hides project advice and
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/accelerator');
     await expect(page).toHaveURL(/\/accelerator\/my\/101$/);
-    await expect(page.getByTestId('resident-membership-header')).toBeVisible();
+    await expect(page.getByTestId('resident-membership-header')).toHaveCount(0);
     await expect(page.getByTestId('resident-today')).toBeVisible();
     if (process.env.ACCELERATOR_CAPTURE_UI && (width === 360 || width === 1280)) await page.screenshot({ path: testInfo.outputPath(`today-${width}.png`), fullPage: true });
     if (width < 1024) {

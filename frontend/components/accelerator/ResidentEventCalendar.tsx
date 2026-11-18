@@ -28,6 +28,8 @@ export function ResidentEventCalendar({ events }: { events: CalendarEvent[] }) {
   const monthLabel = first.toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
   const monthEvents = ordered.filter(event => dayKey(event).startsWith(month));
   const visible = ordered.filter(event => !hidden.includes(event.event_type || "other"));
+  const occupiedDays = new Set(visible.map(dayKey));
+  const emptyWeeks = Array.from({ length: totalCells / 7 }, (_, index) => !cells.slice(index * 7, index * 7 + 7).some(date => occupiedDays.has(keyFor(date))));
   const colorFor = (event: CalendarEvent) => types.indexOf(event.event_type || "other") % 4;
   const changeMonth = (delta: number) => setMonth(keyFor(new Date(year, monthNumber - 1 + delta, 1)).slice(0, 7));
   const jump = (key: string, event: CalendarEvent) => {
@@ -57,11 +59,11 @@ export function ResidentEventCalendar({ events }: { events: CalendarEvent[] }) {
         <header className={styles.monthHeader}><h4 aria-live="polite">{monthLabel}</h4><div><button type="button" className={styles.todayButton} onClick={() => setMonth(today.slice(0, 7))}>Сегодня</button><button type="button" aria-label="Предыдущий месяц" onClick={() => changeMonth(-1)}>←</button><button type="button" aria-label="Следующий месяц" onClick={() => changeMonth(1)}>→</button></div></header>
         <div className={styles.scroller}><div className={styles.grid}>
           {WEEKDAYS.map(day => <div key={day} className={styles.weekday}>{day}</div>)}
-          {cells.map(date => {
+          {cells.map((date, index) => {
             const key = keyFor(date);
             const rows = visible.filter(event => dayKey(event) === key);
             const outside = date.getMonth() !== monthNumber - 1;
-            return <div key={key} className={styles.cell} data-outside={outside} data-selected={selected === key}>
+            return <div key={key} className={styles.cell} data-empty-week={emptyWeeks[Math.floor(index / 7)]} data-outside={outside} data-selected={selected === key}>
               <button type="button" className={styles.date} data-today={key === today} disabled={!rows.length} aria-pressed={selected === key} aria-label={`${date.getDate()} ${date.toLocaleDateString("ru-RU", { month: "long", year: "numeric" })}${rows.length ? ": " + rows.map(row => row.title).join(", ") : ": нет мероприятий"}`} onClick={() => jump(key, rows[0])}>{date.getDate()}</button>
               <div className={styles.entries}>{rows.map(event => <button type="button" key={event.id} className={styles.entry} data-color={colorFor(event)} data-cancelled={event.status === "cancelled"} aria-label={`${event.title}, ${eventTimeText(event.starts_at, event.timezone || "Europe/Moscow")}`} onClick={() => jump(key, event)}><span className={styles.eventTime}>{eventTimeText(event.starts_at, event.timezone || "Europe/Moscow")}{event.status === "cancelled" ? " · Отменено" : ""}</span><span className={styles.eventTitle}>{event.title}</span></button>)}</div>
             </div>;

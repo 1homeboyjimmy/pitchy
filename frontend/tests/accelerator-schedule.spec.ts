@@ -23,6 +23,8 @@ test('participant sees attendance and a timetable without completion or homework
   await page.route('**/api/accelerators/memberships/101/events', route => route.fulfill({ json: [51, 52].map((id, i) => ({ id, event_type: i ? 'workshop' : 'webinar', title: i ? 'Маркетинг' : 'Рынок', starts_at: '2026-11-18T15:00:00Z', ends_at: '2026-11-18T16:00:00Z', status: 'published', event_format: 'online', timezone: 'Europe/Moscow', homework_links: [], post_materials: [] })) }));
   await page.goto('/accelerator/my/101');
   await expect(page.getByTestId('resident-today')).toBeVisible();
+  await expect(page.getByTestId('resident-membership-header')).toHaveCount(0);
+  await expect(page.getByText('Участник', { exact: true })).toHaveCount(0);
   await expect(page.getByText('30%', { exact: true })).toBeVisible();
   await expect(page.getByText('Посещено 3 из 10 мероприятий программы · 5 без отметки')).toBeVisible();
   await expect(page.getByText('0%', { exact: true })).toHaveCount(0);
@@ -33,6 +35,12 @@ test('participant sees attendance and a timetable without completion or homework
   await expect(page.getByRole('heading', { name: 'Материалы программы' })).toHaveCount(0);
   const day = page.getByRole('button', { name: /18 ноябрь 2026.*Рынок.*Маркетинг/ });
   const calendar=page.getByRole('region', { name: 'Календарь мероприятий' });
+  await expect(page.getByText('Время показано в часовом поясе потока.', { exact: false })).toHaveCount(0);
+  const emptyWeek = calendar.getByRole('button', {name: /^2 ноябрь 2026/}).locator('..');
+  await expect(emptyWeek).toHaveAttribute('data-empty-week', 'true');
+  await expect(day.locator('..')).toHaveAttribute('data-empty-week', 'false');
+  const heights = await Promise.all([emptyWeek.evaluate(el=>parseFloat(getComputedStyle(el).minHeight)),day.locator('..').evaluate(el=>parseFloat(getComputedStyle(el).minHeight))]);
+  expect(heights[0] / heights[1]).toBeCloseTo(.7);
   await expect(calendar.getByRole('button', { name: 'Маркетинг, 18:00', exact: true })).toBeVisible();
   await calendar.getByRole('checkbox', { name: /Практикумы/ }).uncheck();
   await expect(calendar.getByRole('button', { name: 'Маркетинг, 18:00', exact: true })).toHaveCount(0);
