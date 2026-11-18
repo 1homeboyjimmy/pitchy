@@ -38,7 +38,7 @@ from accelerator_service import (
     require_tracker_membership_access,
     tracker_membership_ids,
 )
-from accelerator_project_audit_service import generate_project_audit
+from accelerator_project_audit_service import discuss_project_audit, generate_project_audit
 from accelerator_csv import csv_content, csv_datetime, csv_filename
 from accelerator_form_import import parse_form_export
 from accelerator_homework_service import (submission_context, scoped_submission, participant_results,
@@ -170,6 +170,7 @@ from schemas.accelerators import (
     TrackingTaskBulkCreate,
     TrackingTaskCreate,
     TrackingTaskUpdate,
+    ProjectAuditChatRequest,
     ProjectAuditCreate,
     ProjectAuditTaskCreate,
     DemoDayCreate,
@@ -7224,7 +7225,7 @@ async def get_project_audit(
     row = await db.get(AcceleratorProjectAudit, audit_id)
     if not row:
         raise HTTPException(status_code=404, detail="Аудит не найден")
-    await project_audit_membership_context(db, row.membership_id, user)
+    _, cohort, _ = await project_audit_membership_context(db, row.membership_id, user)
     previous = (await db.execute(
         select(AcceleratorProjectAudit).where(
             AcceleratorProjectAudit.membership_id == row.membership_id,
@@ -7233,7 +7234,33 @@ async def get_project_audit(
             AcceleratorProjectAudit.created_at < row.created_at,
         ).order_by(AcceleratorProjectAudit.created_at.desc()).limit(1)
     )).scalar_one_or_none()
-    return await project_audit_dict(db, row, previous)
+    return {
+        **await project_audit_dict(db, row, previous),
+        "can_discuss": user.is_admin or await is_accelerator_organizer(db, user.id, cohort.accelerator_id),
+    }
+
+
+@router.post("/project-audits/{audit_id}/chat")
+async def chat_about_project_audit(
+    audit_id: int,
+    payload: ProjectAuditChatRequest,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    row = await db.get(AcceleratorProjectAudit, audit_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Аудит не найден")
+    _, cohort, _ = await project_audit_membership_context(db, row.membership_id, user)
+    await require_cohort_manager(db, user, cohort)
+    if row.status != "completed" or not row.result:
+        raise HTTPException(status_code=409, detail="Обсуждение доступно после завершения аудита")
+    report, audit_type, focus = row.result, row.audit_type, row.focus
+    await db.rollback()
+    try:
+        return await discuss_project_audit(report=report, audit_type=audit_type, focus=focus, request=payload)
+    except Exception:
+        logger.exception("Project audit discussion failed for audit_id=%s", audit_id)
+        raise HTTPException(status_code=503, detail="Чат по аудиту временно недоступен")
 
 
 async def require_cohort_project_audit_quota(
@@ -9363,9 +9390,17 @@ async def membership_organizer_card(
     feedback = list((await db.execute(select(AcceleratorTrackingFeedback).where(
         AcceleratorTrackingFeedback.membership_id == membership.id
     ).order_by(AcceleratorTrackingFeedback.created_at.desc()).limit(5))).scalars().all())
-    audit = (await db.execute(select(AcceleratorProjectAudit).where(
+    audits = (await db.execute(select(
+        AcceleratorProjectAudit.id,
+        AcceleratorProjectAudit.audit_type,
+        AcceleratorProjectAudit.status,
+        AcceleratorProjectAudit.overall_score,
+        AcceleratorProjectAudit.created_at,
+        func.row_number().over(order_by=(AcceleratorProjectAudit.created_at, AcceleratorProjectAudit.id)).label("number"),
+    ).where(
         AcceleratorProjectAudit.membership_id == membership.id
-    ).order_by(AcceleratorProjectAudit.created_at.desc()).limit(1))).scalar_one_or_none()
+    ).order_by(AcceleratorProjectAudit.created_at.desc(), AcceleratorProjectAudit.id.desc()).limit(100))).all()
+    audit = audits[0] if audits else None
     lifecycle = list((await db.execute(select(AcceleratorMembershipEvent).where(
         AcceleratorMembershipEvent.membership_id == membership.id
     ).order_by(AcceleratorMembershipEvent.created_at.desc()).limit(10))).scalars().all())
@@ -9399,6 +9434,17 @@ async def membership_organizer_card(
             AcceleratorNotification.read_at.is_not(None),
         ).order_by(AcceleratorNotification.read_at.desc()).limit(20)
     )).scalars().all())
+    open_tasks = (await db.execute(
+        select(AcceleratorTrackingTask).where(
+            AcceleratorTrackingTask.membership_id == membership.id,
+            AcceleratorTrackingTask.status == "open",
+        ).order_by(
+            AcceleratorTrackingTask.due_at.is_(None),
+            AcceleratorTrackingTask.due_at,
+            AcceleratorTrackingTask.created_at.desc(),
+            AcceleratorTrackingTask.id.desc(),
+        )
+    )).scalars().all()
     completed_tasks = list((await db.execute(
         select(AcceleratorTrackingTask).where(
             AcceleratorTrackingTask.membership_id == membership.id,
@@ -9484,7 +9530,16 @@ async def membership_organizer_card(
         "risk": risk,
         "checkins": [{"id": row.id, "period_start": row.period_start, "health": row.health, "summary": row.summary, "blockers": row.blockers} for row in checkins],
         "feedback": [{"id": row.id, "body": row.body, "read_at": row.read_at, "created_at": row.created_at} for row in feedback],
+        "tasks": [tracking_task_dict(task) for task in open_tasks],
         "audit": ({"id": audit.id, "type": audit.audit_type, "status": audit.status, "score": audit.overall_score, "created_at": audit.created_at} if audit else None),
+        "audits": [{
+            "id": row.id,
+            "number": row.number,
+            "type": PROJECT_AUDIT_TYPE_LABELS.get(row.audit_type, row.audit_type),
+            "status": row.status,
+            "score": row.overall_score,
+            "created_at": row.created_at,
+        } for row in audits],
         "lifecycle": [{"id": row.id, "from_status": row.from_status, "to_status": row.to_status, "reason": row.reason, "created_at": row.created_at} for row in lifecycle],
         "activity": activity,
         "last_action": {"title": last_title, "at": last_at},

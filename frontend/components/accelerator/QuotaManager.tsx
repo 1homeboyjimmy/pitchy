@@ -81,10 +81,10 @@ export function QuotaManager({ token, cohortId, initialTemplate, auditLimit, onA
       <LimitsEditor value={template} onChange={setTemplate} />
       <button type="button" onClick={() => void saveTemplate()} disabled={Boolean(busy)} className="workspace-button mt-5">{busy === "template" && <Loader2 size={15} className="animate-spin" />} Сохранить для потока</button>
       <form onSubmit={saveAuditLimit} className="mt-6 space-y-3 border-t border-white/10 pt-5">
-        <label className="block max-w-xs text-sm text-white/60">
+        <label className="block w-full max-w-md text-sm text-white/60">
           Аудиты проекта в месяц
           <input type="number" required min={-1} max={2147483647} value={auditLimitInput}
-            onChange={event => setAuditLimitInput(event.target.value)} className="workspace-input mt-2" />
+            onChange={event => setAuditLimitInput(event.target.value)} className="workspace-input mt-2 block min-h-14 text-lg tabular-nums" />
         </label>
         <p className="text-sm text-white/45">Общий лимит для всех участников и организаторов потока. −1 — без ограничений, 0 — запуск недоступен.</p>
         <button type="submit" className="workspace-button" disabled={Boolean(busy) || auditLimitInput === String(auditLimit)}>

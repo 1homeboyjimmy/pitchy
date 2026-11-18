@@ -40,13 +40,14 @@ function asText(v: unknown): string {
 
 interface Props {
   portalContainer?: HTMLElement;
+  readOnly?: boolean;
   projectId: number;
   projectName: string;
   onClose: () => void;
   onSaved?: (readiness: number) => void;
 }
 
-export function PassportModal({ projectId, projectName, onClose, onSaved, portalContainer }: Props) {
+export function PassportModal({ projectId, projectName, onClose, onSaved, portalContainer, readOnly = false }: Props) {
   const mounted = useMounted();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -69,7 +70,7 @@ export function PassportModal({ projectId, projectName, onClose, onSaved, portal
     if (!t) { setLoading(false); return; }
     getPassport(projectId, t)
       .then((v) => {
-        setCanEdit(v.can_edit === true);
+        setCanEdit(!readOnly && v.can_edit === true);
         setTeamManaged(v.team_managed === true);
         setPassport(v.passport || {});
         setMissing(v.missing_sections || []);
@@ -77,7 +78,7 @@ export function PassportModal({ projectId, projectName, onClose, onSaved, portal
       })
       .catch((e) => { console.error(e); setError(describeApiError(e, "Не удалось загрузить паспорт")); })
       .finally(() => setLoading(false));
-  }, [projectId]);
+  }, [projectId, readOnly]);
 
   const valueFor = (path: string): string => {
     if (path in edits) return edits[path];
@@ -232,7 +233,7 @@ export function PassportModal({ projectId, projectName, onClose, onSaved, portal
               >
                 <FileDown size={15} /> PDF
               </button>
-              <button onClick={onClose} className="text-white/40 hover:text-white p-2 -mr-2 rounded-xl hover:bg-white/5 transition-all">
+              <button type="button" aria-label="Закрыть паспорт" autoFocus onClick={onClose} className="text-white/40 hover:text-white p-2 -mr-2 rounded-xl hover:bg-white/5 transition-all">
                 <X size={18} />
               </button>
             </div>

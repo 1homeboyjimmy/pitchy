@@ -1,3 +1,4 @@
+import passportConfig from "./fixtures/passport-fields.json";
 import { expect as baseExpect, test, type Page } from '@playwright/test';
 
 const expect = baseExpect.configure({ timeout: 20_000 });
@@ -453,6 +454,7 @@ test('organizer workspace fits the agreed screen widths', async ({ page }) => {
 
 test('participant card opens and closes from the keyboard with restored focus', async ({ page }) => {
   await mockManagerWorkspace(page);
+  const tasks = [{ id: 71, title: 'Провести интервью' }];
   await page.route('**/api/accelerators/cohorts/12/report', route => route.fulfill({ json: {
     summary: { residents: 1, enrolled: 1, suspended: 0, completed: 0 },
     rows: [{ membership_id: 101, name: 'Резидент А', email: 'resident@example.test', status: 'enrolled', trackers: [], program: { percent: 50 }, homework: { accepted: 1, total: 2, overdue: 0 }, attendance: { present: 1, total: 2 } }],
@@ -467,13 +469,37 @@ test('participant card opens and closes from the keyboard with restored focus', 
     homework: { published: 2, accepted: 1, pending: 0, overdue: 0, submissions: [] },
     program: { completed: 1, total: 2, percent: 50, stages: [] },
     risk: { level: 'yellow', reasons: ['Просрочено обязательное действие'], overdue_tasks: 1, overdue_homework: 0, last_activity_at: new Date().toISOString() },
-    checkins: [], feedback: [], audit: null, lifecycle: [], last_action: { title: 'Подтвердил участие', at: new Date().toISOString() },
+    tasks, checkins: [], feedback: [], audit: null,
+    audits: [
+      { id: 82, number: 2, type: 'Продукт', status: 'completed', score: 46, created_at: new Date().toISOString() },
+      { id: 81, number: 1, type: 'Продукт', status: 'completed', score: 40, created_at: new Date().toISOString() },
+    ], lifecycle: [], last_action: { title: 'Подтвердил участие', at: new Date().toISOString() },
   } }));
+
+  await page.route('**/projects/5/passport', route => route.fulfill({ json: {
+    can_edit: true, team_managed: false, readiness_index: 72, missing_sections: [],
+    readiness_config: passportConfig, passport: { core: { problem: 'Проблема участника.' } },
+  } }));
+  await page.route('**/api/accelerators/memberships/101/tracking-tasks', route => {
+    const { title } = route.request().postDataJSON();
+    tasks.push({ id: 72, title });
+    return route.fulfill({ json: tasks[1] });
+  });
 
   await page.route('**/api/accelerators/memberships/101/project-audits', route => route.fulfill({
     status: 402,
     json: { detail: 'Исчерпан месячный лимит аудитов проекта для этого потока' },
   }));
+
+  await page.route('**/api/accelerators/project-audits/82', route => route.fulfill({ json: {
+    id: 82, membership_id: 101, audit_type: 'product', audit_type_label: 'Продукт', status: 'completed',
+    overall_score: 46, linked_tasks: [], can_discuss: true, project: { id: 5, name: 'Проект А' },
+    result: { summary: 'Нужно проверить спрос.', overall_score: 46, strengths: [], findings: [], recommendations: [], data_gaps: ['Нет интервью'] },
+  } }));
+  await page.route('**/api/accelerators/project-audits/82/chat', route => {
+    expect(route.request().postDataJSON()).toEqual({ question: 'С чего начать?', history: [] });
+    return route.fulfill({ json: { answer: 'Начните с интервью.' } });
+  });
 
   await page.goto('/accelerator');
   await page.getByRole('button', { name: 'Участники', exact: true }).click();
@@ -485,18 +511,35 @@ test('participant card opens and closes from the keyboard with restored focus', 
   await expect(page.getByRole('button', { name: 'Закрыть карточку' })).toBeFocused();
   await expect(dialog.getByText('application_data', { exact: true })).toHaveCount(0);
   await expect(dialog.getByText('не показывать', { exact: true })).toHaveCount(0);
-  await expect(dialog.getByText('Описание проекта участника.', { exact: true })).toBeVisible();
-  await expect(dialog.getByText('Проблема участника.', { exact: true })).toBeVisible();
-  await expect(dialog.getByText('Решение участника.', { exact: true })).toBeVisible();
-  await expect(dialog.getByText('Аудитория участника.', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('Описание проекта участника.', { exact: true })).toHaveCount(0);
   await expect(dialog.getByRole('heading', { name: 'Профиль участника', exact: true, level: 2 })).toBeVisible();
   await expect(dialog.getByText('internal-hidden', { exact: true })).toHaveCount(0);
-  await expect(dialog.getByRole('link', { name: 'Открыть паспорт проекта' })).toHaveAttribute('href', '/passport/5');
+  const passportButton = dialog.getByRole('button', { name: 'Открыть паспорт проекта' });
+  await passportButton.click();
+  const passport = page.getByRole('dialog', { name: 'Паспорт · Проект А' });
+  await expect(passport.locator('fieldset textarea').first()).toBeDisabled();
+  await expect(passport.getByText('Паспорт доступен для просмотра.', { exact: false })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(passport).toHaveCount(0);
+  await expect(passportButton).toBeFocused();
+  await expect(dialog.getByText('Провести интервью', { exact: true })).toBeVisible();
+  await dialog.getByLabel('Название задачи').fill('Согласовать план');
+  await dialog.getByRole('button', { name: 'Назначить', exact: true }).click();
+  await expect(dialog.getByText('Согласовать план', { exact: true })).toBeVisible();
   await dialog.getByRole('button', { name: 'Запустить аудит', exact: true }).click();
   await expect(dialog.getByRole('alert')).toHaveText(/Исчерпан месячный лимит аудитов этого потока/);
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
   await expect(trigger).toBeFocused();
+  await trigger.click();
+  await expect(dialog.getByRole('link', { name: 'Аудит 1 · Результат 40/100' })).toHaveAttribute('href', '/accelerator/project-audits/81');
+  await dialog.getByRole('link', { name: 'Аудит 2 · Результат 46/100' }).click();
+  await expect(page.getByRole('heading', { name: 'Отчёт аудита проекта' })).toBeVisible();
+  await expect(page.getByText('Нужно проверить спрос.')).toBeVisible();
+  await expect(page.getByText('Нет интервью')).toBeVisible();
+  await page.getByLabel('Вопрос по отчёту').fill('С чего начать?');
+  await page.getByRole('button', { name: 'Отправить', exact: true }).click();
+  await expect(page.getByText('Начните с интервью.')).toBeVisible();
 });
 
 test('manager sees an application summary and accepted participation state', async ({ page }) => {

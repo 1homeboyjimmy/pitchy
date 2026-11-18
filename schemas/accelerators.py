@@ -495,6 +495,25 @@ class ProjectAuditGeneratedResult(BaseModel):
     data_gaps: list[str] = Field(default_factory=list, max_length=20)
 
 
+class ProjectAuditChatTurn(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+    answer: str = Field(min_length=1, max_length=6000)
+
+
+class ProjectAuditChatRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+    history: list[ProjectAuditChatTurn] = Field(default_factory=list, max_length=4)
+
+    @field_validator("question", mode="before")
+    @classmethod
+    def strip_question(cls, value):
+        return value.strip() if isinstance(value, str) else value
+
+
+class ProjectAuditChatResponse(BaseModel):
+    answer: str = Field(min_length=1, max_length=6000)
+
+
 class ProjectAuditCreate(BaseModel):
     audit_type: Literal["product", "market", "custdev", "business_model", "grant"]
     focus: str | None = Field(default=None, max_length=5000)

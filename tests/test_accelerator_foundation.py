@@ -104,6 +104,7 @@ from routers.accelerators import (
     update_accelerator_match,
     list_cohort_project_audits,
     list_membership_project_audits,
+    chat_about_project_audit,
     create_project_audit,
     create_project_audit_task,
     create_demo_day,
@@ -202,6 +203,7 @@ from schemas.accelerators import (
     MatchPoolProfileCreate,
     MatchCreate,
     MatchStatusUpdate,
+    ProjectAuditChatRequest,
     ProjectAuditCreate,
     ProjectAuditGeneratedResult,
     ProjectAuditTaskCreate,
@@ -1417,6 +1419,21 @@ async def test_project_audit_uses_cohort_quota_scopes_tracker_and_creates_task(m
             "project_audit.completed",
             "project_audit.task_created",
         } <= audit_actions
+
+        async def fake_discussion(*, report, audit_type, focus, request):
+            assert report["overall_score"] == 75
+            assert audit_type == "product"
+            assert request.question == "С чего начать?"
+            return {"answer": "Начните с теста цены."}
+
+        monkeypatch.setattr("routers.accelerators.discuss_project_audit", fake_discussion)
+        question = ProjectAuditChatRequest(question="С чего начать?")
+        with pytest.raises(HTTPException) as forbidden_chat:
+            await chat_about_project_audit(second["id"], question, resident, db)
+        assert forbidden_chat.value.status_code == 403
+        assert await chat_about_project_audit(second["id"], question, organizer, db) == {
+            "answer": "Начните с теста цены."
+        }
 
 
 @pytest.mark.asyncio
@@ -2927,6 +2944,7 @@ async def test_resident_today_aggregate_feedback_and_persistent_recommendations(
         assert card["project"]["id"] == project.id
         assert card["trackers"][0]["user_id"] == tracker.id
         assert card["feedback"][0]["id"] == feedback["id"]
+        assert [(task["title"], task["status"]) for task in card["tasks"]] == [("Провести интервью", "open")]
         assert card["last_action"]["at"] is not None
         assert "application_data" not in card["profile"]
 
