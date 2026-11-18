@@ -1,21 +1,37 @@
 """Private cohort participant fields; tags can only be assigned by managers."""
 from typing import Literal
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 PARTICIPANT_TAGS = {
     "student_startup": "Участник Студенческий стартап",
     "startup_diploma": "Участник программы «Стартап как диплом»",
 }
-PRIVATE_FIELDS = {"university", "study_group", "education_direction", "education_course", "employment"}
+PRIVATE_FIELDS = {"institute", "university", "study_group", "education_direction", "education_course", "employment"}
 
 class ParticipantProfileUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    university: str | None = Field(default=None, max_length=200)
+    institute: str | None = Field(
+        default=None, max_length=200, validation_alias=AliasChoices("institute", "university")
+    )
     study_group: str | None = Field(default=None, max_length=100)
     education_direction: str | None = Field(default=None, max_length=100)
     education_course: str | None = Field(default=None, pattern=r"^(БАК|МАГ|СПЕЦ|АСП)-[1-9][0-9]?$", max_length=20)
     employment: Literal["working", "not_working"] | None = None
     tags: list[Literal["student_startup", "startup_diploma"]] | None = None
+
+def participant_profile_with_institute(profile: dict, application_data: dict | None = None) -> dict:
+    result = dict(profile)
+    legacy_university = result.pop("university", None)
+    if "institute" not in result:
+        imported_data = result.get("application_data")
+        sources = (imported_data, application_data, {"institute": legacy_university})
+        for source in sources:
+            value = source.get("institute") if isinstance(source, dict) else None
+            if isinstance(value, str) and value.strip():
+                result["institute"] = value.strip()
+                break
+    return result
+
 
 def visible_profile(profile: dict, *, private: bool) -> dict:
     return {key: value for key, value in profile.items() if private or key not in PRIVATE_FIELDS}

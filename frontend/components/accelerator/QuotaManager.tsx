@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Loader2, UserRoundCog, Users } from "lucide-react";
 
-import { describeApiError, getAuthJson, putAuthJson } from "@/lib/api";
+import { describeApiError, getAuthJson, patchAuthJson, putAuthJson } from "@/lib/api";
 
 export type Limits = { messages: number; roadmaps: number; custdev: number; grants: number };
 type Resident = { membership_id: number; name: string; email: string };
@@ -11,8 +11,9 @@ type QuotaResponse = { resources: Partial<Record<keyof Limits, { limit: number; 
 
 const DEFAULTS: Limits = { messages: 70, roadmaps: 4, custdev: 2, grants: 1 };
 
-export function QuotaManager({ token, cohortId, initialTemplate, residents }: { token: string; cohortId: number; initialTemplate?: Limits | null; residents: Resident[] }) {
+export function QuotaManager({ token, cohortId, initialTemplate, auditLimit, onAuditLimitSaved, residents }: { token: string; cohortId: number; initialTemplate?: Limits | null; auditLimit: number; onAuditLimitSaved: (limit: number) => void; residents: Resident[] }) {
   const [template, setTemplate] = useState<Limits>(initialTemplate || DEFAULTS);
+  const [auditLimitInput, setAuditLimitInput] = useState(String(auditLimit));
   const [selected, setSelected] = useState<Resident | null>(null);
   const [personal, setPersonal] = useState<Limits>(DEFAULTS);
   const [usage, setUsage] = useState<QuotaResponse["resources"]>({});
@@ -21,6 +22,23 @@ export function QuotaManager({ token, cohortId, initialTemplate, residents }: { 
   const [error, setError] = useState("");
 
   useEffect(() => { setTemplate(initialTemplate || DEFAULTS); setSelected(null); }, [cohortId, initialTemplate]);
+
+  useEffect(() => { setAuditLimitInput(String(auditLimit)); }, [cohortId, auditLimit]);
+
+  const saveAuditLimit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setBusy("audit"); setError(""); setNotice("");
+    try {
+      const updated = await patchAuthJson<{ project_audit_limit: number }>(
+        `/api/accelerators/cohorts/${cohortId}`,
+        { project_audit_limit: Number(auditLimitInput) },
+        token,
+      );
+      onAuditLimitSaved(updated.project_audit_limit);
+      setNotice("Лимит аудитов проекта сохранён.");
+    } catch (reason) { setError(describeApiError(reason, "Не удалось сохранить лимит аудитов")); }
+    finally { setBusy(""); }
+  };
 
   const openResident = async (resident: Resident, clearFeedback = true) => {
     setSelected(resident); setBusy("load"); setError(""); if (clearFeedback) setNotice("");
@@ -62,6 +80,17 @@ export function QuotaManager({ token, cohortId, initialTemplate, residents }: { 
       <div className="mb-5 flex items-start gap-3"><Users className="mt-1 text-white/45" /><div><h2 className="text-xl">Общие лимиты потока</h2><p className="mt-1 text-sm text-white/40">Применяются каждому резиденту, у которого нет персонального переопределения.</p></div></div>
       <LimitsEditor value={template} onChange={setTemplate} />
       <button type="button" onClick={() => void saveTemplate()} disabled={Boolean(busy)} className="workspace-button mt-5">{busy === "template" && <Loader2 size={15} className="animate-spin" />} Сохранить для потока</button>
+      <form onSubmit={saveAuditLimit} className="mt-6 space-y-3 border-t border-white/10 pt-5">
+        <label className="block max-w-xs text-sm text-white/60">
+          Аудиты проекта в месяц
+          <input type="number" required min={-1} max={2147483647} value={auditLimitInput}
+            onChange={event => setAuditLimitInput(event.target.value)} className="workspace-input mt-2" />
+        </label>
+        <p className="text-sm text-white/45">Общий лимит для всех участников и организаторов потока. −1 — без ограничений, 0 — запуск недоступен.</p>
+        <button type="submit" className="workspace-button" disabled={Boolean(busy) || auditLimitInput === String(auditLimit)}>
+          Сохранить лимит аудитов
+        </button>
+      </form>
     </section>
     <section className="workspace-card">
       <div className="mb-5 flex items-start gap-3"><UserRoundCog className="mt-1 text-white/45" /><div><h2 className="text-xl">Индивидуальные лимиты</h2><p className="mt-1 text-sm text-white/40">Сначала открываются текущие значения выбранного резидента — лимиты потока сюда не копируются вслепую.</p></div></div>

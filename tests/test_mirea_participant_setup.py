@@ -9,7 +9,7 @@ from fastapi import BackgroundTasks, HTTPException, Request
 from sqlalchemy import select
 
 from accelerator_demo_scoring import criteria_for_project, raw_score
-from accelerator_participant_service import ParticipantProfileUpdate, visible_profile, registration_required
+from accelerator_participant_service import ParticipantProfileUpdate, participant_profile_with_institute, visible_profile, registration_required
 from accelerator_resident_import import ResidentImportManifest, import_residents
 from auth import hash_password, hash_token, verify_password
 from db_async import AsyncSessionLocal
@@ -21,8 +21,16 @@ from schemas.accelerators import DemoDayScoreUpsert, DemoDayStatusUpdate
 from tests.test_accelerator_resident_import import seed, manifest_data
 
 
+def test_participant_institute_uses_existing_profile_and_legacy_sources():
+    assert participant_profile_with_institute({"institute": "МТУСИ", "university": "РТУ МИРЭА"}) == {"institute": "МТУСИ"}
+    assert participant_profile_with_institute({}, {"institute": "МТУСИ"}) == {"institute": "МТУСИ"}
+    assert participant_profile_with_institute({"university": "РТУ МИРЭА"}) == {"institute": "РТУ МИРЭА"}
+    assert participant_profile_with_institute({"institute": None}, {"institute": "МТУСИ"}) == {"institute": None}
+    assert ParticipantProfileUpdate(university="МТУСИ").model_dump(exclude_unset=True) == {"institute": "МТУСИ"}
+
+
 def test_private_projection_and_raw_score():
-    profile = dict(university="РТУ МИРЭА", study_group="ИВБО-20-25", education_direction="БАК", education_course="БАК-2", employment="working", tags=["student_startup"], registration_required=True)
+    profile = dict(institute="РТУ МИРЭА", study_group="ИВБО-20-25", education_direction="БАК", education_course="БАК-2", employment="working", tags=["student_startup"], registration_required=True)
     assert set(visible_profile(profile, private=False)) == {"tags", "registration_required"}
     assert visible_profile(profile, private=True) == profile
     assert not registration_required(profile)
@@ -44,12 +52,13 @@ async def test_profile_permissions_and_single_expert_total():
         mid = next(iter(result["memberships"].values()))
         person = await db.get(User, next(iter(result["users"].values())))
         row = (await db.execute(select(AcceleratorParticipantProfile).where(AcceleratorParticipantProfile.membership_id == mid))).scalar_one()
-        row.profile = {**row.profile, "registration_required": True, "source_rows": [2]}
+        row.profile = {**row.profile, "registration_required": True, "source_rows": [2], "university": "МТУСИ"}
         await db.commit()
-        await update_participant_profile(mid, ParticipantProfileUpdate(employment="working", study_group="Нет группы", university="РТУ МИРЭА"), person, db)
+        await update_participant_profile(mid, ParticipantProfileUpdate(employment="working", study_group="Нет группы", institute="РТУ МИРЭА"), person, db)
         assert row.profile["source_rows"] == [2]
         assert row.profile["employment"] == "working"
-        assert row.profile["university"] == "РТУ МИРЭА"
+        assert row.profile["institute"] == "РТУ МИРЭА"
+        assert "university" not in row.profile
         with pytest.raises(HTTPException):
             await update_participant_profile(mid, ParticipantProfileUpdate(tags=["student_startup"]), person, db)
         await update_participant_profile(mid, ParticipantProfileUpdate(tags=["student_startup", "startup_diploma"]), actor, db)

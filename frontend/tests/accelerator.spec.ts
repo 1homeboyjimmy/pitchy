@@ -323,6 +323,24 @@ test('accelerator draft workflows expose the complete organizer windows', async 
   await expect(page.getByRole('button', { name: 'Результаты', exact: true }).last()).toBeVisible();
 });
 
+test('global admin saves a separate monthly project audit limit for the cohort', async ({ page }) => {
+  await mockManagerWorkspace(page);
+  await page.route('**/api/accelerators/cohorts/12', async route => {
+    expect(route.request().method()).toBe('PATCH');
+    expect(route.request().postDataJSON()).toEqual({ project_audit_limit: 5 });
+    await route.fulfill({ json: { project_audit_limit: 5 } });
+  });
+
+  await page.goto('/accelerator?section=settings');
+  await page.getByRole('button', { name: 'Лимиты', exact: true }).click();
+  const limit = page.getByRole('spinbutton', { name: 'Аудиты проекта в месяц' });
+  await expect(limit).toHaveValue('-1');
+  await limit.fill('5');
+  await page.getByRole('button', { name: 'Сохранить лимит аудитов' }).click();
+  await expect(page.getByText('Лимит аудитов проекта сохранён.')).toBeVisible();
+  await expect(limit).toHaveValue('5');
+});
+
 test('organizer cannot see or change Pitchy modules and limits', async ({ page }) => {
   await mockManagerWorkspace(page, false);
   await page.goto('/accelerator?section=settings');
@@ -454,7 +472,7 @@ test('participant card opens and closes from the keyboard with restored focus', 
 
   await page.route('**/api/accelerators/memberships/101/project-audits', route => route.fulfill({
     status: 402,
-    json: { detail: 'quota_exceeded: лимит сообщений резидента исчерпан (0)' },
+    json: { detail: 'Исчерпан месячный лимит аудитов проекта для этого потока' },
   }));
 
   await page.goto('/accelerator');
@@ -475,7 +493,7 @@ test('participant card opens and closes from the keyboard with restored focus', 
   await expect(dialog.getByText('internal-hidden', { exact: true })).toHaveCount(0);
   await expect(dialog.getByRole('link', { name: 'Открыть паспорт проекта' })).toHaveAttribute('href', '/passport/5');
   await dialog.getByRole('button', { name: 'Запустить аудит', exact: true }).click();
-  await expect(dialog.getByRole('alert')).toHaveText(/Исчерпан лимит сообщений резидента в этом потоке/);
+  await expect(dialog.getByRole('alert')).toHaveText(/Исчерпан месячный лимит аудитов этого потока/);
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
   await expect(trigger).toBeFocused();

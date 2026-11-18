@@ -27,7 +27,6 @@ from accelerator_service import (
     accelerator_membership_quota_snapshot,
     accelerator_quota_snapshot,
     assign_quota_override,
-    consume_accelerator_membership_quota,
     has_active_personal_override,
     is_accelerator_organizer,
     membership_tracker_user_ids,
@@ -107,7 +106,6 @@ from models import (
     AcceleratorProgressCheckin,
     AcceleratorProjectAudit,
     AcceleratorProjectAuditTaskLink,
-    AcceleratorQuotaUsageEvent,
     AcceleratorRecommendation,
     AcceleratorRecommendationDismissal,
     AcceleratorResidentQuotaOverride,
@@ -190,7 +188,7 @@ from schemas.accelerators import (
 
 router = APIRouter(prefix="/api/accelerators", tags=["accelerators"])
 
-from accelerator_participant_service import ParticipantProfileUpdate
+from accelerator_participant_service import ParticipantProfileUpdate, participant_profile_with_institute
 
 
 @router.patch("/memberships/{membership_id}/participant-profile")
@@ -218,7 +216,10 @@ async def update_participant_profile(
     if not row:
         row = AcceleratorParticipantProfile(membership_id=membership.id, profile={}, visibility={"organizer": True, "mentor": False, "public": False})
         db.add(row)
-    row.profile = {**(row.profile or {}), **updates}
+    profile = {**(row.profile or {}), **updates}
+    if "institute" in updates:
+        profile.pop("university", None)
+    row.profile = profile
     add_audit(db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id, actor_user_id=user.id,
               action="participant.profile_updated", target_type="membership", target_id=membership.id,
               details={"fields": sorted(updates)})
@@ -294,6 +295,7 @@ def cohort_dict(row: AcceleratorCohort) -> dict:
         "application_form_has_draft": row.application_form_draft is not None,
         "homework_pitchy_enabled": bool(row.homework_pitchy_enabled),
         "default_quota_config": row.default_quota_config,
+        "project_audit_limit": row.project_audit_limit,
         "created_at": row.created_at,
         "updated_at": row.updated_at,
     }
@@ -1347,11 +1349,13 @@ async def list_my_accelerator_memberships(
             Accelerator,
             AcceleratorProgramConfig,
             Project,
+            AcceleratorApplication.form_payload,
         )
         .join(AcceleratorCohort, AcceleratorCohort.id == AcceleratorMembership.cohort_id)
         .join(Accelerator, Accelerator.id == AcceleratorCohort.accelerator_id)
         .join(AcceleratorProgramConfig, AcceleratorProgramConfig.cohort_id == AcceleratorCohort.id)
         .outerjoin(Project, Project.id == AcceleratorMembership.project_id)
+        .outerjoin(AcceleratorApplication, AcceleratorApplication.id == AcceleratorMembership.application_id)
         .where(
             AcceleratorMembership.user_id == user.id,
             AcceleratorMembership.role == "resident",
@@ -1360,13 +1364,15 @@ async def list_my_accelerator_memberships(
         .order_by(AcceleratorMembership.created_at.desc())
     )).all()
     memberships = []
-    for membership, cohort, accelerator, program, project in rows:
+    for membership, cohort, accelerator, program, project, application_data in rows:
         from project_passport_access import passport_context
         can_edit_passport = (await passport_context(db, project, user))[1] if project else False
         import passport as passport_lib
         from accelerator_participant_service import registration_required
         profile_row = (await db.execute(select(AcceleratorParticipantProfile).where(AcceleratorParticipantProfile.membership_id == membership.id))).scalar_one_or_none()
-        profile_data = dict(profile_row.profile or {}) if profile_row else {}
+        profile_data = participant_profile_with_institute(
+            (profile_row.profile or {}) if profile_row else {}, application_data
+        )
         memberships.append({
             "participant_profile": profile_data,
             "registration_required": registration_required(profile_data),
@@ -2029,6 +2035,9 @@ async def update_cohort(
     cohort = await get_cohort_or_404(db, cohort_id)
     await require_cohort_manager(db, user, cohort)
     require_mutable_cohort(cohort)
+    if payload.project_audit_limit is not None:
+        require_global_admin_user(user)
+        cohort.project_audit_limit = payload.project_audit_limit
     if payload.name is not None:
         cohort.name = payload.name.strip()
     if payload.attendance_scope is not None:
@@ -7029,7 +7038,7 @@ async def project_audit_input_snapshot(
         project.user_id != membership.user_id and team_project_access is None
     ):
         raise HTTPException(status_code=409, detail="Паспорт проекта резидента недоступен")
-    application = await db.get(AcceleratorApplication, membership.application_id)
+    application = await db.get(AcceleratorApplication, membership.application_id) if membership.application_id else None
     checkins = (await db.execute(
         select(AcceleratorProgressCheckin).where(
             AcceleratorProgressCheckin.membership_id == membership.id
@@ -7115,7 +7124,9 @@ async def project_audit_dict(
         "error_message": row.error_message,
         "quota": {
             "resource": row.quota_resource,
-            "consumed": row.quota_usage_event_id is not None,
+            "consumed": row.quota_usage_event_id is not None or (
+                row.quota_resource == "project_audits" and row.status == "completed"
+            ),
         },
         "linked_tasks": [{
             "recommendation_index": link.recommendation_index,
@@ -7225,6 +7236,22 @@ async def get_project_audit(
     return await project_audit_dict(db, row, previous)
 
 
+async def require_cohort_project_audit_quota(
+    db: AsyncSession, cohort: AcceleratorCohort, completed_at: datetime
+) -> None:
+    limit = cohort.project_audit_limit
+    if limit == -1:
+        return
+    month_start = completed_at.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    used = await db.scalar(select(func.count(AcceleratorProjectAudit.id)).where(
+        AcceleratorProjectAudit.cohort_id == cohort.id,
+        AcceleratorProjectAudit.status == "completed",
+        AcceleratorProjectAudit.completed_at >= month_start,
+    ))
+    if used >= limit:
+        raise HTTPException(status_code=402, detail="Исчерпан месячный лимит аудитов проекта для этого потока")
+
+
 @router.post("/memberships/{membership_id}/project-audits")
 async def create_project_audit(
     membership_id: int,
@@ -7243,12 +7270,7 @@ async def create_project_audit(
         return await project_audit_dict(db, existing)
 
     project, input_snapshot = await project_audit_input_snapshot(db, membership)
-    quota = await accelerator_membership_quota_snapshot(db, membership.id, "messages")
-    if quota and quota["limit"] != -1 and quota["remaining"] == 0:
-        raise HTTPException(
-            status_code=402,
-            detail=f"quota_exceeded: лимит сообщений резидента исчерпан ({quota['limit']})",
-        )
+    await require_cohort_project_audit_quota(db, cohort, datetime.utcnow())
     row = AcceleratorProjectAudit(
         cohort_id=cohort.id,
         membership_id=membership.id,
@@ -7258,7 +7280,7 @@ async def create_project_audit(
         audit_type=payload.audit_type,
         focus=payload.focus,
         input_snapshot=input_snapshot,
-        quota_resource="messages",
+        quota_resource="project_audits",
     )
     db.add(row)
     try:
@@ -7299,27 +7321,18 @@ async def create_project_audit(
         await db.commit()
         raise HTTPException(status_code=503, detail=row.error_message)
 
-    row.result = generated.model_dump(mode="json")
-    row.overall_score = generated.overall_score
-    row.status = "completed"
-    row.completed_at = datetime.utcnow()
-    quota_key = f"accelerator-project-audit:{row.id}"
+    # Serialize the final quota check across concurrent audits in this cohort.
+    cohort = (await db.execute(
+        select(AcceleratorCohort)
+        .where(AcceleratorCohort.id == cohort.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )).scalar_one()
+    completed_at = datetime.utcnow()
     try:
-        consumed = await consume_accelerator_membership_quota(
-            db,
-            membership_id=membership.id,
-            user_id=membership.user_id,
-            resource="messages",
-            idempotency_key=quota_key,
-            reference_type="accelerator_project_audit",
-            reference_id=str(row.id),
-            metadata={"audit_type": row.audit_type, "requested_by_user_id": user.id},
-        )
+        await require_cohort_project_audit_quota(db, cohort, completed_at)
     except HTTPException as exc:
         row.status = "failed"
-        row.result = None
-        row.overall_score = None
-        row.completed_at = None
         row.error_message = str(exc.detail)
         add_audit(
             db, accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
@@ -7329,12 +7342,10 @@ async def create_project_audit(
         )
         await db.commit()
         raise
-    if consumed:
-        row.quota_usage_event_id = (await db.execute(
-            select(AcceleratorQuotaUsageEvent.id).where(
-                AcceleratorQuotaUsageEvent.idempotency_key == quota_key
-            )
-        )).scalar_one()
+    row.result = generated.model_dump(mode="json")
+    row.overall_score = generated.overall_score
+    row.status = "completed"
+    row.completed_at = completed_at
 
     resident = await db.get(User, membership.user_id)
     recipients: dict[int, User] = {}
@@ -7369,7 +7380,7 @@ async def create_project_audit(
             "membership_id": membership.id,
             "audit_type": row.audit_type,
             "overall_score": row.overall_score,
-            "quota_consumed": consumed,
+            "quota_resource": row.quota_resource,
         },
     )
     await db.commit()
@@ -9437,7 +9448,9 @@ async def membership_organizer_card(
     last_candidates += [(row.created_at, "Получена обратная связь") for row in feedback[:1]]
     last_candidates += [(row.created_at, "Запущен аудит проекта") for row in ([audit] if audit else [])]
     last_at, last_title = max((row for row in last_candidates if row[0]), key=lambda row: row[0])
-    participant_profile = dict(profile.profile or {}) if profile else {}
+    participant_profile = participant_profile_with_institute(
+        (profile.profile or {}) if profile else {}, application.form_payload if application else None
+    )
     participant_profile.pop("application_data", None)
     from accelerator_participant_service import visible_profile
     participant_profile = visible_profile(participant_profile, private=can_manage)

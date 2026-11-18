@@ -255,6 +255,7 @@ class AcceleratorCohort(Base):
     homework_pitchy_enabled: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false")
     )
+    project_audit_limit: Mapped[int] = mapped_column(Integer, default=-1, server_default="-1")
     default_quota_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     default_quota_updated_by_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True

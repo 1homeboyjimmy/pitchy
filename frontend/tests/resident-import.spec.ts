@@ -14,6 +14,7 @@ async function resident(page: Page, loggedIn = true, hasLinkedProject = true) {
     cohort: { id: 12, name: 'МТУСИ 2026', status: 'active', timezone: 'Europe/Moscow' },
     project: selected === null ? null : { id: selected, name: selected === 501 ? 'Первая идея' : 'Вторая идея', readiness_index: 35, status: 'active', can_edit_passport: true,
       description: selected === 501 ? 'Описание первой идеи.' : 'Описание второй идеи.' },
+    participant_profile: { institute: "МТУСИ" },
     modules: {},
   });
   await page.route('**/api/accelerators', route => route.fulfill({ json: [{ id: 7, name: 'МТУСИ 2026', status: 'active', access_role: 'resident' }] }));
@@ -64,6 +65,21 @@ test('resident can link their only Pitchy project to an existing enrollment', as
   await expect(page.getByRole('combobox', { name: 'Основной проект в акселераторе' })).toHaveValue('501');
   await page.getByRole('button', { name: 'Выбрать проект', exact: true }).click();
   await expect(page.getByRole('link', { name: 'Открыть паспорт', exact: true })).toHaveAttribute('href', '/passport/501');
+});
+
+test('resident sees a confirmation after saving their profile', async ({ page }) => {
+  await resident(page);
+  await page.route('**/api/accelerators/memberships/101/participant-profile', async route => {
+    expect(route.request().postDataJSON()).toMatchObject({ institute: 'РТУ МИРЭА' });
+    await route.fulfill({ json: { profile: { institute: 'РТУ МИРЭА' } } });
+  });
+
+  await page.goto('/accelerator/my/101');
+  await page.getByRole('button', { name: 'Мой проект', exact: true }).click();
+  await expect(page.getByLabel('Университет')).toHaveValue('МТУСИ');
+  await page.getByLabel('Университет').fill('РТУ МИРЭА');
+  await page.getByRole('button', { name: 'Сохранить', exact: true }).click();
+  await expect(page.getByText('Профиль участника сохранён', { exact: true })).toBeVisible();
 });
 
 test('resident fills every passport field, saves and reopens persisted values', async ({ page }) => {

@@ -25,7 +25,7 @@ test('first login requires employment and preserves imported study fields', asyn
   let complete = false;
   await page.route('**/api/accelerators/me/memberships', route => route.fulfill({ json: { memberships: [{ membership_id: 101, registration_required: !complete, participant_profile: { study_group: 'ИВБО-20-25', education_direction: 'БАК', education_course: 'БАК-2' }, cohort: { name: 'Преакселератор РТУ МИРЭА 2026' } }] } }));
   await page.route('**/api/accelerators/memberships/101/participant-profile', async route => {
-    expect(route.request().postDataJSON()).toEqual({ university: 'РТУ МИРЭА', study_group: 'ИВБО-20-25', education_direction: 'БАК', education_course: 'БАК-2', employment: 'not_working' });
+    expect(route.request().postDataJSON()).toEqual({ institute: 'РТУ МИРЭА', study_group: 'ИВБО-20-25', education_direction: 'БАК', education_course: 'БАК-2', employment: 'not_working' });
     complete = true; await route.fulfill({ json: { status: 'ok' } });
   });
   await page.goto('/terms');

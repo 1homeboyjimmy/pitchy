@@ -229,6 +229,7 @@ class CohortUpdate(BaseModel):
     timezone: str | None = Field(default=None, min_length=1, max_length=80)
     attendance_scope: Literal["individual", "team"] | None = None
     attendance_policy: AttendancePolicy | None = None
+    project_audit_limit: int | None = Field(default=None, ge=-1, le=2_147_483_647)
     starts_at: datetime | None = None
     ends_at: datetime | None = None
     application_form_schema: dict[str, Any] | None = None

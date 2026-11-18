@@ -30,6 +30,7 @@ from models import (
     AcceleratorAuditLog,
     AcceleratorProgramConfig,
     AcceleratorQuotaUsageEvent,
+    AcceleratorMembership,
     AcceleratorMembershipEvent,
     AcceleratorMatch,
     AcceleratorMatchProfile,
@@ -1167,7 +1168,7 @@ async def test_matchmaking_profiles_recommendations_matches_and_role_boundaries(
 
 
 @pytest.mark.asyncio
-async def test_project_audit_uses_message_quota_scopes_tracker_and_creates_task(monkeypatch):
+async def test_project_audit_uses_cohort_quota_scopes_tracker_and_creates_task(monkeypatch):
     suffix = uuid.uuid4().hex
     async with AsyncSessionLocal() as db:
         admin = User(email=f"admin-audit-{suffix}@example.test", name="Admin", is_admin=True)
@@ -1238,11 +1239,17 @@ async def test_project_audit_uses_message_quota_scopes_tracker_and_creates_task(
         await assign_resident_quota(
             membership_id,
             ResidentQuotaAssign(
-                limits=ResidentQuotaLimits(messages=2, roadmaps=1, custdev=10, grants=0)
+                limits=ResidentQuotaLimits(messages=0, roadmaps=1, custdev=10, grants=0)
             ),
             admin,
             db,
         )
+
+        assert cohort["project_audit_limit"] == -1
+        configured = await update_cohort(
+            cohort["id"], CohortUpdate(project_audit_limit=2), admin, db
+        )
+        assert configured["project_audit_limit"] == 2
 
         generated_results = [
             ProjectAuditGeneratedResult(
@@ -1298,12 +1305,12 @@ async def test_project_audit_uses_message_quota_scopes_tracker_and_creates_task(
                 client_request_id=f"audit-{suffix}-first",
             ),
             BackgroundTasks(),
-            resident,
+            organizer,
             db,
         )
         assert first["status"] == "completed"
         assert first["overall_score"] == 60
-        assert first["quota"]["resource"] == "messages"
+        assert first["quota"]["resource"] == "project_audits"
         assert first["quota"]["consumed"] is True
         assert calls[0]["project_snapshot"]["project"]["passport"]["core"]["solution"] == "B2B SaaS"
 
@@ -1314,7 +1321,7 @@ async def test_project_audit_uses_message_quota_scopes_tracker_and_creates_task(
                 client_request_id=f"audit-{suffix}-first",
             ),
             BackgroundTasks(),
-            resident,
+            organizer,
             db,
         )
         assert repeated["id"] == first["id"]
@@ -1367,9 +1374,18 @@ async def test_project_audit_uses_message_quota_scopes_tracker_and_creates_task(
             AcceleratorProjectAuditTaskLink.audit_id == second["id"]
         ))).scalar_one() == 1
 
+        other_project = Project(user_id=outsider.id, name="Another audit project")
+        db.add(other_project)
+        await db.flush()
+        other_membership = AcceleratorMembership(
+            cohort_id=cohort["id"], user_id=outsider.id, project_id=other_project.id,
+            status="enrolled", accepted_by_user_id=organizer.id,
+        )
+        db.add(other_membership)
+        await db.commit()
         with pytest.raises(HTTPException) as exhausted:
             await create_project_audit(
-                membership_id,
+                other_membership.id,
                 ProjectAuditCreate(
                     audit_type="market",
                     client_request_id=f"audit-{suffix}-exhausted",
@@ -1384,7 +1400,7 @@ async def test_project_audit_uses_message_quota_scopes_tracker_and_creates_task(
             AcceleratorQuotaUsageEvent.membership_id == membership_id,
             AcceleratorQuotaUsageEvent.resource == "messages",
             AcceleratorQuotaUsageEvent.reference_type == "accelerator_project_audit",
-        ))).scalar_one() == 2
+        ))).scalar_one() == 0
         assert (await db.execute(select(func.count(AcceleratorQuotaUsageEvent.id)).where(
             AcceleratorQuotaUsageEvent.membership_id == membership_id,
             AcceleratorQuotaUsageEvent.resource == "custdev",

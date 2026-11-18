@@ -2,8 +2,9 @@
 
 import { FormEvent, useState } from "react";
 import { patchAuthJson, describeApiError } from "@/lib/api";
+import { notifySuccess } from "@/lib/ui";
 
-export type ParticipantFields = { university?: string | null; study_group?: string | null; education_direction?: string | null; education_course?: string | null; employment?: string | null; tags?: string[]; registration_required?: boolean };
+export type ParticipantFields = { institute?: string | null; study_group?: string | null; education_direction?: string | null; education_course?: string | null; employment?: string | null; tags?: string[]; registration_required?: boolean };
 const TAGS = { student_startup: "Участник Студенческий стартап", startup_diploma: "Участник программы «Стартап как диплом»" };
 
 export function ParticipantBadges({ profile }: { profile: ParticipantFields }) {
@@ -11,19 +12,20 @@ export function ParticipantBadges({ profile }: { profile: ParticipantFields }) {
 }
 
 export function ParticipantProfileForm({ membershipId, token, profile, manager = false, required = false, onSaved }: { membershipId: number; token: string; profile: ParticipantFields; manager?: boolean; required?: boolean; onSaved: () => Promise<void> }) {
-  const [form, setForm] = useState({ university: profile.university || "", study_group: profile.study_group || "", education_direction: profile.education_direction || "", education_course: profile.education_course || "", employment: profile.employment || "", tags: profile.tags || [] });
+  const [form, setForm] = useState({ institute: profile.institute || "", study_group: profile.study_group || "", education_direction: profile.education_direction || "", education_course: profile.education_course || "", employment: profile.employment || "", tags: profile.tags || [] });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const save = async (e: FormEvent) => {
     e.preventDefault(); setBusy(true); setError("");
     try {
-      await patchAuthJson(`/api/accelerators/memberships/${membershipId}/participant-profile`, { university: form.university.trim() || null, study_group: form.study_group.trim() || null, education_direction: form.education_direction.trim() || null, education_course: form.education_course.trim() || null, ...(form.employment ? { employment: form.employment } : {}), ...(manager ? { tags: form.tags } : {}) }, token);
+      await patchAuthJson(`/api/accelerators/memberships/${membershipId}/participant-profile`, { institute: form.institute.trim() || null, study_group: form.study_group.trim() || null, education_direction: form.education_direction.trim() || null, education_course: form.education_course.trim() || null, ...(form.employment ? { employment: form.employment } : {}), ...(manager ? { tags: form.tags } : {}) }, token);
+      if (!required) notifySuccess("Профиль участника сохранён");
       await onSaved();
     } catch (err) { setError(describeApiError(err, "Не удалось сохранить профиль")); }
     finally { setBusy(false); }
   };
   return <form onSubmit={save} className="workspace-card space-y-4"><h2 className="text-xl">Профиль участника</h2><p className="text-sm text-white/60">{required ? "Для завершения регистрации укажите занятость. Учебные данные можно дополнить сейчас или позже." : "Учебные данные и занятость видны только вам и организаторам."}</p><ParticipantBadges profile={profile} /><div className="grid gap-4 sm:grid-cols-2">
-    <label className="sm:col-span-2">Университет<input maxLength={200} className="workspace-input mt-2" value={form.university} onChange={e => setForm({ ...form, university: e.target.value })} /></label>
+    <label className="sm:col-span-2">Университет<input maxLength={200} className="workspace-input mt-2" value={form.institute} onChange={e => setForm({ ...form, institute: e.target.value })} /></label>
     <label>Учебная группа<input maxLength={100} className="workspace-input mt-2" value={form.study_group} onChange={e => setForm({ ...form, study_group: e.target.value })} /></label>
     <label>Направление обучения<input maxLength={100} className="workspace-input mt-2" placeholder="БАК, МАГ, СПЕЦ, АСП или Сотрудник" value={form.education_direction} onChange={e => setForm({ ...form, education_direction: e.target.value })} /></label>
     <label>Уровень и курс<input maxLength={20} pattern="(БАК|МАГ|СПЕЦ|АСП)-[1-9][0-9]?" className="workspace-input mt-2" placeholder="БАК-2" value={form.education_course} onChange={e => setForm({ ...form, education_course: e.target.value })} /></label>
