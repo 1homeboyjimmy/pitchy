@@ -31,17 +31,18 @@ export function ResidentEventCalendar({ events }: { events: CalendarEvent[] }) {
       <h3 aria-live="polite" className="capitalize">{first.toLocaleDateString("ru-RU", { month: "long", year: "numeric" })}</h3>
       <button type="button" aria-label="Следующий месяц" onClick={() => changeMonth(1)} className="rounded-lg px-4 py-2 hover:bg-white/10">→</button>
     </div>
-    <div className="grid grid-cols-7 text-center">
-      {["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].map(day => <span key={day} className="pb-2 text-xs text-white/45">{day}</span>)}
-      {Array.from({ length: offset }, (_, i) => <span key={`empty-${i}`} />)}
+    <div className="grid grid-cols-7 gap-1 text-center sm:gap-1.5">
+      {["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].map(day => <span key={day} className="py-2 text-xs text-white/45">{day}</span>)}
+      {Array.from({ length: offset }, (_, i) => <span key={`empty-${i}`} aria-hidden="true" className="min-h-12 rounded-lg border border-white/10 bg-white/[0.02]" />)}
       {Array.from({ length: count }, (_, i) => {
         const day = i + 1;
         const key = `${month}-${String(day).padStart(2, "0")}`;
         const rows = ordered.filter(event => dayKey(event) === key);
-        return <button key={key} type="button" disabled={!rows.length} aria-pressed={selected === key} aria-label={`${day} ${first.toLocaleDateString("ru-RU", { month: "long", year: "numeric" })}${rows.length ? ": " + rows.map(row => row.title).join(", ") : ": нет мероприятий"}`} onClick={() => jump(key, rows[0])} className={`flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl text-sm ${selected === key ? "bg-blue-400/20 ring-1 ring-blue-300" : rows.length ? "hover:bg-white/10" : "text-white/35"}`}>
+        return <button key={key} type="button" disabled={!rows.length} aria-pressed={selected === key} aria-label={`${day} ${first.toLocaleDateString("ru-RU", { month: "long", year: "numeric" })}${rows.length ? ": " + rows.map(row => row.title).join(", ") : ": нет мероприятий"}`} onClick={() => jump(key, rows[0])} className={`flex min-h-12 flex-col items-center justify-center gap-1 rounded-lg border border-white/15 text-sm ${selected === key ? "bg-blue-400/20 ring-1 ring-blue-300" : rows.length ? "hover:bg-white/10" : "text-white/35"}`}>
           {day}<span className={`h-1.5 w-1.5 rounded-full ${rows.length ? "bg-blue-400" : "bg-transparent"}`} />
         </button>;
       })}
+      {Array.from({ length: (7 - ((offset + count) % 7)) % 7 }, (_, i) => <span key={`end-${i}`} aria-hidden="true" className="min-h-12 rounded-lg border border-white/10 bg-white/[0.02]" />)}
     </div>
     <p className="mt-4 text-xs text-white/45">Точкой отмечены дни с мероприятиями. Выберите дату, чтобы перейти к карточкам ниже.</p>
   </div>;
