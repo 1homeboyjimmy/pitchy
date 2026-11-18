@@ -588,7 +588,7 @@ test('accepted participant confirms joining without a second manager action', as
   await expect(page.getByRole('button', { name: 'Подтвердить участие' })).toHaveCount(0);
 });
 
-test('resident Today page prioritizes required work and keeps improvements optional', async ({ page }, testInfo) => {
+test('resident Today page prioritizes required work and hides project advice and zero quotas', async ({ page }, testInfo) => {
   await page.addInitScript(() => {
     localStorage.setItem('vi_auth_state', 'cookie-session');
     localStorage.setItem('pitchy_cookie_consent_v2', JSON.stringify({ choice: 'necessary', updatedAt: new Date().toISOString() }));
@@ -597,7 +597,7 @@ test('resident Today page prioritizes required work and keeps improvements optio
   const nextWeek = new Date(Date.now() + 7 * 86_400_000).toISOString();
   await page.route('**/me', async (route) => route.fulfill({ json: { id: 8, email: 'resident@example.test', name: 'Резидент А', is_admin: false, is_active: true, email_verified: true, created_at: new Date().toISOString() } }));
   await page.route('**/api/accelerators', async (route) => route.fulfill({ json: [{ id: 7, name: 'Тестовый акселератор', status: 'active', access_role: 'resident' }] }));
-  await page.route('**/api/accelerators/me/memberships', async (route) => route.fulfill({ json: { memberships: [{ membership_id: 101, application_id: 44, status: 'enrolled', accepted_at: new Date().toISOString(), enrolled_at: new Date().toISOString(), accelerator: { id: 7, name: 'Тестовый акселератор', status: 'active' }, cohort: { id: 12, name: 'Поток 2026', status: 'active', timezone: 'Europe/Moscow' }, project: { id: 5, name: 'Проект А', readiness_index: 45, status: 'active' }, modules: { program: true, homework: true, attendance: true, progress_tracking: true, matchmaking: true, project_audit: true, pitchy_artifacts: true } }], effective_quotas: {} } }));
+  await page.route('**/api/accelerators/me/memberships', async (route) => route.fulfill({ json: { memberships: [{ membership_id: 101, application_id: 44, status: 'enrolled', accepted_at: new Date().toISOString(), enrolled_at: new Date().toISOString(), accelerator: { id: 7, name: 'Тестовый акселератор', status: 'active' }, cohort: { id: 12, name: 'Поток 2026', status: 'active', timezone: 'Europe/Moscow' }, project: { id: 5, name: 'Проект А', readiness_index: 45, status: 'active' }, modules: { program: true, homework: true, attendance: true, progress_tracking: true, matchmaking: true, project_audit: true, pitchy_artifacts: true } }], effective_quotas: { messages: { membership_id: 101, limit: 0, used: 0, remaining: 0 } } } }));
   await page.route('**/api/accelerators/memberships/101/program-stages', async (route) => route.fulfill({ json: [
     { id: 30, title: 'Проверка идеи', required: true, state: 'completed', materials: [] },
     { id: 31, title: 'Проверка проблемы', required: true, state: 'available', materials: [{ id: 41, title: 'Интервью без подсказок', required: true, completed: false }] },
@@ -616,11 +616,6 @@ test('resident Today page prioritizes required work and keeps improvements optio
     ],
     feedback: [{ id: 81, body: 'Фокус на одном сегменте сделает интервью точнее.', created_at: new Date().toISOString(), author: { name: 'Анна, трекер' } }],
   } }));
-  let recommendationDismissed = false;
-  await page.route('**/api/accelerators/memberships/101/recommendations/*/dismiss', async (route) => {
-    recommendationDismissed = true;
-    await route.fulfill({ json: { ok: true } });
-  });
   await page.route('**/api/accelerators/memberships/101/today', async (route) => route.fulfill({ json: {
     membership_id: 101, generated_at: new Date().toISOString(), timezone: 'Europe/Moscow',
     required_actions: [
@@ -632,11 +627,7 @@ test('resident Today page prioritizes required work and keeps improvements optio
     progress: { percent: 50, completed_stages: 1, total_stages: 2, current_stage: { id: 31, title: 'Проверка проблемы' }, project_readiness: 45 },
     attendance: { percent: 83, present: 5, total: 6, unmarked: 1 },
     support: { enabled: true, trackers: [{ id: 5, name: 'Анна, трекер', email: 'tracker@example.test' }], risk: { level: 'yellow', reasons: [] } },
-    recommendations: recommendationDismissed ? [
-      { key: 'manual:72', title: 'Посмотреть пример интервью', description: 'Необязательный совет от трекера.', source: 'От организатора или трекера', source_type: 'manual', section: 'tracking', priority: 100, reason_fingerprint: 'manual-72' },
-      { key: 'system:audit', title: 'Проверить проект аудитом', description: 'Проверьте риски.', source: 'По состоянию проекта', source_type: 'system', section: 'project_audit', priority: 70, reason_fingerprint: 'audit-v1' },
-      { key: 'system:expert', title: 'Найти подходящего эксперта', description: 'Подберите поддержку.', source: 'По состоянию этапа', source_type: 'system', section: 'matching', priority: 60, reason_fingerprint: 'expert-v1' },
-    ] : [
+    recommendations: [
       { key: 'manual:72', title: 'Посмотреть пример интервью', description: 'Необязательный совет от трекера.', source: 'От организатора или трекера', source_type: 'manual', section: 'tracking', priority: 100, reason_fingerprint: 'manual-72' },
       { key: 'system:passport', title: 'Дополнить паспорт проекта', description: 'Заполните ключевые поля.', source: 'По состоянию проекта', source_type: 'system', href: '/passport/5', priority: 80, reason_fingerprint: 'passport-v1' },
       { key: 'system:audit', title: 'Проверить проект аудитом', description: 'Проверьте риски.', source: 'По состоянию проекта', source_type: 'system', section: 'project_audit', priority: 70, reason_fingerprint: 'audit-v1' },
@@ -682,11 +673,9 @@ test('resident Today page prioritizes required work and keeps improvements optio
   await expect.poll(() => readFeedback).toMatchObject({ feedback_ids: [81] });
   await expect(page.getByRole('heading', { name: 'Еженедельный чек-ин' })).toBeVisible();
   await page.getByRole('button', { name: 'Мой проект' }).click();
-  await expect(page.getByRole('heading', { name: 'Советы по проекту' })).toBeVisible();
-  await expect(page.getByText('Дополнить паспорт проекта')).toBeVisible();
-  await page.getByLabel('Скрыть рекомендацию «Дополнить паспорт проекта»').click();
-  await expect(page.getByText('Дополнить паспорт проекта')).toHaveCount(0);
-  await expect(page.getByText('Найти подходящего эксперта')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Инструменты проекта' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Лимиты Pitchy' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Советы по проекту' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Сегодня' }).click();
   await page.getByRole('button', { name: 'Открыть задачу' }).click();
   await expect(page.getByRole('heading', { name: 'Трекинг', exact: true })).toBeVisible();

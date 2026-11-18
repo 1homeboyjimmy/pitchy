@@ -32,7 +32,6 @@ const MatchmakingWorkspace = dynamic(() => import("@/components/accelerator/Matc
 const ProjectAuditWorkspace = dynamic(() => import("@/components/accelerator/ProjectAuditWorkspace").then(component => component.ProjectAuditWorkspace), { loading: ResidentSectionLoading });
 const DemoDayWorkspace = dynamic(() => import("@/components/accelerator/DemoDayWorkspace").then(component => component.DemoDayWorkspace), { loading: ResidentSectionLoading });
 const AlumniWorkspace = dynamic(() => import("@/components/accelerator/AlumniWorkspace").then(component => component.AlumniWorkspace), { loading: ResidentSectionLoading });
-const ResidentProjectRecommendations = dynamic(() => import("@/components/accelerator/ResidentProjectRecommendations").then(component => component.ResidentProjectRecommendations), { loading: ResidentSectionLoading });
 const ResidentProgramWorkspace = dynamic(() => import("@/components/accelerator/ResidentProgramWorkspace").then(component => component.ResidentProgramWorkspace), { loading: ResidentSectionLoading });
 const ResidentArtifacts = dynamic(() => import("@/components/accelerator/ResidentArtifacts").then(component => component.ResidentArtifacts), { loading: ResidentSectionLoading });
 
@@ -99,6 +98,12 @@ export function ResidentMembershipView({ membership, quotas, onChanged }: { memb
   const { token } = useAuth();
   const enrolled = membership.status === "enrolled";
   const completed = membership.status === "completed";
+  const availableQuotas = Object.entries(QUOTA_META).flatMap(([resource, meta]) => {
+    const quota = quotas[resource];
+    return quota?.membership_id === membership.membership_id && (quota.limit > 0 || quota.limit === -1)
+      ? [{ resource, meta, quota }]
+      : [];
+  });
   const [passportOpen, setPassportOpen] = useAcceleratorNavigationState(`ResidentWorkspace:passport:${membership.membership_id}`, false);
   const [section, setSection] = useAcceleratorNavigationState<ResidentSection>(`ResidentWorkspace:section:${membership.membership_id}`, "today");
   const [focusTarget, setFocusTarget] = useState<number | null>(null);
@@ -186,7 +191,17 @@ export function ResidentMembershipView({ membership, quotas, onChanged }: { memb
         <ProjectSelection membershipId={membership.membership_id} onChanged={onChanged} />
       </section>}
 
-      {enrolled && section === "tools" && <section className="workspace-card"><h2 className="mb-5 text-xl">Лимиты Pitchy</h2><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{Object.entries(QUOTA_META).map(([resource, meta]) => { const quota = quotas[resource]; const Icon = meta.icon; const appliesHere = quota?.membership_id === membership.membership_id; return <article key={resource} className="rounded-2xl border border-white/8 bg-white/[0.02] p-4"><Icon size={18} className="mb-4 text-white/40" /><p className="text-sm text-white/45">{meta.label}</p><p className="mt-1 text-2xl">{appliesHere ? quota.limit === -1 ? "∞" : quota.remaining : "—"}</p><p className="mt-1 text-xs text-white/30">{appliesHere ? quota.limit === -1 ? "Без ограничений" : `из ${quota.limit}, использовано ${quota.used}` : "Не назначено этому потоку"}</p></article>; })}</div></section>}
+      {enrolled && section === "tools" && availableQuotas.length > 0 && <section className="workspace-card">
+        <h2 className="mb-5 text-xl">Лимиты Pitchy</h2>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {availableQuotas.map(({ resource, meta, quota }) => <article key={resource} className="rounded-2xl border border-white/8 bg-white/[0.02] p-4">
+            <meta.icon size={18} className="mb-4 text-white/40" />
+            <p className="text-sm text-white/45">{meta.label}</p>
+            <p className="mt-1 text-2xl">{quota.limit === -1 ? "∞" : quota.remaining}</p>
+            <p className="mt-1 text-xs text-white/30">{quota.limit === -1 ? "Без ограничений" : `из ${quota.limit}, использовано ${quota.used}`}</p>
+          </article>)}
+        </div>
+      </section>}
 
       {enrolled && section === "program" && <ResidentProgramWorkspace membershipId={membership.membership_id} trackProgress={membership.modules.program_progress !== false} timezone={membership.cohort.timezone} onNavigate={navigate} />}
       {enrolled && section === "events" && membership.modules.attendance && <ResidentEvents membershipId={membership.membership_id} />}
@@ -204,7 +219,6 @@ export function ResidentMembershipView({ membership, quotas, onChanged }: { memb
       {enrolled && section === "demo_day" && membership.modules.demo_day && <DemoDayWorkspace cohortId={membership.cohort.id} membershipId={membership.membership_id} />}
 
       {enrolled && section === "tools" && <section className="workspace-card"><h2 className="mb-5 text-xl">Инструменты проекта</h2><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><Action href="/dashboard?tab=chat" label="Чат с аналитиком" icon={MessageSquare} /><Action href="/dashboard?tab=tree" label="Дорожная карта" icon={GitBranch} /><Action href="https://custdev.pitchy.pro/" label="Кастдев" icon={Users} external /><Action href="/grants" label="Гранты" icon={Banknote} /></div></section>}
-      {enrolled && section === "tools" && <ResidentProjectRecommendations membershipId={membership.membership_id} onNavigate={(next) => navigate(next as ResidentSection)} />}
 
       {completed && membership.modules.alumni && <AlumniWorkspace membershipId={membership.membership_id} cohortId={membership.cohort.id} trackProgress={membership.modules.program_progress !== false} />}
       </div>

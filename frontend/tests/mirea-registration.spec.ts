@@ -25,7 +25,7 @@ test('first login requires employment and preserves imported study fields', asyn
   let complete = false;
   await page.route('**/api/accelerators/me/memberships', route => route.fulfill({ json: { memberships: [{ membership_id: 101, registration_required: !complete, participant_profile: { study_group: 'ИВБО-20-25', education_direction: 'БАК', education_course: 'БАК-2' }, cohort: { name: 'Преакселератор РТУ МИРЭА 2026' } }] } }));
   await page.route('**/api/accelerators/memberships/101/participant-profile', async route => {
-    expect(route.request().postDataJSON()).toEqual({ study_group: 'ИВБО-20-25', education_direction: 'БАК', education_course: 'БАК-2', employment: 'not_working' });
+    expect(route.request().postDataJSON()).toEqual({ university: 'РТУ МИРЭА', study_group: 'ИВБО-20-25', education_direction: 'БАК', education_course: 'БАК-2', employment: 'not_working' });
     complete = true; await route.fulfill({ json: { status: 'ok' } });
   });
   await page.goto('/terms');
@@ -35,6 +35,7 @@ test('first login requires employment and preserves imported study fields', asyn
   await expect(gate.getByLabel('Учебная группа')).toHaveValue('ИВБО-20-25');
   await gate.getByRole('button', { name: 'Сохранить', exact: true }).click();
   expect(complete).toBe(false);
+  await gate.getByLabel('Университет').fill('  РТУ МИРЭА  ');
   await gate.getByLabel('Занятость').selectOption('not_working');
   await gate.getByRole('button', { name: 'Сохранить', exact: true }).click();
   await expect(gate).toHaveCount(0);

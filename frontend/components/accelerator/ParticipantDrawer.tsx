@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { Activity, ClipboardCheck, Loader2, RefreshCw, UserRound, X } from "lucide-react";
+import { Activity, ClipboardCheck, Loader2, RefreshCw, X } from "lucide-react";
 
 import { describeProjectAuditLaunchError } from "@/lib/acceleratorProjectAudit";
 import { describeApiError, getAuthJson, patchAuthJson, postAuthJson, putAuthJson } from "@/lib/api";
@@ -44,7 +44,6 @@ export function ParticipantDrawer({ membershipId, token, onClose, onChanged }: {
   const [error, setError] = useState("");
   const [auditError, setAuditError] = useState("");
   const [task, setTask] = useState({ title: "", description: "", dueAt: "" });
-  const [recommendation, setRecommendation] = useState({ title: "", description: "" });
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const load = useCallback(async () => {
     setError("");
@@ -78,12 +77,6 @@ export function ParticipantDrawer({ membershipId, token, onClose, onChanged }: {
     event.preventDefault(); setBusy("task"); setError("");
     try { await postAuthJson(`/api/accelerators/memberships/${membershipId}/tracking-tasks`, { title: task.title.trim(), description: task.description.trim() || null, due_at: task.dueAt ? new Date(task.dueAt).toISOString() : null }, token); setTask({ title: "", description: "", dueAt: "" }); await load(); notifySuccess("Обязательная задача назначена участнику"); }
     catch (reason) { setError(describeApiError(reason, "Не удалось создать задачу")); }
-    finally { setBusy(""); }
-  };
-  const addRecommendation = async (event: FormEvent) => {
-    event.preventDefault(); setBusy("recommendation"); setError("");
-    try { await postAuthJson(`/api/accelerators/memberships/${membershipId}/recommendations`, { title: recommendation.title.trim(), description: recommendation.description.trim(), section: "tracking", href: `/accelerator/my/${membershipId}?section=today` }, token); setRecommendation({ title: "", description: "" }); notifySuccess("Добровольная рекомендация добавлена участнику"); }
-    catch (reason) { setError(describeApiError(reason, "Не удалось добавить рекомендацию")); }
     finally { setBusy(""); }
   };
   const launchAudit = async () => {
@@ -132,7 +125,6 @@ export function ParticipantDrawer({ membershipId, token, onClose, onChanged }: {
           {busy === "audit" ? "Аудит выполняется…" : "Запустить аудит"}
         </button>}{auditError && <p role="alert" className="mt-3 text-sm text-red-200">{auditError}</p>}</Info>
         <form onSubmit={addTask} className="rounded-2xl border border-white/10 p-4"><h3>Создать обязательную задачу</h3><div className="mt-3 grid gap-3"><input required minLength={2} value={task.title} onChange={(event) => setTask({ ...task, title: event.target.value })} placeholder="Название" className="workspace-input" /><textarea value={task.description} onChange={(event) => setTask({ ...task, description: event.target.value })} placeholder="Описание" className="workspace-input resize-y" /><input type="datetime-local" value={task.dueAt} onChange={(event) => setTask({ ...task, dueAt: event.target.value })} className="workspace-input" /><button disabled={Boolean(busy)} className="workspace-button"><ClipboardCheck size={15} /> Назначить</button></div></form>
-        <form onSubmit={addRecommendation} className="rounded-2xl border border-white/10 p-4"><h3>Добавить добровольную рекомендацию</h3><div className="mt-3 grid gap-3"><input required minLength={2} value={recommendation.title} onChange={(event) => setRecommendation({ ...recommendation, title: event.target.value })} placeholder="Заголовок" className="workspace-input" /><textarea required minLength={2} value={recommendation.description} onChange={(event) => setRecommendation({ ...recommendation, description: event.target.value })} placeholder="Почему это полезно" className="workspace-input resize-y" /><button disabled={Boolean(busy)} className="workspace-button"><UserRound size={15} /> Добавить рекомендацию</button></div></form>
         <Info title="История активности">{activityRows.map((row) => <div key={row.key} className="mb-3 border-l border-white/10 pl-3"><p className="text-sm text-white/65">{row.kind === "status" ? row.title.replace(/: (accepted|enrolled|suspended|completed|withdrawn)$/, (_, status: string) => `: ${STATUS[status] || status}`) : row.title}</p><p className="mt-1 text-xs text-white/30">{formatDate(row.at)}{row.detail ? ` · ${row.detail}` : ""}</p></div>)}{!activityRows.length && <p className="text-sm text-white/35">Событий пока нет.</p>}</Info>
       </div>}
     </aside>
@@ -141,6 +133,6 @@ export function ParticipantDrawer({ membershipId, token, onClose, onChanged }: {
 
 function Info({ title, children }: { title: string; children: React.ReactNode }) { return <section className="rounded-2xl border border-white/10 p-4"><h3 className="mb-3 text-xs uppercase tracking-wide text-white/35">{title}</h3>{children}</section>; }
 function Metric({ label, value, warning = false }: { label: string; value: string; warning?: boolean }) { return <div className={`rounded-2xl border p-4 ${warning ? "border-amber-400/20 bg-amber-400/[.05]" : "border-white/10"}`}><p className="text-2xl">{value}</p><p className="mt-1 text-xs text-white/35">{label}</p></div>; }
-const profileLabels: Record<string, string> = { name: "Имя", email: "Почта", telegram: "Telegram", preferred_role: "Желаемая роль", application_type: "Тип участия" };
+const profileLabels: Record<string, string> = { name: "Имя", email: "Почта", telegram: "Telegram", university: "Университет", preferred_role: "Желаемая роль", application_type: "Тип участия" };
 function KeyValues({ values, excludedKeys = [] }: { values: Record<string, unknown>; excludedKeys?: string[] }) { const excluded = new Set(excludedKeys); const rows = Object.entries(values).filter(([key, value]) => !excluded.has(key) && value !== null && value !== "" && !Array.isArray(value)); return rows.length ? <dl className="mt-3 space-y-2">{rows.slice(0, 12).map(([key, value]) => <div key={key}><dt className="text-xs text-white/30">{profileLabels[key] || key}</dt><dd className="break-words text-sm text-white/60">{typeof value === "object" ? JSON.stringify(value) : String(value)}</dd></div>)}</dl> : null; }
 function formatDate(value?: string | null) { return value ? new Date(value).toLocaleString("ru-RU") : "—"; }

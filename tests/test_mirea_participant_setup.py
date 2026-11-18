@@ -22,7 +22,7 @@ from tests.test_accelerator_resident_import import seed, manifest_data
 
 
 def test_private_projection_and_raw_score():
-    profile = dict(study_group="ИВБО-20-25", education_direction="БАК", education_course="БАК-2", employment="working", tags=["student_startup"], registration_required=True)
+    profile = dict(university="РТУ МИРЭА", study_group="ИВБО-20-25", education_direction="БАК", education_course="БАК-2", employment="working", tags=["student_startup"], registration_required=True)
     assert set(visible_profile(profile, private=False)) == {"tags", "registration_required"}
     assert visible_profile(profile, private=True) == profile
     assert not registration_required(profile)
@@ -46,9 +46,10 @@ async def test_profile_permissions_and_single_expert_total():
         row = (await db.execute(select(AcceleratorParticipantProfile).where(AcceleratorParticipantProfile.membership_id == mid))).scalar_one()
         row.profile = {**row.profile, "registration_required": True, "source_rows": [2]}
         await db.commit()
-        await update_participant_profile(mid, ParticipantProfileUpdate(employment="working", study_group="Нет группы"), person, db)
+        await update_participant_profile(mid, ParticipantProfileUpdate(employment="working", study_group="Нет группы", university="РТУ МИРЭА"), person, db)
         assert row.profile["source_rows"] == [2]
         assert row.profile["employment"] == "working"
+        assert row.profile["university"] == "РТУ МИРЭА"
         with pytest.raises(HTTPException):
             await update_participant_profile(mid, ParticipantProfileUpdate(tags=["student_startup"]), person, db)
         await update_participant_profile(mid, ParticipantProfileUpdate(tags=["student_startup", "startup_diploma"]), actor, db)
