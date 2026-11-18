@@ -8,7 +8,9 @@ from fastapi.testclient import TestClient
 sys.modules["rag"] = mock.MagicMock()
 
 
-def test_register_and_login():
+def test_register_and_login(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "local-test-only-not-a-real-key")
+    monkeypatch.setenv("POLZA_API_KEY", "local-test-only-not-a-real-key")
     import main
 
     importlib.reload(main)
