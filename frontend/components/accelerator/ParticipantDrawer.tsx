@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { Activity, ClipboardCheck, FileText, Loader2, RefreshCw, X } from "lucide-react";
+import { Activity, ClipboardCheck, FileText, Loader2, RefreshCw, Trash2, X } from "lucide-react";
 
 import { describeProjectAuditLaunchError } from "@/lib/acceleratorProjectAudit";
 import { describeApiError, getAuthJson, patchAuthJson, postAuthJson, putAuthJson } from "@/lib/api";
@@ -97,6 +97,20 @@ export function ParticipantDrawer({ membershipId, token, onClose, onChanged }: {
     catch (reason) { setError(describeApiError(reason, "Не удалось создать задачу")); }
     finally { setBusy(""); }
   };
+  const removeTask = async (taskId: number, title: string) => {
+    if (!window.confirm(`Удалить задачу «${title}» из текущих?`)) return;
+    setBusy(`remove-task-${taskId}`);
+    setError("");
+    try {
+      await patchAuthJson(`/api/accelerators/tracking-tasks/${taskId}`, { status: "cancelled" }, token);
+      await load();
+      notifySuccess("Задача удалена из текущих");
+    } catch (reason) {
+      setError(describeApiError(reason, "Не удалось удалить задачу"));
+    } finally {
+      setBusy("");
+    }
+  };
   const launchAudit = async () => {
     setBusy("audit"); setAuditError("");
     try { await postAuthJson(`/api/accelerators/memberships/${membershipId}/project-audits`, { audit_type: "product", focus: null, client_request_id: `participant-card:${membershipId}:${Date.now()}` }, token); await load(); }
@@ -163,7 +177,19 @@ export function ParticipantDrawer({ membershipId, token, onClose, onChanged }: {
           <h4 className="text-sm font-medium">Текущие задачи</h4>
           {card.tasks?.length ? <ul className="mt-2 space-y-2">
             {card.tasks.map(current => <li key={current.id} className="rounded-xl border border-white/10 p-3">
-              <p className="text-sm font-medium">{current.title}</p>
+              <div className="flex items-start justify-between gap-3">
+                <p className="min-w-0 break-words text-sm font-medium">{current.title}</p>
+                {card.modules?.progress_tracking !== false && <button
+                  type="button"
+                  aria-label={`Удалить задачу «${current.title}»`}
+                  title="Удалить задачу"
+                  disabled={Boolean(busy)}
+                  onClick={() => void removeTask(current.id, current.title)}
+                  className="shrink-0 rounded-lg p-1 text-white/55 hover:text-red-300 disabled:opacity-40"
+                >
+                  {busy === `remove-task-${current.id}` ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                </button>}
+              </div>
               {current.description && <p className="mt-1 whitespace-pre-wrap text-sm text-white/60">{current.description}</p>}
               {current.due_at && <p className="mt-1 text-xs text-white/45">Срок · {formatDate(current.due_at)}</p>}
             </li>)}

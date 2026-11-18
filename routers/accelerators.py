@@ -5981,7 +5981,21 @@ async def _cohort_resident_report(
     membership_rows = (await db.execute(membership_query)).all()
     membership_ids = [membership.id for membership, _ in membership_rows]
     from accelerator_participant_service import PRIVATE_FIELDS
-    profile_map = {row.membership_id: {k: v for k, v in (row.profile or {}).items() if k in PRIVATE_FIELDS or k == "tags"} for row in (await db.execute(select(AcceleratorParticipantProfile).where(AcceleratorParticipantProfile.membership_id.in_(membership_ids)))).scalars()} if access_role in ("global_admin", "organizer") and membership_ids else {}
+    can_read_profile = access_role in ("global_admin", "organizer")
+    profile_map = {}
+    if can_read_profile and membership_ids:
+        profiles = dict((await db.execute(select(
+            AcceleratorParticipantProfile.membership_id, AcceleratorParticipantProfile.profile
+        ).where(AcceleratorParticipantProfile.membership_id.in_(membership_ids)))).all())
+        application_ids = {membership.application_id for membership, _ in membership_rows if membership.application_id}
+        applications = dict((await db.execute(select(
+            AcceleratorApplication.id, AcceleratorApplication.form_payload
+        ).where(AcceleratorApplication.id.in_(application_ids)))).all()) if application_ids else {}
+        for membership, _ in membership_rows:
+            profile = participant_profile_with_institute(
+                profiles.get(membership.id) or {}, applications.get(membership.application_id)
+            )
+            profile_map[membership.id] = {key: value for key, value in profile.items() if key in PRIVATE_FIELDS or key == "tags"}
 
     stages = list((await db.execute(select(AcceleratorProgramStage).where(
         AcceleratorProgramStage.cohort_id == cohort.id,
@@ -6150,7 +6164,7 @@ async def _cohort_resident_report(
             "name": resident.name,
             "email": resident.email,
             "status": membership.status,
-            **({"participant_profile": profile_map.get(membership.id, {})} if access_role in ("global_admin", "organizer") else {}),
+            **({"participant_profile": profile_map.get(membership.id, {})} if can_read_profile else {}),
             "status_reason": membership.status_reason,
             "trackers": trackers_by_membership.get(membership.id, []),
             "program": {

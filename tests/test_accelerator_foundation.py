@@ -767,6 +767,10 @@ async def test_tracker_report_scope_and_resident_lifecycle():
             )
             await enroll_application(application["id"], resident, db)
             membership_ids.append(accepted["membership_id"])
+            if index == 1:
+                submitted = await db.get(AcceleratorApplication, application["id"])
+                submitted.form_payload = {**submitted.form_payload, "institute": "РТУ МИРЭА"}
+                await db.commit()
 
         assigned = await assign_tracker(
             cohort["id"],
@@ -785,8 +789,12 @@ async def test_tracker_report_scope_and_resident_lifecycle():
         tracker_report = await cohort_resident_report(cohort["id"], "json", tracker, db)
         assert tracker_report["access_role"] == "tracker"
         assert [row["membership_id"] for row in tracker_report["rows"]] == [membership_ids[0]]
+        assert "participant_profile" not in tracker_report["rows"][0]
         manager_report = await cohort_resident_report(cohort["id"], "json", organizer, db)
         assert manager_report["summary"]["residents"] == 2
+        reported_profiles = {row["membership_id"]: row["participant_profile"] for row in manager_report["rows"]}
+        assert reported_profiles[membership_ids[0]]["institute"] == "РТУ МИРЭА"
+        assert "institute" not in reported_profiles[membership_ids[1]]
         csv_report = await cohort_resident_report(cohort["id"], "csv", organizer, db)
         assert csv_report.body.startswith("\ufeff".encode("utf-8"))
         assert "Resident A".encode("utf-8") in csv_report.body

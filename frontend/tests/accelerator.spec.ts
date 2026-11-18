@@ -454,10 +454,10 @@ test('organizer workspace fits the agreed screen widths', async ({ page }) => {
 
 test('participant card opens and closes from the keyboard with restored focus', async ({ page }) => {
   await mockManagerWorkspace(page);
-  const tasks = [{ id: 71, title: 'Провести интервью' }];
+  let tasks = [{ id: 71, title: 'Провести интервью' }];
   await page.route('**/api/accelerators/cohorts/12/report', route => route.fulfill({ json: {
     summary: { residents: 1, enrolled: 1, suspended: 0, completed: 0 },
-    rows: [{ membership_id: 101, name: 'Резидент А', email: 'resident@example.test', status: 'enrolled', trackers: [], program: { percent: 50 }, homework: { accepted: 1, total: 2, overdue: 0 }, attendance: { present: 1, total: 2 } }],
+    rows: [{ membership_id: 101, name: 'Резидент А', email: 'resident@example.test', participant_profile: { institute: 'РТУ МИРЭА' }, status: 'enrolled', trackers: [], program: { percent: 50 }, homework: { accepted: 1, total: 2, overdue: 0 }, attendance: { present: 1, total: 2 } }],
   } }));
   await page.route('**/api/accelerators/memberships/101/organizer-card', async (route) => route.fulfill({ json: {
     membership_id: 101, access_role: 'global_admin', can_manage: true, available_statuses: ['suspended'],
@@ -486,6 +486,13 @@ test('participant card opens and closes from the keyboard with restored focus', 
     return route.fulfill({ json: tasks[1] });
   });
 
+  await page.route('**/api/accelerators/tracking-tasks/72', route => {
+    expect(route.request().method()).toBe('PATCH');
+    expect(route.request().postDataJSON()).toEqual({ status: 'cancelled' });
+    tasks = tasks.filter(task => task.id !== 72);
+    return route.fulfill({ json: { id: 72, status: 'cancelled' } });
+  });
+
   await page.route('**/api/accelerators/memberships/101/project-audits', route => route.fulfill({
     status: 402,
     json: { detail: 'Исчерпан месячный лимит аудитов проекта для этого потока' },
@@ -498,11 +505,12 @@ test('participant card opens and closes from the keyboard with restored focus', 
   } }));
   await page.route('**/api/accelerators/project-audits/82/chat', route => {
     expect(route.request().postDataJSON()).toEqual({ question: 'С чего начать?', history: [] });
-    return route.fulfill({ json: { answer: 'Начните с интервью.' } });
+    return route.fulfill({ json: { answer: 'Начните **с интервью**.' } });
   });
 
   await page.goto('/accelerator');
   await page.getByRole('button', { name: 'Участники', exact: true }).click();
+  await expect(page.getByText('РТУ МИРЭА', { exact: true })).toBeVisible();
   const trigger = page.getByRole('button', { name: 'Карточка', exact: true }).first();
   await trigger.focus();
   await page.keyboard.press('Enter');
@@ -526,6 +534,10 @@ test('participant card opens and closes from the keyboard with restored focus', 
   await dialog.getByLabel('Название задачи').fill('Согласовать план');
   await dialog.getByRole('button', { name: 'Назначить', exact: true }).click();
   await expect(dialog.getByText('Согласовать план', { exact: true })).toBeVisible();
+  page.once('dialog', confirmation => confirmation.accept());
+  await dialog.getByRole('button', { name: 'Удалить задачу «Согласовать план»' }).click();
+  await expect(dialog.getByText('Согласовать план', { exact: true })).toHaveCount(0);
+  await expect(dialog.getByText('Провести интервью', { exact: true })).toBeVisible();
   await dialog.getByRole('button', { name: 'Запустить аудит', exact: true }).click();
   await expect(dialog.getByRole('alert')).toHaveText(/Исчерпан месячный лимит аудитов этого потока/);
   await page.keyboard.press('Escape');
@@ -539,7 +551,8 @@ test('participant card opens and closes from the keyboard with restored focus', 
   await expect(page.getByText('Нет интервью')).toBeVisible();
   await page.getByLabel('Вопрос по отчёту').fill('С чего начать?');
   await page.getByRole('button', { name: 'Отправить', exact: true }).click();
-  await expect(page.getByText('Начните с интервью.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Обсудить с Pitchy' })).toBeVisible();
+  await expect(page.locator('strong').filter({ hasText: 'с интервью' })).toBeVisible();
 });
 
 test('manager sees an application summary and accepted participation state', async ({ page }) => {

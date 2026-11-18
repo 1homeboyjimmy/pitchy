@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { useParams, useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { AuditResultView, type AuditRow } from "@/components/accelerator/ProjectAuditWorkspace";
@@ -76,13 +78,15 @@ function AuditChat({ auditId, token }: { auditId: number; token: string }) {
   };
 
   return <section className="workspace-card min-w-0">
-    <h2 className="text-xl">Обсудить отчёт с ИИ</h2>
+    <h2 className="text-xl">Обсудить с Pitchy</h2>
     <div aria-live="polite" className="mt-4 space-y-4">
       {history.map((turn, index) => <div key={index} className="space-y-2 break-words">
         <p className="rounded-xl bg-white/8 p-3 text-sm">{turn.question}</p>
-        <p className="whitespace-pre-wrap px-3 text-sm text-white/75">{turn.answer}</p>
+        <div className="px-3 text-sm leading-relaxed text-white/75 [&_a]:underline [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-semibold [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p+p]:mt-3 [&_pre]:overflow-x-auto [&_strong]:text-white [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5">
+          <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml disallowedElements={["img"]}>{turn.answer}</ReactMarkdown>
+        </div>
       </div>)}
-      {busy && <p role="status" className="text-sm text-white/55">ИИ готовит ответ…</p>}
+      {busy && <p role="status" className="text-sm text-white/55">Pitchy готовит ответ…</p>}
     </div>
     <form onSubmit={send} className="mt-4 space-y-3">
       <label className="block text-sm">
