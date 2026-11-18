@@ -452,6 +452,11 @@ test('participant card opens and closes from the keyboard with restored focus', 
     checkins: [], feedback: [], audit: null, lifecycle: [], last_action: { title: 'Подтвердил участие', at: new Date().toISOString() },
   } }));
 
+  await page.route('**/api/accelerators/memberships/101/project-audits', route => route.fulfill({
+    status: 402,
+    json: { detail: 'quota_exceeded: лимит сообщений резидента исчерпан (0)' },
+  }));
+
   await page.goto('/accelerator');
   await page.getByRole('button', { name: 'Участники', exact: true }).click();
   const trigger = page.getByRole('button', { name: 'Карточка', exact: true }).first();
@@ -469,6 +474,8 @@ test('participant card opens and closes from the keyboard with restored focus', 
   await expect(dialog.getByRole('heading', { name: 'Профиль участника', exact: true, level: 2 })).toBeVisible();
   await expect(dialog.getByText('internal-hidden', { exact: true })).toHaveCount(0);
   await expect(dialog.getByRole('link', { name: 'Открыть паспорт проекта' })).toHaveAttribute('href', '/passport/5');
+  await dialog.getByRole('button', { name: 'Запустить аудит', exact: true }).click();
+  await expect(dialog.getByRole('alert')).toHaveText(/Исчерпан лимит сообщений резидента в этом потоке/);
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
   await expect(trigger).toBeFocused();

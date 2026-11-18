@@ -2,7 +2,8 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, ClipboardPlus, Loader2, RefreshCw, Search, Sparkles, X } from "lucide-react";
-import { ApiError, describeApiError, getAuthJson, postAuthJson } from "@/lib/api";
+import { describeApiError, getAuthJson, postAuthJson } from "@/lib/api";
+import { describeProjectAuditLaunchError } from "@/lib/acceleratorProjectAudit";
 import { useAuth } from "@/lib/hooks/useAuth";
 
 type ResidentOption={membership_id:number;name:string;email?:string;status:string};
@@ -48,9 +49,7 @@ export function ProjectAuditWorkspace({cohortId,membershipId,residents=[],token:
      setSelected(audit);
      await load();
    } catch (reason) {
-     setLaunchError(reason instanceof ApiError && reason.status === 402
-       ? "Лимит сообщений для этого резидента исчерпан."
-       : describeApiError(reason, "Не удалось выполнить аудит"));
+     setLaunchError(describeProjectAuditLaunchError(reason));
    } finally {
      setCreating(false);
    }

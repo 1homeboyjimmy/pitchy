@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Activity, ClipboardCheck, Loader2, RefreshCw, UserRound, X } from "lucide-react";
 
+import { describeProjectAuditLaunchError } from "@/lib/acceleratorProjectAudit";
 import { describeApiError, getAuthJson, patchAuthJson, postAuthJson, putAuthJson } from "@/lib/api";
 import { notifySuccess } from "@/lib/ui";
 import { ProjectSummary, type ProjectDescription } from "./ProjectSummary";
@@ -88,7 +89,7 @@ export function ParticipantDrawer({ membershipId, token, onClose, onChanged }: {
   const launchAudit = async () => {
     setBusy("audit"); setAuditError("");
     try { await postAuthJson(`/api/accelerators/memberships/${membershipId}/project-audits`, { audit_type: "product", focus: null, client_request_id: `participant-card:${membershipId}:${Date.now()}` }, token); await load(); }
-    catch (reason) { setAuditError(describeApiError(reason, "Не удалось запустить аудит")); }
+    catch (reason) { setAuditError(describeProjectAuditLaunchError(reason)); }
     finally { setBusy(""); }
   };
   const changeProgramStage = async (stageId: number, action: "complete-manually" | "waive") => {
