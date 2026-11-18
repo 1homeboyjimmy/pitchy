@@ -210,7 +210,7 @@ export function ResidentMembershipView({ membership, quotas, onChanged }: { memb
       </section>}
 
       {enrolled && section === "program" && (membership.modules.program_progress !== false || !membership.modules.attendance) && <ResidentProgramWorkspace membershipId={membership.membership_id} trackProgress={membership.modules.program_progress !== false} timezone={membership.cohort.timezone} onNavigate={navigate} />}
-      {enrolled && (section === "events" || (section === "program" && membership.modules.program_progress === false)) && membership.modules.attendance && <><ResidentEvents key={membership.membership_id} membershipId={membership.membership_id} />{membership.modules.program_progress === false && <ResidentProgramWorkspace membershipId={membership.membership_id} onNavigate={navigate} trackProgress={false} timezone={membership.cohort.timezone} />}</>}
+      {enrolled && (section === "events" || (section === "program" && membership.modules.program_progress === false)) && membership.modules.attendance && <ResidentEvents key={membership.membership_id} membershipId={membership.membership_id} />}
 
       {enrolled && section === "homework" && membership.modules.homework && <ResidentHomework membershipId={membership.membership_id} />}
 

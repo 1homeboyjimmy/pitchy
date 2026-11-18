@@ -30,7 +30,7 @@ test('participant sees attendance and a timetable without completion or homework
   await expect(page.getByRole('button', { name: 'Все задания' })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Нужно сделать' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Расписание и мероприятия', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Материалы программы' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Материалы программы' })).toHaveCount(0);
   const day = page.getByRole('button', { name: /18 ноябрь 2026.*Рынок.*Маркетинг/ });
   const calendar=page.getByRole('region', { name: 'Календарь мероприятий' });
   await expect(calendar.getByRole('button', { name: 'Маркетинг, 18:00', exact: true })).toBeVisible();
@@ -44,8 +44,8 @@ test('participant sees attendance and a timetable without completion or homework
   await expect(page.locator('#resident-events-52')).toBeVisible();
   await page.getByRole('button', { name: 'Следующий месяц' }).click();
   await expect(page.getByRole('button', { name: /18 декабрь 2026.*нет мероприятий/ })).toBeDisabled();
-  await expect(page.getByText('Спикер: Анна Иванова')).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Ссылка на вебинар' })).toHaveAttribute('href', 'https://example.test/webinar');
+  await expect(page.getByText('Спикер: Анна Иванова')).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Ссылка на вебинар' })).toHaveCount(0);
   await expect(page.locator('#resident-events-51').getByText(/18 ноября 2026.*18:00/)).toBeVisible();
   await expect(page.getByText(/18:00:00/)).toHaveCount(0);
   await expect(page.getByText('Закрыт', { exact: true })).toHaveCount(0);
