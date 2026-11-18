@@ -20,7 +20,7 @@ test('participant sees attendance and a timetable without completion or homework
     materials: [{ id: 41, title: 'Ссылка на вебинар', url: 'https://example.test/webinar' }],
     timeline: [{ key: 'event:51', kind: 'event', id: 51, title: 'Вебинар', sort_at: '2026-11-18T15:00:00Z' }],
   }] }));
-  await page.route('**/api/accelerators/memberships/101/events', route => route.fulfill({ json: [51, 52].map((id, i) => ({ id, title: i ? 'Маркетинг' : 'Рынок', starts_at: '2026-11-18T15:00:00Z', ends_at: '2026-11-18T16:00:00Z', status: 'published', event_format: 'online', timezone: 'Europe/Moscow', homework_links: [], post_materials: [] })) }));
+  await page.route('**/api/accelerators/memberships/101/events', route => route.fulfill({ json: [51, 52].map((id, i) => ({ id, event_type: i ? 'workshop' : 'webinar', title: i ? 'Маркетинг' : 'Рынок', starts_at: '2026-11-18T15:00:00Z', ends_at: '2026-11-18T16:00:00Z', status: 'published', event_format: 'online', timezone: 'Europe/Moscow', homework_links: [], post_materials: [] })) }));
   await page.goto('/accelerator/my/101');
   await expect(page.getByTestId('resident-today')).toBeVisible();
   await expect(page.getByText('30%', { exact: true })).toBeVisible();
@@ -32,6 +32,13 @@ test('participant sees attendance and a timetable without completion or homework
   await page.getByRole('button', { name: 'Расписание и мероприятия', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Материалы программы' })).toBeVisible();
   const day = page.getByRole('button', { name: /18 ноябрь 2026.*Рынок.*Маркетинг/ });
+  const calendar=page.getByRole('region', { name: 'Календарь мероприятий' });
+  await expect(calendar.getByRole('button', { name: 'Маркетинг, 18:00', exact: true })).toBeVisible();
+  await calendar.getByRole('checkbox', { name: /Практикумы/ }).uncheck();
+  await expect(calendar.getByRole('button', { name: 'Маркетинг, 18:00', exact: true })).toHaveCount(0);
+  await calendar.getByRole('checkbox', { name: /Практикумы/ }).check();
+  await calendar.getByRole('button', { name: 'Маркетинг, 18:00', exact: true }).click();
+  await expect(page.locator('#resident-events-52')).toBeFocused();
   await day.click();
   await expect(page.locator('#resident-events-51')).toBeFocused();
   await expect(page.locator('#resident-events-52')).toBeVisible();
