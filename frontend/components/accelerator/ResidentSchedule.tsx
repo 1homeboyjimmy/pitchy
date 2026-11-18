@@ -10,16 +10,16 @@ type ScheduleStage = {
   timeline: Array<{ key: string; kind: string; id: number; title: string; sort_at?: string | null }>;
 };
 
-export function ResidentSchedule({ stages, timezone, error, onOpenEvent }: {
+export function ResidentSchedule({ stages, timezone, error }: {
   stages: ScheduleStage[];
   timezone: string;
   error: string;
   onOpenEvent: (id: number) => void;
 }) {
   return <section>
-    <h1 className="text-3xl font-semibold">Расписание программы</h1>
+    <h1 className="text-3xl font-semibold">Материалы программы</h1>
     {error && <p role="alert" className="mt-5 rounded-xl border border-red-400/20 p-3 text-red-200">{error}</p>}
-    <div className="mt-6 space-y-4">{stages.map((stage) => {
+    <div className="mt-6 space-y-4">{stages.filter(stage => stage.materials.length > 0 || !!stage.description).map((stage) => {
       const events = stage.timeline.filter((item) => item.kind === "event");
       const startsAt = events[0]?.sort_at || stage.unlock_at;
       return <article key={stage.id} className="rounded-xl border border-white/15 p-5">
@@ -30,7 +30,7 @@ export function ResidentSchedule({ stages, timezone, error, onOpenEvent }: {
           {material.url ? <a href={material.url} target="_blank" rel="noreferrer" className="text-white/85 underline underline-offset-4">{material.title}</a> : <p className="font-medium">{material.title}</p>}
           {material.content && <p className="mt-1 whitespace-pre-wrap text-white/65">{material.content}</p>}
         </div>)}
-        {events.map((event) => <button key={event.key} type="button" onClick={() => onOpenEvent(event.id)} className="overview-secondary mt-4">Подробнее о мероприятии</button>)}
+
       </article>;
     })}</div>
     {!stages.length && !error && <p className="mt-8 text-white/55">Организатор ещё не опубликовал расписание.</p>}
