@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import smtplib
+import ssl
 from datetime import datetime
 from email.message import EmailMessage
 
@@ -22,7 +23,7 @@ def send_email(to_email: str, subject: str, body: str,
     """Send mail.
 
     Default (from_mailbox=None) → legacy SMTP_FROM via SMTP_HOST. This is the
-    Postbox path that auth@pitchy.pro uses for registration / password codes.
+    Configured Postbox sender for registration and password codes.
 
     Explicit from_mailbox ("billing", "hello", "support", "noreply") → Yandex
     360 SMTP with the matching IMAP_PASS_* app-password as auth. Use this for
@@ -96,7 +97,7 @@ def _send_via_legacy(to_email: str, subject: str, body: str,
 
     with smtplib.SMTP(host, port, timeout=10) as server:
         if use_tls:
-            server.starttls()
+            server.starttls(context=ssl.create_default_context())
         if username and password:
             server.login(username, password)
         server.send_message(message)
