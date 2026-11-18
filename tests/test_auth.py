@@ -34,6 +34,10 @@ def test_register_and_login():
             data = res.json()
             assert data["status"] == "verification_required"
 
+            rejected = client.post("/auth/verify-email", json={"email": unique_email, "code": "000000"})
+            assert rejected.status_code == 400
+            assert "access_token" not in rejected.json()
+
             # Verify
             verify_res = client.post("/auth/verify-email", json={
                 "email": unique_email,
@@ -42,7 +46,15 @@ def test_register_and_login():
             assert verify_res.status_code == 200
             assert verify_res.status_code == 200
             assert "access_token" in verify_res.json()
-            # token = verify_res.json()["access_token"]
+            # Confirmation grants access once, then regular sign-in is required.
+            for code in ("555555", "000000"):
+                client.cookies.clear()
+                repeated = client.post("/auth/verify-email", json={
+                    "email": unique_email, "code": code,
+                })
+                assert repeated.status_code == 400
+                assert "access_token" not in repeated.json()
+                assert "set-cookie" not in repeated.headers
 
             # Login check
             login = client.post(
