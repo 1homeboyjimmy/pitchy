@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { AlertTriangle, ArrowRight, BarChart3, BookOpen, CalendarDays, CheckCircle2, Clipboard, ClipboardCheck, FileText, Loader2, Users, UserRoundCheck, type LucideIcon } from "lucide-react";
 import { getAuthJson } from "@/lib/api";
+import { AttendanceInsights } from "./AttendanceInsights";
 
 export type OrganizerTab = "overview" | "operations" | "applications" | "form" | "program" | "homework" | "attendance" | "trackers" | "reports" | "tracking" | "matching" | "project_audit" | "demo_day" | "artifacts" | "closure" | "quotas" | "settings" | "audit";
 type Analytics = {
@@ -10,19 +11,19 @@ type Analytics = {
   attendance: { past_events?: number; reporting_total?: number; attendance_percent: number };
   runtime_disabled_modules?: Record<string, unknown>;
 };
-type Issue = { code: string; severity: "error" | "warning" | "info"; count: number; message: string; recommended_action: string };
 type Event = { id: number; title: string; starts_at: string; ends_at: string; status: string; event_format: string };
 type Assignment = { id: number; title: string; due_at?: string | null; status: string; submission_counts: Record<string, number> };
 type Summary = { participants: number; applications_to_review: number; applications_to_enroll: number; applications_in_progress: number; without_tracker: number; first_without_tracker: number | null; at_risk: number | null };
-type OverviewData = { analytics?: Analytics; health?: { issues: Issue[] }; events?: Event[]; homework?: Assignment[]; summary?: Summary; trackers?: Array<{ user_id: number }> };
+type OverviewData = { analytics?: Analytics; events?: Event[]; homework?: Assignment[]; summary?: Summary; trackers?: Array<{ user_id: number }> };
 
-export function OrganizerOverview({ token, cohort, config, onNavigate, onCopy, copied, refreshKey, onOpenParticipant }: {
+export function OrganizerOverview({ token, cohort, config, onNavigate, onCopy, copied, refreshKey, onOpenParticipant, onAttendanceFilter, onTeamAttendanceFilter }: {
+  onAttendanceFilter: (filter: "zero" | "below50") => void; onTeamAttendanceFilter: () => void;
   token: string; cohort: { id: number; name: string; status: string; timezone: string }; config: { modules: Record<string, boolean> };
   onOpenParticipant: (id: number) => void; onNavigate: (tab: OrganizerTab, targetId?: number) => void;
   onCopy: () => Promise<void>; copied: boolean; refreshKey: number;
 }) {
   const [data, setData] = useState<OverviewData>({});
-  const [pending, setPending] = useState<Array<keyof OverviewData>>(["analytics", "summary", "health", "trackers"]);
+  const [pending, setPending] = useState<Array<keyof OverviewData>>(["analytics", "summary"]);
   const loading = pending.length > 0;
   const [failures, setFailures] = useState<string[]>([]);
   const [retry, setRetry] = useState(0);
@@ -36,7 +37,7 @@ export function OrganizerOverview({ token, cohort, config, onNavigate, onCopy, c
       ...(modules.attendance ? ["events" as const] : []),
       ...(modules.homework ? ["homework" as const] : []),
     ];
-    setPending(["analytics", "summary", "health", "trackers", ...optional]);
+    setPending(["analytics", "summary", ...(modules.trackers !== false ? ["trackers" as const] : []), ...optional]);
     setData({});
     setFailures([]);
     setNow(Date.now());
@@ -66,8 +67,7 @@ export function OrganizerOverview({ token, cohort, config, onNavigate, onCopy, c
     void Promise.all([
       loadModules(),
       request("summary", "overview-summary", "сводка участников"),
-      request("health", "operations-health", "состояние потока"),
-      request("trackers", "trackers", "трекеры"),
+      ...(modules.trackers !== false ? [request("trackers", "trackers", "трекеры")] : []),
     ]).finally(() => window.clearTimeout(timeout));
     const timer = window.setInterval(() => setNow(Date.now()), 60_000);
     return () => { active = false; controller.abort(); window.clearTimeout(timeout); window.clearInterval(timer); };
@@ -93,10 +93,9 @@ export function OrganizerOverview({ token, cohort, config, onNavigate, onCopy, c
   if (applicationsToReview) actions.push({ key: "applications", count: applicationsToReview, title: countLabel(applicationsToReview, ["заявка ждёт решения", "заявки ждут решения", "заявок ждут решения"]), detail: "Новые и на рассмотрении", button: "Разобрать", tab: "applications", icon: FileText });
   if (applicationsToEnroll) actions.push({ key: "enroll", count: applicationsToEnroll, title: countLabel(applicationsToEnroll, ["заявка готова к зачислению", "заявки готовы к зачислению", "заявок готово к зачислению"]), detail: "Кандидаты уже одобрены", button: "Зачислить", tab: "applications", icon: UserRoundCheck });
   if (available("homework") && waiting) actions.push({ key: "homework", count: waiting, title: countLabel(waiting, ["работа на проверке", "работы на проверке", "работ на проверке"]), detail: "Ответы участников ждут обратной связи", button: "Проверить", tab: "homework", icon: ClipboardCheck, targetId: data.homework?.find(row => row.status === "published" && (row.submission_counts?.review_pending ?? row.submission_counts?.submitted))?.id });
-  if (available("progress_tracking") && withoutTracker) actions.push({ key: "trackers", count: withoutTracker, title: countLabel(withoutTracker, ["участник без трекера", "участника без трекера", "участников без трекера"]), detail: "Назначьте ответственного за сопровождение", button: "Назначить", tab: "reports", icon: Users });
-  if (available("progress_tracking") && riskCount) actions.push({ key: "risks", count: riskCount, title: countLabel(riskCount, ["участник в зоне риска", "участника в зоне риска", "участников в зоне риска"]), detail: "Посмотрите причины и последние чек-ины", button: "Открыть", tab: "tracking", icon: AlertTriangle, warning: true });
+  if (modules.trackers !== false && available("progress_tracking") && withoutTracker) actions.push({ key: "trackers", count: withoutTracker, title: countLabel(withoutTracker, ["участник без трекера", "участника без трекера", "участников без трекера"]), detail: "Назначьте ответственного за сопровождение", button: "Назначить", tab: "reports", icon: Users });
+  if (available("progress_tracking") && riskCount) actions.push({ key: "risks", count: riskCount, title: countLabel(riskCount, ["участник в зоне риска", "участника в зоне риска", "участников в зоне риска"]), detail: modules.homework ? "Посещаемость ниже 50% или просроченные домашние задания" : "Посещаемость ниже 50%", button: "Открыть", tab: "tracking", icon: AlertTriangle, warning: true });
   const status = { draft: "Черновик", accepting: "Приём заявок", active: "Программа идёт", completed: "Завершён", archived: "Архив" }[cohort.status] || cohort.status;
-  const systemIssues = (data.health?.issues || []).filter(issue => !["stale_applications", "accepted_not_enrolled", "unassigned_trackers", "stale_checkins"].includes(issue.code));
 
   return <div className="space-y-5" aria-busy={loading}>
     <header className="flex flex-wrap items-start justify-between gap-4">
@@ -108,8 +107,10 @@ export function OrganizerOverview({ token, cohort, config, onNavigate, onCopy, c
       <Metric icon={Users} label="Участники" value={pending.includes("summary") ? "…" : data.summary ? participants : "—"} onClick={() => onNavigate("reports")} />
       {modules.program_progress !== false && <Metric icon={BookOpen} label="Пройдено программы" value={pending.includes("analytics") ? "…" : programPercent} onClick={() => onNavigate("program")} />}
       {modules.attendance ? <Metric icon={BarChart3} label="Посещаемость" value={pending.includes("analytics") ? "…" : attendancePercent} onClick={() => onNavigate("attendance")} disabled={!available("attendance")} /> : <Metric icon={FileText} label="Заявки в работе" value={pending.includes("summary") ? "…" : data.summary?.applications_in_progress ?? "—"} onClick={() => onNavigate("applications")} />}
-      <Metric icon={UserRoundCheck} label="Трекеры" value={pending.includes("trackers") ? "…" : data.trackers ? new Set(data.trackers.map(row => row.user_id)).size : "—"} onClick={() => onNavigate("matching")} />
+      {modules.trackers === false && <Metric icon={AlertTriangle} label="В зоне риска" value={pending.includes("summary") ? "…" : riskCount ?? "—"} onClick={() => onNavigate("tracking")} />}
+      {modules.trackers !== false && <Metric icon={UserRoundCheck} label="Трекеры" value={pending.includes("trackers") ? "…" : data.trackers ? new Set(data.trackers.map(row => row.user_id)).size : "—"} onClick={() => onNavigate("matching")} />}
     </div>
+    {available("attendance") && <AttendanceInsights token={token} cohortId={cohort.id} refreshKey={refreshKey} onParticipants={onAttendanceFilter} onZeroTeams={onTeamAttendanceFilter} onTeam={id => onNavigate("matching", id)} onEvent={id => onNavigate("attendance", id)} />}
     <div className="grid gap-5 xl:grid-cols-[1.35fr_1fr]">
       <Panel title="Требует внимания">
         {attentionLoading ? <Loading /> : actions.length ? <div className="divide-y divide-white/8">{actions.map(action => <div key={action.key} className="overview-action flex flex-wrap items-center gap-3 py-4 first:pt-1 last:pb-0"><span className={`grid h-11 w-11 shrink-0 place-items-center rounded-full ${action.warning ? "bg-amber-300/10 text-amber-300" : "bg-white/7 text-white/75"}`}><action.icon size={21} /></span><div className="min-w-0 flex-1 basis-40"><p className="text-sm font-medium"><strong className="mr-2 text-xl">{action.count}</strong>{action.title}</p><p className="mt-1 text-xs leading-relaxed text-white/50">{action.detail}</p></div><button className="workspace-button !rounded-xl !px-4 !py-2 !text-xs" onClick={() => { onNavigate(action.tab, action.targetId); if (action.key === "trackers") { const id = data.summary?.first_without_tracker; if (id) onOpenParticipant(id); } }}>{action.button}</button></div>)}</div> : <div className="py-6"><CheckCircle2 size={28} className="mb-3 text-emerald-300" /><p className="font-medium">{failures.length ? "Задач в загруженных разделах нет" : "Срочных задач нет"}</p><p className="mt-2 text-sm text-white/50">{cohort.status === "draft" ? "Подготовьте анкету и программу, затем откройте набор." : "Проверьте программу или откройте список участников."}</p><div className="mt-4 flex flex-wrap gap-3"><TextAction onClick={() => onNavigate(cohort.status === "draft" ? "form" : "reports")}>{cohort.status === "draft" ? "Настроить анкету" : "Все участники"}</TextAction>{cohort.status === "draft" && <TextAction onClick={() => onNavigate("settings")}>Настроить поток</TextAction>}</div></div>}
@@ -120,7 +121,7 @@ export function OrganizerOverview({ token, cohort, config, onNavigate, onCopy, c
       </Panel>
     </div>
     {modules.program_progress !== false && <section className="overview-panel"><div className="flex flex-wrap items-center justify-between gap-5"><div className="min-w-0 flex-1"><h2 className="text-lg font-semibold">{stage ? `Текущий этап · ${stage.title}` : "Программа потока"}</h2><p className="mt-2 text-sm text-white/55">{pending.includes("analytics") ? "Загружаем прогресс…" : stage ? stage.total ? `${stage.completed} из ${stage.total} участников завершили этап` : "Пока нет зачисленных участников" : "Нет доступного опубликованного этапа"}</p>{stage && stage.total > 0 && <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/8" role="progressbar" aria-label="Прогресс текущего этапа" aria-valuemin={0} aria-valuemax={stage.total} aria-valuenow={stage.completed}><div className="h-full rounded-full bg-white/85" style={{ width: `${Math.min(100, stage.completed * 100 / stage.total)}%` }} /></div>}</div><TextAction onClick={() => onNavigate("program", stage?.id)}>{stage ? "Перейти к этапу" : "Открыть программу"}</TextAction></div></section>}
-    {systemIssues.map(issue => <div key={issue.code} className={`flex flex-wrap items-center gap-4 rounded-xl border px-5 py-4 ${issue.severity === "error" ? "border-red-300/20 bg-red-300/5 text-red-200" : "border-amber-300/20 bg-amber-300/5 text-amber-200"}`}><AlertTriangle size={22} className="shrink-0" /><div className="min-w-0 flex-1"><p className="text-sm font-medium">{issue.message} · {issue.count}</p><p className="mt-1 text-xs text-white/55">{issue.recommended_action}</p></div><TextAction onClick={() => onNavigate("operations")}>Подробнее</TextAction></div>)}
+
     <style jsx global>{`.overview-panel{border:1px solid rgba(255,255,255,.09);border-radius:16px;background:#1c1b1b;padding:24px}.overview-secondary{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:11px 14px;color:#e5e2e1;font-size:13px}.overview-secondary:hover{background:rgba(255,255,255,.06)}.overview-link{display:inline-flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;color:#e5e2e1}.overview-link:hover{text-decoration:underline;text-underline-offset:4px}@media(max-width:640px){.overview-panel{padding:18px}}@media(max-width:480px){.overview-action{display:grid;grid-template-columns:44px minmax(0,1fr)}.overview-action>button{grid-column:2;justify-self:start}}`}</style>
   </div>;
 }

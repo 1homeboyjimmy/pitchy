@@ -25,11 +25,12 @@ export async function mockOverview(page: Page) {
       residents,
       'overview-summary': { participants: 3, applications_to_review: 1, applications_to_enroll: 0, applications_in_progress: 1, without_tracker: 2, first_without_tracker: 101, at_risk: 1 },
       analytics,
+      'attendance-insights': { scope: 'individual', basis: 'past', past_events: 1, percent: 67, teams: 0, distribution: {normal:0,below50:0,zero:0,no_data:0}, participants:{zero:1,below50:0,normal:2,no_data:0},top_teams:[],by_course:[],by_direction:[],by_track:[],events:[] },
       'operations-health': { status: 'error', issues: [{ code: 'failed_notifications', severity: 'error', count: 27, message: 'Уведомления не доставлены', recommended_action: 'Проверьте состояние доставки' }] },
       homework: [homework], events: [event], trackers: [{ staff_id: 61, user_id: 9, name: 'Анна', email: 'tracker@example.test', membership_ids: [103], team_ids: [] }],
       'program-stages': [stage], 'homework-review-queue': { items: [] },
       report: { summary: { residents: 3, enrolled: 3, suspended: 0, completed: 0, overdue_homework: 0 }, rows: [] },
-      'tracking-dashboard': { summary: { residents: 3, green: 2, yellow: 1, red: 0, overdue_tasks: 0 }, rows: residents.map((row, index) => ({ ...row, program: { percent: 50 }, homework: { overdue: 0 }, attendance: { present: 1, total: 1 }, open_tasks: 0, risk: { level: index === 2 ? 'yellow' : 'green', reasons: index === 2 ? ['Нет чек-ина'] : [], overdue_homework: 0, overdue_tasks: 0, attendance_percent: 100 } })) },
+      'tracking-dashboard': { summary: { residents: 3, green: 2, yellow: 1, red: 0, overdue_tasks: 0 }, rows: residents.map((row, index) => ({ ...row, program: { percent: 50 }, homework: { overdue: 0 }, attendance: { present: 1, total: 1 }, open_tasks: 0, risk: { level: index === 2 ? 'yellow' : 'green', reasons: index === 2 ? ['Низкая посещаемость'] : [], overdue_homework: 0, overdue_tasks: 0, attendance_percent: 100 } })) },
     };
     await route.fulfill({ json: responses[path || ''] || [] });
   });

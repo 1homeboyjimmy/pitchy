@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronRight, Crown, Loader2, Mail, Search, Users, X } from "lucide-react";
 import { describeApiError, getAuthJson, putAuthJson } from "@/lib/api";
 import type { ResidentTeam } from "@/components/accelerator/TeamWorkspace";
+import { useAcceleratorNavigationState } from "@/lib/hooks/useAcceleratorNavigation";
 import { ResultPages } from "./ResultPages";
 
 type Tracker = { user_id: number; name: string; email: string };
@@ -11,7 +12,8 @@ type Status = "all" | "recruiting" | "pending" | "ready";
 type Sort = "name" | "members" | "attendance-asc" | "attendance-desc";
 const PAGE_SIZES = [12, 20, 40, 60];
 
-export function TeamManager({ cohortId, token }: { cohortId: number; token: string }) {
+export function TeamManager({ cohortId, token, trackersEnabled = true, focusTeamId }: { cohortId: number; token: string; trackersEnabled?: boolean; focusTeamId?: number }) {
+  const [attendanceFilter, setAttendanceFilter] = useAcceleratorNavigationState("TeamManager:attendanceFilter", "all");
   const [teams, setTeams] = useState<ResidentTeam[]>([]);
   const [trackers, setTrackers] = useState<Tracker[]>([]);
   const [selected, setSelected] = useState<ResidentTeam | null>(null);
@@ -30,7 +32,7 @@ export function TeamManager({ cohortId, token }: { cohortId: number; token: stri
     try {
       const [teamResult, trackerRows] = await Promise.all([
         getAuthJson<{ teams: ResidentTeam[] }>(`/api/accelerators/cohorts/${cohortId}/teams`, token),
-        getAuthJson<Tracker[]>(`/api/accelerators/cohorts/${cohortId}/trackers`, token).catch(() => []),
+        trackersEnabled ? getAuthJson<Tracker[]>(`/api/accelerators/cohorts/${cohortId}/trackers`, token).catch(() => []) : Promise.resolve([]),
       ]);
       const rows = teamResult.teams || [];
       setTeams(rows);
@@ -41,7 +43,7 @@ export function TeamManager({ cohortId, token }: { cohortId: number; token: stri
     } finally {
       setLoading(false);
     }
-  }, [cohortId, token]);
+  }, [cohortId, token, trackersEnabled]);
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
@@ -55,9 +57,10 @@ export function TeamManager({ cohortId, token }: { cohortId: number; token: stri
     activeMembers: team.members.filter(member => member.status === "active"),
     pending: pendingCount(team),
   })), [teams]);
+  useEffect(() => { if (focusTeamId) setSelected(teams.find(team => team.id === focusTeamId) || null); }, [teams, focusTeamId]);
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return entries.filter(({ team, activeMembers, pending }) => {
+    return entries.filter(entry => attendanceFilter !== "zero" || (entry.team.attendance_percent === 0 && !entry.team.attendance_team_id && entry.team.status === "active")).filter(({ team, activeMembers, pending }) => {
       const matchesStatus = status === "all" || (status === "recruiting" && team.recruiting_open)
         || (status === "pending" && pending > 0) || (status === "ready" && activeMembers.length >= team.max_members);
       return matchesStatus && (!needle || [team.name, team.project?.name || "", ...team.members.map(member => member.person.name)]
@@ -72,8 +75,8 @@ export function TeamManager({ cohortId, token }: { cohortId: number; token: stri
       if (right == null) return -1;
       return (sort === "attendance-asc" ? left - right : right - left) || byName();
     });
-  }, [entries, query, sort, status]);
-  const hasTrackers = filtered.some(({ team }) => Boolean(team.tracker?.name));
+  }, [entries, query, sort, status, attendanceFilter]);
+  const hasTrackers = trackersEnabled && filtered.some(({ team }) => Boolean(team.tracker?.name));
   const desktopColumns = hasTrackers
     ? "md:grid-cols-[minmax(0,1.6fr)_minmax(max-content,1fr)_minmax(0,1fr)_minmax(0,0.9fr)_auto]"
     : "md:grid-cols-[minmax(0,1.6fr)_minmax(max-content,1fr)_minmax(0,1fr)_auto]";
@@ -101,6 +104,7 @@ export function TeamManager({ cohortId, token }: { cohortId: number; token: stri
       <Stat value={members} label="участников" />
       <Stat value={pending} label="ожидают ответа" tone={pending ? "yellow" : undefined} />
     </div>
+    <label className="mt-5 block text-xs text-white/50">Посещаемость команд<select aria-label="Посещаемость команд" value={attendanceFilter} onChange={event => {setAttendanceFilter(event.target.value);setPage(0)}} className="workspace-input mt-2"><option value="all">Все команды</option><option value="zero">Нулевая посещаемость</option></select></label>
     <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,11rem)_minmax(0,17rem)]">
       <label className="relative block min-w-0 sm:col-span-2 xl:col-span-1">
         <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-white/30" />
@@ -202,7 +206,7 @@ export function TeamManager({ cohortId, token }: { cohortId: number; token: stri
               <span className="mt-1 block text-xs text-white/35">Приглашение отправлено</span>
             </p>)}</div>
         </section>}
-        <section className="mt-7 border-t border-white/8 pt-5">
+        {trackersEnabled && <section className="mt-7 border-t border-white/8 pt-5">
           <h3>Трекер команды</h3>
           <p className="mt-1 text-xs text-white/35">Назначение применяется ко всей команде.</p>
           <select value={selected.tracker?.id || ""} onChange={event => void assignTracker(event.target.value)}
@@ -210,7 +214,7 @@ export function TeamManager({ cohortId, token }: { cohortId: number; token: stri
             <option value="">Не назначен</option>
             {trackers.map(tracker => <option key={tracker.user_id} value={tracker.user_id}>{tracker.name}</option>)}
           </select>
-        </section>
+        </section>}
       </aside>
     </div>}
   </section>;

@@ -56,6 +56,7 @@ export type ResidentTeam = {
   status: string;
   max_members: number;
   attendance_percent?: number | null;
+  attendance_team_id?: number | null;
   recruiting_open: boolean;
   project: { id: number; name: string } | null;
   project_attached?: boolean;

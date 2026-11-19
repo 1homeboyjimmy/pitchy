@@ -40,7 +40,7 @@ test('overview shows real summary and connects actions and specific agenda entri
   await back();
   await page.getByRole('button', { name: 'Открыть', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Трекинг', exact: true })).toBeVisible();
-  await expect(page.getByText('Нет чек-ина')).toBeVisible();
+  await expect(page.getByText('Низкая посещаемость')).toBeVisible();
   await back();
   await page.getByRole('button', { name: 'Открыть событие', exact: true }).click();
   await expect(page.locator('#dashboard-event-51')).toHaveClass(/dashboard-focus/);
@@ -48,8 +48,7 @@ test('overview shows real summary and connects actions and specific agenda entri
   await page.getByRole('button', { name: 'Перейти к этапу', exact: true }).click();
   await expect(page.locator('#dashboard-stage-31')).toHaveClass(/dashboard-focus/);
   await back();
-  await page.getByRole('button', { name: 'Подробнее', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Операционный обзор' })).toBeVisible();
+  await expect(page.getByText('Уведомления не доставлены', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Временно отключить', exact: true })).toHaveCount(0);
 });
 

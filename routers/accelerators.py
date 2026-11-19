@@ -237,6 +237,7 @@ DEFAULT_MODULES = {
     "homework": False,
     "attendance": False,
     "progress_tracking": False,
+    "trackers": True,
     "matchmaking": False,
     "project_audit": False,
     "demo_day": False,
@@ -6339,119 +6340,13 @@ async def membership_tracking_risk(
     audience: str = "staff",
 ) -> dict:
     now = datetime.utcnow()
-    current_week = date.today() - timedelta(days=date.today().weekday())
-    config = (await db.execute(select(AcceleratorProgramConfig).where(
-        AcceleratorProgramConfig.cohort_id == membership.cohort_id
-    ))).scalar_one_or_none()
-    modules = (config.modules or {}) if config else {}
-    latest_checkin = (await db.execute(
-        select(AcceleratorProgressCheckin)
-        .where(AcceleratorProgressCheckin.membership_id == membership.id)
-        .order_by(AcceleratorProgressCheckin.period_start.desc())
-        .limit(1)
-    )).scalar_one_or_none()
-
-    assignments = list((await db.execute(select(AcceleratorHomeworkAssignment).where(
-        AcceleratorHomeworkAssignment.cohort_id == membership.cohort_id,
-        AcceleratorHomeworkAssignment.status == "published",
-        AcceleratorHomeworkAssignment.due_at.is_not(None),
-        AcceleratorHomeworkAssignment.due_at < now,
-    ))).scalars().all()) if modules.get("homework") else []
-    overdue_homework = 0
-    for assignment in assignments:
-        if assignment.audience == "selected":
-            targeted = (await db.execute(select(AcceleratorHomeworkTarget.id).where(
-                AcceleratorHomeworkTarget.assignment_id == assignment.id,
-                AcceleratorHomeworkTarget.membership_id == membership.id,
-            ))).scalar_one_or_none()
-            if targeted is None:
-                continue
-        result = (await participant_results(db, [membership.id], [assignment.id])).get((assignment.id,membership.id))
-        due_at = await effective_due_at(db, assignment, membership.id)
-        overdue_homework += int(bool(due_at and due_at < now and (not result or result.status not in ('submitted','accepted'))))
-
-    overdue_tasks = (await db.execute(select(func.count(AcceleratorTrackingTask.id)).where(
-        AcceleratorTrackingTask.membership_id == membership.id,
-        AcceleratorTrackingTask.status == "open",
-        AcceleratorTrackingTask.due_at.is_not(None),
-        AcceleratorTrackingTask.due_at < now,
-    ))).scalar_one()
-    attendance = (await attendance_summaries(db, [membership], now=now))[membership.id] if modules.get("attendance") else {}
-    present_count = attendance.get("present", 0)
-
-    activity_values = [membership.updated_at, membership.enrolled_at, membership.accepted_at]
-    for model, field in (
-        (AcceleratorProgressCheckin, AcceleratorProgressCheckin.created_at),
-        (AcceleratorHomeworkSubmission, AcceleratorHomeworkSubmission.submitted_at),
-        (AcceleratorAttendanceRecord, AcceleratorAttendanceRecord.updated_at),
-        (AcceleratorProgramStageProgress, AcceleratorProgramStageProgress.completed_at),
-    ):
-        latest = (await db.execute(select(func.max(field)).where(
-            model.membership_id == membership.id
-        ))).scalar_one()
-        activity_values.append(latest)
-    activity_values = [value for value in activity_values if value is not None]
-    last_activity_at = max(activity_values) if activity_values else None
-    inactive_days = (now - last_activity_at).days if last_activity_at else 999
-    attendance_total = attendance.get("total", 0)
-    attendance_percent = round(present_count * 100 / attendance_total) if attendance_total else 100
-
-    red_reasons: list[dict] = []
-    yellow_reasons: list[dict] = []
-    if inactive_days >= 14:
-        red_reasons.append(tracking_risk_reason("no_activity", "high", audience, value=inactive_days))
-    elif inactive_days >= 7:
-        yellow_reasons.append(tracking_risk_reason("no_activity", "medium", audience, value=inactive_days))
-    if overdue_tasks:
-        red_reasons.append(tracking_risk_reason("tasks_overdue", "high", audience, value=int(overdue_tasks)))
-    if overdue_homework >= 2:
-        red_reasons.append(tracking_risk_reason("homework_overdue_many", "high", audience, value=overdue_homework))
-    elif overdue_homework == 1:
-        yellow_reasons.append(tracking_risk_reason("homework_overdue", "medium", audience))
-    if attendance_total >= 2 and attendance_percent < 50:
-        red_reasons.append(tracking_risk_reason("low_attendance", "high", audience, value=attendance_percent))
-    elif attendance_total and present_count < attendance_total:
-        yellow_reasons.append(tracking_risk_reason("low_attendance", "medium", audience, value=attendance_percent))
-    if latest_checkin and latest_checkin.health == "red":
-        red_reasons.append(tracking_risk_reason(
-            "checkin_health_red", "high", audience, actor="resident"
-        ))
-    elif latest_checkin and latest_checkin.health == "yellow":
-        yellow_reasons.append(tracking_risk_reason(
-            "checkin_health_yellow", "medium", audience, actor="resident"
-        ))
-    if latest_checkin and latest_checkin.period_start < current_week:
-        yellow_reasons.append(tracking_risk_reason(
-            "checkin_missing", "medium", audience, actor="resident"
-        ))
-    elif not latest_checkin and membership.enrolled_at and (now - membership.enrolled_at).days >= 7:
-        yellow_reasons.append(tracking_risk_reason(
-            "first_checkin_missing", "medium", audience, actor="resident"
-        ))
-    if not await membership_tracker_user_ids(db, membership.id):
-        yellow_reasons.append(tracking_risk_reason(
-            "tracker_not_assigned", "medium", audience
-        ))
-    level = "red" if red_reasons else "yellow" if yellow_reasons else "green"
-    reason_items = red_reasons + yellow_reasons
-    return {
-        "level": level,
-        "reasons": [row["text"] for row in reason_items],
-        "reason_items": reason_items,
-        "last_activity_at": last_activity_at,
-        "inactive_days": inactive_days,
-        "overdue_homework": overdue_homework,
-        "overdue_tasks": int(overdue_tasks or 0),
-        "attendance_percent": attendance_percent,
-        "last_checkin_at": latest_checkin.created_at if latest_checkin else None,
-        "last_checkin_health": latest_checkin.health if latest_checkin else None,
-    }
+    facts = (await load_tracking_facts(db, [membership], now=now))[membership.id]
+    return tracking_risk_from_facts(membership, facts, now=now, audience=audience)
 
 
 def tracking_risk_from_facts(
     membership: AcceleratorMembership, facts: dict, *, now: datetime, audience: str = "staff",
 ) -> dict:
-    current_week = date.today() - timedelta(days=date.today().weekday())
     latest_checkin = facts["latest_checkin"]
     overdue_homework = facts["overdue_homework"]
     overdue_tasks = facts["overdue_tasks"]
@@ -6459,44 +6354,17 @@ def tracking_risk_from_facts(
     present_count = facts["present_count"]
     last_activity_at = facts["last_activity_at"]
     inactive_days = (now - last_activity_at).days if last_activity_at else 999
-    attendance_percent = round(present_count * 100 / attendance_total) if attendance_total else 100
+    attendance_percent = round(present_count * 100 / attendance_total, 1) if attendance_total else 100
 
     red_reasons: list[dict] = []
     yellow_reasons: list[dict] = []
-    if inactive_days >= 14:
-        red_reasons.append(tracking_risk_reason("no_activity", "high", audience, value=inactive_days))
-    elif inactive_days >= 7:
-        yellow_reasons.append(tracking_risk_reason("no_activity", "medium", audience, value=inactive_days))
-    if overdue_tasks:
-        red_reasons.append(tracking_risk_reason("tasks_overdue", "high", audience, value=int(overdue_tasks)))
     if overdue_homework >= 2:
         red_reasons.append(tracking_risk_reason("homework_overdue_many", "high", audience, value=overdue_homework))
     elif overdue_homework == 1:
         yellow_reasons.append(tracking_risk_reason("homework_overdue", "medium", audience))
-    if attendance_total >= 2 and attendance_percent < 50:
+    # The threshold uses exact counts, so 50% is healthy and rounding never hides a risk.
+    if attendance_total and present_count * 2 < attendance_total and facts.get("attendance_past_events", attendance_total):
         red_reasons.append(tracking_risk_reason("low_attendance", "high", audience, value=attendance_percent))
-    elif attendance_total and present_count < attendance_total:
-        yellow_reasons.append(tracking_risk_reason("low_attendance", "medium", audience, value=attendance_percent))
-    if latest_checkin and latest_checkin.health == "red":
-        red_reasons.append(tracking_risk_reason(
-            "checkin_health_red", "high", audience, actor="resident"
-        ))
-    elif latest_checkin and latest_checkin.health == "yellow":
-        yellow_reasons.append(tracking_risk_reason(
-            "checkin_health_yellow", "medium", audience, actor="resident"
-        ))
-    if latest_checkin and latest_checkin.period_start < current_week:
-        yellow_reasons.append(tracking_risk_reason(
-            "checkin_missing", "medium", audience, actor="resident"
-        ))
-    elif not latest_checkin and membership.enrolled_at and (now - membership.enrolled_at).days >= 7:
-        yellow_reasons.append(tracking_risk_reason(
-            "first_checkin_missing", "medium", audience, actor="resident"
-        ))
-    if not facts["has_tracker"]:
-        yellow_reasons.append(tracking_risk_reason(
-            "tracker_not_assigned", "medium", audience
-        ))
     level = "red" if red_reasons else "yellow" if yellow_reasons else "green"
     reason_items = red_reasons + yellow_reasons
     return {
@@ -6508,6 +6376,7 @@ def tracking_risk_from_facts(
         "overdue_homework": overdue_homework,
         "overdue_tasks": int(overdue_tasks or 0),
         "attendance_percent": attendance_percent,
+        "attendance_past_events": facts.get("attendance_past_events", attendance_total),
         "last_checkin_at": latest_checkin.created_at if latest_checkin else None,
         "last_checkin_health": latest_checkin.health if latest_checkin else None,
     }
@@ -6552,6 +6421,30 @@ async def cohort_overview_summary(
     }
 
 
+@router.get("/cohorts/{cohort_id}/attendance-insights")
+async def cohort_attendance_insights(cohort_id: int, user: User = Depends(get_async_current_user), db: AsyncSession = Depends(get_async_db)):
+    cohort = await get_cohort_or_404(db, cohort_id)
+    await require_cohort_manager(db, user, cohort)
+    await require_attendance_module(db, cohort)
+    from accelerator_attendance_insights import attendance_insights
+    return await attendance_insights(db, cohort)
+
+
+@router.get("/cohorts/{cohort_id}/notification-health")
+async def cohort_notification_health(cohort_id: int, user: User = Depends(get_async_current_user), db: AsyncSession = Depends(get_async_db)):
+    cohort = await get_cohort_or_404(db, cohort_id)
+    await require_cohort_manager(db, user, cohort)
+    from models import AcceleratorNotificationOutbox
+    rows = (await db.execute(select(AcceleratorNotificationOutbox.status, AcceleratorNotificationOutbox.created_at).where(
+        AcceleratorNotificationOutbox.cohort_id == cohort_id,
+        AcceleratorNotificationOutbox.status.in_(("failed", "pending", "processing")),
+    ))).all()
+    cutoff = datetime.utcnow() - timedelta(minutes=15)
+    return {"failed":sum(status == "failed" for status, _ in rows),
+            "stuck":sum(status != "failed" and at < cutoff for status, at in rows),
+            "action_url":f"/accelerator?context=staff&accelerator={cohort.accelerator_id}&cohort={cohort.id}&section=operations"}
+
+
 @router.get("/cohorts/{cohort_id}/tracking-dashboard")
 async def tracking_dashboard(
     cohort_id: int,
@@ -6581,6 +6474,7 @@ async def tracking_dashboard(
         "access_role": report["access_role"],
         "summary": {
             "residents": len(rows),
+            "at_risk": sum(row["risk"]["level"] != "green" for row in rows),
             "green": sum(row["risk"]["level"] == "green" for row in rows),
             "yellow": sum(row["risk"]["level"] == "yellow" for row in rows),
             "red": sum(row["risk"]["level"] == "red" for row in rows),

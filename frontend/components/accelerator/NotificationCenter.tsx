@@ -45,6 +45,7 @@ function ScopedNotificationCenter({ token, cohortId, context }: NotificationCent
   const [loadingMore, setLoadingMore] = useState(false);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const [delivery, setDelivery] = useState<{failed:number;stuck:number;action_url:string}|null>(null);
 
   const handleError = useCallback((reason: unknown, fallback: string) => {
     if (reason instanceof ApiError && (reason.status === 401 || reason.status === 403)) {
@@ -113,7 +114,13 @@ function ScopedNotificationCenter({ token, cohortId, context }: NotificationCent
   useEffect(() => {
     if (!open) return;
     void Promise.all([loadNotifications(), loadPreferences()]);
-  }, [loadNotifications, loadPreferences, open]);
+    if (context === "staff") {
+      let active = true;
+      getAuthJson<{failed:number;stuck:number;action_url:string}>(`/api/accelerators/cohorts/${cohortId}/notification-health`, token)
+        .then(value => { if(active) setDelivery(value); }).catch(() => { if(active) setDelivery(null); });
+      return () => { active = false; };
+    }
+  }, [loadNotifications, loadPreferences, open, context, cohortId, token]);
 
   useEffect(() => {
     if (!open) return;
@@ -210,6 +217,7 @@ function ScopedNotificationCenter({ token, cohortId, context }: NotificationCent
       </button>
 
       {open && <section ref={panelRef} id="accelerator-notifications" role="dialog" aria-modal="false" aria-labelledby="accelerator-notifications-title" tabIndex={-1} className="fixed inset-x-4 top-24 z-50 max-h-[calc(100dvh-7rem)] overflow-hidden rounded-3xl border border-white/12 bg-[#0b0b0b] shadow-2xl shadow-black/60 outline-none sm:absolute sm:inset-x-auto sm:right-0 sm:top-[calc(100%+0.75rem)] sm:w-[430px]">
+        {delivery && (delivery.failed > 0 || delivery.stuck > 0) && <div className="border-b border-white/10 p-4 text-sm"><p className="font-medium">Доставка уведомлений</p>{delivery.failed > 0 && <p className="mt-2 text-white/60">Не доставлено после повторных попыток: {delivery.failed}</p>}{delivery.stuck > 0 && <p className="mt-1 text-white/60">Ожидают обработки больше 15 минут: {delivery.stuck}</p>}<button className="mt-3 text-xs underline" onClick={() => {setOpen(false);router.push(delivery.action_url)}}>Открыть состояние доставки</button></div>}
         <div className="flex items-start justify-between gap-4 border-b border-white/8 p-4 sm:p-5">
           <div><h2 id="accelerator-notifications-title" className="text-lg">Уведомления</h2><p className="mt-1 text-xs text-white/50">Текущий поток · {context === "resident" ? "Участник" : "Служебный кабинет"}</p><p className="mt-1 text-xs text-white/35">{unreadCount ? `${unreadCount} непрочитанных` : "Всё прочитано"}</p></div>
           <div className="flex gap-1">

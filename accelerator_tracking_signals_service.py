@@ -71,15 +71,10 @@ class TrackingSignalsService:
     ) -> list[dict]:
         signals: dict[str, dict] = {}
         risk_kind = {
-            "no_activity": "no_activity",
             "tasks_overdue": "task_overdue",
             "homework_overdue": "homework_overdue",
             "homework_overdue_many": "homework_overdue",
             "low_attendance": "low_attendance",
-            "checkin_missing": "no_checkin",
-            "first_checkin_missing": "no_checkin",
-            "checkin_health_red": "checkin_risk",
-            "checkin_health_yellow": "checkin_risk",
         }
         for reason in risk.get("reason_items", []):
             kind = risk_kind.get(reason.get("code"))

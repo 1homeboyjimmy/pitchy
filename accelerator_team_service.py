@@ -435,6 +435,7 @@ async def team_dict(
         "max_members": team.max_members,
         "recruiting_open": bool(team.recruiting_open),
         "owner_membership_id": team.owner_membership_id,
+        "attendance_team_id": team.attendance_team_id,
         "project": ({"id": project.id, "name": project.name} if project else None),
         "project_attached": project is not None,
         "project_state": "active" if project else "project_pending",

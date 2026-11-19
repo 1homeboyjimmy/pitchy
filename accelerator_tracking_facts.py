@@ -96,6 +96,7 @@ async def load_tracking_facts(
             ),
             "overdue_tasks": int(overdue_tasks.get(member.id, 0)),
             "attendance_total": summary.get("total", 0),
+            "attendance_past_events": summary.get("past_events", 0),
             "present_count": summary.get("present", 0),
             "last_activity_at": last_activity_at,
             "has_tracker": bool(trackers.get(member.id)),
