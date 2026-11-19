@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import HTTPException
 from sqlalchemy import func as sa_func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from accelerator_team_roster import active_team_roster
 
 from models import (
     AcceleratorAuditLog,
@@ -16,7 +17,6 @@ from models import (
     AcceleratorResidentQuotaOverride,
     AcceleratorStaff,
     AcceleratorTeam,
-    AcceleratorTeamMember,
     AcceleratorTeamTrackerAssignment,
     AcceleratorTrackerAssignment,
     User,
@@ -74,11 +74,12 @@ async def tracker_membership_ids(
             AcceleratorMembership.cohort_id == cohort_id,
         )
     )).scalars().all()
+    roster = active_team_roster()
     team_rows = (await db.execute(
-        select(AcceleratorTeamMember.membership_id)
+        select(roster.c.membership_id)
         .join(
             AcceleratorTeam,
-            AcceleratorTeam.id == AcceleratorTeamMember.team_id,
+            AcceleratorTeam.id == roster.c.team_id,
         )
         .join(
             AcceleratorTeamTrackerAssignment,
@@ -88,7 +89,6 @@ async def tracker_membership_ids(
             AcceleratorTeamTrackerAssignment.tracker_user_id == user_id,
             AcceleratorTeam.cohort_id == cohort_id,
             AcceleratorTeam.status == "active",
-            AcceleratorTeamMember.status == "active",
         )
     )).scalars().all()
     return set(individual_rows) | set(team_rows)
@@ -101,16 +101,16 @@ async def membership_tracker_user_ids(
     personal = (await db.execute(select(AcceleratorTrackerAssignment.tracker_user_id).where(
         AcceleratorTrackerAssignment.membership_id == membership_id
     ))).scalars().all()
+    roster = active_team_roster()
     team = (await db.execute(
         select(AcceleratorTeamTrackerAssignment.tracker_user_id)
         .join(
-            AcceleratorTeamMember,
-            AcceleratorTeamMember.team_id == AcceleratorTeamTrackerAssignment.team_id,
+            roster,
+            roster.c.team_id == AcceleratorTeamTrackerAssignment.team_id,
         )
-        .join(AcceleratorTeam, AcceleratorTeam.id == AcceleratorTeamMember.team_id)
+        .join(AcceleratorTeam, AcceleratorTeam.id == roster.c.team_id)
         .where(
-            AcceleratorTeamMember.membership_id == membership_id,
-            AcceleratorTeamMember.status == "active",
+            roster.c.membership_id == membership_id,
             AcceleratorTeam.status == "active",
         )
     )).scalars().all()
@@ -579,14 +579,14 @@ async def membership_trackers_batch(
         .join(User, User.id == AcceleratorTrackerAssignment.tracker_user_id)
         .where(AcceleratorTrackerAssignment.membership_id.in_(membership_ids))
     )).all()
+    roster = active_team_roster()
     team = (await db.execute(
-        select(AcceleratorTeamMember.membership_id, User.id, User.name)
-        .join(AcceleratorTeam, AcceleratorTeam.id == AcceleratorTeamMember.team_id)
+        select(roster.c.membership_id, User.id, User.name)
+        .join(AcceleratorTeam, AcceleratorTeam.id == roster.c.team_id)
         .join(AcceleratorTeamTrackerAssignment, AcceleratorTeamTrackerAssignment.team_id == AcceleratorTeam.id)
         .join(User, User.id == AcceleratorTeamTrackerAssignment.tracker_user_id)
         .where(
-            AcceleratorTeamMember.membership_id.in_(membership_ids),
-            AcceleratorTeamMember.status == "active",
+            roster.c.membership_id.in_(membership_ids),
             AcceleratorTeam.status == "active",
         )
     )).all()

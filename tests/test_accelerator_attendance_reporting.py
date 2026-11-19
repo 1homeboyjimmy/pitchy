@@ -163,3 +163,52 @@ async def test_attendance_policy_rejects_excluded_team_from_another_cohort():
 def test_invalid_team_attendance_exclusion(team_id,excluded,planned):
     with pytest.raises(ValidationError):
         AttendancePolicy(planned_events=planned,event_ids=[1],excluded_events_by_team={team_id:excluded})
+
+
+@pytest.mark.asyncio
+async def test_linked_project_team_uses_shared_attendance_and_preserves_project_access():
+    from accelerator_team_service import cohort_teams_payload, membership_team_payload
+    from models import AcceleratorProgramConfig, AcceleratorProjectMember, AcceleratorTeam, AcceleratorTeamTrackerAssignment, Project
+    from project_access import get_accessible_project
+    from project_passport_access import passport_context
+    from schemas.accelerators import AttendanceMark
+
+    async with AsyncSessionLocal() as db:
+        actor, cohort, user, member, event, peer, peer_member = await group(db)
+        config = await db.scalar(select(AcceleratorProgramConfig).where(AcceleratorProgramConfig.cohort_id == cohort.id))
+        config.modules = {**config.modules, "matchmaking": True}
+        root = await db.scalar(select(AcceleratorTeam).where(AcceleratorTeam.owner_membership_id == member.id))
+        project = Project(user_id=peer.id, name="Second project")
+        tracker = User(name="Linked team tracker", email=f"{uuid.uuid4().hex}@example.test")
+        db.add_all([project, tracker])
+        await db.flush()
+        linked = AcceleratorTeam(cohort_id=cohort.id, owner_membership_id=peer_member.id,
+            name="Second team", project_id=project.id, attendance_team_id=root.id,
+            recruiting_open=False, created_by_user_id=actor.id)
+        db.add(linked)
+        await db.flush()
+        db.add_all([
+            AcceleratorProjectMember(team_id=linked.id, project_id=project.id, membership_id=peer_member.id),
+            AcceleratorTeamTrackerAssignment(team_id=linked.id, tracker_user_id=tracker.id),
+        ])
+        event.starts_at = datetime.utcnow() - timedelta(hours=2)
+        event.ends_at = datetime.utcnow() - timedelta(hours=1)
+        event.status = "completed"
+        await db.commit()
+        await routes.update_cohort(cohort.id, CohortUpdate(attendance_policy=AttendancePolicy(planned_events=10, event_ids=[event.id])), actor, db)
+        await routes.mark_event_attendance(event.id, AttendanceMark(membership_id=member.id, status="present"), actor, db)
+
+        teams = {team["id"]: team for team in (await cohort_teams_payload(db, cohort_id=cohort.id, user=actor))["teams"]}
+        assert teams[root.id]["attendance_percent"] == teams[linked.id]["attendance_percent"] == 10
+        assert [row["membership_id"] for row in teams[linked.id]["members"]] == [peer_member.id]
+        report = await routes.cohort_resident_report(cohort.id, "json", tracker, db)
+        assert len(report["rows"]) == 1 and report["rows"][0]["membership_id"] == peer_member.id
+        assert {team["id"] for team in report["rows"][0]["teams"]} == {root.id, linked.id}
+        view = await membership_team_payload(db, membership_id=peer_member.id, user=peer)
+        assert view["team"]["id"] == root.id and [team["id"] for team in view["additional_teams"]] == [linked.id]
+        assert (await get_accessible_project(db, project.id, peer)).id == project.id
+        with pytest.raises(HTTPException) as outsider:
+            await get_accessible_project(db, project.id, user)
+        assert outsider.value.status_code == 404
+        passport, can_edit, _ = await passport_context(db, project, peer)
+        assert can_edit and passport["team"] == [f"{peer.name} — Руководитель команды"]
