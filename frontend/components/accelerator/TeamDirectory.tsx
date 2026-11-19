@@ -78,7 +78,9 @@ function educationLabel(candidate: PoolCandidate) {
 }
 
 function CandidateProfileDetails({ candidate }: { candidate: PoolCandidate }) {
-  const competencies = (candidate.competencies || []).map(value => value.trim()).filter(Boolean);
+  const competencies = Array.isArray(candidate.competencies)
+    ? candidate.competencies.filter(value => typeof value === "string").map(value => value.trim()).filter(Boolean)
+    : [];
   return <>
     {candidate.current_team && <p>Команда «{candidate.current_team.name}»</p>}
     {candidate.bio && <p className="whitespace-pre-wrap">{candidate.bio}</p>}
