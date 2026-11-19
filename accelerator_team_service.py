@@ -344,6 +344,7 @@ async def team_dict(
             AcceleratorTeamMember.team_id == team.id,
             AcceleratorTeamMember.status == "active",
             AcceleratorMembership.user_id == viewer.id,
+            AcceleratorMembership.status == "enrolled",
         )
         .limit(1)
     )).scalar_one_or_none()
@@ -365,8 +366,9 @@ async def team_dict(
             or (
                 access_role == "resident"
                 and viewer_member is not None
+                and team.status == "active"
                 and row.status == "active"
-                and row.share_contact
+                and membership.status == "enrolled"
             )
         )
         members.append({
@@ -391,6 +393,10 @@ async def team_dict(
             .where(roster.c.team_id == team.id)
             .order_by(User.name, User.id)
         )).all()
+        shares_linked_team = access_role == "resident" and any(
+            person.id == viewer.id and member.status == "enrolled"
+            for _, member, person in linked_members
+        )
         members.extend({
             "id": grant_id,
             "membership_id": member.id,
@@ -398,7 +404,8 @@ async def team_dict(
             "status": "active",
             "share_contact": False,
             "person": {"id": person.id, "name": person.name, **(
-                {"email": person.email} if access_role == "manager" or viewer.id == person.id else {}
+                {"email": person.email} if access_role == "manager" or viewer.id == person.id
+                or (shares_linked_team and member.status == "enrolled") else {}
             )},
         } for grant_id, member, person in linked_members)
     viewer_is_owner = owner.user_id == viewer.id
@@ -437,6 +444,24 @@ async def team_dict(
         "members": members,
         "pending_invitations": invitations,
     }
+
+
+async def pending_team_application_summary(db: AsyncSession, membership: AcceleratorMembership, cohort: AcceleratorCohort) -> dict | None:
+    if membership.status != "enrolled" or cohort.status in FROZEN_COHORT_STATUSES:
+        return None
+    row = (await db.execute(
+        select(AcceleratorTeam.id, func.count(AcceleratorTeamApplication.id))
+        .join(AcceleratorTeamApplication, AcceleratorTeamApplication.team_id == AcceleratorTeam.id)
+        .where(
+            AcceleratorTeam.cohort_id == cohort.id,
+            AcceleratorTeam.owner_membership_id == membership.id,
+            AcceleratorTeam.status == "active",
+            AcceleratorTeam.attendance_team_id.is_(None),
+            AcceleratorTeamApplication.status == "pending",
+        )
+        .group_by(AcceleratorTeam.id)
+    )).one_or_none()
+    return {"team_id": row[0], "count": row[1]} if row else None
 
 
 def clean_name(value: str) -> str:

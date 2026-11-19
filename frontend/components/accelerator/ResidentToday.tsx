@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, ArrowUpRight, CheckCircle2, ChevronRight, FileText, GitBranch, Loader2, MessageCircle, Users } from "lucide-react";
+import { ArrowRight, ArrowUpRight, CheckCircle2, ChevronRight, FileText, GitBranch, Loader2, MessageCircle, UserPlus, Users } from "lucide-react";
 
 import { describeApiError, getAuthJson, postAuthJson } from "@/lib/api";
 import { useAuth } from "@/lib/hooks/useAuth";
 
-export type TodaySection = "program" | "homework" | "tracking" | "events";
+export type TodaySection = "program" | "homework" | "tracking" | "events" | "matching";
 type TodayMembership = { membership_id: number; cohort: { id: number; name: string; timezone: string }; project?: { id: number; name: string } | null; modules: Record<string, boolean> };
 type TodayAction = { key: string; title: string; description?: string | null; due_at?: string | null; section: TodaySection; target_id?: number; stage_id?: number; kind: "task" | "homework" | "material"; overdue: boolean };
 type UpcomingItem = { key: string; kind: "event" | "deadline"; title: string; starts_at: string; description?: string | null; section: TodaySection; target_id?: number; meeting_url?: string | null; location?: string | null; event_format?: string | null };
@@ -16,6 +16,7 @@ type TodayData = {
   progress: { percent: number; completed_stages: number; total_stages: number; current_stage?: { id: number; title: string } | null };
   attendance?: { percent: number | null; present: number; total: number; unmarked: number; basis?: "planned" } | null;
   unread_feedback?: Array<{ id: number }>;
+  team_applications?: { team_id: number; count: number } | null;
   unavailable_sections: string[];
 };
 
@@ -97,6 +98,18 @@ export function ResidentToday({ membership, onNavigate }: { membership: TodayMem
     </header>
     {error && <div role="alert" className="rounded-xl border border-red-300/25 p-3 text-sm text-red-100">{error}<button type="button" onClick={() => void load()} className="ml-3 underline">Повторить</button></div>}
     {data.unavailable_sections.length > 0 && <p role="status" className="rounded-xl border border-amber-300/20 p-3 text-sm text-amber-100">Часть данных временно недоступна. Обновите страницу позже.</p>}
+
+    {membership.modules.matchmaking && data.team_applications && data.team_applications.count > 0 && <section className="rounded-xl border border-white/15 bg-[#1c1b1b] p-4 sm:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="flex items-center gap-2 font-semibold">
+          <UserPlus size={18} aria-hidden="true" /> Заявки в команду
+          <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs tabular-nums">{data.team_applications.count}</span>
+        </h2>
+        <button type="button" onClick={() => onNavigate("matching", data.team_applications?.team_id)} className="workspace-button">
+          Посмотреть заявки <ArrowRight size={15} />
+        </button>
+      </div>
+    </section>}
 
     {trackProgress && <section className="rounded-xl border border-white/15 bg-[#1c1b1b] p-5 sm:p-7">
       <p className="text-xs uppercase tracking-[.15em] text-white/50">Текущий этап</p>
