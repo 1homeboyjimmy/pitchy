@@ -347,10 +347,10 @@ export function TeamWorkspace({ membershipId, project, onChanged }: { membership
 
     {team && mode === "create" && <section className="workspace-card"><h2 className="flex items-center gap-2 text-xl"><ShieldCheck size={18} /> Участники</h2><div className="mt-3 grid gap-2 lg:grid-cols-2 lg:items-start">{team.members.map((member) => <MemberCard key={`${member.id}-${member.role}-${member.title || ""}`} member={member} isOwner={member.membership_id === team.owner_membership_id} canManage={team.can_manage} readOnly={teamReadOnly} busy={busy} onSave={updateMember} onRemove={removeMember} onTransferCaptain={transferCaptain} />)}</div></section>}
 
-    {team && canEditTeam && mode === "create" && <section id={`resident-matching-${team.id}`} tabIndex={-1} className="workspace-card">
+    {team && canEditTeam && mode === "create" && incomingApplications.length > 0 && <section id={`resident-matching-${team.id}`} tabIndex={-1} className="workspace-card">
       <h2 className="flex items-center gap-2 text-xl"><UserPlus size={18} /> Заявки в команду</h2>
-      {teamIsFull && incomingApplications.length > 0 && <p className="mt-3 text-sm text-amber-100">В команде достигнут лимит участников.</p>}
-      {incomingApplications.length ? <div className="mt-3 space-y-2">
+      {teamIsFull && <p className="mt-3 text-sm text-amber-100">В команде достигнут лимит участников.</p>}
+      <div className="mt-3 space-y-2">
         {incomingApplications.map(row => <article key={row.id} className="rounded-xl border border-white/10 p-3.5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0 [overflow-wrap:anywhere]">
@@ -369,7 +369,7 @@ export function TeamWorkspace({ membershipId, project, onChanged }: { membership
             </div>
           </div>
         </article>)}
-      </div> : <p className="mt-3 text-sm text-white/50">Новых заявок пока нет.</p>}
+      </div>
     </section>}
 
     {canEditTeam && mode === "create" && <CandidateDirectory candidates={pool.candidates} membershipId={membershipId}

@@ -1127,6 +1127,7 @@ test('captain manages a team, incoming applications and own membership', async (
   await expect(page.getByText('resident-b@example.test @resident_b')).toBeVisible();
   await page.getByRole('button', { name: 'Отклонить' }).click();
   await expect.poll(() => applicationPayload).toMatchObject({ status: 'declined' });
+  await expect(page.locator('#resident-matching-900')).toHaveCount(0);
   await page.getByRole('button', { name: 'Сегодня', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Сегодня', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Посмотреть заявки' })).toHaveCount(0);
