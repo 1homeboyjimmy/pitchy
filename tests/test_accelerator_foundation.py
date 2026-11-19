@@ -1307,6 +1307,16 @@ async def test_project_audit_uses_cohort_quota_scopes_tracker_and_creates_task(m
         monkeypatch.setattr(
             "routers.accelerators.generate_project_audit", fake_generate_project_audit
         )
+        project.passport = {**project.passport, "accelerator_track": "Научный трек"}
+        science_criteria = [{"key": "science", "label": "Научные результаты", "weight": 100, "max_score": 5}]
+        db.add(AcceleratorDemoDay(
+            cohort_id=cohort["id"], title="Track demo", created_by_user_id=organizer.id,
+            criteria=[], evaluation_config={"method": "raw_sum", "criteria_by_track": {
+                "Научный трек": science_criteria,
+                "Технологический трек": [{"key": "sales", "label": "Продажи", "weight": 100, "max_score": 5}],
+            }},
+        ))
+        await db.commit()
         first = await create_project_audit(
             membership_id,
             ProjectAuditCreate(
@@ -1323,6 +1333,8 @@ async def test_project_audit_uses_cohort_quota_scopes_tracker_and_creates_task(m
         assert first["quota"]["resource"] == "project_audits"
         assert first["quota"]["consumed"] is True
         assert calls[0]["project_snapshot"]["project"]["passport"]["core"]["solution"] == "B2B SaaS"
+        assert calls[0]["project_snapshot"]["demo_day_rubric"]["criteria"] == science_criteria
+        assert calls[0]["project_snapshot"]["demo_day_rubric"]["track"] == "Научный трек"
 
         repeated = await create_project_audit(
             membership_id,

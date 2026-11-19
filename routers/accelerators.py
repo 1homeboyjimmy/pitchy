@@ -7059,7 +7059,28 @@ async def project_audit_input_snapshot(
             AcceleratorProgressCheckin.membership_id == membership.id
         ).order_by(AcceleratorProgressCheckin.period_start.desc()).limit(6)
     )).scalars().all()
+    demo_day = (await db.execute(
+        select(AcceleratorDemoDay).where(
+            AcceleratorDemoDay.cohort_id == membership.cohort_id
+        ).order_by(AcceleratorDemoDay.created_at.desc(), AcceleratorDemoDay.id.desc()).limit(1)
+    )).scalar_one_or_none()
+    from accelerator_demo_scoring import criteria_for_project, project_track, uses_raw_sum
+    rubric = None
+    if demo_day:
+        try:
+            criteria = criteria_for_project(demo_day, project)
+        except HTTPException as exc:
+            if exc.status_code != 409:
+                raise
+            criteria = []
+        rubric = {
+            "demo_day_id": demo_day.id, "title": demo_day.title,
+            "track": project_track(project), "criteria": criteria,
+            "method": "raw_sum" if uses_raw_sum(demo_day) else "weighted",
+            "notice": None if criteria else "Для выбранного трека нет настроенных критериев демо-дня. Уточните трек в паспорте и настройки демо-дня.",
+        }
     return project, {
+        "demo_day_rubric": rubric,
         "project": {
             "id": project.id,
             "name": project.name,
@@ -7348,7 +7369,6 @@ async def create_project_audit(
             audit_type=row.audit_type,
             project_snapshot=row.input_snapshot,
             focus=row.focus,
-            cohort_id=row.cohort_id,
         )
     except Exception:
         logger.exception("Project audit generation failed for audit_id=%s", row.id)

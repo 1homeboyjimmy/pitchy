@@ -486,6 +486,12 @@ class ProjectAuditRecommendation(BaseModel):
     expected_result: str = Field(min_length=2, max_length=3000)
 
 
+class ProjectAuditCriterionAssessment(BaseModel):
+    key: str
+    score: int | None = Field(default=None, ge=0, le=100)
+    reason: str = Field(min_length=2, max_length=3000)
+
+
 class ProjectAuditGeneratedResult(BaseModel):
     summary: str = Field(min_length=2, max_length=10000)
     overall_score: int = Field(ge=0, le=100)
@@ -493,6 +499,8 @@ class ProjectAuditGeneratedResult(BaseModel):
     findings: list[ProjectAuditFinding] = Field(default_factory=list, max_length=20)
     recommendations: list[ProjectAuditRecommendation] = Field(default_factory=list, max_length=20)
     data_gaps: list[str] = Field(default_factory=list, max_length=20)
+    demo_day_scores: list[ProjectAuditCriterionAssessment] = Field(default_factory=list, max_length=30)
+    demo_day_evaluation: dict | None = None
 
 
 class ProjectAuditChatTurn(BaseModel):
