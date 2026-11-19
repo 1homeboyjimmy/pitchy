@@ -1027,15 +1027,14 @@ test('captain manages a team, incoming applications and own membership', async (
   let settingsPayload: Record<string, unknown> | null = null;
   let teamCanManage = true;
   let viewerLeft = false;
-  let shareContact = false;
+  let applicationPending = true;
   let incomingInvitations: Array<Record<string, unknown>> = [{ id: 701, team_id: 880, status: 'pending', team: { id: 880, name: 'Команда Альфа', project: { id: 6, name: 'Проект Альфа' } }, invitee: { membership_id: 101, name: 'Резидент А' }, invited_by: { id: 10, name: 'Резидент Г' }, counterpart_profile_id: 41, can_respond: true, can_cancel: false, expires_at: new Date(Date.now() + 86_400_000).toISOString(), created_at: new Date().toISOString(), message: 'Присоединяйтесь к продуктовой команде' }];
   const pendingInvitations: Array<Record<string, unknown>> = [];
   let createPayload: Record<string, unknown> | null = null;
   let answerPayload: Record<string, unknown> | null = null;
   let applicationPayload: Record<string, unknown> | null = null;
-  let contactPayload: Record<string, unknown> | null = null;
   let memberPayload: Record<string, unknown> | null = null;
-  const currentTeam = () => teamCreated ? { id: 900, name: teamName, status: teamStatus, max_members: 5, project: null, owner_membership_id: teamCanManage ? 101 : 103, can_manage: teamCanManage, members: [{ id: 801, membership_id: 101, role: teamCanManage ? 'owner' : 'member', title: teamCanManage ? 'Основатель' : 'Продукт', status: viewerLeft ? 'left' : 'active', share_contact: shareContact, person: { id: 8, name: 'Резидент А', ...(shareContact ? { email: 'resident@example.test' } : {}) } }, { id: 802, membership_id: 103, role: teamCanManage ? 'member' : 'owner', title: 'Технологии', status: 'active', share_contact: false, person: { id: 11, name: 'Резидент Д' } }], pending_invitations: pendingInvitations } : null;
+  const currentTeam = () => teamCreated ? { id: 900, name: teamName, status: teamStatus, max_members: 5, project: null, owner_membership_id: teamCanManage ? 101 : 103, can_manage: teamCanManage, members: [{ id: 801, membership_id: 101, role: teamCanManage ? 'owner' : 'member', title: teamCanManage ? 'Основатель' : 'Продукт', status: viewerLeft ? 'left' : 'active', share_contact: false, person: { id: 8, name: 'Резидент А', email: 'resident@example.test' } }, { id: 802, membership_id: 103, role: teamCanManage ? 'member' : 'owner', title: 'Технологии', status: 'active', share_contact: false, person: { id: 11, name: 'Резидент Д', email: 'teammate@example.test' } }], pending_invitations: pendingInvitations } : null;
   await page.route('**/api/accelerators/memberships/101/team', async (route) => {
     if (route.request().method() === 'POST') { createPayload = route.request().postDataJSON(); teamCreated = true; }
     await route.fulfill({ json: route.request().method() === 'GET' ? { team: currentTeam(), invitations: incomingInvitations } : currentTeam() });
@@ -1053,7 +1052,12 @@ test('captain manages a team, incoming applications and own membership', async (
     teams: [], candidates: [
       { name: 'Дарья Смирнова', membership_id: 990, email: null, competencies: ['Дизайн'], education_course: 'МАГ-1', institute: 'РТУ МИРЭА', current_team: { id: 880, name: 'Команда Альфа' } },
       ...Array.from({ length: 13 }, (_, index) => ({ name: `Кандидат ${index + 1}`, membership_id: 994 + index, email: index === 12 ? 'candidate@example.test' : null, competencies: [] })),
-    ], applications: teamCreated ? [{ id: 750, team_id: 900, team_name: 'Команда Проект А', membership_id: 102, applicant: { name: 'Резидент Б', email: 'resident-b@example.test', telegram: '@resident_b', competencies: ['продажи'] }, message: 'Хочу отвечать за первые продажи', status: 'pending', can_respond: true, can_cancel: false }] : [],
+    ], applications: teamCreated && applicationPending ? [{ id: 750, team_id: 900, team_name: 'Команда Проект А', membership_id: 102, applicant: { name: 'Резидент Б', email: 'resident-b@example.test', telegram: '@resident_b', competencies: ['продажи'] }, message: 'Хочу отвечать за первые продажи', status: 'pending', can_respond: true, can_cancel: false }] : [],
+  } }));
+  await page.route('**/api/accelerators/memberships/101/today', route => route.fulfill({ json: {
+    membership_id: 101, timezone: 'Europe/Moscow', required_actions: [], upcoming: [],
+    progress: { percent: 0, completed_stages: 0, total_stages: 0 }, unavailable_sections: [],
+    team_applications: teamCreated && teamCanManage && applicationPending ? { team_id: 900, count: 1 } : null,
   } }));
   await page.route('**/api/accelerators/memberships/101/team-pool/find-by-email', async (route) => {
     expect(route.request().postDataJSON()).toEqual({ email: 'daria@example.test' });
@@ -1061,15 +1065,12 @@ test('captain manages a team, incoming applications and own membership', async (
   });
   await page.route('**/api/accelerators/team-applications/750', async (route) => {
     applicationPayload = route.request().postDataJSON();
+    applicationPending = false;
     await route.fulfill({ json: { id: 750, ...applicationPayload } });
-  });
-  await page.route('**/api/accelerators/team-members/801/contact', async (route) => {
-    contactPayload = route.request().postDataJSON(); shareContact = Boolean(contactPayload?.share_contact);
-    await route.fulfill({ json: currentTeam()?.members[0] });
   });
   await page.route('**/api/accelerators/team-members/802', async (route) => {
     memberPayload = route.request().postDataJSON();
-    await route.fulfill({ json: { id: 802, membership_id: 103, ...memberPayload, status: 'active', share_contact: false, person: { id: 11, name: 'Резидент Д' } } });
+    await route.fulfill({ json: { id: 802, membership_id: 103, ...memberPayload, status: 'active', share_contact: false, person: { id: 11, name: 'Резидент Д', email: 'teammate@example.test' } } });
   });
   await page.route('**/api/accelerators/team-members/801', async (route) => {
     if (route.request().method() === 'DELETE') viewerLeft = true;
@@ -1107,22 +1108,33 @@ test('captain manages a team, incoming applications and own membership', async (
   await expect(directory.getByText('Дарья Смирнова', { exact: true })).toBeVisible();
   await expect(directory.getByText('Дизайн', { exact: true })).toBeHidden();
   await directory.getByLabel('Подробнее об участнике Дарья Смирнова').click();
-  await expect(directory.getByText('Дизайн', { exact: false })).toBeVisible();
+  await expect(directory.getByRole('region', { name: 'Компетенции' })).toContainText('Дизайн');
   await expect(directory.getByRole('link', { name: 'Написать на почту' })).toHaveCount(0);
   await directory.getByRole('button', { name: 'Без команды', exact: true }).click();
   await directory.getByLabel('Имя или email участника').fill('candidate@example.test');
   await directory.getByLabel('Подробнее об участнике Кандидат 13').click();
   await expect(directory.getByRole('link', { name: 'Написать на почту' })).toHaveAttribute('href', 'mailto:candidate@example.test');
+  await expect(directory.getByRole('heading', { name: 'Компетенции' })).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Сегодня', exact: true }).click();
+  await expect(page.getByTestId('resident-today').getByRole('heading', { name: 'Заявки в команду 1' })).toBeVisible();
+  await page.getByRole('button', { name: 'Посмотреть заявки' }).click();
+  await expect(page.locator('#resident-matching-900')).toBeFocused();
+  expect(await directory.evaluate(element => !!(element.compareDocumentPosition(document.querySelector('#resident-matching-900')!) & Node.DOCUMENT_POSITION_PRECEDING))).toBe(true);
 
   await expect(page.getByText('Резидент Б', { exact: true })).toBeVisible();
   await expect(page.getByText('продажи', { exact: true })).toBeVisible();
   await expect(page.getByText('resident-b@example.test @resident_b')).toBeVisible();
   await page.getByRole('button', { name: 'Отклонить' }).click();
   await expect.poll(() => applicationPayload).toMatchObject({ status: 'declined' });
-  await page.getByLabel('Действия участника Резидент А').click();
-  await page.getByRole('button', { name: 'Открыть контакт Резидент А' }).click();
-  await expect.poll(() => contactPayload).toMatchObject({ share_contact: true });
-  await expect(page.getByText('resident@example.test')).toBeVisible();
+  await page.getByRole('button', { name: 'Сегодня', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Сегодня', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Посмотреть заявки' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Команда и поддержка', exact: true }).click();
+  await expect(page.getByLabel('Действия участника Резидент А')).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'resident@example.test' })).toHaveAttribute('href', 'mailto:resident@example.test');
+  await expect(page.getByRole('link', { name: 'teammate@example.test' })).toHaveAttribute('href', 'mailto:teammate@example.test');
+  await page.getByRole('button', { name: 'Настройки команды' }).click();
   await expect(page.getByLabel('Роль Резидент Д')).toBeHidden();
   await page.getByLabel('Действия участника Резидент Д').click();
   await page.getByLabel('Роль Резидент Д').selectOption('cofounder');

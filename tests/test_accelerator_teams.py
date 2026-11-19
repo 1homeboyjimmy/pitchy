@@ -54,6 +54,7 @@ from routers.accelerators import (
     create_accelerator,
     create_cohort,
     enroll_application,
+    membership_today,
     submit_application,
     assign_tracker,
     update_cohort_status,
@@ -112,21 +113,25 @@ async def test_team_join_application_conflicts_and_acceptance_preserve_project_a
         ) for index, person in enumerate(people)]
         first = await create_membership_team(owner.membership_id, AcceleratorTeamCreate(name='First'), owner.user, db)
         second = await create_membership_team(other.membership_id, AcceleratorTeamCreate(name='Second'), other.user, db)
+        assert (await membership_today(owner.membership_id, owner.user, db))["team_applications"] is None
         application = await create_team_application(first['id'], AcceleratorTeamApplicationCreate(desired_role='Sales'), applicant.user, db)
+        assert (await membership_today(owner.membership_id, owner.user, db))["team_applications"] == {"team_id": first["id"], "count": 1}
+        assert (await membership_today(other.membership_id, other.user, db))["team_applications"] is None
+        assert (await membership_today(applicant.membership_id, applicant.user, db))["team_applications"] is None
         for team_id in (first['id'], second['id']):
             with pytest.raises(HTTPException) as error:
                 await create_team_application(team_id, AcceleratorTeamApplicationCreate(), applicant.user, db)
             assert error.value.status_code == 409
         await respond_team_application(application['id'], AcceleratorTeamApplicationUpdate(status='accepted'), owner.user, db)
+        assert (await membership_today(owner.membership_id, owner.user, db))["team_applications"] is None
         membership = await db.get(AcceleratorMembership, applicant.membership_id)
         assert membership.project_id == owner.project_id
         view = await get_membership_team(owner.membership_id, owner.user, db)
         member = next(row for row in view['team']['members'] if row['membership_id'] == applicant.membership_id)
         assert member['share_contact'] is False
-        assert member['person'].get('email') is None
-        await patch_team_member_contact(member['id'], AcceleratorTeamContactUpdate(share_contact=True), applicant.user, db)
-        view = await get_membership_team(owner.membership_id, owner.user, db)
-        assert next(row for row in view['team']['members'] if row['membership_id'] == applicant.membership_id)['person']['email'] == applicant.user.email
+        assert member['person']['email'] == applicant.user.email
+        view = await get_membership_team(applicant.membership_id, applicant.user, db)
+        assert next(row for row in view['team']['members'] if row['membership_id'] == owner.membership_id)['person']['email'] == owner.user.email
         # Projects accepted from a normal application do not necessarily have a tree.
         await transfer_team_captain(first['id'], AcceleratorTeamCaptainTransfer(membership_id=applicant.membership_id), owner.user, db)
         project = await db.get(Project, owner.project_id)
@@ -467,7 +472,7 @@ async def test_team_invitation_contact_privacy_tracker_scope_and_withdrawal_clea
             row for row in owner_view["team"]["members"]
             if row["membership_id"] == candidate.membership_id
         )
-        assert candidate_member["person"].get("email") is None
+        assert candidate_member["person"]["email"] == candidate_user.email
 
         await patch_team_member_contact(
             candidate_member["id"],

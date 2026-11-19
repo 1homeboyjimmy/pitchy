@@ -77,6 +77,22 @@ function educationLabel(candidate: PoolCandidate) {
   return [match ? `${match[1]} ${match[2]} курс` : course, candidate.institute?.trim()].filter(Boolean).join(" · ");
 }
 
+function CandidateProfileDetails({ candidate }: { candidate: PoolCandidate }) {
+  const competencies = Array.isArray(candidate.competencies)
+    ? candidate.competencies.filter(value => typeof value === "string").map(value => value.trim()).filter(Boolean)
+    : [];
+  return <>
+    {candidate.current_team && <p>Команда «{candidate.current_team.name}»</p>}
+    {candidate.bio && <p className="whitespace-pre-wrap">{candidate.bio}</p>}
+    {competencies.length > 0 && <section className="space-y-1" aria-label="Компетенции">
+      <h3 className="text-xs font-medium text-white/55">Компетенции</h3>
+      <p>{competencies.join(", ")}</p>
+    </section>}
+    {[["Ищет помощь", candidate.needs], ["Отрасли", candidate.industries], ["Цели", candidate.goals]].map(([label, values]) =>
+      Array.isArray(values) && values.length > 0 && <p key={String(label)}><span className="text-white/45">{label}</span> · {values.join(", ")}</p>)}
+  </>;
+}
+
 export function CandidateDirectory({ candidates, membershipId, token, busy, teamIsFull, invitedIds, onInvite }: {
   candidates: PoolCandidate[];
   membershipId: number;
@@ -140,10 +156,7 @@ export function CandidateDirectory({ candidates, membershipId, token, busy, team
           <ChevronDown size={15} className={CHEVRON} />
         </summary>
         <div className="space-y-2 border-t border-white/8 bg-white/[.025] px-3.5 py-3 text-sm text-white/65 [overflow-wrap:anywhere]">
-          {candidate.current_team && <p>Команда «{candidate.current_team.name}»</p>}
-          {candidate.bio && <p className="whitespace-pre-wrap">{candidate.bio}</p>}
-          {[["Компетенции", candidate.competencies], ["Ищет помощь", candidate.needs], ["Отрасли", candidate.industries], ["Цели", candidate.goals]].map(([label, values]) =>
-            Array.isArray(values) && values.length > 0 && <p key={String(label)}><span className="text-white/45">{label}</span> · {values.join(", ")}</p>)}
+          <CandidateProfileDetails candidate={candidate} />
           <ContactLinks contact={candidate} />
           {invitedIds.has(candidate.membership_id) ? <p className="text-xs text-emerald-200">Приглашение отправлено</p> : <>
             <textarea aria-label={`Сообщение участнику ${candidate.name}`} value={messages[candidate.membership_id] || ""}

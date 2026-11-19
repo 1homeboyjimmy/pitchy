@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from accelerator_attendance_reporting import attendance_summaries, effective_attendance_records, validate_attendance_policy
 from accelerator_team_roster import active_team_roster
+from accelerator_team_service import pending_team_application_summary
 
 from datetime import date, datetime, time, timedelta, timezone
 import hashlib
@@ -9887,6 +9888,10 @@ async def membership_today(
     upcoming = sorted(upcoming, key=lambda row: utc_datetime(row["starts_at"]))[:2]
 
     feedback = [row for row in tracking.get("feedback", []) if not row.get("read_at")]
+    team_applications = (
+        await pending_team_application_summary(db, membership, cohort)
+        if modules.get("matchmaking") and membership.user_id == user.id else None
+    )
     completed_stages = sum(row.get("state") == "completed" for row in stages)
     attendance = (await attendance_summaries(db, [membership], now=now))[membership.id] if modules.get("attendance") and "events" not in unavailable else None
     project = await db.get(Project, membership.project_id) if membership.project_id else None
@@ -9919,6 +9924,7 @@ async def membership_today(
         "required_actions": required_actions,
         "upcoming": upcoming,
         "unread_feedback": feedback[:5],
+        "team_applications": team_applications,
         "progress": {
             "percent": round(completed_stages * 100 / len(stages)) if stages else 0,
             "completed_stages": completed_stages,
