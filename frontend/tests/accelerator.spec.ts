@@ -463,6 +463,7 @@ test('organizer matchmaking sorts and pages through the compact team list', asyn
       id: number, name, project: { id: number, name: number === 65 ? 'Уникальный проект' : name },
       owner_membership_id: number, max_members: 5, recruiting_open: number === 65,
       attendance_percent: number === 1 ? null : number - 2,
+      tracker: number === 65 ? { id: 901, name: 'Ирина Трекерова' } : null,
       members: [{ id: number, membership_id: number, role: 'owner', status: 'active', person: { name: `Участник ${number}` } }],
       pending_invitations: [],
     };
@@ -475,7 +476,9 @@ test('organizer matchmaking sorts and pages through the compact team list', asyn
   await page.route('**/api/accelerators/cohorts/12/matchmaking-history', route => route.fulfill({ json: [] }));
   await page.goto('/accelerator?section=matching');
 
-  const rows = page.getByRole('list', { name: 'Команды потока' }).getByRole('listitem');
+  const teamList = page.getByRole('list', { name: 'Команды потока' });
+  const rows = teamList.getByRole('listitem');
+  const pageSize = page.getByRole('navigation', { name: 'Страницы результатов' }).getByLabel('Команд на странице');
   const nextPage = page.getByRole('button', { name: 'Следующая страница' });
   await expect(rows).toHaveCount(12);
   await expect(page.getByText(/65\s*команды/)).toBeVisible();
@@ -484,6 +487,7 @@ test('organizer matchmaking sorts and pages through the compact team list', asyn
   await expect(rows.first().getByText(longName, { exact: true })).toHaveCount(1);
   await expect(rows.first().getByText('5/5')).toHaveCount(0);
   await expect(rows.first().getByText('Участник 104', { exact: true })).toHaveCount(1);
+  await expect(teamList.getByText('Трекер не назначен')).toHaveCount(0);
   await rows.first().getByRole('button').click();
   const drawer = page.getByRole('dialog', { name: longName });
   await expect(drawer.getByText(longName, { exact: true })).toHaveCount(1);
@@ -496,6 +500,9 @@ test('organizer matchmaking sorts and pages through the compact team list', asyn
     const name = await rows.first().getByText(longName, { exact: true }).boundingBox();
     const attendance = await rows.first().getByText(/Посещаемость/).boundingBox();
     expect(Math.abs(name!.y - attendance!.y)).toBeLessThan(8);
+    const table = await teamList.boundingBox();
+    const sizeControl = await pageSize.boundingBox();
+    expect(sizeControl!.y).toBeGreaterThan(table!.y + table!.height);
   }
 
   await nextPage.click();
@@ -504,11 +511,11 @@ test('organizer matchmaking sorts and pages through the compact team list', asyn
   await sort.selectOption('attendance-desc');
   await expect(rows.first()).toContainText('63%');
   await expect(rows.first()).toContainText('Уникальный проект');
+  await expect(rows.first()).toContainText('Ирина Трекерова');
   await sort.selectOption('attendance-asc');
   await expect(rows.first()).toContainText('Команда 02');
   await expect(rows.first()).toContainText('0%');
 
-  const pageSize = page.getByLabel('Команд на странице');
   for (const size of [20, 40, 60]) {
     await pageSize.selectOption(String(size));
     await expect(rows).toHaveCount(size);
@@ -525,6 +532,8 @@ test('organizer matchmaking sorts and pages through the compact team list', asyn
   await page.getByLabel('Статус команды').selectOption('recruiting');
   await expect(rows).toHaveCount(1);
   await expect(rows.first()).toContainText('Команда 65');
+  await expect(pageSize).toBeVisible();
+  await expect(nextPage).toHaveCount(0);
   await page.getByLabel('Статус команды').selectOption('all');
   const search = page.getByRole('searchbox', { name: 'Поиск по командам, участникам или проектам' });
   for (const query of ['Команда 65', 'Участник 65', 'Уникальный проект']) {
