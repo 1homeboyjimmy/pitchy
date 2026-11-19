@@ -452,6 +452,88 @@ test('organizer workspace fits the agreed screen widths', async ({ page }) => {
   }
 });
 
+test('organizer matchmaking sorts and pages through the compact team list', async ({ page }) => {
+  test.setTimeout(60_000);
+  await mockManagerWorkspace(page, false);
+  const longName = `Команда 01 ${'ДлинноеНазвание'.repeat(8)}`;
+  const teams = Array.from({ length: 65 }, (_, index) => {
+    const number = index + 1;
+    const name = number === 1 ? longName : `Команда ${String(number).padStart(2, '0')}`;
+    return {
+      id: number, name, project: { id: number, name: number === 65 ? 'Уникальный проект' : name },
+      owner_membership_id: number, max_members: 5, recruiting_open: number === 65,
+      attendance_percent: number === 1 ? null : number - 2,
+      members: [{ id: number, membership_id: number, role: 'owner', status: 'active', person: { name: `Участник ${number}` } }],
+      pending_invitations: [],
+    };
+  });
+  for (let number = 101; number <= 104; number++) {
+    teams[0].members.push({ id: number, membership_id: number, role: 'member', status: 'active', person: { name: `Участник ${number}` } });
+  }
+  await page.route('**/api/accelerators/cohorts/12/teams', route => route.fulfill({ json: { teams } }));
+  await page.route('**/api/accelerators/cohorts/12/expert', route => route.fulfill({ json: null }));
+  await page.route('**/api/accelerators/cohorts/12/matchmaking-history', route => route.fulfill({ json: [] }));
+  await page.goto('/accelerator?section=matching');
+
+  const rows = page.getByRole('list', { name: 'Команды потока' }).getByRole('listitem');
+  const nextPage = page.getByRole('button', { name: 'Следующая страница' });
+  await expect(rows).toHaveCount(12);
+  await expect(page.getByText(/65\s*команды/)).toBeVisible();
+  await expect(page.getByText(/Обзор потока\s*\/|эксперт потока не назначен/i)).toHaveCount(0);
+  await expect(page.getByText('Поток 2026', { exact: true })).toHaveCount(1); // In the cohort switcher.
+  await expect(rows.first().getByText(longName, { exact: true })).toHaveCount(1);
+  await expect(rows.first().getByText('5/5')).toHaveCount(0);
+  await expect(rows.first().getByText('Участник 104', { exact: true })).toHaveCount(1);
+  await rows.first().getByRole('button').click();
+  const drawer = page.getByRole('dialog', { name: longName });
+  await expect(drawer.getByText(longName, { exact: true })).toHaveCount(1);
+  await expect(drawer.getByText('5/5')).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  for (const width of [360, 768, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `fits ${width}px`).toBe(true);
+    const name = await rows.first().getByText(longName, { exact: true }).boundingBox();
+    const attendance = await rows.first().getByText(/Посещаемость/).boundingBox();
+    expect(Math.abs(name!.y - attendance!.y)).toBeLessThan(8);
+  }
+
+  await nextPage.click();
+  await expect(rows.first()).toContainText('Команда 13');
+  const sort = page.getByLabel('Сортировка команд');
+  await sort.selectOption('attendance-desc');
+  await expect(rows.first()).toContainText('63%');
+  await expect(rows.first()).toContainText('Уникальный проект');
+  await sort.selectOption('attendance-asc');
+  await expect(rows.first()).toContainText('Команда 02');
+  await expect(rows.first()).toContainText('0%');
+
+  const pageSize = page.getByLabel('Команд на странице');
+  for (const size of [20, 40, 60]) {
+    await pageSize.selectOption(String(size));
+    await expect(rows).toHaveCount(size);
+  }
+  await nextPage.click();
+  await expect(rows).toHaveCount(5);
+  await expect(rows.last()).toContainText(longName);
+  await expect(nextPage).toBeDisabled();
+  await page.getByRole('button', { name: 'Предыдущая страница' }).click();
+  await expect(rows).toHaveCount(60);
+  await sort.selectOption('members');
+  await expect(rows.first()).toContainText(longName);
+
+  await page.getByLabel('Статус команды').selectOption('recruiting');
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText('Команда 65');
+  await page.getByLabel('Статус команды').selectOption('all');
+  const search = page.getByRole('searchbox', { name: 'Поиск по командам, участникам или проектам' });
+  for (const query of ['Команда 65', 'Участник 65', 'Уникальный проект']) {
+    await search.fill(query);
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first()).toContainText('Команда 65');
+  }
+});
+
 test('participant card opens and closes from the keyboard with restored focus', async ({ page }) => {
   await mockManagerWorkspace(page);
   let tasks = [{ id: 71, title: 'Провести интервью' }];
