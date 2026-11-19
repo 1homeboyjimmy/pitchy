@@ -194,6 +194,7 @@ class AcceleratorSetupCreate(BaseModel):
 class AttendancePolicy(BaseModel):
     planned_events: int = Field(gt=0)
     event_ids: list[int] = Field(default_factory=list)
+    excluded_events_by_team: dict[int, list[int]] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_events(self):
@@ -201,6 +202,11 @@ class AttendancePolicy(BaseModel):
                 or len(set(self.event_ids)) != len(self.event_ids)
                 or len(self.event_ids) > self.planned_events):
             raise ValueError("Укажите уникальные мероприятия в пределах общего плана посещений")
+        for team_id, event_ids in self.excluded_events_by_team.items():
+            if (team_id <= 0 or not event_ids or len(set(event_ids)) != len(event_ids)
+                    or not set(event_ids).issubset(self.event_ids)
+                    or len(event_ids) >= self.planned_events):
+                raise ValueError("Исключения команды должны содержать уникальные мероприятия плана и оставлять хотя бы одно мероприятие")
         return self
 
 

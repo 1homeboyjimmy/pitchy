@@ -14,7 +14,8 @@ from accelerator_attendance_reporting import attendance_summaries
 from accelerator_operations_service import cohort_analytics
 from accelerator_tracking_facts import load_tracking_facts
 from db_async import AsyncSessionLocal
-from models import AcceleratorAttendanceRecord, AcceleratorEvent
+from models import AcceleratorAttendanceRecord, AcceleratorEvent, AcceleratorMembership, AcceleratorTeamMember, User
+from sqlalchemy import select
 from routers import accelerators as routes
 from schemas.accelerators import AttendancePolicy, CohortUpdate
 from tests.test_accelerator_team_attendance import group
@@ -96,3 +97,69 @@ async def test_attendance_policy_rejects_events_from_another_cohort():
 def test_invalid_planned_attendance_policy(count,ids):
     with pytest.raises(ValidationError):
         AttendancePolicy(planned_events=count,event_ids=ids)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("future", [False, True])
+async def test_team_exclusion_changes_both_counts_and_denominator_across_reports(future):
+    async with AsyncSessionLocal() as db:
+        actor, cohort, user, member, excluded_event, peer, peer_member = await group(db)
+        now = datetime.utcnow()
+        excluded_event.starts_at = now + timedelta(days=1) if future else now - timedelta(days=1)
+        excluded_event.ends_at = excluded_event.starts_at + timedelta(hours=1)
+        excluded_event.status = "completed" if not future else "published"
+        included = AcceleratorEvent(cohort_id=cohort.id, title="Included webinar", event_format="online",
+            status="completed", starts_at=now-timedelta(hours=3), ends_at=now-timedelta(hours=2),
+            checkin_code=uuid.uuid4().hex, created_by_user_id=actor.id, updated_by_user_id=actor.id)
+        normal_user = User(name="Normal participant", email=f"{uuid.uuid4().hex}@example.test", is_active=True)
+        db.add_all([included, normal_user]); await db.flush()
+        normal = AcceleratorMembership(cohort_id=cohort.id, user_id=normal_user.id, role="resident", status="enrolled", accepted_by_user_id=actor.id)
+        db.add(normal); await db.flush()
+        team_id = (await db.execute(select(AcceleratorTeamMember.team_id).where(AcceleratorTeamMember.membership_id==member.id))).scalar_one()
+        # An exclusion wins even if an earlier QR scan recorded presence.
+        db.add_all([
+            AcceleratorAttendanceRecord(event_id=excluded_event.id, membership_id=peer_member.id, status="present"),
+            AcceleratorAttendanceRecord(event_id=included.id, membership_id=member.id, status="present"),
+            AcceleratorAttendanceRecord(event_id=excluded_event.id, membership_id=normal.id, status="present"),
+            AcceleratorAttendanceRecord(event_id=included.id, membership_id=normal.id, status="present"),
+        ])
+        await db.commit()
+        await routes.update_cohort(cohort.id, CohortUpdate(attendance_policy=AttendancePolicy(
+            planned_events=10, event_ids=[excluded_event.id,included.id], excluded_events_by_team={team_id:[excluded_event.id]},
+        )), actor, db)
+        expected = {"present":1,"marked":1,"total":9,"unmarked":8,"percent":11,"past_events":1,"basis":"planned"}
+        summaries = await attendance_summaries(db,[member,peer_member,normal])
+        assert summaries[member.id] == summaries[peer_member.id] == expected
+        normal_present = 1 if future else 2
+        assert summaries[normal.id]["total"]==10 and summaries[normal.id]["present"]==normal_present
+        for person, participation in ((user,member),(peer,peer_member)):
+            today = await routes.membership_today(participation.id,person,db)
+            assert today["attendance"]["total"]==9 and today["attendance"]["percent"]==11
+        report = await routes.cohort_resident_report(cohort.id,"json",actor,db)
+        assert all(row["attendance"]["percent"]==11 for row in report["rows"] if row["membership_id"] in (member.id,peer_member.id))
+        exported = await routes.cohort_resident_report(cohort.id,"csv",actor,db)
+        rows = list(csv.DictReader(io.StringIO(exported.body.decode("utf-8-sig")),delimiter=";"))
+        assert {row["Посещаемость, %"] for row in rows if row["Email"] in (user.email,peer.email)}=={"11"}
+        facts = await load_tracking_facts(db,[member,peer_member],now=now)
+        assert all(row["attendance_total"]==9 and row["present_count"]==1 for row in facts.values())
+        snapshot = await build_snapshot_payload(db,membership=member,cohort=cohort,decision=SimpleNamespace(outcome="completed",reason="Test"))
+        assert snapshot["attendance"]=={"published_events":9,"present":1}
+
+
+@pytest.mark.asyncio
+async def test_attendance_policy_rejects_excluded_team_from_another_cohort():
+    async with AsyncSessionLocal() as db:
+        actor, cohort, _, _, event, *_ = await group(db)
+        _, _, _, foreign_member, *_ = await group(db)
+        foreign_team = (await db.execute(select(AcceleratorTeamMember.team_id).where(AcceleratorTeamMember.membership_id==foreign_member.id))).scalar_one()
+        with pytest.raises(HTTPException) as error:
+            await routes.update_cohort(cohort.id,CohortUpdate(attendance_policy=AttendancePolicy(
+                planned_events=10,event_ids=[event.id],excluded_events_by_team={foreign_team:[event.id]},
+            )),actor,db)
+        assert error.value.status_code==422 and cohort.attendance_policy is None
+
+
+@pytest.mark.parametrize("team_id,excluded,planned", [(0,[1],10),(1,[1,1],10),(1,[2],10),(1,[],10),(1,[1],1)])
+def test_invalid_team_attendance_exclusion(team_id,excluded,planned):
+    with pytest.raises(ValidationError):
+        AttendancePolicy(planned_events=planned,event_ids=[1],excluded_events_by_team={team_id:excluded})
