@@ -15,6 +15,7 @@ from models import (
     AcceleratorMatchProfile,
     AcceleratorMembership,
     AcceleratorNotificationOutbox,
+    AcceleratorParticipantProfile,
     AcceleratorStaff,
     AcceleratorTeam,
     AcceleratorTeamApplication,
@@ -34,6 +35,7 @@ from routers.accelerator_teams import (
     create_membership_team,
     create_team_application,
     get_team_pool,
+    find_team_candidate_by_email,
     get_membership_team,
     invite_team_member,
     list_cohort_teams,
@@ -71,6 +73,7 @@ from schemas.accelerator_teams import (
     AcceleratorTeamApplicationCreate,
     AcceleratorTeamApplicationUpdate,
     AcceleratorTeamCaptainTransfer,
+    AcceleratorTeamCandidateLookup,
     AcceleratorTeamInvitationCreate,
     AcceleratorTeamInvitationUpdate,
     AcceleratorTeamMemberUpdate,
@@ -1123,16 +1126,28 @@ async def test_old_transfer_consent_cannot_leave_a_different_new_source_team():
 async def test_transfer_candidates_include_other_teams_without_publishing_contacts():
     async with AsyncSessionLocal() as db:
         residents, old, target = await _transfer_fixture(db)
+        profile = await db.scalar(select(AcceleratorParticipantProfile).where(
+            AcceleratorParticipantProfile.membership_id == residents[0].membership_id))
+        profile.profile = {**profile.profile, "institute": "РТУ МИРЭА", "education_course": "БАК-2", "study_group": "PRIVATE", "employment": "working"}
+        await db.commit()
         pool = await get_team_pool(residents[1].membership_id,residents[1].user,db)
         candidate = next(r for r in pool['candidates'] if r['membership_id']==residents[0].membership_id)
         assert candidate['current_team']['id']==old['id'] and candidate['current_team']['action']=='archive'
         assert candidate['email'] is None and candidate['telegram'] is None
+        assert candidate["institute"] == "РТУ МИРЭА" and candidate["education_course"] == "БАК-2"
+        assert "study_group" not in candidate and "employment" not in candidate
+        lookup = AcceleratorTeamCandidateLookup(email=residents[0].user.email.upper())
+        assert await find_team_candidate_by_email(residents[1].membership_id, lookup, residents[1].user, db) == {"membership_id": residents[0].membership_id}
+        with pytest.raises(HTTPException) as denied:
+            await find_team_candidate_by_email(residents[3].membership_id, lookup, residents[3].user, db)
+        assert denied.value.status_code == 403
         invitation=await invite_team_member(old['id'],AcceleratorTeamInvitationCreate(membership_id=residents[3].membership_id),
                                            BackgroundTasks(),residents[0].user,db)
         await answer_team_invitation(invitation['id'],AcceleratorTeamInvitationUpdate(status='accepted'),
                                      BackgroundTasks(),residents[3].user,db)
         pool=await get_team_pool(residents[1].membership_id,residents[1].user,db)
         assert residents[0].membership_id not in {r['membership_id'] for r in pool['candidates']}
+        assert await find_team_candidate_by_email(residents[1].membership_id, lookup, residents[1].user, db) == {"membership_id": None}
         member=next(r for r in pool['candidates'] if r['membership_id']==residents[3].membership_id)
         assert member['current_team']['action']=='leave' and member['email'] is None
 

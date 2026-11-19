@@ -15,6 +15,10 @@ class AcceleratorTeamProjectAttach(BaseModel):
     project_id: int = Field(gt=0)
 
 
+class AcceleratorTeamCandidateLookup(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+
+
 class AcceleratorTeamUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=500)
     max_members: int | None = Field(default=None, ge=1, le=20)

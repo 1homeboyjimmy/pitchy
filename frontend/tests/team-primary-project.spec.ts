@@ -74,6 +74,7 @@ for (const method of ['invitation', 'application'] as const) {
     if (sourceKind === 'blocked') {
       await page.getByRole('button', { name: 'Перейти в другую команду', exact: true }).click();
       await expect(page.getByText('Сначала передайте капитанство другому участнику команды.', { exact: true })).toBeVisible();
+      await page.getByLabel('Подробнее о команде Новая команда').click();
       await expect(page.getByRole('button', { name: 'Подать заявку', exact: true })).toBeDisabled();
       expect(joined).toBe(false);
       return;
@@ -88,6 +89,8 @@ for (const method of ['invitation', 'application'] as const) {
       await page.getByRole('button', { name: hasSourceTeam ? 'Принять и перейти' : 'Принять', exact: true }).click();
     } else {
       await page.getByRole('button', { name: hasSourceTeam ? 'Перейти в другую команду' : 'Найти команду', exact: true }).click();
+      await expect(page.getByRole('button', { name: 'Подать заявку', exact: true })).toBeHidden();
+      await page.getByLabel('Подробнее о команде Новая команда').click();
       if (hasSourceTeam) {
         await expect(page.getByRole('button', { name: 'Подать заявку', exact: true })).toBeDisabled();
         await page.getByRole('checkbox', { name: 'Подтверждаю переход после одобрения заявки' }).check();
