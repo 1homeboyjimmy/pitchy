@@ -1050,8 +1050,15 @@ test('captain manages a team, incoming applications and own membership', async (
     await route.fulfill({ json: { id: 701, ...answerPayload } });
   });
   await page.route('**/api/accelerators/memberships/101/team-pool', async (route) => route.fulfill({ json: {
-    teams: [], candidates: [], applications: teamCreated ? [{ id: 750, team_id: 900, team_name: 'Команда Проект А', membership_id: 102, applicant: { name: 'Резидент Б', email: 'resident-b@example.test', telegram: '@resident_b', competencies: ['продажи'] }, message: 'Хочу отвечать за первые продажи', status: 'pending', can_respond: true, can_cancel: false }] : [],
+    teams: [], candidates: [
+      { name: 'Дарья Смирнова', membership_id: 990, email: null, competencies: ['Дизайн'], education_course: 'МАГ-1', institute: 'РТУ МИРЭА', current_team: { id: 880, name: 'Команда Альфа' } },
+      ...Array.from({ length: 13 }, (_, index) => ({ name: `Кандидат ${index + 1}`, membership_id: 994 + index, email: index === 12 ? 'candidate@example.test' : null, competencies: [] })),
+    ], applications: teamCreated ? [{ id: 750, team_id: 900, team_name: 'Команда Проект А', membership_id: 102, applicant: { name: 'Резидент Б', email: 'resident-b@example.test', telegram: '@resident_b', competencies: ['продажи'] }, message: 'Хочу отвечать за первые продажи', status: 'pending', can_respond: true, can_cancel: false }] : [],
   } }));
+  await page.route('**/api/accelerators/memberships/101/team-pool/find-by-email', async (route) => {
+    expect(route.request().postDataJSON()).toEqual({ email: 'daria@example.test' });
+    await route.fulfill({ json: { membership_id: 990 } });
+  });
   await page.route('**/api/accelerators/team-applications/750', async (route) => {
     applicationPayload = route.request().postDataJSON();
     await route.fulfill({ json: { id: 750, ...applicationPayload } });
@@ -1079,26 +1086,58 @@ test('captain manages a team, incoming applications and own membership', async (
   await page.getByRole('button', { name: 'Создать', exact: true }).click();
   await expect.poll(() => createPayload).toMatchObject({ name: 'Команда Проект А', max_members: 5 });
   await expect(page.getByRole('heading', { name: 'Команда Проект А' })).toBeVisible();
-  await expect(page.getByText('Проект формируется', { exact: true })).toBeVisible();
+  await expect(page.getByText('Проект формируется', { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('Название команды', { exact: true })).toBeHidden();
+  await page.getByRole('button', { name: 'Настройки команды', exact: true }).click();
   await page.getByLabel('Название команды', { exact: true }).fill('Команда в Акселераторе');
   await page.getByRole('button', { name: 'Сохранить команду', exact: true }).click();
   await expect.poll(() => settingsPayload).toMatchObject({ name: 'Команда в Акселераторе', max_members: 5 });
   await expect(page.getByRole('heading', { name: 'Команда в Акселераторе' })).toBeVisible();
+
+  const directory = page.getByRole('region', { name: 'Участники потока' });
+  await expect(directory.getByText('МАГ 1 курс · РТУ МИРЭА')).toBeVisible();
+  await expect(directory.getByText('Кандидат 13', { exact: true })).toHaveCount(0);
+  await directory.getByRole('button', { name: 'Следующая страница' }).click();
+  await expect(directory.getByText('Кандидат 13', { exact: true })).toBeVisible();
+  await directory.getByRole('button', { name: 'Без команды', exact: true }).click();
+  await expect(directory.getByText('Дарья Смирнова', { exact: true })).toHaveCount(0);
+  await directory.getByRole('button', { name: 'В команде', exact: true }).click();
+  await directory.getByLabel('Имя или email участника').fill('daria@example.test');
+  await directory.getByRole('button', { name: 'Найти', exact: true }).click();
+  await expect(directory.getByText('Дарья Смирнова', { exact: true })).toBeVisible();
+  await expect(directory.getByText('Дизайн', { exact: true })).toBeHidden();
+  await directory.getByLabel('Подробнее об участнике Дарья Смирнова').click();
+  await expect(directory.getByText('Дизайн', { exact: false })).toBeVisible();
+  await expect(directory.getByRole('link', { name: 'Написать на почту' })).toHaveCount(0);
+  await directory.getByRole('button', { name: 'Без команды', exact: true }).click();
+  await directory.getByLabel('Имя или email участника').fill('candidate@example.test');
+  await directory.getByLabel('Подробнее об участнике Кандидат 13').click();
+  await expect(directory.getByRole('link', { name: 'Написать на почту' })).toHaveAttribute('href', 'mailto:candidate@example.test');
 
   await expect(page.getByText('Резидент Б', { exact: true })).toBeVisible();
   await expect(page.getByText('продажи', { exact: true })).toBeVisible();
   await expect(page.getByText('resident-b@example.test @resident_b')).toBeVisible();
   await page.getByRole('button', { name: 'Отклонить' }).click();
   await expect.poll(() => applicationPayload).toMatchObject({ status: 'declined' });
+  await page.getByLabel('Действия участника Резидент А').click();
   await page.getByRole('button', { name: 'Открыть контакт Резидент А' }).click();
   await expect.poll(() => contactPayload).toMatchObject({ share_contact: true });
   await expect(page.getByText('resident@example.test')).toBeVisible();
+  await expect(page.getByLabel('Роль Резидент Д')).toBeHidden();
+  await page.getByLabel('Действия участника Резидент Д').click();
   await page.getByLabel('Роль Резидент Д').selectOption('cofounder');
   await page.getByRole('button', { name: 'Сохранить роль' }).click();
   await expect.poll(() => memberPayload).toMatchObject({ role: 'cofounder', title: 'Технологии' });
   await expect(page.getByLabel('Максимум участников команды')).toHaveAttribute('min', '2');
   await expect(page.getByRole('button', { name: 'Архивировать команду' })).toHaveCount(0);
   await expect(page.getByText('Для архивирования команды обратитесь к организатору.', { exact: false })).toBeVisible();
+  await page.setViewportSize({ width: 360, height: 800 });
+  const longName = 'ПроверкаДлинногоНазванияКоманды'.repeat(9);
+  await page.getByLabel('Название команды', { exact: true }).fill(longName);
+  await page.getByRole('button', { name: 'Сохранить команду', exact: true }).click();
+  await expect(page.getByRole('heading', { name: longName, exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
+  await page.setViewportSize({ width: 1280, height: 720 });
   teamStatus = 'archived';
   await page.reload();
   await page.getByRole('button', { name: 'Команда и поддержка', exact: true }).click();

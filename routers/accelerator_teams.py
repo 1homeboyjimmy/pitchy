@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from accelerator_notification_service import process_notification_event
+from accelerator_participant_service import participant_profile_with_institute
 from accelerator_team_service import (
     cancel_team_invitation,
     attach_team_project,
@@ -43,6 +44,7 @@ from models import (
     AcceleratorAuditLog,
     AcceleratorMatchProfile,
     AcceleratorMembership,
+    AcceleratorParticipantProfile,
     Project,
     AcceleratorStaff,
     AcceleratorTeam,
@@ -64,6 +66,7 @@ from schemas.accelerator_teams import (
     AcceleratorTeamApplicationCreate,
     AcceleratorTeamApplicationUpdate,
     AcceleratorTeamCaptainTransfer,
+    AcceleratorTeamCandidateLookup,
     AcceleratorTeamTrackerAssign,
     AcceleratorTeamListResponse,
     AcceleratorTeamMemberUpdate,
@@ -525,17 +528,60 @@ def _project_public_description(project: Project | None) -> dict:
     }
 
 
+async def _team_pool_membership(db: AsyncSession, membership_id: int, user: User):
+    membership = await db.get(AcceleratorMembership, membership_id)
+    if not membership or membership.user_id != user.id or membership.status != "enrolled":
+        raise HTTPException(status_code=404, detail="Активное участие не найдено")
+    cohort = await get_cohort(db, membership.cohort_id)
+    await require_teams_module(db, cohort)
+    return membership, cohort
+
+
+def _candidate_memberships(cohort_id: int, membership_id: int):
+    return (select(AcceleratorMembership)
+        .join(User, User.id == AcceleratorMembership.user_id)
+        .where(AcceleratorMembership.cohort_id == cohort_id,
+               AcceleratorMembership.role == "resident", AcceleratorMembership.status == "enrolled",
+               AcceleratorMembership.id != membership_id, User.is_active.is_(True), User.deleted_at.is_(None)))
+
+
+def _can_invite_candidate(own_team_id, candidate_id, candidate_team, candidate_team_size):
+    return (candidate_team is None or (candidate_team.id != own_team_id
+            and (candidate_team.owner_membership_id != candidate_id or candidate_team_size == 1)))
+
+
+@router.post("/memberships/{membership_id}/team-pool/find-by-email")
+async def find_team_candidate_by_email(
+    membership_id: int,
+    payload: AcceleratorTeamCandidateLookup,
+    user: User = Depends(get_async_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    membership, cohort = await _team_pool_membership(db, membership_id, user)
+    team_member = await active_team_member(db, membership.id)
+    team = await db.get(AcceleratorTeam, team_member.team_id) if team_member else None
+    if team is None or team.owner_membership_id != membership.id:
+        raise HTTPException(status_code=403, detail="Поиск кандидатов доступен капитану команды")
+    from main import _check_rate_limit
+    _check_rate_limit(f"team-directory:{user.id}")
+    email = payload.email.strip().casefold()
+    candidate = await db.scalar(_candidate_memberships(cohort.id, membership.id).where(func.lower(User.email) == email).limit(1))
+    if candidate is None:
+        return {"membership_id": None}
+    candidate_member = await active_team_member(db, candidate.id)
+    candidate_team = await db.get(AcceleratorTeam, candidate_member.team_id) if candidate_member else None
+    size = await active_member_count(db, candidate_team.id) if candidate_team else 0
+    can_invite = _can_invite_candidate(team.id, candidate.id, candidate_team, size)
+    return {"membership_id": candidate.id if can_invite else None}
+
+
 @router.get("/memberships/{membership_id}/team-pool")
 async def get_team_pool(
     membership_id: int,
     user: User = Depends(get_async_current_user),
     db: AsyncSession = Depends(get_async_db),
 ):
-    membership = await db.get(AcceleratorMembership, membership_id)
-    if not membership or membership.user_id != user.id or membership.status != "enrolled":
-        raise HTTPException(status_code=404, detail="Активное участие не найдено")
-    cohort = await get_cohort(db, membership.cohort_id)
-    await require_teams_module(db, cohort)
+    membership, cohort = await _team_pool_membership(db, membership_id, user)
     own_team_member = await active_team_member(db, membership.id)
     active_rows = (await db.execute(select(AcceleratorTeamMember, AcceleratorTeam)
         .join(AcceleratorTeam, AcceleratorTeam.id == AcceleratorTeamMember.team_id)
@@ -573,37 +619,30 @@ async def get_team_pool(
         for team in teams
     ):
         candidate_rows = (await db.execute(
-            select(AcceleratorMembership, User, AcceleratorApplication, AcceleratorMatchProfile)
-            .join(User, User.id == AcceleratorMembership.user_id)
+            _candidate_memberships(cohort.id, membership.id)
+            .add_columns(User, AcceleratorApplication, AcceleratorMatchProfile, AcceleratorParticipantProfile.profile)
             .outerjoin(AcceleratorApplication, AcceleratorApplication.id == AcceleratorMembership.application_id)
             .outerjoin(AcceleratorMatchProfile, (AcceleratorMatchProfile.membership_id == AcceleratorMembership.id)
                        & AcceleratorMatchProfile.active.is_(True))
-            .where(
-                AcceleratorMembership.cohort_id == cohort.id,
-                AcceleratorMembership.role == "resident",
-                AcceleratorMembership.status == "enrolled",
-                AcceleratorMembership.id != membership.id,
-                User.is_active.is_(True),
-                User.deleted_at.is_(None),
-            )
-            .order_by(User.name)
+            .outerjoin(AcceleratorParticipantProfile, AcceleratorParticipantProfile.membership_id == AcceleratorMembership.id)
+            .order_by(User.name, AcceleratorMembership.id)
         )).all()
-        for row, person, application, profile in candidate_rows:
+        for row, person, application, profile, participant_data in candidate_rows:
             current = current_teams.get(row.id)
             current_team = None
             if current:
-                member, source = current
-                if source.id == own_team_member.team_id:
+                _, source = current
+                if not _can_invite_candidate(own_team_member.team_id, row.id, source, team_counts[source.id]):
                     continue
                 owner = source.owner_membership_id == row.id
-                if owner and team_counts[source.id] > 1:
-                    continue
                 current_team = {"id":source.id,"name":source.name,"action":"archive" if owner else "leave"}
             contact = _application_contact(application, person, profile)
             if current:
                 # Contact consent inside an existing team does not publish it to other captains.
                 contact.update(email=None, telegram=None)
-            candidates.append({"membership_id":row.id,"current_team":current_team,**contact})
+            education = participant_profile_with_institute(participant_data or {}, application.form_payload if application else None)
+            candidates.append({"membership_id": row.id, "current_team": current_team,
+                "institute": education.get("institute"), "education_course": education.get("education_course"), **contact})
     applications = list((await db.execute(select(AcceleratorTeamApplication).where(
         (AcceleratorTeamApplication.membership_id == membership.id)
         | (AcceleratorTeamApplication.team_id.in_([team.id for team in teams if team.owner_membership_id == membership.id]))

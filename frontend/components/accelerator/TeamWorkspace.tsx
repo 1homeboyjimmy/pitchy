@@ -4,12 +4,13 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "re
 import dynamic from "next/dynamic";
 import {
   Check,
+  ChevronDown,
   Crown,
   Loader2,
   Mail,
   RefreshCw,
   Save,
-  Send,
+  Settings,
   ShieldCheck,
   Trash2,
   UserPlus,
@@ -19,6 +20,7 @@ import {
 
 import { ApiError, createProject, deleteAuth, describeApiError, getAuthJson, getProjects, patchAuthJson, postAuthJson, putAuthJson, type ProjectListItem } from "@/lib/api";
 import { useAuth } from "@/lib/hooks/useAuth";
+import { CandidateDirectory, OpenTeamDirectory, type PoolCandidate, type PoolContact, type PoolTeam } from "./TeamDirectory";
 
 const PassportModal = dynamic(() => import("@/components/dashboard/PassportModal").then(module => module.PassportModal));
 
@@ -68,10 +70,8 @@ export type ResidentTeam = {
 
 type TransferState = { team_id: number; team_name: string; action: "archive" | "leave"; allowed: boolean; reason?: string | null };
 type TeamData = { team: ResidentTeam | null; additional_teams?: ResidentTeam[]; invitations: TeamInvitation[]; can_create?: boolean; transfer?: TransferState | null };
-type PoolContact = { name: string; email: string | null; telegram?: string | null; profile_id?: number | null; bio?: string | null; competencies: string[]; needs?: string[]; industries?: string[]; goals?: string[] };
-type PoolTeam = { id: number; name: string; max_members: number; member_count: number; recruiting_open: boolean; captain: PoolContact; summary: string; details: Array<{ label: string; value: string }> };
 type TeamApplication = { transfer_context?: { team_name: string; action: string } | null; id: number; team_id: number; team_name: string; membership_id: number; applicant?: PoolContact | null; message?: string | null; desired_role?: string | null; status: string; can_respond: boolean; can_cancel: boolean };
-type TeamPool = { teams: PoolTeam[]; candidates: Array<PoolContact & { membership_id: number; current_team?: { id: number; name: string; action: string } | null }>; applications: TeamApplication[] };
+type TeamPool = { teams: PoolTeam[]; candidates: PoolCandidate[]; applications: TeamApplication[] };
 
 export function TeamWorkspace({ membershipId, project, onChanged }: { membershipId: number; project?: { id: number; name: string } | null; onChanged?: () => Promise<void> }) {
   const { token } = useAuth();
@@ -89,7 +89,7 @@ export function TeamWorkspace({ membershipId, project, onChanged }: { membership
   const [projectToAttach, setProjectToAttach] = useState("");
   const [newProjectName, setNewProjectName] = useState("");
   const [messages, setMessages] = useState<Record<number, string>>({});
-  const [invitationMessages, setInvitationMessages] = useState<Record<number, string>>({});
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -105,7 +105,10 @@ export function TeamWorkspace({ membershipId, project, onChanged }: { membership
         getProjects(token).catch(() => [] as ProjectListItem[]),
       ]);
       const nextTeamId = response.team?.id ?? null;
-      if (currentTeamId.current !== undefined && currentTeamId.current !== nextTeamId) setMode("create");
+      if (currentTeamId.current !== undefined && currentTeamId.current !== nextTeamId) {
+        setMode("create");
+        setSettingsOpen(false);
+      }
       currentTeamId.current = nextTeamId;
       setTeam(response.team);
       setAdditionalTeams(response.additional_teams || []);
@@ -208,13 +211,13 @@ export function TeamWorkspace({ membershipId, project, onChanged }: { membership
     finally { setBusy(""); }
   };
 
-  const inviteCandidate = async (candidate: PoolContact & { membership_id: number }) => {
+  const inviteCandidate = async (candidate: PoolCandidate, message: string) => {
     if (!token || !team?.can_manage) return; setBusy(`invite-${candidate.membership_id}`); setError("");
     try {
       await postAuthJson(`/api/accelerators/teams/${team.id}/invitations`, {
         counterpart_profile_id: candidate.profile_id || undefined,
         membership_id: candidate.membership_id,
-        message: invitationMessages[candidate.membership_id] || null,
+        message: message.trim() || null,
       }, token);
       await load();
     } catch (reason) { setError(teamError(reason, "Не удалось отправить приглашение")); }
@@ -278,12 +281,51 @@ export function TeamWorkspace({ membershipId, project, onChanged }: { membership
   const teamIsFull = Boolean(team && capacityUsed >= team.max_members);
   const viewerActive = team?.members.some((member) => member.membership_id === membershipId && member.status === "active") || false;
   const teamReadOnly = Boolean(team && (team.status !== "active" || (!team.can_manage && !viewerActive)));
+  const canEditTeam = Boolean(team?.can_manage && team.status === "active");
+  const openTeams = pool.teams.filter(row => row.id !== team?.id && row.recruiting_open && row.member_count < row.max_members);
 
   if (loading) return <section className="workspace-card grid min-h-44 place-items-center"><Loader2 className="animate-spin text-white/35" /></section>;
 
   return <div className="space-y-5">
     <section>
-      <div className="flex flex-wrap items-start justify-between gap-4"><div><h1 className="text-2xl font-semibold sm:text-3xl">{team?.name || "Команда"}</h1><p className="mt-1 text-sm text-white/45">{team ? "Участники, роли и поддержка проекта" : "Найдите подходящую команду или соберите свою"}</p></div><div className="flex items-center gap-3">{!team && <span className="rounded-full border border-white/10 px-4 py-2 text-sm text-white/65">Без команды</span>}<button type="button" onClick={() => void refresh()} disabled={Boolean(busy)} className="rounded-full border border-white/10 p-3 text-white/45" aria-label="Обновить команду"><RefreshCw size={16} /></button></div></div>
+      <header className="flex min-w-0 items-start justify-between gap-2.5 sm:gap-4">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-xl font-semibold leading-tight [overflow-wrap:anywhere] sm:text-3xl">{team?.name || "Команда"}</h1>
+          {team?.status === "archived" && <span className="mt-1 inline-block text-xs text-white/50">В архиве</span>}
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5">
+          {team && <span className="flex min-h-9 items-center gap-1 rounded-lg bg-white/8 px-2 text-xs tabular-nums text-white/65"
+            aria-label={`${activeMemberCount} участников из ${team.max_members}`} title="Участники / лимит">
+            <Users size={13} aria-hidden="true" />{activeMemberCount}/{team.max_members}
+          </span>}
+          {canEditTeam && <button type="button" aria-label="Настройки команды" aria-expanded={settingsOpen} aria-controls="team-settings"
+            onClick={() => setSettingsOpen(current => !current)} className="grid size-9 place-items-center rounded-lg border border-white/10 text-white/65 hover:bg-white/8">
+            <Settings size={16} />
+          </button>}
+          <button type="button" onClick={() => void refresh()} disabled={Boolean(busy)} aria-label="Обновить команду"
+            className="grid size-9 place-items-center rounded-lg border border-white/10 text-white/55 hover:bg-white/8"><RefreshCw size={15} /></button>
+        </div>
+      </header>
+      {team && canEditTeam && settingsOpen && <div id="team-settings" className="mt-3 rounded-xl border border-white/10 px-3.5 py-3">
+        <form onSubmit={saveTeam} aria-label="Настройки команды" className="grid gap-2.5 sm:grid-cols-[minmax(0,1fr)_9rem_auto] sm:items-end">
+          <label className="min-w-0 text-xs text-white/60">Название команды
+            <input value={settings.name} onChange={event => setSettings({ ...settings, name: event.target.value })} minLength={2} maxLength={500}
+              required aria-label="Название команды" className="workspace-input mt-1" />
+          </label>
+          <label className="text-xs text-white/60">Лимит участников
+            <input type="number" min={Math.max(1, capacityUsed)} max={20} value={settings.maxMembers}
+              onChange={event => setSettings({ ...settings, maxMembers: Number(event.target.value) })} aria-label="Максимум участников команды" className="workspace-input mt-1" />
+          </label>
+          <button disabled={Boolean(busy)} className="workspace-button"><Save size={14} /> Сохранить команду</button>
+        </form>
+        <div className="mt-3 flex flex-wrap items-center gap-2.5">
+          <button type="button" onClick={() => void toggleRecruiting()} disabled={Boolean(busy)} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-white/70">
+            {team.recruiting_open ? "Закрыть набор" : "Открыть набор"}
+          </button>
+          {pendingTeamInvitations.length > 0 && <span className="text-xs text-white/50">Ожидают ответа: {pendingTeamInvitations.length}</span>}
+        </div>
+        <p className="mt-2 text-xs text-white/45">Для архивирования команды обратитесь к организатору.</p>
+      </div>}
 
       {team && !team.can_manage && !viewerActive && <p className="mt-4 rounded-2xl border border-white/8 bg-white/[.025] p-4 text-sm text-white/50">Вы больше не состоите в этой команде. История состава доступна только для просмотра.</p>}
 
@@ -291,19 +333,29 @@ export function TeamWorkspace({ membershipId, project, onChanged }: { membership
 
       {<div className="mt-6 flex overflow-x-auto border-b border-white/10"><Mode active={mode === "create"} onClick={() => setMode("create")}>{team ? "Моя команда" : "Создать свою"}</Mode><Mode active={mode === "find"} onClick={() => setMode("find")}>{team ? "Перейти в другую команду" : "Найти команду"}</Mode><Mode active={mode === "applications"} onClick={() => setMode("applications")}>Мои заявки <span className="ml-1 rounded-md bg-white/10 px-2 py-0.5 text-xs">{pool.applications.filter(row => row.can_cancel).length}</span></Mode></div>}
       {!team && mode === "create" && <form onSubmit={createTeam} className="mt-6 overflow-hidden rounded-2xl border border-white/10"><div className="grid lg:grid-cols-[1fr_360px]"><div className="p-5 sm:p-6"><h3 className="text-xl">Создать команду</h3><p className="mt-1 text-sm text-white/40">Соберите участников вокруг своего проекта</p><div className="mt-5 rounded-2xl border border-white/9 p-4"><div className="flex items-center justify-between gap-3"><div><p className="text-xs uppercase tracking-[.15em] text-white/35">Проект</p><p className="mt-2 text-lg">{project?.name || "Проект будет добавлен позже"}</p><p className="mt-1 text-sm text-white/40">После создания вы станете капитаном команды</p></div><span className="rounded-full bg-emerald-400/10 px-3 py-1.5 text-xs text-emerald-300">Будет привязан</span></div></div><div className="mt-5 grid gap-4 sm:grid-cols-[1fr_200px]"><label className="text-sm text-white/55">Название команды<input aria-label="Название" value={createForm.name} onChange={(event) => setCreateForm({ ...createForm, name: event.target.value })} minLength={2} maxLength={200} required className="workspace-input mt-2" /></label><label className="text-sm text-white/55">Максимум участников<input type="number" min={1} max={20} value={createForm.maxMembers} onChange={(event) => setCreateForm({ ...createForm, maxMembers: Number(event.target.value) })} className="workspace-input mt-2" /></label></div><button aria-label="Создать" disabled={busy === "create"} className="workspace-button mt-5"><Users size={15} /> Создать команду</button></div><aside className="border-t border-white/8 bg-white/[.018] p-5 sm:p-6 lg:border-l lg:border-t-0"><h3 className="text-lg">После создания</h3><div className="mt-5 space-y-5">{["Приглашайте участников потока","Управляйте ролями команды","Получите общего трекера"].map(item=><p key={item} className="flex items-center gap-3 text-sm text-white/65"><span className="grid size-8 place-items-center rounded-full bg-emerald-400/15 text-emerald-300"><Check size={15}/></span>{item}</p>)}</div></aside></div></form>}
-      {mode === "find" && <div className="mt-6 pt-2"><h3 className="text-lg">Открытые команды</h3>{team && <div className="mt-4 rounded-2xl border border-amber-300/15 p-4 text-sm text-white/65">{transfer?.allowed ? <label className="flex items-start gap-3"><input type="checkbox" checked={transferConfirmed} onChange={event => setTransferConfirmed(event.target.checked)} aria-label="Подтверждаю переход после одобрения заявки" /><span>{transferDescription(transfer)} До одобрения заявки ваша команда останется активной.</span></label> : <p>{transfer?.reason || "Обновите команду, чтобы проверить возможность перехода."}</p>}</div>}<p className="mt-1 text-sm text-white/40">Выберите команду и отправьте заявку. Личные проекты сохранятся и не мешают вступлению. Одновременно можно состоять в одной команде.</p><div className="mt-4 grid gap-3 lg:grid-cols-2">{pool.teams.filter((row) => row.id !== team?.id && row.recruiting_open && row.member_count < row.max_members).map((row) => <article key={row.id} className="rounded-2xl border border-white/9 p-4"><div className="flex items-start justify-between gap-3"><div><p>{row.name}</p><p className="mt-1 text-xs text-white/35">Капитан: {row.captain.name} · {row.member_count}/{row.max_members}</p></div></div><p className="mt-3 line-clamp-3 text-sm text-white/50">{row.summary}</p><details className="mt-3 rounded-xl border border-white/7 p-3"><summary className="cursor-pointer text-xs text-white/50">Подробнее о проекте</summary><div className="mt-3 space-y-3">{row.details.map((item) => <div key={item.label}><p className="text-xs text-white/30">{item.label}</p><p className="mt-1 whitespace-pre-wrap text-sm text-white/60">{item.value}</p></div>)}<p className="text-xs text-white/35">Компетенции капитана: {row.captain.competencies.join(" · ") || "не указаны"}</p><div className="flex flex-wrap gap-3 text-xs">{row.captain.email && <a href={`mailto:${row.captain.email}`} className="text-blue-300">{row.captain.email}</a>}{row.captain.telegram && <a href={`https://t.me/${row.captain.telegram.replace(/^@/, "")}`} target="_blank" rel="noreferrer" className="text-blue-300">{row.captain.telegram}</a>}</div></div></details><textarea value={messages[row.id] || ""} onChange={(event) => setMessages((current) => ({ ...current, [row.id]: event.target.value }))} rows={2} maxLength={1000} placeholder="Почему хотите присоединиться" className="workspace-input mt-4 resize-y" /><button type="button" onClick={() => void applyToTeam(row.id)} disabled={Boolean(busy) || pendingTeamIds.has(row.id) || Boolean(team && (!transfer?.allowed || !transferConfirmed))} className="workspace-button mt-3"><Send size={14} />{pendingTeamIds.has(row.id) ? "Заявка отправлена" : "Подать заявку"}</button></article>)}{!pool.teams.some((row) => row.id !== team?.id && row.recruiting_open && row.member_count < row.max_members) && <p className="text-sm text-white/35">Открытых команд пока нет. Можно собрать свою команду и добавить проект позже.</p>}</div></div>}
+      {mode === "find" && <section className="mt-5">
+        <h2 className="text-lg font-medium">Открытые команды</h2>
+        {team && <div className="mt-3 rounded-xl border border-amber-300/15 p-3 text-sm text-white/65">
+          {transfer?.allowed ? <label className="flex items-start gap-3">
+            <input type="checkbox" className="mt-1" checked={transferConfirmed} onChange={event => setTransferConfirmed(event.target.checked)} aria-label="Подтверждаю переход после одобрения заявки" />
+            <span>{transferDescription(transfer)} До одобрения заявки ваша команда останется активной.</span>
+          </label> : <p>{transfer?.reason || "Обновите команду, чтобы проверить возможность перехода."}</p>}
+        </div>}
+        <OpenTeamDirectory teams={openTeams} pendingIds={pendingTeamIds} busy={Boolean(busy)} blocked={Boolean(team && (!transfer?.allowed || !transferConfirmed))}
+          messages={messages} onMessageChange={(id, value) => setMessages(current => ({ ...current, [id]: value }))} onApply={applyToTeam} />
+      </section>}
 
-      {mode === "applications" && <div className="mt-6 overflow-hidden rounded-2xl border border-white/9">{pool.applications.filter(row => row.can_cancel).map(row => <article key={row.id} className="flex flex-wrap items-center justify-between gap-4 border-b border-white/8 p-4 last:border-0"><div><p>{row.team_name}</p><p className="mt-1 text-sm text-white/40">{row.desired_role ? `Желаемая роль: ${row.desired_role}` : "Заявка на вступление"}</p><p className="mt-1 text-xs text-amber-200">Ожидает ответа</p></div><button type="button" onClick={() => void respondApplication(row.id, "cancelled")} disabled={Boolean(busy)} className="overview-secondary">Отозвать заявку</button></article>)}{!pool.applications.some(row => row.can_cancel) && <p className="py-12 text-center text-sm text-white/35">Активных заявок нет.</p>}</div>}      {team && mode === "create" && <div className="mt-6">
-        <div className="grid gap-3 sm:grid-cols-4"><Info label="Проект" value={team.project?.name || "Формируется"} /><Info label="Трекер" value={team.tracker?.name || "Не назначен"} /><Info label="Занято и приглашено" value={`${capacityUsed} / ${team.max_members}`} /><Info label="Статус" value={team.status !== "active" ? "В архиве" : team.project ? "Проект привязан" : "Проект формируется"} /></div>
+      {mode === "applications" && <div className="mt-6 overflow-hidden rounded-2xl border border-white/9">{pool.applications.filter(row => row.can_cancel).map(row => <article key={row.id} className="flex flex-wrap items-center justify-between gap-4 border-b border-white/8 p-4 last:border-0"><div><p>{row.team_name}</p><p className="mt-1 text-sm text-white/40">{row.desired_role ? `Желаемая роль: ${row.desired_role}` : "Заявка на вступление"}</p><p className="mt-1 text-xs text-amber-200">Ожидает ответа</p></div><button type="button" onClick={() => void respondApplication(row.id, "cancelled")} disabled={Boolean(busy)} className="overview-secondary">Отозвать заявку</button></article>)}{!pool.applications.some(row => row.can_cancel) && <p className="py-12 text-center text-sm text-white/35">Активных заявок нет.</p>}</div>}
+      {team && mode === "create" && ((canEditTeam && !team.project) || (viewerActive && !team.can_manage && team.status === "active")) && <div className="mt-3">
         {team.can_manage && team.status === "active" && !team.project && <div className="mt-5 rounded-2xl border border-blue-300/15 bg-blue-300/[0.035] p-4"><h3>Добавить проект</h3><p className="mt-1 text-xs text-white/40">После привязки откроются аудит и другие проектные функции.</p>{ownedProjects.length > 0 && <div className="mt-4 flex flex-col gap-2 sm:flex-row"><select value={projectToAttach} onChange={(event) => setProjectToAttach(event.target.value)} className="workspace-input"><option value="">Выберите проект</option>{ownedProjects.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select><button type="button" onClick={() => void attachProject(Number(projectToAttach))} disabled={!projectToAttach || busy === "project"} className="workspace-button shrink-0">Привязать проект</button></div>}<form onSubmit={createAndAttachProject} className="mt-3 flex flex-col gap-2 sm:flex-row"><input value={newProjectName} onChange={(event) => setNewProjectName(event.target.value)} minLength={2} maxLength={200} placeholder="Название нового проекта" className="workspace-input" /><button disabled={!newProjectName.trim() || busy === "new-project"} className="workspace-button shrink-0">Создать и привязать</button></form></div>}
-        {team.can_manage && team.status === "active" && <><form onSubmit={saveTeam} aria-label="Настройки команды" className="mt-5 grid gap-3 rounded-2xl border border-white/8 p-4 sm:grid-cols-[1fr_150px_auto]"><p className="text-sm text-white/55 sm:col-span-3">Название и настройки команды</p><input value={settings.name} onChange={(event) => setSettings({ ...settings, name: event.target.value })} minLength={2} maxLength={200} required aria-label="Название команды" className="workspace-input" /><input type="number" min={Math.max(1, capacityUsed)} max={20} value={settings.maxMembers} onChange={(event) => setSettings({ ...settings, maxMembers: Number(event.target.value) })} aria-label="Максимум участников команды" className="workspace-input" /><button disabled={busy === "settings"} className="workspace-button"><Save size={14} /> Сохранить команду</button></form><div className="mt-3 flex flex-wrap gap-2"><button type="button" onClick={() => void toggleRecruiting()} disabled={Boolean(busy)} className="inline-flex items-center gap-1 rounded-full border border-white/10 px-4 py-2 text-sm text-white/60">{team.recruiting_open ? "Закрыть набор" : "Открыть набор"}</button></div><p className="mt-3 text-xs text-white/30">Для архивирования команды обратитесь к организатору. Чтобы выйти из команды, сначала передайте капитанство другому участнику.</p></>}
         {team.status === "active" && viewerActive && !team.can_manage && <button type="button" onClick={() => void leaveTeam()} disabled={Boolean(busy)} className="mt-4 inline-flex items-center gap-1 rounded-full border border-red-300/15 px-4 py-2 text-sm text-red-200"><X size={14} /> Покинуть команду</button>}
       </div>}
     </section>
 
-    {team && mode === "create" && <section className="workspace-card"><h2 className="flex items-center gap-2 text-xl"><ShieldCheck size={18} /> Участники</h2><div className="mt-5 grid gap-3 lg:grid-cols-2">{team.members.map((member) => <MemberCard key={`${member.id}-${member.role}-${member.title || ""}`} member={member} isSelf={member.membership_id === membershipId} isOwner={member.membership_id === team.owner_membership_id} canManage={team.can_manage} readOnly={teamReadOnly} busy={busy} onSave={updateMember} onToggleContact={toggleContact} onRemove={removeMember} onTransferCaptain={transferCaptain} />)}</div></section>}
+    {team && mode === "create" && <section className="workspace-card"><h2 className="flex items-center gap-2 text-xl"><ShieldCheck size={18} /> Участники</h2><div className="mt-3 grid gap-2 lg:grid-cols-2 lg:items-start">{team.members.map((member) => <MemberCard key={`${member.id}-${member.role}-${member.title || ""}`} member={member} isSelf={member.membership_id === membershipId} isOwner={member.membership_id === team.owner_membership_id} canManage={team.can_manage} readOnly={teamReadOnly} busy={busy} onSave={updateMember} onToggleContact={toggleContact} onRemove={removeMember} onTransferCaptain={transferCaptain} />)}</div></section>}
 
-    {team?.can_manage && team.status === "active" && mode === "create" && <section className="workspace-card"><h2 className="flex items-center gap-2 text-xl"><UserPlus size={18} /> Участники потока</h2><p className="mt-1 text-sm text-white/40">Откройте карточку участника, посмотрите его опыт и запрос, затем пригласите в свой проект.</p><div className="mt-5 grid gap-3 lg:grid-cols-2">{pool.candidates.map((candidate) => <article key={candidate.membership_id} className="rounded-2xl border border-white/9 p-4"><p>{candidate.name}</p>{candidate.current_team && <p className="mt-1 text-xs text-amber-100">В команде «{candidate.current_team.name}». Переход произойдёт только с согласия участника.</p>}<p className="mt-2 text-sm text-white/50">{candidate.bio || candidate.competencies.join(" · ") || "Описание пока не заполнено"}</p><details className="mt-3 rounded-xl border border-white/7 p-3"><summary className="cursor-pointer text-xs text-white/50">Подробнее об участнике</summary><div className="mt-3 space-y-2 text-sm text-white/55">{candidate.competencies.length > 0 && <p><span className="text-white/30">Компетенции:</span> {candidate.competencies.join(", ")}</p>}{Boolean(candidate.needs?.length) && <p><span className="text-white/30">Ищет помощь:</span> {candidate.needs?.join(", ")}</p>}{Boolean(candidate.industries?.length) && <p><span className="text-white/30">Отрасли:</span> {candidate.industries?.join(", ")}</p>}{Boolean(candidate.goals?.length) && <p><span className="text-white/30">Цели:</span> {candidate.goals?.join(", ")}</p>}<div className="flex flex-wrap gap-3 text-xs">{candidate.email && <a href={`mailto:${candidate.email}`} className="text-blue-300">{candidate.email}</a>}{candidate.telegram && <a href={`https://t.me/${candidate.telegram.replace(/^@/, "")}`} target="_blank" rel="noreferrer" className="text-blue-300">{candidate.telegram}</a>}</div></div></details><textarea value={invitationMessages[candidate.membership_id] || ""} onChange={(event) => setInvitationMessages((current) => ({ ...current, [candidate.membership_id]: event.target.value }))} rows={2} maxLength={1000} placeholder="Сообщение участнику" className="workspace-input mt-4 resize-y" /><button type="button" onClick={() => void inviteCandidate(candidate)} disabled={Boolean(busy) || teamIsFull || invitedMembershipIds.has(candidate.membership_id)} className="workspace-button mt-3"><Send size={14} />{invitedMembershipIds.has(candidate.membership_id) ? "Приглашение отправлено" : "Пригласить в проект"}</button></article>)}{!pool.candidates.length && <p className="text-sm text-white/35">Свободных участников пока нет.</p>}</div></section>}
+    {canEditTeam && mode === "create" && <CandidateDirectory candidates={pool.candidates} membershipId={membershipId}
+      token={token} teamIsFull={teamIsFull} busy={Boolean(busy)} invitedIds={invitedMembershipIds} onInvite={inviteCandidate} />}
 
     {team?.can_manage && team.status === "active" && mode === "create" && <section className="workspace-card"><h2 className="flex items-center gap-2 text-xl"><UserPlus size={18} /> Заявки в команду</h2><p className="mt-1 text-sm text-white/40">Вы видите компетенции и контакты кандидатов и сами принимаете решение.</p>{teamIsFull && <p className="mt-4 rounded-2xl bg-amber-300/[0.07] p-4 text-sm text-amber-100">В команде достигнут лимит участников.</p>}<div className="mt-5 space-y-3">{pool.applications.filter((row) => row.can_respond).map((row) => <article key={row.id} className="rounded-2xl border border-white/9 p-4"><div className="flex flex-wrap items-start justify-between gap-4"><div><p>{row.applicant?.name}</p><p className="mt-1 text-sm text-white/50">{row.applicant?.competencies.join(" · ")}</p><p className="mt-2 text-xs text-blue-300">{row.applicant?.email} {row.applicant?.telegram}</p>{row.message && <p className="mt-3 text-sm text-white/55">{row.message}</p>}{row.transfer_context && <p className="mt-2 text-xs text-amber-100">Участник подтвердил переход из команды «{row.transfer_context.team_name}».{row.transfer_context.action === "archive" ? " Она будет архивирована после одобрения." : " Она продолжит работу."}</p>}</div><div className="flex gap-2"><button type="button" onClick={() => void respondApplication(row.id, "accepted")} disabled={Boolean(busy) || teamIsFull} className="workspace-button"><Check size={14} /> Принять</button><button type="button" onClick={() => void respondApplication(row.id, "declined")} disabled={Boolean(busy)} className="rounded-full border border-white/10 px-4 py-2 text-sm text-white/50">Отклонить</button></div></div></article>)}{!pool.applications.some((row) => row.can_respond) && <p className="text-sm text-white/35">Новых заявок пока нет.</p>}</div></section>}
 
@@ -311,7 +363,7 @@ export function TeamWorkspace({ membershipId, project, onChanged }: { membership
       <h2 className="text-xl">Другие мои команды</h2>
       <div className="mt-4 space-y-3">
         {additionalTeams.map((item) => <article key={item.id} className="rounded-xl border border-white/10 p-4">
-          <h3 className="font-medium">{item.name}</h3>
+          <h3 className="font-medium [overflow-wrap:anywhere]">{item.name}</h3>
           <ul className="my-3 space-y-1 text-sm text-white/60">
             {item.members.filter(member => member.status === "active").map(member => <li key={member.membership_id}>
               {member.person.name}{member.role === "owner" && <span className="ml-2 text-xs text-amber-200">Капитан</span>}
@@ -341,12 +393,44 @@ function MemberCard({ member, isSelf, isOwner, canManage, readOnly, busy, onSave
 }) {
   const [role, setRole] = useState<"member" | "cofounder">(member.role === "cofounder" ? "cofounder" : "member");
   const [title, setTitle] = useState(member.title || "");
-  return <article className="rounded-2xl border border-white/9 p-4"><div className="flex items-start justify-between gap-3"><div><p className="flex items-center gap-2">{member.person.name}{isOwner && <Crown size={14} className="text-amber-300" />}</p><p className="mt-1 text-xs text-white/35">{member.title || member.role}{member.status !== "active" ? ` · ${member.status}` : ""}</p>{member.person.email && <a href={`mailto:${member.person.email}`} className="mt-2 inline-flex items-center gap-1.5 text-xs text-blue-300"><Mail size={12} /> {member.person.email}</a>}</div>{isSelf && !readOnly && <button type="button" onClick={() => void onToggleContact(member)} disabled={Boolean(busy)} aria-label={`${member.share_contact ? "Скрыть" : "Открыть"} контакт ${member.person.name}`} className={`rounded-full px-3 py-1.5 text-xs ${member.share_contact ? "bg-emerald-400/10 text-emerald-300" : "border border-white/10 text-white/40"}`}>{member.share_contact ? "Контакт открыт" : "Контакт скрыт"}</button>}</div>{canManage && !isOwner && !readOnly && <div className="mt-4 grid gap-2 sm:grid-cols-2"><select value={role} onChange={(event) => setRole(event.target.value as "member" | "cofounder")} aria-label={`Роль ${member.person.name}`} className="workspace-input"><option value="member">Участник</option><option value="cofounder">Сооснователь</option></select><input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={200} placeholder="Зона ответственности" aria-label={`Зона ответственности ${member.person.name}`} className="workspace-input" /><div className="flex flex-wrap gap-2 sm:col-span-2"><button type="button" onClick={() => void onSave(member, { role, title: title.trim() || null })} disabled={Boolean(busy)} className="workspace-button"><Save size={13} /> Сохранить роль</button><button type="button" onClick={() => void onTransferCaptain(member)} disabled={Boolean(busy)} className="inline-flex items-center gap-1 rounded-full border border-amber-300/15 px-3 py-2 text-xs text-amber-200"><Crown size={13} /> Сделать капитаном</button><button type="button" onClick={() => void onRemove(member)} disabled={Boolean(busy)} className="inline-flex items-center gap-1 rounded-full border border-red-300/15 px-3 py-2 text-xs text-red-200"><Trash2 size={13} /> Исключить</button></div></div>}</article>;
+  const editRole = canManage && !isOwner && !readOnly && member.status === "active";
+  const editContact = isSelf && !readOnly && member.status === "active";
+  const roleLabel = isOwner ? "Капитан" : member.role === "cofounder" ? "Сооснователь" : "Участник";
+  const label = <span className="min-w-0 [overflow-wrap:anywhere]">
+    <span className="flex items-center gap-2 text-sm font-medium">{member.person.name}{isOwner && <Crown size={13} className="shrink-0 text-amber-300" />}</span>
+    <span className="mt-0.5 block text-xs text-white/50">{roleLabel}{member.title && ` · ${member.title}`}{member.status !== "active" && " · Вышел"}</span>
+  </span>;
+  if (!editRole && !editContact && !member.person.email) {
+    return <div className="min-w-0 rounded-xl border border-white/10 px-3 py-2.5">{label}</div>;
+  }
+  return <details className="group min-w-0 rounded-xl border border-white/10">
+    <summary aria-label={`Действия участника ${member.person.name}`} className="flex min-w-0 cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 [&::-webkit-details-marker]:hidden">
+      {label}<ChevronDown size={15} className="shrink-0 text-white/50 group-open:rotate-180" />
+    </summary>
+    <div className="space-y-2.5 border-t border-white/8 px-3 py-3">
+      {member.person.email && <a href={`mailto:${member.person.email}`} className="flex items-center gap-1.5 text-xs text-blue-200 [overflow-wrap:anywhere]"><Mail size={13} className="shrink-0" />{member.person.email}</a>}
+      {editContact && <button type="button" onClick={() => void onToggleContact(member)} disabled={Boolean(busy)}
+        aria-label={`${member.share_contact ? "Скрыть" : "Открыть"} контакт ${member.person.name}`}
+        className="rounded-lg border border-white/10 px-3 py-2 text-xs text-white/65">
+        {member.share_contact ? "Скрыть контакт" : "Открыть контакт"}
+      </button>}
+      {editRole && <div className="grid min-w-0 gap-2 sm:grid-cols-2">
+        <select value={role} onChange={event => setRole(event.target.value as "member" | "cofounder")} aria-label={`Роль ${member.person.name}`} className="workspace-input">
+          <option value="member">Участник</option><option value="cofounder">Сооснователь</option>
+        </select>
+        <input value={title} onChange={event => setTitle(event.target.value)} maxLength={200} placeholder="Зона ответственности" aria-label={`Зона ответственности ${member.person.name}`} className="workspace-input" />
+        <div className="flex flex-wrap gap-2 sm:col-span-2">
+          <button type="button" onClick={() => void onSave(member, { role, title: title.trim() || null })} disabled={Boolean(busy)} className="workspace-button"><Save size={13} /> Сохранить роль</button>
+          <button type="button" onClick={() => void onTransferCaptain(member)} disabled={Boolean(busy)} className="inline-flex items-center gap-1 rounded-lg border border-amber-300/15 px-3 py-2 text-xs text-amber-200"><Crown size={13} /> Сделать капитаном</button>
+          <button type="button" onClick={() => void onRemove(member)} disabled={Boolean(busy)} className="inline-flex items-center gap-1 rounded-lg border border-red-300/15 px-3 py-2 text-xs text-red-200"><Trash2 size={13} /> Исключить</button>
+        </div>
+      </div>}
+    </div>
+  </details>;
 }
 
-function Mode({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) { return <button type="button" onClick={onClick} className={`shrink-0 border-b-2 px-5 py-3 text-sm ${active ? "border-white text-white" : "border-transparent text-white/45"}`}>{children}</button>; }
+function Mode({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) { return <button type="button" onClick={onClick} className={`shrink-0 border-b-2 px-3 py-2.5 text-sm ${active ? "border-white text-white" : "border-transparent text-white/45"}`}>{children}</button>; }
 
-function Info({ label, value }: { label: string; value: string }) { return <div className="rounded-2xl border border-white/8 p-4"><p className="text-xs text-white/30">{label}</p><p className="mt-1 text-sm">{value}</p></div>; }
 function invitationTeamName(row: TeamInvitation) { return row.team?.name || row.team_name || "Приглашение в команду"; }
 
 function teamError(reason: unknown, fallback: string) {
