@@ -20,15 +20,16 @@ async def validate_attendance_policy(db, cohort_id, policy):
     ))).scalars())
     if ids != set(policy.event_ids):
         raise HTTPException(422, "Все мероприятия расчёта должны принадлежать этому потоку")
+    if policy.excluded_events_by_team:
+        team_ids = set((await db.execute(select(AcceleratorTeam.id).where(
+            AcceleratorTeam.cohort_id == cohort_id,
+            AcceleratorTeam.id.in_(policy.excluded_events_by_team),
+        ))).scalars())
+        if team_ids != set(policy.excluded_events_by_team):
+            raise HTTPException(422, "Все команды с исключениями должны принадлежать этому потоку")
 
 
-async def effective_attendance_records(db, memberships, event_ids, *, cohorts=None):
-    if not memberships or not event_ids:
-        return {}
-    if cohorts is None:
-        cohorts = {cohort.id: cohort for cohort in (await db.execute(select(AcceleratorCohort).where(
-            AcceleratorCohort.id.in_({member.cohort_id for member in memberships}),
-        ))).scalars()}
+async def _attendance_teams(db, cohorts):
     team_cohorts = [cohort.id for cohort in cohorts.values() if cohort.attendance_scope == "team"]
     links = (await db.execute(select(AcceleratorTeamMember.team_id, AcceleratorMembership.id).join(
         AcceleratorMembership, AcceleratorMembership.id == AcceleratorTeamMember.membership_id,
@@ -39,7 +40,18 @@ async def effective_attendance_records(db, memberships, event_ids, *, cohorts=No
         AcceleratorMembership.status.in_(("enrolled", "completed")),
         AcceleratorTeam.status == "active", AcceleratorTeamMember.status == "active",
     ))).all() if team_cohorts else []
-    team_by_member = dict((member_id, team_id) for team_id, member_id in links)
+    return dict((member_id, team_id) for team_id, member_id in links)
+
+
+async def effective_attendance_records(db, memberships, event_ids, *, cohorts=None, team_by_member=None):
+    if not memberships or not event_ids:
+        return {}
+    if cohorts is None:
+        cohorts = {cohort.id: cohort for cohort in (await db.execute(select(AcceleratorCohort).where(
+            AcceleratorCohort.id.in_({member.cohort_id for member in memberships}),
+        ))).scalars()}
+    if team_by_member is None:
+        team_by_member = await _attendance_teams(db, cohorts)
     member_ids = {member.id for member in memberships} | set(team_by_member)
     records = (await db.execute(select(AcceleratorAttendanceRecord).where(
         AcceleratorAttendanceRecord.membership_id.in_(member_ids),
@@ -77,16 +89,20 @@ async def attendance_summaries(db, memberships, *, now=None):
         if not policy or event.id in policy["event_ids"]:
             event_ids[event.cohort_id].add(event.id)
     selected_events = set().union(*event_ids.values()) if event_ids else set()
-    records = await effective_attendance_records(db, memberships, selected_events, cohorts=cohorts)
+    team_by_member = await _attendance_teams(db, cohorts)
+    records = await effective_attendance_records(db, memberships, selected_events, cohorts=cohorts, team_by_member=team_by_member)
     summaries = {}
     for member in memberships:
         cohort = cohorts[member.cohort_id]
         policy = cohort.attendance_policy
-        selected = event_ids[cohort.id]
+        exclusions = policy.get("excluded_events_by_team", {}) if policy else {}
+        team_id = team_by_member.get(member.id)
+        excluded = set(exclusions.get(str(team_id), exclusions.get(team_id, []))) if team_id else set()
+        selected = event_ids[cohort.id] - excluded
         member_records = records.get(member.id, {})
         attended = sum(record.status == "present" for event_id, record in member_records.items() if event_id in selected)
         marked_count = sum(event_id in selected for event_id in member_records)
-        total = policy["planned_events"] if policy else len(selected)
+        total = policy["planned_events"] - len(excluded) if policy else len(selected)
         summaries[member.id] = {
             "present": attended, "marked": marked_count, "total": total,
             "unmarked": total - marked_count,
