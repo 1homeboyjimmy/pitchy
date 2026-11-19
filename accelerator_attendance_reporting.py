@@ -5,9 +5,10 @@ from datetime import datetime
 from fastapi import HTTPException
 from sqlalchemy import select
 
+from accelerator_team_roster import attendance_team_roster
 from models import (
     AcceleratorAttendanceRecord, AcceleratorCohort, AcceleratorEvent,
-    AcceleratorMembership, AcceleratorTeam, AcceleratorTeamMember,
+    AcceleratorMembership, AcceleratorTeam,
 )
 
 
@@ -31,16 +32,18 @@ async def validate_attendance_policy(db, cohort_id, policy):
 
 async def _attendance_teams(db, cohorts):
     team_cohorts = [cohort.id for cohort in cohorts.values() if cohort.attendance_scope == "team"]
-    links = (await db.execute(select(AcceleratorTeamMember.team_id, AcceleratorMembership.id).join(
-        AcceleratorMembership, AcceleratorMembership.id == AcceleratorTeamMember.membership_id,
-    ).join(AcceleratorTeam, AcceleratorTeam.id == AcceleratorTeamMember.team_id).where(
-        AcceleratorTeam.cohort_id.in_(team_cohorts),
-        AcceleratorMembership.cohort_id == AcceleratorTeam.cohort_id,
+    if not team_cohorts:
+        return {}
+    roster = attendance_team_roster()
+    links = (await db.execute(select(AcceleratorMembership.id, roster.c.team_id).join(
+        AcceleratorMembership, AcceleratorMembership.id == roster.c.membership_id,
+    ).where(
+        roster.c.cohort_id.in_(team_cohorts),
+        AcceleratorMembership.cohort_id == roster.c.cohort_id,
         AcceleratorMembership.role == "resident",
         AcceleratorMembership.status.in_(("enrolled", "completed")),
-        AcceleratorTeam.status == "active", AcceleratorTeamMember.status == "active",
-    ))).all() if team_cohorts else []
-    return dict((member_id, team_id) for team_id, member_id in links)
+    ))).all()
+    return dict(links)
 
 
 async def effective_attendance_records(db, memberships, event_ids, *, cohorts=None, team_by_member=None):

@@ -1,5 +1,5 @@
 """Project rosters include participants with active grants on linked teams."""
-from sqlalchemy import select
+from sqlalchemy import and_, func, select
 from sqlalchemy.orm import aliased
 
 from models import AcceleratorMembership, AcceleratorProjectMember, AcceleratorTeam, AcceleratorTeamMember
@@ -33,3 +33,23 @@ def active_team_roster():
     )
     linked = linked_team_roster().subquery()
     return direct.union(select(linked.c.team_id, linked.c.membership_id)).subquery()
+
+
+def attendance_team_roster():
+    """Map each direct team member to the active team that owns their attendance."""
+    anchor = aliased(AcceleratorTeam)
+    return (
+        select(
+            func.coalesce(anchor.id, AcceleratorTeam.id).label("team_id"),
+            AcceleratorTeamMember.membership_id,
+            AcceleratorTeam.cohort_id,
+        )
+        .join(AcceleratorTeamMember, AcceleratorTeamMember.team_id == AcceleratorTeam.id)
+        .outerjoin(anchor, and_(
+            anchor.id == AcceleratorTeam.attendance_team_id,
+            anchor.cohort_id == AcceleratorTeam.cohort_id,
+            anchor.status == "active",
+        ))
+        .where(AcceleratorTeam.status == "active", AcceleratorTeamMember.status == "active")
+        .subquery()
+    )

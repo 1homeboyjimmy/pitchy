@@ -167,6 +167,7 @@ def test_invalid_team_attendance_exclusion(team_id,excluded,planned):
 
 @pytest.mark.asyncio
 async def test_linked_project_team_uses_shared_attendance_and_preserves_project_access():
+    from accelerator_attendance_service import checkin_session
     from accelerator_team_service import cohort_teams_payload, membership_team_payload
     from models import AcceleratorProgramConfig, AcceleratorProjectMember, AcceleratorTeam, AcceleratorTeamTrackerAssignment, Project
     from project_access import get_accessible_project
@@ -212,3 +213,39 @@ async def test_linked_project_team_uses_shared_attendance_and_preserves_project_
         assert outsider.value.status_code == 404
         passport, can_edit, _ = await passport_context(db, project, peer)
         assert can_edit and passport["team"] == [f"{peer.name} — Руководитель команды"]
+
+        # The captain now belongs directly to the linked team and leaves the main roster.
+        previous = await db.scalar(select(AcceleratorTeamMember).where(
+            AcceleratorTeamMember.team_id == root.id,
+            AcceleratorTeamMember.membership_id == peer_member.id,
+        ))
+        previous.status = "left"
+        await db.flush()
+        db.add(AcceleratorTeamMember(team_id=linked.id, membership_id=peer_member.id, role="owner"))
+        peer_member.project_id = project.id
+        duplicate_mark = await db.scalar(select(AcceleratorAttendanceRecord).where(
+            AcceleratorAttendanceRecord.event_id == event.id,
+            AcceleratorAttendanceRecord.membership_id == peer_member.id,
+        ))
+        await db.delete(duplicate_mark)
+        await db.commit()
+
+        view = await membership_team_payload(db, membership_id=peer_member.id, user=peer)
+        assert view["team"]["id"] == linked.id and view["additional_teams"] == []
+        assert not view["transfer"]["allowed"]
+        teams = {team["id"]: team for team in (await cohort_teams_payload(db, cohort_id=cohort.id, user=actor))["teams"]}
+        assert teams[root.id]["attendance_percent"] == teams[linked.id]["attendance_percent"] == 10
+        report = await routes.cohort_resident_report(cohort.id, "json", tracker, db)
+        assert [team["id"] for team in report["rows"][0]["teams"]] == [linked.id]
+        assert report["rows"][0]["attendance"]["percent"] == 10
+
+        await routes.mark_event_attendance(event.id, AttendanceMark(membership_id=peer_member.id, status="not_marked"), actor, db)
+        assert (await attendance_summaries(db, [member, peer_member]))[member.id]["present"] == 0
+        event.ends_at = datetime.utcnow() + timedelta(minutes=10)
+        await db.commit()
+        await routes.check_in_to_event(checkin_session(event)["token"], peer, db)
+        marked = (await db.scalars(select(AcceleratorAttendanceRecord).where(
+            AcceleratorAttendanceRecord.event_id == event.id,
+            AcceleratorAttendanceRecord.status == "present",
+        ))).all()
+        assert {record.membership_id for record in marked} == {member.id, peer_member.id}

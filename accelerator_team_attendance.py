@@ -5,31 +5,29 @@ from fastapi import HTTPException
 from sqlalchemy import select
 
 from accelerator_program_progress_service import ProgramProgressService
+from accelerator_team_roster import attendance_team_roster
 from models import (
     AcceleratorAttendanceRecord, AcceleratorAuditLog, AcceleratorMembership,
-    AcceleratorTeam, AcceleratorTeamMember,
 )
 
 
 async def team_attendance_members(db, cohort, membership):
+    roster = attendance_team_roster()
     team_id = (await db.execute(
-        select(AcceleratorTeam.id)
-        .join(AcceleratorTeamMember, AcceleratorTeamMember.team_id == AcceleratorTeam.id)
+        select(roster.c.team_id)
         .where(
-            AcceleratorTeam.cohort_id == cohort.id,
-            AcceleratorTeam.status == "active",
-            AcceleratorTeamMember.membership_id == membership.id,
-            AcceleratorTeamMember.status == "active",
+            roster.c.cohort_id == cohort.id,
+            roster.c.membership_id == membership.id,
         )
     )).scalar_one_or_none()
     if team_id is None:
         return [membership]
     return list((await db.execute(
         select(AcceleratorMembership)
-        .join(AcceleratorTeamMember, AcceleratorTeamMember.membership_id == AcceleratorMembership.id)
+        .join(roster, roster.c.membership_id == AcceleratorMembership.id)
         .where(
-            AcceleratorTeamMember.team_id == team_id,
-            AcceleratorTeamMember.status == "active",
+            roster.c.team_id == team_id,
+            roster.c.cohort_id == cohort.id,
             AcceleratorMembership.cohort_id == cohort.id,
             AcceleratorMembership.status == "enrolled",
             AcceleratorMembership.role == "resident",
