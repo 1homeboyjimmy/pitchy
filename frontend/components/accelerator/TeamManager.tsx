@@ -73,6 +73,10 @@ export function TeamManager({ cohortId, token }: { cohortId: number; token: stri
       return (sort === "attendance-asc" ? left - right : right - left) || byName();
     });
   }, [entries, query, sort, status]);
+  const hasTrackers = filtered.some(({ team }) => Boolean(team.tracker?.name));
+  const desktopColumns = hasTrackers
+    ? "md:grid-cols-[minmax(0,1.6fr)_minmax(max-content,1fr)_minmax(0,1fr)_minmax(0,0.9fr)_auto]"
+    : "md:grid-cols-[minmax(0,1.6fr)_minmax(max-content,1fr)_minmax(0,1fr)_auto]";
   const currentPage = Math.min(page, Math.max(0, Math.ceil(filtered.length / pageSize) - 1));
   const pageStart = currentPage * pageSize;
   const members = new Set(entries.flatMap(({ activeMembers }) => activeMembers.map(member => member.membership_id))).size;
@@ -97,8 +101,8 @@ export function TeamManager({ cohortId, token }: { cohortId: number; token: stri
       <Stat value={members} label="участников" />
       <Stat value={pending} label="ожидают ответа" tone={pending ? "yellow" : undefined} />
     </div>
-    <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,11rem)_minmax(0,17rem)_minmax(0,10rem)]">
-      <label className="relative block min-w-0">
+    <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,11rem)_minmax(0,17rem)]">
+      <label className="relative block min-w-0 sm:col-span-2 xl:col-span-1">
         <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-white/30" />
         <input type="search" aria-label="Поиск по командам, участникам или проектам" value={query}
           onChange={event => { setQuery(event.target.value); setPage(0); }}
@@ -116,16 +120,13 @@ export function TeamManager({ cohortId, token }: { cohortId: number; token: stri
         <option value="attendance-asc">Посещаемость ↑</option>
         <option value="attendance-desc">Посещаемость ↓</option>
       </select>
-      <select aria-label="Команд на странице" value={pageSize} onChange={event => { setPageSize(Number(event.target.value)); setPage(0); }} className="workspace-input">
-        {PAGE_SIZES.map(size => <option key={size} value={size}>{size} на странице</option>)}
-      </select>
     </div>
     {loading && !teams.length ? <div className="grid min-h-56 place-items-center"><Loader2 className="animate-spin text-white/35" /></div>
       : filtered.length ? <>
         <ul aria-label="Команды потока" className="mt-5 divide-y divide-white/8 rounded-2xl border border-white/9">
           {filtered.slice(pageStart, pageStart + pageSize).map(({ team, activeMembers }) => <li key={team.id}>
             <button type="button" onClick={() => setSelected(team)}
-              className="grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-start gap-x-3 gap-y-2 p-4 text-left hover:bg-white/5 md:grid-cols-[minmax(0,1.6fr)_minmax(max-content,1fr)_minmax(0,1fr)_minmax(0,0.9fr)_auto]">
+              className={`grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-start gap-x-3 gap-y-2 p-4 text-left hover:bg-white/5 ${desktopColumns}`}>
               <span className="col-start-1 row-start-1 min-w-0 [overflow-wrap:anywhere]">
                 <span className="block text-sm font-medium leading-6">{team.name}</span>
                 {hasDistinctProjectName(team) && <span className="mt-0.5 block text-xs text-white/50">{team.project?.name}</span>}
@@ -140,14 +141,19 @@ export function TeamManager({ cohortId, token }: { cohortId: number; token: stri
                   <span className="sr-only">{member.person.name}</span>
                 </span>)}
               </span>
-              <span className="col-start-2 row-start-2 min-w-0 text-xs text-white/50 [overflow-wrap:anywhere] md:col-start-4 md:row-start-1">
-                {team.tracker?.name || "Трекер не назначен"}
-              </span>
-              <ChevronRight size={16} className="col-start-3 row-start-1 self-center text-white/40 md:col-start-5" />
+              {team.tracker?.name && <span className="col-start-2 row-start-2 min-w-0 text-xs text-white/50 [overflow-wrap:anywhere] md:col-start-4 md:row-start-1">
+                {team.tracker.name}
+              </span>}
+              <ChevronRight size={16} className={`col-start-3 row-start-1 self-center text-white/40 ${hasTrackers ? "md:col-start-5" : "md:col-start-4"}`} />
             </button>
           </li>)}
         </ul>
-        <ResultPages page={currentPage} pageSize={pageSize} total={filtered.length} onChange={setPage} />
+        <ResultPages page={currentPage} pageSize={pageSize} total={filtered.length} onChange={setPage}>
+          <select aria-label="Команд на странице" value={pageSize} onChange={event => { setPageSize(Number(event.target.value)); setPage(0); }}
+            className="workspace-input !w-auto !rounded-lg !px-3 !py-2">
+            {PAGE_SIZES.map(size => <option key={size} value={size}>{size} на странице</option>)}
+          </select>
+        </ResultPages>
       </> : <div className="py-16 text-center">
         <Users className="mx-auto text-white/20" />
         <p className="mt-4">{teams.length ? "Команды не найдены" : "Команд пока нет"}</p>
