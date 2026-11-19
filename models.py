@@ -831,6 +831,9 @@ class AcceleratorTeam(Base):
     owner_membership_id: Mapped[int] = mapped_column(
         ForeignKey("accelerator_memberships.id", ondelete="RESTRICT"), index=True
     )
+    attendance_team_id: Mapped[int | None] = mapped_column(
+        ForeignKey("accelerator_teams.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
     name: Mapped[str] = mapped_column(String(500))
     max_members: Mapped[int] = mapped_column(Integer, default=5, server_default="5")
     recruiting_open: Mapped[bool] = mapped_column(

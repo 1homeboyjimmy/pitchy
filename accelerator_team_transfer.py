@@ -62,6 +62,8 @@ async def lock_join_context(db, membership_id, target_team_id):
 
 async def ensure_join_capacity(db, team, membership_id):
     from accelerator_team_service import active_member_count
+    if team.attendance_team_id is not None:
+        raise HTTPException(409, "Состав связанной команды меняет организатор")
     reservations = (await db.execute(select(AcceleratorTeamInvitation.id).where(
         AcceleratorTeamInvitation.team_id == team.id,
         AcceleratorTeamInvitation.status == 'pending',

@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import {
   Check,
   Crown,
@@ -18,6 +19,8 @@ import {
 
 import { ApiError, createProject, deleteAuth, describeApiError, getAuthJson, getProjects, patchAuthJson, postAuthJson, putAuthJson, type ProjectListItem } from "@/lib/api";
 import { useAuth } from "@/lib/hooks/useAuth";
+
+const PassportModal = dynamic(() => import("@/components/dashboard/PassportModal").then(module => module.PassportModal));
 
 export type TeamMember = {
   id: number;
@@ -50,6 +53,7 @@ export type ResidentTeam = {
   name: string;
   status: string;
   max_members: number;
+  attendance_percent?: number | null;
   recruiting_open: boolean;
   project: { id: number; name: string } | null;
   project_attached?: boolean;
@@ -63,7 +67,7 @@ export type ResidentTeam = {
 };
 
 type TransferState = { team_id: number; team_name: string; action: "archive" | "leave"; allowed: boolean; reason?: string | null };
-type TeamData = { team: ResidentTeam | null; invitations: TeamInvitation[]; can_create?: boolean; transfer?: TransferState | null };
+type TeamData = { team: ResidentTeam | null; additional_teams?: ResidentTeam[]; invitations: TeamInvitation[]; can_create?: boolean; transfer?: TransferState | null };
 type PoolContact = { name: string; email: string | null; telegram?: string | null; profile_id?: number | null; bio?: string | null; competencies: string[]; needs?: string[]; industries?: string[]; goals?: string[] };
 type PoolTeam = { id: number; name: string; max_members: number; member_count: number; recruiting_open: boolean; captain: PoolContact; summary: string; details: Array<{ label: string; value: string }> };
 type TeamApplication = { transfer_context?: { team_name: string; action: string } | null; id: number; team_id: number; team_name: string; membership_id: number; applicant?: PoolContact | null; message?: string | null; desired_role?: string | null; status: string; can_respond: boolean; can_cancel: boolean };
@@ -72,6 +76,8 @@ type TeamPool = { teams: PoolTeam[]; candidates: Array<PoolContact & { membershi
 export function TeamWorkspace({ membershipId, project, onChanged }: { membershipId: number; project?: { id: number; name: string } | null; onChanged?: () => Promise<void> }) {
   const { token } = useAuth();
   const [team, setTeam] = useState<ResidentTeam | null>(null);
+  const [additionalTeams, setAdditionalTeams] = useState<ResidentTeam[]>([]);
+  const [passportTeam, setPassportTeam] = useState<ResidentTeam | null>(null);
   const currentTeamId = useRef<number | null | undefined>(undefined);
   const [transfer, setTransfer] = useState<TransferState | null>(null);
   const [transferConfirmed, setTransferConfirmed] = useState(false);
@@ -102,6 +108,7 @@ export function TeamWorkspace({ membershipId, project, onChanged }: { membership
       if (currentTeamId.current !== undefined && currentTeamId.current !== nextTeamId) setMode("create");
       currentTeamId.current = nextTeamId;
       setTeam(response.team);
+      setAdditionalTeams(response.additional_teams || []);
       setTransfer(response.transfer || null);
       setTransferConfirmed(false);
       setPool(poolData);
@@ -300,6 +307,22 @@ export function TeamWorkspace({ membershipId, project, onChanged }: { membership
 
     {team?.can_manage && team.status === "active" && mode === "create" && <section className="workspace-card"><h2 className="flex items-center gap-2 text-xl"><UserPlus size={18} /> Заявки в команду</h2><p className="mt-1 text-sm text-white/40">Вы видите компетенции и контакты кандидатов и сами принимаете решение.</p>{teamIsFull && <p className="mt-4 rounded-2xl bg-amber-300/[0.07] p-4 text-sm text-amber-100">В команде достигнут лимит участников.</p>}<div className="mt-5 space-y-3">{pool.applications.filter((row) => row.can_respond).map((row) => <article key={row.id} className="rounded-2xl border border-white/9 p-4"><div className="flex flex-wrap items-start justify-between gap-4"><div><p>{row.applicant?.name}</p><p className="mt-1 text-sm text-white/50">{row.applicant?.competencies.join(" · ")}</p><p className="mt-2 text-xs text-blue-300">{row.applicant?.email} {row.applicant?.telegram}</p>{row.message && <p className="mt-3 text-sm text-white/55">{row.message}</p>}{row.transfer_context && <p className="mt-2 text-xs text-amber-100">Участник подтвердил переход из команды «{row.transfer_context.team_name}».{row.transfer_context.action === "archive" ? " Она будет архивирована после одобрения." : " Она продолжит работу."}</p>}</div><div className="flex gap-2"><button type="button" onClick={() => void respondApplication(row.id, "accepted")} disabled={Boolean(busy) || teamIsFull} className="workspace-button"><Check size={14} /> Принять</button><button type="button" onClick={() => void respondApplication(row.id, "declined")} disabled={Boolean(busy)} className="rounded-full border border-white/10 px-4 py-2 text-sm text-white/50">Отклонить</button></div></div></article>)}{!pool.applications.some((row) => row.can_respond) && <p className="text-sm text-white/35">Новых заявок пока нет.</p>}</div></section>}
 
+    {mode === "create" && additionalTeams.length > 0 && <section className="workspace-card">
+      <h2 className="text-xl">Другие мои команды</h2>
+      <div className="mt-4 space-y-3">
+        {additionalTeams.map((item) => <article key={item.id} className="rounded-xl border border-white/10 p-4">
+          <h3 className="font-medium">{item.name}</h3>
+          <ul className="my-3 space-y-1 text-sm text-white/60">
+            {item.members.filter(member => member.status === "active").map(member => <li key={member.membership_id}>
+              {member.person.name}{member.role === "owner" && <span className="ml-2 text-xs text-amber-200">Капитан</span>}
+            </li>)}
+          </ul>
+          {item.project && <button type="button" className="workspace-button" onClick={() => setPassportTeam(item)}>Паспорт проекта</button>}
+        </article>)}
+      </div>
+    </section>}
+    {passportTeam?.project && <PassportModal projectId={passportTeam.project.id} projectName={passportTeam.project.name}
+      readOnly={passportTeam.owner_membership_id !== membershipId} onClose={() => setPassportTeam(null)} />}
     {error && <p role="alert" className="rounded-2xl border border-red-400/20 bg-red-400/10 p-4 text-sm text-red-200">{error}</p>}
   </div>;
 }

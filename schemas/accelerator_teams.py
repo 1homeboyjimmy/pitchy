@@ -141,6 +141,7 @@ class AcceleratorTeamResponse(BaseModel):
     name: str
     status: Literal["active", "archived"]
     max_members: int
+    attendance_percent: int | None = None
     recruiting_open: bool = True
     owner_membership_id: int
     project: AcceleratorTeamProject | None = None
@@ -155,6 +156,7 @@ class AcceleratorTeamResponse(BaseModel):
 
 class AcceleratorMembershipTeamResponse(BaseModel):
     team: AcceleratorTeamResponse | None = None
+    additional_teams: list[AcceleratorTeamResponse] = Field(default_factory=list)
     invitations: list[AcceleratorTeamInvitationResponse]
     can_create: bool = False
     transfer: dict | None = None

@@ -8,6 +8,8 @@ from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from accelerator_notification_service import enqueue_notification
+from accelerator_attendance_reporting import attendance_summaries
+from accelerator_team_roster import active_team_roster, linked_team_roster
 from accelerator_service import (
     add_audit,
     is_accelerator_organizer,
@@ -120,6 +122,8 @@ async def require_owner(
     if membership.status != "enrolled":
         raise HTTPException(status_code=409, detail="Участие владельца команды не активно")
     ensure_team_mutable(team, cohort)
+    if team.attendance_team_id is not None:
+        raise HTTPException(status_code=409, detail="Состав связанной команды меняет организатор")
     return membership
 
 
@@ -378,6 +382,25 @@ async def team_dict(
                 **({"email": person.email} if show_email and access_role != "tracker" else {}),
             },
         })
+    if team.attendance_team_id is not None:
+        roster = linked_team_roster().subquery()
+        linked_members = (await db.execute(
+            select(roster.c.grant_id, AcceleratorMembership, User)
+            .join(AcceleratorMembership, AcceleratorMembership.id == roster.c.membership_id)
+            .join(User, User.id == AcceleratorMembership.user_id)
+            .where(roster.c.team_id == team.id)
+            .order_by(User.name, User.id)
+        )).all()
+        members.extend({
+            "id": grant_id,
+            "membership_id": member.id,
+            "role": "owner" if member.id == team.owner_membership_id else "member",
+            "status": "active",
+            "share_contact": False,
+            "person": {"id": person.id, "name": person.name, **(
+                {"email": person.email} if access_role == "manager" or viewer.id == person.id else {}
+            )},
+        } for grant_id, member, person in linked_members)
     viewer_is_owner = owner.user_id == viewer.id
     invitations = []
     if access_role == "manager" or (access_role == "resident" and viewer_is_owner):
@@ -396,6 +419,7 @@ async def team_dict(
         and owner.status == "enrolled"
         and team.status == "active"
         and cohort.status not in FROZEN_COHORT_STATUSES
+        and team.attendance_team_id is None
     )
     return {
         "id": team.id,
@@ -446,6 +470,9 @@ async def membership_team_payload(
             for row in rows
         ]
     from accelerator_team_transfer import transfer_state
+    linked = linked_team_roster().subquery()
+    additional = (await db.execute(select(AcceleratorTeam).join(linked, linked.c.team_id == AcceleratorTeam.id)
+        .where(linked.c.membership_id == membership.id).order_by(AcceleratorTeam.name))).scalars().all()
     return {
         "transfer": await transfer_state(db, membership.id) if access_role == "resident" else None,
         "team": (
@@ -453,6 +480,7 @@ async def membership_team_payload(
             if team else None
         ),
         "invitations": invitations,
+        "additional_teams": [await team_dict(db, item, viewer=user, access_role=access_role) for item in additional],
         "can_create": bool(
             access_role == "resident"
             and membership.status == "enrolled"
@@ -481,12 +509,25 @@ async def cohort_teams_payload(
     teams = (await db.execute(select(AcceleratorTeam).where(
         AcceleratorTeam.cohort_id == cohort.id
     ).order_by(AcceleratorTeam.status, AcceleratorTeam.created_at))).scalars().all()
-    return {
-        "teams": [
-            await team_dict(db, team, viewer=user, access_role="manager")
-            for team in teams
-        ]
-    }
+    payloads = [await team_dict(db, team, viewer=user, access_role="manager") for team in teams]
+    config = await db.scalar(select(AcceleratorProgramConfig).where(AcceleratorProgramConfig.cohort_id == cohort.id))
+    if config and (config.modules or {}).get("attendance"):
+        roster = active_team_roster()
+        rows = (await db.execute(select(roster.c.team_id, AcceleratorMembership)
+            .join(AcceleratorMembership, AcceleratorMembership.id == roster.c.membership_id)
+            .where(roster.c.team_id.in_([team.id for team in teams if team.status == "active"]),
+                   AcceleratorMembership.cohort_id == cohort.id, AcceleratorMembership.role == "resident",
+                   AcceleratorMembership.status.in_(("enrolled", "completed"))))).all()
+        summaries = await attendance_summaries(db, list({member.id: member for _, member in rows}.values()))
+        from collections import defaultdict
+        counts = defaultdict(lambda: [0, 0])
+        for team_id, member in rows:
+            counts[team_id][0] += summaries[member.id]["present"]
+            counts[team_id][1] += summaries[member.id]["total"]
+        for payload in payloads:
+            present, total = counts[payload["id"]]
+            payload["attendance_percent"] = round(present * 100 / total) if total else None
+    return {"teams": payloads}
 
 
 async def team_view_access(

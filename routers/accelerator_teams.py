@@ -214,7 +214,7 @@ async def assign_team_tracker(
     ))).scalars().all())
     cleared = await db.execute(delete(AcceleratorTrackerAssignment).where(
         AcceleratorTrackerAssignment.membership_id.in_(member_ids)
-    )) if member_ids else None
+    )) if member_ids and team.attendance_team_id is None else None
     add_audit(
         db,
         accelerator_id=cohort.accelerator_id,

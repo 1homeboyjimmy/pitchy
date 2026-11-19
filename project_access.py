@@ -2,9 +2,11 @@
 from fastapi import HTTPException
 from sqlalchemy import and_, or_, select
 from models import AcceleratorCohort, AcceleratorMembership, AcceleratorTeam, AcceleratorTeamMember, AcceleratorProjectMember, Project
+from accelerator_team_roster import linked_team_roster
 
 
 def shared_project_ids(user_id, cohort_id=None):
+    linked = linked_team_roster().subquery()
     primary = (
         select(AcceleratorTeam.project_id)
         .join(AcceleratorTeamMember, AcceleratorTeamMember.team_id == AcceleratorTeam.id)
@@ -33,7 +35,8 @@ def shared_project_ids(user_id, cohort_id=None):
             AcceleratorMembership.role == 'resident', AcceleratorMembership.status == 'enrolled',
             AcceleratorCohort.status.not_in(['completed','archived']),
             or_(AcceleratorProjectMember.team_id.is_(None), and_(AcceleratorTeam.status == 'active',
-                AcceleratorTeam.cohort_id == AcceleratorCohort.id, AcceleratorTeamMember.id.is_not(None)))))
+                AcceleratorTeam.cohort_id == AcceleratorCohort.id, or_(AcceleratorTeamMember.id.is_not(None),
+                    AcceleratorProjectMember.id.in_(select(linked.c.grant_id)))))))
     if cohort_id is not None:
         explicit = explicit.where(AcceleratorCohort.id == cohort_id)
     return primary.union(explicit)

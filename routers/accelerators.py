@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from accelerator_attendance_reporting import attendance_summaries, effective_attendance_records, validate_attendance_policy
+from accelerator_team_roster import active_team_roster
 
 from datetime import date, datetime, time, timedelta, timezone
 import hashlib
@@ -6087,23 +6088,27 @@ async def _cohort_resident_report(
         .join(User, User.id == AcceleratorTrackerAssignment.tracker_user_id)
         .where(AcceleratorTrackerAssignment.membership_id.in_(membership_ids))
     )).all() if membership_ids else []
-    team_tracker_rows = (await db.execute(
-        select(AcceleratorTeamMember.membership_id, User.id, User.name)
-        .join(AcceleratorTeam, AcceleratorTeam.id == AcceleratorTeamMember.team_id)
-        .join(
-            AcceleratorTeamTrackerAssignment,
-            AcceleratorTeamTrackerAssignment.team_id == AcceleratorTeam.id,
-        )
-        .join(User, User.id == AcceleratorTeamTrackerAssignment.tracker_user_id)
+    roster = active_team_roster()
+    team_rows = (await db.execute(
+        select(roster.c.membership_id, AcceleratorTeam.id, AcceleratorTeam.name, User.id, User.name)
+        .join(AcceleratorTeam, AcceleratorTeam.id == roster.c.team_id)
+        .outerjoin(AcceleratorTeamTrackerAssignment, AcceleratorTeamTrackerAssignment.team_id == AcceleratorTeam.id)
+        .outerjoin(User, User.id == AcceleratorTeamTrackerAssignment.tracker_user_id)
         .where(
-            AcceleratorTeamMember.membership_id.in_(membership_ids),
-            AcceleratorTeamMember.status == "active",
+            roster.c.membership_id.in_(membership_ids),
+            AcceleratorTeam.cohort_id == cohort.id,
             AcceleratorTeam.status == "active",
         )
+        .order_by(AcceleratorTeam.name, AcceleratorTeam.id)
     )).all() if membership_ids else []
-    tracker_rows = list(tracker_rows) + list(team_tracker_rows)
+    teams_by_membership: dict[int, list[dict]] = {}
+    tracker_rows = list(tracker_rows)
+    for member_id, team_id, team_name, tracker_id, tracker_name in team_rows:
+        teams_by_membership.setdefault(member_id, []).append({"id": team_id, "name": team_name})
+        if tracker_id is not None:
+            tracker_rows.append((member_id, tracker_id, tracker_name))
     trackers_by_membership: dict[int, list[dict]] = {}
-    for assigned_membership_id, tracker_id, tracker_name in tracker_rows:
+    for assigned_membership_id, tracker_id, tracker_name in dict.fromkeys(tracker_rows):
         trackers_by_membership.setdefault(assigned_membership_id, []).append({
             "user_id": tracker_id, "name": tracker_name,
         })
@@ -6167,6 +6172,7 @@ async def _cohort_resident_report(
             **({"participant_profile": profile_map.get(membership.id, {})} if can_read_profile else {}),
             "status_reason": membership.status_reason,
             "trackers": trackers_by_membership.get(membership.id, []),
+            "teams": teams_by_membership.get(membership.id, []),
             "program": {
                 "enabled": (program_config.modules or {}).get("program_progress", True) if program_config else True,
                 "completed": program_progress["completed"],
@@ -6201,6 +6207,7 @@ async def _cohort_resident_report(
             "На проверке", "Просрочено", "Посещено", "Всего событий",
             "Уровень риска", "Причины внимания", "Открытые задачи",
             "Последний чек-ин", "Последняя активность",
+            "Команды",
             "Посещаемость, %",
         ]]
         for row in rows:
@@ -6219,6 +6226,7 @@ async def _cohort_resident_report(
                 row["open_tasks"],
                 csv_datetime(row["last_checkin_at"], cohort.timezone),
                 csv_datetime(row["last_activity_at"], cohort.timezone),
+                ", ".join(team["name"] for team in row["teams"]),
                 row["attendance"]["percent"],
             ])
         hidden_columns = set()
