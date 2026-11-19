@@ -670,6 +670,7 @@ async def test_role_boundaries_block_cross_accelerator_management_and_quota_chan
             "homework": True,
             "attendance": False,
             "progress_tracking": False,
+            "trackers": True,
             "matchmaking": False,
             "project_audit": False,
             "demo_day": False,
@@ -842,11 +843,9 @@ async def test_tracker_report_scope_and_resident_lifecycle():
         assert completed_task["status"] == "done"
         tracking = await membership_tracking(membership_ids[0], tracker, db)
         assert tracking["access_role"] == "tracker"
-        assert "Резидент отметил сложности" in tracking["risk"]["reasons"]
-        staff_reason = next(
-            row for row in tracking["risk"]["reason_items"]
-            if row["code"] == "checkin_health_yellow"
-        )
+        assert tracking["risk"]["level"] == "green"
+        assert tracking["risk"]["last_checkin_health"] == "yellow"
+        assert not tracking["risk"]["reason_items"]
         assert len(tracking["checkins"]) == 1
         assert len(tracking["feedback"]) == 1
         assert tracking["tasks"][0]["status"] == "done"
@@ -856,15 +855,9 @@ async def test_tracker_report_scope_and_resident_lifecycle():
         resident_tracking = await membership_tracking(
             membership_ids[0], first_resident, db
         )
-        assert "Вы отметили сложности" in resident_tracking["risk"]["reasons"]
-        resident_reason = next(
-            row for row in resident_tracking["risk"]["reason_items"]
-            if row["code"] == "checkin_health_yellow"
-        )
-        assert resident_reason["actor"] == "resident"
-        assert (resident_reason["code"], resident_reason["severity"]) == (
-            staff_reason["code"], staff_reason["severity"]
-        )
+        assert resident_tracking["risk"]["level"] == "green"
+        assert resident_tracking["risk"]["last_checkin_health"] == "yellow"
+        assert not resident_tracking["risk"]["reason_items"]
         with pytest.raises(HTTPException) as tracker_cannot_task_other:
             await create_tracking_task(
                 membership_ids[1],
