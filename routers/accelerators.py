@@ -7348,6 +7348,7 @@ async def create_project_audit(
             audit_type=row.audit_type,
             project_snapshot=row.input_snapshot,
             focus=row.focus,
+            cohort_id=row.cohort_id,
         )
     except Exception:
         logger.exception("Project audit generation failed for audit_id=%s", row.id)
