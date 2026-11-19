@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { ChevronDown, ChevronLeft, ChevronRight, Mail, Search, Send } from "lucide-react";
+import { ChevronDown, Mail, Search, Send } from "lucide-react";
 import { describeApiError, postAuthJson } from "@/lib/api";
+import { ResultPages } from "./ResultPages";
 
 export type PoolContact = {
   name: string;
@@ -49,18 +50,6 @@ function SearchField({ label, value, onChange }: { label: string; value: string;
     <input type="search" aria-label={label} placeholder={label} value={value} onChange={event => onChange(event.target.value)}
       className="workspace-input !py-2 !pl-9" />
   </label>;
-}
-
-function Pages({ page, total, onChange }: { page: number; total: number; onChange: (page: number) => void }) {
-  const pages = Math.ceil(total / PAGE_SIZE);
-  if (pages <= 1) return null;
-  return <nav aria-label="Страницы результатов" className="mt-3 flex items-center justify-between gap-2 text-sm text-white/60">
-    <span>{page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} из {total}</span>
-    <div className="flex gap-1">
-      <button type="button" className="grid size-9 place-items-center rounded-lg border border-white/10 disabled:opacity-30" disabled={page === 0} onClick={() => onChange(page - 1)} aria-label="Предыдущая страница"><ChevronLeft size={16} /></button>
-      <button type="button" className="grid size-9 place-items-center rounded-lg border border-white/10 disabled:opacity-30" disabled={page + 1 >= pages} onClick={() => onChange(page + 1)} aria-label="Следующая страница"><ChevronRight size={16} /></button>
-    </div>
-  </nav>;
 }
 
 function ContactLinks({ contact }: { contact: PoolContact }) {
@@ -169,7 +158,7 @@ export function CandidateDirectory({ candidates, membershipId, token, busy, team
         </div>
       </details>)}
     </div> : <p className="py-3 text-sm text-white/50">{emailQuery && lookup?.email !== needle ? "Нажмите «Найти», чтобы проверить полный email." : "Участники не найдены."}</p>}
-    <Pages page={currentPage} total={filtered.length} onChange={setPage} />
+    <ResultPages page={currentPage} pageSize={PAGE_SIZE} total={filtered.length} onChange={setPage} />
   </section>;
 }
 
@@ -205,6 +194,6 @@ export function OpenTeamDirectory({ teams, pendingIds, busy, blocked, messages, 
         </div>
       </details>)}
     </div> : <p className="py-3 text-sm text-white/50">{teams.length ? "Команды не найдены." : "Открытых команд пока нет."}</p>}
-    <Pages page={currentPage} total={filtered.length} onChange={setPage} />
+    <ResultPages page={currentPage} pageSize={PAGE_SIZE} total={filtered.length} onChange={setPage} />
   </div>;
 }
