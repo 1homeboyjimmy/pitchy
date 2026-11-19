@@ -17,10 +17,16 @@ async def transfer_state(db, membership_id):
         return None
     team = await db.get(AcceleratorTeam, member.team_id)
     owner = team.owner_membership_id == membership_id
-    allowed = not owner or await active_member_count(db, team.id) == 1
+    linked = team.attendance_team_id is not None
+    allowed = not linked and (not owner or await active_member_count(db, team.id) == 1)
+    reason = None
+    if linked:
+        reason = "Состав связанной команды меняет организатор."
+    elif not allowed:
+        reason = "Сначала передайте капитанство другому участнику команды."
     return {"team_id": team.id, "team_name": team.name, "member_id": member.id,
             "action": "archive" if owner else "leave", "allowed": allowed,
-            "reason": None if allowed else "Сначала передайте капитанство другому участнику команды."}
+            "reason": reason}
 
 
 async def capture_transfer_consent(db, membership_id, target_team_id, consent=False, expected_team_id=None):

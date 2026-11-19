@@ -257,7 +257,7 @@ export function TeamWorkspace({ membershipId, project, onChanged }: { membership
 
   const leaveTeam = async () => {
     const ownMember = team?.members.find((member) => member.membership_id === membershipId);
-    if (!token || !team || team.can_manage || team.status !== "active" || ownMember?.status !== "active" || !window.confirm(`Покинуть команду «${team.name}»?`)) return;
+    if (!token || !canLeaveTeam || ownMember?.status !== "active" || !window.confirm(`Покинуть команду «${team?.name}»?`)) return;
     setBusy("leave"); setError("");
     try { await deleteAuth(`/api/accelerators/team-members/${ownMember.id}`, token); await refresh(); }
     catch (reason) { setError(teamError(reason, "Не удалось покинуть команду")); }
@@ -274,6 +274,7 @@ export function TeamWorkspace({ membershipId, project, onChanged }: { membership
   const viewerActive = team?.members.some((member) => member.membership_id === membershipId && member.status === "active") || false;
   const teamReadOnly = Boolean(team && (team.status !== "active" || (!team.can_manage && !viewerActive)));
   const canEditTeam = Boolean(team?.can_manage && team.status === "active");
+  const canLeaveTeam = Boolean(team && team.status === "active" && viewerActive && team.owner_membership_id !== membershipId);
   const incomingApplications = pool.applications.filter(row => row.can_respond);
   const openTeams = pool.teams.filter(row => row.id !== team?.id && row.recruiting_open && row.member_count < row.max_members);
 
@@ -339,9 +340,9 @@ export function TeamWorkspace({ membershipId, project, onChanged }: { membership
       </section>}
 
       {mode === "applications" && <div className="mt-6 overflow-hidden rounded-2xl border border-white/9">{pool.applications.filter(row => row.can_cancel).map(row => <article key={row.id} className="flex flex-wrap items-center justify-between gap-4 border-b border-white/8 p-4 last:border-0"><div><p>{row.team_name}</p><p className="mt-1 text-sm text-white/40">{row.desired_role ? `Желаемая роль: ${row.desired_role}` : "Заявка на вступление"}</p><p className="mt-1 text-xs text-amber-200">Ожидает ответа</p></div><button type="button" onClick={() => void respondApplication(row.id, "cancelled")} disabled={Boolean(busy)} className="overview-secondary">Отозвать заявку</button></article>)}{!pool.applications.some(row => row.can_cancel) && <p className="py-12 text-center text-sm text-white/35">Активных заявок нет.</p>}</div>}
-      {team && mode === "create" && ((canEditTeam && !team.project) || (viewerActive && !team.can_manage && team.status === "active")) && <div className="mt-3">
+      {team && mode === "create" && ((canEditTeam && !team.project) || canLeaveTeam) && <div className="mt-3">
         {team.can_manage && team.status === "active" && !team.project && <div className="mt-5 rounded-2xl border border-blue-300/15 bg-blue-300/[0.035] p-4"><h3>Добавить проект</h3><p className="mt-1 text-xs text-white/40">После привязки откроются аудит и другие проектные функции.</p>{ownedProjects.length > 0 && <div className="mt-4 flex flex-col gap-2 sm:flex-row"><select value={projectToAttach} onChange={(event) => setProjectToAttach(event.target.value)} className="workspace-input"><option value="">Выберите проект</option>{ownedProjects.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select><button type="button" onClick={() => void attachProject(Number(projectToAttach))} disabled={!projectToAttach || busy === "project"} className="workspace-button shrink-0">Привязать проект</button></div>}<form onSubmit={createAndAttachProject} className="mt-3 flex flex-col gap-2 sm:flex-row"><input value={newProjectName} onChange={(event) => setNewProjectName(event.target.value)} minLength={2} maxLength={200} placeholder="Название нового проекта" className="workspace-input" /><button disabled={!newProjectName.trim() || busy === "new-project"} className="workspace-button shrink-0">Создать и привязать</button></form></div>}
-        {team.status === "active" && viewerActive && !team.can_manage && <button type="button" onClick={() => void leaveTeam()} disabled={Boolean(busy)} className="mt-4 inline-flex items-center gap-1 rounded-full border border-red-300/15 px-4 py-2 text-sm text-red-200"><X size={14} /> Покинуть команду</button>}
+        {canLeaveTeam && <button type="button" onClick={() => void leaveTeam()} disabled={Boolean(busy)} className="mt-4 inline-flex items-center gap-1 rounded-full border border-red-300/15 px-4 py-2 text-sm text-red-200"><X size={14} /> Покинуть команду</button>}
       </div>}
     </section>
 
