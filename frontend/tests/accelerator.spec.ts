@@ -721,7 +721,8 @@ test('resident Today page prioritizes required work and hides project advice and
   await expect(page.getByRole('heading', { name: 'Нужно сделать' })).toBeVisible();
   await expect(page.getByText('Доработать: Сценарий интервью')).toBeVisible();
   await expect(page.getByText('Уточнить сегмент', { exact: true })).toBeVisible();
-  await expect(page.getByText('Встреча с трекером')).toBeVisible();
+  await expect(page.getByRole('button', { name: /Встреча с трекером/ })).toBeVisible();
+  await expect(page.getByText('Время: Europe/Moscow')).toHaveCount(0);
   await expect(page.getByText('Посещено 5 из 6 прошедших мероприятий')).toBeVisible();
   await expect(page.getByText('83%')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Можно улучшить' })).toHaveCount(0);
@@ -735,10 +736,16 @@ test('resident Today page prioritizes required work and hides project advice and
     await expect(page.getByTestId('resident-today')).toBeVisible();
     if (process.env.ACCELERATOR_CAPTURE_UI && (width === 360 || width === 1280)) await page.screenshot({ path: testInfo.outputPath(`today-${width}.png`), fullPage: true });
     if (width < 1024) {
-      await page.getByRole('button', { name: 'Меню участника' }).click();
+      const menu = page.locator('header').getByRole('button', { name: 'Меню участника' });
+      await expect(menu).toBeVisible();
+      await expect(page.getByRole('link', { name: /Дашборд/ })).toHaveCount(0);
+      await menu.click();
       await expect(page.getByTestId('resident-navigation')).toBeVisible();
+      await expect(page.getByRole('link', { name: 'Дашборд Pitchy' })).toBeVisible();
       await page.getByRole('button', { name: 'Меню участника' }).click();
-    } else await expect(page.getByTestId('resident-navigation')).toBeVisible();
+    } else {
+      await expect(page.getByTestId('resident-navigation')).toBeVisible();
+    }
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
     expect(overflow).toBe(false);
   }

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, ArrowUpRight, CheckCircle2, FileText, GitBranch, Loader2, MessageCircle, Users } from "lucide-react";
+import { ArrowRight, ArrowUpRight, CheckCircle2, ChevronRight, FileText, GitBranch, Loader2, MessageCircle, Users } from "lucide-react";
 
 import { describeApiError, getAuthJson, postAuthJson } from "@/lib/api";
 import { useAuth } from "@/lib/hooks/useAuth";
@@ -28,6 +28,22 @@ function dateText(value: string | null | undefined, timezone: string, withTime =
   if (Number.isNaN(date.getTime())) return "Дата уточняется";
   return new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", ...(withTime ? { hour: "2-digit", minute: "2-digit" } : {}), timeZone: timezone }).format(date);
 }
+function upcomingTime(value: string, timezone: string) {
+  const date = utcDate(value);
+  if (Number.isNaN(date.getTime())) return "Дата уточняется";
+  const calendar = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit",
+  });
+  const today = calendar.format(new Date());
+  const tomorrow = new Date(`${today}T00:00:00Z`);
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  const day = calendar.format(date);
+  const label = day === today ? "Сегодня" : day === tomorrow.toISOString().slice(0, 10)
+    ? "Завтра" : dateText(value, timezone, false);
+  const time = new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit", timeZone: timezone }).format(date);
+  return `${label} · ${time}`;
+}
+
 function todayText(timezone: string) {
   return new Intl.DateTimeFormat("ru-RU", { weekday: "long", day: "numeric", month: "long", timeZone: timezone }).format(new Date());
 }
@@ -108,8 +124,27 @@ export function ResidentToday({ membership, onNavigate }: { membership: TodayMem
 
       <section className="rounded-xl border border-white/15 bg-[#1c1b1b] p-5 sm:p-6">
         <h2 className="text-xl font-semibold">Ближайшее</h2>
-        {upcoming.length ? <div className="mt-5 divide-y divide-white/15">{upcoming.map((row) => <div key={row.key} className="py-4 first:pt-0 last:pb-0"><p className="text-sm text-white/55">{dateText(row.starts_at, timezone)}</p><div className="mt-1 flex flex-wrap items-center justify-between gap-2"><div><p className="font-medium">{row.title}</p><p className="mt-1 text-sm text-white/55">{row.location || row.description}</p></div>{row.kind === "event" && row.meeting_url ? <a href={row.meeting_url} target="_blank" rel="noreferrer" className="rounded-lg border border-white/35 px-4 py-2 text-sm">Подключиться</a> : <button type="button" onClick={() => onNavigate(row.section, row.target_id)} className="inline-flex items-center gap-1 text-sm">Подробнее <ArrowRight size={15} /></button>}</div></div>)}</div> : <p className="mt-5 text-sm text-white/55">Ближайших событий пока нет.</p>}
-        <div className="mt-5 flex flex-wrap justify-between gap-2">{membership.modules.attendance && <button type="button" onClick={() => onNavigate("events")} className="inline-flex items-center gap-2 text-sm">Все мероприятия <ArrowRight size={15} /></button>}<span className="text-xs text-white/50">Время: {timezone}</span></div>
+        {upcoming.length ? <ul className="mt-3 divide-y divide-white/15">
+          {upcoming.map((row, index) => {
+            const format = row.event_format === "online" ? "Онлайн" : row.event_format === "offline"
+              ? "Очно" : row.event_format === "hybrid" ? "Гибрид" : null;
+            const details = <>
+              <span className="block text-xs text-white/55">{upcomingTime(row.starts_at, timezone)}{format && ` · ${format}`}</span>
+              <span className="mt-1 block break-words font-medium">{row.title}</span>
+            </>;
+            const joinUrl = index === 0 && row.kind === "event" ? row.meeting_url : null;
+            return <li key={row.key} className="py-2">
+              <button type="button" onClick={() => onNavigate(row.section, row.target_id)}
+                className="flex min-h-11 w-full items-center justify-between gap-3 rounded-lg py-1 text-left">
+                <span className="min-w-0">{details}</span>
+                <ChevronRight size={16} className="shrink-0 text-white/55" />
+              </button>
+              {joinUrl && <a href={joinUrl} target="_blank" rel="noreferrer"
+                className="workspace-button mt-2">Подключиться</a>}
+            </li>;
+          })}
+        </ul> : <p className="mt-3 text-sm text-white/55">Ближайших событий пока нет.</p>}
+        {membership.modules.attendance && <button type="button" onClick={() => onNavigate("events")} className="mt-3 inline-flex items-center gap-2 text-sm">Все мероприятия <ArrowRight size={15} /></button>}
       </section>
     </div>
 

@@ -43,6 +43,8 @@ test('enrolled resident sees a project description and can select another idea',
   await resident(page);
   await page.goto('/accelerator/my/101');
   await page.getByRole('button', { name: 'Мой проект', exact: true }).click();
+  await expect(page.getByText('Описание первой идеи.', { exact: true })).toBeHidden();
+  await page.getByText('Описание проекта', { exact: true }).click();
   await expect(page.getByText('Описание первой идеи.', { exact: true })).toBeVisible();
   await expect(page.getByRole('combobox', { name: 'Основной проект в акселераторе' })).toHaveCSS('background-color', 'rgb(255, 255, 255)');
   await expect(page.getByRole('link', { name: 'Открыть паспорт', exact: true })).toHaveAttribute('href', '/passport/501');
@@ -53,6 +55,8 @@ test('enrolled resident sees a project description and can select another idea',
   await expect(page.getByRole('link', { name: 'Открыть паспорт', exact: true })).toHaveAttribute('href', '/passport/502');
   await page.screenshot({ path: '../private_imports/mtusi-2026/resident-project-desktop.png', fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole('button', { name: 'Заполнить паспорт', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Открыть паспорт', exact: true })).toHaveCount(0);
   await expect(page.getByText('Описание второй идеи.', { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: '../private_imports/mtusi-2026/resident-project-mobile.png', fullPage: true });
@@ -132,11 +136,11 @@ test('resident browser and site Back restore the previous view and close passpor
   await expect(page.getByRole('dialog', { name: 'Паспорт · Первая идея' })).toBeVisible();
   await page.goBack();
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  await expect(page.getByText('Описание первой идеи.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Первая идея', exact: true })).toBeVisible();
   await page.getByRole('button', { name: '← Назад', exact: true }).click();
-  await expect(page.getByText('Описание первой идеи.', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Первая идея', exact: true })).toHaveCount(0);
   await page.goForward();
-  await expect(page.getByText('Описание первой идеи.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Первая идея', exact: true })).toBeVisible();
 });
 
 for (const canEdit of [true, false]) {
