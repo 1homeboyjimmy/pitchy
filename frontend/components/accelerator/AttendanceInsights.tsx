@@ -20,7 +20,7 @@ export function AttendanceInsights({cohortId,token,refreshKey,onParticipants,onZ
 }){
  const [data,setData]=useState<Insights|null>(null);const [failed,setFailed]=useState(false);const [retry,setRetry]=useState(0);
  const [group,setGroup]=useState<"by_course"|"by_direction"|"by_track">("by_course");const [expanded,setExpanded]=useState(false);
- useEffect(()=>{let active=true;const controller=new AbortController();setData(null);setFailed(false);
+ useEffect(()=>{let active=true;const controller=new AbortController();setFailed(false);
   getAuthJson<Insights>(`/api/accelerators/cohorts/${cohortId}/attendance-insights`,token,controller.signal)
    .then(value=>{if(active)setData(value)}).catch(()=>{if(active)setFailed(true)});
   return()=>{active=false;controller.abort()};

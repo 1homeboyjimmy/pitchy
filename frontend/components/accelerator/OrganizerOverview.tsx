@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { AlertTriangle, ArrowRight, BarChart3, BookOpen, CalendarDays, CheckCircle2, Clipboard, ClipboardCheck, FileText, Loader2, Users, UserRoundCheck, type LucideIcon } from "lucide-react";
 import { getAuthJson } from "@/lib/api";
 import { AttendanceInsights } from "./AttendanceInsights";
+import { useDashboardLive } from "@/lib/hooks/useDashboardLive";
 
 export type OrganizerTab = "overview" | "operations" | "applications" | "form" | "program" | "homework" | "attendance" | "trackers" | "reports" | "tracking" | "matching" | "project_audit" | "demo_day" | "artifacts" | "closure" | "quotas" | "settings" | "audit";
 type Analytics = {
@@ -22,6 +23,7 @@ export function OrganizerOverview({ token, cohort, config, onNavigate, onCopy, c
   onOpenParticipant: (id: number) => void; onNavigate: (tab: OrganizerTab, targetId?: number) => void;
   onCopy: () => Promise<void>; copied: boolean; refreshKey: number;
 }) {
+  const liveRefresh = useDashboardLive(cohort.id, token);
   const [data, setData] = useState<OverviewData>({});
   const [pending, setPending] = useState<Array<keyof OverviewData>>(["analytics", "summary"]);
   const loading = pending.length > 0;
@@ -38,7 +40,6 @@ export function OrganizerOverview({ token, cohort, config, onNavigate, onCopy, c
       ...(modules.homework ? ["homework" as const] : []),
     ];
     setPending(["analytics", "summary", ...(modules.trackers !== false ? ["trackers" as const] : []), ...optional]);
-    setData({});
     setFailures([]);
     setNow(Date.now());
     const root = `/api/accelerators/cohorts/${cohort.id}`;
@@ -71,7 +72,7 @@ export function OrganizerOverview({ token, cohort, config, onNavigate, onCopy, c
     ]).finally(() => window.clearTimeout(timeout));
     const timer = window.setInterval(() => setNow(Date.now()), 60_000);
     return () => { active = false; controller.abort(); window.clearTimeout(timeout); window.clearInterval(timer); };
-  }, [cohort.id, token, modules, refreshKey, retry]);
+  }, [cohort.id, token, modules, refreshKey, retry, liveRefresh]);
 
   const participants = data.summary?.participants ?? data.analytics?.program.participating_residents ?? 0;
   const applicationsToReview = data.summary?.applications_to_review ?? 0;
@@ -79,8 +80,8 @@ export function OrganizerOverview({ token, cohort, config, onNavigate, onCopy, c
   const waiting = data.homework?.filter(row => row.status === "published").reduce((sum, row) => sum + (row.submission_counts?.review_pending ?? row.submission_counts?.submitted ?? 0), 0);
   const riskCount = data.summary?.at_risk;
   const withoutTracker = data.summary?.without_tracker ?? 0;
-  const attentionLoading = pending.includes("summary") || pending.includes("homework");
-  const upcomingLoading = pending.includes("events") || pending.includes("homework");
+  const attentionLoading = (pending.includes("summary") && !data.summary) || (pending.includes("homework") && !data.homework);
+  const upcomingLoading = (pending.includes("events") && !data.events) || (pending.includes("homework") && !data.homework);
   const available = (key: string) => Boolean(modules[key] && !data.analytics?.runtime_disabled_modules?.[key]);
   const stage = data.analytics?.program.current_stage;
   const programPercent = data.analytics && participants && data.analytics.program.published_stages ? `${Math.round(data.analytics.program.completion_percent)}%` : "—";
@@ -104,13 +105,13 @@ export function OrganizerOverview({ token, cohort, config, onNavigate, onCopy, c
     </header>
     {failures.length > 0 && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300/20 bg-amber-300/5 px-4 py-3 text-sm text-amber-100"><span>Не удалось загрузить: {failures.join(", ")}. Остальные разделы доступны.</span><button onClick={() => setRetry(value => value + 1)} className="underline underline-offset-4">Повторить загрузку</button></div>}
     <div className={`grid grid-cols-2 gap-3 ${modules.program_progress !== false ? "xl:grid-cols-4" : "xl:grid-cols-3"}`}>
-      <Metric icon={Users} label="Участники" value={pending.includes("summary") ? "…" : data.summary ? participants : "—"} onClick={() => onNavigate("reports")} />
-      {modules.program_progress !== false && <Metric icon={BookOpen} label="Пройдено программы" value={pending.includes("analytics") ? "…" : programPercent} onClick={() => onNavigate("program")} />}
-      {modules.attendance ? <Metric icon={BarChart3} label="Посещаемость" value={pending.includes("analytics") ? "…" : attendancePercent} onClick={() => onNavigate("attendance")} disabled={!available("attendance")} /> : <Metric icon={FileText} label="Заявки в работе" value={pending.includes("summary") ? "…" : data.summary?.applications_in_progress ?? "—"} onClick={() => onNavigate("applications")} />}
-      {modules.trackers === false && <Metric icon={AlertTriangle} label="В зоне риска" value={pending.includes("summary") ? "…" : riskCount ?? "—"} onClick={() => onNavigate("tracking")} />}
-      {modules.trackers !== false && <Metric icon={UserRoundCheck} label="Трекеры" value={pending.includes("trackers") ? "…" : data.trackers ? new Set(data.trackers.map(row => row.user_id)).size : "—"} onClick={() => onNavigate("matching")} />}
+      <Metric icon={Users} label="Участники" value={pending.includes("summary") && !data.summary ? "…" : data.summary ? participants : "—"} onClick={() => onNavigate("reports")} />
+      {modules.program_progress !== false && <Metric icon={BookOpen} label="Пройдено программы" value={pending.includes("analytics") && !data.analytics ? "…" : programPercent} onClick={() => onNavigate("program")} />}
+      {modules.attendance ? <Metric icon={BarChart3} label="Посещаемость" value={pending.includes("analytics") && !data.analytics ? "…" : attendancePercent} onClick={() => onNavigate("attendance")} disabled={!available("attendance")} /> : <Metric icon={FileText} label="Заявки в работе" value={pending.includes("summary") && !data.summary ? "…" : data.summary?.applications_in_progress ?? "—"} onClick={() => onNavigate("applications")} />}
+      {modules.trackers === false && <Metric icon={AlertTriangle} label="В зоне риска" value={pending.includes("summary") && !data.summary ? "…" : riskCount ?? "—"} onClick={() => onNavigate("tracking")} />}
+      {modules.trackers !== false && <Metric icon={UserRoundCheck} label="Трекеры" value={pending.includes("trackers") && !data.trackers ? "…" : data.trackers ? new Set(data.trackers.map(row => row.user_id)).size : "—"} onClick={() => onNavigate("matching")} />}
     </div>
-    {available("attendance") && <AttendanceInsights token={token} cohortId={cohort.id} refreshKey={refreshKey} onParticipants={onAttendanceFilter} onZeroTeams={onTeamAttendanceFilter} onTeam={id => onNavigate("matching", id)} onEvent={id => onNavigate("attendance", id)} />}
+    {available("attendance") && <AttendanceInsights token={token} cohortId={cohort.id} refreshKey={refreshKey + liveRefresh} onParticipants={onAttendanceFilter} onZeroTeams={onTeamAttendanceFilter} onTeam={id => onNavigate("matching", id)} onEvent={id => onNavigate("attendance", id)} />}
     <div className="grid gap-5 xl:grid-cols-[1.35fr_1fr]">
       <Panel title="Требует внимания">
         {attentionLoading ? <Loading /> : actions.length ? <div className="divide-y divide-white/8">{actions.map(action => <div key={action.key} className="overview-action flex flex-wrap items-center gap-3 py-4 first:pt-1 last:pb-0"><span className={`grid h-11 w-11 shrink-0 place-items-center rounded-full ${action.warning ? "bg-amber-300/10 text-amber-300" : "bg-white/7 text-white/75"}`}><action.icon size={21} /></span><div className="min-w-0 flex-1 basis-40"><p className="text-sm font-medium"><strong className="mr-2 text-xl">{action.count}</strong>{action.title}</p><p className="mt-1 text-xs leading-relaxed text-white/50">{action.detail}</p></div><button className="workspace-button !rounded-xl !px-4 !py-2 !text-xs" onClick={() => { onNavigate(action.tab, action.targetId); if (action.key === "trackers") { const id = data.summary?.first_without_tracker; if (id) onOpenParticipant(id); } }}>{action.button}</button></div>)}</div> : <div className="py-6"><CheckCircle2 size={28} className="mb-3 text-emerald-300" /><p className="font-medium">{failures.length ? "Задач в загруженных разделах нет" : "Срочных задач нет"}</p><p className="mt-2 text-sm text-white/50">{cohort.status === "draft" ? "Подготовьте анкету и программу, затем откройте набор." : "Проверьте программу или откройте список участников."}</p><div className="mt-4 flex flex-wrap gap-3"><TextAction onClick={() => onNavigate(cohort.status === "draft" ? "form" : "reports")}>{cohort.status === "draft" ? "Настроить анкету" : "Все участники"}</TextAction>{cohort.status === "draft" && <TextAction onClick={() => onNavigate("settings")}>Настроить поток</TextAction>}</div></div>}

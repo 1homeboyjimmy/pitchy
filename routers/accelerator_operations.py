@@ -1,7 +1,8 @@
 """Aggregate cohort operations and global-admin runtime controls."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request, HTTPException
+from fastapi.responses import StreamingResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from accelerator_operations_service import (
@@ -29,6 +30,43 @@ async def _cohort(db: AsyncSession, cohort_id: int) -> AcceleratorCohort:
     return row
 
 
+@router.get("/cohorts/{cohort_id}/dashboard-live")
+async def dashboard_live_config(cohort_id: int, user: User = Depends(get_async_current_user), db: AsyncSession = Depends(get_async_db)):
+    from accelerator_service import require_cohort_manager
+    from accelerator_dashboard_cache import feature_enabled
+    import os
+    cohort = await _cohort(db, cohort_id)
+    await require_cohort_manager(db, user, cohort)
+    return {"enabled": bool(os.getenv("REDIS_URL") and feature_enabled("SSE", cohort_id))}
+
+
+@router.get("/cohorts/{cohort_id}/dashboard-stream")
+async def dashboard_stream(cohort_id: int, request: Request, user: User = Depends(get_async_current_user), db: AsyncSession = Depends(get_async_db)):
+    from accelerator_service import require_cohort_manager
+    from accelerator_dashboard_cache import feature_enabled
+    from accelerator_dashboard_stream import dashboard_events
+    from db_async import AsyncSessionLocal
+    import os
+    cohort = await _cohort(db, cohort_id)
+    await require_cohort_manager(db, user, cohort)
+    if not os.getenv("REDIS_URL") or not feature_enabled("SSE", cohort_id):
+        return Response(status_code=204)
+    # Do not occupy a database connection for the lifetime of the stream.
+    await db.close()
+
+    async def check_access():
+        async with AsyncSessionLocal() as check_db:
+            try:
+                current_user = await get_async_current_user(request, check_db)
+                await require_cohort_manager(check_db, current_user, await _cohort(check_db, cohort_id))
+                return True
+            except HTTPException:
+                return False
+
+    return StreamingResponse(dashboard_events(request, cohort_id, check_access), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
+
+
 @router.get("/cohorts/{cohort_id}/analytics")
 async def get_cohort_analytics(
     cohort_id: int,
@@ -36,7 +74,10 @@ async def get_cohort_analytics(
     db: AsyncSession = Depends(get_async_db),
 ):
     cohort = await _cohort(db, cohort_id)
-    return await cohort_analytics(db, cohort=cohort, user=user)
+    from accelerator_service import require_cohort_manager
+    from accelerator_dashboard_cache import cached_json
+    await require_cohort_manager(db, user, cohort)
+    return await cached_json(cohort.id, "analytics", lambda: cohort_analytics(db, cohort=cohort, user=user))
 
 
 @router.get("/cohorts/{cohort_id}/operations-health")

@@ -6391,6 +6391,11 @@ async def cohort_overview_summary(
     """Small organizer projection; never builds resident reports or quota snapshots."""
     cohort = await get_cohort_or_404(db, cohort_id)
     await require_cohort_manager(db, user, cohort)
+    from accelerator_dashboard_cache import cached_json
+    return await cached_json(cohort.id, "summary", lambda: _cohort_overview_summary(db, cohort))
+
+
+async def _cohort_overview_summary(db, cohort):
     members = list((await db.execute(select(AcceleratorMembership).where(
         AcceleratorMembership.cohort_id == cohort.id,
         AcceleratorMembership.role == "resident",
@@ -6427,7 +6432,8 @@ async def cohort_attendance_insights(cohort_id: int, user: User = Depends(get_as
     await require_cohort_manager(db, user, cohort)
     await require_attendance_module(db, cohort)
     from accelerator_attendance_insights import attendance_insights
-    return await attendance_insights(db, cohort)
+    from accelerator_dashboard_cache import cached_json
+    return await cached_json(cohort.id, "attendance", lambda: attendance_insights(db, cohort))
 
 
 @router.get("/cohorts/{cohort_id}/notification-health")

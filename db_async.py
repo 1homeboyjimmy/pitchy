@@ -42,9 +42,11 @@ else:
 
 async_engine = create_async_engine(DATABASE_URL, **engine_kwargs)
 
+from accelerator_dashboard_cache import DashboardAsyncSession
+
 AsyncSessionLocal = async_sessionmaker(
     bind=async_engine, 
-    class_=AsyncSession, 
+    class_=DashboardAsyncSession,
     expire_on_commit=False,
     autocommit=False,
     autoflush=False

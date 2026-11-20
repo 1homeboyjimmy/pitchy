@@ -29,7 +29,9 @@ else:
     engine_kwargs["connect_args"] = {"check_same_thread": False}
 
 engine = create_engine(DATABASE_URL, **engine_kwargs)
-SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+from accelerator_dashboard_cache import DashboardSession
+
+SessionLocal = sessionmaker(bind=engine, class_=DashboardSession, autoflush=False, autocommit=False)
 
 
 def get_db() -> Generator:
