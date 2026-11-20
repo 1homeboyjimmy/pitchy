@@ -1,0 +1,11 @@
+[Unit]
+Description=Synchronize MIREA schedule and attendance from public workbooks
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/docker exec ai-startup-backend-1 python /app/scripts/sync_mirea_cloud.py --actor-id 13 --apply
+TimeoutStartSec=240
+StandardOutput=journal
+StandardError=journal
