@@ -5,7 +5,7 @@ import { ACCELERATOR_REFRESH } from "./useAcceleratorRefresh";
 import { ApiError, getAuthJson } from "@/lib/api";
 
 /** A notice requests a fresh authorized snapshot; no participant data travels in SSE. */
-export function useDashboardLive(cohortId: number | null, token: string | null) {
+export function useDashboardLive(cohortId: number | null, token: string | null, membershipId?: number) {
   const [revision, setRevision] = useState(0);
   useEffect(() => {
     if (!cohortId || !token) return;
@@ -20,7 +20,7 @@ export function useDashboardLive(cohortId: number | null, token: string | null) 
     let lastSeen = Date.now();
     let failures = 0;
     const controller = new AbortController();
-    const root = `/api/accelerators/cohorts/${cohortId}`;
+    const root = membershipId ? `/api/accelerators/memberships/${membershipId}` : `/api/accelerators/cohorts/${cohortId}`;
     const visible = () => document.visibilityState === "visible";
     const scheduleRefresh = () => {
       if (!active || !visible() || refresh) return;
@@ -79,6 +79,6 @@ export function useDashboardLive(cohortId: number | null, token: string | null) 
     document.addEventListener("visibilitychange", visibility);
     void configure();
     return () => { active = false; controller.abort(); stop(); clearInterval(watchdog); document.removeEventListener("visibilitychange", visibility); };
-  }, [cohortId, token]);
+  }, [cohortId, membershipId, token]);
   return revision;
 }

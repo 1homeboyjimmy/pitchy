@@ -123,3 +123,45 @@ async def put_runtime_override(
     await update_runtime_override(db, payload=payload, user=user)
     await db.commit()
     return {"overrides": await list_runtime_overrides(db, user=user)}
+
+
+async def _resident_live_context(db, membership_id, user):
+    from models import AcceleratorMembership
+    membership = await db.get(AcceleratorMembership, membership_id)
+    if (not membership or membership.user_id != user.id or membership.role != "resident"
+            or membership.status != "enrolled"):
+        raise HTTPException(status_code=404, detail="Активное участие не найдено")
+    return await _cohort(db, membership.cohort_id)
+
+
+@router.get("/memberships/{membership_id}/dashboard-live")
+async def resident_live_config(membership_id: int, user: User = Depends(get_async_current_user), db: AsyncSession = Depends(get_async_db)):
+    from accelerator_dashboard_cache import feature_enabled
+    import os
+    cohort = await _resident_live_context(db, membership_id, user)
+    return {"enabled": bool(os.getenv("REDIS_URL") and feature_enabled("SSE", cohort.id))}
+
+
+@router.get("/memberships/{membership_id}/dashboard-stream")
+async def resident_live_stream(membership_id: int, request: Request, user: User = Depends(get_async_current_user), db: AsyncSession = Depends(get_async_db)):
+    from accelerator_dashboard_cache import feature_enabled
+    from accelerator_dashboard_stream import dashboard_events
+    from db_async import AsyncSessionLocal
+    import os
+    cohort = await _resident_live_context(db, membership_id, user)
+    cohort_id = cohort.id
+    if not os.getenv("REDIS_URL") or not feature_enabled("SSE", cohort_id):
+        return Response(status_code=204)
+    await db.close()
+
+    async def check_access():
+        async with AsyncSessionLocal() as check_db:
+            try:
+                current_user = await get_async_current_user(request, check_db)
+                await _resident_live_context(check_db, membership_id, current_user)
+                return True
+            except HTTPException:
+                return False
+
+    return StreamingResponse(dashboard_events(request, cohort_id, check_access), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})

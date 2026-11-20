@@ -1,5 +1,7 @@
 "use client";
 
+import { useAcceleratorRefresh } from "@/lib/hooks/useAcceleratorRefresh";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowUpRight,
@@ -89,6 +91,7 @@ export function ResidentArtifacts({ membershipId }: { membershipId: number }) {
     }
   }, [membershipId, token]);
 
+  useAcceleratorRefresh(load);
   useEffect(() => { void load(); }, [load]);
 
   const actionCount = useMemo(

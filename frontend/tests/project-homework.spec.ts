@@ -76,6 +76,7 @@ async function mockOverview(page: Page) {
       applications: [{ id: 71, status: 'submitted', applicant_name: 'Кандидат', application_type: 'project', form_payload: {}, submitted_at: new Date().toISOString() }],
       residents,
       analytics,
+      'attendance-insights': {scope:'individual',basis:'past',past_events:1,percent:100,teams:0,distribution:{normal:0,below50:0,zero:0,no_data:0},participants:{normal:3,below50:0,zero:0,no_data:0},top_teams:[],by_course:[],by_direction:[],by_track:[],events:[],visit_distribution:[]},
       'operations-health': { status: 'error', issues: [{ code: 'failed_notifications', severity: 'error', count: 27, message: 'Уведомления не доставлены', recommended_action: 'Проверьте состояние доставки' }] },
       homework: [homework], events: [event], trackers: [{ staff_id: 61, user_id: 9, name: 'Анна', email: 'tracker@example.test', membership_ids: [103], team_ids: [] }],
       'program-stages': [stage], 'homework-review-queue': { items: [] },

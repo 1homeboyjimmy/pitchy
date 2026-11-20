@@ -1,5 +1,7 @@
 "use client";
 
+import { useAcceleratorRefresh } from "@/lib/hooks/useAcceleratorRefresh";
+
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Loader2, RotateCcw, X } from "lucide-react";
@@ -19,6 +21,7 @@ export function ResidentProjectRecommendations({ membershipId, onNavigate }: { m
     try { setData(await getAuthJson<TodayRecommendations>("/api/accelerators/memberships/" + membershipId + "/today", token)); setError(""); }
     catch (reason) { setError(describeApiError(reason, "Не удалось загрузить советы по проекту")); }
   }, [membershipId, token]);
+  useAcceleratorRefresh(load);
   useEffect(() => { void load(); }, [load]);
   const change = async (row: Recommendation, restore: boolean) => {
     if (!token || busy) return;

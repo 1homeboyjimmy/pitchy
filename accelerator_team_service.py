@@ -483,37 +483,40 @@ async def membership_team_payload(
     access_role = await membership_read_access(
         db, membership=membership, user=user, cohort=cohort
     )
-    team = await find_team_for_membership(db, membership.id)
-    invitations = []
-    if access_role != "tracker":
-        rows = (await db.execute(select(AcceleratorTeamInvitation).where(
-            AcceleratorTeamInvitation.invitee_membership_id == membership.id,
-            AcceleratorTeamInvitation.status == "pending",
-            AcceleratorTeamInvitation.expires_at > datetime.utcnow(),
-        ).order_by(AcceleratorTeamInvitation.created_at.desc()))).scalars().all()
-        invitations = [
-            await invitation_dict(db, row, viewer=user, access_role=access_role)
-            for row in rows
-        ]
-    from accelerator_team_transfer import transfer_state
-    linked = linked_team_roster().subquery()
-    additional = (await db.execute(select(AcceleratorTeam).join(linked, linked.c.team_id == AcceleratorTeam.id)
-        .where(linked.c.membership_id == membership.id).order_by(AcceleratorTeam.name))).scalars().all()
-    return {
-        "transfer": await transfer_state(db, membership.id) if access_role == "resident" else None,
-        "team": (
-            await team_dict(db, team, viewer=user, access_role=access_role)
-            if team else None
-        ),
-        "invitations": invitations,
-        "additional_teams": [await team_dict(db, item, viewer=user, access_role=access_role) for item in additional],
-        "can_create": bool(
-            access_role == "resident"
-            and membership.status == "enrolled"
-            and team is None
-            and cohort.status not in FROZEN_COHORT_STATUSES
-        ),
-    }
+    from accelerator_dashboard_cache import cached_snapshot
+    async def snapshot():
+        team = await find_team_for_membership(db, membership.id)
+        invitations = []
+        if access_role != "tracker":
+            rows = (await db.execute(select(AcceleratorTeamInvitation).where(
+                AcceleratorTeamInvitation.invitee_membership_id == membership.id,
+                AcceleratorTeamInvitation.status == "pending",
+                AcceleratorTeamInvitation.expires_at > datetime.utcnow(),
+            ).order_by(AcceleratorTeamInvitation.created_at.desc()))).scalars().all()
+            invitations = [
+                await invitation_dict(db, row, viewer=user, access_role=access_role)
+                for row in rows
+            ]
+        from accelerator_team_transfer import transfer_state
+        linked = linked_team_roster().subquery()
+        additional = (await db.execute(select(AcceleratorTeam).join(linked, linked.c.team_id == AcceleratorTeam.id)
+            .where(linked.c.membership_id == membership.id).order_by(AcceleratorTeam.name))).scalars().all()
+        return {
+            "transfer": await transfer_state(db, membership.id) if access_role == "resident" else None,
+            "team": (
+                await team_dict(db, team, viewer=user, access_role=access_role)
+                if team else None
+            ),
+            "invitations": invitations,
+            "additional_teams": [await team_dict(db, item, viewer=user, access_role=access_role) for item in additional],
+            "can_create": bool(
+                access_role == "resident"
+                and membership.status == "enrolled"
+                and team is None
+                and cohort.status not in FROZEN_COHORT_STATUSES
+            ),
+        }
+    return await cached_snapshot(cohort.id, f"resident:membership_team_payload:membership:{membership_id}:user:{user.id}", snapshot)
 
 
 async def membership_invitation_payload(

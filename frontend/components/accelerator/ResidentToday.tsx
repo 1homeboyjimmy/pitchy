@@ -1,5 +1,7 @@
 "use client";
 
+import { useAcceleratorRefresh } from "@/lib/hooks/useAcceleratorRefresh";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, ArrowUpRight, CheckCircle2, ChevronRight, FileText, GitBranch, Loader2, MessageCircle, UserPlus, Users } from "lucide-react";
@@ -69,6 +71,7 @@ export function ResidentToday({ membership, onNavigate }: { membership: TodayMem
       if (request.current === current) setLoading(false);
     }
   }, [membership.membership_id, token]);
+  useAcceleratorRefresh(load);
   useEffect(() => { void load(); return () => { request.current += 1; }; }, [load]);
 
   if (loading && !data) return <section className="grid min-h-64 place-items-center" aria-label="Загрузка страницы Сегодня"><Loader2 className="animate-spin text-white/50" /></section>;

@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
+from contextvars import ContextVar
 import json
+import hashlib
 import logging
 import os
 import secrets
@@ -52,7 +54,7 @@ async def revision(client, cohort_id):
     return ":".join(str(value or 0) for value in values)
 
 
-async def cached_json(cohort_id, kind, factory):
+async def cached_json(cohort_id, kind, factory, *, cache_if=None):
     if not feature_enabled("CACHE", cohort_id) or not os.getenv("REDIS_URL"):
         return await factory()
     result = None
@@ -81,7 +83,7 @@ async def cached_json(cohort_id, kind, factory):
                 result = await factory()
                 computed = True
                 # An older in-flight calculation must never populate the new revision.
-                if await revision(client, cohort_id) == version:
+                if (cache_if is None or cache_if(result)) and await revision(client, cohort_id) == version:
                     await client.set(key, json.dumps(jsonable_encoder(result), ensure_ascii=False), ex=TTL)
                 return result
             finally:
@@ -90,6 +92,44 @@ async def cached_json(cohort_id, kind, factory):
     except (RedisError, OSError, json.JSONDecodeError) as exc:
         logger.warning("Dashboard cache unavailable: %s", type(exc).__name__)
         return result if computed else await factory()
+
+
+_calculating_snapshot = ContextVar("calculating_accelerator_snapshot", default=False)
+
+
+async def cached_snapshot(cohort_id, kind, factory, *, cache_if=None):
+    """Cache an authorized projection; nested services keep their native date types.
+
+    A page such as Today composes several endpoint functions. Reading their JSON
+    snapshots internally would turn datetimes into strings before comparisons.
+    Only the outer projection uses Redis; inner calculations stay native.
+    """
+    if _calculating_snapshot.get():
+        return await factory()
+
+    async def calculate():
+        token = _calculating_snapshot.set(True)
+        try:
+            return await factory()
+        finally:
+            _calculating_snapshot.reset(token)
+
+    return await cached_json(cohort_id, kind, calculate, cache_if=cache_if)
+
+
+async def cached_workspace(cohort_ids, kind, factory):
+    """The caller loads the current owned roster before consulting this cache."""
+    ids = sorted(set(cohort_ids))
+    if not ids or not os.getenv("REDIS_URL") or not all(feature_enabled("CACHE", cid) for cid in ids):
+        return await factory()
+    try:
+        async with connection() as client:
+            versions = await client.mget(*(f"{PREFIX}:cohort:{cid}:revision" for cid in ids))
+    except (RedisError, OSError):
+        return await factory()
+    digest = hashlib.sha256(json.dumps([ids, versions]).encode()).hexdigest()
+    # Global revision covers account permissions; the vector covers every owned cohort.
+    return await cached_snapshot(ids[0], f"{kind}:roster:{digest}", factory)
 
 
 async def invalidate(changes):
@@ -123,9 +163,13 @@ def _collect_changes(session, flush_context, instances):
         if obj in session.dirty and not session.is_modified(obj, include_collections=False):
             continue
         name = type(obj).__name__
+        # Derived recommendations do not change any participant input or permission.
+        if name == "AcceleratorTodayRecommendationCache":
+            continue
         # Account/staff changes can revoke access or change names in any cohort.
         # Unresolved accelerator references use the global revision as a safe fallback.
-        if name in {"User", "AcceleratorStaff"} or (name.startswith("Accelerator") and not getattr(obj, "cohort_id", None)):
+        if name in {"User", "AcceleratorStaff"} or (name.startswith("Accelerator") and not getattr(obj, "cohort_id", None)
+                and not any(getattr(obj, attr, None) for attr in references)):
             global_change = True
         if name == "AcceleratorModuleRuntimeOverride":
             global_change = True
@@ -151,6 +195,8 @@ def _collect_changes(session, flush_context, instances):
         if references[attr]:
             ids.update(session.execute(select(model.cohort_id).where(model.id.in_(references[attr]))).scalars())
     if references["project_id"]:
+        ids.update(session.execute(select(AcceleratorMembership.cohort_id).where(
+            AcceleratorMembership.project_id.in_(references["project_id"]))).scalars())
         ids.update(session.execute(select(AcceleratorTeam.cohort_id).where(
             AcceleratorTeam.project_id.in_(references["project_id"]))).scalars())
     if ids or global_change:

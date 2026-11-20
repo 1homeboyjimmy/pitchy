@@ -1,5 +1,7 @@
 "use client";
 
+import { useAcceleratorRefresh } from "@/lib/hooks/useAcceleratorRefresh";
+
 import { useAcceleratorNavigationState } from "@/lib/hooks/useAcceleratorNavigation";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -16,8 +18,9 @@ const stateLabel={locked:"Закрыт",available:"Доступен",in_progress
 
 export function ResidentProgramWorkspace({membershipId,onNavigate,trackProgress=true,timezone="Europe/Moscow"}:{membershipId:number;onNavigate:(section:Section,targetId?:number)=>void;trackProgress?:boolean;timezone?:string}){
  const {token}=useAuth();const [stages,setStages]=useState<Stage[]>([]);const [open,setOpen]=useAcceleratorNavigationState<number|null>(`ResidentProgramWorkspace:open:${membershipId}`, null);const [busy,setBusy]=useState("");const [loading,setLoading]=useState(true);const [error,setError]=useState("");
- const load=useCallback(async()=>{if(!token)return;setError("");try{const rows=await getAuthJson<Stage[]>(`/api/accelerators/memberships/${membershipId}/program-stages`,token);setStages(rows.map(row=>({...row,blockers:row.blockers||[],materials:row.materials||[],timeline:row.timeline||[]})));const current=rows.find(row=>['available','in_progress','overdue'].includes(row.state));setOpen(current?.id||null)}catch(reason){setError(describeApiError(reason,"Не удалось загрузить программу"))}finally{setLoading(false)}},[membershipId, setOpen, token]);
- useEffect(()=>{void load()},[load]);const completed=stages.filter(row=>row.state==='completed'||row.state==='waived').length;const current=stages.find(row=>['in_progress','overdue','available'].includes(row.state));const percent=stages.length?Math.round(completed/stages.length*100):0;
+ const load=useCallback(async()=>{if(!token)return;setError("");try{const rows=await getAuthJson<Stage[]>(`/api/accelerators/memberships/${membershipId}/program-stages`,token);setStages(rows.map(row=>({...row,blockers:row.blockers||[],materials:row.materials||[],timeline:row.timeline||[]})));const current=rows.find(row=>['available','in_progress','overdue'].includes(row.state));setOpen(previous=>previous&&rows.some(row=>row.id===previous)?previous:current?.id||null)}catch(reason){setError(describeApiError(reason,"Не удалось загрузить программу"))}finally{setLoading(false)}},[membershipId, setOpen, token]);
+ useAcceleratorRefresh(load);
+  useEffect(()=>{void load()},[load]);const completed=stages.filter(row=>row.state==='completed'||row.state==='waived').length;const current=stages.find(row=>['in_progress','overdue','available'].includes(row.state));const percent=stages.length?Math.round(completed/stages.length*100):0;
  const items=useMemo(()=>current?stageItems(current):[],[current]);const next=items.find(item=>!item.done);
  const completeMaterial=async(id:number)=>{if(!token)return;setBusy(`material-${id}`);try{await postAuthJson(`/api/accelerators/program/materials/${id}/complete`,{},token);await load()}catch(reason){setError(describeApiError(reason,"Не удалось отметить материал"))}finally{setBusy("")}};
  const action=(item:ReturnType<typeof stageItems>[number])=>{if(item.kind==='homework')onNavigate('homework',item.id);else if(item.kind==='event')onNavigate('events',item.id);else if(item.url)window.open(item.url,'_blank','noopener,noreferrer');else if(!item.done)void completeMaterial(item.id)};

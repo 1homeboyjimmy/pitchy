@@ -582,92 +582,95 @@ async def get_team_pool(
     db: AsyncSession = Depends(get_async_db),
 ):
     membership, cohort = await _team_pool_membership(db, membership_id, user)
-    own_team_member = await active_team_member(db, membership.id)
-    active_rows = (await db.execute(select(AcceleratorTeamMember, AcceleratorTeam)
-        .join(AcceleratorTeam, AcceleratorTeam.id == AcceleratorTeamMember.team_id)
-        .where(AcceleratorTeamMember.status == "active", AcceleratorTeam.status == "active",
-               AcceleratorTeam.cohort_id == cohort.id))).all()
-    current_teams = {member.membership_id: (member, team) for member, team in active_rows}
-    team_counts = {}
-    for member, team in active_rows:
-        team_counts[team.id] = team_counts.get(team.id, 0) + 1
-    teams = list((await db.execute(select(AcceleratorTeam).where(
-        AcceleratorTeam.cohort_id == cohort.id,
-        AcceleratorTeam.status == "active",
-    ).order_by(AcceleratorTeam.created_at))).scalars().all())
-    team_rows = []
-    for team in teams:
-        owner = await owner_membership(db, team)
-        owner_user = await db.get(User, owner.user_id)
-        owner_application = await db.get(AcceleratorApplication, owner.application_id) if owner.application_id else None
-        owner_profile = (await db.execute(select(AcceleratorMatchProfile).where(
-            AcceleratorMatchProfile.membership_id == owner.id
-        ))).scalar_one_or_none()
-        project = await db.get(Project, team.project_id) if team.project_id else None
-        team_rows.append({
-            "id": team.id,
-            "name": team.name,
-            "max_members": team.max_members,
-            "member_count": team_counts.get(team.id, 0),
-            "recruiting_open": bool(team.recruiting_open),
-            "captain": _application_contact(owner_application, owner_user, owner_profile),
-            **_project_public_description(project),
-        })
-    candidates = []
-    if own_team_member and any(
-        team.id == own_team_member.team_id and team.owner_membership_id == membership.id
-        for team in teams
-    ):
-        candidate_rows = (await db.execute(
-            _candidate_memberships(cohort.id, membership.id)
-            .add_columns(User, AcceleratorApplication, AcceleratorMatchProfile, AcceleratorParticipantProfile.profile)
-            .outerjoin(AcceleratorApplication, AcceleratorApplication.id == AcceleratorMembership.application_id)
-            .outerjoin(AcceleratorMatchProfile, (AcceleratorMatchProfile.membership_id == AcceleratorMembership.id)
-                       & AcceleratorMatchProfile.active.is_(True))
-            .outerjoin(AcceleratorParticipantProfile, AcceleratorParticipantProfile.membership_id == AcceleratorMembership.id)
-            .order_by(User.name, AcceleratorMembership.id)
-        )).all()
-        for row, person, application, profile, participant_data in candidate_rows:
-            current = current_teams.get(row.id)
-            current_team = None
-            if current:
-                _, source = current
-                if not _can_invite_candidate(own_team_member.team_id, row.id, source, team_counts[source.id]):
-                    continue
-                owner = source.owner_membership_id == row.id
-                current_team = {"id":source.id,"name":source.name,"action":"archive" if owner else "leave"}
-            contact = _application_contact(application, person, profile)
-            if current:
-                # Contact consent inside an existing team does not publish it to other captains.
-                contact.update(email=None, telegram=None)
-            education = participant_profile_with_institute(participant_data or {}, application.form_payload if application else None)
-            candidates.append({"membership_id": row.id, "current_team": current_team,
-                "institute": education.get("institute"), "education_course": education.get("education_course"), **contact})
-    applications = list((await db.execute(select(AcceleratorTeamApplication).where(
-        (AcceleratorTeamApplication.membership_id == membership.id)
-        | (AcceleratorTeamApplication.team_id.in_([team.id for team in teams if team.owner_membership_id == membership.id]))
-    ).order_by(AcceleratorTeamApplication.created_at.desc()))).scalars().all())
-    application_rows = []
-    for row in applications:
-        applicant = await db.get(AcceleratorMembership, row.membership_id)
-        person = await db.get(User, applicant.user_id) if applicant else None
-        application = await db.get(AcceleratorApplication, applicant.application_id) if applicant and applicant.application_id else None
-        team = await db.get(AcceleratorTeam, row.team_id)
-        application_rows.append({
-            "id": row.id,
-            "team_id": row.team_id,
-            "team_name": team.name if team else "Команда",
-            "membership_id": row.membership_id,
-            "applicant": _application_contact(application, person) if person else None,
-            "message": row.message,
-            "desired_role": row.desired_role,
-            "transfer_context": row.transfer_context,
-            "status": row.status,
-            "created_at": row.created_at,
-            "can_respond": bool(team and team.owner_membership_id == membership.id and row.status == "pending"),
-            "can_cancel": bool(row.membership_id == membership.id and row.status == "pending"),
-        })
-    return {"teams": team_rows, "candidates": candidates, "applications": application_rows}
+    from accelerator_dashboard_cache import cached_snapshot
+    async def snapshot():
+        own_team_member = await active_team_member(db, membership.id)
+        active_rows = (await db.execute(select(AcceleratorTeamMember, AcceleratorTeam)
+            .join(AcceleratorTeam, AcceleratorTeam.id == AcceleratorTeamMember.team_id)
+            .where(AcceleratorTeamMember.status == "active", AcceleratorTeam.status == "active",
+                   AcceleratorTeam.cohort_id == cohort.id))).all()
+        current_teams = {member.membership_id: (member, team) for member, team in active_rows}
+        team_counts = {}
+        for member, team in active_rows:
+            team_counts[team.id] = team_counts.get(team.id, 0) + 1
+        teams = list((await db.execute(select(AcceleratorTeam).where(
+            AcceleratorTeam.cohort_id == cohort.id,
+            AcceleratorTeam.status == "active",
+        ).order_by(AcceleratorTeam.created_at))).scalars().all())
+        team_rows = []
+        for team in teams:
+            owner = await owner_membership(db, team)
+            owner_user = await db.get(User, owner.user_id)
+            owner_application = await db.get(AcceleratorApplication, owner.application_id) if owner.application_id else None
+            owner_profile = (await db.execute(select(AcceleratorMatchProfile).where(
+                AcceleratorMatchProfile.membership_id == owner.id
+            ))).scalar_one_or_none()
+            project = await db.get(Project, team.project_id) if team.project_id else None
+            team_rows.append({
+                "id": team.id,
+                "name": team.name,
+                "max_members": team.max_members,
+                "member_count": team_counts.get(team.id, 0),
+                "recruiting_open": bool(team.recruiting_open),
+                "captain": _application_contact(owner_application, owner_user, owner_profile),
+                **_project_public_description(project),
+            })
+        candidates = []
+        if own_team_member and any(
+            team.id == own_team_member.team_id and team.owner_membership_id == membership.id
+            for team in teams
+        ):
+            candidate_rows = (await db.execute(
+                _candidate_memberships(cohort.id, membership.id)
+                .add_columns(User, AcceleratorApplication, AcceleratorMatchProfile, AcceleratorParticipantProfile.profile)
+                .outerjoin(AcceleratorApplication, AcceleratorApplication.id == AcceleratorMembership.application_id)
+                .outerjoin(AcceleratorMatchProfile, (AcceleratorMatchProfile.membership_id == AcceleratorMembership.id)
+                           & AcceleratorMatchProfile.active.is_(True))
+                .outerjoin(AcceleratorParticipantProfile, AcceleratorParticipantProfile.membership_id == AcceleratorMembership.id)
+                .order_by(User.name, AcceleratorMembership.id)
+            )).all()
+            for row, person, application, profile, participant_data in candidate_rows:
+                current = current_teams.get(row.id)
+                current_team = None
+                if current:
+                    _, source = current
+                    if not _can_invite_candidate(own_team_member.team_id, row.id, source, team_counts[source.id]):
+                        continue
+                    owner = source.owner_membership_id == row.id
+                    current_team = {"id":source.id,"name":source.name,"action":"archive" if owner else "leave"}
+                contact = _application_contact(application, person, profile)
+                if current:
+                    # Contact consent inside an existing team does not publish it to other captains.
+                    contact.update(email=None, telegram=None)
+                education = participant_profile_with_institute(participant_data or {}, application.form_payload if application else None)
+                candidates.append({"membership_id": row.id, "current_team": current_team,
+                    "institute": education.get("institute"), "education_course": education.get("education_course"), **contact})
+        applications = list((await db.execute(select(AcceleratorTeamApplication).where(
+            (AcceleratorTeamApplication.membership_id == membership.id)
+            | (AcceleratorTeamApplication.team_id.in_([team.id for team in teams if team.owner_membership_id == membership.id]))
+        ).order_by(AcceleratorTeamApplication.created_at.desc()))).scalars().all())
+        application_rows = []
+        for row in applications:
+            applicant = await db.get(AcceleratorMembership, row.membership_id)
+            person = await db.get(User, applicant.user_id) if applicant else None
+            application = await db.get(AcceleratorApplication, applicant.application_id) if applicant and applicant.application_id else None
+            team = await db.get(AcceleratorTeam, row.team_id)
+            application_rows.append({
+                "id": row.id,
+                "team_id": row.team_id,
+                "team_name": team.name if team else "Команда",
+                "membership_id": row.membership_id,
+                "applicant": _application_contact(application, person) if person else None,
+                "message": row.message,
+                "desired_role": row.desired_role,
+                "transfer_context": row.transfer_context,
+                "status": row.status,
+                "created_at": row.created_at,
+                "can_respond": bool(team and team.owner_membership_id == membership.id and row.status == "pending"),
+                "can_cancel": bool(row.membership_id == membership.id and row.status == "pending"),
+            })
+        return {"teams": team_rows, "candidates": candidates, "applications": application_rows}
+    return await cached_snapshot(cohort.id, f"resident:get_team_pool:membership:{membership_id}:user:{user.id}", snapshot)
 
 
 @router.post("/teams/{team_id}/applications")

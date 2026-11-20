@@ -1,5 +1,7 @@
 "use client";
 
+import { useAcceleratorRefresh } from "@/lib/hooks/useAcceleratorRefresh";
+
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Check, ChevronDown, Loader2, RefreshCw, Send } from "lucide-react";
 import { describeApiError, getAuthJson, patchAuthJson, postAuthJson } from "@/lib/api";
@@ -16,7 +18,8 @@ const emptyForm={health:"green",summary:"",blockers:"",nextSteps:"",helpNeeded:"
 export function ResidentTracking({membershipId,focusTaskId}:{membershipId:number;focusTaskId?:number|null}){
  const {token}=useAuth();const [detail,setDetail]=useState<Detail|null>(null);const [tab,setTab]=useState<Tab>("checkin");const [form,setForm]=useState(emptyForm);const [extra,setExtra]=useState(false);const [busy,setBusy]=useState("");const [error,setError]=useState("");const draftKey=`accelerator-checkin-${membershipId}`;
  const load=useCallback(async()=>{if(!token)return;setError("");try{setDetail(await getAuthJson<Detail>(`/api/accelerators/memberships/${membershipId}/tracking`,token));}catch(reason){setError(describeApiError(reason,"Не удалось загрузить трекинг"));}},[membershipId,token]);
- useEffect(()=>{void load()},[load]);useEffect(()=>{if(focusTaskId)setTab("tasks")},[focusTaskId]);useEffect(()=>{try{const saved=localStorage.getItem(draftKey);if(saved)setForm({...emptyForm,...JSON.parse(saved)})}catch{}},[draftKey]);useEffect(()=>{const timer=setTimeout(()=>{if(form.summary||form.nextSteps||form.blockers||form.helpNeeded)localStorage.setItem(draftKey,JSON.stringify(form))},350);return()=>clearTimeout(timer)},[draftKey,form]);
+ useAcceleratorRefresh(load);
+  useEffect(()=>{void load()},[load]);useEffect(()=>{if(focusTaskId)setTab("tasks")},[focusTaskId]);useEffect(()=>{try{const saved=localStorage.getItem(draftKey);if(saved)setForm({...emptyForm,...JSON.parse(saved)})}catch{}},[draftKey]);useEffect(()=>{const timer=setTimeout(()=>{if(form.summary||form.nextSteps||form.blockers||form.helpNeeded)localStorage.setItem(draftKey,JSON.stringify(form))},350);return()=>clearTimeout(timer)},[draftKey,form]);
  const latest=detail?.checkins[0];const openTasks=useMemo(()=>detail?.tasks.filter(t=>t.status==="open")||[],[detail]);
  const submit=async(e:FormEvent)=>{e.preventDefault();if(!token)return;setBusy("checkin");try{await postAuthJson(`/api/accelerators/memberships/${membershipId}/checkins`,{health:form.health,summary:form.summary,blockers:form.blockers||null,next_steps:form.nextSteps,help_needed:form.helpNeeded||null},token);localStorage.removeItem(draftKey);setForm(emptyForm);await load();notifySuccess("Еженедельный чек-ин отправлен трекеру")}catch(reason){setError(describeApiError(reason,"Не удалось отправить чек-ин"))}finally{setBusy("")}};
  const taskStatus=async(task:Task,status:"open"|"done")=>{if(!token)return;setBusy(`task-${task.id}`);try{await patchAuthJson(`/api/accelerators/tracking-tasks/${task.id}`,{status},token);await load()}catch(reason){setError(describeApiError(reason,"Не удалось изменить задачу"))}finally{setBusy("")}};

@@ -500,10 +500,13 @@ async def list_my_program_artifacts(
     membership = await get_resident_membership(db, membership_id, user)
     cohort = await get_cohort_or_404(db, membership.cohort_id)
     await require_pitchy_artifacts_module(db, cohort)
-    rows = list((await db.execute(select(AcceleratorArtifact).where(
-        AcceleratorArtifact.membership_id == membership.id
-    ).order_by(AcceleratorArtifact.updated_at.desc()))).scalars().all())
-    return [artifact_dict(row) for row in rows]
+    from accelerator_dashboard_cache import cached_snapshot
+    async def snapshot():
+        rows = list((await db.execute(select(AcceleratorArtifact).where(
+            AcceleratorArtifact.membership_id == membership.id
+        ).order_by(AcceleratorArtifact.updated_at.desc()))).scalars().all())
+        return [artifact_dict(row) for row in rows]
+    return await cached_snapshot(cohort.id, f"resident:list_my_program_artifacts:membership:{membership_id}:user:{user.id}", snapshot)
 
 
 @router.get("/cohorts/{cohort_id}/artifacts")

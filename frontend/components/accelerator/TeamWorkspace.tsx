@@ -1,5 +1,7 @@
 "use client";
 
+import { useAcceleratorRefresh } from "@/lib/hooks/useAcceleratorRefresh";
+
 import { FormEvent, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import {
@@ -96,7 +98,7 @@ export function TeamWorkspace({ membershipId, project, onChanged }: { membership
   const [error, setError] = useState("");
   const [mode, setMode] = useState<"find" | "create" | "applications">("create");
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (background = false) => {
     if (!token) return;
     setError("");
     try {
@@ -114,12 +116,12 @@ export function TeamWorkspace({ membershipId, project, onChanged }: { membership
       setTeam(response.team);
       setAdditionalTeams(response.additional_teams || []);
       setTransfer(response.transfer || null);
-      setTransferConfirmed(false);
+      if (!background) setTransferConfirmed(false);
       setPool(poolData);
       setInvitations(response.invitations || []);
       setOwnedProjects(projects);
       if (projects.length) setProjectToAttach((current) => current || String(projects[0].id));
-      if (response.team) setSettings({ name: response.team.name, maxMembers: response.team.max_members });
+      if (response.team && !background) setSettings({ name: response.team.name, maxMembers: response.team.max_members });
     } catch (reason) {
       setError(teamError(reason, "Не удалось загрузить команду"));
     } finally {
@@ -127,6 +129,7 @@ export function TeamWorkspace({ membershipId, project, onChanged }: { membership
     }
   }, [membershipId, token]);
 
+  useAcceleratorRefresh(() => load(true));
   useEffect(() => { void load(); }, [load]);
 
   const refresh = async () => {

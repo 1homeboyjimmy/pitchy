@@ -1367,73 +1367,76 @@ async def list_my_accelerator_memberships(
         )
         .order_by(AcceleratorMembership.created_at.desc())
     )).all()
-    memberships = []
-    for membership, cohort, accelerator, program, project, application_data in rows:
-        from project_passport_access import passport_context
-        can_edit_passport = (await passport_context(db, project, user))[1] if project else False
-        import passport as passport_lib
-        from accelerator_participant_service import registration_required
-        profile_row = (await db.execute(select(AcceleratorParticipantProfile).where(AcceleratorParticipantProfile.membership_id == membership.id))).scalar_one_or_none()
-        profile_data = participant_profile_with_institute(
-            (profile_row.profile or {}) if profile_row else {}, application_data
-        )
-        memberships.append({
-            "participant_profile": profile_data,
-            "registration_required": registration_required(profile_data),
-            "membership_id": membership.id,
-            "application_id": membership.application_id,
-            "status": membership.status,
-            "accepted_at": membership.accepted_at,
-            "enrolled_at": membership.enrolled_at,
-            "ended_at": membership.ended_at,
-            "accelerator": {
-                "id": accelerator.id,
-                "name": accelerator.name,
-                "description": accelerator.description,
-                "status": accelerator.status,
-            },
-            "cohort": {
-                "id": cohort.id,
-                "name": cohort.name,
-                "status": cohort.status,
-                "timezone": cohort.timezone,
-                "starts_at": cohort.starts_at,
-                "ends_at": cohort.ends_at,
-            },
-            "project": ({
-                "id": project.id,
-                "name": project.name,
-                "readiness_index": passport_lib.compute_readiness(project.passport),
-                "can_edit_passport": can_edit_passport,
-                **accelerator_project_description(project),
-                "status": project.status,
-            } if project else None),
-            # Program contents become available only after explicit enrollment.
-            "modules": (
-                program.modules
-                if membership.status == "enrolled"
-                else (
-                    {"alumni": True}
-                    if membership.status == "completed"
-                    and (program.modules or {}).get("alumni")
-                    else {}
-                )
-            ),
-        })
-    effective_quotas = {}
-    for resource in ("messages", "roadmaps", "custdev", "grants"):
-        snapshot = await accelerator_quota_snapshot(db, user.id, resource)
-        if snapshot:
-            effective_quotas[resource] = {
-                "membership_id": snapshot["membership"].id,
-                "limit": snapshot["limit"],
-                "used": snapshot["used"],
-                "remaining": snapshot["remaining"],
-                "source": snapshot["override"].source,
-                "starts_at": snapshot["override"].starts_at,
-                "ends_at": snapshot["override"].ends_at,
-            }
-    return {"memberships": memberships, "effective_quotas": effective_quotas}
+    from accelerator_dashboard_cache import cached_workspace
+    async def snapshot():
+        memberships = []
+        for membership, cohort, accelerator, program, project, application_data in rows:
+            from project_passport_access import passport_context
+            can_edit_passport = (await passport_context(db, project, user))[1] if project else False
+            import passport as passport_lib
+            from accelerator_participant_service import registration_required
+            profile_row = (await db.execute(select(AcceleratorParticipantProfile).where(AcceleratorParticipantProfile.membership_id == membership.id))).scalar_one_or_none()
+            profile_data = participant_profile_with_institute(
+                (profile_row.profile or {}) if profile_row else {}, application_data
+            )
+            memberships.append({
+                "participant_profile": profile_data,
+                "registration_required": registration_required(profile_data),
+                "membership_id": membership.id,
+                "application_id": membership.application_id,
+                "status": membership.status,
+                "accepted_at": membership.accepted_at,
+                "enrolled_at": membership.enrolled_at,
+                "ended_at": membership.ended_at,
+                "accelerator": {
+                    "id": accelerator.id,
+                    "name": accelerator.name,
+                    "description": accelerator.description,
+                    "status": accelerator.status,
+                },
+                "cohort": {
+                    "id": cohort.id,
+                    "name": cohort.name,
+                    "status": cohort.status,
+                    "timezone": cohort.timezone,
+                    "starts_at": cohort.starts_at,
+                    "ends_at": cohort.ends_at,
+                },
+                "project": ({
+                    "id": project.id,
+                    "name": project.name,
+                    "readiness_index": passport_lib.compute_readiness(project.passport),
+                    "can_edit_passport": can_edit_passport,
+                    **accelerator_project_description(project),
+                    "status": project.status,
+                } if project else None),
+                # Program contents become available only after explicit enrollment.
+                "modules": (
+                    program.modules
+                    if membership.status == "enrolled"
+                    else (
+                        {"alumni": True}
+                        if membership.status == "completed"
+                        and (program.modules or {}).get("alumni")
+                        else {}
+                    )
+                ),
+            })
+        effective_quotas = {}
+        for resource in ("messages", "roadmaps", "custdev", "grants"):
+            snapshot = await accelerator_quota_snapshot(db, user.id, resource)
+            if snapshot:
+                effective_quotas[resource] = {
+                    "membership_id": snapshot["membership"].id,
+                    "limit": snapshot["limit"],
+                    "used": snapshot["used"],
+                    "remaining": snapshot["remaining"],
+                    "source": snapshot["override"].source,
+                    "starts_at": snapshot["override"].starts_at,
+                    "ends_at": snapshot["override"].ends_at,
+                }
+        return {"memberships": memberships, "effective_quotas": effective_quotas}
+    return await cached_workspace([row[1].id for row in rows], f"resident:workspace:user:{user.id}", snapshot)
 
 
 @router.post("/{accelerator_id}/organizers")
@@ -2677,7 +2680,10 @@ async def list_resident_program_stages(
     db: AsyncSession = Depends(get_async_db),
 ):
     membership = await get_resident_membership(db, membership_id, user)
-    return await resident_program_rows(db, membership)
+    from accelerator_dashboard_cache import cached_snapshot
+    async def snapshot():
+        return await resident_program_rows(db, membership)
+    return await cached_snapshot(membership.cohort_id, f"resident:list_resident_program_stages:membership:{membership_id}:user:{user.id}", snapshot)
 
 
 @router.post("/program/materials/{material_id}/complete")
@@ -3700,76 +3706,79 @@ async def list_resident_homework(
     await require_homework_module(db, cohort)
     if membership.status != "enrolled":
         return []
-    selected_assignment_ids = select(AcceleratorHomeworkTarget.assignment_id).where(
-        AcceleratorHomeworkTarget.membership_id == membership.id
-    )
-    assignments = (await db.execute(select(AcceleratorHomeworkAssignment).where(
-        AcceleratorHomeworkAssignment.cohort_id == cohort.id,
-        AcceleratorHomeworkAssignment.status == "published",
-        or_(
-            AcceleratorHomeworkAssignment.audience == "cohort",
-            AcceleratorHomeworkAssignment.id.in_(selected_assignment_ids),
-        ),
-    ).order_by(
-        AcceleratorHomeworkAssignment.due_at.is_(None),
-        AcceleratorHomeworkAssignment.due_at,
-        AcceleratorHomeworkAssignment.published_at.desc(),
-    ))).scalars().all()
-    results = await participant_results(db, [membership.id], [row.id for row in assignments])
-    result = []
-    for assignment in assignments:
-        submission = results.get((assignment.id, membership.id))
-        context, blocked_reason = await submission_context(db, assignment, membership)
-        workspace = await scoped_submission(db, assignment, membership, context)
-        due_at = await effective_due_at(db, assignment, membership.id)
-        rule = await exception_rule(db, assignment.id, membership.id)
-        submission_data = homework_submission_dict(submission) if submission else None
-        if submission_data:
-            submission_data["is_late"] = bool(due_at and submission.submitted_at > due_at)
-        result.append({
-            "id": assignment.id,
-            "cohort_id": assignment.cohort_id,
-            "stage_id": assignment.stage_id,
-            "title": assignment.title,
-            "description": assignment.description,
-            "assignment_type": assignment.assignment_type,
-            "submission_mode": assignment.submission_mode,
-            "min_participants": assignment.min_participants,
-            "require_project": assignment.require_project,
-            "quiz_questions": [
-                {
-                    "id": question.get("id"),
-                    "prompt": question.get("prompt"),
-                    "options": [
-                        {"id": option.get("id"), "label": option.get("label")}
-                        for option in question.get("options", [])
-                    ],
-                }
-                for question in (assignment.quiz_config or [])
-            ],
-            "passing_score": assignment.passing_score,
-            "max_attempts": assignment.max_attempts,
-            "pitchy_enabled": bool(assignment.pitchy_enabled),
-            "pitchy_tools": (
-                assignment.pitchy_tools or []
-                if assignment.pitchy_enabled
-                else []
+    from accelerator_dashboard_cache import cached_snapshot
+    async def snapshot():
+        selected_assignment_ids = select(AcceleratorHomeworkTarget.assignment_id).where(
+            AcceleratorHomeworkTarget.membership_id == membership.id
+        )
+        assignments = (await db.execute(select(AcceleratorHomeworkAssignment).where(
+            AcceleratorHomeworkAssignment.cohort_id == cohort.id,
+            AcceleratorHomeworkAssignment.status == "published",
+            or_(
+                AcceleratorHomeworkAssignment.audience == "cohort",
+                AcceleratorHomeworkAssignment.id.in_(selected_assignment_ids),
             ),
-            "due_at": due_at,
-            "allow_resubmit": assignment.allow_resubmit,
-            "published_at": assignment.published_at,
-            "is_overdue": bool(due_at and due_at < datetime.utcnow() and not submission),
-            "display_status": homework_display_status(assignment, submission) if submission else ("overdue" if due_at and due_at < datetime.utcnow() else "not_started"),
-            "individual_instructions": rule.reason if rule and rule.allow_individual else None,
-            "submission": submission_data,
-            "workspace_submission": homework_submission_dict(workspace) if workspace else None,
-            "submission_context": context,
-            "blocked_reason": blocked_reason,
-            "expected_revision": workspace.attempt_count if workspace else 0,
-            "can_submit": not blocked_reason and (not workspace or workspace.status == "needs_revision" or (
-                assignment.allow_resubmit and (assignment.assignment_type != "quiz" or workspace.attempt_count < assignment.max_attempts))),
-        })
-    return result
+        ).order_by(
+            AcceleratorHomeworkAssignment.due_at.is_(None),
+            AcceleratorHomeworkAssignment.due_at,
+            AcceleratorHomeworkAssignment.published_at.desc(),
+        ))).scalars().all()
+        results = await participant_results(db, [membership.id], [row.id for row in assignments])
+        result = []
+        for assignment in assignments:
+            submission = results.get((assignment.id, membership.id))
+            context, blocked_reason = await submission_context(db, assignment, membership)
+            workspace = await scoped_submission(db, assignment, membership, context)
+            due_at = await effective_due_at(db, assignment, membership.id)
+            rule = await exception_rule(db, assignment.id, membership.id)
+            submission_data = homework_submission_dict(submission) if submission else None
+            if submission_data:
+                submission_data["is_late"] = bool(due_at and submission.submitted_at > due_at)
+            result.append({
+                "id": assignment.id,
+                "cohort_id": assignment.cohort_id,
+                "stage_id": assignment.stage_id,
+                "title": assignment.title,
+                "description": assignment.description,
+                "assignment_type": assignment.assignment_type,
+                "submission_mode": assignment.submission_mode,
+                "min_participants": assignment.min_participants,
+                "require_project": assignment.require_project,
+                "quiz_questions": [
+                    {
+                        "id": question.get("id"),
+                        "prompt": question.get("prompt"),
+                        "options": [
+                            {"id": option.get("id"), "label": option.get("label")}
+                            for option in question.get("options", [])
+                        ],
+                    }
+                    for question in (assignment.quiz_config or [])
+                ],
+                "passing_score": assignment.passing_score,
+                "max_attempts": assignment.max_attempts,
+                "pitchy_enabled": bool(assignment.pitchy_enabled),
+                "pitchy_tools": (
+                    assignment.pitchy_tools or []
+                    if assignment.pitchy_enabled
+                    else []
+                ),
+                "due_at": due_at,
+                "allow_resubmit": assignment.allow_resubmit,
+                "published_at": assignment.published_at,
+                "is_overdue": bool(due_at and due_at < datetime.utcnow() and not submission),
+                "display_status": homework_display_status(assignment, submission) if submission else ("overdue" if due_at and due_at < datetime.utcnow() else "not_started"),
+                "individual_instructions": rule.reason if rule and rule.allow_individual else None,
+                "submission": submission_data,
+                "workspace_submission": homework_submission_dict(workspace) if workspace else None,
+                "submission_context": context,
+                "blocked_reason": blocked_reason,
+                "expected_revision": workspace.attempt_count if workspace else 0,
+                "can_submit": not blocked_reason and (not workspace or workspace.status == "needs_revision" or (
+                    assignment.allow_resubmit and (assignment.assignment_type != "quiz" or workspace.attempt_count < assignment.max_attempts))),
+            })
+        return result
+    return await cached_snapshot(cohort.id, f"resident:list_resident_homework:membership:{membership_id}:user:{user.id}", snapshot)
 
 
 @router.post("/homework/{assignment_id}/submission")
@@ -4979,18 +4988,21 @@ async def list_resident_events(
     cohort = await get_cohort_or_404(db, membership.cohort_id)
     await require_attendance_module(db, cohort)
     await complete_due_events(db, cohort.id)
-    events = (await db.execute(select(AcceleratorEvent).where(
-        AcceleratorEvent.cohort_id == cohort.id,
-        AcceleratorEvent.status.in_(("published", "completed", "cancelled")),
-    ).order_by(AcceleratorEvent.starts_at))).scalars().all()
-    records = await effective_attendance_records(db, [membership], [event.id for event in events], cohorts={cohort.id:cohort})
-    by_event = records.get(membership.id,{})
-    return [event_dict(
-        event,
-        attendance=by_event.get(event.id),
-        homework_links=await event_homework_links(db, event.id),
-        timezone=cohort.timezone,
-    ) for event in events]
+    from accelerator_dashboard_cache import cached_snapshot
+    async def snapshot():
+        events = (await db.execute(select(AcceleratorEvent).where(
+            AcceleratorEvent.cohort_id == cohort.id,
+            AcceleratorEvent.status.in_(("published", "completed", "cancelled")),
+        ).order_by(AcceleratorEvent.starts_at))).scalars().all()
+        records = await effective_attendance_records(db, [membership], [event.id for event in events], cohorts={cohort.id:cohort})
+        by_event = records.get(membership.id,{})
+        return [event_dict(
+            event,
+            attendance=by_event.get(event.id),
+            homework_links=await event_homework_links(db, event.id),
+            timezone=cohort.timezone,
+        ) for event in events]
+    return await cached_snapshot(cohort.id, f"resident:list_resident_events:membership:{membership_id}:user:{user.id}", snapshot)
 
 
 @router.post("/attendance/check-in/{code}")
@@ -6626,46 +6638,49 @@ async def membership_tracking(
     user: User = Depends(get_async_current_user),
     db: AsyncSession = Depends(get_async_db),
 ):
-    membership, _, access_role = await tracking_membership_context(db, membership_id, user)
-    checkins = (await db.execute(
-        select(AcceleratorProgressCheckin, User)
-        .join(User, User.id == AcceleratorProgressCheckin.author_user_id)
-        .where(AcceleratorProgressCheckin.membership_id == membership.id)
-        .order_by(AcceleratorProgressCheckin.period_start.desc())
-    )).all()
-    feedback = (await db.execute(
-        select(AcceleratorTrackingFeedback, User)
-        .join(User, User.id == AcceleratorTrackingFeedback.author_user_id)
-        .where(AcceleratorTrackingFeedback.membership_id == membership.id)
-        .order_by(AcceleratorTrackingFeedback.created_at.desc())
-    )).all()
-    tasks = (await db.execute(select(AcceleratorTrackingTask).where(
-        AcceleratorTrackingTask.membership_id == membership.id
-    ).order_by(
-        AcceleratorTrackingTask.status != "open",
-        AcceleratorTrackingTask.due_at.is_(None),
-        AcceleratorTrackingTask.due_at,
-        AcceleratorTrackingTask.created_at.desc(),
-    ))).scalars().all()
-    return {
-        "membership_id": membership.id,
-        "access_role": access_role,
-        "risk": await membership_tracking_risk(
-            db, membership, audience="resident" if access_role == "resident" else "staff"
-        ),
-        "checkins": [{
-            "id": row.id, "period_start": row.period_start, "health": row.health,
-            "summary": row.summary, "blockers": row.blockers, "next_steps": row.next_steps,
-            "help_needed": row.help_needed, "created_at": row.created_at,
-            "author": {"id": author.id, "name": author.name},
-        } for row, author in checkins],
-        "feedback": [{
-            "id": row.id, "body": row.body, "created_at": row.created_at,
-            "read_at": row.read_at,
-            "author": {"id": author.id, "name": author.name},
-        } for row, author in feedback],
-        "tasks": [tracking_task_dict(row) for row in tasks],
-    }
+    membership, cohort, access_role = await tracking_membership_context(db, membership_id, user)
+    from accelerator_dashboard_cache import cached_snapshot
+    async def snapshot():
+        checkins = (await db.execute(
+            select(AcceleratorProgressCheckin, User)
+            .join(User, User.id == AcceleratorProgressCheckin.author_user_id)
+            .where(AcceleratorProgressCheckin.membership_id == membership.id)
+            .order_by(AcceleratorProgressCheckin.period_start.desc())
+        )).all()
+        feedback = (await db.execute(
+            select(AcceleratorTrackingFeedback, User)
+            .join(User, User.id == AcceleratorTrackingFeedback.author_user_id)
+            .where(AcceleratorTrackingFeedback.membership_id == membership.id)
+            .order_by(AcceleratorTrackingFeedback.created_at.desc())
+        )).all()
+        tasks = (await db.execute(select(AcceleratorTrackingTask).where(
+            AcceleratorTrackingTask.membership_id == membership.id
+        ).order_by(
+            AcceleratorTrackingTask.status != "open",
+            AcceleratorTrackingTask.due_at.is_(None),
+            AcceleratorTrackingTask.due_at,
+            AcceleratorTrackingTask.created_at.desc(),
+        ))).scalars().all()
+        return {
+            "membership_id": membership.id,
+            "access_role": access_role,
+            "risk": await membership_tracking_risk(
+                db, membership, audience="resident" if access_role == "resident" else "staff"
+            ),
+            "checkins": [{
+                "id": row.id, "period_start": row.period_start, "health": row.health,
+                "summary": row.summary, "blockers": row.blockers, "next_steps": row.next_steps,
+                "help_needed": row.help_needed, "created_at": row.created_at,
+                "author": {"id": author.id, "name": author.name},
+            } for row, author in checkins],
+            "feedback": [{
+                "id": row.id, "body": row.body, "created_at": row.created_at,
+                "read_at": row.read_at,
+                "author": {"id": author.id, "name": author.name},
+            } for row, author in feedback],
+            "tasks": [tracking_task_dict(row) for row in tasks],
+        }
+    return await cached_snapshot(cohort.id, f"resident:membership_tracking:membership:{membership_id}:user:{user.id}", snapshot)
 
 
 @router.post("/memberships/{membership_id}/checkins")
@@ -7179,19 +7194,22 @@ async def list_membership_project_audits(
     user: User = Depends(get_async_current_user),
     db: AsyncSession = Depends(get_async_db),
 ):
-    _, _, access_role = await project_audit_membership_context(db, membership_id, user)
-    rows = list((await db.execute(
-        select(AcceleratorProjectAudit).where(
-            AcceleratorProjectAudit.membership_id == membership_id
-        ).order_by(AcceleratorProjectAudit.created_at.desc()).limit(100)
-    )).scalars().all())
-    return {
-        "access_role": access_role,
-        "audits": [
-            await project_audit_dict(db, row, previous_project_audit(rows, index))
-            for index, row in enumerate(rows)
-        ],
-    }
+    membership, cohort, access_role = await project_audit_membership_context(db, membership_id, user)
+    from accelerator_dashboard_cache import cached_snapshot
+    async def snapshot():
+        rows = list((await db.execute(
+            select(AcceleratorProjectAudit).where(
+                AcceleratorProjectAudit.membership_id == membership_id
+            ).order_by(AcceleratorProjectAudit.created_at.desc()).limit(100)
+        )).scalars().all())
+        return {
+            "access_role": access_role,
+            "audits": [
+                await project_audit_dict(db, row, previous_project_audit(rows, index))
+                for index, row in enumerate(rows)
+            ],
+        }
+    return await cached_snapshot(cohort.id, f"resident:list_membership_project_audits:membership:{membership_id}:user:{user.id}", snapshot)
 
 
 @router.get("/project-audits/{audit_id}")
@@ -7731,22 +7749,25 @@ async def list_membership_demo_days(
         raise HTTPException(status_code=404, detail="Участие не найдено")
     cohort = await get_cohort_or_404(db, membership.cohort_id)
     await require_demo_day_module(db, cohort)
-    rows = (await db.execute(
-        select(AcceleratorDemoDay)
-        .join(
-            AcceleratorDemoDayProject,
-            AcceleratorDemoDayProject.demo_day_id == AcceleratorDemoDay.id,
-        )
-        .where(AcceleratorDemoDay.cohort_id == membership.cohort_id,
-               or_(AcceleratorDemoDayProject.membership_id == membership.id,
-                   AcceleratorDemoDayProject.project_id == membership.project_id)
-               if membership.project_id else AcceleratorDemoDayProject.membership_id == membership.id)
-        .order_by(AcceleratorDemoDay.created_at.desc())
-    )).scalars().all()
-    return {
-        "access_role": "resident",
-        "demo_days": [await demo_day_dict(db, row, "resident", user.id) for row in rows],
-    }
+    from accelerator_dashboard_cache import cached_snapshot
+    async def snapshot():
+        rows = (await db.execute(
+            select(AcceleratorDemoDay)
+            .join(
+                AcceleratorDemoDayProject,
+                AcceleratorDemoDayProject.demo_day_id == AcceleratorDemoDay.id,
+            )
+            .where(AcceleratorDemoDay.cohort_id == membership.cohort_id,
+                   or_(AcceleratorDemoDayProject.membership_id == membership.id,
+                       AcceleratorDemoDayProject.project_id == membership.project_id)
+                   if membership.project_id else AcceleratorDemoDayProject.membership_id == membership.id)
+            .order_by(AcceleratorDemoDay.created_at.desc())
+        )).scalars().all()
+        return {
+            "access_role": "resident",
+            "demo_days": [await demo_day_dict(db, row, "resident", user.id) for row in rows],
+        }
+    return await cached_snapshot(cohort.id, f"resident:list_membership_demo_days:membership:{membership_id}:user:{user.id}", snapshot)
 
 
 @router.post("/cohorts/{cohort_id}/demo-days")
@@ -9747,144 +9768,148 @@ async def membership_today(
 ):
     membership = await get_resident_membership(db, membership_id, user)
     cohort = await get_cohort_or_404(db, membership.cohort_id)
-    config = (await db.execute(select(AcceleratorProgramConfig).where(
-        AcceleratorProgramConfig.cohort_id == cohort.id
-    ))).scalar_one()
-    modules = config.modules or {}
-    unavailable: list[str] = []
-    stages: list[dict] = []
-    homework: list[dict] = []
-    events: list[dict] = []
-    tracking: dict = {"feedback": [], "tasks": [], "checkins": [], "risk": None}
+    from accelerator_dashboard_cache import cached_snapshot
+    async def snapshot():
+        config = (await db.execute(select(AcceleratorProgramConfig).where(
+            AcceleratorProgramConfig.cohort_id == cohort.id
+        ))).scalar_one()
+        modules = config.modules or {}
+        unavailable: list[str] = []
+        stages: list[dict] = []
+        homework: list[dict] = []
+        events: list[dict] = []
+        tracking: dict = {"feedback": [], "tasks": [], "checkins": [], "risk": None}
 
-    async def load_section(name: str, loader, fallback):
-        try:
-            return await loader()
-        except Exception:
-            logger.exception("accelerator today section unavailable", extra={"section": name, "membership_id": membership.id})
-            unavailable.append(name)
-            return fallback
+        async def load_section(name: str, loader, fallback):
+            try:
+                return await loader()
+            except Exception:
+                logger.exception("accelerator today section unavailable", extra={"section": name, "membership_id": membership.id})
+                unavailable.append(name)
+                return fallback
 
-    if modules.get("program", True) and modules.get("program_progress", True):
-        stages = await load_section("program", lambda: resident_program_rows(db, membership), [])
-    if modules.get("homework"):
-        homework = await load_section("homework", lambda: list_resident_homework(membership.id, user, db), [])
-    if modules.get("attendance"):
-        events = await load_section("events", lambda: list_resident_events(membership.id, user, db), [])
-    if modules.get("progress_tracking"):
-        tracking = await load_section(
-            "tracking", lambda: membership_tracking(membership.id, user, db),
-            {"feedback": [], "tasks": [], "checkins": [], "risk": None},
+        if modules.get("program", True) and modules.get("program_progress", True):
+            stages = await load_section("program", lambda: resident_program_rows(db, membership), [])
+        if modules.get("homework"):
+            homework = await load_section("homework", lambda: list_resident_homework(membership.id, user, db), [])
+        if modules.get("attendance"):
+            events = await load_section("events", lambda: list_resident_events(membership.id, user, db), [])
+        if modules.get("progress_tracking"):
+            tracking = await load_section(
+                "tracking", lambda: membership_tracking(membership.id, user, db),
+                {"feedback": [], "tasks": [], "checkins": [], "risk": None},
+            )
+
+        now = datetime.utcnow()
+        required_actions: list[dict] = []
+        for task in tracking.get("tasks", []):
+            due_at = task.get("due_at")
+            if task.get("status") == "open" and due_at:
+                required_actions.append({
+                    "key": f"task:{task['id']}", "title": task["title"],
+                    "description": task.get("description") or "Задача от организатора или трекера.",
+                    "due_at": due_at, "section": "tracking",
+                    "target_id": task["id"], "kind": "task", "overdue": due_at < now,
+                })
+        for assignment in homework:
+            status = assignment.get("display_status")
+            if status in {"needs_revision", "overdue"}:
+                submission = assignment.get("submission") or {}
+                required_actions.append({
+                    "key": f"homework:{assignment['id']}",
+                    "title": f"Доработать: {assignment['title']}" if status == "needs_revision" else assignment["title"],
+                    "description": submission.get("review_comment") or ("Срок задания прошёл." if status == "overdue" else "Нужно повторно отправить ответ."),
+                    "due_at": assignment.get("due_at"), "section": "homework",
+                    "target_id": assignment["id"], "kind": "homework", "overdue": status == "overdue",
+                })
+        current_stage = next((row for row in stages if row.get("state") == "available"), None)
+        if current_stage:
+            required_material = next((row for row in current_stage.get("materials", []) if row.get("required") and not row.get("completed")), None)
+            if required_material:
+                required_actions.append({
+                    "key": f"material:{required_material['id']}", "title": required_material["title"],
+                    "description": f"Обязательный материал этапа «{current_stage['title']}».",
+                    "due_at": None, "section": "program", "target_id": required_material["id"],
+                    "stage_id": current_stage["id"], "kind": "material", "overdue": False,
+                })
+        required_actions.sort(key=lambda row: (not row["overdue"], row["due_at"] is None, row["due_at"] or datetime.max))
+
+        upcoming = [{
+            "key": f"event:{row['id']}", "kind": "event", "title": row["title"],
+            "starts_at": row["starts_at"], "description": row.get("location") or ("Онлайн-встреча" if row.get("meeting_url") else None),
+            "section": "events", "target_id": row["id"],
+            "meeting_url": row.get("meeting_url"), "location": row.get("location"),
+            "event_format": row.get("event_format"),
+        } for row in events if row.get("status") == "published" and utc_datetime(row["starts_at"]) >= utc_datetime(now)]
+        upcoming.extend({
+            "key": f"deadline:{row['id']}", "kind": "deadline", "title": row["title"],
+            "starts_at": utc_datetime(row["due_at"]), "description": "Срок домашнего задания",
+            "section": "homework", "target_id": row["id"],
+        } for row in homework if row.get("due_at") and row["due_at"] >= now
+        and row.get("display_status") == "not_started"
+        and not any(action["key"] == f"homework:{row['id']}" for action in required_actions))
+        upcoming = sorted(upcoming, key=lambda row: utc_datetime(row["starts_at"]))[:2]
+
+        feedback = [row for row in tracking.get("feedback", []) if not row.get("read_at")]
+        team_applications = (
+            await pending_team_application_summary(db, membership, cohort)
+            if modules.get("matchmaking") and membership.user_id == user.id else None
         )
+        completed_stages = sum(row.get("state") == "completed" for row in stages)
+        attendance = (await attendance_summaries(db, [membership], now=now))[membership.id] if modules.get("attendance") and "events" not in unavailable else None
+        project = await db.get(Project, membership.project_id) if membership.project_id else None
+        project_readiness = max(0, min(100, project.readiness_index or 0)) if project else None
+        tracker_ids = await membership_tracker_user_ids(db, membership.id)
+        trackers = (await db.execute(select(User).where(User.id.in_(tracker_ids)).order_by(User.name))).scalars().all() if tracker_ids else []
 
-    now = datetime.utcnow()
-    required_actions: list[dict] = []
-    for task in tracking.get("tasks", []):
-        due_at = task.get("due_at")
-        if task.get("status") == "open" and due_at:
-            required_actions.append({
-                "key": f"task:{task['id']}", "title": task["title"],
-                "description": task.get("description") or "Задача от организатора или трекера.",
-                "due_at": due_at, "section": "tracking",
-                "target_id": task["id"], "kind": "task", "overdue": due_at < now,
-            })
-    for assignment in homework:
-        status = assignment.get("display_status")
-        if status in {"needs_revision", "overdue"}:
-            submission = assignment.get("submission") or {}
-            required_actions.append({
-                "key": f"homework:{assignment['id']}",
-                "title": f"Доработать: {assignment['title']}" if status == "needs_revision" else assignment["title"],
-                "description": submission.get("review_comment") or ("Срок задания прошёл." if status == "overdue" else "Нужно повторно отправить ответ."),
-                "due_at": assignment.get("due_at"), "section": "homework",
-                "target_id": assignment["id"], "kind": "homework", "overdue": status == "overdue",
-            })
-    current_stage = next((row for row in stages if row.get("state") == "available"), None)
-    if current_stage:
-        required_material = next((row for row in current_stage.get("materials", []) if row.get("required") and not row.get("completed")), None)
-        if required_material:
-            required_actions.append({
-                "key": f"material:{required_material['id']}", "title": required_material["title"],
-                "description": f"Обязательный материал этапа «{current_stage['title']}».",
-                "due_at": None, "section": "program", "target_id": required_material["id"],
-                "stage_id": current_stage["id"], "kind": "material", "overdue": False,
-            })
-    required_actions.sort(key=lambda row: (not row["overdue"], row["due_at"] is None, row["due_at"] or datetime.max))
-
-    upcoming = [{
-        "key": f"event:{row['id']}", "kind": "event", "title": row["title"],
-        "starts_at": row["starts_at"], "description": row.get("location") or ("Онлайн-встреча" if row.get("meeting_url") else None),
-        "section": "events", "target_id": row["id"],
-        "meeting_url": row.get("meeting_url"), "location": row.get("location"),
-        "event_format": row.get("event_format"),
-    } for row in events if row.get("status") == "published" and utc_datetime(row["starts_at"]) >= utc_datetime(now)]
-    upcoming.extend({
-        "key": f"deadline:{row['id']}", "kind": "deadline", "title": row["title"],
-        "starts_at": utc_datetime(row["due_at"]), "description": "Срок домашнего задания",
-        "section": "homework", "target_id": row["id"],
-    } for row in homework if row.get("due_at") and row["due_at"] >= now
-    and row.get("display_status") == "not_started"
-    and not any(action["key"] == f"homework:{row['id']}" for action in required_actions))
-    upcoming = sorted(upcoming, key=lambda row: utc_datetime(row["starts_at"]))[:2]
-
-    feedback = [row for row in tracking.get("feedback", []) if not row.get("read_at")]
-    team_applications = (
-        await pending_team_application_summary(db, membership, cohort)
-        if modules.get("matchmaking") and membership.user_id == user.id else None
-    )
-    completed_stages = sum(row.get("state") == "completed" for row in stages)
-    attendance = (await attendance_summaries(db, [membership], now=now))[membership.id] if modules.get("attendance") and "events" not in unavailable else None
-    project = await db.get(Project, membership.project_id) if membership.project_id else None
-    project_readiness = max(0, min(100, project.readiness_index or 0)) if project else None
-    tracker_ids = await membership_tracker_user_ids(db, membership.id)
-    trackers = (await db.execute(select(User).where(User.id.in_(tracker_ids)).order_by(User.name))).scalars().all() if tracker_ids else []
-
-    candidates = await today_recommendation_candidates(
-        db, membership, stages=stages, homework=homework, modules=modules
-    )
-    system_cached = await cache_system_recommendations(db, membership.id, candidates)
-    candidates = [row for row in candidates if row["source_type"] == "manual"] + system_cached
-    dismissals = (await db.execute(select(AcceleratorRecommendationDismissal).where(
-        AcceleratorRecommendationDismissal.membership_id == membership.id
-    ))).scalars().all()
-    dismissal_by_key = {row.recommendation_key: row for row in dismissals}
-    visible: list[dict] = []
-    hidden: list[dict] = []
-    for recommendation in sorted(candidates, key=lambda row: (row["priority"], row["key"])):
-        dismissal = dismissal_by_key.get(recommendation["key"])
-        if dismissal and dismissal.reason_fingerprint == recommendation["reason_fingerprint"]:
-            hidden.append(recommendation)
-        else:
-            visible.append(recommendation)
-    await db.commit()
-    return {
-        "membership_id": membership.id,
-        "generated_at": now,
-        "timezone": cohort.timezone,
-        "required_actions": required_actions,
-        "upcoming": upcoming,
-        "unread_feedback": feedback[:5],
-        "team_applications": team_applications,
-        "progress": {
-            "percent": round(completed_stages * 100 / len(stages)) if stages else 0,
-            "completed_stages": completed_stages,
-            "total_stages": len(stages),
-            "current_stage": {"id": current_stage["id"], "title": current_stage["title"]} if current_stage else None,
-            "project_readiness": project_readiness,
-        },
-        "attendance": ({
-            **{key: attendance[key] for key in ("present", "total", "unmarked", "percent")},
-            **({"basis": "planned"} if attendance["basis"] == "planned" else {}),
-        } if attendance is not None else None),
-        "support": {
-            "enabled": bool(modules.get("progress_tracking")),
-            "trackers": [{"id": row.id, "name": row.name, "email": row.email} for row in trackers],
-            "risk": tracking.get("risk"),
-        },
-        "recommendations": visible[:3],
-        "dismissed_recommendations": hidden,
-        "unavailable_sections": unavailable,
-    }
+        candidates = await today_recommendation_candidates(
+            db, membership, stages=stages, homework=homework, modules=modules
+        )
+        system_cached = await cache_system_recommendations(db, membership.id, candidates)
+        candidates = [row for row in candidates if row["source_type"] == "manual"] + system_cached
+        dismissals = (await db.execute(select(AcceleratorRecommendationDismissal).where(
+            AcceleratorRecommendationDismissal.membership_id == membership.id
+        ))).scalars().all()
+        dismissal_by_key = {row.recommendation_key: row for row in dismissals}
+        visible: list[dict] = []
+        hidden: list[dict] = []
+        for recommendation in sorted(candidates, key=lambda row: (row["priority"], row["key"])):
+            dismissal = dismissal_by_key.get(recommendation["key"])
+            if dismissal and dismissal.reason_fingerprint == recommendation["reason_fingerprint"]:
+                hidden.append(recommendation)
+            else:
+                visible.append(recommendation)
+        await db.commit()
+        return {
+            "membership_id": membership.id,
+            "generated_at": now,
+            "timezone": cohort.timezone,
+            "required_actions": required_actions,
+            "upcoming": upcoming,
+            "unread_feedback": feedback[:5],
+            "team_applications": team_applications,
+            "progress": {
+                "percent": round(completed_stages * 100 / len(stages)) if stages else 0,
+                "completed_stages": completed_stages,
+                "total_stages": len(stages),
+                "current_stage": {"id": current_stage["id"], "title": current_stage["title"]} if current_stage else None,
+                "project_readiness": project_readiness,
+            },
+            "attendance": ({
+                **{key: attendance[key] for key in ("present", "total", "unmarked", "percent")},
+                **({"basis": "planned"} if attendance["basis"] == "planned" else {}),
+            } if attendance is not None else None),
+            "support": {
+                "enabled": bool(modules.get("progress_tracking")),
+                "trackers": [{"id": row.id, "name": row.name, "email": row.email} for row in trackers],
+                "risk": tracking.get("risk"),
+            },
+            "recommendations": visible[:3],
+            "dismissed_recommendations": hidden,
+            "unavailable_sections": unavailable,
+        }
+    return await cached_snapshot(cohort.id, f"resident:membership_today:membership:{membership_id}:user:{user.id}", snapshot,
+                                 cache_if=lambda result: not result.get("unavailable_sections"))
 
 
 @router.post("/memberships/{membership_id}/feedback/read")
