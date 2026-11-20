@@ -185,6 +185,8 @@ async def synchronize(db, schedule, attendance, *, cohort_id, actor_id, apply=Fa
         raise ValueError('Не найден активный служебный администратор')
     year = 2026
     incoming = parse_schedule(schedule, year, cohort.timezone)
+    from mirea_event_announcements import correct_stale_schedule
+    incoming = [correct_stale_schedule(item, cohort.id) for item in incoming]
     headers, projects, undated = parse_attendance(attendance, year)
     events = list((await db.execute(select(AcceleratorEvent).where(AcceleratorEvent.cohort_id == cohort.id).order_by(AcceleratorEvent.id).with_for_update())).scalars())
     report = dict(events_created=0, events_updated=0, attendance_records_changed=0, teams_matched=0,

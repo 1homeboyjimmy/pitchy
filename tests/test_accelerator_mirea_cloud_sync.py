@@ -13,6 +13,19 @@ from scripts.sync_mirea_cloud import parse_attendance, parse_schedule, match_eve
 from tests.test_accelerator_team_attendance import group
 
 
+def test_organizer_announcements_override_only_known_outdated_cells():
+    from mirea_event_announcements import correct_stale_schedule, UPDATES
+    item = {'title': 'Финансы стартапа', 'starts_at': datetime(2026, 11, 20, 15)}
+    assert correct_stale_schedule(item, 8)['title'] == UPDATES[32]['title']
+    assert correct_stale_schedule(item, 9) == item
+    item = {'title': 'Очное мероприятие', 'starts_at': datetime(2026, 11, 21, 9),
+            'location': 'просп. Вернадского, 78, стр. 4\nТЕХНОКОВОРКИНГ. БРИФИНГ ЗОНА'}
+    result = correct_stale_schedule(item, 8)
+    assert result['title'] == UPDATES[37]['title'] and result['location'] == UPDATES[37]['location']
+    newer = {**item, 'title': 'Уточнённая программа', 'location': 'А-300'}
+    assert correct_stale_schedule(newer, 8) == newer
+
+
 def xlsx(rows):
     book = openpyxl.Workbook()
     for row in rows:
