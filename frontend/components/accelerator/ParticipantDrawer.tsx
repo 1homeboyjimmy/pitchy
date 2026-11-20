@@ -1,5 +1,7 @@
 "use client";
 
+import { useAcceleratorRefresh } from "@/lib/hooks/useAcceleratorRefresh";
+
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
@@ -61,6 +63,7 @@ export function ParticipantDrawer({ membershipId, token, onClose, onChanged }: {
     try { setCard(await getAuthJson<Card>(`/api/accelerators/memberships/${membershipId}/organizer-card`, token)); }
     catch (reason) { setError(describeApiError(reason, "Не удалось загрузить карточку участника")); }
   }, [membershipId, token]);
+  useAcceleratorRefresh(load, undefined);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
     const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;

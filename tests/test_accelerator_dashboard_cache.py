@@ -211,3 +211,72 @@ async def test_sse_revocation_and_redis_outage(redis, monkeypatch):
     generator = stream.dashboard_events(Request(), 8, forbidden)
     assert 'event: fallback' in await anext(generator)
     await generator.aclose()
+
+
+@pytest.mark.asyncio
+async def test_report_cache_is_user_scoped_and_rechecks_revoked_access(redis, monkeypatch):
+    from routers import accelerators as routes
+    async with AsyncSessionLocal() as db:
+        actor, cohort, user, member, event, peer, peer_member = await group(db)
+        user.is_admin = True
+        await db.commit()
+        calls = []
+        async def report(cohort_id, format, viewer, session):
+            calls.append(viewer.id)
+            return {"viewer": viewer.id}
+        monkeypatch.setattr(routes, '_cohort_resident_report', report)
+        assert await routes.cohort_resident_report(cohort.id, 'json', actor, db) == {"viewer": actor.id}
+        assert await routes.cohort_resident_report(cohort.id, 'json', actor, db) == {"viewer": actor.id}
+        assert await routes.cohort_resident_report(cohort.id, 'json', user, db) == {"viewer": user.id}
+        assert calls == [actor.id, user.id]
+        # Access must be checked even while the old snapshot remains warm.
+        user.is_admin = False
+        with pytest.raises(HTTPException) as error:
+            await routes.cohort_resident_report(cohort.id, 'json', user, db)
+        assert error.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_cached_lists_refresh_after_committed_changes(redis):
+    from fastapi.encoders import jsonable_encoder
+    from routers import accelerators as routes
+    async with AsyncSessionLocal() as db:
+        actor, cohort, user, member, event, peer, peer_member = await group(db)
+        first = await routes.list_residents(cohort.id, actor, db)
+        warm = await routes.list_residents(cohort.id, actor, db)
+        assert jsonable_encoder(first) == warm
+        user.name = 'Updated participant'
+        await db.commit()
+        updated = await routes.list_residents(cohort.id, actor, db)
+        assert any(row['name'] == 'Updated participant' for row in updated)
+        for endpoint in (routes.list_residents, routes.list_events, routes.tracking_dashboard):
+            with pytest.raises(HTTPException) as error:
+                await endpoint(cohort.id, user, db)
+            assert error.value.status_code in (403, 409)
+
+
+@pytest.mark.asyncio
+async def test_report_manager_and_tracker_snapshots_do_not_mix(redis):
+    import uuid
+    from models import User, AcceleratorTrackerAssignment
+    from routers import accelerators as routes
+    async with AsyncSessionLocal() as db:
+        actor, cohort, user, member, event, peer, peer_member = await group(db)
+        tracker = User(name='Tracker', email=f'{uuid.uuid4().hex}@example.test', is_active=True)
+        db.add(tracker)
+        await db.flush()
+        assignment = AcceleratorTrackerAssignment(tracker_user_id=tracker.id, membership_id=member.id,
+                                                  assigned_by_user_id=actor.id)
+        db.add(assignment)
+        await db.commit()
+        manager = await routes.cohort_resident_report(cohort.id, 'json', actor, db)
+        scoped = await routes.cohort_resident_report(cohort.id, 'json', tracker, db)
+        assert {row['membership_id'] for row in manager['rows']} == {member.id, peer_member.id}
+        assert [row['membership_id'] for row in scoped['rows']] == [member.id]
+        warm = await routes.cohort_resident_report(cohort.id, 'json', tracker, db)
+        assert [row['membership_id'] for row in warm['rows']] == [member.id]
+        await db.delete(assignment)
+        await db.commit()
+        with pytest.raises(HTTPException) as error:
+            await routes.cohort_resident_report(cohort.id, 'json', tracker, db)
+        assert error.value.status_code == 403

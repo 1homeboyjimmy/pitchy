@@ -1,4 +1,6 @@
 "use client";
+
+import { useAcceleratorRefresh } from "@/lib/hooks/useAcceleratorRefresh";
 import { useAcceleratorNavigationState } from "@/lib/hooks/useAcceleratorNavigation";
 
 import { useCallback, useEffect, useState } from "react";
@@ -14,6 +16,7 @@ type Resident = { membership_id: number; name: string; email: string; status: st
 export function TrackerAttendance({ cohortId, token }: { cohortId: number; token: string }) {
   const [events, setEvents] = useState<Event[]>([]); const [residents, setResidents] = useState<Record<number, Resident[]>>({}); const [openId, setOpenId] = useAcceleratorNavigationState<number | null>(`TrackerAttendance:openId:${cohortId}`, null); const [busy, setBusy] = useState(""); const [error, setError] = useState("");
   const load = useCallback(async () => { try { setEvents(await getAuthJson<Event[]>(`/api/accelerators/cohorts/${cohortId}/events`, token)); } catch (reason) { setError(describeApiError(reason, "Не удалось загрузить мероприятия")); } }, [cohortId, token]);
+  useAcceleratorRefresh(load, cohortId);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
     if (!openId || residents[openId]) return;

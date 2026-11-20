@@ -1,5 +1,7 @@
 "use client";
 
+import { useAcceleratorRefresh } from "@/lib/hooks/useAcceleratorRefresh";
+
 import { useAcceleratorNavigationState } from "@/lib/hooks/useAcceleratorNavigation";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
@@ -50,6 +52,7 @@ export function DemoDayWorkspace({ cohortId, membershipId, residents = [], token
     } catch (reason) { setError(describeApiError(reason, "Не удалось загрузить демо-день")); }
     finally { setBusy(""); }
   }, [cohortId, membershipId, token]);
+  useAcceleratorRefresh(load, cohortId);
   useEffect(() => { void load(); }, [load]);
   const active = useMemo(() => data?.demo_days.find((row) => String(row.id) === demoDayId) || data?.demo_days[0] || null, [data, demoDayId]);
   const isManager = canManage || data?.access_role === "global_admin" || data?.access_role === "organizer";

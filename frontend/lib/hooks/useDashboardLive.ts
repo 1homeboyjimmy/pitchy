@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ACCELERATOR_REFRESH } from "./useAcceleratorRefresh";
 import { ApiError, getAuthJson } from "@/lib/api";
 
 /** A notice requests a fresh authorized snapshot; no participant data travels in SSE. */
-export function useDashboardLive(cohortId: number, token: string) {
+export function useDashboardLive(cohortId: number | null, token: string | null) {
   const [revision, setRevision] = useState(0);
   useEffect(() => {
+    if (!cohortId || !token) return;
+    const authToken = token;
     let active = true;
     let permitted = true;
     let enabled = false;
@@ -22,7 +25,7 @@ export function useDashboardLive(cohortId: number, token: string) {
     const scheduleRefresh = () => {
       if (!active || !visible() || refresh) return;
       // Coalesce a batch of attendance writes into one refresh.
-      refresh = setTimeout(() => { refresh = undefined; if (active && visible()) setRevision(value => value + 1); }, 350);
+      refresh = setTimeout(() => { refresh = undefined; if (active && visible()) { setRevision(value => value + 1); window.dispatchEvent(new CustomEvent(ACCELERATOR_REFRESH, { detail: cohortId })); } }, 350);
     };
     const stop = () => {
       source?.close(); source = null;
@@ -57,7 +60,7 @@ export function useDashboardLive(cohortId: number, token: string) {
     async function configure() {
       if (!active || !permitted || !visible()) return;
       try {
-        const config = await getAuthJson<{ enabled: boolean }>(`${root}/dashboard-live`, token, controller.signal);
+        const config = await getAuthJson<{ enabled: boolean }>(`${root}/dashboard-live`, authToken, controller.signal);
         if (!active) return;
         enabled = config.enabled === true;
         if (enabled) connect(); else stop();

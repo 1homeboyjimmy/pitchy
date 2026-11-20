@@ -1,5 +1,7 @@
 "use client";
 
+import { useAcceleratorRefresh } from "@/lib/hooks/useAcceleratorRefresh";
+
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, ClipboardPlus, Loader2, RefreshCw, Search, Sparkles, X } from "lucide-react";
@@ -22,7 +24,8 @@ export function ProjectAuditWorkspace({cohortId,membershipId,residents=[],token:
  const auth=useAuth();const token=providedToken||auth.token;const [data,setData]=useState<AuditList|null>(null);const [query,setQuery]=useState("");const [filter,setFilter]=useState<"all"|AuditRow["status"]>("all");const [selected,setSelected]=useState<AuditRow|null>(null);const [launch,setLaunch]=useState(false);const [selectedMembershipId,setSelectedMembershipId]=useState("");const [auditType,setAuditType]=useState<(typeof auditTypes)[number][0]>("product");const [focus,setFocus]=useState("");const [busy,setBusy]=useState("");const [error,setError]=useState("");
  const [creating, setCreating] = useState(false);
  const load=useCallback(async()=>{if(!token)return;setBusy("load");setError("");try{const path=membershipId?`/api/accelerators/memberships/${membershipId}/project-audits`:`/api/accelerators/cohorts/${cohortId}/project-audits`;setData(await getAuthJson<AuditList>(path,token));}catch(reason){setError(describeApiError(reason,"Не удалось загрузить историю аудитов"));}finally{setBusy("");}},[cohortId,membershipId,token]);
- useEffect(()=>{void load()},[load]);useEffect(()=>{const close=(e:KeyboardEvent)=>{if(e.key==="Escape"){setSelected(null);if(!creating)setLaunch(false)}};window.addEventListener("keydown",close);return()=>window.removeEventListener("keydown",close)},[creating]);
+ useAcceleratorRefresh(load, cohortId);
+  useEffect(()=>{void load()},[load]);useEffect(()=>{const close=(e:KeyboardEvent)=>{if(e.key==="Escape"){setSelected(null);if(!creating)setLaunch(false)}};window.addEventListener("keydown",close);return()=>window.removeEventListener("keydown",close)},[creating]);
  const rows=useMemo(()=>{const needle=query.trim().toLowerCase();return(data?.audits||[]).filter(row=>(filter==="all"||row.status===filter)&&(!needle||`${row.resident?.name||""} ${row.project?.name||""}`.toLowerCase().includes(needle)));},[data,filter,query]);
  const counts=useMemo(()=>({all:data?.audits.length||0,completed:data?.audits.filter(r=>r.status==="completed").length||0,running:data?.audits.filter(r=>r.status==="running").length||0,failed:data?.audits.filter(r=>r.status==="failed").length||0}),[data]);
  const [launchError, setLaunchError] = useState("");

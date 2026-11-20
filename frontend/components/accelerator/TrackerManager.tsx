@@ -1,5 +1,7 @@
 "use client";
 
+import { useAcceleratorRefresh } from "@/lib/hooks/useAcceleratorRefresh";
+
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Loader2, Plus, Search, Trash2, UserRoundCheck, X } from "lucide-react";
 import { deleteAuth, describeApiError, getAuthJson, postAuthJson } from "@/lib/api";
@@ -8,6 +10,7 @@ type Resident={membership_id:number;name:string;email:string;status:string};type
 export function TrackerManager({token,cohortId}:{token:string;cohortId:number;residents:Resident[]}){
   const [trackers,setTrackers]=useState<Tracker[]>([]);const [candidates,setCandidates]=useState<Candidate[]>([]);const [query,setQuery]=useState("");const [open,setOpen]=useState(false);const [busy,setBusy]=useState("");const [error,setError]=useState("");
   const load=useCallback(async()=>{try{setTrackers(await getAuthJson<Tracker[]>(`/api/accelerators/cohorts/${cohortId}/trackers`,token));}catch(reason){setError(describeApiError(reason,"Не удалось загрузить трекеров"));}},[cohortId,token]);
+  useAcceleratorRefresh(load, cohortId);
   useEffect(()=>{void load();},[load]);useEffect(()=>{const close=(event:KeyboardEvent)=>{if(event.key==="Escape")setOpen(false);};window.addEventListener("keydown",close);return()=>window.removeEventListener("keydown",close);},[]);
   const search=async(event:FormEvent)=>{event.preventDefault();if(query.trim().length<2)return;setBusy("search");try{setCandidates(await getAuthJson<Candidate[]>(`/api/accelerators/cohorts/${cohortId}/tracker-candidates?q=${encodeURIComponent(query.trim())}`,token));}catch(reason){setError(describeApiError(reason,"Не удалось найти пользователя"));}finally{setBusy("");}};
   const add=async(candidate:Candidate)=>{setBusy(`add-${candidate.id}`);try{await postAuthJson(`/api/accelerators/cohorts/${cohortId}/trackers`,{user_id:candidate.id,membership_ids:[]},token);setOpen(false);setCandidates([]);setQuery("");await load();}catch(reason){setError(describeApiError(reason,"Не удалось добавить трекера"));}finally{setBusy("");}};

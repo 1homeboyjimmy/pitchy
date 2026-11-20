@@ -1,5 +1,7 @@
 "use client";
 
+import { useAcceleratorRefresh } from "@/lib/hooks/useAcceleratorRefresh";
+
 import { useAcceleratorNavigationState, acceleratorBack } from "@/lib/hooks/useAcceleratorNavigation";
 
 import { useDashboardFocus } from "./useDashboardFocus";
@@ -123,6 +125,7 @@ export function ProgramBuilder({ cohortId, token, focusId, trackProgress = true 
     }
   }, [cohortId, token]);
 
+  useAcceleratorRefresh(load, cohortId);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { const close = (event: KeyboardEvent) => { if (event.key === "Escape") { setForm(makeEmptyForm()); setEditingId(null); setShowForm(false); } }; window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, [setShowForm]);
 

@@ -515,42 +515,45 @@ async def list_cohort_program_artifacts(
     cohort = await get_cohort_or_404(db, cohort_id)
     access_role = await require_cohort_reader(db, user, cohort)
     await require_pitchy_artifacts_module(db, cohort)
-    query = (
-        select(
-            AcceleratorArtifact,
-            AcceleratorMembership,
-            AcceleratorProgramAction,
-            AcceleratorProgramStage,
-            User,
-            Project,
+    from accelerator_dashboard_cache import cached_json
+    async def snapshot():
+        query = (
+            select(
+                AcceleratorArtifact,
+                AcceleratorMembership,
+                AcceleratorProgramAction,
+                AcceleratorProgramStage,
+                User,
+                Project,
+            )
+            .join(AcceleratorMembership, AcceleratorMembership.id == AcceleratorArtifact.membership_id)
+            .join(AcceleratorProgramAction, AcceleratorProgramAction.id == AcceleratorArtifact.action_id)
+            .join(AcceleratorProgramStage, AcceleratorProgramStage.id == AcceleratorProgramAction.stage_id)
+            .join(User, User.id == AcceleratorMembership.user_id)
+            .join(Project, Project.id == AcceleratorArtifact.project_id)
+            .where(AcceleratorMembership.cohort_id == cohort.id)
         )
-        .join(AcceleratorMembership, AcceleratorMembership.id == AcceleratorArtifact.membership_id)
-        .join(AcceleratorProgramAction, AcceleratorProgramAction.id == AcceleratorArtifact.action_id)
-        .join(AcceleratorProgramStage, AcceleratorProgramStage.id == AcceleratorProgramAction.stage_id)
-        .join(User, User.id == AcceleratorMembership.user_id)
-        .join(Project, Project.id == AcceleratorArtifact.project_id)
-        .where(AcceleratorMembership.cohort_id == cohort.id)
-    )
-    if access_role == "tracker":
-        allowed_ids = await tracker_membership_ids(db, user.id, cohort.id)
-        query = query.where(AcceleratorMembership.id.in_(allowed_ids))
-    rows = (await db.execute(query.order_by(AcceleratorArtifact.updated_at.desc()))).all()
-    result = []
-    for artifact, membership, action, stage, resident, project in rows:
-        details_visible = can_view_artifact_details(artifact.visibility, access_role)
-        safe_artifact = artifact_dict(artifact, include_private=False)
-        if details_visible:
-            # Sharing publishes only the resident-authored summary. Canonical
-            # chats, research and project tools keep their original ownership.
-            safe_artifact["summary"] = artifact.summary
-        else:
-            safe_artifact["title"] = action.title
-        result.append({
-            **safe_artifact,
-            "resident": {"id": resident.id, "name": resident.name},
-            "project": {"id": project.id, "name": project.name},
-            "action": {"id": action.id, "title": action.title, "action_type": action.action_type},
-            "stage": {"id": stage.id, "title": stage.title},
-            "details_visible": details_visible,
-        })
-    return {"access_role": access_role, "artifacts": result}
+        if access_role == "tracker":
+            allowed_ids = await tracker_membership_ids(db, user.id, cohort.id)
+            query = query.where(AcceleratorMembership.id.in_(allowed_ids))
+        rows = (await db.execute(query.order_by(AcceleratorArtifact.updated_at.desc()))).all()
+        result = []
+        for artifact, membership, action, stage, resident, project in rows:
+            details_visible = can_view_artifact_details(artifact.visibility, access_role)
+            safe_artifact = artifact_dict(artifact, include_private=False)
+            if details_visible:
+                # Sharing publishes only the resident-authored summary. Canonical
+                # chats, research and project tools keep their original ownership.
+                safe_artifact["summary"] = artifact.summary
+            else:
+                safe_artifact["title"] = action.title
+            result.append({
+                **safe_artifact,
+                "resident": {"id": resident.id, "name": resident.name},
+                "project": {"id": project.id, "name": project.name},
+                "action": {"id": action.id, "title": action.title, "action_type": action.action_type},
+                "stage": {"id": stage.id, "title": stage.title},
+                "details_visible": details_visible,
+            })
+        return {"access_role": access_role, "artifacts": result}
+    return await cached_json(cohort.id, f"list_cohort_program_artifacts:user:{user.id}", snapshot)

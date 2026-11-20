@@ -1,4 +1,6 @@
 "use client";
+
+import { useAcceleratorRefresh } from "@/lib/hooks/useAcceleratorRefresh";
 import { useAcceleratorNavigationState } from "@/lib/hooks/useAcceleratorNavigation";
 
 import { useCallback, useEffect, useState } from "react";
@@ -12,6 +14,7 @@ type Submission = { id: number; resident: { name: string; email: string }; answe
 export function TrackerHomework({ cohortId, token }: { cohortId: number; token: string }) {
   const [assignments, setAssignments] = useState<Assignment[]>([]); const [submissions, setSubmissions] = useState<Record<number, Submission[]>>({}); const [openId, setOpenId] = useAcceleratorNavigationState<number | null>(`TrackerHomework:openId:${cohortId}`, null); const [comments, setComments] = useState<Record<number, string>>({}); const [busy, setBusy] = useState(""); const [error, setError] = useState("");
   const load = useCallback(async () => { try { setAssignments(await getAuthJson<Assignment[]>(`/api/accelerators/cohorts/${cohortId}/homework`, token)); } catch (reason) { setError(describeApiError(reason, "Не удалось загрузить задания")); } }, [cohortId, token]);
+  useAcceleratorRefresh(load, cohortId);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
     if (!openId || submissions[openId]) return;

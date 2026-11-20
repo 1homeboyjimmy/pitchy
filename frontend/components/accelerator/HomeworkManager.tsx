@@ -1,5 +1,7 @@
 "use client";
 
+import { useAcceleratorRefresh } from "@/lib/hooks/useAcceleratorRefresh";
+
 import { useAcceleratorNavigationState } from "@/lib/hooks/useAcceleratorNavigation";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
@@ -83,6 +85,7 @@ export function HomeworkManager({ cohortId, token, residents, isAdmin, pitchyEna
     catch (reason) { setError(describeApiError(reason, "Не удалось загрузить задания")); }
   }, [cohortId, token]);
 
+  useAcceleratorRefresh(loadAssignments, cohortId);
   useEffect(() => { void loadAssignments(); }, [loadAssignments]);
   useEffect(() => { const close = (event: KeyboardEvent) => { if (event.key === "Escape") { setEditingId(null); setShowForm(false); } }; window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, [setShowForm]);
   useEffect(() => { setFeatureEnabled(pitchyEnabled); }, [pitchyEnabled, cohortId]);

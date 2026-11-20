@@ -1660,48 +1660,51 @@ async def list_trackers(
 ):
     cohort = await get_cohort_or_404(db, cohort_id)
     await require_cohort_manager(db, user, cohort)
-    rows = (await db.execute(
-        select(AcceleratorStaff, User)
-        .join(User, User.id == AcceleratorStaff.user_id)
-        .where(
-            AcceleratorStaff.accelerator_id == cohort.accelerator_id,
-            AcceleratorStaff.role == "tracker",
-        )
-        .order_by(User.name, User.email)
-    )).all()
-    result = []
-    for staff, tracker in rows:
-        membership_ids = list((await db.execute(
-            select(AcceleratorTrackerAssignment.membership_id)
-            .join(
-                AcceleratorMembership,
-                AcceleratorMembership.id == AcceleratorTrackerAssignment.membership_id,
-            )
+    from accelerator_dashboard_cache import cached_json
+    async def snapshot():
+        rows = (await db.execute(
+            select(AcceleratorStaff, User)
+            .join(User, User.id == AcceleratorStaff.user_id)
             .where(
-                AcceleratorTrackerAssignment.tracker_user_id == tracker.id,
-                AcceleratorMembership.cohort_id == cohort.id,
+                AcceleratorStaff.accelerator_id == cohort.accelerator_id,
+                AcceleratorStaff.role == "tracker",
             )
-            .order_by(AcceleratorTrackerAssignment.membership_id)
-        )).scalars().all())
-        team_ids = list((await db.execute(
-            select(AcceleratorTeamTrackerAssignment.team_id)
-            .join(AcceleratorTeam, AcceleratorTeam.id == AcceleratorTeamTrackerAssignment.team_id)
-            .where(
-                AcceleratorTeamTrackerAssignment.tracker_user_id == tracker.id,
-                AcceleratorTeam.cohort_id == cohort.id,
-                AcceleratorTeam.status == "active",
-            )
-            .order_by(AcceleratorTeamTrackerAssignment.team_id)
-        )).scalars().all())
-        result.append({
-            "staff_id": staff.id,
-            "user_id": tracker.id,
-            "name": tracker.name,
-            "email": tracker.email,
-            "membership_ids": membership_ids,
-            "team_ids": team_ids,
-        })
-    return result
+            .order_by(User.name, User.email)
+        )).all()
+        result = []
+        for staff, tracker in rows:
+            membership_ids = list((await db.execute(
+                select(AcceleratorTrackerAssignment.membership_id)
+                .join(
+                    AcceleratorMembership,
+                    AcceleratorMembership.id == AcceleratorTrackerAssignment.membership_id,
+                )
+                .where(
+                    AcceleratorTrackerAssignment.tracker_user_id == tracker.id,
+                    AcceleratorMembership.cohort_id == cohort.id,
+                )
+                .order_by(AcceleratorTrackerAssignment.membership_id)
+            )).scalars().all())
+            team_ids = list((await db.execute(
+                select(AcceleratorTeamTrackerAssignment.team_id)
+                .join(AcceleratorTeam, AcceleratorTeam.id == AcceleratorTeamTrackerAssignment.team_id)
+                .where(
+                    AcceleratorTeamTrackerAssignment.tracker_user_id == tracker.id,
+                    AcceleratorTeam.cohort_id == cohort.id,
+                    AcceleratorTeam.status == "active",
+                )
+                .order_by(AcceleratorTeamTrackerAssignment.team_id)
+            )).scalars().all())
+            result.append({
+                "staff_id": staff.id,
+                "user_id": tracker.id,
+                "name": tracker.name,
+                "email": tracker.email,
+                "membership_ids": membership_ids,
+                "team_ids": team_ids,
+            })
+        return result
+    return await cached_json(cohort.id, f"list_trackers:user:{user.id}", snapshot)
 
 
 @router.get("/cohorts/{cohort_id}/tracker-candidates")
@@ -2230,12 +2233,15 @@ async def get_program_config(
         ))).scalar_one_or_none()
         if member is None and not tracker_access and not expert_access:
             raise HTTPException(status_code=403, detail="Нет доступа к потоку")
-    config = (await db.execute(select(AcceleratorProgramConfig).where(
-        AcceleratorProgramConfig.cohort_id == cohort.id
-    ))).scalar_one()
-    modules = {key: bool((config.modules or {}).get(key, default)) for key, default in DEFAULT_MODULES.items()}
-    locked = {key: value for key, value in (config.locked_modules or {}).items() if key in DEFAULT_MODULES}
-    return {"cohort_id": cohort.id, "version": config.version, "modules": modules, "locked_modules": locked}
+    from accelerator_dashboard_cache import cached_json
+    async def snapshot():
+        config = (await db.execute(select(AcceleratorProgramConfig).where(
+            AcceleratorProgramConfig.cohort_id == cohort.id
+        ))).scalar_one()
+        modules = {key: bool((config.modules or {}).get(key, default)) for key, default in DEFAULT_MODULES.items()}
+        locked = {key: value for key, value in (config.locked_modules or {}).items() if key in DEFAULT_MODULES}
+        return {"cohort_id": cohort.id, "version": config.version, "modules": modules, "locked_modules": locked}
+    return await cached_json(cohort.id, f"get_program_config:user:{user.id}", snapshot)
 
 
 @router.patch("/cohorts/{cohort_id}/program-config")
@@ -2423,11 +2429,14 @@ async def list_program_stages(
     cohort = await get_cohort_or_404(db, cohort_id)
     await require_cohort_manager(db, user, cohort)
     await complete_due_events(db, cohort.id)
-    rows = (await db.execute(select(AcceleratorProgramStage).where(
-        AcceleratorProgramStage.cohort_id == cohort.id,
-        AcceleratorProgramStage.status != "archived",
-    ).order_by(AcceleratorProgramStage.position))).scalars().all()
-    return [await manager_stage_dict(db, row) for row in rows]
+    from accelerator_dashboard_cache import cached_json
+    async def snapshot():
+        rows = (await db.execute(select(AcceleratorProgramStage).where(
+            AcceleratorProgramStage.cohort_id == cohort.id,
+            AcceleratorProgramStage.status != "archived",
+        ).order_by(AcceleratorProgramStage.position))).scalars().all()
+        return [await manager_stage_dict(db, row) for row in rows]
+    return await cached_json(cohort.id, f"list_program_stages:user:{user.id}", snapshot)
 
 
 @router.post("/cohorts/{cohort_id}/program-stages")
@@ -2890,80 +2899,83 @@ async def list_homework_assignments(
     cohort = await get_cohort_or_404(db, cohort_id)
     access_role = await require_cohort_reader(db, user, cohort)
     await require_homework_module(db, cohort)
-    assignment_query = select(AcceleratorHomeworkAssignment).where(
-        AcceleratorHomeworkAssignment.cohort_id == cohort.id,
-        AcceleratorHomeworkAssignment.status != "archived",
-    )
-    assigned_ids: set[int] | None = None
-    if access_role == "tracker":
-        assigned_ids = await tracker_membership_ids(db, user.id, cohort.id)
-        assignment_query = assignment_query.where(AcceleratorHomeworkAssignment.status == "published")
-    assignments = (await db.execute(
-        assignment_query.order_by(AcceleratorHomeworkAssignment.created_at.desc())
-    )).scalars().all()
-    result = []
-    if assigned_ids is not None:
-        enrolled_count = (await db.execute(select(func.count(AcceleratorMembership.id)).where(
-            AcceleratorMembership.id.in_(assigned_ids),
-            AcceleratorMembership.status == "enrolled",
-        ))).scalar_one()
-    else:
-        enrolled_count = (await db.execute(select(func.count(AcceleratorMembership.id)).where(
-            AcceleratorMembership.cohort_id == cohort.id,
-            AcceleratorMembership.role == "resident",
-            AcceleratorMembership.status == "enrolled",
-        ))).scalar_one()
-    for assignment in assignments:
-        target_ids = list((await db.execute(select(AcceleratorHomeworkTarget.membership_id).where(
-            AcceleratorHomeworkTarget.assignment_id == assignment.id
-        ))).scalars().all())
-        if assigned_ids is not None:
-            target_ids = [membership_id for membership_id in target_ids if membership_id in assigned_ids]
-            if assignment.audience == "selected" and not target_ids:
-                continue
-        status_query = (
-            select(AcceleratorHomeworkSubmission.status, func.count(AcceleratorHomeworkSubmission.id))
-            .where(AcceleratorHomeworkSubmission.assignment_id == assignment.id)
+    from accelerator_dashboard_cache import cached_json
+    async def snapshot():
+        assignment_query = select(AcceleratorHomeworkAssignment).where(
+            AcceleratorHomeworkAssignment.cohort_id == cohort.id,
+            AcceleratorHomeworkAssignment.status != "archived",
         )
+        assigned_ids: set[int] | None = None
+        if access_role == "tracker":
+            assigned_ids = await tracker_membership_ids(db, user.id, cohort.id)
+            assignment_query = assignment_query.where(AcceleratorHomeworkAssignment.status == "published")
+        assignments = (await db.execute(
+            assignment_query.order_by(AcceleratorHomeworkAssignment.created_at.desc())
+        )).scalars().all()
+        result = []
         if assigned_ids is not None:
-            status_query = status_query.where(AcceleratorHomeworkSubmission.membership_id.in_(assigned_ids))
-        status_rows = (await db.execute(
-            status_query.group_by(AcceleratorHomeworkSubmission.status)
-        )).all()
-        status_counts = {status: count for status, count in status_rows}
-        eligible_ids = [m.id for m, _ in await homework_recipients(db, assignment)]
-        if assigned_ids is not None: eligible_ids = [mid for mid in eligible_ids if mid in assigned_ids]
-        attributed = await participant_results(db, eligible_ids, [assignment.id])
-        participant_counts = {}
-        for attributed_result in attributed.values():
-            participant_counts[attributed_result.status] = participant_counts.get(attributed_result.status, 0) + 1
-        result.append({
-            "id": assignment.id,
-            "cohort_id": assignment.cohort_id,
-            "stage_id": assignment.stage_id,
-            "title": assignment.title,
-            "description": assignment.description,
-            "assignment_type": assignment.assignment_type,
-            "submission_mode": assignment.submission_mode,
-            "min_participants": assignment.min_participants,
-            "require_project": assignment.require_project,
-            "quiz_questions": assignment.quiz_config or [],
-            "passing_score": assignment.passing_score,
-            "max_attempts": assignment.max_attempts,
-            "pitchy_enabled": bool(assignment.pitchy_enabled),
-            "pitchy_tools": assignment.pitchy_tools or [],
-            "due_at": assignment.due_at,
-            "status": assignment.status,
-            "audience": assignment.audience,
-            "target_membership_ids": target_ids,
-            "target_count": len(target_ids) if assignment.audience == "selected" else enrolled_count,
-            "allow_resubmit": assignment.allow_resubmit,
-            "published_at": assignment.published_at,
-            "created_at": assignment.created_at,
-            "submission_counts": status_counts,
-            "participant_counts": participant_counts,
-        })
-    return result
+            enrolled_count = (await db.execute(select(func.count(AcceleratorMembership.id)).where(
+                AcceleratorMembership.id.in_(assigned_ids),
+                AcceleratorMembership.status == "enrolled",
+            ))).scalar_one()
+        else:
+            enrolled_count = (await db.execute(select(func.count(AcceleratorMembership.id)).where(
+                AcceleratorMembership.cohort_id == cohort.id,
+                AcceleratorMembership.role == "resident",
+                AcceleratorMembership.status == "enrolled",
+            ))).scalar_one()
+        for assignment in assignments:
+            target_ids = list((await db.execute(select(AcceleratorHomeworkTarget.membership_id).where(
+                AcceleratorHomeworkTarget.assignment_id == assignment.id
+            ))).scalars().all())
+            if assigned_ids is not None:
+                target_ids = [membership_id for membership_id in target_ids if membership_id in assigned_ids]
+                if assignment.audience == "selected" and not target_ids:
+                    continue
+            status_query = (
+                select(AcceleratorHomeworkSubmission.status, func.count(AcceleratorHomeworkSubmission.id))
+                .where(AcceleratorHomeworkSubmission.assignment_id == assignment.id)
+            )
+            if assigned_ids is not None:
+                status_query = status_query.where(AcceleratorHomeworkSubmission.membership_id.in_(assigned_ids))
+            status_rows = (await db.execute(
+                status_query.group_by(AcceleratorHomeworkSubmission.status)
+            )).all()
+            status_counts = {status: count for status, count in status_rows}
+            eligible_ids = [m.id for m, _ in await homework_recipients(db, assignment)]
+            if assigned_ids is not None: eligible_ids = [mid for mid in eligible_ids if mid in assigned_ids]
+            attributed = await participant_results(db, eligible_ids, [assignment.id])
+            participant_counts = {}
+            for attributed_result in attributed.values():
+                participant_counts[attributed_result.status] = participant_counts.get(attributed_result.status, 0) + 1
+            result.append({
+                "id": assignment.id,
+                "cohort_id": assignment.cohort_id,
+                "stage_id": assignment.stage_id,
+                "title": assignment.title,
+                "description": assignment.description,
+                "assignment_type": assignment.assignment_type,
+                "submission_mode": assignment.submission_mode,
+                "min_participants": assignment.min_participants,
+                "require_project": assignment.require_project,
+                "quiz_questions": assignment.quiz_config or [],
+                "passing_score": assignment.passing_score,
+                "max_attempts": assignment.max_attempts,
+                "pitchy_enabled": bool(assignment.pitchy_enabled),
+                "pitchy_tools": assignment.pitchy_tools or [],
+                "due_at": assignment.due_at,
+                "status": assignment.status,
+                "audience": assignment.audience,
+                "target_membership_ids": target_ids,
+                "target_count": len(target_ids) if assignment.audience == "selected" else enrolled_count,
+                "allow_resubmit": assignment.allow_resubmit,
+                "published_at": assignment.published_at,
+                "created_at": assignment.created_at,
+                "submission_counts": status_counts,
+                "participant_counts": participant_counts,
+            })
+        return result
+    return await cached_json(cohort.id, f"list_homework_assignments:user:{user.id}", snapshot)
 
 
 @router.get("/cohorts/{cohort_id}/homework-review-queue")
@@ -4313,49 +4325,52 @@ async def list_events(
     access_role = await require_cohort_reader(db, user, cohort)
     await require_attendance_module(db, cohort)
     await complete_due_events(db, cohort.id)
-    event_query = select(AcceleratorEvent).where(
-        AcceleratorEvent.cohort_id == cohort.id,
-        AcceleratorEvent.status != "archived",
-    )
-    if access_role == "tracker":
-        event_query = event_query.where(
-            AcceleratorEvent.status.in_(("published", "completed", "cancelled"))
-        )
-    rows = (await db.execute(event_query.order_by(AcceleratorEvent.starts_at))).scalars().all()
-    count_query = (
-        select(AcceleratorAttendanceRecord.event_id, func.count(AcceleratorAttendanceRecord.id))
-        .where(AcceleratorAttendanceRecord.status == "present")
-    )
-    if access_role == "tracker":
-        count_query = count_query.where(AcceleratorAttendanceRecord.membership_id.in_(
-            await tracker_membership_ids(db, user.id, cohort.id)
-        ))
-    counts = dict((await db.execute(
-        count_query.group_by(AcceleratorAttendanceRecord.event_id)
-    )).all())
-    if cohort.attendance_scope == "team":
-        members_query = select(AcceleratorMembership).where(
-            AcceleratorMembership.cohort_id == cohort.id,
-            AcceleratorMembership.role == "resident", AcceleratorMembership.status == "enrolled",
+    from accelerator_dashboard_cache import cached_json
+    async def snapshot():
+        event_query = select(AcceleratorEvent).where(
+            AcceleratorEvent.cohort_id == cohort.id,
+            AcceleratorEvent.status != "archived",
         )
         if access_role == "tracker":
-            members_query = members_query.where(AcceleratorMembership.id.in_(
-                await tracker_membership_ids(db,user.id,cohort.id)
+            event_query = event_query.where(
+                AcceleratorEvent.status.in_(("published", "completed", "cancelled"))
+            )
+        rows = (await db.execute(event_query.order_by(AcceleratorEvent.starts_at))).scalars().all()
+        count_query = (
+            select(AcceleratorAttendanceRecord.event_id, func.count(AcceleratorAttendanceRecord.id))
+            .where(AcceleratorAttendanceRecord.status == "present")
+        )
+        if access_role == "tracker":
+            count_query = count_query.where(AcceleratorAttendanceRecord.membership_id.in_(
+                await tracker_membership_ids(db, user.id, cohort.id)
             ))
-        members = (await db.execute(members_query)).scalars().all()
-        shared = await effective_attendance_records(db,members,[row.id for row in rows],cohorts={cohort.id:cohort})
-        counts = {}
-        for records in shared.values():
-            for event_id, record in records.items():
-                if record.status == "present":
-                    counts[event_id] = counts.get(event_id,0) + 1
-    return [event_dict(
-        row,
-        attendance_count=counts.get(row.id, 0),
-        include_checkin=access_role in ("global_admin", "organizer"),
-        homework_links=await event_homework_links(db, row.id),
-        timezone=cohort.timezone,
-    ) for row in rows]
+        counts = dict((await db.execute(
+            count_query.group_by(AcceleratorAttendanceRecord.event_id)
+        )).all())
+        if cohort.attendance_scope == "team":
+            members_query = select(AcceleratorMembership).where(
+                AcceleratorMembership.cohort_id == cohort.id,
+                AcceleratorMembership.role == "resident", AcceleratorMembership.status == "enrolled",
+            )
+            if access_role == "tracker":
+                members_query = members_query.where(AcceleratorMembership.id.in_(
+                    await tracker_membership_ids(db,user.id,cohort.id)
+                ))
+            members = (await db.execute(members_query)).scalars().all()
+            shared = await effective_attendance_records(db,members,[row.id for row in rows],cohorts={cohort.id:cohort})
+            counts = {}
+            for records in shared.values():
+                for event_id, record in records.items():
+                    if record.status == "present":
+                        counts[event_id] = counts.get(event_id,0) + 1
+        return [event_dict(
+            row,
+            attendance_count=counts.get(row.id, 0),
+            include_checkin=access_role in ("global_admin", "organizer"),
+            homework_links=await event_homework_links(db, row.id),
+            timezone=cohort.timezone,
+        ) for row in rows]
+    return await cached_json(cohort.id, f"list_events:user:{user.id}", snapshot)
 
 
 @router.post("/cohorts/{cohort_id}/events")
@@ -5358,56 +5373,59 @@ async def list_applications(
 ):
     cohort = await get_cohort_or_404(db, cohort_id)
     await require_cohort_manager(db, user, cohort)
-    query = (
-        select(
-            AcceleratorApplication,
-            AcceleratorMembership.id,
-            AcceleratorMembership.status,
-            Project.name,
+    from accelerator_dashboard_cache import cached_json
+    async def snapshot():
+        query = (
+            select(
+                AcceleratorApplication,
+                AcceleratorMembership.id,
+                AcceleratorMembership.status,
+                Project.name,
+            )
+            .outerjoin(
+                AcceleratorMembership,
+                AcceleratorMembership.application_id == AcceleratorApplication.id,
+            )
+            .outerjoin(Project, Project.id == AcceleratorApplication.project_id)
+            .where(AcceleratorApplication.cohort_id == cohort.id)
         )
-        .outerjoin(
-            AcceleratorMembership,
-            AcceleratorMembership.application_id == AcceleratorApplication.id,
-        )
-        .outerjoin(Project, Project.id == AcceleratorApplication.project_id)
-        .where(AcceleratorApplication.cohort_id == cohort.id)
-    )
-    if status:
-        query = query.where(AcceleratorApplication.status == status)
-    rows = (await db.execute(query.order_by(AcceleratorApplication.submitted_at.desc()))).all()
-    membership_ids = [membership_id for _, membership_id, _, _ in rows if membership_id]
-    tracker_rows = (await db.execute(
-        select(AcceleratorTrackerAssignment.membership_id, User.name)
-        .join(User, User.id == AcceleratorTrackerAssignment.tracker_user_id)
-        .where(AcceleratorTrackerAssignment.membership_id.in_(membership_ids))
-        .order_by(User.name)
-    )).all() if membership_ids else []
-    team_tracker_rows = (await db.execute(
-        select(AcceleratorTeamMember.membership_id, User.name)
-        .join(AcceleratorTeam, AcceleratorTeam.id == AcceleratorTeamMember.team_id)
-        .join(
-            AcceleratorTeamTrackerAssignment,
-            AcceleratorTeamTrackerAssignment.team_id == AcceleratorTeam.id,
-        )
-        .join(User, User.id == AcceleratorTeamTrackerAssignment.tracker_user_id)
-        .where(
-            AcceleratorTeamMember.membership_id.in_(membership_ids),
-            AcceleratorTeamMember.status == "active",
-            AcceleratorTeam.status == "active",
-        )
-        .order_by(User.name)
-    )).all() if membership_ids else []
-    tracker_rows = list(tracker_rows) + list(team_tracker_rows)
-    tracker_names: dict[int, list[str]] = {}
-    for membership_id, tracker_name in tracker_rows:
-        tracker_names.setdefault(membership_id, []).append(tracker_name)
-    return [{
-        **application_dict(application),
-        "membership_id": membership_id,
-        "membership_status": membership_status,
-        "project_name": project_name or (application.form_payload or {}).get("project_name"),
-        "tracker_names": tracker_names.get(membership_id, []),
-    } for application, membership_id, membership_status, project_name in rows]
+        if status:
+            query = query.where(AcceleratorApplication.status == status)
+        rows = (await db.execute(query.order_by(AcceleratorApplication.submitted_at.desc()))).all()
+        membership_ids = [membership_id for _, membership_id, _, _ in rows if membership_id]
+        tracker_rows = (await db.execute(
+            select(AcceleratorTrackerAssignment.membership_id, User.name)
+            .join(User, User.id == AcceleratorTrackerAssignment.tracker_user_id)
+            .where(AcceleratorTrackerAssignment.membership_id.in_(membership_ids))
+            .order_by(User.name)
+        )).all() if membership_ids else []
+        team_tracker_rows = (await db.execute(
+            select(AcceleratorTeamMember.membership_id, User.name)
+            .join(AcceleratorTeam, AcceleratorTeam.id == AcceleratorTeamMember.team_id)
+            .join(
+                AcceleratorTeamTrackerAssignment,
+                AcceleratorTeamTrackerAssignment.team_id == AcceleratorTeam.id,
+            )
+            .join(User, User.id == AcceleratorTeamTrackerAssignment.tracker_user_id)
+            .where(
+                AcceleratorTeamMember.membership_id.in_(membership_ids),
+                AcceleratorTeamMember.status == "active",
+                AcceleratorTeam.status == "active",
+            )
+            .order_by(User.name)
+        )).all() if membership_ids else []
+        tracker_rows = list(tracker_rows) + list(team_tracker_rows)
+        tracker_names: dict[int, list[str]] = {}
+        for membership_id, tracker_name in tracker_rows:
+            tracker_names.setdefault(membership_id, []).append(tracker_name)
+        return [{
+            **application_dict(application),
+            "membership_id": membership_id,
+            "membership_status": membership_status,
+            "project_name": project_name or (application.form_payload or {}).get("project_name"),
+            "tracker_names": tracker_names.get(membership_id, []),
+        } for application, membership_id, membership_status, project_name in rows]
+    return await cached_json(cohort.id, f"applications:{status}:user:{user.id}", snapshot)
 
 
 @router.post("/applications/{application_id}/accept")
@@ -5820,33 +5838,36 @@ async def list_residents(
 ):
     cohort = await get_cohort_or_404(db, cohort_id)
     access_role = await require_cohort_reader(db, user, cohort)
-    query = (
-        select(AcceleratorMembership, User)
-        .join(User, User.id == AcceleratorMembership.user_id)
-        .where(AcceleratorMembership.cohort_id == cohort.id, AcceleratorMembership.role == "resident")
-        .order_by(AcceleratorMembership.created_at.desc())
-    )
-    if access_role == "tracker":
-        assigned_ids = await tracker_membership_ids(db, user.id, cohort.id)
-        query = query.where(AcceleratorMembership.id.in_(assigned_ids))
-    rows = (await db.execute(query)).all()
-    trackers_by_membership = await membership_trackers_batch(db, [membership.id for membership, _ in rows])
-    result = []
-    for membership, resident in rows:
-        result.append({
-            "membership_id": membership.id,
-            "user_id": resident.id,
-            "name": resident.name,
-            "email": resident.email,
-            "status": membership.status,
-            "status_reason": membership.status_reason,
-            "accepted_at": membership.accepted_at,
-            "enrolled_at": membership.enrolled_at,
-            "suspended_at": membership.suspended_at,
-            "ended_at": membership.ended_at,
-            "trackers": trackers_by_membership.get(membership.id, []),
-        })
-    return result
+    from accelerator_dashboard_cache import cached_json
+    async def snapshot():
+        query = (
+            select(AcceleratorMembership, User)
+            .join(User, User.id == AcceleratorMembership.user_id)
+            .where(AcceleratorMembership.cohort_id == cohort.id, AcceleratorMembership.role == "resident")
+            .order_by(AcceleratorMembership.created_at.desc())
+        )
+        if access_role == "tracker":
+            assigned_ids = await tracker_membership_ids(db, user.id, cohort.id)
+            query = query.where(AcceleratorMembership.id.in_(assigned_ids))
+        rows = (await db.execute(query)).all()
+        trackers_by_membership = await membership_trackers_batch(db, [membership.id for membership, _ in rows])
+        result = []
+        for membership, resident in rows:
+            result.append({
+                "membership_id": membership.id,
+                "user_id": resident.id,
+                "name": resident.name,
+                "email": resident.email,
+                "status": membership.status,
+                "status_reason": membership.status_reason,
+                "accepted_at": membership.accepted_at,
+                "enrolled_at": membership.enrolled_at,
+                "suspended_at": membership.suspended_at,
+                "ended_at": membership.ended_at,
+                "trackers": trackers_by_membership.get(membership.id, []),
+            })
+        return result
+    return await cached_json(cohort.id, f"list_residents:user:{user.id}", snapshot)
 
 
 @router.patch("/memberships/{membership_id}/status")
@@ -5960,7 +5981,13 @@ async def cohort_resident_report(
     user: User = Depends(get_async_current_user),
     db: AsyncSession = Depends(get_async_db),
 ):
-    return await _cohort_resident_report(cohort_id, format, user, db)
+    cohort = await get_cohort_or_404(db, cohort_id)
+    await require_cohort_reader(db, user, cohort)
+    if format != "json":
+        return await _cohort_resident_report(cohort_id, format, user, db)
+    from accelerator_dashboard_cache import cached_json
+    return await cached_json(cohort.id, f"report:user:{user.id}",
+                             lambda: _cohort_resident_report(cohort_id, format, user, db))
 
 
 async def _cohort_resident_report(
@@ -6459,43 +6486,47 @@ async def tracking_dashboard(
 ):
     cohort = await get_cohort_or_404(db, cohort_id)
     await require_progress_tracking_module(db, cohort)
-    progresses = {}
-    report = await _cohort_resident_report(cohort_id, "json", user, db, progress_context=progresses)
-    ids = [row["membership_id"] for row in report["rows"]]
-    members_by_id = {row.id: row for row in (await db.execute(select(AcceleratorMembership).where(
-        AcceleratorMembership.id.in_(ids),
-    ))).scalars().all()} if ids else {}
-    members = [members_by_id[mid] for mid in ids]
-    risks = {row["membership_id"]: row["risk"] for row in report["rows"]}
-    all_signals = await TrackingSignalsService(db).get_cohort_signals(members, risks, progresses=progresses)
-    by_member = {}
-    for signal in all_signals:
-        by_member.setdefault(signal["membership_id"], []).append(signal)
-    rows = [{**row, "signals": by_member.get(row["membership_id"], [])} for row in report["rows"]]
-    actionable_signals = [
-        row for row in all_signals if row["state"] in ("open", "acknowledged")
-    ]
-    return {
-        "cohort_id": cohort.id,
-        "access_role": report["access_role"],
-        "summary": {
-            "residents": len(rows),
-            "at_risk": sum(row["risk"]["level"] != "green" for row in rows),
-            "green": sum(row["risk"]["level"] == "green" for row in rows),
-            "yellow": sum(row["risk"]["level"] == "yellow" for row in rows),
-            "red": sum(row["risk"]["level"] == "red" for row in rows),
-            "overdue_tasks": sum(row["risk"]["overdue_tasks"] for row in rows),
-            "open_signals": len(actionable_signals),
-            "high_signals": sum(row["severity"] == "high" for row in actionable_signals),
-            "overdue_signals": sum(
-                bool(row["due_at"] and row["due_at"] < datetime.utcnow())
-                for row in actionable_signals
-            ),
-            "no_checkin": sum(row["kind"] == "no_checkin" for row in actionable_signals),
-        },
-        "rows": rows,
-        "signals": all_signals,
-    }
+    await require_cohort_reader(db, user, cohort)
+    from accelerator_dashboard_cache import cached_json
+    async def snapshot():
+        progresses = {}
+        report = await _cohort_resident_report(cohort_id, "json", user, db, progress_context=progresses)
+        ids = [row["membership_id"] for row in report["rows"]]
+        members_by_id = {row.id: row for row in (await db.execute(select(AcceleratorMembership).where(
+            AcceleratorMembership.id.in_(ids),
+        ))).scalars().all()} if ids else {}
+        members = [members_by_id[mid] for mid in ids]
+        risks = {row["membership_id"]: row["risk"] for row in report["rows"]}
+        all_signals = await TrackingSignalsService(db).get_cohort_signals(members, risks, progresses=progresses)
+        by_member = {}
+        for signal in all_signals:
+            by_member.setdefault(signal["membership_id"], []).append(signal)
+        rows = [{**row, "signals": by_member.get(row["membership_id"], [])} for row in report["rows"]]
+        actionable_signals = [
+            row for row in all_signals if row["state"] in ("open", "acknowledged")
+        ]
+        return {
+            "cohort_id": cohort.id,
+            "access_role": report["access_role"],
+            "summary": {
+                "residents": len(rows),
+                "at_risk": sum(row["risk"]["level"] != "green" for row in rows),
+                "green": sum(row["risk"]["level"] == "green" for row in rows),
+                "yellow": sum(row["risk"]["level"] == "yellow" for row in rows),
+                "red": sum(row["risk"]["level"] == "red" for row in rows),
+                "overdue_tasks": sum(row["risk"]["overdue_tasks"] for row in rows),
+                "open_signals": len(actionable_signals),
+                "high_signals": sum(row["severity"] == "high" for row in actionable_signals),
+                "overdue_signals": sum(
+                    bool(row["due_at"] and row["due_at"] < datetime.utcnow())
+                    for row in actionable_signals
+                ),
+                "no_checkin": sum(row["kind"] == "no_checkin" for row in actionable_signals),
+            },
+            "rows": rows,
+            "signals": all_signals,
+        }
+    return await cached_json(cohort.id, f"tracking_dashboard:user:{user.id}", snapshot)
 
 
 @router.get("/cohorts/{cohort_id}/tracking-signals")
@@ -7104,27 +7135,30 @@ async def list_cohort_project_audits(
     cohort = await get_cohort_or_404(db, cohort_id)
     await require_project_audit_module(db, cohort)
     access_role = await require_cohort_reader(db, user, cohort)
-    query = (
-        select(AcceleratorProjectAudit)
-        .join(
-            AcceleratorMembership,
-            AcceleratorMembership.id == AcceleratorProjectAudit.membership_id,
+    from accelerator_dashboard_cache import cached_json
+    async def snapshot():
+        query = (
+            select(AcceleratorProjectAudit)
+            .join(
+                AcceleratorMembership,
+                AcceleratorMembership.id == AcceleratorProjectAudit.membership_id,
+            )
+            .where(AcceleratorProjectAudit.cohort_id == cohort.id)
+            .order_by(AcceleratorProjectAudit.created_at.desc())
+            .limit(300)
         )
-        .where(AcceleratorProjectAudit.cohort_id == cohort.id)
-        .order_by(AcceleratorProjectAudit.created_at.desc())
-        .limit(300)
-    )
-    if access_role == "tracker":
-        allowed_ids = await tracker_membership_ids(db, user.id, cohort.id)
-        query = query.where(AcceleratorProjectAudit.membership_id.in_(allowed_ids))
-    rows = list((await db.execute(query)).scalars().all())
-    return {
-        "access_role": access_role,
-        "audits": [
-            await project_audit_dict(db, row, previous_project_audit(rows, index))
-            for index, row in enumerate(rows)
-        ],
-    }
+        if access_role == "tracker":
+            allowed_ids = await tracker_membership_ids(db, user.id, cohort.id)
+            query = query.where(AcceleratorProjectAudit.membership_id.in_(allowed_ids))
+        rows = list((await db.execute(query)).scalars().all())
+        return {
+            "access_role": access_role,
+            "audits": [
+                await project_audit_dict(db, row, previous_project_audit(rows, index))
+                for index, row in enumerate(rows)
+            ],
+        }
+    return await cached_json(cohort.id, f"list_cohort_project_audits:user:{user.id}", snapshot)
 
 
 @router.get("/memberships/{membership_id}/project-options")
@@ -7676,11 +7710,14 @@ async def list_cohort_demo_days(
         ).limit(1))).scalar_one_or_none()
         if allowed is None:
             raise HTTPException(status_code=403, detail="Нет доступа к демо-дню")
-    rows = (await db.execute(query.order_by(AcceleratorDemoDay.created_at.desc()))).scalars().all()
-    return {
-        "access_role": access_role,
-        "demo_days": [await demo_day_dict(db, row, access_role, user.id) for row in rows],
-    }
+    from accelerator_dashboard_cache import cached_json
+    async def snapshot():
+        rows = (await db.execute(query.order_by(AcceleratorDemoDay.created_at.desc()))).scalars().all()
+        return {
+            "access_role": access_role,
+            "demo_days": [await demo_day_dict(db, row, access_role, user.id) for row in rows],
+        }
+    return await cached_json(cohort.id, f"list_cohort_demo_days:user:{user.id}", snapshot)
 
 
 @router.get("/memberships/{membership_id}/demo-days")
@@ -9298,196 +9335,199 @@ async def membership_organizer_card(
     ))).scalar_one_or_none()
     access_role = await require_tracker_membership_access(db, user, membership)
     can_manage = access_role in ("global_admin", "organizer")
-    person = await db.get(User, membership.user_id)
-    application = await db.get(AcceleratorApplication, membership.application_id) if membership.application_id else None
-    profile = (await db.execute(select(AcceleratorParticipantProfile).where(
-        AcceleratorParticipantProfile.membership_id == membership.id
-    ))).scalar_one_or_none()
-    project = await db.get(Project, membership.project_id) if membership.project_id else None
-    team_row = (await db.execute(select(AcceleratorTeamMember, AcceleratorTeam).join(
-        AcceleratorTeam, AcceleratorTeam.id == AcceleratorTeamMember.team_id
-    ).where(
-        AcceleratorTeamMember.membership_id == membership.id,
-        AcceleratorTeamMember.status == "active",
-        AcceleratorTeam.status == "active",
-    ))).first()
-    tracker_ids = await membership_tracker_user_ids(db, membership.id)
-    trackers = list((await db.execute(select(User).where(User.id.in_(tracker_ids)))).scalars().all()) if tracker_ids else []
-    tracker_options = []
-    if can_manage:
-        tracker_options = list((await db.execute(select(User).join(
-            AcceleratorStaff, AcceleratorStaff.user_id == User.id
+    from accelerator_dashboard_cache import cached_json
+    async def snapshot():
+        person = await db.get(User, membership.user_id)
+        application = await db.get(AcceleratorApplication, membership.application_id) if membership.application_id else None
+        profile = (await db.execute(select(AcceleratorParticipantProfile).where(
+            AcceleratorParticipantProfile.membership_id == membership.id
+        ))).scalar_one_or_none()
+        project = await db.get(Project, membership.project_id) if membership.project_id else None
+        team_row = (await db.execute(select(AcceleratorTeamMember, AcceleratorTeam).join(
+            AcceleratorTeam, AcceleratorTeam.id == AcceleratorTeamMember.team_id
         ).where(
-            AcceleratorStaff.accelerator_id == cohort.accelerator_id,
-            AcceleratorStaff.role == "tracker",
-            User.is_active.is_(True), User.deleted_at.is_(None),
-        ).order_by(User.name))).scalars().all())
-    assignments = list((await db.execute(select(AcceleratorHomeworkAssignment).where(
-        AcceleratorHomeworkAssignment.cohort_id == cohort.id,
-        AcceleratorHomeworkAssignment.status == "published",
-    ))).scalars().all())
-    submissions = list((await participant_results(db, [membership.id], [a.id for a in assignments])).values())
-    assignment_titles = {row.id: row.title for row in assignments}
-    checkins = list((await db.execute(select(AcceleratorProgressCheckin).where(
-        AcceleratorProgressCheckin.membership_id == membership.id
-    ).order_by(AcceleratorProgressCheckin.period_start.desc()).limit(5))).scalars().all())
-    feedback = list((await db.execute(select(AcceleratorTrackingFeedback).where(
-        AcceleratorTrackingFeedback.membership_id == membership.id
-    ).order_by(AcceleratorTrackingFeedback.created_at.desc()).limit(5))).scalars().all())
-    audits = (await db.execute(select(
-        AcceleratorProjectAudit.id,
-        AcceleratorProjectAudit.audit_type,
-        AcceleratorProjectAudit.status,
-        AcceleratorProjectAudit.overall_score,
-        AcceleratorProjectAudit.created_at,
-        func.row_number().over(order_by=(AcceleratorProjectAudit.created_at, AcceleratorProjectAudit.id)).label("number"),
-    ).where(
-        AcceleratorProjectAudit.membership_id == membership.id
-    ).order_by(AcceleratorProjectAudit.created_at.desc(), AcceleratorProjectAudit.id.desc()).limit(100))).all()
-    audit = audits[0] if audits else None
-    lifecycle = list((await db.execute(select(AcceleratorMembershipEvent).where(
-        AcceleratorMembershipEvent.membership_id == membership.id
-    ).order_by(AcceleratorMembershipEvent.created_at.desc()).limit(10))).scalars().all())
-    stage_progress = (await db.execute(
-        select(AcceleratorProgramStageProgress, AcceleratorProgramStage)
-        .join(AcceleratorProgramStage, AcceleratorProgramStage.id == AcceleratorProgramStageProgress.stage_id)
-        .where(AcceleratorProgramStageProgress.membership_id == membership.id)
-        .order_by(AcceleratorProgramStageProgress.completed_at.desc())
-        .limit(20)
-    )).all()
-    material_progress = (await db.execute(
-        select(AcceleratorProgramMaterialProgress, AcceleratorProgramMaterial)
-        .join(AcceleratorProgramMaterial, AcceleratorProgramMaterial.id == AcceleratorProgramMaterialProgress.material_id)
-        .where(AcceleratorProgramMaterialProgress.membership_id == membership.id)
-        .order_by(AcceleratorProgramMaterialProgress.completed_at.desc())
-        .limit(20)
-    )).all()
-    attended_events = (await db.execute(
-        select(AcceleratorAttendanceRecord, AcceleratorEvent)
-        .join(AcceleratorEvent, AcceleratorEvent.id == AcceleratorAttendanceRecord.event_id)
-        .where(
-            AcceleratorAttendanceRecord.membership_id == membership.id,
-            AcceleratorAttendanceRecord.status == "present",
+            AcceleratorTeamMember.membership_id == membership.id,
+            AcceleratorTeamMember.status == "active",
+            AcceleratorTeam.status == "active",
+        ))).first()
+        tracker_ids = await membership_tracker_user_ids(db, membership.id)
+        trackers = list((await db.execute(select(User).where(User.id.in_(tracker_ids)))).scalars().all()) if tracker_ids else []
+        tracker_options = []
+        if can_manage:
+            tracker_options = list((await db.execute(select(User).join(
+                AcceleratorStaff, AcceleratorStaff.user_id == User.id
+            ).where(
+                AcceleratorStaff.accelerator_id == cohort.accelerator_id,
+                AcceleratorStaff.role == "tracker",
+                User.is_active.is_(True), User.deleted_at.is_(None),
+            ).order_by(User.name))).scalars().all())
+        assignments = list((await db.execute(select(AcceleratorHomeworkAssignment).where(
+            AcceleratorHomeworkAssignment.cohort_id == cohort.id,
+            AcceleratorHomeworkAssignment.status == "published",
+        ))).scalars().all())
+        submissions = list((await participant_results(db, [membership.id], [a.id for a in assignments])).values())
+        assignment_titles = {row.id: row.title for row in assignments}
+        checkins = list((await db.execute(select(AcceleratorProgressCheckin).where(
+            AcceleratorProgressCheckin.membership_id == membership.id
+        ).order_by(AcceleratorProgressCheckin.period_start.desc()).limit(5))).scalars().all())
+        feedback = list((await db.execute(select(AcceleratorTrackingFeedback).where(
+            AcceleratorTrackingFeedback.membership_id == membership.id
+        ).order_by(AcceleratorTrackingFeedback.created_at.desc()).limit(5))).scalars().all())
+        audits = (await db.execute(select(
+            AcceleratorProjectAudit.id,
+            AcceleratorProjectAudit.audit_type,
+            AcceleratorProjectAudit.status,
+            AcceleratorProjectAudit.overall_score,
+            AcceleratorProjectAudit.created_at,
+            func.row_number().over(order_by=(AcceleratorProjectAudit.created_at, AcceleratorProjectAudit.id)).label("number"),
+        ).where(
+            AcceleratorProjectAudit.membership_id == membership.id
+        ).order_by(AcceleratorProjectAudit.created_at.desc(), AcceleratorProjectAudit.id.desc()).limit(100))).all()
+        audit = audits[0] if audits else None
+        lifecycle = list((await db.execute(select(AcceleratorMembershipEvent).where(
+            AcceleratorMembershipEvent.membership_id == membership.id
+        ).order_by(AcceleratorMembershipEvent.created_at.desc()).limit(10))).scalars().all())
+        stage_progress = (await db.execute(
+            select(AcceleratorProgramStageProgress, AcceleratorProgramStage)
+            .join(AcceleratorProgramStage, AcceleratorProgramStage.id == AcceleratorProgramStageProgress.stage_id)
+            .where(AcceleratorProgramStageProgress.membership_id == membership.id)
+            .order_by(AcceleratorProgramStageProgress.completed_at.desc())
+            .limit(20)
+        )).all()
+        material_progress = (await db.execute(
+            select(AcceleratorProgramMaterialProgress, AcceleratorProgramMaterial)
+            .join(AcceleratorProgramMaterial, AcceleratorProgramMaterial.id == AcceleratorProgramMaterialProgress.material_id)
+            .where(AcceleratorProgramMaterialProgress.membership_id == membership.id)
+            .order_by(AcceleratorProgramMaterialProgress.completed_at.desc())
+            .limit(20)
+        )).all()
+        attended_events = (await db.execute(
+            select(AcceleratorAttendanceRecord, AcceleratorEvent)
+            .join(AcceleratorEvent, AcceleratorEvent.id == AcceleratorAttendanceRecord.event_id)
+            .where(
+                AcceleratorAttendanceRecord.membership_id == membership.id,
+                AcceleratorAttendanceRecord.status == "present",
+            )
+            .order_by(AcceleratorAttendanceRecord.checked_in_at.desc())
+            .limit(20)
+        )).all()
+        read_notifications = list((await db.execute(
+            select(AcceleratorNotification).where(
+                AcceleratorNotification.membership_id == membership.id,
+                AcceleratorNotification.read_at.is_not(None),
+            ).order_by(AcceleratorNotification.read_at.desc()).limit(20)
+        )).scalars().all())
+        open_tasks = (await db.execute(
+            select(AcceleratorTrackingTask).where(
+                AcceleratorTrackingTask.membership_id == membership.id,
+                AcceleratorTrackingTask.status == "open",
+            ).order_by(
+                AcceleratorTrackingTask.due_at.is_(None),
+                AcceleratorTrackingTask.due_at,
+                AcceleratorTrackingTask.created_at.desc(),
+                AcceleratorTrackingTask.id.desc(),
+            )
+        )).scalars().all()
+        completed_tasks = list((await db.execute(
+            select(AcceleratorTrackingTask).where(
+                AcceleratorTrackingTask.membership_id == membership.id,
+                AcceleratorTrackingTask.status == "done",
+                AcceleratorTrackingTask.completed_at.is_not(None),
+            ).order_by(AcceleratorTrackingTask.completed_at.desc()).limit(20)
+        )).scalars().all())
+        activity = [
+            {"key": f"status:{row.id}", "kind": "status", "title": f"Статус: {row.to_status}", "detail": row.reason, "at": row.created_at}
+            for row in lifecycle
+        ]
+        activity += [
+            {"key": f"homework:{row.id}", "kind": "homework", "title": f"Отправлено ДЗ «{assignment_titles.get(row.assignment_id, 'Задание')}»", "detail": row.status, "at": row.submitted_at}
+            for row in submissions
+        ]
+        activity += [
+            {"key": f"stage:{progress.id}", "kind": "program", "title": f"Завершён этап «{stage.title}»", "detail": None, "at": progress.completed_at}
+            for progress, stage in stage_progress
+        ]
+        activity += [
+            {"key": f"material:{progress.id}", "kind": "program", "title": f"Изучен материал «{material.title}»", "detail": None, "at": progress.completed_at}
+            for progress, material in material_progress
+        ]
+        activity += [
+            {"key": f"attendance:{record.id}", "kind": "event", "title": f"Посещено мероприятие «{event.title}»", "detail": record.checkin_method, "at": record.checked_in_at or record.updated_at}
+            for record, event in attended_events
+        ]
+        activity += [
+            {"key": f"notification:{row.id}", "kind": "notification", "title": f"Прочитано уведомление «{row.title}»", "detail": None, "at": row.read_at}
+            for row in read_notifications
+        ]
+        activity += [
+            {"key": f"task:{row.id}", "kind": "task", "title": f"Выполнена задача «{row.title}»", "detail": None, "at": row.completed_at}
+            for row in completed_tasks
+        ]
+        activity = sorted((row for row in activity if row["at"]), key=lambda row: row["at"], reverse=True)[:50]
+        risk = await membership_tracking_risk(db, membership)
+        program = await ProgramProgressService(db).get_membership_progress(membership.id)
+        program_stages = list((await db.execute(select(AcceleratorProgramStage).where(
+            AcceleratorProgramStage.cohort_id == cohort.id,
+            AcceleratorProgramStage.status == "published",
+        ).order_by(AcceleratorProgramStage.position))).scalars().all())
+        program_by_id = {row.id: row for row in program_stages}
+        last_candidates = [(membership.updated_at, "Профиль участия обновлён")]
+        last_candidates += [(row.submitted_at, f"Отправлено ДЗ «{assignment_titles.get(row.assignment_id, 'Задание')}»") for row in submissions[:1]]
+        last_candidates += [(row.created_at, "Заполнен чек-ин") for row in checkins[:1]]
+        last_candidates += [(row.created_at, "Получена обратная связь") for row in feedback[:1]]
+        last_candidates += [(row.created_at, "Запущен аудит проекта") for row in ([audit] if audit else [])]
+        last_at, last_title = max((row for row in last_candidates if row[0]), key=lambda row: row[0])
+        participant_profile = participant_profile_with_institute(
+            (profile.profile or {}) if profile else {}, application.form_payload if application else None
         )
-        .order_by(AcceleratorAttendanceRecord.checked_in_at.desc())
-        .limit(20)
-    )).all()
-    read_notifications = list((await db.execute(
-        select(AcceleratorNotification).where(
-            AcceleratorNotification.membership_id == membership.id,
-            AcceleratorNotification.read_at.is_not(None),
-        ).order_by(AcceleratorNotification.read_at.desc()).limit(20)
-    )).scalars().all())
-    open_tasks = (await db.execute(
-        select(AcceleratorTrackingTask).where(
-            AcceleratorTrackingTask.membership_id == membership.id,
-            AcceleratorTrackingTask.status == "open",
-        ).order_by(
-            AcceleratorTrackingTask.due_at.is_(None),
-            AcceleratorTrackingTask.due_at,
-            AcceleratorTrackingTask.created_at.desc(),
-            AcceleratorTrackingTask.id.desc(),
-        )
-    )).scalars().all()
-    completed_tasks = list((await db.execute(
-        select(AcceleratorTrackingTask).where(
-            AcceleratorTrackingTask.membership_id == membership.id,
-            AcceleratorTrackingTask.status == "done",
-            AcceleratorTrackingTask.completed_at.is_not(None),
-        ).order_by(AcceleratorTrackingTask.completed_at.desc()).limit(20)
-    )).scalars().all())
-    activity = [
-        {"key": f"status:{row.id}", "kind": "status", "title": f"Статус: {row.to_status}", "detail": row.reason, "at": row.created_at}
-        for row in lifecycle
-    ]
-    activity += [
-        {"key": f"homework:{row.id}", "kind": "homework", "title": f"Отправлено ДЗ «{assignment_titles.get(row.assignment_id, 'Задание')}»", "detail": row.status, "at": row.submitted_at}
-        for row in submissions
-    ]
-    activity += [
-        {"key": f"stage:{progress.id}", "kind": "program", "title": f"Завершён этап «{stage.title}»", "detail": None, "at": progress.completed_at}
-        for progress, stage in stage_progress
-    ]
-    activity += [
-        {"key": f"material:{progress.id}", "kind": "program", "title": f"Изучен материал «{material.title}»", "detail": None, "at": progress.completed_at}
-        for progress, material in material_progress
-    ]
-    activity += [
-        {"key": f"attendance:{record.id}", "kind": "event", "title": f"Посещено мероприятие «{event.title}»", "detail": record.checkin_method, "at": record.checked_in_at or record.updated_at}
-        for record, event in attended_events
-    ]
-    activity += [
-        {"key": f"notification:{row.id}", "kind": "notification", "title": f"Прочитано уведомление «{row.title}»", "detail": None, "at": row.read_at}
-        for row in read_notifications
-    ]
-    activity += [
-        {"key": f"task:{row.id}", "kind": "task", "title": f"Выполнена задача «{row.title}»", "detail": None, "at": row.completed_at}
-        for row in completed_tasks
-    ]
-    activity = sorted((row for row in activity if row["at"]), key=lambda row: row["at"], reverse=True)[:50]
-    risk = await membership_tracking_risk(db, membership)
-    program = await ProgramProgressService(db).get_membership_progress(membership.id)
-    program_stages = list((await db.execute(select(AcceleratorProgramStage).where(
-        AcceleratorProgramStage.cohort_id == cohort.id,
-        AcceleratorProgramStage.status == "published",
-    ).order_by(AcceleratorProgramStage.position))).scalars().all())
-    program_by_id = {row.id: row for row in program_stages}
-    last_candidates = [(membership.updated_at, "Профиль участия обновлён")]
-    last_candidates += [(row.submitted_at, f"Отправлено ДЗ «{assignment_titles.get(row.assignment_id, 'Задание')}»") for row in submissions[:1]]
-    last_candidates += [(row.created_at, "Заполнен чек-ин") for row in checkins[:1]]
-    last_candidates += [(row.created_at, "Получена обратная связь") for row in feedback[:1]]
-    last_candidates += [(row.created_at, "Запущен аудит проекта") for row in ([audit] if audit else [])]
-    last_at, last_title = max((row for row in last_candidates if row[0]), key=lambda row: row[0])
-    participant_profile = participant_profile_with_institute(
-        (profile.profile or {}) if profile else {}, application.form_payload if application else None
-    )
-    participant_profile.pop("application_data", None)
-    from accelerator_participant_service import visible_profile
-    participant_profile = visible_profile(participant_profile, private=can_manage)
-    return {
-        "membership_id": membership.id,
-        "access_role": access_role,
-        "can_manage": can_manage,
-        "modules": {**DEFAULT_MODULES, **((config.modules or {}) if config else {})},
-        "attendance": (await attendance_summaries(db, [membership]))[membership.id],
-        "available_statuses": sorted(MEMBERSHIP_STATUS_TRANSITIONS.get(membership.status, set())),
-        "person": {"id": person.id, "name": person.name, "email": person.email} if person else None,
-        "membership": {"status": membership.status, "status_reason": membership.status_reason, "accepted_at": membership.accepted_at, "enrolled_at": membership.enrolled_at},
-        "application": ({"id": application.id, "type": application.application_type, "status": application.status, "form_version": application.form_version, "answers": application.form_payload, "submitted_at": application.submitted_at} if application else None),
-        "profile": participant_profile,
-        "project": ({"id": project.id, "name": project.name, "readiness": project.readiness_index, "status": project.status, **accelerator_project_description(project)} if project else None),
-        "team": ({"id": team_row[1].id, "name": team_row[1].name, "role": team_row[0].role} if team_row else None),
-        "trackers": [{"user_id": row.id, "name": row.name, "email": row.email} for row in trackers],
-        "tracker_options": [{"user_id": row.id, "name": row.name, "email": row.email} for row in tracker_options],
-        "homework": {"published": len(assignments), "accepted": sum(row.status == "accepted" for row in submissions), "pending": sum(row.status == "submitted" for row in submissions), "overdue": risk["overdue_homework"], "submissions": [{"id": row.id, "title": assignment_titles.get(row.assignment_id, "Задание"), "status": row.status, "submitted_at": row.submitted_at} for row in submissions[:8]]},
-        "program": {
-            "enabled": (config.modules or {}).get("program_progress", True) if config else True,
-            "completed": program["completed"],
-            "total": program["total"],
-            "percent": program["percent"],
-            "stages": [{
-                **row,
-                "id": row["stage_id"],
-                "title": program_by_id[row["stage_id"]].title,
-            } for row in program["stages"]],
-        },
-        "risk": risk,
-        "checkins": [{"id": row.id, "period_start": row.period_start, "health": row.health, "summary": row.summary, "blockers": row.blockers} for row in checkins],
-        "feedback": [{"id": row.id, "body": row.body, "read_at": row.read_at, "created_at": row.created_at} for row in feedback],
-        "tasks": [tracking_task_dict(task) for task in open_tasks],
-        "audit": ({"id": audit.id, "type": audit.audit_type, "status": audit.status, "score": audit.overall_score, "created_at": audit.created_at} if audit else None),
-        "audits": [{
-            "id": row.id,
-            "number": row.number,
-            "type": PROJECT_AUDIT_TYPE_LABELS.get(row.audit_type, row.audit_type),
-            "status": row.status,
-            "score": row.overall_score,
-            "created_at": row.created_at,
-        } for row in audits],
-        "lifecycle": [{"id": row.id, "from_status": row.from_status, "to_status": row.to_status, "reason": row.reason, "created_at": row.created_at} for row in lifecycle],
-        "activity": activity,
-        "last_action": {"title": last_title, "at": last_at},
-    }
+        participant_profile.pop("application_data", None)
+        from accelerator_participant_service import visible_profile
+        participant_profile = visible_profile(participant_profile, private=can_manage)
+        return {
+            "membership_id": membership.id,
+            "access_role": access_role,
+            "can_manage": can_manage,
+            "modules": {**DEFAULT_MODULES, **((config.modules or {}) if config else {})},
+            "attendance": (await attendance_summaries(db, [membership]))[membership.id],
+            "available_statuses": sorted(MEMBERSHIP_STATUS_TRANSITIONS.get(membership.status, set())),
+            "person": {"id": person.id, "name": person.name, "email": person.email} if person else None,
+            "membership": {"status": membership.status, "status_reason": membership.status_reason, "accepted_at": membership.accepted_at, "enrolled_at": membership.enrolled_at},
+            "application": ({"id": application.id, "type": application.application_type, "status": application.status, "form_version": application.form_version, "answers": application.form_payload, "submitted_at": application.submitted_at} if application else None),
+            "profile": participant_profile,
+            "project": ({"id": project.id, "name": project.name, "readiness": project.readiness_index, "status": project.status, **accelerator_project_description(project)} if project else None),
+            "team": ({"id": team_row[1].id, "name": team_row[1].name, "role": team_row[0].role} if team_row else None),
+            "trackers": [{"user_id": row.id, "name": row.name, "email": row.email} for row in trackers],
+            "tracker_options": [{"user_id": row.id, "name": row.name, "email": row.email} for row in tracker_options],
+            "homework": {"published": len(assignments), "accepted": sum(row.status == "accepted" for row in submissions), "pending": sum(row.status == "submitted" for row in submissions), "overdue": risk["overdue_homework"], "submissions": [{"id": row.id, "title": assignment_titles.get(row.assignment_id, "Задание"), "status": row.status, "submitted_at": row.submitted_at} for row in submissions[:8]]},
+            "program": {
+                "enabled": (config.modules or {}).get("program_progress", True) if config else True,
+                "completed": program["completed"],
+                "total": program["total"],
+                "percent": program["percent"],
+                "stages": [{
+                    **row,
+                    "id": row["stage_id"],
+                    "title": program_by_id[row["stage_id"]].title,
+                } for row in program["stages"]],
+            },
+            "risk": risk,
+            "checkins": [{"id": row.id, "period_start": row.period_start, "health": row.health, "summary": row.summary, "blockers": row.blockers} for row in checkins],
+            "feedback": [{"id": row.id, "body": row.body, "read_at": row.read_at, "created_at": row.created_at} for row in feedback],
+            "tasks": [tracking_task_dict(task) for task in open_tasks],
+            "audit": ({"id": audit.id, "type": audit.audit_type, "status": audit.status, "score": audit.overall_score, "created_at": audit.created_at} if audit else None),
+            "audits": [{
+                "id": row.id,
+                "number": row.number,
+                "type": PROJECT_AUDIT_TYPE_LABELS.get(row.audit_type, row.audit_type),
+                "status": row.status,
+                "score": row.overall_score,
+                "created_at": row.created_at,
+            } for row in audits],
+            "lifecycle": [{"id": row.id, "from_status": row.from_status, "to_status": row.to_status, "reason": row.reason, "created_at": row.created_at} for row in lifecycle],
+            "activity": activity,
+            "last_action": {"title": last_title, "at": last_at},
+        }
+    return await cached_json(cohort.id, f"participant:{membership_id}:user:{user.id}", snapshot)
 
 
 def today_card_fingerprint(card: dict) -> str:

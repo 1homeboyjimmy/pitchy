@@ -1,4 +1,6 @@
 "use client";
+
+import { useAcceleratorRefresh } from "@/lib/hooks/useAcceleratorRefresh";
 import { useAcceleratorNavigationState } from "@/lib/hooks/useAcceleratorNavigation";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -37,6 +39,7 @@ export function TrackingDashboard({ cohortId, token, onOpenParticipant, headerAc
     catch (reason) { setError(describeApiError(reason, "Не удалось загрузить трекинг")); }
     finally { setBusy(""); }
   }, [cohortId, token]);
+  useAcceleratorRefresh(load, cohortId);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { const close = (event: KeyboardEvent) => { if (event.key === "Escape") { setMenu(null); setSnooze(null); } }; window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, []);
 

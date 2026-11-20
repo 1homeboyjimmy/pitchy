@@ -1,5 +1,7 @@
 "use client";
 
+import { useAcceleratorRefresh } from "@/lib/hooks/useAcceleratorRefresh";
+
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Activity, AlertTriangle, CheckCircle2, Loader2, Power, RefreshCw, ShieldAlert } from "lucide-react";
 
@@ -84,6 +86,7 @@ export function AcceleratorOperations({ cohortId, acceleratorId, token, isAdmin 
     }
   }, [cohortId, isAdmin, token]);
 
+  useAcceleratorRefresh(load, cohortId);
   useEffect(() => { void load(); }, [load]);
 
   const visibleOverrides = useMemo(() => overrides.filter((row) => row.active && (

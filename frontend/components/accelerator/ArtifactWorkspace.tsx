@@ -1,5 +1,7 @@
 "use client";
 
+import { useAcceleratorRefresh } from "@/lib/hooks/useAcceleratorRefresh";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowUpRight, FileSearch, Loader2, RefreshCw, Search, X } from "lucide-react";
 import { describeApiError, getAuthJson } from "@/lib/api";
@@ -15,6 +17,7 @@ const typeLabel:Record<ActionType,string>={chat:"Чат",roadmap:"Дорожна
 export function ArtifactWorkspace({cohortId,token}:{cohortId:number;token:string}){
   const [data,setData]=useState<Response|null>(null); const [query,setQuery]=useState(""); const [filter,setFilter]=useState<"all"|ArtifactStatus|"shared">("all"); const [selected,setSelected]=useState<Artifact|null>(null); const [loading,setLoading]=useState(true); const [error,setError]=useState("");
   const load=useCallback(async()=>{setLoading(true);setError("");try{setData(await getAuthJson<Response>(`/api/accelerators/cohorts/${cohortId}/artifacts`,token));}catch(reason){setError(describeApiError(reason,"Не удалось загрузить результаты Pitchy"));}finally{setLoading(false);}},[cohortId,token]);
+  useAcceleratorRefresh(load, cohortId);
   useEffect(()=>{void load();},[load]); useEffect(()=>{const close=(event:KeyboardEvent)=>{if(event.key==="Escape")setSelected(null)};window.addEventListener("keydown",close);return()=>window.removeEventListener("keydown",close)},[]);
   const rows=useMemo(()=>{const needle=query.trim().toLowerCase();return(data?.artifacts||[]).filter(row=>(filter==="all"||(filter==="shared"?row.details_visible:row.status===filter))&&(!needle||[row.resident.name,row.project.name,row.stage.title,row.action.title].some(value=>value.toLowerCase().includes(needle))));},[data,filter,query]);
   const counts=useMemo(()=>({all:data?.artifacts.length||0,ready:data?.artifacts.filter(r=>r.status==="ready").length||0,started:data?.artifacts.filter(r=>r.status==="started").length||0,failed:data?.artifacts.filter(r=>r.status==="failed").length||0,shared:data?.artifacts.filter(r=>r.details_visible).length||0}),[data]);

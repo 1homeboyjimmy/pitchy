@@ -25,7 +25,7 @@ TTL = 30
 def feature_enabled(name: str, cohort_id: int | None = None) -> bool:
     if os.getenv(f"DASHBOARD_{name}_ENABLED", "true").lower() in {"0", "false", "off"}:
         return False
-    cohorts = os.getenv("DASHBOARD_LIVE_COHORTS", "8").split(",")
+    cohorts = os.getenv("DASHBOARD_LIVE_COHORTS", "*").split(",")
     return cohort_id is None or "*" in cohorts or str(cohort_id) in cohorts
 
 
@@ -123,6 +123,10 @@ def _collect_changes(session, flush_context, instances):
         if obj in session.dirty and not session.is_modified(obj, include_collections=False):
             continue
         name = type(obj).__name__
+        # Account/staff changes can revoke access or change names in any cohort.
+        # Unresolved accelerator references use the global revision as a safe fallback.
+        if name in {"User", "AcceleratorStaff"} or (name.startswith("Accelerator") and not getattr(obj, "cohort_id", None)):
+            global_change = True
         if name == "AcceleratorModuleRuntimeOverride":
             global_change = True
         if name == "AcceleratorCohort":

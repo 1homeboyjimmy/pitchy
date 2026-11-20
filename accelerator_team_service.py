@@ -532,28 +532,31 @@ async def cohort_teams_payload(
     await require_teams_module(db, cohort)
     if not await is_manager(db, user, cohort):
         raise HTTPException(status_code=403, detail="Список команд доступен менеджеру потока")
-    teams = (await db.execute(select(AcceleratorTeam).where(
-        AcceleratorTeam.cohort_id == cohort.id
-    ).order_by(AcceleratorTeam.status, AcceleratorTeam.created_at))).scalars().all()
-    payloads = [await team_dict(db, team, viewer=user, access_role="manager") for team in teams]
-    config = await db.scalar(select(AcceleratorProgramConfig).where(AcceleratorProgramConfig.cohort_id == cohort.id))
-    if config and (config.modules or {}).get("attendance"):
-        roster = active_team_roster()
-        rows = (await db.execute(select(roster.c.team_id, AcceleratorMembership)
-            .join(AcceleratorMembership, AcceleratorMembership.id == roster.c.membership_id)
-            .where(roster.c.team_id.in_([team.id for team in teams if team.status == "active"]),
-                   AcceleratorMembership.cohort_id == cohort.id, AcceleratorMembership.role == "resident",
-                   AcceleratorMembership.status.in_(("enrolled", "completed"))))).all()
-        summaries = await attendance_summaries(db, list({member.id: member for _, member in rows}.values()))
-        from collections import defaultdict
-        counts = defaultdict(lambda: [0, 0])
-        for team_id, member in rows:
-            counts[team_id][0] += summaries[member.id]["present"]
-            counts[team_id][1] += summaries[member.id]["total"]
-        for payload in payloads:
-            present, total = counts[payload["id"]]
-            payload["attendance_percent"] = round(present * 100 / total) if total else None
-    return {"teams": payloads}
+    from accelerator_dashboard_cache import cached_json
+    async def snapshot():
+        teams = (await db.execute(select(AcceleratorTeam).where(
+            AcceleratorTeam.cohort_id == cohort.id
+        ).order_by(AcceleratorTeam.status, AcceleratorTeam.created_at))).scalars().all()
+        payloads = [await team_dict(db, team, viewer=user, access_role="manager") for team in teams]
+        config = await db.scalar(select(AcceleratorProgramConfig).where(AcceleratorProgramConfig.cohort_id == cohort.id))
+        if config and (config.modules or {}).get("attendance"):
+            roster = active_team_roster()
+            rows = (await db.execute(select(roster.c.team_id, AcceleratorMembership)
+                .join(AcceleratorMembership, AcceleratorMembership.id == roster.c.membership_id)
+                .where(roster.c.team_id.in_([team.id for team in teams if team.status == "active"]),
+                       AcceleratorMembership.cohort_id == cohort.id, AcceleratorMembership.role == "resident",
+                       AcceleratorMembership.status.in_(("enrolled", "completed"))))).all()
+            summaries = await attendance_summaries(db, list({member.id: member for _, member in rows}.values()))
+            from collections import defaultdict
+            counts = defaultdict(lambda: [0, 0])
+            for team_id, member in rows:
+                counts[team_id][0] += summaries[member.id]["present"]
+                counts[team_id][1] += summaries[member.id]["total"]
+            for payload in payloads:
+                present, total = counts[payload["id"]]
+                payload["attendance_percent"] = round(present * 100 / total) if total else None
+        return {"teams": payloads}
+    return await cached_json(cohort.id, f"cohort_teams_payload:user:{user.id}", snapshot)
 
 
 async def team_view_access(

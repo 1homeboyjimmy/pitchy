@@ -1,5 +1,7 @@
 "use client";
 
+import { useAcceleratorRefresh } from "@/lib/hooks/useAcceleratorRefresh";
+
 import { useAcceleratorNavigationState, acceleratorBack } from "@/lib/hooks/useAcceleratorNavigation";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
@@ -73,6 +75,7 @@ export function AttendanceManager({ cohortId, token, focusId, timeZone = "Europe
       setEvents(eventRows); setHomework(homeworkRows); setStages(stageRows);
     } catch (reason) { setError(describeApiError(reason, "Не удалось загрузить мероприятия")); }
   }, [cohortId, token]);
+  useAcceleratorRefresh(load, cohortId);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { const close = (event: KeyboardEvent) => { if (event.key === "Escape") { setShowForm(false); setDetailId(null); setReschedule(null); setCancellation(null); } }; window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, [setDetailId, setShowForm]);
 

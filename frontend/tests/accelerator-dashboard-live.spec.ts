@@ -32,7 +32,7 @@ async function setup(page: Page) {
 }
 async function emit(page:Page,kind:string){await page.evaluate(kind=>window.dispatchEvent(new CustomEvent('dashboard-test-event',{detail:kind})),kind);}
 
-test('SSE coalesces bursts without hiding charts and closes on navigation',async({page})=>{
+test('SSE coalesces bursts and refreshes reports after navigation',async({page})=>{
  const count=await setup(page);await page.goto('/accelerator');
  await expect(page.getByRole('heading',{name:'Посещаемость команд',exact:true})).toBeVisible();
  await expect.poll(count).toBe(2);const before=count();
@@ -40,7 +40,19 @@ test('SSE coalesces bursts without hiding charts and closes on navigation',async
  await expect(page.getByRole('heading',{name:'Посещаемость команд',exact:true})).toBeVisible();
  await expect.poll(count).toBe(before+1);
  await page.waitForTimeout(450);expect(count()).toBe(before+1);
+ let reports=0;
+ await page.route('**/api/accelerators/cohorts/12/report', r=>{
+  reports++;
+  return r.fulfill({json:{cohort_id:12,access_role:'organizer',summary:{residents:0},rows:[]}});
+ });
  await page.getByRole('button',{name:'Участники: 3',exact:true}).click();
+ await expect.poll(()=>reports).toBeGreaterThan(0);
+ await page.waitForTimeout(450);
+ const reportCount = reports;
+ await expect.poll(()=>page.evaluate(()=>(window as unknown as {__liveSources:Array<{closed:boolean}>}).__liveSources.filter(s=>!s.closed).length)).toBe(1);
+ await emit(page,'changed');
+ await expect.poll(()=>reports).toBe(reportCount + 1);
+ await page.goto('/login');
  await expect.poll(()=>page.evaluate(()=>(window as unknown as {__liveSources:Array<{closed:boolean}>}).__liveSources.every(s=>s.closed))).toBe(true);
 });
 
@@ -57,4 +69,24 @@ test('SSE outage polls, reconnects and stops on lost access',async({page})=>{
  await expect.poll(()=>page.evaluate(()=>(window as unknown as {__liveSources:Array<{closed:boolean}>}).__liveSources.some(s=>!s.closed))).toBe(true);
  await emit(page,'forbidden');await page.clock.runFor(400);const stopped=count();
  await page.clock.runFor(61_000);expect(count()).toBe(stopped);
+});
+
+test('tracking receives live changes without resetting the search', async ({ page }) => {
+ await setup(page);
+ let requests = 0;
+ await page.route('**/api/accelerators/cohorts/12/tracking-dashboard', r => {
+  requests++;
+  return r.fulfill({json:{summary:{residents:0,open_signals:0,high_signals:0,overdue_signals:0,no_checkin:0},rows:[],signals:[]}});
+ });
+ await page.goto('/accelerator');
+ await expect(page.getByRole('heading',{name:'Посещаемость команд',exact:true})).toBeVisible();
+ await page.getByRole('button', {name:'Открыть',exact:true}).click();
+ await page.getByRole('button', {name:/Все участники/}).click();
+ const search = page.getByPlaceholder('Поиск по имени или email');
+ await search.fill('Сохранённый поиск');
+ await page.waitForTimeout(450);
+ const before = requests;
+ await emit(page,'changed');
+ await expect.poll(() => requests).toBe(before + 1);
+ await expect(search).toHaveValue('Сохранённый поиск');
 });

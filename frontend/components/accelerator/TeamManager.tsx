@@ -1,5 +1,7 @@
 "use client";
 
+import { useAcceleratorRefresh } from "@/lib/hooks/useAcceleratorRefresh";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronRight, Crown, Loader2, Mail, Search, Users, X } from "lucide-react";
 import { describeApiError, getAuthJson, putAuthJson } from "@/lib/api";
@@ -45,6 +47,7 @@ export function TeamManager({ cohortId, token, trackersEnabled = true, focusTeam
     }
   }, [cohortId, token, trackersEnabled]);
 
+  useAcceleratorRefresh(load, cohortId);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
     const close = (event: KeyboardEvent) => { if (event.key === "Escape") setSelected(null); };

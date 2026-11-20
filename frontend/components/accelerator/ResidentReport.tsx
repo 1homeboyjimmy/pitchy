@@ -1,5 +1,7 @@
 "use client";
 
+import { useAcceleratorRefresh } from "@/lib/hooks/useAcceleratorRefresh";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Download, Loader2, RefreshCw, UserRound } from "lucide-react";
 import { describeApiError, getAuthJson } from "@/lib/api";
@@ -21,6 +23,7 @@ function formatStudyLabel(profile: ParticipantFields) {
 export function ResidentReport({ token, cohortId, onOpenParticipant, initialQuery = "", initialStatus = "all", onFiltersChange }: { token: string; cohortId: number; canManage: boolean; onChanged: () => Promise<void>; onOpenParticipant: (id: number) => void; initialQuery?: string; initialStatus?: string; onFiltersChange?: (query: string, status: string) => void }) {
   const [report, setReport] = useState<Report | null>(null); const [query, setQuery] = useState(initialQuery); const [status, setStatus] = useState(initialStatus); const [busy, setBusy] = useState(""); const [error, setError] = useState("");
   const load = useCallback(async () => { setBusy("load"); setError(""); try { setReport(await getAuthJson<Report>(`/api/accelerators/cohorts/${cohortId}/report`, token)); } catch (reason) { setError(describeApiError(reason, "Не удалось загрузить отчёт")); } finally { setBusy(""); } }, [cohortId, token]);
+  useAcceleratorRefresh(load, cohortId);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { onFiltersChange?.(query, status); }, [onFiltersChange, query, status]);
   const rows = useMemo(() => (report?.rows || []).filter((row) => (status === "all" || row.status === status) && [row.name, row.email, ...(row.teams || []).map(team => team.name)].join(" ").toLowerCase().includes(query.trim().toLowerCase())), [query, report, status]);

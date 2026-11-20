@@ -4,7 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { AlertTriangle, ArrowRight, BarChart3, BookOpen, CalendarDays, CheckCircle2, Clipboard, ClipboardCheck, FileText, Loader2, Users, UserRoundCheck, type LucideIcon } from "lucide-react";
 import { getAuthJson } from "@/lib/api";
 import { AttendanceInsights } from "./AttendanceInsights";
-import { useDashboardLive } from "@/lib/hooks/useDashboardLive";
+import { useAcceleratorRefresh } from "@/lib/hooks/useAcceleratorRefresh";
 
 export type OrganizerTab = "overview" | "operations" | "applications" | "form" | "program" | "homework" | "attendance" | "trackers" | "reports" | "tracking" | "matching" | "project_audit" | "demo_day" | "artifacts" | "closure" | "quotas" | "settings" | "audit";
 type Analytics = {
@@ -23,7 +23,8 @@ export function OrganizerOverview({ token, cohort, config, onNavigate, onCopy, c
   onOpenParticipant: (id: number) => void; onNavigate: (tab: OrganizerTab, targetId?: number) => void;
   onCopy: () => Promise<void>; copied: boolean; refreshKey: number;
 }) {
-  const liveRefresh = useDashboardLive(cohort.id, token);
+  const [liveRefresh, setLiveRefresh] = useState(0);
+  useAcceleratorRefresh(() => setLiveRefresh(value => value + 1), cohort.id);
   const [data, setData] = useState<OverviewData>({});
   const [pending, setPending] = useState<Array<keyof OverviewData>>(["analytics", "summary"]);
   const loading = pending.length > 0;

@@ -1,5 +1,7 @@
 "use client";
 
+import { useAcceleratorRefresh } from "@/lib/hooks/useAcceleratorRefresh";
+
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Loader2, RefreshCw, Save, Users } from "lucide-react";
 
@@ -53,6 +55,7 @@ export function MatchmakingWorkspace({ cohortId, membershipId, project, onChange
     finally { setBusy(""); }
   }, [cohortId, fillForm, membershipId, token]);
 
+  useAcceleratorRefresh(load, cohortId);
   useEffect(() => { void load(); }, [load]);
 
   const save = async (event: FormEvent) => {
