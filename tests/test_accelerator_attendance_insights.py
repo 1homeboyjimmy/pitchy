@@ -6,9 +6,9 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy import select
 from db_async import AsyncSessionLocal
-from accelerator_attendance_insights import attendance_insights, attendance_band
+from accelerator_attendance_insights import attendance_insights, attendance_band, education_level
 from accelerator_tracking_facts import load_tracking_facts
-from models import AcceleratorAttendanceRecord, AcceleratorEvent, AcceleratorParticipantProfile, AcceleratorTeam
+from models import AcceleratorAttendanceRecord, AcceleratorEvent, AcceleratorParticipantProfile, AcceleratorTeam, AcceleratorTeamMember
 from routers.accelerators import tracking_risk_from_facts, membership_tracking_risk, cohort_attendance_insights
 from tests.test_accelerator_team_attendance import group
 
@@ -57,6 +57,8 @@ async def test_team_insights_share_denominator_exclusions_groups_and_permissions
         assert result["participants"]["normal"]==2
         assert result["top_teams"][0]["percent"]==50
         assert result["percent"]==50
+        assert result["visit_distribution"]==[{"visits":0,"participants":0},{"visits":1,"participants":2},{"visits":2,"participants":0}]
+        assert {row["label"] for row in result["by_direction"]}=={"Бакалавриат","Магистратура"}
         assert result["events"][0]["present"]==1 and result["events"][0]["total"]==1
         assert {row["label"] for row in result["by_course"]}=={"БАК · 1 курс","МАГ · 2 курс"}
         assert all(row["percent"]==50 for row in result["by_direction"])
@@ -65,6 +67,17 @@ async def test_team_insights_share_denominator_exclusions_groups_and_permissions
             await cohort_attendance_insights(cohort.id,user,db)
         assert error.value.status_code==403
         team=await db.scalar(select(AcceleratorTeam).where(AcceleratorTeam.owner_membership_id==member.id))
+        linked = AcceleratorTeam(cohort_id=cohort.id, name="Linked project", owner_membership_id=peer_member.id,
+                                 status="active", attendance_team_id=team.id)
+        db.add(linked)
+        await db.flush()
+        peer_link=await db.scalar(select(AcceleratorTeamMember).where(AcceleratorTeamMember.membership_id==peer_member.id))
+        peer_link.team_id=linked.id
+        await db.commit()
+        shared=await attendance_insights(db,cohort,now=now)
+        assert shared["teams"]==1
+        assert shared["top_teams"][0]["members"]==2
+        assert shared["visit_distribution"]==result["visit_distribution"]
         cohort.attendance_policy={"planned_events":2,"event_ids":[event.id,second.id],"excluded_events_by_team":{str(team.id):[second.id]}}
         await db.commit()
         adjusted=await attendance_insights(db,cohort,now=now)
@@ -84,3 +97,12 @@ async def test_no_events_are_not_zero_attendance_or_a_risk():
         assert result["participants"]["no_data"]==2 and result["participants"]["zero"]==0
         assert result["top_teams"]==[] and result["percent"] is None
         assert (await membership_tracking_risk(db,member))["level"]=="green"
+
+@pytest.mark.parametrize("profile,expected", [
+ ({"education_direction":"Информационное обеспечение инновационной деятельности","education_course":"БАК-3"},"Бакалавриат"),
+ ({"education_direction":"Наноэлектроника"},"Не указано"),
+ ({"education_direction":"АСП"},"Аспирантура"),
+ ({"education_direction":"магистратура"},"Магистратура"),
+])
+def test_education_level_does_not_create_speciality_groups(profile,expected):
+ assert education_level(profile)==expected

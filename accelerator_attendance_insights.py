@@ -1,10 +1,11 @@
 """Organizer attendance insights, using the reporting policy and effective marks."""
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime
 
 from sqlalchemy import select
-from accelerator_attendance_reporting import attendance_summaries, effective_attendance_records
-from accelerator_team_roster import active_team_roster
+from sqlalchemy.orm import load_only
+from accelerator_attendance_reporting import attendance_summaries
+from accelerator_team_roster import active_team_roster, attendance_team_roster
 from models import (AcceleratorMembership, AcceleratorTeam, AcceleratorEvent,
                     AcceleratorParticipantProfile, Project)
 
@@ -12,6 +13,20 @@ from models import (AcceleratorMembership, AcceleratorTeam, AcceleratorEvent,
 def profile_label(value):
     value = str(value or "").strip()
     return "" if value.lower() in {"null", "none", "не указано", "-"} else value
+
+
+def education_level(profile):
+    levels = {"БАК": "Бакалавриат", "МАГ": "Магистратура",
+              "СПЕЦ": "Специалитет", "АСП": "Аспирантура"}
+    direction = profile_label(profile.get("education_direction")).upper()
+    if direction in levels:
+        return levels[direction]
+    for label in levels.values():
+        if direction == label.upper():
+            return label
+    # A speciality is not an education level; derive the level from the course.
+    course = profile_label(profile.get("education_course")).upper().split("-", 1)[0]
+    return levels.get(course, "Не указано")
 
 
 def attendance_band(present, total):
@@ -39,16 +54,18 @@ def grouped_attendance(members, summaries, labels):
 
 async def attendance_insights(db, cohort, *, now=None):
     now = now or datetime.utcnow()
-    members = list((await db.execute(select(AcceleratorMembership).where(
+    members = list((await db.execute(select(AcceleratorMembership).options(load_only(
+        AcceleratorMembership.id, AcceleratorMembership.cohort_id)).where(
         AcceleratorMembership.cohort_id == cohort.id,
         AcceleratorMembership.role == "resident",
         AcceleratorMembership.status.in_(("enrolled", "completed")),
     ))).scalars())
-    summaries = await attendance_summaries(db, members, now=now)
+    attendance_context = {}
+    summaries = await attendance_summaries(db, members, now=now, context=attendance_context)
     teams = list((await db.execute(select(AcceleratorTeam).where(
         AcceleratorTeam.cohort_id == cohort.id, AcceleratorTeam.status == "active",
     ))).scalars())
-    roster = active_team_roster()
+    roster = attendance_team_roster() if cohort.attendance_scope == "team" else active_team_roster()
     links = (await db.execute(select(roster.c.team_id, roster.c.membership_id).where(
         roster.c.team_id.in_([team.id for team in teams]),
         roster.c.membership_id.in_([member.id for member in members]),
@@ -56,9 +73,9 @@ async def attendance_insights(db, cohort, *, now=None):
     ids_by_team = defaultdict(set)
     for team_id, member_id in links:
         ids_by_team[team_id].add(member_id)
-    projects = {p.id:p for p in (await db.execute(select(Project).where(
+    projects = dict((await db.execute(select(Project.id, Project.passport["accelerator_track"].as_string()).where(
         Project.id.in_([team.project_id for team in teams if team.project_id]),
-    ))).scalars()} if teams else {}
+    ))).all()) if teams else {}
     team_rows = []
     tracks = {}
     physical_teams = [team for team in teams if team.attendance_team_id is None]
@@ -67,8 +84,7 @@ async def attendance_insights(db, cohort, *, now=None):
         values = [summaries[mid] for mid in ids]
         present = sum(value["present"] for value in values)
         total = sum(value["total"] for value in values if value["past_events"])
-        project = projects.get(team.project_id)
-        track = ((project.passport or {}).get("accelerator_track") if project else None) or "Не указано"
+        track = projects.get(team.project_id) or "Не указано"
         for mid in ids:
             tracks[mid] = track
         team_rows.append({"id":team.id, "name":team.name, "members":len(ids), "track":track,
@@ -82,9 +98,13 @@ async def attendance_insights(db, cohort, *, now=None):
     for member in members:
         value=summaries[member.id]
         participant_counts[attendance_band(value["present"],value["total"] if value["past_events"] else 0)]+=1
-    profiles = {row.membership_id:row.profile or {} for row in (await db.execute(
-        select(AcceleratorParticipantProfile).where(AcceleratorParticipantProfile.membership_id.in_([m.id for m in members]))
-    )).scalars()} if members else {}
+    profile_rows = (await db.execute(select(
+        AcceleratorParticipantProfile.membership_id,
+        AcceleratorParticipantProfile.profile["education_course"].as_string(),
+        AcceleratorParticipantProfile.profile["education_direction"].as_string(),
+    ).where(AcceleratorParticipantProfile.membership_id.in_([m.id for m in members])))).all() if members else []
+    profiles = {mid: {"education_course": course, "education_direction": direction}
+                for mid, course, direction in profile_rows}
     course_labels, direction_labels = {}, {}
     for member in members:
         profile=profiles.get(member.id,{})
@@ -94,16 +114,12 @@ async def attendance_insights(db, cohort, *, now=None):
             course_labels[member.id]=f"{level} · {number} курс"
         else:
             course_labels[member.id]=course or "Не указано"
-        direction=profile_label(profile.get("education_direction"))
-        direction_labels[member.id]={"БАК":"Бакалавриат","МАГ":"Магистратура","СПЕЦ":"Специалитет","АСП":"Аспирантура"}.get(direction.upper(),direction) or "Не указано"
+        direction_labels[member.id]=education_level(profile)
     policy=cohort.attendance_policy or {}
-    events=list((await db.execute(select(AcceleratorEvent).where(
-        AcceleratorEvent.cohort_id==cohort.id, AcceleratorEvent.status.in_(("published","completed")),
-        AcceleratorEvent.ends_at <= now,
-    ).order_by(AcceleratorEvent.starts_at,AcceleratorEvent.id))).scalars())
+    events=sorted(attendance_context.get("events", []), key=lambda event:(event.starts_at,event.id))
     if policy:
         events=[event for event in events if event.id in policy["event_ids"]]
-    records=await effective_attendance_records(db,members,[event.id for event in events])
+    records=attendance_context.get("records", {})
     exclusions=policy.get("excluded_events_by_team",{})
     member_teams={mid:team.id for team in physical_teams for mid in ids_by_team[team.id]}
     trend=[]
@@ -129,9 +145,14 @@ async def attendance_insights(db, cohort, *, now=None):
     else:
         total=sum(row["total"] for row in summaries.values() if row["past_events"])
         percent=round(sum(row["present"] for row in summaries.values())*100/total,1) if total else None
+    visits = Counter(summary["present"] for summary in summaries.values())
+    visit_distribution = [{"visits": count, "participants": visits[count]}
+                          for count in range(max(len(events), max(visits, default=0)) + 1)]
     return {"scope":cohort.attendance_scope,"basis":"planned" if policy else "past", "past_events":len(events),
         "percent":percent,"teams":len(physical_teams),"distribution":distribution,
-        "participants":participant_counts,"top_teams":[row for row in ranked if row["present"]>0][:5],
+        "participants":participant_counts,"visit_distribution":visit_distribution,
+        "top_teams":[row for row in ranked if row["present"]>0][:5],
         "by_course":grouped_attendance(members,summaries,course_labels),
-        "by_direction":grouped_attendance(members,summaries,direction_labels),
+        "by_direction":[row for row in grouped_attendance(members,summaries,direction_labels)
+                        if row["label"] in {"Аспирантура", "Бакалавриат", "Магистратура"}],
         "by_track":grouped_attendance(members,summaries,tracks),"events":trend}

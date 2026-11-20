@@ -74,7 +74,7 @@ async def effective_attendance_records(db, memberships, event_ids, *, cohorts=No
     return result
 
 
-async def attendance_summaries(db, memberships, *, now=None):
+async def attendance_summaries(db, memberships, *, now=None, context=None):
     if not memberships:
         return {}
     now = now or datetime.utcnow()
@@ -94,6 +94,8 @@ async def attendance_summaries(db, memberships, *, now=None):
     selected_events = set().union(*event_ids.values()) if event_ids else set()
     team_by_member = await _attendance_teams(db, cohorts)
     records = await effective_attendance_records(db, memberships, selected_events, cohorts=cohorts, team_by_member=team_by_member)
+    if context is not None:
+        context.update(events=events, records=records, team_by_member=team_by_member)
     summaries = {}
     for member in memberships:
         cohort = cohorts[member.cohort_id]
