@@ -2353,3 +2353,25 @@ class AudienceSimulationAccessToken(Base):
     claimed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class AcceleratorAttendanceCorrection(Base):
+    __tablename__ = "accelerator_attendance_corrections"
+    __table_args__ = (
+        Index("ix_attendance_corrections_queue", "cohort_id", "status", "created_at"),
+        Index("uq_attendance_correction_pending", "membership_id", "event_id", unique=True,
+              postgresql_where=text("status = 'pending'"), sqlite_where=text("status = 'pending'")),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    cohort_id: Mapped[int] = mapped_column(ForeignKey("accelerator_cohorts.id", ondelete="CASCADE"))
+    membership_id: Mapped[int] = mapped_column(ForeignKey("accelerator_memberships.id", ondelete="CASCADE"), index=True)
+    event_id: Mapped[int] = mapped_column(ForeignKey("accelerator_events.id", ondelete="CASCADE"), index=True)
+    full_name: Mapped[str] = mapped_column(String(200))
+    was_present: Mapped[bool] = mapped_column(Boolean)
+    description: Mapped[str] = mapped_column(Text)
+    attachments: Mapped[list] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(20), default="pending", server_default="pending")
+    review_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

@@ -908,7 +908,7 @@ async def save_accelerator_file(
     stale_rows = list((await db.execute(select(AcceleratorFile).where(
         AcceleratorFile.application_id.is_(None),
         AcceleratorFile.submission_id.is_(None),
-        AcceleratorFile.purpose.notin_(("event", "program")),
+        AcceleratorFile.purpose.notin_(("event", "program", "attendance_correction")),
         AcceleratorFile.created_at < datetime.utcnow() - timedelta(hours=24),
     ).limit(200))).scalars().all())
     for stale in stale_rows:
@@ -5261,6 +5261,8 @@ async def download_accelerator_file(
         user.is_admin
         or await is_accelerator_organizer(db, user.id, cohort.accelerator_id)
     )
+    if not allowed and row.purpose in {"attendance_correction", "attendance_correction_draft"}:
+        allowed = row.uploader_user_id == user.id
     if not allowed and row.purpose == "application" and row.application_id:
         application = await db.get(AcceleratorApplication, row.application_id)
         allowed = bool(application and application.user_id == user.id)
@@ -6435,6 +6437,9 @@ async def cohort_overview_summary(
 
 
 async def _cohort_overview_summary(db, cohort):
+    from models import AcceleratorAttendanceCorrection
+    pending_corrections = await db.scalar(select(func.count()).select_from(AcceleratorAttendanceCorrection).where(
+        AcceleratorAttendanceCorrection.cohort_id == cohort.id, AcceleratorAttendanceCorrection.status == "pending"))
     members = list((await db.execute(select(AcceleratorMembership).where(
         AcceleratorMembership.cohort_id == cohort.id,
         AcceleratorMembership.role == "resident",
@@ -6455,6 +6460,7 @@ async def _cohort_overview_summary(db, cohort):
     facts = await load_tracking_facts(db, enrolled, now=now) if tracking_enabled else {}
     unassigned = [row.id for row in enrolled if row.id in facts and not facts[row.id]["has_tracker"]]
     return {
+        "attendance_corrections_pending": pending_corrections,
         "participants": len(members),
         "applications_to_review": sum(applications.get(key, 0) for key in ("submitted", "under_review")),
         "applications_to_enroll": applications.get("approved", 0),

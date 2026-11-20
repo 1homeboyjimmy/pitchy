@@ -6,7 +6,7 @@ import { getAuthJson } from "@/lib/api";
 import { AttendanceInsights } from "./AttendanceInsights";
 import { useAcceleratorRefresh } from "@/lib/hooks/useAcceleratorRefresh";
 
-export type OrganizerTab = "overview" | "operations" | "applications" | "form" | "program" | "homework" | "attendance" | "trackers" | "reports" | "tracking" | "matching" | "project_audit" | "demo_day" | "artifacts" | "closure" | "quotas" | "settings" | "audit";
+export type OrganizerTab = "attendance_corrections" | "overview" | "operations" | "applications" | "form" | "program" | "homework" | "attendance" | "trackers" | "reports" | "tracking" | "matching" | "project_audit" | "demo_day" | "artifacts" | "closure" | "quotas" | "settings" | "audit";
 type Analytics = {
   program: { published_stages: number; completion_percent: number; participating_residents?: number; current_stage?: { id: number; title: string; completed: number; total: number } | null };
   attendance: { past_events?: number; reporting_total?: number; attendance_percent: number };
@@ -14,7 +14,7 @@ type Analytics = {
 };
 type Event = { id: number; title: string; starts_at: string; ends_at: string; status: string; event_format: string };
 type Assignment = { id: number; title: string; due_at?: string | null; status: string; submission_counts: Record<string, number> };
-type Summary = { participants: number; applications_to_review: number; applications_to_enroll: number; applications_in_progress: number; without_tracker: number; first_without_tracker: number | null; at_risk: number | null };
+type Summary = { attendance_corrections_pending?: number; participants: number; applications_to_review: number; applications_to_enroll: number; applications_in_progress: number; without_tracker: number; first_without_tracker: number | null; at_risk: number | null };
 type OverviewData = { analytics?: Analytics; events?: Event[]; homework?: Assignment[]; summary?: Summary; trackers?: Array<{ user_id: number }> };
 
 export function OrganizerOverview({ token, cohort, config, onNavigate, onCopy, copied, refreshKey, onOpenParticipant, onAttendanceFilter, onTeamAttendanceFilter }: {
@@ -113,11 +113,12 @@ export function OrganizerOverview({ token, cohort, config, onNavigate, onCopy, c
       {modules.trackers !== false && <Metric icon={UserRoundCheck} label="Трекеры" value={pending.includes("trackers") && !data.trackers ? "…" : data.trackers ? new Set(data.trackers.map(row => row.user_id)).size : "—"} onClick={() => onNavigate("matching")} />}
     </div>
     {available("attendance") && <AttendanceInsights token={token} cohortId={cohort.id} refreshKey={refreshKey + liveRefresh} onParticipants={onAttendanceFilter} onZeroTeams={onTeamAttendanceFilter} onTeam={id => onNavigate("matching", id)} onEvent={id => onNavigate("attendance", id)} />}
-    <div className="grid gap-5 xl:grid-cols-[1.35fr_1fr]">
-      <Panel title="Требует внимания">
+    <div className="grid gap-5 xl:grid-cols-2">
+      <div className="grid content-start gap-5"><Panel title="Требует внимания">
         {attentionLoading ? <Loading /> : actions.length ? <div className="divide-y divide-white/8">{actions.map(action => <div key={action.key} className="overview-action flex flex-wrap items-center gap-3 py-4 first:pt-1 last:pb-0"><span className={`grid h-11 w-11 shrink-0 place-items-center rounded-full ${action.warning ? "bg-amber-300/10 text-amber-300" : "bg-white/7 text-white/75"}`}><action.icon size={21} /></span><div className="min-w-0 flex-1 basis-40"><p className="text-sm font-medium"><strong className="mr-2 text-xl">{action.count}</strong>{action.title}</p><p className="mt-1 text-xs leading-relaxed text-white/50">{action.detail}</p></div><button className="workspace-button !rounded-xl !px-4 !py-2 !text-xs" onClick={() => { onNavigate(action.tab, action.targetId); if (action.key === "trackers") { const id = data.summary?.first_without_tracker; if (id) onOpenParticipant(id); } }}>{action.button}</button></div>)}</div> : <div className="py-6"><CheckCircle2 size={28} className="mb-3 text-emerald-300" /><p className="font-medium">{failures.length ? "Задач в загруженных разделах нет" : "Срочных задач нет"}</p><p className="mt-2 text-sm text-white/50">{cohort.status === "draft" ? "Подготовьте анкету и программу, затем откройте набор." : "Проверьте программу или откройте список участников."}</p><div className="mt-4 flex flex-wrap gap-3"><TextAction onClick={() => onNavigate(cohort.status === "draft" ? "form" : "reports")}>{cohort.status === "draft" ? "Настроить анкету" : "Все участники"}</TextAction>{cohort.status === "draft" && <TextAction onClick={() => onNavigate("settings")}>Настроить поток</TextAction>}</div></div>}
       </Panel>
-      <Panel title="Ближайшее">
+      {modules.attendance && <Panel title="Заявки на корректировку посещаемости"><div className="flex items-center justify-between gap-4 py-2"><div><strong className="text-3xl">{data.summary?.attendance_corrections_pending ?? 0}</strong><p className="mt-2 text-sm text-white/50">На проверке</p></div><button type="button" onClick={()=>onNavigate("attendance_corrections")} className="workspace-button">Посмотреть <ArrowRight size={16}/></button></div></Panel>}
+      </div><Panel title="Ближайшее">
         {upcomingLoading ? <Loading /> : upcoming.length ? <div className="divide-y divide-white/8">{upcoming.map(item => <div key={`${item.tab}-${item.id}`} className="flex gap-4 py-4 first:pt-1 last:pb-0"><div className="w-24 shrink-0 border-r border-white/10 pr-3"><p className="text-xs text-white/50">{utcDate(item.at).toLocaleDateString("ru-RU", { day: "numeric", month: "short", timeZone: cohort.timezone })}</p><p className="mt-2 text-lg font-medium">{utcDate(item.at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", timeZone: cohort.timezone })}</p></div><div className="min-w-0"><p className="text-sm font-medium">{item.title}</p><p className="mt-1 text-xs text-white/50">{item.detail}</p><TextAction onClick={() => onNavigate(item.tab, item.id)}>{item.action}</TextAction></div></div>)}</div> : <div className="py-6"><CalendarDays size={28} className="mb-3 text-white/40" /><p className="text-sm text-white/55">Ближайших событий и сроков сдачи пока нет.</p>{modules.attendance && available("attendance") && <TextAction onClick={() => onNavigate("attendance")}>Открыть мероприятия</TextAction>}</div>}
         <p className="mt-5 text-xs text-white/35">Время потока: {cohort.timezone}</p>
       </Panel>

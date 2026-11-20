@@ -8,7 +8,7 @@ const GROUPS: Array<{ label: string; icon: LucideIcon; keys: OrganizerTab[] }> =
   { label: "Заявки", icon: FileText, keys: ["applications", "form"] },
   { label: "Участники", icon: Users, keys: ["reports", "tracking"] },
   { label: "Команды и трекеры", icon: UserRoundCheck, keys: ["trackers", "matching"] },
-  { label: "Программа", icon: BookOpen, keys: ["program", "homework", "attendance"] },
+  { label: "Программа", icon: BookOpen, keys: ["program", "homework", "attendance", "attendance_corrections"] },
   { label: "Результаты", icon: BarChart3, keys: ["artifacts", "project_audit", "demo_day", "closure"] },
   { label: "Настройки", icon: Settings2, keys: ["settings", "operations", "quotas", "audit"] },
 ];

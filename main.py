@@ -564,6 +564,8 @@ app.include_router(research_router.router)
 
 from routers import accelerators as accelerators_router
 app.include_router(accelerators_router.router)
+from routers import accelerator_attendance_corrections
+app.include_router(accelerator_attendance_corrections.router)
 
 from routers import accelerator_artifacts as accelerator_artifacts_router
 app.include_router(accelerator_artifacts_router.router)

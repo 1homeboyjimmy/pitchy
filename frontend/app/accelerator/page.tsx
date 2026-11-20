@@ -33,6 +33,7 @@ const ApplicationFormEditor = dynamic(() => import("@/components/accelerator/App
 const QuotaManager = dynamic(() => import("@/components/accelerator/QuotaManager").then(module => module.QuotaManager), { loading: WorkspaceLoading });
 const ResidentWorkspace = dynamic(() => import("@/components/accelerator/ResidentWorkspace").then(module => module.ResidentWorkspace), { loading: WorkspaceLoading });
 const ApplicationManager = dynamic(() => import("@/components/accelerator/ApplicationManager").then(module => module.ApplicationManager), { loading: WorkspaceLoading });
+const AttendanceCorrectionQueue = dynamic(() => import("@/components/accelerator/AttendanceCorrections").then(module => module.AttendanceCorrectionQueue), { loading: WorkspaceLoading });
 const AttendanceManager = dynamic(() => import("@/components/accelerator/AttendanceManager").then(module => module.AttendanceManager), { loading: WorkspaceLoading });
 const AuditLog = dynamic(() => import("@/components/accelerator/AuditLog").then(module => module.AuditLog), { loading: WorkspaceLoading });
 const HomeworkWorkspace = dynamic(() => import("@/components/accelerator/HomeworkWorkspace").then(module => module.HomeworkWorkspace), { loading: WorkspaceLoading });
@@ -56,7 +57,7 @@ type Accelerator = { id: number; name: string; description?: string | null; stat
 type Cohort = { id: number; accelerator_id: number; name: string; status: string; timezone: string; attendance_scope?: "individual" | "team"; starts_at?: string | null; ends_at?: string | null; default_quota_config?: Limits | null; project_audit_limit?: number; application_form_schema: ApplicationFormSchema; homework_pitchy_enabled: boolean };
 type ProgramConfig = { cohort_id: number; version: number; modules: Record<string, boolean>; locked_modules: Record<string, boolean> };
 type Resident = { membership_id: number; user_id: number; name: string; email: string; status: string; status_reason?: string | null; trackers?: Array<{ user_id: number; name: string }> };
-type TabKey = "overview" | "operations" | "applications" | "form" | "program" | "homework" | "attendance" | "trackers" | "reports" | "tracking" | "matching" | "project_audit" | "demo_day" | "artifacts" | "closure" | "quotas" | "settings" | "audit";
+type TabKey = "attendance_corrections" | "overview" | "operations" | "applications" | "form" | "program" | "homework" | "attendance" | "trackers" | "reports" | "tracking" | "matching" | "project_audit" | "demo_day" | "artifacts" | "closure" | "quotas" | "settings" | "audit";
 type SettingsPanelKey = "cohort-general" | "cohort-modules" | "cohort-status" | "accelerator-general" | "cohorts" | "organizers" | "quotas" | "system-health" | "audit-log";
 
 const MODULE_LABELS: Record<string, string> = { applications: "Заявки", program: "Программа", program_progress: "Прохождение программы", homework: "Домашние задания", attendance: "Посещаемость", progress_tracking: "Трекинг прогресса", trackers: "Трекеры", matchmaking: "Матчмейкинг", project_audit: "Аудит проекта", demo_day: "Демо-день и экспорт", pitchy_artifacts: "Результаты Pitchy", alumni: "Каталог выпускников" };
@@ -225,6 +226,7 @@ export default function AcceleratorWorkspacePage() {
     const rows: Array<{ key: TabKey; label: string }> = [{ key: "overview", label: "Обзор" }, { key: "applications", label: "Заявки" }, { key: "form", label: "Анкета" }, { key: "program", label: "Программа" }];
     if (config?.modules.homework) rows.push({ key: "homework", label: "Домашние задания" });
     if (config?.modules.attendance) rows.push({ key: "attendance", label: "Посещаемость" });
+    if (config?.modules.attendance) rows.push({ key: "attendance_corrections", label: "Корректировка посещаемости" });
     if (config?.modules.progress_tracking) rows.push({ key: "tracking", label: "Трекинг" });
     if (config?.modules.matchmaking) rows.push({ key: "matching", label: "Матчмейкинг" });
     if (config?.modules.project_audit) rows.push({ key: "project_audit", label: "Аудит проекта" });
@@ -265,6 +267,7 @@ export default function AcceleratorWorkspacePage() {
         {tab === "form" && <ApplicationFormEditor key={selectedCohort.id} schema={selectedCohort.application_form_schema || {}} cohortId={selectedCohort.id} token={token} publicUrl={`/accelerators/apply/${selectedCohort.id}`} cohortStatus={selectedCohort.status} onSettings={() => navigate("settings")} onApplications={() => navigate("applications")} onPublished={() => loadCohortDetails()} />}
         {tab === "program" && <ProgramBuilder focusId={targetId} cohortId={selectedCohort.id} token={token} trackProgress={config?.modules.program_progress !== false} />}
         {tab === "homework" && !detailsLoading && config?.modules.homework && <HomeworkWorkspace focusId={targetId} cohortId={selectedCohort.id} token={token} residents={residents} isAdmin={isAdmin} pitchyEnabled={selectedCohort.homework_pitchy_enabled} />}
+        {tab === "attendance_corrections" && canManage && config?.modules.attendance && <AttendanceCorrectionQueue cohortId={selectedCohort.id} token={token} />}
         {tab === "attendance" && config?.modules.attendance && (canManage ? <AttendanceManager teamAttendance={selectedCohort.attendance_scope === "team"} timeZone={selectedCohort.timezone} focusId={tab === "attendance" ? targetId : undefined} cohortId={selectedCohort.id} token={token} /> : <TrackerAttendance cohortId={selectedCohort.id} token={token} />)}
         {tab === "matching" && !detailsLoading && config?.modules.matchmaking && (canManage ? <MatchmakingManager trackersEnabled={config.modules.trackers !== false} focusTeamId={targetId} cohortId={selectedCohort.id} token={token} residents={residents} /> : <MatchmakingWorkspace cohortId={selectedCohort.id} />)}
         {tab === "project_audit" && !detailsLoading && config?.modules.project_audit && <ProjectAuditWorkspace cohortId={selectedCohort.id} residents={residents} token={token} canCreateTasks taskIntegrationEnabled={Boolean(config.modules.progress_tracking)} />}

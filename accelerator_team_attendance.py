@@ -77,7 +77,7 @@ async def record_team_attendance(db, *, cohort, event, members, actor, status, m
             accelerator_id=cohort.accelerator_id, cohort_id=cohort.id,
             actor_user_id=actor.id, action=action,
             target_type="event", target_id=event.id,
-            details={"membership_id": member.id, "status": status, "method": method, "scope": "team"},
+            details={"membership_id": member.id, "status": status, "method": method, "scope": cohort.attendance_scope},
         ))
         if event.stage_id:
             await db.flush()
