@@ -68,7 +68,7 @@ async def test_team_insights_share_denominator_exclusions_groups_and_permissions
         assert error.value.status_code==403
         team=await db.scalar(select(AcceleratorTeam).where(AcceleratorTeam.owner_membership_id==member.id))
         linked = AcceleratorTeam(cohort_id=cohort.id, name="Linked project", owner_membership_id=peer_member.id,
-                                 status="active", attendance_team_id=team.id)
+                                 status="active", attendance_team_id=team.id, created_by_user_id=actor.id)
         db.add(linked)
         await db.flush()
         peer_link=await db.scalar(select(AcceleratorTeamMember).where(AcceleratorTeamMember.membership_id==peer_member.id))
