@@ -35,7 +35,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import RedirectResponse
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from auth import (
@@ -533,9 +533,10 @@ async def initiate_change_password(
 
     try:
         subj, body = email_templates.password_change_code(user.name, code)
-        send_email(user.email, subj, body)
-    except Exception:
-        raise HTTPException(status_code=500, detail="Failed to send verification code")
+        await run_in_threadpool(send_email, user.email, subj, body)
+    except Exception as exc:
+        logging.getLogger(__name__).error("password_change_delivery_failed user_id=%s error_type=%s smtp_code=%s", user.id, type(exc).__name__, getattr(exc, "smtp_code", None))
+        raise HTTPException(status_code=503, detail="Не удалось отправить код. Попробуйте позже.")
 
     return {"status": "ok", "message": "Verification code sent"}
 
@@ -577,7 +578,7 @@ async def confirm_change_password(
 
     try:
         subj, body = email_templates.password_changed_notice(user.name)
-        send_email(user.email, subj, body)
+        await run_in_threadpool(send_email, user.email, subj, body)
     except Exception:
         pass
 
@@ -600,21 +601,23 @@ async def request_password_reset(
     ip = get_client_ip(request)
     _check_rate_limit(ip)
     res = await db.execute(
-        select(User).where(User.email == payload.email, User.deleted_at.is_(None))
+        select(User).where(func.lower(User.email) == str(payload.email).strip().lower(), User.deleted_at.is_(None))
     )
     user = res.scalar_one_or_none()
     if not user:
         return {"status": "ok"}
-    code = "".join(str(random.randint(0, 9)) for _ in range(6))
+    code = "".join(secrets.choice("0123456789") for _ in range(6))
     user.password_reset_token_hash = hash_token(code)
     user.password_reset_expires_at = datetime.utcnow() + timedelta(minutes=15)
     await db.commit()
     try:
         subj, body = email_templates.password_reset_code(code)
-        send_email(payload.email, subj, body)
-    except Exception:
-        # SMTP may be unavailable on dev — code is still readable from /dev/emails.
-        pass
+        await run_in_threadpool(send_email, user.email, subj, body)
+        logging.getLogger(__name__).info("password_reset_smtp_accepted user_id=%s", user.id)
+    except Exception as exc:
+        # Keep the public response identical for unknown/known accounts, but
+        # make provider failures observable without exposing addresses or codes.
+        logging.getLogger(__name__).error("password_reset_delivery_failed user_id=%s error_type=%s smtp_code=%s", user.id, type(exc).__name__, getattr(exc, "smtp_code", None))
     return {"status": "ok"}
 
 
@@ -624,7 +627,7 @@ async def set_invitation_password(payload: InvitationPasswordSet, request: Reque
     from main import _check_rate_limit, get_client_ip
     _check_rate_limit(get_client_ip(request))
     user = (await db.execute(select(User).where(
-        User.email == str(payload.email), User.deleted_at.is_(None),
+        func.lower(User.email) == str(payload.email).strip().lower(), User.deleted_at.is_(None),
         User.is_active.is_(True), User.local_login_enabled.is_(True),
     ).with_for_update())).scalar_one_or_none()
     if (not user or not user.password_reset_token_hash or not user.password_reset_expires_at
@@ -650,7 +653,7 @@ async def reset_password(
     _check_rate_limit(ip)
 
     res = await db.execute(
-        select(User).where(User.email == payload.email, User.deleted_at.is_(None))
+        select(User).where(func.lower(User.email) == str(payload.email).strip().lower(), User.deleted_at.is_(None))
     )
     user = res.scalar_one_or_none()
 
@@ -663,7 +666,7 @@ async def reset_password(
         raise HTTPException(status_code=400, detail="Код недействителен или истёк")
 
     if not secrets.compare_digest(hash_token(payload.code), user.password_reset_token_hash):
-        if _bump_code_attempts("reset", payload.email) > CODE_MAX_ATTEMPTS:
+        if _bump_code_attempts("reset", str(payload.email).strip().lower()) > CODE_MAX_ATTEMPTS:
             # Перебор — инвалидируем код сброса, заставляем перезапросить.
             user.password_reset_token_hash = None
             user.password_reset_expires_at = None
@@ -675,7 +678,7 @@ async def reset_password(
     user.password_reset_token_hash = None
     user.password_reset_expires_at = None
     await db.commit()
-    _reset_code_attempts("reset", payload.email)
+    _reset_code_attempts("reset", str(payload.email).strip().lower())
     return {"status": "ok"}
 
 
