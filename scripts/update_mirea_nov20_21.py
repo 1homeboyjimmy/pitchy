@@ -8,11 +8,14 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
-async def run(apply):
+async def run(apply, event_ids=None):
     from sqlalchemy import select
     from db_async import AsyncSessionLocal
     from models import AcceleratorCohort, AcceleratorEvent, AcceleratorEventChange, User
     from mirea_event_announcements import UPDATES
+    if event_ids:
+        assert set(event_ids).issubset(UPDATES)
+        UPDATES = {k: v for k, v in UPDATES.items() if k in event_ids}
     async with AsyncSessionLocal() as db:
         cohort = await db.get(AcceleratorCohort, 8)
         actor = await db.get(User, 13)
@@ -35,7 +38,7 @@ async def run(apply):
             event.updated_by_user_id = actor.id
             after = {k: serial(v) for k, v in changes.items()}
             db.add(AcceleratorEventChange(event_id=event.id, actor_user_id=actor.id, action='details_updated',
-                reason='Уточнение по объявлениям организаторов от 20 ноября 2026', before=before, after=after))
+                reason='Уточнение по объявлению организаторов', before=before, after=after))
             plan.append({'event_id': event.id, 'before': before, 'after': after})
         if apply:
             await db.commit()
@@ -47,4 +50,6 @@ async def run(apply):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--apply', action='store_true')
-    asyncio.run(run(parser.parse_args().apply))
+    parser.add_argument('--event-id', type=int, action='append')
+    args = parser.parse_args()
+    asyncio.run(run(args.apply, args.event_id))
