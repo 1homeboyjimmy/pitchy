@@ -81,6 +81,8 @@ function DashboardContent() {
   const [sessions, setSessions] = useState<ChatSessionResponse[]>([]);
   const [activeSession, setActiveSession] = useState<ChatSessionDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [userProfile, setUserProfile] = useState<UserResponse | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -189,12 +191,13 @@ function DashboardContent() {
         return;
       }
       try {
+        setLoadError(false);
         const [sessionsList, user, usageData, acceleratorRows, acceleratorWorkspace] = await Promise.all([
-          getChatSessions(token).catch(() => []),
-          getMe(token).catch(() => null),
-          fetchUsage(token).catch(() => null),
-          getAuthJson<AcceleratorAccess[]>("/api/accelerators", token).catch(() => []),
-          getAuthJson<{ memberships: AcceleratorMembershipAccess[] }>("/api/accelerators/me/memberships", token).catch(() => ({ memberships: [] })),
+          getChatSessions(token),
+          getMe(token),
+          fetchUsage(token),
+          getAuthJson<AcceleratorAccess[]>("/api/accelerators", token),
+          getAuthJson<{ memberships: AcceleratorMembershipAccess[] }>("/api/accelerators/me/memberships", token),
         ]);
         setSessions(sessionsList);
         setUserProfile(user);
@@ -203,12 +206,13 @@ function DashboardContent() {
         setAcceleratorHref(acceleratorEntryHref(acceleratorWorkspace.memberships, acceleratorRows, Boolean(user?.is_admin)));
       } catch (e) {
         console.error(e);
+        setLoadError(true);
       } finally {
         setLoading(false);
       }
     };
     init();
-  }, [isLoaded, token]);
+  }, [isLoaded, token, loadAttempt]);
 
   // Refresh usage after session changes (create / delete / send message)
   useEffect(() => {
@@ -298,6 +302,8 @@ function DashboardContent() {
       </div>
     );
   }
+
+  if (loadError) return <div role="alert" className="flex min-h-screen flex-col items-center justify-center gap-4 bg-black text-white"><p>Не удалось загрузить кабинет. Ваши данные не потеряны.</p><button onClick={() => { setLoading(true); setLoadAttempt(n => n + 1); }} className="rounded-xl border px-4 py-2">Повторить загрузку</button></div>;
 
   if (!isAuthenticated) return <UnauthDashboard />;
 

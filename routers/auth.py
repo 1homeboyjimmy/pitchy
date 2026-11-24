@@ -29,6 +29,7 @@ import logging
 import os
 import random
 import secrets
+import time
 import urllib.parse
 from datetime import datetime, timedelta
 
@@ -396,6 +397,10 @@ async def verify_email_code(
 
     token = create_access_token(user.id)
     _set_session_cookie(response, token)
+    request.state.auth_user_id = user.id
+    request.state.auth_reason = "login_success"
+    request.state.session_issued_at = int(time.time())
+    request.state.session_expires_at = request.state.session_issued_at + get_access_token_max_age()
     return TokenResponse(access_token=token)
 
 
@@ -459,13 +464,18 @@ async def login(
     result = await db.execute(select(User).where(condition, User.deleted_at.is_(None)))
     user = result.scalar_one_or_none()
 
+    request.state.auth_reason = "invalid_credentials"
     if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
+    request.state.auth_user_id = user.id
     if not user.is_active:
+        request.state.auth_reason = "user_blocked"
         raise HTTPException(status_code=403, detail="User is blocked")
     if user.locked_until and user.locked_until > datetime.utcnow():
+        request.state.auth_reason = "user_locked"
         raise HTTPException(status_code=403, detail="User is temporarily locked")
     if not user.email_verified and not user.local_login_enabled:
+        request.state.auth_reason = "email_unverified"
         raise HTTPException(status_code=403, detail="Email is not verified")
     if not verify_password(payload.password, user.password_hash):
         user.failed_login_attempts += 1
@@ -485,7 +495,17 @@ async def login(
 
     token = create_access_token(user.id)
     _set_session_cookie(response, token)
+    request.state.auth_user_id = user.id
+    request.state.auth_reason = "login_success"
+    request.state.session_issued_at = int(time.time())
+    request.state.session_expires_at = request.state.session_issued_at + get_access_token_max_age()
     return TokenResponse(access_token=token)
+
+
+@router.get("/auth/session")
+async def current_session(response: Response, user: User = Depends(get_async_current_user)):
+    response.headers["Cache-Control"] = "no-store"
+    return {"authenticated": True, "user_id": user.id}
 
 
 @router.post("/auth/logout")
@@ -816,4 +836,8 @@ async def sso_callback(
             domain=os.getenv("COOKIE_DOMAIN", ".pitchy.pro"),
         )
     _set_session_cookie(redirect, token)
+    request.state.auth_user_id = user.id
+    request.state.auth_reason = "sso_login_success"
+    request.state.session_issued_at = int(time.time())
+    request.state.session_expires_at = request.state.session_issued_at + get_access_token_max_age()
     return redirect

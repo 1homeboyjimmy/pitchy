@@ -1,3 +1,4 @@
+import { SessionStatus } from "@/components/SessionStatus";
 import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
 import localFont from "next/font/local";
@@ -92,6 +93,7 @@ export default function RootLayout({
         </Suspense>
         <ScrollToTop />
         <BreadcrumbsSchema />
+        <SessionStatus />
         {children}
         <Suspense fallback={null}><ParticipantRegistrationGate /></Suspense>
         <CookieConsentBanner />

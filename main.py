@@ -653,6 +653,18 @@ async def metrics_middleware(request: Request, call_next):
             "request_id": request_id,
         },
     )
+    from auth import renew_session
+    renew_session(request, response)
+    if getattr(request.state, "auth_reason", None):
+        logger.info("auth_session", extra={
+            "request_id": request_id, "method": method, "path": path,
+            "user_id": getattr(request.state, "auth_user_id", None),
+            "auth_reason": request.state.auth_reason,
+            "session_tag": getattr(request.state, "session_tag", None),
+            "session_issued_at": getattr(request.state, "session_issued_at", None),
+            "session_expires_at": getattr(request.state, "session_expires_at", None),
+            "status_code": response.status_code,
+        })
     response.headers["X-Request-ID"] = request_id
     return response
 

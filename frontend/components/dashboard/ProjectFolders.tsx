@@ -22,6 +22,8 @@ interface Props {
 
 export function ProjectFolders({ token, onOpenSession, onSessionCreated, onAttached, onDeleted }: Props) {
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
   const [creating, setCreating] = useState(false);
   const [showInput, setShowInput] = useState(false);
@@ -30,11 +32,14 @@ export function ProjectFolders({ token, onOpenSession, onSessionCreated, onAttac
   const [openFolder, setOpenFolder] = useState<ProjectListItem | null>(null);
 
   useEffect(() => {
+    let active = true;
+    setLoading(true); setLoadError(false);
     getProjects(token)
-      .then(setProjects)
-      .catch((e) => { console.error(e); })
-      .finally(() => setLoading(false));
-  }, [token]);
+      .then(rows => { if (active) setProjects(rows); })
+      .catch(() => { if (active) setLoadError(true); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [token, attempt]);
 
   const handleCreate = async () => {
     const n = name.trim();
@@ -94,7 +99,7 @@ export function ProjectFolders({ token, onOpenSession, onSessionCreated, onAttac
         </div>
       )}
 
-      {loading ? (
+      {loadError ? <div role="alert" className="p-4 text-white/70">Не удалось загрузить проекты.<button className="ml-3 underline" onClick={() => setAttempt(n => n + 1)}>Повторить загрузку</button></div> : loading ? (
         <div className="flex justify-center py-8"><Loader className="animate-spin text-white/20" size={20} /></div>
       ) : projects.length === 0 && !showInput ? (
         <button

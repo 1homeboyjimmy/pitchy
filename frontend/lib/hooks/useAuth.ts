@@ -1,40 +1,22 @@
 "use client";
-
-import { useSyncExternalStore, useState, useEffect } from "react";
-import { getToken, authEvents } from "../auth";
-
+import { useSyncExternalStore, useEffect } from "react";
+import { getToken, authEvents, getAuthSnapshot, getAuthStatus, ensureSession, recheckSession, wasSessionValidated } from "../auth";
 function subscribe(callback: () => void) {
-    const handler = () => callback();
-    authEvents.addEventListener("auth-change", handler);
-    window.addEventListener("storage", handler);
-    return () => {
-        authEvents.removeEventListener("auth-change", handler);
-        window.removeEventListener("storage", handler);
-    };
+  authEvents.addEventListener("auth-change", callback);
+  const storage = () => { callback(); void ensureSession(true); };
+  window.addEventListener("storage", storage);
+  return () => { authEvents.removeEventListener("auth-change", callback); window.removeEventListener("storage", storage); };
 }
-
-function getSnapshot() {
-    return getToken();
-}
-
-function getServerSnapshot() {
-    return null;
-}
-
 export function useAuth() {
-    const token = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
-    const [isMounted, setIsMounted] = useState(false);
-
-    useEffect(() => {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setIsMounted(true);
-    }, []);
-
-    // isLoaded is true only after hydration is complete (useEffect runs)
-    // token is reactive via useSyncExternalStore
-    return {
-        token: isMounted ? token : null,
-        isLoaded: isMounted,
-        isAuthenticated: isMounted && !!token
-    };
+  const snapshot = useSyncExternalStore(subscribe, getAuthSnapshot, () => "server");
+  useEffect(() => {
+    void ensureSession();
+    window.addEventListener("focus", recheckSession); document.addEventListener("visibilitychange", recheckSession);
+    const timer = window.setInterval(recheckSession, 300000);
+    return () => { clearInterval(timer); window.removeEventListener("focus", recheckSession); document.removeEventListener("visibilitychange", recheckSession); };
+  }, []);
+  const state = snapshot === "server" ? "checking" : getAuthStatus();
+  const authenticated = state === "authenticated" || (state === "error" && wasSessionValidated());
+  const ready = authenticated || state === "anonymous";
+  return { token: authenticated ? getToken() : null, isLoaded: ready, isAuthenticated: authenticated, authError: state === "error", retryAuth: () => ensureSession(true) };
 }

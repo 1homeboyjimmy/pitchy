@@ -1,3 +1,4 @@
+import { getAuthEpoch, recoverSession, getAuthStatus } from "./auth";
 export type AnalyzeResponse = {
   investment_score: number;
   strengths: string[];
@@ -183,6 +184,7 @@ async function request<T>(
   token?: string | null,
   method: "GET" | "POST" | "DELETE" | "PATCH" | "PUT" = "POST",
   signal?: AbortSignal,
+  retried = false,
 ): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token && token !== COOKIE_SESSION_MARKER) {
@@ -197,6 +199,7 @@ async function request<T>(
     headers["X-Idempotency-Key"] = globalThis.crypto?.randomUUID?.()
       || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   }
+  const requestEpoch = getAuthEpoch();
   let res: Response;
   try {
     res = await fetch(`${API_BASE}${path}`, {
@@ -219,11 +222,8 @@ async function request<T>(
     const isAuthEndpoint = path.startsWith("/auth/");
     // Handle expired/invalid token globally
     if (res.status === 401 && !isAuthEndpoint && typeof window !== "undefined") {
-      window.localStorage.removeItem("vi_auth_state");
-      // Avoid redirect loops on auth pages
-      if (!window.location.pathname.startsWith("/login")) {
-        window.location.href = "/login?expired=1";
-      }
+      if (!retried && await recoverSession(requestEpoch)) return request<T>(path, body, token, method, signal, true);
+      if (getAuthStatus() === "error") throw new ApiError("Не удалось проверить сессию. Повторите загрузку.", 503);
       throw new ApiError("Invalid token", 401, res.headers.get("X-Request-ID") || undefined);
     }
     const err = await res.json().catch(() => ({}));
@@ -441,6 +441,7 @@ export async function* sendChatMessageStream(
   // навигацию браузера (нет заголовка) рендерим страницей, а fetch из api.ts
   // (есть заголовок) проксируем на бэкенд. Работает и за Caddy Basic Auth.
   headers["x-pitchy-api"] = "1";
+  const streamEpoch = getAuthEpoch();
   const res = await fetch(`${API_BASE}/chat/sessions/${sessionId}/messages`, {
     method: "POST",
     headers,
@@ -458,12 +459,8 @@ export async function* sendChatMessageStream(
     signal
   });
   if (!res.ok) {
-    if (res.status === 401 && typeof window !== "undefined") {
-      window.localStorage.removeItem("vi_auth_state");
-      if (!window.location.pathname.startsWith("/login")) {
-        window.location.href = "/login?expired=1";
-      }
-    }
+    // Streaming errors do not clear or overwrite a newer session.
+    if (res.status === 401 && typeof window !== "undefined") await recoverSession(streamEpoch);
     let errorDetail = "Stream request failed";
     try {
         const errorData = await res.json();

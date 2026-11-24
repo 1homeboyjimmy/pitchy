@@ -15,6 +15,11 @@ class JsonFormatter(logging.Formatter):
             "msg": record.getMessage(),
         }
         for key in (
+            "request_id",
+            "auth_reason",
+            "session_tag",
+            "session_issued_at",
+            "session_expires_at",
             "method",
             "path",
             "status_code",
