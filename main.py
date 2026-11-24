@@ -82,7 +82,6 @@ if SENTRY_DSN:
         dsn=SENTRY_DSN,
         integrations=[FastApiIntegration()],
         traces_sample_rate=1.0,
-        profiles_sample_rate=1.0,
         environment=os.getenv("APP_ENV", "production"),
     )
 
