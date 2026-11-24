@@ -27,7 +27,10 @@ async def run(apply, event_ids=None):
         def serial(value):
             return value.isoformat() if isinstance(value, datetime) else value
         for event in events:
-            assert event.starts_at.date() == UPDATES[event.id]['starts_at'].date()
+            allowed_dates = {UPDATES[event.id]['starts_at'].date()}
+            if event.id == 34:
+                allowed_dates.add(datetime(2026, 11, 24).date())
+            assert event.starts_at.date() in allowed_dates
             values = UPDATES[event.id]
             changes = {k: v for k, v in values.items() if getattr(event, k) != v}
             if not changes:

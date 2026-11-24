@@ -5,8 +5,9 @@ UPDATES = {
     34: {
         'title': 'Каналы продвижения, контент и воронка привлечения',
         'host_name': 'Алексей Добрусин',
-        'starts_at': datetime(2026, 11, 24, 15),
-        'ends_at': datetime(2026, 11, 24, 16, 30),
+        'starts_at': datetime(2026, 11, 25, 15, 30),
+        'ends_at': datetime(2026, 11, 25, 17),
+        'venue_details': 'Вебинар перенесён с 24 на 25 ноября, начало в 18:30 МСК.',
         'event_format': 'online',
         'event_type': 'webinar',
         'meeting_url': 'https://my.mts-link.ru/j/152085126/28463596836',
@@ -62,6 +63,8 @@ def correct_stale_schedule(item, cohort_id):
     item = dict(item)
     if item['starts_at'].date() == datetime(2026, 11, 24).date() and item['title'] == 'Маркетинг и продвижение':
         item['title'] = UPDATES[34]['title']
+    if item['starts_at'].date() == datetime(2026, 11, 24).date() and item['title'] == UPDATES[34]['title']:
+        item.update({k: UPDATES[34][k] for k in ('starts_at', 'ends_at', 'venue_details')})
     if item['starts_at'].date() == datetime(2026, 11, 20).date() and item['title'] == 'Финансы стартапа':
         item['title'] = UPDATES[32]['title']
     if item['starts_at'].date() == datetime(2026, 11, 21).date():
