@@ -68,7 +68,7 @@ def test_failure_reasons_and_expired_signed_identity(kind,reason):
 @pytest.mark.asyncio
 async def test_deleted_and_blocked_accounts_do_not_renew():
     async with AsyncSessionLocal() as db:
-        user=User(email=uuid.uuid4().hex+'@example.com',is_active=False)
+        user=User(email=uuid.uuid4().hex+'@example.com',name='Blocked session test',is_active=False)
         db.add(user);await db.commit()
         req=request(create_access_token(user.id))
         with pytest.raises(HTTPException) as error:await get_async_current_user(req,db)
