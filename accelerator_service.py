@@ -120,6 +120,8 @@ async def membership_tracker_user_ids(
 async def require_cohort_reader(db: AsyncSession, user, cohort: AcceleratorCohort) -> str:
     if user.is_admin:
         return "global_admin"
+    if getattr(cohort, "admin_only", False):
+        raise HTTPException(status_code=404, detail="Поток не найден")
     if await is_accelerator_organizer(db, user.id, cohort.accelerator_id):
         return "organizer"
     if await tracker_membership_ids(db, user.id, cohort.id):
@@ -135,6 +137,8 @@ async def require_tracker_membership_access(
         raise HTTPException(status_code=404, detail="Поток не найден")
     if user.is_admin:
         return "global_admin"
+    if getattr(cohort, "admin_only", False):
+        raise HTTPException(status_code=404, detail="Поток не найден")
     if await is_accelerator_organizer(db, user.id, cohort.accelerator_id):
         return "organizer"
     if membership.id in await tracker_membership_ids(db, user.id, membership.cohort_id):
@@ -145,6 +149,8 @@ async def require_tracker_membership_access(
 async def require_cohort_manager(db: AsyncSession, user, cohort: AcceleratorCohort) -> None:
     if user.is_admin:
         return
+    if getattr(cohort, "admin_only", False):
+        raise HTTPException(status_code=404, detail="Поток не найден")
     if not await is_accelerator_organizer(db, user.id, cohort.accelerator_id):
         raise HTTPException(status_code=403, detail="Нет прав на управление этим акселератором")
 

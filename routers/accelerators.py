@@ -1931,6 +1931,8 @@ async def list_cohorts(
 ):
     await get_accelerator_or_404(db, accelerator_id)
     cohort_query = select(AcceleratorCohort).where(AcceleratorCohort.accelerator_id == accelerator_id)
+    if not user.is_admin:
+        cohort_query = cohort_query.where(AcceleratorCohort.admin_only.is_(False))
     if not user.is_admin and not await is_accelerator_organizer(db, user.id, accelerator_id):
         tracker_cohort_ids = set((await db.execute(
             select(AcceleratorMembership.cohort_id)

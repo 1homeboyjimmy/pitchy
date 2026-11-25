@@ -240,6 +240,7 @@ class AcceleratorCohort(Base):
     accelerator_id: Mapped[int] = mapped_column(ForeignKey("accelerators.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(200))
     status: Mapped[str] = mapped_column(String(30), default="draft", server_default="draft", index=True)
+    admin_only: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     timezone: Mapped[str] = mapped_column(String(80), default="Europe/Moscow", server_default="Europe/Moscow")
     attendance_scope: Mapped[str] = mapped_column(String(20), default="individual", server_default="individual")
     attendance_policy: Mapped[dict | None] = mapped_column(JSON, nullable=True)
