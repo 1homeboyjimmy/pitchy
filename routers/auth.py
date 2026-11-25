@@ -298,16 +298,23 @@ async def register(
     _check_rate_limit(ip)
     _check_registration_rate_limit(ip)
 
-    result = await db.execute(select(User).where(User.email == payload.email))
+    result = await db.execute(select(User).where(
+        func.lower(User.email) == str(payload.email).strip().lower()
+    ).with_for_update())
     exists = result.scalar_one_or_none()
 
     if exists:
-        if not exists.email_verified:
-            # Overwrite an abandoned unverified registration
-            await db.delete(exists)
-            await db.commit()
-        else:
+        # An unverified account may already own projects or cohort membership.
+        # Resume only with its current password; never delete it or replace its
+        # password from an unauthenticated registration request.
+        if (exists.email_verified or exists.deleted_at or not exists.is_active
+                or (exists.locked_until and exists.locked_until > datetime.utcnow())):
             raise HTTPException(status_code=400, detail="Email already registered")
+        if not verify_password(payload.password, exists.password_hash):
+            raise HTTPException(status_code=400, detail=(
+                "Аккаунт с этой почтой уже существует. Войдите в него или "
+                "восстановите пароль на странице входа."
+            ))
 
     verify_code = "".join([str(random.randint(0, 9)) for _ in range(6)])
     verify_hash = hash_token(verify_code)
@@ -317,21 +324,27 @@ async def register(
 
     verify_expires = datetime.utcnow() + timedelta(hours=24)
 
-    consent_ts = datetime.utcnow()
-    user = User(
-        email=payload.email,
-        name=payload.name,
-        password_hash=hash_password(payload.password),
-        email_verify_token_hash=verify_token_hash,
-        email_verify_code_hash=verify_hash,
-        email_verify_expires_at=verify_expires,
-        email_verified=False,
-        is_active=True,
-        privacy_consent_at=consent_ts,
-        cookies_consent_at=consent_ts,
-        cookie_consent=True,
-    )
-    db.add(user)
+    if exists:
+        user = exists
+        user.email_verify_token_hash = verify_token_hash
+        user.email_verify_code_hash = verify_hash
+        user.email_verify_expires_at = verify_expires
+    else:
+        consent_ts = datetime.utcnow()
+        user = User(
+            email=payload.email,
+            name=payload.name,
+            password_hash=hash_password(payload.password),
+            email_verify_token_hash=verify_token_hash,
+            email_verify_code_hash=verify_hash,
+            email_verify_expires_at=verify_expires,
+            email_verified=False,
+            is_active=True,
+            privacy_consent_at=consent_ts,
+            cookies_consent_at=consent_ts,
+            cookie_consent=True,
+        )
+        db.add(user)
     try:
         await db.commit()
     except Exception as exc:
@@ -340,7 +353,7 @@ async def register(
     await db.refresh(user)
 
     try:
-        subj, body = email_templates.email_verification(payload.name, verify_code)
+        subj, body = email_templates.email_verification(user.name, verify_code)
         await run_in_threadpool(send_email, payload.email, subj, body)
     except Exception:
         logger.error(f"Failed to send verification email to {payload.email}")
