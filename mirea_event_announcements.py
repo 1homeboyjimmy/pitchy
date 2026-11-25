@@ -2,6 +2,22 @@
 from datetime import datetime
 
 UPDATES = {
+    35: {
+        'title': 'Обучение питчингу',
+        'host_name': 'Андрей Горячев',
+        'starts_at': datetime(2026, 11, 26, 14),
+        'ends_at': datetime(2026, 11, 26, 17),
+        'event_format': 'offline',
+        'event_type': 'workshop',
+        'location': 'Аудитория Д-412',
+        'venue_details': None,
+        'meeting_url': None,
+        'online_platform': None,
+        'preview_url': '/events/mirea/nov-26.jpg',
+        'post_materials': [{'title': 'Регистрация на мероприятие', 'url': 'https://opros.mirea.ru/votes/vote6b06a7964a530/'}],
+        'description': 'Правила поведения на сцене и практические навыки выступления: как уверенно донести идею до аудитории.\n\nЧто разберём и отработаем:\n• Как справляться с волнением и уверенно чувствовать себя на сцене.\n• Движение на сцене, жесты и работа с голосом.\n• Работа с микрофоном и зрительный контакт с аудиторией.\n• Паузы, импровизация и удержание внимания слушателей.\n\nО спикере\nАндрей Горячев — предприниматель, основатель технологических стартапов. Специалист Проектного офиса по развитию молодёжного предпринимательства в университетах Минобрнауки России. Опытный спикер и наставник акселерационных программ.',
+        'outcome': 'Практические навыки уверенного выступления и представления своей идеи аудитории.',
+    },
     34: {
         'title': 'Каналы продвижения, контент и воронка привлечения',
         'host_name': 'Алексей Добрусин',
@@ -61,6 +77,11 @@ def correct_stale_schedule(item, cohort_id):
     if cohort_id != 8:
         return item
     item = dict(item)
+    if item['starts_at'].date() == datetime(2026, 11, 26).date() and item['title'] in (
+        'Правила поведения на сцене, практические навыки выступления', 'Обучение питчингу'):
+        item['title'] = UPDATES[35]['title']
+        if item['ends_at'] == datetime(2026, 11, 26, 18):
+            item['ends_at'] = UPDATES[35]['ends_at']
     if item['starts_at'].date() == datetime(2026, 11, 24).date() and item['title'] == 'Маркетинг и продвижение':
         item['title'] = UPDATES[34]['title']
     if item['starts_at'].date() == datetime(2026, 11, 24).date() and item['title'] == UPDATES[34]['title']:

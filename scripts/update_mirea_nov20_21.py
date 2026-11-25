@@ -31,7 +31,11 @@ async def run(apply, event_ids=None):
             if event.id == 34:
                 allowed_dates.add(datetime(2026, 11, 24).date())
             assert event.starts_at.date() in allowed_dates
-            values = UPDATES[event.id]
+            values = dict(UPDATES[event.id])
+            if 'post_materials' in values:
+                links = values['post_materials']
+                urls = {link['url'] for link in links}
+                values['post_materials'] = [link for link in (event.post_materials or []) if link.get('url') not in urls] + links
             changes = {k: v for k, v in values.items() if getattr(event, k) != v}
             if not changes:
                 continue
