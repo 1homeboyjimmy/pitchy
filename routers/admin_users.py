@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from auth import require_async_admin
 from db_async import get_async_db
 from models import User
+from user_directory import real_platform_users
 from schemas import AdminUserResponse
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -16,5 +17,5 @@ async def admin_users(
     _: User = Depends(require_async_admin),
     db: AsyncSession = Depends(get_async_db),
 ) -> list[AdminUserResponse]:
-    users = (await db.execute(select(User).order_by(User.created_at.desc()))).scalars().all()
+    users = (await db.execute(select(User).where(real_platform_users()).order_by(User.created_at.desc()))).scalars().all()
     return [AdminUserResponse.model_validate(user) for user in users]

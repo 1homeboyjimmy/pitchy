@@ -549,6 +549,8 @@ app.include_router(projects_router.router)
 import grants_router
 app.include_router(grants_router.router)
 
+from user_directory import real_platform_users
+
 from routers import contact as contact_router
 app.include_router(contact_router.router)
 
@@ -1462,7 +1464,7 @@ async def public_metrics(
     db: AsyncSession = Depends(get_async_db),
 ) -> dict[str, int]:
     """Small, non-sensitive aggregate counters for public pages."""
-    users_result = await db.execute(select(sa_func.count()).select_from(User))
+    users_result = await db.execute(select(sa_func.count()).select_from(User).where(real_platform_users()))
     sessions_result = await db.execute(select(sa_func.count()).select_from(ChatSession))
 
     response.headers["Cache-Control"] = "public, max-age=300"
@@ -3384,14 +3386,14 @@ async def admin_analytics(
         res = await db.execute(select(sa_func.count()).select_from(model))
         return res.scalar()
 
-    total_users = await _count_absolute(User)
+    total_users = (await db.execute(select(sa_func.count()).select_from(User).where(real_platform_users()))).scalar()
     total_analyses = await _count_absolute(Analysis)
     total_analyses_anonymous = (await db.execute(select(sa_func.count()).select_from(Analysis).where(Analysis.user_id == None))).scalar()
     total_sessions = await _count_absolute(ChatSession)
     total_sessions_anonymous = (await db.execute(select(sa_func.count()).select_from(ChatSession).where(ChatSession.user_id == None))).scalar()
     total_messages = await _count_absolute(DbChatMessage)
     total_errors = await _count_absolute(ErrorLog)
-    total_subscriptions = (await db.execute(select(sa_func.count()).select_from(User).where(User.subscription_tier != "free"))).scalar()
+    total_subscriptions = (await db.execute(select(sa_func.count()).select_from(User).where(User.subscription_tier != "free", real_platform_users()))).scalar()
 
     delta = end_date - start_date
     is_hourly = delta.days <= 3
@@ -3420,7 +3422,7 @@ async def admin_analytics(
         if not dt: return None
         return dt.strftime("%Y-%m-%d %H:00") if is_hourly else dt.strftime("%Y-%m-%d")
 
-    res_users = await db.execute(select(User.created_at, User.subscription_tier).where(User.created_at.between(start_dt, end_dt)))
+    res_users = await db.execute(select(User.created_at, User.subscription_tier).where(User.created_at.between(start_dt, end_dt), real_platform_users()))
     users_q = res_users.all()
     for (dt, tier) in users_q:
         k = _format_key(dt)

@@ -21,7 +21,8 @@ async def test_admin_users_lists_legacy_addresses_without_dropping_accounts():
         malformed = User(email=f"legacy-{suffix}-without-domain", name="Legacy account",
                          is_active=False, deleted_at=datetime.utcnow(),
                          privacy_consent_at=datetime.utcnow(), cookies_consent_at=datetime.utcnow())
-        db.add_all([admin, legacy, malformed])
+        demo = User(email=f"demo-{suffix}@pitchy-demo.invalid", name="Demo resident")
+        db.add_all([admin, legacy, malformed, demo])
         await db.commit()
 
         async def current_user():
@@ -38,6 +39,7 @@ async def test_admin_users_lists_legacy_addresses_without_dropping_accounts():
                 response = await client.get("/admin/users")
                 assert response.status_code == 200
                 rows = {row["id"]: row for row in response.json()}
+                assert demo.id not in rows
                 assert rows[admin.id]["email"] == admin.email
                 assert rows[legacy.id]["email"] == legacy.email
                 assert rows[malformed.id]["email"] == malformed.email
